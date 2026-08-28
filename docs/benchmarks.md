@@ -1844,10 +1844,12 @@ or evidence for multiple/transitive project dependencies.
 
 `refinement-fixed-point.bench.ts` parses and analyzes the first direct
 ranking-loop throw/normal CFG join, including exact affine action validation,
-the bounded reachability worklist, and artifact construction. A 2026-08-28 run
-After adding condition-specialized predecessor expression environments and a
-phi-producing join block, a 2026-08-28 run measured 0.3195 ms mean over 1,565
-samples (3,129.99 operations per second, 1.36% RME). It excludes Z3,
-TypeChecker Program resolution, arbitrary AST-to-basic-block lowering, and
-general recurrence iteration. This is an observation for the bounded seed, not
-a general CFG performance claim or CI regression budget.
+the bounded worklist, condition-specialized predecessor phi, and stable affine
+recurrence certificate. A 2026-08-28 run measured 0.3134 ms mean over 1,596
+samples (3,191.15 operations per second, 1.44% RME). The adjacent asynchronous
+case reparses the certificate and independently proves base, per-state
+inductive step, and ranking obligations through the configured Z3 backend; it
+measured 57.4776 ms mean over 9 samples (17.3981 operations per second, 2.07%
+RME), or 183.42x the structural analysis cost on that host. These observations
+are not portable latency budgets. They exclude TypeChecker Program resolution,
+arbitrary AST-to-basic-block lowering, and general recurrence widening.

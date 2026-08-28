@@ -343,7 +343,10 @@ the throw condition, then joined into a correlated phi environment inside the
 worklist. The accepted affine ranking counter, direction, one-iteration
 transformer, and closed-form summary now travel through the same back-edge as a
 stable recurrence certificate. The existing affine lowering still constructs
-the complete summary, so independent summary validation, arbitrary CFG lowering,
+the complete summary; an opt-in async pass now independently reparses it and
+uses Z3 to prove base, per-state inductive step, and well-founded ranking
+obligations. Summary/ranking fault injections are load-bearing, and unavailable
+solver evidence downgrades the artifact to `unknown`. Arbitrary CFG lowering
 and general loop fixed points remain open. A self-amplifying recurrence remains
 an explicit `unknown` alongside the coupled-recurrence and budget controls.
 

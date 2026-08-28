@@ -14,7 +14,7 @@ import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
-import { analyzeRefinementActionBodies, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -352,18 +352,19 @@ describe("Uneffect dogfood", () => {
     );
   });
 
-  it("retains budgeted throw/normal join evidence for telemetry drain accounting", () => {
+  it("independently proves budgeted throw/normal telemetry drain accounting", async () => {
     const fileName = "examples/dogfood/telemetry-fixed-point-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
-    const analysis = analyzeRefinementActionBodies(
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "telemetryFixedPoint", temporal,
-      { proofBudget: { cfgFixedPointIterations: 16 } },
+      { analysis: { proofBudget: { cfgFixedPointIterations: 16 } } },
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "ranking-loop-fixed-point",
       status: "verified",
+      recurrenceProof: expect.objectContaining({ status: "verified", backend: "z3" }),
       completionJoin: expect.objectContaining({
         retainedThrowPayload: true,
         retainedNormalSnapshot: true,

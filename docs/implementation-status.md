@@ -216,8 +216,11 @@ same property is proved for arbitrary TypeScript.
   affine recurrence certificate—ranking counter/direction, one-iteration
   transformer, and closed-form summary—through the back-edge and requires an
   identical stable value at convergence. Full loop-recurrence summary
-  construction still comes from the affine walker, so this is not yet an independently checked or general
-  recurrence fixed point, arbitrary AST-to-basic-block lowering,
+  construction still comes from the affine walker. The opt-in async analysis
+  independently reparses that certificate and asks Z3 to prove its base case,
+  inductive step for each scalar state, and ranking measure. It rejects modified
+  summaries/ranking metadata and turns solver failure into `unknown`. This is
+  still not a general recurrence fixed point, arbitrary AST-to-basic-block lowering,
   Program/external-action analysis,
   irreducible-loop analysis, or CLI assurance artifact.
 

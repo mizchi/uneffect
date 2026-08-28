@@ -294,8 +294,11 @@ reusable worklist retains normalized model payload `pending`, both normal
 snapshot facts, their throw-specialized expression environments, and the
 correlated joined environment within a 16-step budget. It also retains a stable
 affine recurrence certificate for the `pending` countdown, its one-iteration
-updates, and its closed-form summary. The summary is still constructed by the
-shape-specific affine lowering and is not an independent recurrence proof.
+updates, and its closed-form summary. Dogfood now passes that certificate to the
+async Z3 analysis, which independently proves the base case, every scalar
+inductive step, and the countdown ranking obligation. A modified certificate
+is covered by summary and ranking fault injections; unavailable solver evidence
+is `unknown`, not a structural success.
 Replacing the caught amount with the normal-path delivered counter keeps the
 obligation `unknown` as an unsupported coupled recurrence.
 The example deliberately does not model the network send itself, so it is not

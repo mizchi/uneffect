@@ -1,5 +1,5 @@
 import { bench, describe } from "vitest";
-import { analyzeRefinementActionBodies } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
 const source = `/* uneffect:
@@ -45,4 +45,15 @@ describe("refinement CFG fixed point", () => {
       throw new Error("ranking-loop fixed-point benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("independently prove the recurrence summary with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 16 } } },
+    );
+    if (result.diagnostics.length !== 0
+      || result.obligations[0]?.recurrenceProof?.status !== "verified") {
+      throw new Error("ranking-loop recurrence proof benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
 });

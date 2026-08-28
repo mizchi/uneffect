@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 52–101 engineer-weeks; this is implementation volume, not a calendar
+estimate is 51–100 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -103,8 +103,10 @@ explicit conservative boundaries rather than untracked support.
 
 1. [General refinement CFG fixed points](https://github.com/mizchi/uneffect/issues/23)
    replaces the bounded path walker with explicit fixed points and proof budgets
-   while preserving completion kinds and fail-closed non-convergence. It is the
-   active slice after the bounded project/module proof-boundary handoff.
+   while preserving completion kinds and fail-closed non-convergence. The first
+   affine ranking-loop seed now has independent Z3 base/step/ranking validation.
+   Target-aware outer-loop transfers are the next active slice because they are
+   the remaining self-dogfood CFG blocker.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
    temporal reasoning.

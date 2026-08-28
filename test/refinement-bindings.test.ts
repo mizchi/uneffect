@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { analyzeRefinementActionBodies, buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3, buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram, verifyRefinementRecurrenceCertificateWithZ3 } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -3012,7 +3012,7 @@ describe("annotated refinement bindings", () => {
     }
   });
 
-  it("records a budgeted fixed point for a ranking loop throw/normal join", () => {
+  it("records a budgeted fixed point for a ranking loop throw/normal join", async () => {
     const source = `/* uneffect:
       state pending: int
       state delivered: int
@@ -3068,6 +3068,8 @@ describe("annotated refinement bindings", () => {
             counter: "pending",
             direction: "decrease",
             delta: -1,
+            bound: 0,
+            stop: 0,
             guard: "pending > 0",
             iteration: {
               pending: "pending - 1",
@@ -3101,6 +3103,64 @@ describe("annotated refinement bindings", () => {
       }],
     });
     expect(analysis.obligations[0]?.fixedPoint.iterations).toBeLessThanOrEqual(16);
+    const recurrence = analysis.obligations[0]?.fixedPoint.recurrence;
+    expect(recurrence).toBeDefined();
+    const recurrenceProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, recurrence!);
+    expect(recurrenceProof).toMatchObject({
+      status: "verified",
+      backend: "z3",
+      checks: expect.arrayContaining([
+        { kind: "base", state: "pending", status: "verified" },
+        { kind: "step", state: "delivered", status: "verified" },
+        { kind: "ranking", state: "pending", status: "verified" },
+      ]),
+    });
+    const brokenProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, {
+      ...recurrence!, summary: { ...recurrence!.summary, delivered: "delivered" },
+    });
+    expect(brokenProof).toMatchObject({
+      status: "refuted",
+      checks: expect.arrayContaining([
+        { kind: "step", state: "delivered", status: "refuted" },
+      ]),
+    });
+    const brokenRankingProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, {
+      ...recurrence!, delta: 1,
+    });
+    expect(brokenRankingProof).toMatchObject({
+      status: "refuted",
+      checks: [{ kind: "ranking", state: "pending", status: "refuted", reason: "ranking-metadata-mismatch" }],
+    });
+    const independentlyChecked = await analyzeRefinementActionBodiesWithZ3(
+      "fixed-point-join.ts", source, "fixedPointJoin", spec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 16 } } },
+    );
+    expect(independentlyChecked.obligations[0]).toMatchObject({
+      status: "verified",
+      recurrenceProof: { status: "verified", backend: "z3" },
+    });
+    const unavailableProof = await analyzeRefinementActionBodiesWithZ3(
+      "fixed-point-join.ts", source, "fixedPointJoin", spec,
+      {
+        analysis: { proofBudget: { cfgFixedPointIterations: 16 } },
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+      },
+    );
+    expect(unavailableProof.obligations[0]).toMatchObject({
+      status: "unknown",
+      reason: "recurrence-proof-unknown",
+      recurrenceProof: { status: "unknown", backend: "z3" },
+      completionJoin: { retainedThrowPayload: false, retainedNormalSnapshot: false },
+    });
+    expect(unavailableProof.diagnostics).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+    expect(await verifyRefinementRecurrenceCertificateWithZ3(spec, {
+      ...recurrence!, stable: false,
+    })).toMatchObject({
+      status: "unknown",
+      checks: [{ reason: "worklist-not-converged" }],
+    });
     expect(JSON.parse(readFileSync("schemas/uneffect-refinement-action-analysis-v1.schema.json", "utf8"))).toMatchObject({
       properties: {
         schema: { const: "uneffect-refinement-action-analysis/v1" },

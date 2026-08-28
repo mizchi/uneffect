@@ -47,15 +47,38 @@
     "rankingRecurrence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["counter", "direction", "delta", "guard", "iteration", "summary", "stable"],
+      "required": ["counter", "direction", "delta", "bound", "stop", "guard", "iteration", "summary", "stable"],
       "properties": {
         "counter": { "type": "string", "minLength": 1 },
         "direction": { "enum": ["increase", "decrease"] },
         "delta": { "type": "integer", "not": { "const": 0 } },
+        "bound": { "type": "integer" },
+        "stop": { "type": "integer" },
         "guard": { "type": "string", "minLength": 1 },
         "iteration": { "$ref": "#/$defs/expressionSnapshot" },
         "summary": { "$ref": "#/$defs/expressionSnapshot" },
         "stable": { "type": "boolean" }
+      }
+    },
+    "recurrenceProofCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "state", "status"],
+      "properties": {
+        "kind": { "enum": ["base", "step", "ranking"] },
+        "state": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["verified", "refuted", "unknown"] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "recurrenceProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "status", "checks"],
+      "properties": {
+        "backend": { "const": "z3" },
+        "status": { "enum": ["verified", "refuted", "unknown"] },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/recurrenceProofCheck" }, "minItems": 1 }
       }
     },
     "rankingLoop": {
@@ -70,7 +93,7 @@
         "loopSpan": { "$ref": "#/$defs/span" },
         "trySpan": { "$ref": "#/$defs/span" },
         "status": { "enum": ["verified", "unknown"] },
-        "reason": { "enum": ["proof-budget-exhausted", "lattice-conflict", "unsupported-recurrence", "action-validation-failed"] },
+        "reason": { "enum": ["proof-budget-exhausted", "lattice-conflict", "unsupported-recurrence", "action-validation-failed", "recurrence-proof-refuted", "recurrence-proof-unknown"] },
         "budget": {
           "type": "object", "additionalProperties": false,
           "required": ["name", "limit"],
@@ -113,7 +136,8 @@
             "retainedThrowPayload": { "type": "boolean" },
             "retainedNormalSnapshot": { "type": "boolean" }
           }
-        }
+        },
+        "recurrenceProof": { "$ref": "#/$defs/recurrenceProof" }
       },
       "allOf": [{
         "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
@@ -131,6 +155,24 @@
           }
         },
         "else": { "required": ["reason"] }
+      }, {
+        "if": {
+          "required": ["recurrenceProof"],
+          "properties": {
+            "recurrenceProof": { "properties": { "status": { "enum": ["refuted", "unknown"] } } }
+          }
+        },
+        "then": {
+          "properties": {
+            "status": { "const": "unknown" },
+            "completionJoin": {
+              "properties": {
+                "retainedThrowPayload": { "const": false },
+                "retainedNormalSnapshot": { "const": false }
+              }
+            }
+          }
+        }
       }]
     }
   }

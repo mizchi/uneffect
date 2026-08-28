@@ -96,8 +96,13 @@ environments into a condition-correlated phi snapshot. The worklist also carries
 the accepted affine ranking counter, direction, one-iteration transformer, and
 closed-form summary through the back-edge and requires that certificate to
 stabilize before reporting `verified`. The shape-specific affine lowering still
-constructs that summary; independent summary validation, recurrence widening,
-and arbitrary basic-block shapes remain owned by #23.
+constructs that summary. The opt-in async
+`analyzeRefinementActionBodiesWithZ3` API independently reparses the certificate
+and proves a base case, an inductive step for every scalar state, and a
+well-founded guard-distance ranking obligation. A modified summary or ranking
+metadata is `refuted`; solver failure and an unstabilized certificate are
+`unknown`. This does not generalize the accepted recurrence shape: widening and
+arbitrary basic-block shapes remain owned by #23.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing

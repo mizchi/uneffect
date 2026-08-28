@@ -7,6 +7,7 @@ import type { TemporalSpec } from "./spec-ir.js";
 import type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 import { formatTemporalValueType, generateRuntimeAssertionExpression, parseTemporalExpression } from "./temporal-expressions.js";
 import { checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
+import type { Z3ExecutionOptions } from "./z3.js";
 import {
   isTransferOwnedByLoop,
   loopTransferTarget,
@@ -119,6 +120,8 @@ interface RefinementRankingRecurrenceTrace {
   readonly counterName: string;
   readonly counterDelta: number;
   readonly direction: "increase" | "decrease";
+  readonly bound: number;
+  readonly stop: number;
   readonly guard: TemporalExpression;
   readonly iterationUpdates: ReadonlyMap<string, TemporalExpression>;
   readonly summaryUpdates: ReadonlyMap<string, TemporalExpression>;
@@ -137,7 +140,7 @@ export interface RefinementRankingLoopObligation {
   loopSpan: { start: number; end: number };
   trySpan: { start: number; end: number };
   status: "verified" | "unknown";
-  reason?: "proof-budget-exhausted" | "lattice-conflict" | "unsupported-recurrence" | "action-validation-failed";
+  reason?: "proof-budget-exhausted" | "lattice-conflict" | "unsupported-recurrence" | "action-validation-failed" | "recurrence-proof-refuted" | "recurrence-proof-unknown";
   budget: {
     name: "cfg-fixed-point-iterations";
     limit: number;
@@ -145,15 +148,7 @@ export interface RefinementRankingLoopObligation {
   fixedPoint: {
     iterations: number;
     converged: boolean;
-    recurrence?: {
-      counter: string;
-      direction: "increase" | "decrease";
-      delta: number;
-      guard: string;
-      iteration: Readonly<Record<string, string>>;
-      summary: Readonly<Record<string, string>>;
-      stable: boolean;
-    };
+    recurrence?: RefinementRankingRecurrenceEvidence;
     valueLattice: {
       throwPayloads: readonly string[];
       normalSnapshots: readonly string[];
@@ -169,6 +164,19 @@ export interface RefinementRankingLoopObligation {
     retainedThrowPayload: boolean;
     retainedNormalSnapshot: boolean;
   };
+  recurrenceProof?: RefinementRecurrenceProof;
+}
+
+export interface RefinementRankingRecurrenceEvidence {
+  counter: string;
+  direction: "increase" | "decrease";
+  delta: number;
+  bound: number;
+  stop: number;
+  guard: string;
+  iteration: Readonly<Record<string, string>>;
+  summary: Readonly<Record<string, string>>;
+  stable: boolean;
 }
 
 export interface RefinementActionAnalysis {
@@ -2653,6 +2661,8 @@ function validateRefinementActionBodiesInSource(
           counterName,
           counterDelta,
           direction: descending ? "decrease" : "increase",
+          bound,
+          stop: stopValue,
           guard: entryGuard,
           iterationUpdates: new Map([...stateNames].map((name) => [
             name,
@@ -3778,10 +3788,8 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
 interface RankingLoopValueState {
   readonly normal: ReadonlyMap<string, Readonly<Record<string, string>>>;
   readonly throws: ReadonlyMap<string, string>;
-  readonly recurrences: ReadonlyMap<string, RankingLoopRecurrenceEvidence>;
+  readonly recurrences: ReadonlyMap<string, RefinementRankingRecurrenceEvidence>;
 }
-
-type RankingLoopRecurrenceEvidence = NonNullable<RefinementRankingLoopObligation["fixedPoint"]["recurrence"]>;
 
 function runRankingLoopJoinFixedPoint(
   candidate: RankingLoopJoinCandidate,
@@ -3793,7 +3801,7 @@ function runRankingLoopJoinFixedPoint(
   iterations: number;
   converged: boolean;
   conflict: boolean;
-  recurrence?: RankingLoopRecurrenceEvidence;
+  recurrence?: RefinementRankingRecurrenceEvidence;
   valueLattice: {
     throwPayloads: readonly string[];
     normalSnapshots: readonly string[];
@@ -3807,7 +3815,7 @@ function runRankingLoopJoinFixedPoint(
   const value = (
     normal: readonly (readonly [string, Readonly<Record<string, string>>])[] = [],
     throws: readonly (readonly [string, string])[] = [],
-    recurrences: readonly (readonly [string, RankingLoopRecurrenceEvidence])[] = [],
+    recurrences: readonly (readonly [string, RefinementRankingRecurrenceEvidence])[] = [],
   ): RankingLoopValueState => ({
     normal: new Map(normal), throws: new Map(throws), recurrences: new Map(recurrences),
   });
@@ -3844,10 +3852,12 @@ function runRankingLoopJoinFixedPoint(
   const catchNormal = formatUpdates(catchExpressions);
   const joinedNormal = formatUpdates(joinedExpressions);
   const recurrenceKey = `${candidate.whileStatement.getStart(source)}:${candidate.whileStatement.getEnd()}`;
-  const recurrence: RankingLoopRecurrenceEvidence | undefined = recurrenceTrace ? {
+  const recurrence: RefinementRankingRecurrenceEvidence | undefined = recurrenceTrace ? {
     counter: recurrenceTrace.counterName,
     direction: recurrenceTrace.direction,
     delta: recurrenceTrace.counterDelta,
+    bound: recurrenceTrace.bound,
+    stop: recurrenceTrace.stop,
     guard: formatRefinementExpression(recurrenceTrace.guard),
     iteration: formatUpdates(recurrenceTrace.iterationUpdates),
     summary: formatUpdates(recurrenceTrace.summaryUpdates),
@@ -4032,6 +4042,252 @@ export function analyzeRefinementActionBodies(
     diagnostics,
     obligations,
   };
+}
+
+export interface RefinementRecurrenceProofCheck {
+  kind: "base" | "step" | "ranking";
+  state: string;
+  status: "verified" | "refuted" | "unknown";
+  reason?: string;
+}
+
+export interface RefinementRecurrenceProof {
+  backend: "z3";
+  status: "verified" | "refuted" | "unknown";
+  checks: readonly RefinementRecurrenceProofCheck[];
+}
+
+function substituteRefinementState(
+  expression: TemporalExpression,
+  updates: ReadonlyMap<string, TemporalExpression>,
+): TemporalExpression {
+  if (expression.kind === "name") return updates.get(expression.name) ?? expression;
+  if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+  if (expression.kind === "unary") return {
+    ...expression, operand: substituteRefinementState(expression.operand, updates),
+  };
+  if (expression.kind === "binary") return {
+    ...expression,
+    left: substituteRefinementState(expression.left, updates),
+    right: substituteRefinementState(expression.right, updates),
+  };
+  if (expression.kind === "conditional") return {
+    ...expression,
+    condition: substituteRefinementState(expression.condition, updates),
+    whenTrue: substituteRefinementState(expression.whenTrue, updates),
+    whenFalse: substituteRefinementState(expression.whenFalse, updates),
+  };
+  if (expression.kind === "array") return {
+    ...expression, elements: expression.elements.map((item) => substituteRefinementState(item, updates)),
+  };
+  if (expression.kind === "record") return {
+    ...expression,
+    ...(expression.base ? { base: substituteRefinementState(expression.base, updates) } : {}),
+    fields: Object.fromEntries(Object.entries(expression.fields)
+      .map(([name, value]) => [name, substituteRefinementState(value, updates)])),
+  };
+  if (expression.kind === "field") return {
+    ...expression, receiver: substituteRefinementState(expression.receiver, updates),
+  };
+  if (expression.kind === "lambda") return updates.has(expression.parameter) ? expression : {
+    ...expression, body: substituteRefinementState(expression.body, updates),
+  };
+  if (expression.kind === "call") return {
+    ...expression, arguments: expression.arguments.map((item) => substituteRefinementState(item, updates)),
+  };
+  return {
+    ...expression,
+    receiver: substituteRefinementState(expression.receiver, updates),
+    arguments: expression.arguments.map((item) => substituteRefinementState(item, updates)),
+  };
+}
+
+/**
+ * Independently checks an emitted affine recurrence certificate. Base and step
+ * obligations establish that the summary is an inductive solution; the
+ * ranking obligation establishes a well-founded distance to the guard's stop.
+ */
+export async function verifyRefinementRecurrenceCertificateWithZ3(
+  spec: TemporalSpec,
+  certificate: RefinementRankingRecurrenceEvidence,
+  options: Z3ExecutionOptions = {},
+): Promise<RefinementRecurrenceProof> {
+  if (!certificate.stable) return {
+    backend: "z3", status: "unknown",
+    checks: [{
+      kind: "ranking", state: certificate.counter, status: "unknown", reason: "worklist-not-converged",
+    }],
+  };
+  const checks: RefinementRecurrenceProofCheck[] = [];
+  const record = async (
+    kind: RefinementRecurrenceProofCheck["kind"],
+    state: string,
+    left: TemporalExpression,
+    right: TemporalExpression,
+  ): Promise<void> => {
+    const result = await checkTemporalExpressionEquivalenceWithZ3(spec, left, right, options);
+    checks.push(result.status === "equivalent"
+      ? { kind, state, status: "verified" }
+      : result.status === "different"
+        ? { kind, state, status: "refuted" }
+        : { kind, state, status: "unknown", reason: result.reason });
+  };
+  try {
+    const stateTypes = new Map(spec.states.map((state) => [state.name, state.type]));
+    const guard = parseTemporalExpression(certificate.guard);
+    const iterations = new Map(Object.entries(certificate.iteration)
+      .map(([name, expression]) => [name, parseTemporalExpression(expression)]));
+    const summaries = new Map(Object.entries(certificate.summary)
+      .map(([name, expression]) => [name, parseTemporalExpression(expression)]));
+    if (!stateTypes.has(certificate.counter)
+      || stateTypes.get(certificate.counter) !== "int"
+      || !iterations.has(certificate.counter)
+      || Object.keys(certificate.iteration).some((name) => !stateTypes.has(name))
+      || Object.keys(certificate.summary).some((name) => !stateTypes.has(name))) {
+      return {
+        backend: "z3", status: "unknown",
+        checks: [{ kind: "ranking", state: certificate.counter, status: "unknown", reason: "certificate-state-domain-mismatch" }],
+      };
+    }
+    const signedInteger = (expression: TemporalExpression): number | undefined => {
+      if (expression.kind === "integer") {
+        const value = Number(expression.value);
+        return Number.isSafeInteger(value) ? value : undefined;
+      }
+      if (expression.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") {
+        const value = -Number(expression.operand.value);
+        return Number.isSafeInteger(value) ? value : undefined;
+      }
+      return undefined;
+    };
+    const guardBound = guard.kind === "binary" ? signedInteger(guard.right) : undefined;
+    const guardDirection = guard.kind === "binary" && (guard.operator === "gt" || guard.operator === "gte")
+      ? "decrease" : guard.kind === "binary" && (guard.operator === "lt" || guard.operator === "lte")
+        ? "increase" : undefined;
+    const guardInclusive = guard.kind === "binary" && (guard.operator === "gte" || guard.operator === "lte");
+    const expectedStop = guardBound === undefined || !guardDirection ? undefined
+      : guardInclusive ? guardBound + (guardDirection === "decrease" ? -1 : 1) : guardBound;
+    const counterForm = decomposeAffineStateExpression(iterations.get(certificate.counter)!);
+    const rankingMetadataMatches = guard.kind === "binary"
+      && guard.left.kind === "name" && guard.left.name === certificate.counter
+      && guardDirection === certificate.direction
+      && guardBound === certificate.bound
+      && expectedStop === certificate.stop
+      && counterForm?.coefficients.size === 1
+      && counterForm.coefficients.get(certificate.counter) === 1
+      && counterForm.constant === certificate.delta
+      && (certificate.direction === "decrease" ? certificate.delta < 0 : certificate.delta > 0);
+    if (!rankingMetadataMatches) return {
+      backend: "z3", status: "refuted",
+      checks: [{
+        kind: "ranking", state: certificate.counter, status: "refuted", reason: "ranking-metadata-mismatch",
+      }],
+    };
+    for (const state of spec.states) {
+      const original: TemporalExpression = { kind: "name", name: state.name };
+      const summary = summaries.get(state.name) ?? original;
+      const baseLeft: TemporalExpression = {
+        kind: "conditional", condition: guard, whenTrue: original, whenFalse: summary,
+      };
+      await record("base", state.name, baseLeft, original);
+      const steppedSummary = substituteRefinementState(summary, iterations);
+      await record("step", state.name, {
+        kind: "conditional", condition: guard, whenTrue: summary, whenFalse: original,
+      }, {
+        kind: "conditional", condition: guard, whenTrue: steppedSummary, whenFalse: original,
+      });
+    }
+    const counter: TemporalExpression = { kind: "name", name: certificate.counter };
+    const nextCounter = iterations.get(certificate.counter)!;
+    const stop: TemporalExpression = certificate.stop >= 0
+      ? { kind: "integer", value: String(certificate.stop) }
+      : { kind: "unary", operator: "negate", operand: { kind: "integer", value: String(-certificate.stop) } };
+    const measure = (value: TemporalExpression): TemporalExpression => ({
+      kind: "binary", operator: "subtract",
+      left: certificate.direction === "decrease" ? value : stop,
+      right: certificate.direction === "decrease" ? stop : value,
+    });
+    const currentMeasure = measure(counter);
+    const nextMeasure = measure(nextCounter);
+    const nextGuard = substituteRefinementState(guard, iterations);
+    const positive: TemporalExpression = {
+      kind: "binary", operator: "gt", left: currentMeasure, right: { kind: "integer", value: "0" },
+    };
+    const decreasesIfContinuing: TemporalExpression = {
+      kind: "conditional", condition: nextGuard,
+      whenTrue: {
+        kind: "binary", operator: "and",
+        left: { kind: "binary", operator: "gt", left: nextMeasure, right: { kind: "integer", value: "0" } },
+        right: { kind: "binary", operator: "lt", left: nextMeasure, right: currentMeasure },
+      },
+      whenFalse: { kind: "boolean", value: true },
+    };
+    await record("ranking", certificate.counter, {
+      kind: "conditional", condition: guard,
+      whenTrue: { kind: "binary", operator: "and", left: positive, right: decreasesIfContinuing },
+      whenFalse: { kind: "boolean", value: true },
+    }, { kind: "boolean", value: true });
+  } catch (cause) {
+    return {
+      backend: "z3", status: "unknown",
+      checks: [{
+        kind: "ranking", state: certificate.counter, status: "unknown",
+        reason: cause instanceof Error ? cause.message : String(cause),
+      }],
+    };
+  }
+  return {
+    backend: "z3",
+    status: checks.some((check) => check.status === "refuted") ? "refuted"
+      : checks.some((check) => check.status === "unknown") ? "unknown" : "verified",
+    checks,
+  };
+}
+
+export interface RefinementActionAnalysisWithZ3Options {
+  analysis?: RefinementActionAnalysisOptions;
+  z3?: Z3ExecutionOptions;
+}
+
+/** Adds independent Z3 base/step/ranking checks to every retained recurrence certificate. */
+export async function analyzeRefinementActionBodiesWithZ3(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+  options: RefinementActionAnalysisWithZ3Options = {},
+): Promise<RefinementActionAnalysis> {
+  const analysis = analyzeRefinementActionBodies(fileName, text, adapterName, spec, options.analysis);
+  const addedDiagnostics: RefinementActionDiagnostic[] = [];
+  const obligations = await Promise.all(analysis.obligations.map(async (obligation): Promise<RefinementRankingLoopObligation> => {
+    const certificate = obligation.fixedPoint.recurrence;
+    if (!certificate) return obligation;
+    const recurrenceProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, certificate, options.z3);
+    if (obligation.status !== "verified" || recurrenceProof.status === "verified") {
+      return { ...obligation, recurrenceProof };
+    }
+    const reason = recurrenceProof.status === "refuted"
+      ? "recurrence-proof-refuted" as const : "recurrence-proof-unknown" as const;
+    addedDiagnostics.push({
+      code: "unsupported-action-body",
+      adapterName,
+      modelName: obligation.modelName,
+      exportName: obligation.exportName,
+      message: `${obligation.exportName} recurrence summary ${recurrenceProof.status === "refuted" ? "failed" : "could not complete"} independent Z3 base/step/ranking validation`,
+    });
+    return {
+      ...obligation,
+      status: "unknown",
+      reason,
+      recurrenceProof,
+      completionJoin: {
+        ...obligation.completionJoin,
+        retainedThrowPayload: false,
+        retainedNormalSnapshot: false,
+      },
+    };
+  }));
+  return { ...analysis, diagnostics: [...analysis.diagnostics, ...addedDiagnostics], obligations };
 }
 
 /** Uses TypeScript symbol identity to reject collection-like subclasses and user-defined lookalikes. */
