@@ -168,8 +168,11 @@ explicit conservative boundaries rather than untracked support.
     [#43](https://github.com/mizchi/uneffect/issues/43) admits one such universe
     only from an independently proved, immutable finite-Set membership invariant.
    Completed child [#44](https://github.com/mizchi/uneffect/issues/44) extends that
-   rule to primary/backup selectors only when every key is proved separately;
-   one failed premise keeps the combined observation universe `unknown`.
+    rule to primary/backup selectors only when every key is proved separately;
+    one failed premise keeps the combined observation universe `unknown`.
+   Active child [#45](https://github.com/mizchi/uneffect/issues/45) admits one
+   failover family where the complete membership conjunction, rather than each
+   property alone, is inductive. Joint assumptions remain explicit evidence.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
    reduces filtering and covers recursive/user-defined refinements.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)

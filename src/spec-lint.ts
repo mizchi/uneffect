@@ -678,16 +678,35 @@ async function proveFiniteCollectionUniverse(
     ].join("\n"), options);
   const initExecution = await run(init);
   if (initExecution.status !== "sat") return undefined;
-  const evidence: TemporalObservationDomainEvidence[] = [];
+  const initiationExecutions: Z3Execution[] = [];
+  const preservationExecutions: Z3Execution[] = [];
   for (const candidate of provedCandidates) {
     const initiationExecution = await run([...init, `(not ${propertyAt(candidate, 0)})`]);
     if (initiationExecution.status !== "unsat") return undefined;
+    initiationExecutions.push(initiationExecution);
     const preservationExecution = await run([
       domainAt(candidate, 0), propertyAt(candidate, 0), transition, `(not ${propertyAt(candidate, 1)})`,
     ]);
-    if (preservationExecution.status !== "unsat") return undefined;
-    evidence.push({
-      rule: "inductively-proved-finite-membership",
+    preservationExecutions.push(preservationExecution);
+  }
+  const independentlyPreserved = preservationExecutions.every((execution) => execution.status === "unsat");
+  const preservationAssumptions = provedCandidates.map((candidate) => candidate.property.name);
+  const jointPreservationExecution = independentlyPreserved ? undefined : await run([
+    ...provedCandidates.map((candidate) => domainAt(candidate, 0)),
+    ...provedCandidates.map((candidate) => propertyAt(candidate, 0)),
+    transition,
+    `(not (and ${provedCandidates.map((candidate) => propertyAt(candidate, 1)).join(" ")}))`,
+  ]);
+  if (!independentlyPreserved && jointPreservationExecution?.status !== "unsat") return undefined;
+
+  const evidence: TemporalObservationDomainEvidence[] = provedCandidates.map((candidate, index) => {
+    const initiationExecution = initiationExecutions[index]!;
+    const preservationExecution = preservationExecutions[index]!;
+    const effectivePreservation = independentlyPreserved ? preservationExecution : jointPreservationExecution!;
+    return {
+      rule: independentlyPreserved
+        ? "inductively-proved-finite-membership"
+        : "jointly-inductive-finite-membership",
       domainState: candidate.domainState,
       keyState: candidate.keyState,
       property: candidate.property.name,
@@ -696,15 +715,21 @@ async function proveFiniteCollectionUniverse(
         initSatisfiable: "verified",
         membershipInitiation: "verified",
         domainStability: "verified-by-syntax",
-        membershipPreservation: "verified",
+        membershipPreservation: independentlyPreserved ? "verified" : "verified-jointly",
+        ...(!independentlyPreserved ? { preservationAssumptions } : {}),
         solverChecks: [
           { obligation: "init-satisfiable", result: "sat", backend: initExecution.backend, version: initExecution.version },
           { obligation: "membership-initiation", result: "unsat", backend: initiationExecution.backend, version: initiationExecution.version },
-          { obligation: "membership-preservation", result: "unsat", backend: preservationExecution.backend, version: preservationExecution.version },
+          {
+            obligation: independentlyPreserved ? "membership-preservation" : "joint-membership-preservation",
+            result: "unsat",
+            backend: effectivePreservation.backend,
+            version: effectivePreservation.version,
+          },
         ],
       },
-    });
-  }
+    };
+  });
 
   return {
     universe: { ...universe, complete: true },
@@ -970,7 +995,7 @@ export type TemporalCounterexampleResult =
   | { status: "unknown"; depth: number };
 
 export interface TemporalObservationDomainEvidence {
-  readonly rule: "inductively-proved-finite-membership";
+  readonly rule: "inductively-proved-finite-membership" | "jointly-inductive-finite-membership";
   readonly domainState: string;
   readonly keyState: string;
   readonly property: string;
@@ -979,9 +1004,10 @@ export interface TemporalObservationDomainEvidence {
     readonly initSatisfiable: "verified";
     readonly membershipInitiation: "verified";
     readonly domainStability: "verified-by-syntax";
-    readonly membershipPreservation: "verified";
+    readonly membershipPreservation: "verified" | "verified-jointly";
+    readonly preservationAssumptions?: readonly string[];
     readonly solverChecks: readonly {
-      readonly obligation: "init-satisfiable" | "membership-initiation" | "membership-preservation";
+      readonly obligation: "init-satisfiable" | "membership-initiation" | "membership-preservation" | "joint-membership-preservation";
       readonly result: "sat" | "unsat";
       readonly backend: Z3Backend;
       readonly version: string;

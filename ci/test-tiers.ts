@@ -53,6 +53,7 @@ export const ciTestTiers = {
     "test/refinement-scalar-handler-join.test.ts",
     "test/typed-array-safety.test.ts",
     "test/temporal-map-dynamic-domain.test.ts",
+    "test/temporal-map-joint-dynamic-domains.test.ts",
     "test/temporal-map-multiple-dynamic-domains.test.ts",
     "test/z3-backend.test.ts",
   ],

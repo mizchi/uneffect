@@ -590,6 +590,17 @@ one-step standby-selection counterexample. Removing or invalidating either
 membership proof makes the whole observation universe `unknown` rather than
 silently relying on the other proof.
 
+P2.30 adds `node-lease-failover-joint-map-domains.ts`. Selecting node `2` as
+standby and then promoting it assigns `primaryNode' = backupNode`. Primary
+membership is not independently inductive because an unconstrained backup
+could be outside the registry. Uneffect first proves both membership properties
+from init, then proves their complete conjunction is preserved by every action.
+The ordinary fail-closed fallback is safe within two steps. Changing only the
+primary missing-lease fallback to `valid: true` yields the load-bearing depth-two
+trace `selectStandby`, `promoteStandby`: node `2` becomes primary without a lease.
+An out-of-domain standby assignment refutes the group proof and remains
+`unknown`.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

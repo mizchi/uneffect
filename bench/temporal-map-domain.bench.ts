@@ -17,6 +17,13 @@ const multipleBroken = parseSpec(multipleFileName, multipleSource.replaceAll(
   "{ epoch: 0, valid: false }",
   "{ epoch: 0, valid: true }",
 )).temporal;
+const jointFileName = "examples/dogfood/node-lease-failover-joint-map-domains.ts";
+const jointSource = readFileSync(jointFileName, "utf8");
+const jointSafe = parseSpec(jointFileName, jointSource).temporal;
+const jointBroken = parseSpec(jointFileName, jointSource.replace(
+  "{ epoch: 0, valid: false }",
+  "{ epoch: 0, valid: true }",
+)).temporal;
 
 describe("proved dynamic Map key domain", () => {
   bench("prove and decode the bounded-safe Node Lease lookup", async () => {
@@ -49,5 +56,24 @@ describe("proved dynamic Map key domain", () => {
       multipleBroken, "selectedLeasesAreFenced", { maxSteps: 2 },
     );
     if (result.status !== "counterexample") throw new Error(`expected counterexample, got ${result.status}`);
+  }, { time: 500, iterations: 2 });
+
+  bench("prove the jointly inductive failover selectors", async () => {
+    const result = await findTemporalCounterexampleWithZ3(
+      jointSafe, "selectedLeasesAreFenced", { maxSteps: 2 },
+    );
+    if (result.status !== "safe-within-bound"
+      || result.observationDomains?.some((domain) => domain.rule !== "jointly-inductive-finite-membership")) {
+      throw new Error(`expected jointly proved finite observation domains, got ${result.status}`);
+    }
+  }, { time: 500, iterations: 2 });
+
+  bench("extract the broken jointly inductive failover fallback", async () => {
+    const result = await findTemporalCounterexampleWithZ3(
+      jointBroken, "selectedLeasesAreFenced", { maxSteps: 2 },
+    );
+    if (result.status !== "counterexample" || result.depth !== 2) {
+      throw new Error(`expected depth-two counterexample, got ${result.status}`);
+    }
   }, { time: 500, iterations: 2 });
 });

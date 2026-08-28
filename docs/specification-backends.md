@@ -149,10 +149,16 @@ SMT-LIB inputs through the existing evidence path.
 For multiple keys, initiation and preservation are checked separately and
 evidence is emitted in stable key-name order. One failed or ambiguous key
 invalidates the complete observation-universe claim; Uneffect does not retain a
-partial success. Dynamic `Set(...)`, `Map(...)`, `put`, `remove`, partial `get`,
-compound lookup keys, mutable domains, failed induction, and solver failure
-remain `unknown`. This restriction does not affect Quint generation or runtime
-expression meaning.
+partial success. If every initiation succeeds but an independent preservation
+check fails, one bounded fallback asks whether the conjunction of all named
+membership properties is preserved under every immutable-domain equality. A
+successful fallback emits `jointly-inductive-finite-membership`,
+`verified-jointly`, the complete ordered property assumption set, and one
+`joint-membership-preservation` solver result. Existing independently proved
+models retain their original evidence. Dynamic `Set(...)`, `Map(...)`, `put`,
+`remove`, partial `get`, compound lookup keys, mutable domains, failed joint
+induction, and solver failure remain `unknown`. This restriction does not affect
+Quint generation or runtime expression meaning.
 
 Z3 represents each Map type as a datatype containing a Boolean domain
 array and a separate total value array. This prevents the value at an absent

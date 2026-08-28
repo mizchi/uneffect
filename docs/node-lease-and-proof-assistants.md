@@ -86,6 +86,14 @@ membership property, and Z3 proves both relations separately before the shared
 lease Map is decoded. A single missing or invalid selector proof keeps the whole
 trace universe `unknown`; this is not general collection correlation.
 
+`examples/dogfood/node-lease-failover-joint-map-domains.ts` covers one further
+bounded relation: promotion copies the standby selector into the primary slot.
+The primary property is not inductive alone, so Z3 proves the conjunction of
+both already-initiated membership properties. The evidence names both joint
+assumptions and does not present the result as independent per-key proof.
+Arbitrary collection relations and a conjunction that fails preservation remain
+`unknown`.
+
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker
 never crashes and the resource remains held. Declaring weak fairness for both

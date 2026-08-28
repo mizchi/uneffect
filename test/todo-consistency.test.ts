@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 45];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -105,6 +105,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 25],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
+      ["Active", 2, 45],
       ["Queued", 2, 4],
       ["Queued", 2, 6],
       ["Queued", 3, 24],
@@ -114,7 +115,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toHaveLength(0);
+    expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -127,7 +128,9 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([]);
+    expect(rows).toEqual([
+      [1, 45, "Prove the complete membership conjunction for one failover family and expose every joint assumption in evidence."],
+    ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }

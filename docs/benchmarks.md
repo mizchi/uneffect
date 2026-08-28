@@ -2082,6 +2082,19 @@ compound key or one missing, ambiguous, mutable, or non-inductive domain keeps
 the whole observation universe `unknown`; arbitrary correlation and proof
 caching remain outside the measurement.
 
+The P2.30 failover extension first observes that the primary selector is not
+inductively preserved alone, then proves the complete primary/backup membership
+conjunction. A selected run measured 45.6837 ms mean over 11 bounded-safe
+samples (21.89 operations per second, 2.40% RME). The fail-open fallback's
+depth-two counterexample measured 53.5205 ms mean over 10 samples (18.68
+operations per second, 1.15% RME). The independently proved two-key baseline in
+the same run measured 39.7992 ms. The extra latency includes the failed
+independent preservation attempt, the joint preservation call, and—in the
+broken case—one additional decoded transition. These development-host signals
+cover one two-property membership conjunction only. Arbitrary invariant groups,
+mutable domains, compound keys, proof caching, and unbounded verification are
+not measured.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

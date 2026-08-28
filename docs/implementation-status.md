@@ -1069,3 +1069,10 @@ same property is proved for arbitrary TypeScript.
   separately. Evidence is ordered by key name. A missing, compound, mutable,
   ambiguous, or non-inductive key makes the whole observation universe
   `unknown`; partial success is not exposed as completeness.
+- The active P2.30 failover slice retains independent proof as the preferred
+  path, then permits one joint fallback only after every membership property is
+  separately initiated. Z3 assumes all immutable-domain equalities and the
+  complete membership conjunction at the current state and refutes loss of any
+  member after one action. Evidence uses a distinct jointly-inductive rule,
+  `verified-jointly`, the ordered property assumption set, and one group solver
+  result. Failed group preservation remains `unknown`.
