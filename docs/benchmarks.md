@@ -1941,6 +1941,13 @@ is intentionally bounded to two independent integer members; it does not
 measure cross-member recurrence, aliases, a third member, or arbitrary CFG
 growth.
 
+The P2.15 focused benchmark carries the same two members through three
+source-keyed regions. A selected run measured 1.9185 ms mean over 261 samples
+(521.23 operations per second). Independently proving both final expressions
+with Z3 measured 13.4408 ms mean over 38 samples (74.40 operations per second).
+This is a bounded regression signal: it excludes a fourth region, loops between
+regions, heap aliases, coupled recurrences, and arbitrary CFG growth.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

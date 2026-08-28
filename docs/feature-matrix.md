@@ -106,14 +106,14 @@ metadata is `refuted`; solver failure and an unstabilized certificate are
 arbitrary basic-block shapes remain owned by #25.
 
 The v2 artifact also defines `handler-scalar-environment-join` for one or two
-changed integers carried across exactly two source-keyed sibling nested-handler
+changed integers carried across two or three source-keyed sibling nested-handler
 regions. Region entry/exit expressions come from the refinement evaluator and
 must hand off exactly on the shared CFG worklist. The product is represented by
 ordered `members[]`, so the one-member case is not a separate schema. Structural
 convergence yields only `unknown: independent-proof-required`; the Z3 API must
 prove every member equivalent to its declared action before the obligation
 becomes `verified`. Intervening unmodeled writes, budget exhaustion, a third
-region, one wrong member, solver failure, and a third changed integer remain
+changed integer, a fourth region, one wrong member, and solver failure remain
 explicit non-proofs. Heap regions, aliases, cross-member recurrence, general
 path implication, recurrence widening, and irreducible CFGs are unsupported.
 

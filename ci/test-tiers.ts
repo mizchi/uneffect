@@ -38,6 +38,7 @@ export const ciTestTiers = {
     "test/property-tests.test.ts",
     "test/refinement-equivalence.test.ts",
     "test/refinement-scalar-product-handler-join.test.ts",
+    "test/refinement-scalar-product-three-region.test.ts",
     "test/refinement-scalar-handler-join.test.ts",
     "test/typed-array-safety.test.ts",
     "test/z3-backend.test.ts",

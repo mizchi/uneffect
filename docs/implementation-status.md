@@ -371,33 +371,39 @@ same property is proved for arbitrary TypeScript.
   `handler-nesting-depth` with limit two. Depth three, inner finally,
   return/break/continue, loops, resources, multiple nested regions, and nested
   handlers in catch/finally fail closed.
-- Exactly two sibling inner try/catch regions may compose sequentially under the
-  existing root limit. Every nested try-completion, catch, catch-completion, and
+- Two or three sibling inner try/catch regions may compose sequentially under a
+  shape-specific root limit of three. Every nested try-completion, catch, catch-completion, and
   join block includes the inner try source start, so handled throws and rethrows
-  cannot collide between regions. A third sibling remains an explicit
+  cannot collide between regions. A fourth sibling remains an explicit
   `handler-control-roots` over-budget non-proof.
 - `uneffect-refinement-action-analysis/v2` additionally carries one changed
   integer state through exactly two of those source-keyed regions. The existing
   refinement evaluator records each region's entry and exit expression, and the
   shared CFG worklist accepts the handoff only when the predecessor exit exactly
   matches the successor entry. An intervening scalar write is a
-  `lattice-conflict`; a one-step worklist budget and a third region remain
+  `lattice-conflict`; a one-step worklist budget remains
   explicit non-proofs. Structural convergence alone reports
   `independent-proof-required`. `analyzeRefinementActionBodiesWithZ3` reparses
   the final and declared expressions and is the only path that upgrades this
   obligation to `verified`; a wrong action is refuted and solver unavailability
-  stays `unknown`. Multiple changed states, objects, aliases, arbitrary region
+  stays `unknown`. Objects, aliases, arbitrary region
   counts, recurrence widening, and irreducible CFGs remain outside this slice.
 - The same v2 obligation represents its bounded value lattice as a
   `members[]` product rather than a distinguished scalar. It accepts one or two
   independently changed integer members; each member retains its own declared
-  expression, emitted expression, and two source-keyed region snapshots. Z3
+  expression, emitted expression, and two or three source-keyed region snapshots. Z3
   records a check for every member and the product is verified only when all
   checks succeed. One refuted member refutes the product, solver failure leaves
   both checks unknown, and a third changed integer reports
   `scalar-cardinality-unsupported`. This does not establish relational
   widening, cross-member recurrence reasoning, heap products, or arbitrary
   environment cardinality.
+- The three-region product uses the same worklist and `members[]` contract. The
+  scalar region budget is explicitly three, while other handler root shapes
+  retain their existing limit of two. Every member must preserve all three
+  source-keyed handoffs and pass its own Z3 equivalence check. A fourth nested
+  region, inter-region write, worklist exhaustion, or wrong member remains a
+  machine-readable non-proof. This is not arbitrary reducible CFG support.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no

@@ -117,14 +117,15 @@ explicit conservative boundaries rather than untracked support.
    iteration-qualified blocks; dynamic, resource-bearing, and transfer-heavy
    loops fail closed. One depth-two nested try/catch now routes inner recovery
    and rethrow through the outer handler under a named nesting budget. Nested
-   regions now use source-keyed IDs and exactly two sibling regions compose
-   under the existing root budget. [#28](https://github.com/mizchi/uneffect/issues/28)
+   regions now use source-keyed IDs and up to three sibling nested-try regions
+   compose under the shape-specific root budget. [#28](https://github.com/mizchi/uneffect/issues/28)
    carries one changed integer through those regions and requires an independent
    Z3 equivalence proof; [#29](https://github.com/mizchi/uneffect/issues/29)
    completes the two-member product handoff. General value joins and recurrence
    widening continue in [#25](https://github.com/mizchi/uneffect/issues/25).
-   Its active next region-cardinality child is
-   [#30](https://github.com/mizchi/uneffect/issues/30).
+   [#30](https://github.com/mizchi/uneffect/issues/30) completes the bounded
+   three-region linear product. Its active next divergent-join child is
+   [#31](https://github.com/mizchi/uneffect/issues/31).
    The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.

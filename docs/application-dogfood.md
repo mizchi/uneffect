@@ -395,9 +395,9 @@ record a second `finalized` step instead.
 P2.12 adds `stagedNestedTelemetryRecovery`. Its two sequential inner handlers
 have distinct source-keyed completion/catch/join blocks; the first consumes an
 armed-state rejection, while the second may rethrow an invalid-attempt recovery
-into the outer catch. The artifact records two control roots at nesting depth
-two. Injecting a third inner handler records `handler-control-roots.observed: 3`
-and remains unsupported. The action updates only recovery, processing, and
+into the outer catch. The P2.12 artifact originally recorded two control roots
+at nesting depth two; #30 later widened the same nested-try topology to three
+while preserving a fourth as over-budget. The action updates only recovery, processing, and
 finalization counters, preserving telemetry outcome conservation.
 
 P2.13 adds `scalar-handler-join.ts`. Its `composeScalarHandlers` action updates
@@ -406,9 +406,9 @@ first region emits the exact environment consumed by the second; the shared CFG
 worklist records both entry/exit expressions under `handler-scalar-regions: 2`.
 The synchronous artifact remains `unknown: independent-proof-required`; the Z3
 analysis proves the final nested conditional equivalent to the compact declared
-sum. An intervening `total += 16`, a one-step worklist budget, a third sibling,
-a wrong declared branch, and an unavailable native solver respectively remain
-lattice conflict, budget, region-budget, refuted, and unknown controls. This is
+sum. An intervening `total += 16`, a one-step worklist budget, a wrong declared
+branch, and an unavailable native solver respectively remain lattice conflict,
+budget, refuted, and unknown controls. This is
 one integer handoff, not general path-sensitive JavaScript value analysis.
 
 P2.14 adds `scalar-product-handler-join.ts`. The same two source-keyed regions
@@ -419,6 +419,17 @@ branch leaves total verified but refutes the product. An inter-region audited
 write is a lattice conflict, native-solver failure leaves both member checks
 unknown, and a third changed integer is an explicit cardinality non-proof. The
 one-member P2.13 artifact uses the identical `members[]` contract.
+
+P2.15 adds `scalar-product-three-region.ts`, a three-stage accounting action.
+The shared handler CFG lowers exactly three sequential sibling inner try/catch
+regions and records each source-keyed handoff for both `total` and `audited`.
+Structural convergence still yields `independent-proof-required`; Z3 must prove
+both final member expressions before the product is verified. A fourth region
+is `region-budget-exhausted`, an intervening member write is a lattice conflict,
+a one-step worklist does not converge, and one wrong declared member refutes the
+whole product while retaining the other verified check. This widens only the
+bounded nested-try region count; loops between regions, heap aliases, coupled
+recurrences, and arbitrary reducible CFGs remain unsupported.
 
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local

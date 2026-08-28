@@ -3284,7 +3284,7 @@ describe("annotated refinement bindings", () => {
             kind: { const: "handler-join-fixed-point" },
             controlShape: { enum: ["if", "switch", "for-of", "try"] },
             controlRoots: { minItems: 1 },
-            controlRootBudget: { properties: { limit: { const: 2 } } },
+            controlRootBudget: { properties: { limit: { enum: [2, 3] } } },
             finiteLoopBudget: { properties: { limit: { const: 4 } } },
             handlerNestingBudget: { properties: { limit: { const: 2 } } },
             controlRegion: { enum: ["try", "finally"] },
@@ -3298,7 +3298,7 @@ describe("annotated refinement bindings", () => {
         handlerScalarEnvironment: {
           properties: {
             kind: { const: "handler-scalar-environment-join" },
-            regionBudget: { properties: { name: { const: "handler-scalar-regions" }, limit: { const: 2 } } },
+            regionBudget: { properties: { name: { const: "handler-scalar-regions" }, limit: { const: 3 } } },
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
             fixedPoint: { properties: { members: { maxItems: 3 } } },
             proof: { properties: { backend: { const: "z3" }, checks: { maxItems: 2 } } },

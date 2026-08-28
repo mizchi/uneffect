@@ -26,6 +26,39 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a two-member scalar product across three sibling handler regions", async () => {
+    const fileName = "examples/dogfood/scalar-product-three-region.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName,
+      source,
+      "scalarProductThreeRegion",
+      temporal,
+    );
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-scalar-environment-join",
+      modelName: "compose",
+      status: "verified",
+      regionBudget: { name: "handler-scalar-regions", limit: 3, observed: 3 },
+      proof: {
+        backend: "z3",
+        status: "verified",
+        checks: [
+          { state: "audited", status: "verified" },
+          { state: "total", status: "verified" },
+        ],
+      },
+      fixedPoint: expect.objectContaining({
+        converged: true,
+        members: [
+          expect.objectContaining({ state: "audited", regions: [expect.anything(), expect.anything(), expect.anything()] }),
+          expect.objectContaining({ state: "total", regions: [expect.anything(), expect.anything(), expect.anything()] }),
+        ],
+      }),
+    }));
+  });
+
   it("proves a two-member scalar product across sibling handler regions", async () => {
     const fileName = "examples/dogfood/scalar-product-handler-join.ts";
     const source = readFileSync(fileName, "utf8");
@@ -72,7 +105,7 @@ describe("Uneffect dogfood", () => {
       kind: "handler-scalar-environment-join",
       modelName: "compose",
       status: "verified",
-      regionBudget: { name: "handler-scalar-regions", limit: 2, observed: 2 },
+      regionBudget: { name: "handler-scalar-regions", limit: 3, observed: 2 },
       proof: expect.objectContaining({ backend: "z3", status: "verified" }),
       fixedPoint: expect.objectContaining({
         converged: true,
@@ -406,7 +439,7 @@ describe("Uneffect dogfood", () => {
     expect(obligation).toMatchObject({
       status: "verified",
       controlShape: "try",
-      controlRootBudget: { name: "handler-control-roots", limit: 2, observed: 2 },
+      controlRootBudget: { name: "handler-control-roots", limit: 3, observed: 2 },
       handlerNestingBudget: { name: "handler-nesting-depth", limit: 2, observed: 2 },
       completionJoin: { incoming: ["normal", "throw"], outgoing: ["normal"], caughtThrow: true },
     });
@@ -414,16 +447,16 @@ describe("Uneffect dogfood", () => {
       ? Object.keys(obligation.fixedPoint.blockCompletions) : [];
     expect(blocks.filter((id) => id.startsWith("nested-handler-join:"))).toHaveLength(2);
 
-    const third = source.replace(
+    const fourth = source.replace(
       "    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect: refinement telemetryRouting@1 action armAudit */",
-      "    try { throw \"third stage\"; } catch {}\n    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect: refinement telemetryRouting@1 action armAudit */",
+      "    try { throw \"third stage\"; } catch {}\n    try { throw \"fourth stage\"; } catch {}\n    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect: refinement telemetryRouting@1 action armAudit */",
     );
-    const unsupported = analyzeRefinementActionBodies(fileName, third, "telemetryRouting", temporal);
+    const unsupported = analyzeRefinementActionBodies(fileName, fourth, "telemetryRouting", temporal);
     expect(unsupported.obligations).toContainEqual(expect.objectContaining({
       modelName: "stagedNestedRecovery",
       status: "unknown",
       reason: "unsupported-control-flow",
-      controlRootBudget: { name: "handler-control-roots", limit: 2, observed: 3 },
+      controlRootBudget: { name: "handler-control-roots", limit: 3, observed: 4 },
       handlerNestingBudget: { name: "handler-nesting-depth", limit: 2, observed: 2 },
     }));
   });

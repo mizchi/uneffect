@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
 import { joinFlowValues, solveBasicBlockFixedPoint } from "./refinement-flow.js";
-import { findHandlerJoinCandidates, runHandlerJoinFixedPoint, type HandlerCompletionKind, type HandlerJoinCandidate } from "./refinement-handler-flow.js";
+import {
+  findHandlerJoinCandidates,
+  HANDLER_CONTROL_ROOT_LIMIT,
+  HANDLER_NESTED_TRY_ROOT_LIMIT,
+  runHandlerJoinFixedPoint,
+  type HandlerCompletionKind,
+  type HandlerJoinCandidate,
+} from "./refinement-handler-flow.js";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
@@ -214,7 +221,7 @@ export interface RefinementHandlerJoinObligation {
   }[];
   controlRootBudget: {
     name: "handler-control-roots";
-    limit: 2;
+    limit: 2 | 3;
     observed: number;
   };
   finiteLoopBudget?: {
@@ -290,7 +297,7 @@ export interface RefinementHandlerScalarEnvironmentObligation {
     | "region-budget-exhausted" | "scalar-cardinality-unsupported" | "unsupported-scalar-environment" | "scalar-proof-refuted"
     | "scalar-proof-unknown";
   budget: { name: "cfg-fixed-point-iterations"; limit: number };
-  regionBudget: { name: "handler-scalar-regions"; limit: 2; observed: number };
+  regionBudget: { name: "handler-scalar-regions"; limit: 3; observed: number };
   fixedPoint: {
     iterations: number;
     converged: boolean;
@@ -4251,6 +4258,8 @@ interface HandlerScalarEnvironmentResult {
   }[];
 }
 
+const HANDLER_SCALAR_REGION_LIMIT = 3;
+
 /**
  * Carries the evaluator's source-bound region summaries through the same CFG
  * worklist used for completion reachability. Region summaries are admitted
@@ -4300,7 +4309,8 @@ function runHandlerScalarEnvironmentFixedPoint(
       })),
     }))
     .sort((left, right) => left.state.localeCompare(right.state));
-  if (candidate.lowering !== "supported" || controls.length !== 2 || regions.length !== 2
+  if (candidate.lowering !== "supported" || controls.length < 2
+    || controls.length > HANDLER_SCALAR_REGION_LIMIT || regions.length !== controls.length
     || members.length < 1 || members.length > 2) {
     return { iterations: 0, converged: false, conflict: false, members };
   }
@@ -4428,7 +4438,9 @@ export function analyzeRefinementActionBodies(
         })),
         controlRootBudget: {
           name: "handler-control-roots",
-          limit: 2,
+          limit: candidate.controlShape === "try"
+            ? HANDLER_NESTED_TRY_ROOT_LIMIT
+            : HANDLER_CONTROL_ROOT_LIMIT,
           observed: candidate.controlStatements.length,
         },
         ...(candidate.finiteLoop ? { finiteLoopBudget: {
@@ -4476,7 +4488,7 @@ export function analyzeRefinementActionBodies(
           modelName: action.name,
           exportName,
           status: "unknown",
-          reason: observed !== 2
+          reason: observed > HANDLER_SCALAR_REGION_LIMIT
             ? "region-budget-exhausted"
             : scalar.members.length > 2
               ? "scalar-cardinality-unsupported"
@@ -4486,7 +4498,7 @@ export function analyzeRefinementActionBodies(
                 ? "proof-budget-exhausted"
                 : "independent-proof-required",
           budget: { name: "cfg-fixed-point-iterations", limit },
-          regionBudget: { name: "handler-scalar-regions", limit: 2, observed },
+          regionBudget: { name: "handler-scalar-regions", limit: HANDLER_SCALAR_REGION_LIMIT, observed },
           fixedPoint: {
             iterations: scalar.iterations,
             converged: scalar.converged,

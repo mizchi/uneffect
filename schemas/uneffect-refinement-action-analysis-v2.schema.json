@@ -157,7 +157,7 @@
           "required": ["name", "limit", "observed"],
           "properties": {
             "name": { "const": "handler-scalar-regions" },
-            "limit": { "const": 2 },
+            "limit": { "const": 3 },
             "observed": { "type": "integer", "minimum": 1 }
           }
         },
@@ -221,13 +221,13 @@
           "not": { "required": ["reason"] },
           "required": ["proof"],
           "properties": {
-            "regionBudget": { "properties": { "observed": { "const": 2 } } },
+            "regionBudget": { "properties": { "observed": { "minimum": 2, "maximum": 3 } } },
             "fixedPoint": {
               "properties": {
                 "converged": { "const": true },
                 "members": {
                   "minItems": 1, "maxItems": 2,
-                  "items": { "properties": { "regions": { "minItems": 2, "maxItems": 2 } } }
+                  "items": { "properties": { "regions": { "minItems": 2, "maxItems": 3 } } }
                 }
               }
             },
@@ -265,7 +265,7 @@
           "required": ["name", "limit", "observed"],
           "properties": {
             "name": { "const": "handler-control-roots" },
-            "limit": { "const": 2 },
+            "limit": { "enum": [2, 3] },
             "observed": { "type": "integer", "minimum": 1 }
           }
         },

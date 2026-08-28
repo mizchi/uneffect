@@ -5,6 +5,9 @@ export type HandlerCompletionKind = "normal" | "return" | "throw" | "break" | "c
 
 type ControlRoot = ts.IfStatement | ts.SwitchStatement | ts.ForOfStatement | ts.TryStatement;
 
+export const HANDLER_CONTROL_ROOT_LIMIT = 2;
+export const HANDLER_NESTED_TRY_ROOT_LIMIT = 3;
+
 const controlShape = (statement: ControlRoot): "if" | "switch" | "for-of" | "try" =>
   ts.isIfStatement(statement) ? "if"
     : ts.isSwitchStatement(statement) ? "switch"
@@ -289,15 +292,17 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     const handlerPlacementSupported = (!statement.catchClause || !containsTry(statement.catchClause.block))
       && (!statement.finallyBlock || !containsTry(statement.finallyBlock));
     const selectedNestedHandlerSupported = !ts.isTryStatement(controlStatement)
-      || (controlRegion === "try" && selectedControls.length <= 2 && nestingDepth === 2
+      || (controlRegion === "try" && selectedControls.length <= HANDLER_NESTED_TRY_ROOT_LIMIT && nestingDepth === 2
         && selectedControls.every((control) => ts.isTryStatement(control)
           && Boolean(control.catchClause) && !control.finallyBlock)
         && handlerPlacementSupported);
     const selectedRootCountSupported = selectedLoopSupported && handlerPlacementSupported
       && selectedNestedHandlerSupported
       && (selectedControls.length === 1
-      || (selectedControls.length === 2
-        && (selectedControls.every(ts.isIfStatement) || selectedControls.every(ts.isTryStatement))));
+      || (selectedControls.length === HANDLER_CONTROL_ROOT_LIMIT
+        && (selectedControls.every(ts.isIfStatement) || selectedControls.every(ts.isTryStatement)))
+      || (selectedControls.length === HANDLER_NESTED_TRY_ROOT_LIMIT
+        && selectedControls.every(ts.isTryStatement)));
 
     const builder = new HandlerCfgBuilder();
     builder.add("try-completion", []);

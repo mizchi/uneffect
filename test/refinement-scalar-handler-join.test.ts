@@ -61,7 +61,7 @@ describe("scalar environments across sibling handler regions", () => {
       modelName: "compose",
       status: "unknown",
       reason: "independent-proof-required",
-      regionBudget: { name: "handler-scalar-regions", limit: 2, observed: 2 },
+      regionBudget: { name: "handler-scalar-regions", limit: 3, observed: 2 },
       fixedPoint: expect.objectContaining({
         converged: true,
         members: [
@@ -153,14 +153,14 @@ describe("scalar environments across sibling handler regions", () => {
     }));
   });
 
-  it("retains a third sibling region as an explicit non-proof", () => {
+  it("admits a third sibling region structurally but still requires an independent proof", () => {
     const analysis = analyze(fixture("", "try { runtime.total += 16 } catch {}"));
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
       modelName: "compose",
       status: "unknown",
-      reason: "region-budget-exhausted",
-      regionBudget: { name: "handler-scalar-regions", limit: 2, observed: 3 },
+      reason: "independent-proof-required",
+      regionBudget: { name: "handler-scalar-regions", limit: 3, observed: 3 },
     }));
   });
 });

@@ -45,6 +45,12 @@ const scalarHandlerSpec = parseSpec(scalarHandlerFile, scalarHandlerSource).temp
 const scalarProductFile = "examples/dogfood/scalar-product-handler-join.ts";
 const scalarProductSource = readFileSync(scalarProductFile, "utf8");
 const scalarProductSpec = parseSpec(scalarProductFile, scalarProductSource).temporal;
+const scalarProductThreeRegionFile = "examples/dogfood/scalar-product-three-region.ts";
+const scalarProductThreeRegionSource = readFileSync(scalarProductThreeRegionFile, "utf8");
+const scalarProductThreeRegionSpec = parseSpec(
+  scalarProductThreeRegionFile,
+  scalarProductThreeRegionSource,
+).temporal;
 const aliasFile = "examples/dogfood/local-alias-refinement.ts";
 const aliasSource = readFileSync(aliasFile, "utf8");
 const aliasSpec = parseSpec(aliasFile, aliasSource).temporal;
@@ -254,6 +260,41 @@ describe("refinement CFG fixed point", () => {
       || obligation.proof?.checks.length !== 2
       || obligation.proof.checks.some((check) => check.status !== "verified")) {
       throw new Error("scalar product handler environment Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
+  bench("carry a two-member scalar product through three handler regions", () => {
+    const result = analyzeRefinementActionBodies(
+      scalarProductThreeRegionFile,
+      scalarProductThreeRegionSource,
+      "scalarProductThreeRegion",
+      scalarProductThreeRegionSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-scalar-environment-join");
+    if (obligation?.fixedPoint.converged !== true
+      || obligation.fixedPoint.members.length !== 2
+      || obligation.fixedPoint.members.some((member) => member.regions.length !== 3)
+      || obligation.reason !== "independent-proof-required") {
+      throw new Error("three-region scalar product benchmark fixture did not converge");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove both three-region product members with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      scalarProductThreeRegionFile,
+      scalarProductThreeRegionSource,
+      "scalarProductThreeRegion",
+      scalarProductThreeRegionSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-scalar-environment-join");
+    if (obligation?.status !== "verified"
+      || obligation.proof?.checks.length !== 2
+      || obligation.proof.checks.some((check) => check.status !== "verified")) {
+      throw new Error("three-region scalar product Z3 benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 2 });
 
