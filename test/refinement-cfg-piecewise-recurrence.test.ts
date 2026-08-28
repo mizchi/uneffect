@@ -37,10 +37,10 @@ describe("piecewise affine recurrence through a CFG diamond", () => {
       kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "independent-proof-required",
-      conditionalJoins: [{
+      controlJoins: [{
         kind: "loop-invariant-cfg-diamond",
         order: 0,
-        predicate: "sampled",
+        selector: { kind: "boolean-state", state: "sampled" },
         rule: "predicate-correlated-affine-phi",
         predecessors: [
           { branch: "then", block: expect.stringMatching(/^statement:/) },
@@ -57,7 +57,7 @@ describe("piecewise affine recurrence through a CFG diamond", () => {
     expect(checked.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
       status: "verified",
-      conditionalJoins: [expect.objectContaining({
+      controlJoins: [expect.objectContaining({
         rule: "predicate-correlated-affine-phi",
       })],
       recurrenceProof: expect.objectContaining({ status: "verified" }),
@@ -78,7 +78,7 @@ describe("piecewise affine recurrence through a CFG diamond", () => {
       expect(analysis.obligations).not.toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",
         status: "verified",
-        conditionalJoins: [expect.objectContaining({ rule: "predicate-correlated-affine-phi" })],
+        controlJoins: [expect.objectContaining({ rule: "predicate-correlated-affine-phi" })],
       }));
       expect(analysis.diagnostics.some((diagnostic) => diagnostic.modelName === "drain")).toBe(true);
     }

@@ -2001,6 +2001,15 @@ exclude fallthrough, discriminant mutation, ranking-counter or dynamic
 selection, duplicate/non-literal/excess cases, nesting, aliases, and
 irreducible CFGs; they do not establish general switch-analysis throughput.
 
+The P2.22 focused benchmark uses the common ordered join IR to compose one
+unchanged Boolean diamond followed by one bounded finite switch. A selected run
+measured 0.3578 ms mean over 1,398 structural samples (2,794.49 operations per
+second, 3.24% RME). Independent Z3 validation measured 47.4108 ms mean over 11
+samples (21.09 operations per second, 3.51% RME). These are development-host
+regression signals. They exclude switch-then-if order, mutation/collision,
+ranking selectors, nested/excess joins or cases, aliases, and irreducible CFGs;
+they do not establish general reducible-CFG throughput.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

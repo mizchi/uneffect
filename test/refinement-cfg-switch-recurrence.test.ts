@@ -49,9 +49,10 @@ describe("finite switch fan-out in a scalar recurrence", () => {
       kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "independent-proof-required",
-      finiteJoin: expect.objectContaining({
+      controlJoins: [expect.objectContaining({
         kind: "loop-invariant-cfg-switch",
-        discriminant: "mode",
+        order: 0,
+        selector: { kind: "integer-state", state: "mode" },
         rule: "finite-literal-affine-phi",
         budget: { name: "cfg-recurrence-switch-cases", limit: 2, observed: 2 },
         predecessors: [
@@ -60,7 +61,7 @@ describe("finite switch fan-out in a scalar recurrence", () => {
           expect.objectContaining({ case: "default", block: expect.stringMatching(/^default:/) }),
         ],
         join: expect.stringMatching(/^switch-join:/),
-      }),
+      })],
     }));
 
     const verified = await analyzeRefinementActionBodiesWithZ3(
@@ -70,7 +71,7 @@ describe("finite switch fan-out in a scalar recurrence", () => {
     expect(verified.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
       status: "verified",
-      finiteJoin: expect.objectContaining({ rule: "finite-literal-affine-phi" }),
+      controlJoins: [expect.objectContaining({ rule: "finite-literal-affine-phi" })],
       recurrenceProof: expect.objectContaining({ status: "verified" }),
     }));
 
@@ -92,7 +93,9 @@ describe("finite switch fan-out in a scalar recurrence", () => {
       const analysis = analyzeRefinementActionBodies(`${name}.ts`, source, "switchDrain", spec);
       expect(analysis.obligations).not.toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",
-        finiteJoin: expect.objectContaining({ rule: "finite-literal-affine-phi" }),
+        controlJoins: expect.arrayContaining([
+          expect.objectContaining({ kind: "loop-invariant-cfg-switch" }),
+        ]),
       }));
       expect(analysis.diagnostics).toContainEqual(expect.objectContaining({
         code: "unsupported-action-body",
@@ -128,7 +131,7 @@ describe("finite switch fan-out in a scalar recurrence", () => {
       kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "recurrence-proof-unknown",
-      finiteJoin: expect.objectContaining({ rule: "finite-literal-affine-phi" }),
+      controlJoins: [expect.objectContaining({ rule: "finite-literal-affine-phi" })],
     }));
   });
 });

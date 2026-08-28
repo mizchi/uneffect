@@ -37,10 +37,10 @@ describe("two sequential invariant CFG diamonds", () => {
       kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "independent-proof-required",
-      conditionalJoins: [
+      controlJoins: [
         expect.objectContaining({
           order: 0,
-          predicate: "sampled",
+          selector: { kind: "boolean-state", state: "sampled" },
           rule: "predicate-correlated-affine-phi",
           predecessors: [
             expect.objectContaining({ branch: "then", block: expect.stringMatching(/^statement:/) }),
@@ -50,7 +50,7 @@ describe("two sequential invariant CFG diamonds", () => {
         }),
         expect.objectContaining({
           order: 1,
-          predicate: "audit",
+          selector: { kind: "boolean-state", state: "audit" },
           rule: "predicate-correlated-affine-phi",
           predecessors: [
             expect.objectContaining({ branch: "then", block: expect.stringMatching(/^statement:/) }),
@@ -68,9 +68,9 @@ describe("two sequential invariant CFG diamonds", () => {
     expect(verified.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
       status: "verified",
-      conditionalJoins: [
-        expect.objectContaining({ order: 0, predicate: "sampled" }),
-        expect.objectContaining({ order: 1, predicate: "audit" }),
+      controlJoins: [
+        expect.objectContaining({ order: 0, selector: { kind: "boolean-state", state: "sampled" } }),
+        expect.objectContaining({ order: 1, selector: { kind: "boolean-state", state: "audit" } }),
       ],
       recurrenceProof: expect.objectContaining({ status: "verified" }),
     }));

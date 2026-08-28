@@ -480,7 +480,7 @@ not widen the accepted handler-loop syntax.
 P2.20 adds `cfg-two-diamond-drain.ts`. Two distinct unchanged Boolean policy
 flags, `sampled` and `audit`, select two affine updates in source order before
 one shared countdown back edge. The common scalar recurrence artifact carries
-an ordered `conditionalJoins` list with source-keyed then/identity predecessor
+an ordered `controlJoins` list with source-keyed then/identity predecessor
 blocks and join blocks for both choices. Structural analysis remains
 `unknown: independent-proof-required`; Z3 must validate the composed
 piecewise transformer, closed-form summary, every member step, and ranking
@@ -491,7 +491,8 @@ structural evidence, not solver-proved JavaScript CFG equivalence.
 
 P2.21 adds `cfg-switch-drain.ts`. An unchanged integer `mode` selects one of
 two non-negative numeric-literal case updates or an explicit default before the shared
-countdown back edge. `finiteJoin` retains the discriminant, all three
+countdown back edge. The finite-switch `controlJoins` member retains the integer
+selector, all three
 source-keyed predecessors, the common join, and the named two-case budget.
 Structural analysis remains `unknown: independent-proof-required`; the dogfood
 case verifies only after Z3 proves the emitted recurrence and ranking
@@ -499,6 +500,17 @@ obligations. Fallthrough, discriminant mutation, ranking-counter selection,
 duplicate or non-literal cases, nesting, and a third literal case are adjacent
 non-proofs. This is one bounded finite partition, not general JavaScript
 `switch` or arbitrary CFG fan-out.
+
+P2.22 adds `cfg-mixed-join-drain.ts` and migrates all direct recurrence choices
+to one `controlJoins` discriminated union. The fixture composes exactly one
+unchanged Boolean `sampled` diamond followed by one unchanged-integer `mode`
+switch before the shared countdown back edge. The ordered evidence preserves
+both selector kinds, source-keyed predecessor/join identities, and the switch
+case budget; Z3 independently verifies the resulting nested recurrence
+equations. Reversed or nested joins, selector mutation/collision, ranking-state
+selection, a third join or case, budget exhaustion, certificate refutation, and
+solver unavailability remain non-proofs. The earlier syntax-specific output
+fields were removed, but this does not admit arbitrary join counts or order.
 
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local

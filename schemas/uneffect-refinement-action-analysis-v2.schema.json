@@ -49,6 +49,85 @@
         }
       ]
     },
+    "recurrenceControlJoin": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "order", "selector", "rule", "predecessors", "join"],
+          "properties": {
+            "kind": { "const": "loop-invariant-cfg-diamond" },
+            "order": { "enum": [0, 1] },
+            "selector": {
+              "type": "object", "additionalProperties": false,
+              "required": ["kind", "state"],
+              "properties": {
+                "kind": { "const": "boolean-state" },
+                "state": { "type": "string", "minLength": 1 }
+              }
+            },
+            "rule": { "const": "predicate-correlated-affine-phi" },
+            "predecessors": { "$ref": "#/$defs/recurrenceDiamondPredecessors" },
+            "join": { "type": "string", "pattern": "^if-join:[0-9]+$" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "order", "selector", "rule", "budget", "predecessors", "join"],
+          "properties": {
+            "kind": { "const": "loop-invariant-cfg-switch" },
+            "order": { "enum": [0, 1] },
+            "selector": {
+              "type": "object", "additionalProperties": false,
+              "required": ["kind", "state"],
+              "properties": {
+                "kind": { "const": "integer-state" },
+                "state": { "type": "string", "minLength": 1 }
+              }
+            },
+            "rule": { "const": "finite-literal-affine-phi" },
+            "budget": {
+              "type": "object", "additionalProperties": false,
+              "required": ["name", "limit", "observed"],
+              "properties": {
+                "name": { "const": "cfg-recurrence-switch-cases" },
+                "limit": { "const": 2 },
+                "observed": { "const": 2 }
+              }
+            },
+            "predecessors": {
+              "type": "array", "minItems": 3, "maxItems": 3, "items": false,
+              "prefixItems": [
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["case", "block"],
+                  "properties": {
+                    "case": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+                    "block": { "type": "string", "pattern": "^case:[0-9]+$" }
+                  }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["case", "block"],
+                  "properties": {
+                    "case": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+                    "block": { "type": "string", "pattern": "^case:[0-9]+$" }
+                  }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["case", "block"],
+                  "properties": {
+                    "case": { "const": "default" },
+                    "block": { "type": "string", "pattern": "^default:[0-9]+$" }
+                  }
+                }
+              ]
+            },
+            "join": { "type": "string", "pattern": "^switch-join:[0-9]+$" }
+          }
+        }
+      ]
+    },
     "diagnostic": {
       "type": "object",
       "additionalProperties": false,
@@ -445,82 +524,22 @@
             "rule": { "const": "source-bound-affine-transformer" }
           }
         },
-        "conditionalJoins": {
+        "controlJoins": {
           "type": "array", "minItems": 1, "maxItems": 2, "items": false,
           "prefixItems": [
             {
-              "type": "object", "additionalProperties": false,
-              "required": ["kind", "order", "predicate", "rule", "predecessors", "join"],
-              "properties": {
-                "kind": { "const": "loop-invariant-cfg-diamond" },
-                "order": { "const": 0 },
-                "predicate": { "type": "string", "minLength": 1 },
-                "rule": { "const": "predicate-correlated-affine-phi" },
-                "predecessors": { "$ref": "#/$defs/recurrenceDiamondPredecessors" },
-                "join": { "type": "string", "pattern": "^if-join:[0-9]+$" }
-              }
-            },
-            {
-              "type": "object", "additionalProperties": false,
-              "required": ["kind", "order", "predicate", "rule", "predecessors", "join"],
-              "properties": {
-                "kind": { "const": "loop-invariant-cfg-diamond" },
-                "order": { "const": 1 },
-                "predicate": { "type": "string", "minLength": 1 },
-                "rule": { "const": "predicate-correlated-affine-phi" },
-                "predecessors": { "$ref": "#/$defs/recurrenceDiamondPredecessors" },
-                "join": { "type": "string", "pattern": "^if-join:[0-9]+$" }
-              }
-            }
-          ]
-        },
-        "finiteJoin": {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "discriminant", "rule", "budget", "predecessors", "join"],
-          "properties": {
-            "kind": { "const": "loop-invariant-cfg-switch" },
-            "discriminant": { "type": "string", "minLength": 1 },
-            "rule": { "const": "finite-literal-affine-phi" },
-            "budget": {
-              "type": "object", "additionalProperties": false,
-              "required": ["name", "limit", "observed"],
-              "properties": {
-                "name": { "const": "cfg-recurrence-switch-cases" },
-                "limit": { "const": 2 },
-                "observed": { "const": 2 }
-              }
-            },
-            "predecessors": {
-              "type": "array", "minItems": 3, "maxItems": 3, "items": false,
-              "prefixItems": [
-                {
-                  "type": "object", "additionalProperties": false,
-                  "required": ["case", "block"],
-                  "properties": {
-                    "case": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
-                    "block": { "type": "string", "pattern": "^case:[0-9]+$" }
-                  }
-                },
-                {
-                  "type": "object", "additionalProperties": false,
-                  "required": ["case", "block"],
-                  "properties": {
-                    "case": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
-                    "block": { "type": "string", "pattern": "^case:[0-9]+$" }
-                  }
-                },
-                {
-                  "type": "object", "additionalProperties": false,
-                  "required": ["case", "block"],
-                  "properties": {
-                    "case": { "const": "default" },
-                    "block": { "type": "string", "pattern": "^default:[0-9]+$" }
-                  }
-                }
+              "allOf": [
+                { "$ref": "#/$defs/recurrenceControlJoin" },
+                { "properties": { "order": { "const": 0 } } }
               ]
             },
-            "join": { "type": "string", "pattern": "^switch-join:[0-9]+$" }
-          }
+            {
+              "allOf": [
+                { "$ref": "#/$defs/recurrenceControlJoin" },
+                { "properties": { "order": { "const": 1 } } }
+              ]
+            }
+          ]
         },
         "memberBudget": {
           "type": "object", "additionalProperties": false,

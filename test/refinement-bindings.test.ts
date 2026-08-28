@@ -3317,26 +3317,14 @@ describe("annotated refinement bindings", () => {
             kind: { const: "scalar-recurrence-fixed-point" },
             budget: { properties: { name: { const: "cfg-recurrence-iterations" } } },
             backEdge: { properties: { rule: { const: "source-bound-affine-transformer" } } },
-            conditionalJoins: {
+            controlJoins: {
               minItems: 1,
               maxItems: 2,
               items: false,
               prefixItems: [
-                { properties: { order: { const: 0 } } },
-                { properties: { order: { const: 1 } } },
+                { allOf: expect.arrayContaining([{ properties: { order: { const: 0 } } }]) },
+                { allOf: expect.arrayContaining([{ properties: { order: { const: 1 } } }]) },
               ],
-            },
-            finiteJoin: {
-              properties: {
-                kind: { const: "loop-invariant-cfg-switch" },
-                rule: { const: "finite-literal-affine-phi" },
-                budget: { properties: {
-                  name: { const: "cfg-recurrence-switch-cases" },
-                  limit: { const: 2 },
-                  observed: { const: 2 },
-                } },
-                predecessors: { minItems: 3, maxItems: 3, items: false },
-              },
             },
             memberBudget: { properties: { limit: { enum: [2, 8] } } },
             handlerCompletion: { properties: {
@@ -3349,6 +3337,12 @@ describe("annotated refinement bindings", () => {
       },
     });
     expect(JSON.parse(readFileSync("schemas/uneffect-refinement-action-analysis-v2.schema.json", "utf8")).$defs.rankingLoop).toBeUndefined();
+    expect(JSON.parse(readFileSync("schemas/uneffect-refinement-action-analysis-v2.schema.json", "utf8")).$defs.recurrenceControlJoin).toMatchObject({
+      oneOf: expect.arrayContaining([
+        expect.objectContaining({ properties: expect.objectContaining({ kind: { const: "loop-invariant-cfg-diamond" } }) }),
+        expect.objectContaining({ properties: expect.objectContaining({ kind: { const: "loop-invariant-cfg-switch" } }) }),
+      ]),
+    });
 
     const exhausted = analyzeRefinementActionBodies(
       "fixed-point-budget.ts", source, "fixedPointJoin", spec,

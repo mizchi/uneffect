@@ -439,24 +439,25 @@ same property is proved for arbitrary TypeScript.
   upgrades it only after every base/step check and the ranking check succeeds.
   Coupled, self-amplifying, path-dependent, over-cardinality, budget, and
   solver controls remain `unknown`; arbitrary loop CFGs are not claimed.
-- That obligation can bind one or two sequential direct loop-invariant Boolean
-  diamonds. Its ordered `conditionalJoins` evidence records then/else source
+- The obligation binds its admitted direct recurrence choices through one
+  ordered `controlJoins` discriminated union. One or two sequential
+  loop-invariant Boolean diamonds record Boolean selectors, then/else source
   blocks (using an explicit identity block for an omitted else), each common
   join, and `predicate-correlated-affine-phi`. Predicates must be distinct
   declared Booleans, unchanged by the iteration, and each must occur in the
-  emitted composed piecewise transformer. Z3 validates the resulting
-  recurrence equations; source correlation and execution order remain bounded
-  structural facts. Reused, mutated, counter-dependent, nested, or third
-  choices do not receive this evidence.
-- The same obligation can instead bind one direct finite `switch` over an
+  emitted composed piecewise transformer.
+- A control join can instead be one direct finite `switch` over an
   unchanged integer state. The admitted fragment has exactly two distinct
   non-negative numeric-literal cases plus one explicit default; every clause ends in its own
-  unlabeled `break`. `finiteJoin` records the discriminant, case/default source
-  blocks, common join, and the named two-case budget. Structural evidence stays
-  provisional and the composed recurrence still requires independent Z3
-  base/step/ranking validation. Fallthrough, mutation, ranking-counter or
-  dynamic discriminants, duplicate/non-literal/excess cases, nesting, and
-  solver failure remain non-proofs.
+  unlabeled `break`. The union member records the integer selector,
+  case/default source blocks, common join, and named two-case budget. One
+  bounded mixed sequence admits exactly one Boolean diamond followed by one
+  such switch. Structural evidence stays provisional and the composed
+  recurrence still requires independent Z3 base/step/ranking validation.
+  Reordered/mutated/nested/excess joins, fallthrough, ranking-counter or dynamic
+  selectors, duplicate/non-literal/excess cases, and solver failure remain
+  non-proofs. The earlier `conditionalJoins` and `finiteJoin` output fields were
+  removed rather than retained as parallel compatibility paths.
 
 ## Async, resources, and event loops
 

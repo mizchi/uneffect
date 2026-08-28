@@ -194,20 +194,20 @@ export interface RefinementScalarRecurrenceObligation {
     to: string;
     rule: "source-bound-affine-transformer";
   };
-  conditionalJoins?: readonly {
+  controlJoins?: readonly ({
     kind: "loop-invariant-cfg-diamond";
     order: 0 | 1;
-    predicate: string;
+    selector: { kind: "boolean-state"; state: string };
     rule: "predicate-correlated-affine-phi";
     predecessors: readonly [
       { branch: "then"; block: string },
       { branch: "else"; block: string },
     ];
     join: string;
-  }[];
-  finiteJoin?: {
+  } | {
     kind: "loop-invariant-cfg-switch";
-    discriminant: string;
+    order: 0 | 1;
+    selector: { kind: "integer-state"; state: string };
     rule: "finite-literal-affine-phi";
     budget: {
       name: "cfg-recurrence-switch-cases";
@@ -220,7 +220,7 @@ export interface RefinementScalarRecurrenceObligation {
       { case: "default"; block: string },
     ];
     join: string;
-  };
+  })[];
   memberBudget: {
     name: "cfg-recurrence-members";
     limit: 2 | 8;
@@ -4392,8 +4392,7 @@ function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandida
             join: `if-join:${statement.getStart()}`,
           }] : [];
         }) : [];
-      const finiteSwitch = directSwitches.length === 1 && totalSwitchCount === 1
-        && totalIfCount === 0 ? (() => {
+      const finiteSwitch = directSwitches.length === 1 && totalSwitchCount === 1 ? (() => {
           const statement = directSwitches[0]!;
           const discriminant = ts.isPropertyAccessExpression(statement.expression)
             ? statement.expression.name.text : undefined;
@@ -4433,7 +4432,7 @@ function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandida
         whileStatement: node,
         backEdgeStatement: node.statement.statements.at(-1)!,
         conditionals: conditionals.length === directIfs.length ? conditionals : [],
-        ...(finiteSwitch ? { finiteSwitch } : {}),
+        ...(finiteSwitch && conditionals.length === directIfs.length ? { finiteSwitch } : {}),
       });
     }
     ts.forEachChild(node, visit);
@@ -4474,8 +4473,7 @@ function runScalarRecurrenceFixedPoint(
   readonly recurrence?: RefinementRankingRecurrenceEvidence;
   readonly members: readonly { state: string; role: "ranking" | "scalar" }[];
   readonly backEdge: RefinementScalarRecurrenceObligation["backEdge"];
-  readonly conditionalJoins?: RefinementScalarRecurrenceObligation["conditionalJoins"];
-  readonly finiteJoin?: RefinementScalarRecurrenceObligation["finiteJoin"];
+  readonly controlJoins?: RefinementScalarRecurrenceObligation["controlJoins"];
   readonly unsupportedPiecewise: boolean;
 } {
   const header = `while-header:${candidate.whileStatement.getStart(source)}`;
@@ -4487,108 +4485,92 @@ function runScalarRecurrenceFixedPoint(
     if (expression.kind === "unary") return containsConditional(expression.operand);
     return false;
   };
-  const containsPredicateConditional = (expression: TemporalExpression, predicate: string): boolean => {
-    if (expression.kind === "conditional") return (expression.condition.kind === "name"
-      && expression.condition.name === predicate)
-      || containsPredicateConditional(expression.condition, predicate)
-      || containsPredicateConditional(expression.whenTrue, predicate)
-      || containsPredicateConditional(expression.whenFalse, predicate);
-    if (expression.kind === "binary") return containsPredicateConditional(expression.left, predicate)
-      || containsPredicateConditional(expression.right, predicate);
-    if (expression.kind === "unary") return containsPredicateConditional(expression.operand, predicate);
-    return false;
-  };
-  const everyConditionalUsesPredicates = (expression: TemporalExpression, predicates: ReadonlySet<string>): boolean => {
-    if (expression.kind === "conditional") return expression.condition.kind === "name"
-      && predicates.has(expression.condition.name)
-      && everyConditionalUsesPredicates(expression.whenTrue, predicates)
-      && everyConditionalUsesPredicates(expression.whenFalse, predicates);
-    if (expression.kind === "binary") return everyConditionalUsesPredicates(expression.left, predicates)
-      && everyConditionalUsesPredicates(expression.right, predicates);
-    if (expression.kind === "unary") return everyConditionalUsesPredicates(expression.operand, predicates);
-    return true;
-  };
   const piecewise = trace ? [...trace.iterationUpdates.values()].some(containsConditional) : false;
   const predicates = new Set(candidate.conditionals.map(({ predicate }) => predicate));
-  const predicatesValid = candidate.conditionals.length >= 1
-    && candidate.conditionals.length <= 2
-    && predicates.size === candidate.conditionals.length
-    && candidate.conditionals.every(({ predicate }) =>
-      spec.states.some(({ name, type }) => name === predicate && type === "bool")
-      && predicate !== trace?.counterName
-      && !!trace
-      && formatRefinementExpression(trace.iterationUpdates.get(predicate)
-        ?? { kind: "name", name: predicate }) === predicate
-      && [...trace.iterationUpdates.values()].some((expression) =>
-        containsPredicateConditional(expression, predicate)))
-    && !!trace
-    && [...trace.iterationUpdates.values()].every((expression) =>
-      everyConditionalUsesPredicates(expression, predicates));
-  const conditionalJoins = predicatesValid ? candidate.conditionals.map((conditional, order) => ({
-    kind: "loop-invariant-cfg-diamond" as const,
-    order: order === 0 ? 0 as const : 1 as const,
-    predicate: conditional.predicate,
-    rule: "predicate-correlated-affine-phi" as const,
-    predecessors: [
-      { branch: "then" as const, block: conditional.thenBlock },
-      { branch: "else" as const, block: conditional.elseBlock },
-    ] as const,
-    join: conditional.join,
-  })) : undefined;
-  const switchCondition = (
-    expression: TemporalExpression,
-    discriminant: string,
-    values: ReadonlySet<string>,
-  ): string | undefined => {
-    if (expression.kind !== "binary" || expression.operator !== "eq"
-      || expression.left.kind !== "name" || expression.left.name !== discriminant
-      || expression.right.kind !== "integer" || !values.has(expression.right.value)) return undefined;
-    return expression.right.value;
-  };
-  const switchConditions = new Set<string>();
-  const everyConditionalUsesSwitch = (
-    expression: TemporalExpression,
-    discriminant: string,
-    values: ReadonlySet<string>,
-  ): boolean => {
-    if (expression.kind === "conditional") {
-      const value = switchCondition(expression.condition, discriminant, values);
-      if (!value) return false;
-      switchConditions.add(value);
-      return everyConditionalUsesSwitch(expression.whenTrue, discriminant, values)
-        && everyConditionalUsesSwitch(expression.whenFalse, discriminant, values);
-    }
-    if (expression.kind === "binary") return everyConditionalUsesSwitch(expression.left, discriminant, values)
-      && everyConditionalUsesSwitch(expression.right, discriminant, values);
-    if (expression.kind === "unary") return everyConditionalUsesSwitch(expression.operand, discriminant, values);
-    return true;
-  };
   const finiteSwitch = candidate.finiteSwitch;
   const switchValues = new Set(finiteSwitch?.cases.map(({ value }) => value) ?? []);
-  const switchValid = !!finiteSwitch && !!trace
-    && spec.states.some(({ name, type }) => name === finiteSwitch.discriminant && type === "int")
-    && finiteSwitch.discriminant !== trace.counterName
-    && formatRefinementExpression(trace.iterationUpdates.get(finiteSwitch.discriminant)
-      ?? { kind: "name", name: finiteSwitch.discriminant }) === finiteSwitch.discriminant
-    && [...trace.iterationUpdates.values()].every((expression) =>
-      everyConditionalUsesSwitch(expression, finiteSwitch.discriminant, switchValues))
-    && switchConditions.size === 2
-    && [...switchValues].every((value) => switchConditions.has(value));
-  const finiteJoin = switchValid && finiteSwitch ? (() => {
-    const [firstCase, secondCase] = finiteSwitch.cases;
-    return {
-      kind: "loop-invariant-cfg-switch" as const,
-      discriminant: finiteSwitch.discriminant,
-      rule: "finite-literal-affine-phi" as const,
-      budget: { name: "cfg-recurrence-switch-cases" as const, limit: 2 as const, observed: 2 as const },
-      predecessors: [
-        { case: firstCase.value, block: firstCase.block },
-        { case: secondCase.value, block: secondCase.block },
-        { case: "default" as const, block: finiteSwitch.defaultBlock },
-      ] as const,
-      join: finiteSwitch.join,
-    };
-  })() : undefined;
+  const joinCount = candidate.conditionals.length + (finiteSwitch ? 1 : 0);
+  const mixedInOrder = candidate.conditionals.length === 1 && finiteSwitch
+    ? candidate.conditionals[0]!.statement.getStart(source) < finiteSwitch.statement.getStart(source)
+    : true;
+  const shapeValid = joinCount >= 1 && joinCount <= 2 && mixedInOrder
+    && (candidate.conditionals.length === 0 || predicates.size === candidate.conditionals.length)
+    && !(finiteSwitch && candidate.conditionals.length > 1);
+  const selectorsStable = !!trace && candidate.conditionals.every(({ predicate }) =>
+    spec.states.some(({ name, type }) => name === predicate && type === "bool")
+    && predicate !== trace.counterName
+    && formatRefinementExpression(trace.iterationUpdates.get(predicate)
+      ?? { kind: "name", name: predicate }) === predicate)
+    && (!finiteSwitch || (
+      spec.states.some(({ name, type }) => name === finiteSwitch.discriminant && type === "int")
+      && finiteSwitch.discriminant !== trace.counterName
+      && formatRefinementExpression(trace.iterationUpdates.get(finiteSwitch.discriminant)
+        ?? { kind: "name", name: finiteSwitch.discriminant }) === finiteSwitch.discriminant
+    ));
+  const usedSelectors = new Set<string>();
+  const selectorKey = (expression: TemporalExpression): string | undefined => {
+    if (expression.kind === "name" && predicates.has(expression.name)) return `boolean:${expression.name}`;
+    if (finiteSwitch && expression.kind === "binary" && expression.operator === "eq"
+      && expression.left.kind === "name" && expression.left.name === finiteSwitch.discriminant
+      && expression.right.kind === "integer" && switchValues.has(expression.right.value)) {
+      return `switch:${finiteSwitch.discriminant}:${expression.right.value}`;
+    }
+    return undefined;
+  };
+  const everyConditionalUsesSelectors = (expression: TemporalExpression): boolean => {
+    if (expression.kind === "conditional") {
+      const key = selectorKey(expression.condition);
+      if (!key) return false;
+      usedSelectors.add(key);
+      return everyConditionalUsesSelectors(expression.whenTrue)
+        && everyConditionalUsesSelectors(expression.whenFalse);
+    }
+    if (expression.kind === "binary") return everyConditionalUsesSelectors(expression.left)
+      && everyConditionalUsesSelectors(expression.right);
+    if (expression.kind === "unary") return everyConditionalUsesSelectors(expression.operand);
+    return true;
+  };
+  const expressionsValid = !!trace && [...trace.iterationUpdates.values()].every(everyConditionalUsesSelectors);
+  const selectorsUsed = candidate.conditionals.every(({ predicate }) => usedSelectors.has(`boolean:${predicate}`))
+    && (!finiteSwitch || [...switchValues].every((value) =>
+      usedSelectors.has(`switch:${finiteSwitch.discriminant}:${value}`)));
+  const joinsValid = shapeValid && selectorsStable && expressionsValid && selectorsUsed;
+  const controlJoins = joinsValid ? [
+    ...candidate.conditionals.map((conditional) => ({
+      start: conditional.statement.getStart(source),
+      evidence: {
+        kind: "loop-invariant-cfg-diamond" as const,
+        selector: { kind: "boolean-state" as const, state: conditional.predicate },
+        rule: "predicate-correlated-affine-phi" as const,
+        predecessors: [
+          { branch: "then" as const, block: conditional.thenBlock },
+          { branch: "else" as const, block: conditional.elseBlock },
+        ] as const,
+        join: conditional.join,
+      },
+    })),
+    ...(finiteSwitch ? [(() => {
+      const [firstCase, secondCase] = finiteSwitch.cases;
+      return {
+        start: finiteSwitch.statement.getStart(source),
+        evidence: {
+          kind: "loop-invariant-cfg-switch" as const,
+          selector: { kind: "integer-state" as const, state: finiteSwitch.discriminant },
+          rule: "finite-literal-affine-phi" as const,
+          budget: { name: "cfg-recurrence-switch-cases" as const, limit: 2 as const, observed: 2 as const },
+          predecessors: [
+            { case: firstCase.value, block: firstCase.block },
+            { case: secondCase.value, block: secondCase.block },
+            { case: "default" as const, block: finiteSwitch.defaultBlock },
+          ] as const,
+          join: finiteSwitch.join,
+        },
+      };
+    })()] : []),
+  ].sort((left, right) => left.start - right.start).map(({ evidence }, order) => ({
+    ...evidence,
+    order: order === 0 ? 0 as const : 1 as const,
+  })) : undefined;
   const changed = candidateRecurrence
     ? spec.states.filter(({ name, type }) => type === "int"
       && candidateRecurrence.iteration[name] !== undefined
@@ -4654,9 +4636,8 @@ function runScalarRecurrenceFixedPoint(
     ...(retained ? { recurrence: { ...retained, stable: result.status === "converged" } } : {}),
     members,
     backEdge: { from: back, to: header, rule: "source-bound-affine-transformer" },
-    ...(conditionalJoins ? { conditionalJoins } : {}),
-    ...(finiteJoin ? { finiteJoin } : {}),
-    unsupportedPiecewise: piecewise && !conditionalJoins && !finiteJoin,
+    ...(controlJoins ? { controlJoins } : {}),
+    unsupportedPiecewise: piecewise && !controlJoins,
   };
 }
 
@@ -5170,8 +5151,7 @@ export function analyzeRefinementActionBodies(
         budget: { name: "cfg-recurrence-iterations", limit },
         backEdge: fixedPoint.backEdge,
         memberBudget: { name: "cfg-recurrence-members", limit: 2, observed: fixedPoint.members.length },
-        ...(fixedPoint.conditionalJoins ? { conditionalJoins: fixedPoint.conditionalJoins } : {}),
-        ...(fixedPoint.finiteJoin ? { finiteJoin: fixedPoint.finiteJoin } : {}),
+        ...(fixedPoint.controlJoins ? { controlJoins: fixedPoint.controlJoins } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,

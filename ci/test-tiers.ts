@@ -43,6 +43,7 @@ export const ciTestTiers = {
     "test/refinement-cfg-switch-recurrence.test.ts",
     "test/refinement-cfg-two-diamond-recurrence.test.ts",
     "test/refinement-cfg-handler-recurrence.test.ts",
+    "test/refinement-cfg-mixed-join-recurrence.test.ts",
     "test/refinement-scalar-product-handler-join.test.ts",
     "test/refinement-scalar-product-three-region.test.ts",
     "test/refinement-scalar-handler-join.test.ts",

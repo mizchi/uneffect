@@ -146,8 +146,8 @@ loops, budget exhaustion, and solver failure do not verify.
 One or two sequential direct `if/else` statements inside that loop may select
 piecewise affine member updates when they use distinct unchanged Boolean
 states. An omitted else is represented by a source-keyed identity predecessor.
-The artifact binds each predicate, source-ordered predecessor blocks, join
-block, and `predicate-correlated-affine-phi` in `conditionalJoins`; the
+The artifact binds each Boolean selector, source-ordered predecessor blocks,
+join block, and `predicate-correlated-affine-phi` in ordered `controlJoins`; the
 composed recurrence step/summary still require Z3. Source correlation and
 execution order are structural rather than solver-derived. Reused, mutated, or
 ranking-dependent predicates, nested or third diamonds, and unmatched
@@ -156,11 +156,15 @@ piecewise expressions remain unsupported.
 Alternatively, one direct `switch` may select a piecewise affine update from
 exactly two distinct non-negative numeric-literal cases and one explicit default. The
 integer discriminant must be a declared loop-invariant state, every clause must
-end in an unlabeled `break`, and `finiteJoin` binds all three predecessor blocks
-plus the common join under `cfg-recurrence-switch-cases`. Z3 still proves the
-composed recurrence. Fallthrough, mutation, ranking-counter or dynamic
-discriminants, duplicate/non-literal/third cases, nested control, and solver
-failure remain unsupported rather than being treated as an identity path.
+end in an unlabeled `break`, and the switch union member binds all three
+predecessor blocks plus the common join under
+`cfg-recurrence-switch-cases`. Exactly one Boolean diamond followed by one such
+switch is also admitted as a two-element ordered sequence. Z3 still proves the
+composed recurrence. Switch-then-if order, fallthrough, mutation,
+ranking-counter or dynamic selectors, duplicate/non-literal/third cases,
+nested/excess control, and solver failure remain unsupported rather than being
+treated as an identity path. The old syntax-specific join fields are not
+emitted.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing
