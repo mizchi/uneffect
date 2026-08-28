@@ -146,7 +146,7 @@ explicit conservative boundaries rather than untracked support.
    Completed child [#39](https://github.com/mizchi/uneffect/issues/39) lowers one
    loop-local conditional value into source-bound predecessor-value evidence
    without claiming arbitrary expression or CFG joins.
-   Active child [#40](https://github.com/mizchi/uneffect/issues/40) proves one
+   Completed child [#40](https://github.com/mizchi/uneffect/issues/40) proves one
    direct Boolean involution by an exact parity summary while retaining
    integer geometric growth as an explicit non-proof.
    The first
