@@ -2,10 +2,12 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciExternalVerifierTestFiles, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { ciExternalVerifierTestFiles, ciIntegrationShards, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciMeasuredNativeProjectTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { appendCiTimingEvent, classifyCiTimingFailure, readCiTimingEvents } from "../ci/timing-report.js";
 import { classifySolverRetryAttempts, createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
 import { boundedRepetitions } from "../ci/run-solver-stress.js";
 import { runBoundedVerifierAttempts } from "../ci/verifier-retry.js";
+import { spawnSyncWithDeadline } from "../ci/process-deadline.js";
 
 describe("CI test tier manifest", () => {
   it("supports an explicit remote verification run when a push event is absent", () => {
@@ -37,6 +39,54 @@ describe("CI test tier manifest", () => {
     expect(() => resolveCiTierFiles("z3", "test/dogfood.test.ts")).toThrow(/not assigned to z3/);
   });
 
+  it("partitions every integration file into one named shard", () => {
+    const partitioned = Object.values(ciIntegrationShards).flat().sort();
+    expect(partitioned).toEqual([...ciTestTiers.integration].sort());
+    expect(partitioned.filter((file, index) => partitioned.indexOf(file) !== index)).toEqual([]);
+    expect(resolveCiTierFiles("integration", undefined, "core")).toEqual(ciIntegrationShards.core);
+    expect(resolveCiTierFiles("integration", undefined, "applications")).toEqual(ciIntegrationShards.applications);
+    expect(resolveCiTierFiles("integration", undefined, "dogfood")).toEqual(ciIntegrationShards.dogfood);
+    expect(() => resolveCiTierFiles("z3", undefined, "core")).toThrow(/only valid for integration/);
+    expect(() => resolveCiTierFiles("integration", "test/dogfood.test.ts", "dogfood")).toThrow(/cannot be combined/);
+    expect(() => resolveCiTierFiles("integration", undefined, "missing")).toThrow(/unknown integration shard/);
+  });
+
+  it("retains versioned CI timing events for completed and failed executions", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-ci-timing-"));
+    const report = join(directory, "integration-core.jsonl");
+    try {
+      appendCiTimingEvent(report, {
+        event: "start", tier: "integration", shard: "core", file: "test/evidence-optimizer.test.ts",
+        testName: null, attempt: 1, timestamp: "2026-08-29T00:00:00.000Z",
+      });
+      appendCiTimingEvent(report, {
+        event: "complete", tier: "integration", shard: "core", file: "test/evidence-optimizer.test.ts",
+        testName: null, attempt: 1, timestamp: "2026-08-29T00:00:31.000Z", durationMs: 31_000,
+        status: 1, signal: null, failureKind: "semantic-or-test-timeout",
+      });
+      expect(readCiTimingEvents(report)).toEqual([
+        expect.objectContaining({ schema: "uneffect.ci-timing/v1", event: "start", attempt: 1 }),
+        expect.objectContaining({ schema: "uneffect.ci-timing/v1", event: "complete", durationMs: 31_000, status: 1 }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("separates verifier runtime timing failures from semantic test failures", () => {
+    expect(classifyCiTimingFailure(0, undefined, undefined)).toBeUndefined();
+    expect(classifyCiTimingFailure(1, undefined, "external-process-timeout")).toBe("verifier-process-timeout");
+    expect(classifyCiTimingFailure(1, undefined, "recognized-wasm-failure")).toBe("verifier-runtime-failure");
+    expect(classifyCiTimingFailure(null, "ETIMEDOUT", "hard-timeout")).toBe("runtime-hard-timeout");
+    expect(classifyCiTimingFailure(1, undefined, undefined)).toBe("semantic-or-test-failure");
+  });
+
+  it("calibrates the measured native project test above observed remote variance", () => {
+    expect(ciMeasuredNativeProjectTimeoutMs).toBe(45_000);
+    const source = readFileSync(join(process.cwd(), "test/evidence-optimizer.test.ts"), "utf8");
+    expect(source).toContain("}, ciMeasuredNativeProjectTimeoutMs);");
+  });
+
   it("does not place direct verifier subprocesses in a tier lacking that verifier", () => {
     for (const [tier, files] of Object.entries(ciTestTiers)) for (const file of files) {
       const source = readFileSync(join(process.cwd(), file), "utf8");
@@ -54,6 +104,9 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain("UNEFFECT_Z3_BACKEND: wasm");
     expect(workflow).toContain("Install native Z3 for solver-heavy integration proofs");
     expect(workflow).toContain("apt-get install --yes z3");
+    expect(workflow).toContain("matrix.integration-shard");
+    expect(workflow).toContain("UNEFFECT_CI_SHARD");
+    expect(workflow).toContain(".uneffect/ci-timing");
   });
 
   it("keeps solver-heavy test files serial to bound Z3 WASM memory", () => {
@@ -63,7 +116,7 @@ describe("CI test tier manifest", () => {
     expect(packageJson.scripts.check).toContain("tsx ci/run-test-tiers.ts");
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
     expect(runner).toContain('["fast", "z3", "quint", "integration"]');
-    expect(runner).toContain("resolveCiTierFiles(tier, requestedFile)");
+    expect(runner).toContain("resolveCiTierFiles(tier, requestedFile, requestedShard)");
     expect(runner).toContain("ciIsolatedTestNames[file]");
     expect(runner).toContain("const maxVerifierAttempts = 3");
     const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
@@ -86,7 +139,7 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain("if: always()");
     expect(workflow).toContain(".uneffect/verifier-retry-evidence");
     expect(workflow).toContain("if-no-files-found: ignore");
-    expect(workflow.match(/include-hidden-files: true/gu)).toHaveLength(4);
+    expect(workflow.match(/include-hidden-files: true/gu)).toHaveLength(5);
   });
 
   it("uploads retained external-verifier retry evidence from every verifier tier", () => {
@@ -233,8 +286,15 @@ describe("CI test tier manifest", () => {
     expect(isIsolatedSolverHardTimeout({ code: "ENOMEM" })).toBe(false);
     expect(isIsolatedSolverHardTimeout(undefined)).toBe(false);
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
-    expect(runner).toContain("timeout: ciIsolatedProcessTimeoutMs");
+    expect(runner).toContain("spawnSyncWithDeadline(pnpm, args, ciIsolatedProcessTimeoutMs");
     expect(runner).toContain("isIsolatedSolverHardTimeout(captured.error)");
+  });
+
+  it("kills a deliberately hung child within the configured parent deadline", () => {
+    const startedAt = Date.now();
+    const result = spawnSyncWithDeadline(process.execPath, ["-e", "setInterval(() => {}, 1_000)"], 100);
+    expect((result.error as NodeJS.ErrnoException | undefined)?.code).toBe("ETIMEDOUT");
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 
   it("retains retry attempts and removes evidence for a clean first attempt", () => {

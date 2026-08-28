@@ -869,6 +869,11 @@ same property is proved for arbitrary TypeScript.
   files run in separate processes. Z3 tests that need heap-failure containment
   can be isolated by selector; Quint-bearing files are captured and retried at
   file granularity only for a child `spawnSync pnpm ETIMEDOUT` signature.
+  The integration manifest is additionally partitioned into three checked
+  matrix shards. Each execution emits a versioned timing event stream retained
+  as a CI artifact, while one empirically slow native-project test has a
+  documented 45-second budget. Sharding and calibration do not add a retry path
+  for semantic failures and do not remove any test from the manifest.
 - Hoare-contract, ownership-evidence, and temporal SMT-LIB share an
   `auto | native | wasm` execution boundary. Auto mode prefers an available
   native process, falls back only after classified infrastructure failure, and

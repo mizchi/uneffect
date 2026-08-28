@@ -146,7 +146,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.28 proved dynamic Map key domain | #43 (child of #5) | Completed | completed in the current delivery | Decode a state-derived lookup key only after independently proving membership in an immutable literal finite Set. |
 | P2.29 multiple proved Map key domains | #44 (child of #5) | Completed | completed in the current delivery | Prove every primary/backup selector independently and reject the whole observation universe when one key proof fails. |
 | P2.30 jointly inductive Map key domains | #45 (child of #5) | Completed | completed in the current delivery | Prove one failover membership conjunction while retaining explicit joint assumptions and whole-universe failure. |
-| P3.3 solver-heavy CI stability | #46 | Next | 1–2 engineer-weeks | Measure and split the integration gate, calibrate timeouts, and retain every proof obligation. |
+| P3.3 solver-heavy CI stability | #46 | Active | 1–2 engineer-weeks | Measure and split the integration gate, calibrate timeouts, and retain every proof obligation. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27

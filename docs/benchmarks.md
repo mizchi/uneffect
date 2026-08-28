@@ -2103,6 +2103,19 @@ it excludes compiler creation, general escape analysis, imported helpers,
 multiple regions, and the separate Program Effect analysis. It is therefore a
 regression signal for this slice, not a general alias-analysis throughput
 claim.
+
+The P3.3 CI partition was measured through the same versioned timing writer
+used by GitHub Actions, with native Z3 on the development host. `core` consumed
+89.150 seconds across four file executions and the isolated Node Lease suite
+consumed another 13.179 seconds across twelve selectors; these now form one
+roughly 102.329-second shard. `applications` consumed 139.141 seconds across
+three files, dominated by `async-safety` at 120.915 seconds. The 111 isolated
+dogfood selectors consumed 163.095 seconds, with a 10.008-second maximum.
+All 130 measured executions passed. These are partitioning observations, not
+portable performance claims: GitHub runner setup, CPU contention, native Z3,
+Quint, and Java startup can change wall time. Remote timing artifacts remain
+the authority for timeout calibration and future rebalancing.
+
 Corsa checker inferred-effect handoff (2026-08-28, Apple Silicon, one sample):
 
 - `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`

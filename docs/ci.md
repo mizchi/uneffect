@@ -15,7 +15,7 @@ older SHA cannot cancel proof evidence already running for a newer commit.
 | `fast` | Node.js and Rust | Type checking, parser/analyzer unit tests, Rust parity, build, and package checks |
 | `z3` | none beyond Node; native Z3 is optional and WASM is bundled | Hoare, ownership, property generation, and typed-array obligations |
 | `quint` | Quint evaluator | Promise, resource, event-loop, temporal-composition, and ownership models |
-| `integration` | native Z3, Quint, and Java/TLC | End-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
+| `integration` | native Z3, Quint, and Java/TLC | Three complete shards (`core`, `applications`, and `dogfood`) cover end-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
 | `exhaustive` | Java/TLC through Quint | The bounded exhaustive invalidation model |
 
 Files that exercise both verifier APIs belong to `integration`, even when one
@@ -77,13 +77,27 @@ never retried, and a repeated crash or timeout still fails the job. This is
 process recovery for recognized verifier-runtime failures, not a flaky-test
 allowance or weakened proof obligation.
 
-The integration gate is not yet timing-stable. On 2026-08-29 an existing
-`evidence-optimizer` case exceeded its 30-second Vitest budget by 375 ms on a
-GitHub-hosted runner; the failed-job rerun passed, but the serial gate still
-took more than 15 minutes. [#46](https://github.com/mizchi/uneffect/issues/46)
-owns measurement, sharding, and timeout calibration. Until that work lands, a
-green rerun is operational evidence only and does not erase the original
-timeout or justify weakening a proof obligation.
+On 2026-08-29 an existing `evidence-optimizer` case exceeded its 30-second
+Vitest budget by 375 ms on a GitHub-hosted runner. The failed-job rerun passed
+that case in 25.868 seconds, but the serial gate still took more than 15
+minutes. [#46](https://github.com/mizchi/uneffect/issues/46) therefore splits
+the exact integration manifest into three non-overlapping matrix shards. The
+manifest test proves that every integration file occurs in exactly one shard;
+local timing placed the short isolated Node Lease suite in `core`, producing
+roughly balanced test bodies of 103, 138, and 163 seconds without paying for a
+fourth runner setup.
+
+The measured project-wide mutation-substitution case has a 45-second budget,
+1.5 times the observed failing duration. This is a timeout calibration, not an
+automatic retry: an ordinary Vitest timeout still fails immediately. Every
+shard writes `uneffect.ci-timing/v1` JSONL start/completion events with file,
+test selector, attempt, duration, exit status, signal, and a failure class.
+Artifacts distinguish semantic/test failures, external-verifier timeouts,
+hard process deadlines, and recognized verifier runtime failures. Events are
+uploaded with `if: always()`, including a partially written start event when a
+runner or child process is interrupted. A green rerun remains operational
+evidence and does not erase an earlier timeout or justify weakening a proof
+obligation.
 
 Quint-bearing files use a separate file-granularity boundary. If a live Vitest
 process reports that its child `pnpm exec quint` process failed with

@@ -145,7 +145,7 @@ for a first useful release.
 
 ## Immediate execution queue
 
-There is no active implementation Issue. The next bounded operational slice is
+The active bounded operational slice is
 [#46](https://github.com/mizchi/uneffect/issues/46), created from observed
 remote-CI timing evidence after #45 completed.
 
@@ -207,7 +207,7 @@ label.
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
 | Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
 | Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #9, #10, #24 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
-| Next | 3 | [#46](https://github.com/mizchi/uneffect/issues/46) | Solver-heavy CI stability | Existing integration gate and retained evidence | Measure, split, and calibrate the gate without weakening proof obligations |
+| Active | 3 | [#46](https://github.com/mizchi/uneffect/issues/46) | Solver-heavy CI stability | Existing integration gate and retained evidence | Measure, split, and calibrate the gate without weakening proof obligations |
 | Queued | 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #7, #8, completed #23, #24; #25 for general joins | Evidence-gated transformations; general optimization remains unimplemented |
 
 Each active child Issue is widened one Red/Green acceptance slice at a time. Each slice

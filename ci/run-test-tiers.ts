@@ -2,18 +2,22 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { createSolverRetryEvidenceSession } from "./solver-retry-evidence.js";
 import { ciExternalVerifierTestFiles, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, type CiTestTier } from "./test-tiers.js";
+import { appendCiTimingEvent, classifyCiTimingFailure, type CiTimingRetryReason } from "./timing-report.js";
 import { runBoundedVerifierAttempts } from "./verifier-retry.js";
+import { spawnSyncWithDeadline } from "./process-deadline.js";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const allTiers = ["fast", "z3", "quint", "integration"] as const;
 const maxVerifierAttempts = 3;
 const requested = process.argv[2] as CiTestTier | undefined;
 const requestedFile = process.argv[3];
+const requestedShard = process.env.UNEFFECT_CI_SHARD;
+const timingPath = process.env.UNEFFECT_CI_TIMING_PATH;
 if (requested && !allTiers.includes(requested)) throw new Error(`unknown CI test tier: ${requested}`);
 if (requestedFile && !requested) throw new Error("a requested test file requires an explicit CI tier");
 const tiers: readonly CiTestTier[] = requested ? [requested] : allTiers;
 for (const tier of tiers) {
-  const files = resolveCiTierFiles(tier, requestedFile);
+  const files = resolveCiTierFiles(tier, requestedFile, requestedShard);
   for (const file of files) {
     let testNames: readonly (string | undefined)[] = file && ciIsolatedTestNames[file] ? ciIsolatedTestNames[file] : [undefined];
     if (file && ciIsolatedTestFiles.includes(file)) {
@@ -37,11 +41,37 @@ for (const tier of tiers) {
         "vitest", "run", ...(file ? [file] : []), ...(testPattern ? ["-t", testPattern] : []),
         ...(file && ciIsolatedTestFiles.includes(file) ? ["--testTimeout", String(ciIsolatedTestTimeoutMs)] : []),
       ];
-      const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => spawnSync(pnpm, args, {
+      const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => testName
+        ? spawnSyncWithDeadline(pnpm, args, ciIsolatedProcessTimeoutMs, {
+          cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier, ...attemptEnvironment },
+          maxBuffer: 20 * 1024 * 1024,
+        })
+        : spawnSync(pnpm, args, {
         cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier, ...attemptEnvironment },
         encoding: "utf8", maxBuffer: 20 * 1024 * 1024,
-        ...(testName ? { timeout: ciIsolatedProcessTimeoutMs, killSignal: "SIGKILL" as const } : {}),
       });
+      const startTiming = (attempt: number) => {
+        const startedAt = Date.now();
+        if (timingPath && file) appendCiTimingEvent(timingPath, {
+          event: "start", tier, shard: requestedShard ?? null, file, testName: testName ?? null,
+          attempt, timestamp: new Date(startedAt).toISOString(),
+        });
+        return startedAt;
+      };
+      const completeTiming = (
+        attempt: number,
+        startedAt: number,
+        captured: ReturnType<typeof runIsolated>,
+        retryReason?: CiTimingRetryReason,
+      ) => {
+        const failureKind = classifyCiTimingFailure(captured.status, captured.error?.code, retryReason);
+        if (timingPath && file) appendCiTimingEvent(timingPath, {
+          event: "complete", tier, shard: requestedShard ?? null, file, testName: testName ?? null,
+          attempt, timestamp: new Date().toISOString(), durationMs: Date.now() - startedAt,
+          status: captured.status, signal: captured.signal,
+          ...(failureKind ? { failureKind } : {}),
+        });
+      };
       const emit = (captured: ReturnType<typeof runIsolated>) => {
         if (captured.stdout) process.stdout.write(captured.stdout);
         if (captured.stderr) process.stderr.write(captured.stderr);
@@ -57,7 +87,7 @@ for (const tier of tiers) {
           [pnpm, ...args],
         );
         const execution = runBoundedVerifierAttempts(maxVerifierAttempts, (attempt) => {
-          const startedAt = Date.now();
+          const startedAt = startTiming(attempt);
           const captured = runIsolated(evidence.environmentForAttempt(attempt));
           const output = `${captured.stdout ?? ""}\n${captured.stderr ?? ""}`;
           const hardTimeout = isIsolatedSolverHardTimeout(captured.error);
@@ -66,6 +96,7 @@ for (const tier of tiers) {
           const retryReason = hardTimeout ? "hard-timeout" as const
             : externalVerifierFailure ? "external-process-timeout" as const
             : classifiedFailure ? "recognized-wasm-failure" as const : undefined;
+          completeTiming(attempt, startedAt, captured, retryReason);
           return {
             captured,
             durationMs: Date.now() - startedAt,
@@ -93,9 +124,11 @@ for (const tier of tiers) {
         const evidenceManifest = evidence.finish();
         if (evidenceManifest) process.stderr.write(`retained verifier retry evidence: ${evidenceManifest}\n`);
       } else {
+        const startedAt = startTiming(1);
         result = spawnSync(pnpm, args, {
           cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, stdio: "inherit",
         });
+        completeTiming(1, startedAt, result);
       }
       if (result.error) throw result.error;
       if (result.status !== 0) process.exit(result.status ?? 1);

@@ -9,6 +9,7 @@ import { analyzeEffectSummariesInProgram, analyzeProgramEffects } from "../src/e
 import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { ciMeasuredNativeProjectTimeoutMs } from "../ci/test-tiers.js";
 
 function programOf(text: string) {
   const fileName = "/virtual/evidence.ts";
@@ -764,7 +765,7 @@ describe("evidence and optimizer obligations", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, ciMeasuredNativeProjectTimeoutMs);
 
   it("makes module-order verification an explicit project assurance domain", async () => {
     const root = join(process.cwd(), "virtual-module-order");

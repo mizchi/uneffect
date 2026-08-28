@@ -79,7 +79,33 @@ export const ciTestTiers = {
 
 export type CiTestTier = keyof typeof ciTestTiers;
 
-export function resolveCiTierFiles(tier: CiTestTier, requestedFile?: string): readonly (string | undefined)[] {
+export const ciIntegrationShards = {
+  core: [
+    "test/acceptance-roadmap.test.ts",
+    "test/corsa-checker-exporter.test.ts",
+    "test/evidence-optimizer.test.ts",
+    "test/fixtures.test.ts",
+    "test/node-lease.test.ts",
+  ],
+  applications: [
+    "test/async-safety.test.ts",
+    "test/spec-backends.test.ts",
+    "test/temporal-map-default.test.ts",
+  ],
+  dogfood: [
+    "test/dogfood.test.ts",
+  ],
+} as const satisfies Readonly<Record<string, readonly (typeof ciTestTiers.integration)[number][]>>;
+
+export type CiIntegrationShard = keyof typeof ciIntegrationShards;
+
+export function resolveCiTierFiles(tier: CiTestTier, requestedFile?: string, requestedShard?: string): readonly (string | undefined)[] {
+  if (requestedFile && requestedShard) throw new Error("a requested test file cannot be combined with an integration shard");
+  if (requestedShard) {
+    if (tier !== "integration") throw new Error("a CI shard is only valid for integration");
+    if (!(requestedShard in ciIntegrationShards)) throw new Error(`unknown integration shard: ${requestedShard}`);
+    return ciIntegrationShards[requestedShard as CiIntegrationShard];
+  }
   if (!requestedFile) return tier === "fast" ? [undefined] : ciTestTiers[tier];
   if (!(ciTestTiers[tier] as readonly string[]).includes(requestedFile)) {
     throw new Error(`${requestedFile} is not assigned to ${tier} CI tier`);
@@ -114,6 +140,8 @@ export const ciExternalVerifierTestFiles: readonly string[] = [
   "test/temporal-map-default.test.ts",
 ];
 export const ciIsolatedTestTimeoutMs = 60_000;
+/** 1.5x the 30.375s remote observation for the project-wide mutation substitution case. */
+export const ciMeasuredNativeProjectTimeoutMs = 45_000;
 /** Parent-process deadline for synchronous WASM calls that can block Vitest's own timer. */
 export const ciIsolatedProcessTimeoutMs = ciIsolatedTestTimeoutMs + 15_000;
 
