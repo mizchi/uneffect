@@ -1049,3 +1049,10 @@ same property is proved for arbitrary TypeScript.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.
+- The active P2.27 slice adds total finite temporal Map lookup through
+  `getOrElse(key, fallback)`. The neutral AST type-checks matching keys and
+  values, Quint lowers to an explicit domain-membership conditional, runtime
+  assertions/replay use `Map.has`, and Z3 uses the corresponding domain-array
+  `ite`. Literal keys support JSON-safe bounded counterexamples. Ordinary
+  `Map.get` remains partial; dynamic key universes and unavailable solvers
+  produce `unknown` rather than a safety claim.

@@ -123,6 +123,7 @@ describe("CI test tier manifest", () => {
   it("discovers named tests for whole-file process isolation", () => {
     expect(ciIsolatedTestFiles).toContain("test/dogfood.test.ts");
     expect(ciTestTiers.quint.every((file) => ciExternalVerifierTestFiles.includes(file))).toBe(true);
+    expect(ciExternalVerifierTestFiles).toContain("test/temporal-map-default.test.ts");
     expect(ciTestTiers.quint.some((file) => ciIsolatedTestFiles.includes(file))).toBe(false);
     expect(ciIsolatedTestTimeoutMs).toBe(60_000);
     expect(parseVitestListNames("test/dogfood.test.ts", [

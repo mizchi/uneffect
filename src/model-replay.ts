@@ -200,6 +200,11 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
       if (!entry) throw new Error(`temporal Map.get key is absent during replay: ${stable(key)}`);
       return entry[1]!;
     }
+    if (expression.name === "getOrElse") {
+      const key = evaluateTemporalExpression(expression.arguments[0]!, state);
+      const entry = receiver.find((candidate) => same((candidate as ModelValue[])[0], key)) as ModelValue[] | undefined;
+      return entry ? entry[1]! : evaluateTemporalExpression(expression.arguments[1]!, state);
+    }
     if (expression.name === "keys") return receiver.map((entry) => (entry as ModelValue[])[0]!);
     if (expression.name === "values") return [...new Map(receiver.map((entry) => (entry as ModelValue[])[1]!).map((item) => [stable(item), item])).values()].sort((a, b) => stable(a).localeCompare(stable(b)));
     if (expression.name === "size") return receiver.length;

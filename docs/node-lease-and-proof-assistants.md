@@ -17,9 +17,9 @@ or routed through effect handlers.
 
 The clock-skew single-writer failure from the
 [Node Lease article](https://zenn.dev/mizchi/articles/quint-application-modeling)
-can be encoded
-in the current comment DSL after finitely expanding the node-indexed maps and
-sets into states for nodes A and B. The regression model contains a monotonic
+can be encoded in the current comment DSL with finite `Set`, `Map`, and closed
+record state; the older scalar A/B expansion remains as a comparison fixture.
+The regression model contains a monotonic
 real-time clock, A's shared lease expiry and local deadline, the owner epoch,
 resident epochs, takeover/publish transitions, and a `singleWriter` invariant.
 
@@ -63,6 +63,16 @@ diagnostic, because a direction is discarded unless Z3 proves it at init and
 across every action. Composite Map values remain outside this synthesized-view
 fragment.
 
+`examples/dogfood/node-lease-total-map-lookup.ts` adds a total missing-node
+read. A lease table entry has `{ epoch, valid }`; lookup of literal node `3`
+uses `getOrElse(3, { epoch: 0, valid: false })`, so absence fences the write.
+The same neutral expression executes in Quint, runtime replay/assertions, and
+bounded Z3. Changing the fallback to `valid: true` yields a one-step
+counterexample in which the unknown node gains write authority. A
+state-selected node key remains `unknown` in the Z3 trace extractor because
+the finite key observation universe cannot yet be proved complete. This is a
+soundness boundary, not evidence that the dynamic model is safe.
+
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker
 never crashes and the resource remains held. Declaring weak fairness for both
@@ -101,7 +111,8 @@ proof terms. `trust typed-array` is one domain-specific assumption recorded as
 
 The highest-value gaps for the nearly-zero-runtime TypeScript goal are:
 
-1. collection-valued temporal state (`Set`, `Map`, records, finite domains);
+1. broader collection-valued temporal reasoning beyond the implemented finite
+   `Set`, `Map`, records, literal-key total lookup, and finite domains;
 2. quantified invariants and backend-applicability metadata;
 3. an extensible temporal semantic-domain registry, with wall-clock versus
    monotonic-clock types and skew assumptions as one optional domain pack;
@@ -111,8 +122,10 @@ The highest-value gaps for the nearly-zero-runtime TypeScript goal are:
 7. a cross-domain assumption ledger and policy-controlled `trusted` evidence;
 8. independently checkable certificates where backends can provide them.
 
-Until items 1–4 exist, Node Lease support is a hand-authored, bounded, finitely
-expanded Quint projection, not automatic verification of production code.
+Until items 1–4 exist, Node Lease support is a hand-authored, bounded finite
+projection, not automatic verification of production code. Collection state
+is no longer manually scalarized for every fixture, but dynamic key domains,
+general quantification, and implementation refinement remain incomplete.
 
 Clock semantics are not a globally preferred Uneffect concern. Node Lease is a
 stress case for registering domain-specific state types, assumptions,

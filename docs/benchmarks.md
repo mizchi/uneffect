@@ -2048,6 +2048,15 @@ member, and exact source-order evidence. Cycles, multiple edges, repeated or
 path-dependent writes, nonlinear updates, aliases, and general coupled
 recurrence solving remain outside the measurement.
 
+The P2.27 focused benchmark generates the finite Node Lease `getOrElse` Quint
+model and extracts the load-bearing missing-lease fallback counterexample. A
+selected run measured 0.0015 ms mean over 322,583 generation samples
+(645,164.96 operations per second, 0.36% RME). Bounded Z3 counterexample
+extraction measured 13.9411 ms mean over 36 samples (71.73 operations per
+second, 0.97% RME). These development-host signals cover one literal absent
+integer key, one record fallback, and depth one. They exclude dynamic key
+universes, general quantified Maps, and unbounded Node Lease verification.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

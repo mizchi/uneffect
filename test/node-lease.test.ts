@@ -158,6 +158,45 @@ function runLeaseLifecycle(fencedCommit: boolean) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("defaults a missing node lease to a fenced record across Quint and Z3", async () => {
+    const fileName = "examples/dogfood/node-lease-total-map-lookup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const safe = parseSpec(fileName, source).temporal;
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-default-"));
+    const path = join(directory, "node-lease-default.qnt");
+    writeFileSync(path, generateQuint("node_lease_default", safe));
+    const execution = spawnSync(
+      "pnpm",
+      ["exec", "quint", "run", path, "--invariant=unknownNodeCannotWrite", "--max-steps=3", "--max-samples=100"],
+      { encoding: "utf8", timeout: 30_000 },
+    );
+    rmSync(directory, { recursive: true, force: true });
+    expect(execution.status, execution.stdout + execution.stderr).toBe(0);
+    await expect(findTemporalCounterexampleWithZ3(safe, "unknownNodeCannotWrite", { maxSteps: 2 }))
+      .resolves.toEqual({ status: "safe-within-bound", depth: 2 });
+
+    const brokenSource = source.replace(
+      "{ epoch: 0, valid: false }).valid",
+      "{ epoch: 0, valid: true }).valid",
+    );
+    const broken = parseSpec(fileName, brokenSource).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "unknownNodeCannotWrite", { maxSteps: 2 }))
+      .resolves.toMatchObject({
+        status: "counterexample",
+        depth: 1,
+        trace: { steps: [{ action: "checkLease", after: expect.objectContaining({ writeAllowed: true }) }] },
+      });
+
+    const dynamicSource = source
+      .replace("state leases:", "state requestedNode: int\n  state leases:")
+      .replace("init leases =", "init requestedNode = 3\n  init leases =")
+      .replace("leases.getOrElse(3,", "leases.getOrElse(requestedNode,")
+      .replace("nodes.contains(3)", "nodes.contains(requestedNode)");
+    const dynamic = parseSpec(fileName, dynamicSource).temporal;
+    await expect(findTemporalCounterexampleWithZ3(dynamic, "unknownNodeCannotWrite", { maxSteps: 2 }))
+      .resolves.toEqual({ status: "unknown", depth: 0 });
+  });
+
   it("dogfoods synthesized subset authority and catches an unchecked request", async () => {
     const safe = parseSpec("capability-request-safe.ts", capabilityRequestModel(true)).temporal;
     const diagnostics = await lintTemporalReachabilityWithZ3(safe, {

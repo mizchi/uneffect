@@ -160,6 +160,11 @@ explicit conservative boundaries rather than untracked support.
    temporal reasoning.
 3. [Collection-valued state and TLC interoperability](https://github.com/mizchi/uneffect/issues/5)
    makes Node Lease-style models direct and preserves external counterexamples.
+   Its active bounded child
+   [#42](https://github.com/mizchi/uneffect/issues/42) adds total finite
+   `Map.getOrElse` lookup across Quint, runtime replay, and bounded Z3. Ordinary
+   `Map.get` remains partial, and dynamic-key counterexample extraction remains
+   `unknown` until a sound finite key universe is available.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
    reduces filtering and covers recursive/user-defined refinements.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)

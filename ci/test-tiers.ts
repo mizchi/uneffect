@@ -70,6 +70,7 @@ export const ciTestTiers = {
     "test/fixtures.test.ts",
     "test/node-lease.test.ts",
     "test/spec-backends.test.ts",
+    "test/temporal-map-default.test.ts",
   ],
 } as const;
 
@@ -85,6 +86,7 @@ export function resolveCiTierFiles(tier: CiTestTier, requestedFile?: string): re
 
 export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = {
   "test/node-lease.test.ts": [
+    "defaults a missing node lease to a fenced record across Quint and Z3",
     "dogfoods synthesized subset authority and catches an unchecked request",
     "uses a proven lease-domain invariant to exclude invalid epoch actions",
     "synthesizes a lease-domain invariant to exclude invalid epoch actions",
@@ -106,6 +108,7 @@ export const ciExternalVerifierTestFiles: readonly string[] = [
   ...ciTestTiers.quint,
   "test/async-safety.test.ts",
   "test/spec-backends.test.ts",
+  "test/temporal-map-default.test.ts",
 ];
 export const ciIsolatedTestTimeoutMs = 60_000;
 /** Parent-process deadline for synchronous WASM calls that can block Vitest's own timer. */

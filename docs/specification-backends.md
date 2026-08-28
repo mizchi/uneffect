@@ -114,6 +114,28 @@ Action assignments may instead establish the same guard in `action_when`.
 Replay throws if a supposedly guarded key is absent. Runtime lowering constructs a fresh JavaScript `Map`, so
 assertion evaluation does not mutate application state.
 
+Use `map.getOrElse(key, fallback)` when absence is part of the model rather
+than an error. Uneffect type-checks the key and fallback against the Map,
+including closed-record values, and lowers the operation explicitly instead
+of depending on a backend-specific helper:
+
+```ts
+/* uneffect:
+  state leases: Map<int, { epoch: int, valid: bool }>
+  init leases = Map([])
+  temporal unknownIsFenced:
+    !leases.getOrElse(3, { epoch: 0, valid: false }).valid
+*/
+```
+
+Quint receives `if (map.keys().contains(key)) map.get(key) else fallback`, the
+runtime/replay path uses `Map.has`, and Z3 uses an `ite` over the Map domain
+array. The fallback is evaluated only for an absent key. Literal lookup keys
+join the finite observation universe, so bounded counterexamples can contain
+the missing-key decision and JSON-safe Map entries. A state-derived lookup key
+still makes Z3 counterexample extraction `unknown`: Uneffect does not guess a
+finite key universe. This restriction does not affect Quint generation.
+
 Z3 represents each Map type as a datatype containing a Boolean domain
 array and a separate total value array. This prevents the value at an absent
 key from leaking into `keys()` or `values()`. `put` updates both arrays,

@@ -9,7 +9,7 @@ export type TemporalExpression =
   | { kind: "field"; receiver: TemporalExpression; name: string }
   | { kind: "lambda"; parameter: string; body: TemporalExpression }
   | { kind: "call"; name: "Set" | "Map"; arguments: TemporalExpression[] }
-  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "exclude" | "forall" | "exists" | "size" | "put" | "remove" | "get" | "keys" | "values"; arguments: TemporalExpression[] }
+  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "exclude" | "forall" | "exists" | "size" | "put" | "remove" | "get" | "getOrElse" | "keys" | "values"; arguments: TemporalExpression[] }
   | { kind: "conditional"; condition: TemporalExpression; whenTrue: TemporalExpression; whenFalse: TemporalExpression }
   | { kind: "unary"; operator: "not" | "negate"; operand: TemporalExpression }
   | { kind: "binary"; operator: TemporalBinaryOperator; left: TemporalExpression; right: TemporalExpression };
@@ -161,7 +161,8 @@ export function typeCheckTemporalExpression(
       if (expression.arguments.length !== 0) throw new Error("temporal size does not accept arguments");
       return "int";
     }
-    if (expression.name === "put" || expression.name === "remove" || expression.name === "get" || expression.name === "keys" || expression.name === "values") {
+    if (expression.name === "put" || expression.name === "remove" || expression.name === "get"
+      || expression.name === "getOrElse" || expression.name === "keys" || expression.name === "values") {
       if (typeof receiver === "string" || receiver.kind !== "map") throw new Error(`temporal ${expression.name} requires a Map receiver`);
       if (expression.name === "keys" || expression.name === "values") {
         if (expression.arguments.length !== 0) throw new Error(`temporal ${expression.name} does not accept arguments`);
@@ -172,6 +173,18 @@ export function typeCheckTemporalExpression(
         const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols);
         if (typeof key !== "string" || (receiver.key !== "never" && receiver.key !== key)) throw new Error(`temporal ${expression.name} key type must match the Map`);
         return expression.name === "get" ? receiver.value === "never" ? "int" : receiver.value : receiver;
+      }
+      if (expression.name === "getOrElse") {
+        if (expression.arguments.length !== 2) throw new Error("temporal getOrElse requires a key and fallback");
+        const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols);
+        if (typeof key !== "string" || (receiver.key !== "never" && receiver.key !== key)) {
+          throw new Error("temporal getOrElse key type must match the Map");
+        }
+        const fallback = typeCheckTemporalExpression(expression.arguments[1]!, symbols);
+        if (receiver.value !== "never" && !temporalTypesCompatible(receiver.value, fallback)) {
+          throw new Error("temporal getOrElse fallback type must match the Map value");
+        }
+        return receiver.value === "never" ? fallback : receiver.value;
       }
       if (expression.arguments.length !== 2) throw new Error("temporal put requires a key and value");
       const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols), value = typeCheckTemporalExpression(expression.arguments[1]!, symbols);
@@ -264,7 +277,7 @@ function convert(node: ts.Expression): TemporalExpression {
   if (ts.isCallExpression(node)) {
     if (ts.isIdentifier(node.expression) && (node.expression.text === "Set" || node.expression.text === "Map")) return { kind: "call", name: node.expression.text, arguments: node.arguments.map(convert) };
     if (ts.isPropertyAccessExpression(node.expression)) {
-      if (!["contains", "union", "exclude", "forall", "exists", "size", "put", "remove", "get", "keys", "values"].includes(node.expression.name.text)) {
+      if (!["contains", "union", "exclude", "forall", "exists", "size", "put", "remove", "get", "getOrElse", "keys", "values"].includes(node.expression.name.text)) {
         throw new Error(`unsupported temporal method \`${node.expression.name.text}\``);
       }
       return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as Extract<TemporalExpression, { kind: "method" }>["name"], arguments: node.arguments.map(convert) };
@@ -351,6 +364,13 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
   }
   if (expression.kind === "method") {
     const receiver = emit(expression.receiver, backend, 100);
+    if (expression.name === "getOrElse") {
+      const key = emit(expression.arguments[0]!, backend);
+      const fallback = emit(expression.arguments[1]!, backend);
+      return backend === "quint"
+        ? `(if (${receiver}.keys().contains(${key})) ${receiver}.get(${key}) else ${fallback})`
+        : `(${receiver}.has(${key}) ? ${receiver}.get(${key}) : ${fallback})`;
+    }
     if (backend === "quint" && expression.name === "values") return `${receiver}.keys().map(_uneffect_key => ${receiver}.get(_uneffect_key))`;
     if (backend === "quint" && expression.name === "remove") return `${receiver}.keys().exclude(Set(${emit(expression.arguments[0]!, backend)})).mapBy(_uneffect_key => ${receiver}.get(_uneffect_key))`;
     if (backend === "quint") return `${receiver}.${expression.name}(${expression.arguments.map((item) => emit(item, backend)).join(", ")})`;

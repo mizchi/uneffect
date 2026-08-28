@@ -24,6 +24,15 @@ counterexample can falsify a claim even when the analyzer is incomplete, while
 a passing result supports only the explicitly emitted claim. Absence of a
 diagnostic is never promoted into an unstated guarantee.
 
+For finite temporal Maps, `getOrElse(key, fallback)` is the supported total
+lookup. Its result is the stored value exactly when the key belongs to the Map
+domain and the fallback otherwise. This claim is backend-parity tested for
+Quint, runtime replay/assertions, and bounded Z3 with literal key universes.
+Ordinary `get` is deliberately partial and requires a structurally matching
+`keys().contains(key)` conjunct. Dynamic lookup keys do not receive a guessed
+finite observation domain: bounded Z3 counterexample extraction reports
+`unknown`, and solver unavailability also remains `unknown` rather than safety.
+
 ## Check profiles
 
 ```sh

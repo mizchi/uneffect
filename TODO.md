@@ -69,11 +69,12 @@ one source-bound Boolean involution recurrence by parity. The next bounded
 child [#41](https://github.com/mizchi/uneffect/issues/41) is also complete and
 proves the complementary entry-read ordering for one triangular affine recurrence.
 
-There are 12 open implementation Issues after closing #23, #26, #27, #28, and
+There are 13 open implementation Issues after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41: one proof-boundary
-Issue in Phase 1, five specification-expressiveness Issues in Phase 2, five
+Issue in Phase 1, six specification-expressiveness Issues in Phase 2, five
 production-integration Issues in Phase 3, and one
-proof-consumer Issue in Phase 4. The 12 non-overlapping epic estimates total
+proof-consumer Issue in Phase 4. [#42](https://github.com/mizchi/uneffect/issues/42)
+is an active bounded child of #5, so the 12 non-overlapping epic estimates still total
 51–102 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
@@ -126,19 +127,20 @@ P2.22 completes #37's common ordered join IR and mixed sequence. P2.23 completes
 P2.24 completes #39's source-bound conditional-expression value join.
 P2.25 completes #40's source-bound Boolean involution recurrence.
 P2.26 completes #41's source-ordered entry-read triangular recurrence.
+P2.27 is the active #42 total finite-Map lookup slice for Node Lease models.
 The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
 
-There is no active implementation Issue at this cut. #20 and both bounded #18
-module-order seeds have completed their proof-boundary handoff; #41 completed
-the entry-read triangular recurrence handoff. Promote the next bounded child
-only after its Red/Green acceptance slice and estimate are recorded.
+[#42](https://github.com/mizchi/uneffect/issues/42) is the only active
+implementation Issue. Its Red tests and partial implementation are present in
+the worktree but are not reported as supported until the full acceptance slice
+lands on `main` and remote CI passes.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| — | — | Select and split the next bounded child from the phase-ordered open Issue index. |
+| 1 | [#42](https://github.com/mizchi/uneffect/issues/42) | Complete the bounded total finite Map lookup slice, including negative controls, benchmark, documentation, and remote CI. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -148,7 +150,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41 | 13–27 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 12 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
+| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes active child #42 within parent #5, plus broad host/React semantics, evidence research, and proof-gated optimization. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -175,8 +177,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41 handoffs:
-zero `active` and twelve queued epics. Every open Issue has exactly one
+As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41 handoffs:
+one active bounded child and twelve queued epics. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -187,6 +189,7 @@ label.
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
+| Active | 2 | [#42](https://github.com/mizchi/uneffect/issues/42) | Total finite Map lookup | Child of #5 | Finish backend parity, negative controls, benchmark, documentation, and CI for `getOrElse`; dynamic-key Z3 extraction remains `unknown` |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |

@@ -488,7 +488,12 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
     const receiver = z3TemporalType(expression.receiver, symbols);
     if (typeof receiver !== "string" && receiver.kind === "map") {
       if (expression.name === "put" || expression.name === "remove") return receiver;
-      if (expression.name === "get") return receiver.value === "never" ? "int" : receiver.value;
+      if (expression.name === "get" || expression.name === "getOrElse") {
+        if (receiver.value !== "never") return receiver.value;
+        return expression.name === "getOrElse"
+          ? z3TemporalType(expression.arguments[1]!, symbols)
+          : "int";
+      }
       if (expression.name === "keys") return { kind: "set", element: receiver.key };
       if (expression.name === "values") return { kind: "set", element: receiver.value };
     }
@@ -526,7 +531,8 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
         else complete = false;
       }
     }
-    if (expression.kind === "method" && (expression.name === "put" || expression.name === "remove" || expression.name === "get")) {
+    if (expression.kind === "method" && (expression.name === "put" || expression.name === "remove"
+      || expression.name === "get" || expression.name === "getOrElse")) {
       const key = literal(expression.arguments[0]!);
       if (typeof key === "number") integers.add(key);
       else if (typeof key === "boolean") booleans.add(key);
@@ -653,6 +659,13 @@ function temporalToSmt(
       if (expression.name === "get") {
         const key = temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName);
         return `(select (${names.values} ${receiver}) ${key})`;
+      }
+      if (expression.name === "getOrElse") {
+        const key = temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName);
+        const fallback = temporalToSmt(
+          expression.arguments[1]!, resolveName, symbols, mapType.value, boundName,
+        );
+        return `(ite (select (${names.domain} ${receiver}) ${key}) (select (${names.values} ${receiver}) ${key}) ${fallback})`;
       }
       if (expression.name === "keys") return `(${names.domain} ${receiver})`;
       if (expression.name === "values") {

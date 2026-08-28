@@ -560,6 +560,16 @@ load-bearing mismatch. Cycles, self-amplification, non-affine or
 path-dependent updates, repeated writes, exhausted budgets, modified
 summaries, and solver unavailability remain non-proofs.
 
+P2.27 adds `node-lease-total-map-lookup.ts`. The finite lease table stores a
+closed `{ epoch, valid }` record and uses `getOrElse` to fence a missing literal
+node without wrapping the application in a runtime effect handler. Quint and
+bounded Z3 both preserve the missing-key branch; changing the fallback to
+`valid: true` yields a one-step write-authority counterexample. Runtime
+assertion generation and imported TLC replay use the same total lookup
+meaning. A state-derived lookup key intentionally returns `unknown` from Z3
+counterexample extraction instead of treating the observed literal set as a
+complete dynamic domain.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model
