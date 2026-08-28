@@ -37,8 +37,9 @@ describe("piecewise affine recurrence through a CFG diamond", () => {
       kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "independent-proof-required",
-      conditionalJoin: {
+      conditionalJoins: [{
         kind: "loop-invariant-cfg-diamond",
+        order: 0,
         predicate: "sampled",
         rule: "predicate-correlated-affine-phi",
         predecessors: [
@@ -46,7 +47,7 @@ describe("piecewise affine recurrence through a CFG diamond", () => {
           { branch: "else", block: expect.stringMatching(/^identity:/) },
         ],
         join: expect.stringMatching(/^if-join:/),
-      },
+      }],
     }));
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
@@ -56,9 +57,9 @@ describe("piecewise affine recurrence through a CFG diamond", () => {
     expect(checked.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
       status: "verified",
-      conditionalJoin: expect.objectContaining({
+      conditionalJoins: [expect.objectContaining({
         rule: "predicate-correlated-affine-phi",
-      }),
+      })],
       recurrenceProof: expect.objectContaining({ status: "verified" }),
     }));
   });
@@ -77,7 +78,7 @@ describe("piecewise affine recurrence through a CFG diamond", () => {
       expect(analysis.obligations).not.toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",
         status: "verified",
-        conditionalJoin: expect.objectContaining({ rule: "predicate-correlated-affine-phi" }),
+        conditionalJoins: [expect.objectContaining({ rule: "predicate-correlated-affine-phi" })],
       }));
       expect(analysis.diagnostics.some((diagnostic) => diagnostic.modelName === "drain")).toBe(true);
     }

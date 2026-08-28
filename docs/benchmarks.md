@@ -1981,6 +1981,16 @@ must not be used as a stable regression threshold; both measurements establish
 that the migrated evidence path executes, not that arbitrary handler loops have
 this cost.
 
+The P2.20 focused benchmark composes two distinct loop-invariant Boolean
+diamonds before one shared recurrence back edge. A selected run measured
+0.2549 ms mean over 1,962 structural samples (3,923.48 operations per second,
+5.18% RME). Independent Z3 validation of the composed recurrence measured
+43.7179 ms mean over 12 samples (22.87 operations per second, 2.94% RME).
+These are development-host regression signals. They exclude reused or mutated
+predicates, ranking-dependent or nested choices, a third diamond, aliases, and
+irreducible CFGs; the measurements do not establish general path-sensitive
+analysis throughput.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

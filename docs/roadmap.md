@@ -129,10 +129,10 @@ explicit conservative boundaries rather than untracked support.
    [#32](https://github.com/mizchi/uneffect/issues/32) moves one direct affine
    recurrence onto a source-bound CFG back edge.
    [#33](https://github.com/mizchi/uneffect/issues/33) completes the first
-   loop-invariant CFG diamond recurrence. Its active next child
-   [#34](https://github.com/mizchi/uneffect/issues/34) unifies the earlier
-   handler-backed ranking loop with the shared scalar recurrence evidence.
-   Its active next child [#35](https://github.com/mizchi/uneffect/issues/35)
+   loop-invariant CFG diamond recurrence, and
+   [#34](https://github.com/mizchi/uneffect/issues/34) completes unification of
+   the earlier handler-backed ranking loop with the shared scalar recurrence
+   evidence. The active next child [#35](https://github.com/mizchi/uneffect/issues/35)
    composes two source-ordered loop-invariant CFG diamonds before one shared
    recurrence back edge.
    The first

@@ -3317,11 +3317,15 @@ describe("annotated refinement bindings", () => {
             kind: { const: "scalar-recurrence-fixed-point" },
             budget: { properties: { name: { const: "cfg-recurrence-iterations" } } },
             backEdge: { properties: { rule: { const: "source-bound-affine-transformer" } } },
-            conditionalJoin: { properties: {
-              kind: { const: "loop-invariant-cfg-diamond" },
-              rule: { const: "predicate-correlated-affine-phi" },
-              predecessors: { minItems: 2, maxItems: 2 },
-            } },
+            conditionalJoins: {
+              minItems: 1,
+              maxItems: 2,
+              items: false,
+              prefixItems: [
+                { properties: { order: { const: 0 } } },
+                { properties: { order: { const: 1 } } },
+              ],
+            },
             memberBudget: { properties: { limit: { enum: [2, 8] } } },
             handlerCompletion: { properties: {
               rule: { const: "source-bound-handler-predecessors" },

@@ -143,13 +143,14 @@ member plus the ranking obligation. Coupled ranking updates, self-amplifying
 members, counter-dependent path deltas, more than two members, nested/handler
 loops, budget exhaustion, and solver failure do not verify.
 
-Exactly one direct `if/else` inside that loop may select a piecewise affine
-member update when its predicate names an unchanged Boolean state. An omitted
-else is represented by a source-keyed identity predecessor. The artifact binds
-the predicate, ordered predecessor blocks, join block, and
-`predicate-correlated-affine-phi`; the recurrence step/summary still require
-Z3. Source correlation is structural rather than solver-derived. Mutated or
-ranking-dependent predicates, nested/multiple diamonds, and unmatched
+One or two sequential direct `if/else` statements inside that loop may select
+piecewise affine member updates when they use distinct unchanged Boolean
+states. An omitted else is represented by a source-keyed identity predecessor.
+The artifact binds each predicate, source-ordered predecessor blocks, join
+block, and `predicate-correlated-affine-phi` in `conditionalJoins`; the
+composed recurrence step/summary still require Z3. Source correlation and
+execution order are structural rather than solver-derived. Reused, mutated, or
+ranking-dependent predicates, nested or third diamonds, and unmatched
 piecewise expressions remain unsupported.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,

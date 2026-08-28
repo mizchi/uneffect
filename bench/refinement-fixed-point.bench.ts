@@ -63,6 +63,9 @@ const cfgAffineDrainSpec = parseSpec(cfgAffineDrainFile, cfgAffineDrainSource).t
 const cfgPiecewiseDrainFile = "examples/dogfood/cfg-piecewise-drain.ts";
 const cfgPiecewiseDrainSource = readFileSync(cfgPiecewiseDrainFile, "utf8");
 const cfgPiecewiseDrainSpec = parseSpec(cfgPiecewiseDrainFile, cfgPiecewiseDrainSource).temporal;
+const cfgTwoDiamondDrainFile = "examples/dogfood/cfg-two-diamond-drain.ts";
+const cfgTwoDiamondDrainSource = readFileSync(cfgTwoDiamondDrainFile, "utf8");
+const cfgTwoDiamondDrainSpec = parseSpec(cfgTwoDiamondDrainFile, cfgTwoDiamondDrainSource).temporal;
 const aliasFile = "examples/dogfood/local-alias-refinement.ts";
 const aliasSource = readFileSync(aliasFile, "utf8");
 const aliasSpec = parseSpec(aliasFile, aliasSource).temporal;
@@ -74,6 +77,42 @@ const aliasProgram = ts.createProgram([aliasFile], {
 });
 
 describe("refinement CFG fixed point", () => {
+  bench("compose two invariant CFG diamonds before one recurrence back edge", () => {
+    const result = analyzeRefinementActionBodies(
+      cfgTwoDiamondDrainFile,
+      cfgTwoDiamondDrainSource,
+      "cfgTwoDiamondDrain",
+      cfgTwoDiamondDrainSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.reason !== "independent-proof-required"
+      || obligation.conditionalJoins?.length !== 2
+      || obligation.conditionalJoins.some((join, order) => join.order !== order)) {
+      throw new Error("two-diamond CFG recurrence benchmark fixture did not converge provisionally");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove the composed two-diamond recurrence with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      cfgTwoDiamondDrainFile,
+      cfgTwoDiamondDrainSource,
+      "cfgTwoDiamondDrain",
+      cfgTwoDiamondDrainSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.status !== "verified"
+      || obligation.conditionalJoins?.length !== 2
+      || obligation.recurrenceProof?.status !== "verified") {
+      throw new Error("two-diamond CFG recurrence Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
   bench("join a piecewise affine recurrence through a CFG diamond", () => {
     const result = analyzeRefinementActionBodies(
       cfgPiecewiseDrainFile, cfgPiecewiseDrainSource, "cfgPiecewiseDrain", cfgPiecewiseDrainSpec,
@@ -83,7 +122,7 @@ describe("refinement CFG fixed point", () => {
       item.kind === "scalar-recurrence-fixed-point");
     if (result.diagnostics.length !== 0
       || obligation?.reason !== "independent-proof-required"
-      || obligation.conditionalJoin?.rule !== "predicate-correlated-affine-phi") {
+      || obligation.conditionalJoins?.[0]?.rule !== "predicate-correlated-affine-phi") {
       throw new Error("piecewise CFG recurrence benchmark fixture did not converge provisionally");
     }
   }, { time: 500, iterations: 20 });

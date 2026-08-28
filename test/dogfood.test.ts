@@ -26,6 +26,25 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves two sequential invariant CFG diamonds in source order", async () => {
+    const fileName = "examples/dogfood/cfg-two-diamond-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgTwoDiamondDrain", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      conditionalJoins: [
+        expect.objectContaining({ order: 0, predicate: "sampled" }),
+        expect.objectContaining({ order: 1, predicate: "audit" }),
+      ],
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+  });
+
   it("proves a loop-invariant piecewise recurrence through a CFG diamond", async () => {
     const fileName = "examples/dogfood/cfg-piecewise-drain.ts";
     const source = readFileSync(fileName, "utf8");
@@ -37,10 +56,9 @@ describe("Uneffect dogfood", () => {
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
       status: "verified",
-      conditionalJoin: expect.objectContaining({
-        predicate: "sampled",
-        rule: "predicate-correlated-affine-phi",
-      }),
+      conditionalJoins: [expect.objectContaining({
+        order: 0, predicate: "sampled", rule: "predicate-correlated-affine-phi",
+      })],
       recurrenceProof: expect.objectContaining({ status: "verified" }),
     }));
   });

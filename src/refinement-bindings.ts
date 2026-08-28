@@ -194,8 +194,9 @@ export interface RefinementScalarRecurrenceObligation {
     to: string;
     rule: "source-bound-affine-transformer";
   };
-  conditionalJoin?: {
+  conditionalJoins?: readonly {
     kind: "loop-invariant-cfg-diamond";
+    order: 0 | 1;
     predicate: string;
     rule: "predicate-correlated-affine-phi";
     predecessors: readonly [
@@ -203,7 +204,7 @@ export interface RefinementScalarRecurrenceObligation {
       { branch: "else"; block: string },
     ];
     join: string;
-  };
+  }[];
   memberBudget: {
     name: "cfg-recurrence-members";
     limit: 2 | 8;
@@ -2730,7 +2731,32 @@ function validateRefinementActionBodiesInSource(
         ): { value: PiecewiseAffineLoopDelta; leaves: number } | undefined => {
           const direct = affineDelta(name, expression);
           if (direct) return { value: { kind: "affine", value: direct }, leaves: 1 };
-          if (expression.kind !== "conditional") return undefined;
+          const liftConditional = (current: TemporalExpression): TemporalExpression | undefined => {
+            if (current.kind === "unary" && current.operand.kind === "conditional") return {
+              kind: "conditional",
+              condition: current.operand.condition,
+              whenTrue: { ...current, operand: current.operand.whenTrue },
+              whenFalse: { ...current, operand: current.operand.whenFalse },
+            };
+            if (current.kind !== "binary") return undefined;
+            if (current.left.kind === "conditional") return {
+              kind: "conditional",
+              condition: current.left.condition,
+              whenTrue: { ...current, left: current.left.whenTrue },
+              whenFalse: { ...current, left: current.left.whenFalse },
+            };
+            if (current.right.kind === "conditional") return {
+              kind: "conditional",
+              condition: current.right.condition,
+              whenTrue: { ...current, right: current.right.whenTrue },
+              whenFalse: { ...current, right: current.right.whenFalse },
+            };
+            return undefined;
+          };
+          if (expression.kind !== "conditional") {
+            const lifted = liftConditional(expression);
+            return lifted ? piecewiseDelta(name, lifted) : undefined;
+          }
           const conditionNames = scalarNames(expression.condition);
           if (!conditionNames || [...conditionNames].some((conditionName) => stateNames.has(conditionName)
             && !sameRefinementExpression(
@@ -4284,13 +4310,13 @@ function runHandlerBackedScalarRecurrenceFixedPoint(
 interface ScalarRecurrenceCandidate {
   readonly whileStatement: ts.WhileStatement;
   readonly backEdgeStatement: ts.Statement;
-  readonly conditional?: {
+  readonly conditionals: readonly {
     readonly statement: ts.IfStatement;
     readonly predicate: string;
     readonly thenBlock: string;
     readonly elseBlock: string;
     readonly join: string;
-  };
+  }[];
 }
 
 function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandidate[] {
@@ -4317,39 +4343,30 @@ function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandida
         ts.forEachChild(child, countLoopIf);
       };
       ts.forEachChild(node.statement, countLoopIf);
-      const directConditional = directIfs.length === 1 && totalIfCount === 1 ? directIfs[0] : undefined;
-      const nestedIfCount = directConditional ? (() => {
-        let count = 0;
-        const countIf = (child: ts.Node): void => {
-          if (ts.isFunctionLike(child)) return;
-          if (ts.isIfStatement(child)) count++;
-          ts.forEachChild(child, countIf);
-        };
-        ts.forEachChild(directConditional.thenStatement, countIf);
-        if (directConditional.elseStatement) ts.forEachChild(directConditional.elseStatement, countIf);
-        return count;
-      })() : 0;
-      const predicate = directConditional && nestedIfCount === 0
-        && ts.isPropertyAccessExpression(directConditional.expression)
-        ? directConditional.expression.name.text : undefined;
       const branchStatement = (statement: ts.Statement): ts.Statement | undefined =>
         ts.isBlock(statement) && statement.statements.length === 1
           ? statement.statements[0] : ts.isBlock(statement) ? undefined : statement;
-      const thenStatement = directConditional ? branchStatement(directConditional.thenStatement) : undefined;
-      const elseStatement = directConditional?.elseStatement
-        ? branchStatement(directConditional.elseStatement) : undefined;
+      const conditionals = directIfs.length >= 1 && directIfs.length <= 2
+        && totalIfCount === directIfs.length ? directIfs.flatMap((statement) => {
+          const predicate = ts.isPropertyAccessExpression(statement.expression)
+            ? statement.expression.name.text : undefined;
+          const thenStatement = branchStatement(statement.thenStatement);
+          const elseStatement = statement.elseStatement
+            ? branchStatement(statement.elseStatement) : undefined;
+          return predicate && thenStatement ? [{
+            statement,
+            predicate,
+            thenBlock: `statement:${thenStatement.getStart()}`,
+            elseBlock: elseStatement
+              ? `statement:${elseStatement.getStart()}`
+              : `identity:${statement.getStart()}`,
+            join: `if-join:${statement.getStart()}`,
+          }] : [];
+        }) : [];
       candidates.push({
         whileStatement: node,
         backEdgeStatement: node.statement.statements.at(-1)!,
-        ...(directConditional && predicate && thenStatement ? { conditional: {
-          statement: directConditional,
-          predicate,
-          thenBlock: `statement:${thenStatement.getStart()}`,
-          elseBlock: elseStatement
-            ? `statement:${elseStatement.getStart()}`
-            : `identity:${directConditional.getStart()}`,
-          join: `if-join:${directConditional.getStart()}`,
-        } } : {}),
+        conditionals: conditionals.length === directIfs.length ? conditionals : [],
       });
     }
     ts.forEachChild(node, visit);
@@ -4390,7 +4407,7 @@ function runScalarRecurrenceFixedPoint(
   readonly recurrence?: RefinementRankingRecurrenceEvidence;
   readonly members: readonly { state: string; role: "ranking" | "scalar" }[];
   readonly backEdge: RefinementScalarRecurrenceObligation["backEdge"];
-  readonly conditionalJoin?: RefinementScalarRecurrenceObligation["conditionalJoin"];
+  readonly conditionalJoins?: RefinementScalarRecurrenceObligation["conditionalJoins"];
   readonly unsupportedPiecewise: boolean;
 } {
   const header = `while-header:${candidate.whileStatement.getStart(source)}`;
@@ -4413,41 +4430,43 @@ function runScalarRecurrenceFixedPoint(
     if (expression.kind === "unary") return containsPredicateConditional(expression.operand, predicate);
     return false;
   };
-  const everyConditionalUsesPredicate = (expression: TemporalExpression, predicate: string): boolean => {
+  const everyConditionalUsesPredicates = (expression: TemporalExpression, predicates: ReadonlySet<string>): boolean => {
     if (expression.kind === "conditional") return expression.condition.kind === "name"
-      && expression.condition.name === predicate
-      && everyConditionalUsesPredicate(expression.whenTrue, predicate)
-      && everyConditionalUsesPredicate(expression.whenFalse, predicate);
-    if (expression.kind === "binary") return everyConditionalUsesPredicate(expression.left, predicate)
-      && everyConditionalUsesPredicate(expression.right, predicate);
-    if (expression.kind === "unary") return everyConditionalUsesPredicate(expression.operand, predicate);
+      && predicates.has(expression.condition.name)
+      && everyConditionalUsesPredicates(expression.whenTrue, predicates)
+      && everyConditionalUsesPredicates(expression.whenFalse, predicates);
+    if (expression.kind === "binary") return everyConditionalUsesPredicates(expression.left, predicates)
+      && everyConditionalUsesPredicates(expression.right, predicates);
+    if (expression.kind === "unary") return everyConditionalUsesPredicates(expression.operand, predicates);
     return true;
   };
   const piecewise = trace ? [...trace.iterationUpdates.values()].some(containsConditional) : false;
-  const predicateState = candidate.conditional
-    ? spec.states.find(({ name }) => name === candidate.conditional!.predicate) : undefined;
-  const predicateUnchanged = candidate.conditional && trace
-    ? formatRefinementExpression(trace.iterationUpdates.get(candidate.conditional.predicate)
-      ?? { kind: "name", name: candidate.conditional.predicate }) === candidate.conditional.predicate
-    : false;
-  const predicateCorrelated = candidate.conditional && trace
-    ? [...trace.iterationUpdates.values()].some((expression) =>
-      containsPredicateConditional(expression, candidate.conditional!.predicate))
-      && [...trace.iterationUpdates.values()].every((expression) =>
-        everyConditionalUsesPredicate(expression, candidate.conditional!.predicate))
-    : false;
-  const conditionalJoin = candidate.conditional && predicateState?.type === "bool"
-    && candidate.conditional.predicate !== trace?.counterName
-    && predicateUnchanged && predicateCorrelated ? {
-      kind: "loop-invariant-cfg-diamond" as const,
-      predicate: candidate.conditional.predicate,
-      rule: "predicate-correlated-affine-phi" as const,
-      predecessors: [
-        { branch: "then" as const, block: candidate.conditional.thenBlock },
-        { branch: "else" as const, block: candidate.conditional.elseBlock },
-      ] as const,
-      join: candidate.conditional.join,
-    } : undefined;
+  const predicates = new Set(candidate.conditionals.map(({ predicate }) => predicate));
+  const predicatesValid = candidate.conditionals.length >= 1
+    && candidate.conditionals.length <= 2
+    && predicates.size === candidate.conditionals.length
+    && candidate.conditionals.every(({ predicate }) =>
+      spec.states.some(({ name, type }) => name === predicate && type === "bool")
+      && predicate !== trace?.counterName
+      && !!trace
+      && formatRefinementExpression(trace.iterationUpdates.get(predicate)
+        ?? { kind: "name", name: predicate }) === predicate
+      && [...trace.iterationUpdates.values()].some((expression) =>
+        containsPredicateConditional(expression, predicate)))
+    && !!trace
+    && [...trace.iterationUpdates.values()].every((expression) =>
+      everyConditionalUsesPredicates(expression, predicates));
+  const conditionalJoins = predicatesValid ? candidate.conditionals.map((conditional, order) => ({
+    kind: "loop-invariant-cfg-diamond" as const,
+    order: order === 0 ? 0 as const : 1 as const,
+    predicate: conditional.predicate,
+    rule: "predicate-correlated-affine-phi" as const,
+    predecessors: [
+      { branch: "then" as const, block: conditional.thenBlock },
+      { branch: "else" as const, block: conditional.elseBlock },
+    ] as const,
+    join: conditional.join,
+  })) : undefined;
   const changed = candidateRecurrence
     ? spec.states.filter(({ name, type }) => type === "int"
       && candidateRecurrence.iteration[name] !== undefined
@@ -4513,8 +4532,8 @@ function runScalarRecurrenceFixedPoint(
     ...(retained ? { recurrence: { ...retained, stable: result.status === "converged" } } : {}),
     members,
     backEdge: { from: back, to: header, rule: "source-bound-affine-transformer" },
-    ...(conditionalJoin ? { conditionalJoin } : {}),
-    unsupportedPiecewise: piecewise && !conditionalJoin,
+    ...(conditionalJoins ? { conditionalJoins } : {}),
+    unsupportedPiecewise: piecewise && !conditionalJoins,
   };
 }
 
@@ -5028,7 +5047,7 @@ export function analyzeRefinementActionBodies(
         budget: { name: "cfg-recurrence-iterations", limit },
         backEdge: fixedPoint.backEdge,
         memberBudget: { name: "cfg-recurrence-members", limit: 2, observed: fixedPoint.members.length },
-        ...(fixedPoint.conditionalJoin ? { conditionalJoin: fixedPoint.conditionalJoin } : {}),
+        ...(fixedPoint.conditionalJoins ? { conditionalJoins: fixedPoint.conditionalJoins } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,

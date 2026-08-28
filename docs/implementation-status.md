@@ -439,14 +439,15 @@ same property is proved for arbitrary TypeScript.
   upgrades it only after every base/step check and the ranking check succeeds.
   Coupled, self-amplifying, path-dependent, over-cardinality, budget, and
   solver controls remain `unknown`; arbitrary loop CFGs are not claimed.
-- That obligation can bind one direct loop-invariant Boolean diamond. It
-  records ordered then/else source blocks (using an explicit identity block for
-  an omitted else), the common join, and `predicate-correlated-affine-phi`.
-  The predicate must be a declared Boolean unchanged by the iteration and must
-  occur in the emitted piecewise transformer. Z3 validates the resulting
-  recurrence equations; source correlation remains a bounded structural fact.
-  Mutated/counter-dependent predicates and nested or multiple choices do not
-  receive this evidence.
+- That obligation can bind one or two sequential direct loop-invariant Boolean
+  diamonds. Its ordered `conditionalJoins` evidence records then/else source
+  blocks (using an explicit identity block for an omitted else), each common
+  join, and `predicate-correlated-affine-phi`. Predicates must be distinct
+  declared Booleans, unchanged by the iteration, and each must occur in the
+  emitted composed piecewise transformer. Z3 validates the resulting
+  recurrence equations; source correlation and execution order remain bounded
+  structural facts. Reused, mutated, counter-dependent, nested, or third
+  choices do not receive this evidence.
 
 ## Async, resources, and event loops
 

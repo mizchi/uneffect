@@ -36,6 +36,10 @@ as the cost of a useful first release. Some Phase 2/3 research can run
 independently, but dependencies and the policy of keeping only one active
 bounded implementation Issue limit useful parallelism.
 
+#35 is a bounded child of #25. Its 1–2 week estimate is included in the #25
+epic range and is therefore not added again to the 51–102 engineer-week total.
+The same rule applies to future child Issues split from an existing epic.
+
 There are three useful planning numbers:
 
 - **Deferred Phase 1 breadth: 2–4 engineer-weeks.** #20 and both bounded #18

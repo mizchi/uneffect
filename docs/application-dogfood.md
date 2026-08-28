@@ -477,6 +477,18 @@ early-return, budget, modified-certificate, and unavailable-solver controls
 remain non-proofs. This migration removes duplicate proof machinery; it does
 not widen the accepted handler-loop syntax.
 
+P2.20 adds `cfg-two-diamond-drain.ts`. Two distinct unchanged Boolean policy
+flags, `sampled` and `audit`, select two affine updates in source order before
+one shared countdown back edge. The common scalar recurrence artifact carries
+an ordered `conditionalJoins` list with source-keyed then/identity predecessor
+blocks and join blocks for both choices. Structural analysis remains
+`unknown: independent-proof-required`; Z3 must validate the composed
+piecewise transformer, closed-form summary, every member step, and ranking
+obligation before verification. Reusing a predicate, mutating it, selecting on
+the ranking counter, nesting a choice, or adding a third diamond remains an
+explicit non-proof. Source ordering and predecessor identity are bounded
+structural evidence, not solver-proved JavaScript CFG equivalence.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model
