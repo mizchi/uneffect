@@ -2010,6 +2010,16 @@ regression signals. They exclude switch-then-if order, mutation/collision,
 ranking selectors, nested/excess joins or cases, aliases, and irreducible CFGs;
 they do not establish general reducible-CFG throughput.
 
+The P2.23 focused benchmark derives one source-ordered upper-triangular affine
+edge for the telemetry batch fixture. A selected run measured 0.1652 ms mean
+over 3,027 structural samples (6,052.22 operations per second, 2.50% RME).
+Independent Z3 validation measured 36.3728 ms mean over 14 samples (27.49
+operations per second, 1.86% RME). These are development-host regression
+signals. They cover exactly one constant-delta driver, one dependent, one
+ranking member, and one updated-driver read. They exclude multiple or cyclic
+edges, self-amplification, nonlinear/path-dependent updates, aliases, and
+general coupled-recurrence throughput.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

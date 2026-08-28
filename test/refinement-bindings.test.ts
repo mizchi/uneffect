@@ -3326,7 +3326,15 @@ describe("annotated refinement bindings", () => {
                 { allOf: expect.arrayContaining([{ properties: { order: { const: 1 } } }]) },
               ],
             },
-            memberBudget: { properties: { limit: { enum: [2, 8] } } },
+            memberBudget: { properties: { limit: { enum: [2, 3, 8] } } },
+            affineDependencies: {
+              properties: {
+                rule: { const: "source-ordered-upper-triangular-affine" },
+                order: { minItems: 2, maxItems: 2 },
+                updates: { minItems: 2, maxItems: 2 },
+                edges: { minItems: 1, maxItems: 1 },
+              },
+            },
             handlerCompletion: { properties: {
               rule: { const: "source-bound-handler-predecessors" },
             } },

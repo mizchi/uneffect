@@ -72,6 +72,12 @@ const cfgSwitchDrainSpec = parseSpec(cfgSwitchDrainFile, cfgSwitchDrainSource).t
 const cfgMixedJoinDrainFile = "examples/dogfood/cfg-mixed-join-drain.ts";
 const cfgMixedJoinDrainSource = readFileSync(cfgMixedJoinDrainFile, "utf8");
 const cfgMixedJoinDrainSpec = parseSpec(cfgMixedJoinDrainFile, cfgMixedJoinDrainSource).temporal;
+const cfgCoupledBatchFlushFile = "examples/dogfood/cfg-coupled-batch-flush.ts";
+const cfgCoupledBatchFlushSource = readFileSync(cfgCoupledBatchFlushFile, "utf8");
+const cfgCoupledBatchFlushSpec = parseSpec(
+  cfgCoupledBatchFlushFile,
+  cfgCoupledBatchFlushSource,
+).temporal;
 const aliasFile = "examples/dogfood/local-alias-refinement.ts";
 const aliasSource = readFileSync(aliasFile, "utf8");
 const aliasSpec = parseSpec(aliasFile, aliasSource).temporal;
@@ -83,6 +89,41 @@ const aliasProgram = ts.createProgram([aliasFile], {
 });
 
 describe("refinement CFG fixed point", () => {
+  bench("derive one source-ordered upper-triangular recurrence", () => {
+    const result = analyzeRefinementActionBodies(
+      cfgCoupledBatchFlushFile,
+      cfgCoupledBatchFlushSource,
+      "cfgCoupledBatchFlush",
+      cfgCoupledBatchFlushSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.reason !== "independent-proof-required"
+      || obligation.affineDependencies?.edges[0]?.read !== "updated") {
+      throw new Error("upper-triangular CFG recurrence benchmark fixture did not converge provisionally");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove the upper-triangular recurrence with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      cfgCoupledBatchFlushFile,
+      cfgCoupledBatchFlushSource,
+      "cfgCoupledBatchFlush",
+      cfgCoupledBatchFlushSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.status !== "verified"
+      || obligation.affineDependencies?.rule !== "source-ordered-upper-triangular-affine"
+      || obligation.recurrenceProof?.status !== "verified") {
+      throw new Error("upper-triangular CFG recurrence Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
   bench("compose one Boolean diamond then one finite switch before a recurrence back edge", () => {
     const result = analyzeRefinementActionBodies(
       cfgMixedJoinDrainFile,

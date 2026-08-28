@@ -458,6 +458,14 @@ same property is proved for arbitrary TypeScript.
   selectors, duplicate/non-literal/excess cases, and solver failure remain
   non-proofs. The earlier `conditionalJoins` and `finiteJoin` output fields were
   removed rather than retained as parallel compatibility paths.
+- One direct ranking loop may additionally carry exactly one source-ordered
+  upper-triangular affine scalar edge. The strict artifact records driver then
+  dependent order and whether the dependent reads the entry or updated driver.
+  The admitted application family has one constant-delta driver, one dependent,
+  and one ranking member; its arithmetic-series summary remains provisional
+  until independent Z3 base/step/ranking checks pass. Cycles, multiple edges,
+  self-amplification, path-dependent drivers, nonlinear terms, aliases, and
+  additional changed members remain unsupported.
 
 ## Async, resources, and event loops
 

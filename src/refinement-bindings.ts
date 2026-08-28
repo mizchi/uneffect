@@ -133,6 +133,17 @@ interface RefinementRankingRecurrenceTrace {
   readonly guard: TemporalExpression;
   readonly iterationUpdates: ReadonlyMap<string, TemporalExpression>;
   readonly summaryUpdates: ReadonlyMap<string, TemporalExpression>;
+  readonly affineDependencies?: RefinementAffineDependencies;
+}
+
+export interface RefinementAffineDependencies {
+  readonly rule: "source-ordered-upper-triangular-affine";
+  readonly order: readonly [string, string];
+  readonly updates: readonly [
+    { state: string; span: { start: number; end: number } },
+    { state: string; span: { start: number; end: number } },
+  ];
+  readonly edges: readonly [{ from: string; to: string; read: "entry" | "updated" }];
 }
 
 interface RefinementHandlerValueJoinTrace {
@@ -221,9 +232,10 @@ export interface RefinementScalarRecurrenceObligation {
     ];
     join: string;
   })[];
+  affineDependencies?: RefinementAffineDependencies;
   memberBudget: {
     name: "cfg-recurrence-members";
-    limit: 2 | 8;
+    limit: 2 | 3 | 8;
     observed: number;
   };
   handlerCompletion?: {
@@ -661,6 +673,9 @@ interface AffineStateExpression {
 interface AffineLoopDelta {
   constant: number;
   counterCoefficient: number;
+  driver?: string;
+  driverCoefficient?: number;
+  driverDelta?: number;
 }
 
 type PiecewiseAffineLoopDelta =
@@ -2694,11 +2709,77 @@ function validateRefinementActionBodiesInSource(
         const counterDelta = counterForm?.constant;
         if (!counterForm || counterForm.coefficients.size !== 1 || counterForm.coefficients.get(counterName) !== 1) return undefined;
         if (counterDelta === undefined || (descending ? counterDelta >= 0 : counterDelta <= 0)) return undefined;
+        const directMutationSpans = new Map<string, { start: number; end: number }[]>();
+        if (ts.isBlock(statement.statement)) for (const child of statement.statement.statements) {
+          if (!ts.isExpressionStatement(child)) continue;
+          const expression = child.expression;
+          const target = ts.isPostfixUnaryExpression(expression) || ts.isPrefixUnaryExpression(expression)
+            ? expression.operand
+            : ts.isBinaryExpression(expression)
+              && expression.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+              && expression.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+              ? expression.left : undefined;
+          if (!target || !ts.isPropertyAccessExpression(target) || !stateNames.has(target.name.text)) continue;
+          const spans = directMutationSpans.get(target.name.text) ?? [];
+          spans.push({ start: child.getStart(source), end: child.getEnd() });
+          directMutationSpans.set(target.name.text, spans);
+        }
+        interface UpperTriangularDependency {
+          readonly driver: string;
+          readonly dependent: string;
+          readonly coefficient: number;
+          readonly driverDelta: number;
+          readonly read: "entry" | "updated";
+          readonly driverSpan: { start: number; end: number };
+          readonly dependentSpan: { start: number; end: number };
+        }
+        const affineForms = new Map([...stateNames].map((name) => [
+          name,
+          decomposeAffineStateExpression(iterationUpdates.get(name) ?? { kind: "name", name }),
+        ]));
+        const dependencyCandidates = [...affineForms].flatMap(([dependent, form]) => {
+          if (!form || dependent === counterName || form.coefficients.get(dependent) !== 1) return [];
+          const foreign = [...form.coefficients].filter(([symbol, coefficient]) =>
+            coefficient !== 0 && symbol !== dependent && symbol !== counterName);
+          if (foreign.length !== 1) return [];
+          const [driver, coefficient] = foreign[0]!;
+          const driverForm = affineForms.get(driver);
+          if (!driverForm || driver === counterName || driverForm.coefficients.size !== 1
+            || driverForm.coefficients.get(driver) !== 1 || driverForm.constant === 0
+            || !Number.isSafeInteger(coefficient) || !Number.isSafeInteger(driverForm.constant)) return [];
+          const driverSpans = directMutationSpans.get(driver);
+          const dependentSpans = directMutationSpans.get(dependent);
+          if (driverSpans?.length !== 1 || dependentSpans?.length !== 1) return [];
+          const driverSpan = driverSpans[0]!;
+          const dependentSpan = dependentSpans[0]!;
+          return [{
+            driver, dependent, coefficient, driverDelta: driverForm.constant,
+            read: driverSpan.start < dependentSpan.start ? "updated" as const : "entry" as const,
+            driverSpan,
+            dependentSpan,
+          }];
+        });
+        const upperTriangular = dependencyCandidates.length === 1
+          ? dependencyCandidates[0] : undefined;
         const affineDelta = (name: string, expression: TemporalExpression): AffineLoopDelta | undefined => {
           const form = decomposeAffineStateExpression(expression);
           if (!form || form.coefficients.get(name) !== 1) return undefined;
-          if ([...form.coefficients].some(([symbol, coefficient]) => coefficient !== 0 && symbol !== name && symbol !== counterName)) return undefined;
-          return { constant: form.constant, counterCoefficient: form.coefficients.get(counterName) ?? 0 };
+          const foreign = [...form.coefficients].filter(([symbol, coefficient]) =>
+            coefficient !== 0 && symbol !== name && symbol !== counterName);
+          if (foreign.length === 0) return {
+            constant: form.constant,
+            counterCoefficient: form.coefficients.get(counterName) ?? 0,
+          };
+          if (!upperTriangular || name !== upperTriangular.dependent || foreign.length !== 1
+            || foreign[0]![0] !== upperTriangular.driver
+            || foreign[0]![1] !== upperTriangular.coefficient) return undefined;
+          return {
+            constant: form.constant,
+            counterCoefficient: form.coefficients.get(counterName) ?? 0,
+            driver: upperTriangular.driver,
+            driverCoefficient: upperTriangular.coefficient,
+            driverDelta: upperTriangular.driverDelta,
+          };
         };
         const scalarNames = (expression: TemporalExpression): ReadonlySet<string> | undefined => {
           if (expression.kind === "integer" || expression.kind === "boolean") return new Set();
@@ -2896,6 +2977,52 @@ function validateRefinementActionBodiesInSource(
           right: multiplyByInteger(triangularLoopIterations, counterDelta),
         };
         const totalFor = (delta: AffineLoopDelta): TemporalExpression => {
+          if (delta.driver && delta.driverCoefficient !== undefined && delta.driverDelta !== undefined) {
+            const entryDriver = entryValues.get(delta.driver);
+            if (!entryDriver) return zero;
+            const canonicalUnitCountdown = counterDelta === -1
+              && sameRefinementExpression(loopIterations, entryCounter);
+            if (canonicalUnitCountdown) {
+              const driverEntryTotal = multiplyByInteger({
+                kind: "binary", operator: "multiply", left: loopIterations, right: entryDriver,
+              }, delta.driverCoefficient);
+              const quadraticCoefficient = delta.driverCoefficient * delta.driverDelta;
+              const linearCoefficient = 2 * delta.constant - quadraticCoefficient;
+              const reducibleByTwo = quadraticCoefficient % 2 === 0 && linearCoefficient % 2 === 0;
+              const polynomialNumerator: TemporalExpression = {
+                kind: "binary", operator: "multiply", left: loopIterations,
+                right: addInteger(
+                  multiplyByInteger(loopIterations, reducibleByTwo
+                    ? quadraticCoefficient / 2 : quadraticCoefficient),
+                  reducibleByTwo ? linearCoefficient / 2 : linearCoefficient,
+                ),
+              };
+              const polynomial = reducibleByTwo ? polynomialNumerator : {
+                kind: "binary", operator: "divide",
+                left: polynomialNumerator, right: integerExpression(2),
+              } as TemporalExpression;
+              const counterTotal = multiplyByInteger(loopCounterSeries, delta.counterCoefficient);
+              return delta.counterCoefficient === 0
+                ? { kind: "binary", operator: "add", left: driverEntryTotal, right: polynomial }
+                : {
+                  kind: "binary", operator: "add",
+                  left: { kind: "binary", operator: "add", left: driverEntryTotal, right: polynomial },
+                  right: counterTotal,
+                };
+            }
+            const driverSeries: TemporalExpression = {
+              kind: "binary", operator: "add",
+              left: { kind: "binary", operator: "multiply", left: loopIterations, right: entryDriver },
+              right: multiplyByInteger(triangularLoopIterations, delta.driverDelta),
+            };
+            const terms: TemporalExpression[] = [];
+            if (delta.constant !== 0) terms.push(multiplyByInteger(loopIterations, delta.constant));
+            if (delta.counterCoefficient !== 0) terms.push(multiplyByInteger(loopCounterSeries, delta.counterCoefficient));
+            if (delta.driverCoefficient !== 0) terms.push(multiplyByInteger(driverSeries, delta.driverCoefficient));
+            return terms.length === 0 ? zero : terms.slice(1).reduce<TemporalExpression>((left, right) => ({
+              kind: "binary", operator: "add", left, right,
+            }), terms[0]!);
+          }
           const canonicalUnitCountdown = counterDelta === -1
             && sameRefinementExpression(loopIterations, entryCounter)
             && delta.counterCoefficient !== 0;
@@ -2998,6 +3125,21 @@ function validateRefinementActionBodiesInSource(
             name,
             updates.get(name) ?? entryValues.get(name) ?? { kind: "name", name },
           ])),
+          ...(upperTriangular ? {
+            affineDependencies: {
+              rule: "source-ordered-upper-triangular-affine" as const,
+              order: [upperTriangular.driver, upperTriangular.dependent] as const,
+              updates: [
+                { state: upperTriangular.driver, span: upperTriangular.driverSpan },
+                { state: upperTriangular.dependent, span: upperTriangular.dependentSpan },
+              ] as const,
+              edges: [{
+                from: upperTriangular.driver,
+                to: upperTriangular.dependent,
+                read: upperTriangular.read,
+              }] as const,
+            },
+          } : {}),
         });
         continue;
       }
@@ -4474,6 +4616,7 @@ function runScalarRecurrenceFixedPoint(
   readonly members: readonly { state: string; role: "ranking" | "scalar" }[];
   readonly backEdge: RefinementScalarRecurrenceObligation["backEdge"];
   readonly controlJoins?: RefinementScalarRecurrenceObligation["controlJoins"];
+  readonly affineDependencies?: RefinementAffineDependencies;
   readonly unsupportedPiecewise: boolean;
 } {
   const header = `while-header:${candidate.whileStatement.getStart(source)}`;
@@ -4620,7 +4763,8 @@ function runScalarRecurrenceFixedPoint(
       { id: header, transfer: (input) => [{ to: back, value: input }, { to: "loop-exit", value: input }] },
       { id: back, transfer: (input) => {
         const output = new Map(input.recurrences);
-        if (candidateRecurrence && members.length >= 1 && members.length <= 2) {
+        const memberLimit = trace?.affineDependencies ? 3 : 2;
+        if (candidateRecurrence && members.length >= 1 && members.length <= memberLimit) {
           output.set(recurrenceKey, candidateRecurrence);
         }
         return [{ to: header, value: value(input.reachable, output) }];
@@ -4637,6 +4781,7 @@ function runScalarRecurrenceFixedPoint(
     members,
     backEdge: { from: back, to: header, rule: "source-bound-affine-transformer" },
     ...(controlJoins ? { controlJoins } : {}),
+    ...(trace?.affineDependencies ? { affineDependencies: trace.affineDependencies } : {}),
     unsupportedPiecewise: piecewise && !controlJoins,
   };
 }
@@ -5127,7 +5272,8 @@ export function analyzeRefinementActionBodies(
       const fixedPoint = runScalarRecurrenceFixedPoint(candidate, source, spec, trace, limit);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
       const supported = Boolean(trace && fixedPoint.recurrence
-        && fixedPoint.members.length >= 1 && fixedPoint.members.length <= 2
+        && fixedPoint.members.length >= 1
+        && fixedPoint.members.length <= (fixedPoint.affineDependencies ? 3 : 2)
         && !fixedPoint.unsupportedPiecewise);
       obligations.push({
         kind: "scalar-recurrence-fixed-point",
@@ -5150,8 +5296,13 @@ export function analyzeRefinementActionBodies(
                 : "independent-proof-required",
         budget: { name: "cfg-recurrence-iterations", limit },
         backEdge: fixedPoint.backEdge,
-        memberBudget: { name: "cfg-recurrence-members", limit: 2, observed: fixedPoint.members.length },
+        memberBudget: {
+          name: "cfg-recurrence-members",
+          limit: fixedPoint.affineDependencies ? 3 : 2,
+          observed: fixedPoint.members.length,
+        },
         ...(fixedPoint.controlJoins ? { controlJoins: fixedPoint.controlJoins } : {}),
+        ...(fixedPoint.affineDependencies ? { affineDependencies: fixedPoint.affineDependencies } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,
@@ -5168,7 +5319,7 @@ export function analyzeRefinementActionBodies(
           exportName,
           message: !fixedPoint.converged
             ? `${exportName} exceeded the cfg-recurrence-iterations proof budget (${limit})`
-            : `${exportName} does not admit a bounded one- or two-member affine CFG recurrence`,
+            : `${exportName} does not admit a bounded affine CFG recurrence`,
         });
       }
     }

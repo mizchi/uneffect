@@ -135,12 +135,16 @@ remain unsupported.
 
 An ordinary direct `while` can additionally emit
 `scalar-recurrence-fixed-point` when the refinement evaluator derives one
-affine ranking recurrence over one or two integer members. A reusable worklist
+affine ranking recurrence over one or two integer members. One additional
+bounded family admits exactly three changed integers: the ranking member, one
+constant-delta driver, and one dependent with a single acyclic affine edge from
+that driver. A reusable worklist
 carries the transformer from a source-keyed `statement:*` block to its
 `while-header:*` back edge under `cfg-recurrence-iterations`. Structural
 stability is provisional; Z3 must independently prove base and step for every
 member plus the ranking obligation. Coupled ranking updates, self-amplifying
-members, counter-dependent path deltas, more than two members, nested/handler
+members, counter-dependent path deltas, more than two members outside that
+exact upper-triangular family, nested/handler
 loops, budget exhaustion, and solver failure do not verify.
 
 One or two sequential direct `if/else` statements inside that loop may select
@@ -165,6 +169,16 @@ ranking-counter or dynamic selectors, duplicate/non-literal/third cases,
 nested/excess control, and solver failure remain unsupported rather than being
 treated as an identity path. The old syntax-specific join fields are not
 emitted.
+
+The three-member family preserves sequential TypeScript update order in
+`affineDependencies`. Its single edge is marked `entry` or `updated`, and the
+closed form includes the resulting arithmetic-series term. The application
+fixture uses `batch++; sent += batch; pending--`, so `sent` reads the updated
+driver. Reversing those source statements produces a different summary and
+cannot verify against the same action. Multiple edges, cycles, driver
+self-amplification, counter-dependent or path-dependent drivers, nonlinear
+terms, aliases, and a fourth changed member remain explicit non-proofs. Z3
+still independently proves every base/step equation and the ranking obligation.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing

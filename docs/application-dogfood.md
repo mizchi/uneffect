@@ -512,6 +512,19 @@ selection, a third join or case, budget exhaustion, certificate refutation, and
 solver unavailability remain non-proofs. The earlier syntax-specific output
 fields were removed, but this does not admit arbitrary join counts or order.
 
+P2.23 adds `cfg-coupled-batch-flush.ts`, a telemetry batching loop whose
+`batch` counter increases before `sent` consumes it. The scalar recurrence
+artifact carries three changed integers and one
+`source-ordered-upper-triangular-affine` dependency from `batch` to `sent`,
+marked as an `updated` read. The derived summary adds `pending * batch` and the
+exact `pending * (pending + 1) / 2` arithmetic series. Structural convergence
+remains `unknown: independent-proof-required`; only Z3 base/step/ranking checks
+make it verified. Reversing the two updates produces the entry-read series and
+fails the declared action. Self-amplification, dependency cycles, nonlinear or
+path-dependent updates, extra members, exhausted budgets, modified
+certificates, and solver unavailability remain non-proofs. This is one bounded
+upper-triangular family, not general coupled recurrence solving.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

@@ -26,6 +26,42 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves source-ordered telemetry batch accumulation", async () => {
+    const fileName = "examples/dogfood/cfg-coupled-batch-flush.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgCoupledBatchFlush", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      affineDependencies: {
+        rule: "source-ordered-upper-triangular-affine",
+        order: ["batch", "sent"],
+        updates: [
+          { state: "batch", span: { start: expect.any(Number), end: expect.any(Number) } },
+          { state: "sent", span: { start: expect.any(Number), end: expect.any(Number) } },
+        ],
+        edges: [{ from: "batch", to: "sent", read: "updated" }],
+      },
+      memberBudget: { name: "cfg-recurrence-members", limit: 3, observed: 3 },
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+
+    const reversed = source.replace(
+      "runtime.batch++;\n    runtime.sent += runtime.batch;",
+      "runtime.sent += runtime.batch;\n    runtime.batch++;",
+    );
+    const broken = analyzeRefinementActionBodies(
+      fileName, reversed, "cfgCoupledBatchFlush", temporal,
+    );
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      modelName: "flush", code: "action-update-mismatch", target: "sent",
+    }));
+  });
+
   it("proves one ordered Boolean-then-switch recurrence sequence", async () => {
     const fileName = "examples/dogfood/cfg-mixed-join-drain.ts";
     const source = readFileSync(fileName, "utf8");
