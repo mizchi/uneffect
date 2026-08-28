@@ -3326,6 +3326,18 @@ describe("annotated refinement bindings", () => {
                 { properties: { order: { const: 1 } } },
               ],
             },
+            finiteJoin: {
+              properties: {
+                kind: { const: "loop-invariant-cfg-switch" },
+                rule: { const: "finite-literal-affine-phi" },
+                budget: { properties: {
+                  name: { const: "cfg-recurrence-switch-cases" },
+                  limit: { const: 2 },
+                  observed: { const: 2 },
+                } },
+                predecessors: { minItems: 3, maxItems: 3, items: false },
+              },
+            },
             memberBudget: { properties: { limit: { enum: [2, 8] } } },
             handlerCompletion: { properties: {
               rule: { const: "source-bound-handler-predecessors" },

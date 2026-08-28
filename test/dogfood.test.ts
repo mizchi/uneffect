@@ -26,6 +26,26 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a bounded finite switch recurrence fan-out", async () => {
+    const fileName = "examples/dogfood/cfg-switch-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgSwitchDrain", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      finiteJoin: expect.objectContaining({
+        discriminant: "mode",
+        rule: "finite-literal-affine-phi",
+        budget: { name: "cfg-recurrence-switch-cases", limit: 2, observed: 2 },
+      }),
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+  });
+
   it("proves two sequential invariant CFG diamonds in source order", async () => {
     const fileName = "examples/dogfood/cfg-two-diamond-drain.ts";
     const source = readFileSync(fileName, "utf8");

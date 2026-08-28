@@ -474,6 +474,54 @@
             }
           ]
         },
+        "finiteJoin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "discriminant", "rule", "budget", "predecessors", "join"],
+          "properties": {
+            "kind": { "const": "loop-invariant-cfg-switch" },
+            "discriminant": { "type": "string", "minLength": 1 },
+            "rule": { "const": "finite-literal-affine-phi" },
+            "budget": {
+              "type": "object", "additionalProperties": false,
+              "required": ["name", "limit", "observed"],
+              "properties": {
+                "name": { "const": "cfg-recurrence-switch-cases" },
+                "limit": { "const": 2 },
+                "observed": { "const": 2 }
+              }
+            },
+            "predecessors": {
+              "type": "array", "minItems": 3, "maxItems": 3, "items": false,
+              "prefixItems": [
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["case", "block"],
+                  "properties": {
+                    "case": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+                    "block": { "type": "string", "pattern": "^case:[0-9]+$" }
+                  }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["case", "block"],
+                  "properties": {
+                    "case": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+                    "block": { "type": "string", "pattern": "^case:[0-9]+$" }
+                  }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["case", "block"],
+                  "properties": {
+                    "case": { "const": "default" },
+                    "block": { "type": "string", "pattern": "^default:[0-9]+$" }
+                  }
+                }
+              ]
+            },
+            "join": { "type": "string", "pattern": "^switch-join:[0-9]+$" }
+          }
+        },
         "memberBudget": {
           "type": "object", "additionalProperties": false,
           "required": ["name", "limit", "observed"],

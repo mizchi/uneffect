@@ -489,6 +489,17 @@ the ranking counter, nesting a choice, or adding a third diamond remains an
 explicit non-proof. Source ordering and predecessor identity are bounded
 structural evidence, not solver-proved JavaScript CFG equivalence.
 
+P2.21 adds `cfg-switch-drain.ts`. An unchanged integer `mode` selects one of
+two non-negative numeric-literal case updates or an explicit default before the shared
+countdown back edge. `finiteJoin` retains the discriminant, all three
+source-keyed predecessors, the common join, and the named two-case budget.
+Structural analysis remains `unknown: independent-proof-required`; the dogfood
+case verifies only after Z3 proves the emitted recurrence and ranking
+obligations. Fallthrough, discriminant mutation, ranking-counter selection,
+duplicate or non-literal cases, nesting, and a third literal case are adjacent
+non-proofs. This is one bounded finite partition, not general JavaScript
+`switch` or arbitrary CFG fan-out.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

@@ -205,6 +205,22 @@ export interface RefinementScalarRecurrenceObligation {
     ];
     join: string;
   }[];
+  finiteJoin?: {
+    kind: "loop-invariant-cfg-switch";
+    discriminant: string;
+    rule: "finite-literal-affine-phi";
+    budget: {
+      name: "cfg-recurrence-switch-cases";
+      limit: 2;
+      observed: 2;
+    };
+    predecessors: readonly [
+      { case: string; block: string },
+      { case: string; block: string },
+      { case: "default"; block: string },
+    ];
+    join: string;
+  };
   memberBudget: {
     name: "cfg-recurrence-members";
     limit: 2 | 8;
@@ -4317,6 +4333,16 @@ interface ScalarRecurrenceCandidate {
     readonly elseBlock: string;
     readonly join: string;
   }[];
+  readonly finiteSwitch?: {
+    readonly statement: ts.SwitchStatement;
+    readonly discriminant: string;
+    readonly cases: readonly [
+      { readonly value: string; readonly block: string },
+      { readonly value: string; readonly block: string },
+    ];
+    readonly defaultBlock: string;
+    readonly join: string;
+  };
 }
 
 function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandidate[] {
@@ -4336,10 +4362,13 @@ function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandida
     if (ts.isWhileStatement(node) && ts.isBlock(node.statement)
       && node.statement.statements.length > 0 && !containsTry(node.statement)) {
       const directIfs = node.statement.statements.filter(ts.isIfStatement);
+      const directSwitches = node.statement.statements.filter(ts.isSwitchStatement);
       let totalIfCount = 0;
+      let totalSwitchCount = 0;
       const countLoopIf = (child: ts.Node): void => {
         if (ts.isFunctionLike(child)) return;
         if (ts.isIfStatement(child)) totalIfCount++;
+        if (ts.isSwitchStatement(child)) totalSwitchCount++;
         ts.forEachChild(child, countLoopIf);
       };
       ts.forEachChild(node.statement, countLoopIf);
@@ -4363,10 +4392,48 @@ function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandida
             join: `if-join:${statement.getStart()}`,
           }] : [];
         }) : [];
+      const finiteSwitch = directSwitches.length === 1 && totalSwitchCount === 1
+        && totalIfCount === 0 ? (() => {
+          const statement = directSwitches[0]!;
+          const discriminant = ts.isPropertyAccessExpression(statement.expression)
+            ? statement.expression.name.text : undefined;
+          const clauses = [...statement.caseBlock.clauses];
+          const cases = clauses.filter(ts.isCaseClause);
+          const defaults = clauses.filter(ts.isDefaultClause);
+          if (!discriminant || clauses.length !== 3 || cases.length !== 2 || defaults.length !== 1) return undefined;
+          const branchBlock = (clause: ts.CaseOrDefaultClause): string | undefined => {
+            const statements = [...clause.statements];
+            if (statements.length < 2) return undefined;
+            const terminal = statements.at(-1)!;
+            if (!ts.isBreakStatement(terminal) || terminal.label) return undefined;
+            if (statements.slice(0, -1).some((child) => ts.isBreakStatement(child)
+              || ts.isContinueStatement(child) || ts.isReturnStatement(child)
+              || ts.isThrowStatement(child))) return undefined;
+            return `${ts.isDefaultClause(clause) ? "default" : "case"}:${statements[0]!.getStart()}`;
+          };
+          const normalizedCases = cases.map((clause) => {
+            if (!ts.isNumericLiteral(clause.expression)) return undefined;
+            const numeric = Number(clause.expression.text);
+            const block = branchBlock(clause);
+            return Number.isSafeInteger(numeric) && block
+              ? { value: String(numeric), block } : undefined;
+          });
+          const defaultBlock = branchBlock(defaults[0]!);
+          if (!normalizedCases[0] || !normalizedCases[1] || !defaultBlock
+            || normalizedCases[0].value === normalizedCases[1].value) return undefined;
+          return {
+            statement,
+            discriminant,
+            cases: [normalizedCases[0], normalizedCases[1]] as const,
+            defaultBlock,
+            join: `switch-join:${statement.getStart()}`,
+          };
+        })() : undefined;
       candidates.push({
         whileStatement: node,
         backEdgeStatement: node.statement.statements.at(-1)!,
         conditionals: conditionals.length === directIfs.length ? conditionals : [],
+        ...(finiteSwitch ? { finiteSwitch } : {}),
       });
     }
     ts.forEachChild(node, visit);
@@ -4408,6 +4475,7 @@ function runScalarRecurrenceFixedPoint(
   readonly members: readonly { state: string; role: "ranking" | "scalar" }[];
   readonly backEdge: RefinementScalarRecurrenceObligation["backEdge"];
   readonly conditionalJoins?: RefinementScalarRecurrenceObligation["conditionalJoins"];
+  readonly finiteJoin?: RefinementScalarRecurrenceObligation["finiteJoin"];
   readonly unsupportedPiecewise: boolean;
 } {
   const header = `while-header:${candidate.whileStatement.getStart(source)}`;
@@ -4467,6 +4535,60 @@ function runScalarRecurrenceFixedPoint(
     ] as const,
     join: conditional.join,
   })) : undefined;
+  const switchCondition = (
+    expression: TemporalExpression,
+    discriminant: string,
+    values: ReadonlySet<string>,
+  ): string | undefined => {
+    if (expression.kind !== "binary" || expression.operator !== "eq"
+      || expression.left.kind !== "name" || expression.left.name !== discriminant
+      || expression.right.kind !== "integer" || !values.has(expression.right.value)) return undefined;
+    return expression.right.value;
+  };
+  const switchConditions = new Set<string>();
+  const everyConditionalUsesSwitch = (
+    expression: TemporalExpression,
+    discriminant: string,
+    values: ReadonlySet<string>,
+  ): boolean => {
+    if (expression.kind === "conditional") {
+      const value = switchCondition(expression.condition, discriminant, values);
+      if (!value) return false;
+      switchConditions.add(value);
+      return everyConditionalUsesSwitch(expression.whenTrue, discriminant, values)
+        && everyConditionalUsesSwitch(expression.whenFalse, discriminant, values);
+    }
+    if (expression.kind === "binary") return everyConditionalUsesSwitch(expression.left, discriminant, values)
+      && everyConditionalUsesSwitch(expression.right, discriminant, values);
+    if (expression.kind === "unary") return everyConditionalUsesSwitch(expression.operand, discriminant, values);
+    return true;
+  };
+  const finiteSwitch = candidate.finiteSwitch;
+  const switchValues = new Set(finiteSwitch?.cases.map(({ value }) => value) ?? []);
+  const switchValid = !!finiteSwitch && !!trace
+    && spec.states.some(({ name, type }) => name === finiteSwitch.discriminant && type === "int")
+    && finiteSwitch.discriminant !== trace.counterName
+    && formatRefinementExpression(trace.iterationUpdates.get(finiteSwitch.discriminant)
+      ?? { kind: "name", name: finiteSwitch.discriminant }) === finiteSwitch.discriminant
+    && [...trace.iterationUpdates.values()].every((expression) =>
+      everyConditionalUsesSwitch(expression, finiteSwitch.discriminant, switchValues))
+    && switchConditions.size === 2
+    && [...switchValues].every((value) => switchConditions.has(value));
+  const finiteJoin = switchValid && finiteSwitch ? (() => {
+    const [firstCase, secondCase] = finiteSwitch.cases;
+    return {
+      kind: "loop-invariant-cfg-switch" as const,
+      discriminant: finiteSwitch.discriminant,
+      rule: "finite-literal-affine-phi" as const,
+      budget: { name: "cfg-recurrence-switch-cases" as const, limit: 2 as const, observed: 2 as const },
+      predecessors: [
+        { case: firstCase.value, block: firstCase.block },
+        { case: secondCase.value, block: secondCase.block },
+        { case: "default" as const, block: finiteSwitch.defaultBlock },
+      ] as const,
+      join: finiteSwitch.join,
+    };
+  })() : undefined;
   const changed = candidateRecurrence
     ? spec.states.filter(({ name, type }) => type === "int"
       && candidateRecurrence.iteration[name] !== undefined
@@ -4533,7 +4655,8 @@ function runScalarRecurrenceFixedPoint(
     members,
     backEdge: { from: back, to: header, rule: "source-bound-affine-transformer" },
     ...(conditionalJoins ? { conditionalJoins } : {}),
-    unsupportedPiecewise: piecewise && !conditionalJoins,
+    ...(finiteJoin ? { finiteJoin } : {}),
+    unsupportedPiecewise: piecewise && !conditionalJoins && !finiteJoin,
   };
 }
 
@@ -5048,6 +5171,7 @@ export function analyzeRefinementActionBodies(
         backEdge: fixedPoint.backEdge,
         memberBudget: { name: "cfg-recurrence-members", limit: 2, observed: fixedPoint.members.length },
         ...(fixedPoint.conditionalJoins ? { conditionalJoins: fixedPoint.conditionalJoins } : {}),
+        ...(fixedPoint.finiteJoin ? { finiteJoin: fixedPoint.finiteJoin } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,

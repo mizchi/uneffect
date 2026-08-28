@@ -1991,6 +1991,16 @@ predicates, ranking-dependent or nested choices, a third diamond, aliases, and
 irreducible CFGs; the measurements do not establish general path-sensitive
 analysis throughput.
 
+The P2.21 focused benchmark composes one unchanged-integer finite `switch`
+with two non-negative numeric-literal cases and an explicit default before one shared
+recurrence back edge. A selected run measured 0.2555 ms mean over 1,957
+structural samples (3,913.51 operations per second, 2.00% RME). Independent Z3
+validation measured 35.0555 ms mean over 15 samples (28.53 operations per
+second, 1.97% RME). These are development-host regression signals. They
+exclude fallthrough, discriminant mutation, ranking-counter or dynamic
+selection, duplicate/non-literal/excess cases, nesting, aliases, and
+irreducible CFGs; they do not establish general switch-analysis throughput.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

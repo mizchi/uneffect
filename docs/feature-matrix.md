@@ -153,6 +153,15 @@ execution order are structural rather than solver-derived. Reused, mutated, or
 ranking-dependent predicates, nested or third diamonds, and unmatched
 piecewise expressions remain unsupported.
 
+Alternatively, one direct `switch` may select a piecewise affine update from
+exactly two distinct non-negative numeric-literal cases and one explicit default. The
+integer discriminant must be a declared loop-invariant state, every clause must
+end in an unlabeled `break`, and `finiteJoin` binds all three predecessor blocks
+plus the common join under `cfg-recurrence-switch-cases`. Z3 still proves the
+composed recurrence. Fallthrough, mutation, ranking-counter or dynamic
+discriminants, duplicate/non-literal/third cases, nested control, and solver
+failure remain unsupported rather than being treated as an identity path.
+
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing
 arms produce phi values; when one arm returns, only the normal predecessor's
