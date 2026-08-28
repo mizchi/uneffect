@@ -1907,3 +1907,11 @@ ms mean over 168 samples (334.80 operations per second). Repeated loop-body
 blocks are iteration-qualified; this timing does not cover dynamic iteration,
 loop transfers, resources, loops in catch/finally, nested try, or recurrence
 widening.
+
+The P2.11 whole-application benchmark requires verified `nestedRecovery`
+evidence and `handler-nesting-depth: { limit: 2, observed: 2 }`. It measured
+10.3053 ms mean over 49 samples (97.04 operations per second). In the same run,
+the other whole-application handler cases measured roughly 10–12 ms, so this is
+not evidence of a P2.11-specific regression. The timing excludes multiple or
+deeper nested regions, inner finally, resources, loop interaction, and
+path-sensitive value proof independent of the action validator.

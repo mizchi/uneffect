@@ -156,4 +156,18 @@ describe("refinement CFG fixed point", () => {
       throw new Error("finite handler-local loop benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("analyze one bounded nested try/catch", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "nestedRecovery");
+    if (result.diagnostics.some((item) => item.modelName === "nestedRecovery")
+      || obligation?.status !== "verified"
+      || obligation.handlerNestingBudget?.observed !== 2) {
+      throw new Error("bounded nested handler CFG benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

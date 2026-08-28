@@ -73,8 +73,11 @@ proof. P2.9 admits exactly two application-backed sibling `if` roots under a
 named root budget; excess and mixed roots remain explicit non-proofs. The next
 #23 P2.10 unrolls one literal finite handler-local `for...of` family under a
 named iteration budget without admitting break/continue, resources, dynamic
-iteration, or recurrence widening. The next slice composes one bounded nested
-try/catch family while deeper or irreducible control stays unsupported.
+iteration, or recurrence widening. P2.11 composes one application-backed
+depth-two nested try/catch family under a named nesting budget. The next slice
+replaces its single-region block names with source-keyed region identities and
+composes two sibling nested handlers without admitting deeper or irreducible
+control.
 The 49–96 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
@@ -86,7 +89,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Compose one bounded application-backed nested try/catch family and retain deeper/dynamic control as non-proofs. |
+| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Give nested handler regions source-keyed identities, compose two bounded sibling regions, and retain excess/deeper control as non-proofs. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -239,6 +242,10 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   `handler-loop-iterations: { limit: 4, observed }` evidence retain normal and
   throw routing. Dynamic/empty/over-budget iterables, loop transfers, nested or
   catch/finally loops, and `using`/`await using` remain explicit non-proofs.
+- [x] Compose one depth-two nested try/catch region through the shared CFG and
+  emit `handler-nesting-depth: { limit: 2, observed }`. Inner catch rethrow
+  reaches the outer catch; depth three, inner finally, return/break/continue,
+  loops, resources, and catch/finally-local nested handlers remain non-proofs.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

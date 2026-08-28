@@ -91,11 +91,12 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.8 ranking-handler CFG reuse | #23 | Completed | under 1 week actual | Canonical ranking-loop evidence traverses the shared handler topology and preserves recurrence/Z3 validation. |
 | P2.9 bounded sibling-handler joins | #23 | Completed | under 1 week actual | Exactly two sibling `if` roots retain both throw paths under a named root budget; excess/mixed roots fail closed. |
 | P2.10 finite handler-local loop | #23 | Completed | under 1 week actual | A one-to-four literal `for...of` is unrolled with iteration-keyed blocks; dynamic/resource/transfer cases fail closed. |
+| P2.11 bounded nested handler | #23 | Completed | under 1 week actual | One depth-two nested try/catch routes inner recovery/rethrow under a named nesting budget; deeper/resource/looped cases fail closed. |
 | P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
 
-P1.2a through P1.4 and P2.1 through P2.10 are complete. P2.11 is active next
-because one nested handler composition remains before the first CFG-sensitive
-alias slice. P2.11 and P3.1 are planning-sized slices, not a claim
+P1.2a through P1.4 and P2.1 through P2.11 are complete. P2.12 is active next
+because the first nested handler still uses single-region block names and cannot
+compose two sibling nested regions. P2.12 and P3.1 are planning-sized slices, not a claim
 that their owning epics are otherwise complete.
 
 P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
@@ -126,6 +127,9 @@ P2.9 admits two sibling top-level `if` roots and records the fixed limit and
 observed count. Three roots and mixed sibling shapes remain explicit non-proofs.
 P2.10 unrolls a one-to-four literal handler-local `for...of`; iteration-keyed
 blocks preserve each throw path while dynamic and resource-bearing loops fail closed.
+P2.11 composes one depth-two nested try/catch; handled inner throws reach its
+join, inner-catch rethrows reach the outer catch, and depth three fails closed
+under the named `handler-nesting-depth` budget.
 
 ## Dependency-critical order
 
@@ -153,7 +157,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #23 general refinement CFG | M | 1–2 weeks total remaining | One bounded nested try/catch composition | Deeper nesting, arbitrary joins, recurrence widening, and irreducible control |
+| 1 | #23 general refinement CFG | M | 1–2 weeks total remaining | Source-keyed nested region identities and two sibling nested handlers | General value joins, recurrence widening, and irreducible control |
 | 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -207,23 +211,25 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.8 ranking-handler CFG reuse | under 1 engineer-week actual | Shared handler blocks converge in 42 evaluations; structural analysis measured 0.3958 ms and Z3 56.8153 ms. |
 | Completed sub-slice | P2.9 bounded sibling-handler joins | under 1 engineer-week actual | Two application sibling `if` roots verify; whole-fixture analysis measured 7.6596 ms and an observed third root remains unsupported. |
 | Completed sub-slice | P2.10 finite handler-local loop | under 1 engineer-week actual | Two literal iterations verify with iteration-qualified blocks; whole-fixture analysis measured 2.9868 ms and five iterations remain unsupported. |
-| Current slice | P2.11 bounded nested handler | 1 engineer-week | Compose one application-backed nested try/catch family and retain deeper or looped nesting as non-proofs. |
+| Completed sub-slice | P2.11 bounded nested handler | under 1 engineer-week actual | Inner recovery and rethrow compose at depth two; whole-fixture analysis measured 10.3053 ms in a same-run 10–12 ms application baseline. |
+| Current slice | P2.12 source-keyed nested regions | 1 engineer-week | Replace singleton nested block IDs, compose two sibling nested handlers, and retain a third/deeper region as a budgeted non-proof. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
 rather than silently absorbed.
 
-The #23 issue-level estimate remains 1–2 weeks after completing P2.10. The shared
+The #23 issue-level estimate remains 1–2 weeks after completing P2.11. The shared
 builder covers one nested control root plus surrounding supported statements.
 One exact caught-path value restriction, abrupt finally override, and a
-two-sibling root budget and one finite handler-local loop are supported, and the
-canonical ranking loop reuses the topology; nested handlers, arbitrary joins,
-and general recurrence widening remain the
-dominant uncertainty.
+two-sibling root budget, one finite handler-local loop, and one depth-two nested
+handler are supported, and the canonical ranking loop reuses the topology.
+Multiple nested regions, general value joins, and recurrence widening remain
+the dominant uncertainty. P2.11 exposed singleton nested block IDs, so P2.12
+must make region identity source-keyed before widening the admitted family.
 
 ## Backlog interpretation
 
-- **Next implementable result:** P2.11 in #23, estimated at 1 engineer-week.
+- **Next implementable result:** P2.12 in #23, estimated at 1 engineer-week.
 - **Next foundation checkpoint:** finish and re-estimate #23, then activate a
   bounded #24 alias slice and a bounded #8 native-fact slice. Those first
   executable slices total 3–6 engineer-weeks; completing all three epics is

@@ -185,10 +185,10 @@ export interface RefinementHandlerJoinObligation {
   exportName: string;
   trySpan: { start: number; end: number };
   controlSpan: { start: number; end: number };
-  controlShape: "if" | "switch" | "for-of";
+  controlShape: "if" | "switch" | "for-of" | "try";
   controlRoots: readonly {
     span: { start: number; end: number };
-    shape: "if" | "switch" | "for-of";
+    shape: "if" | "switch" | "for-of" | "try";
   }[];
   controlRootBudget: {
     name: "handler-control-roots";
@@ -198,6 +198,11 @@ export interface RefinementHandlerJoinObligation {
   finiteLoopBudget?: {
     name: "handler-loop-iterations";
     limit: 4;
+    observed: number;
+  };
+  handlerNestingBudget?: {
+    name: "handler-nesting-depth";
+    limit: 2;
     observed: number;
   };
   controlRegion: "try" | "finally";
@@ -4119,7 +4124,8 @@ export function analyzeRefinementActionBodies(
         controlRoots: candidate.controlStatements.map((statement) => ({
           span: { start: statement.getStart(source), end: statement.getEnd() },
           shape: ts.isIfStatement(statement) ? "if" as const
-            : ts.isSwitchStatement(statement) ? "switch" as const : "for-of" as const,
+            : ts.isSwitchStatement(statement) ? "switch" as const
+            : ts.isForOfStatement(statement) ? "for-of" as const : "try" as const,
         })),
         controlRootBudget: {
           name: "handler-control-roots",
@@ -4130,6 +4136,11 @@ export function analyzeRefinementActionBodies(
           name: "handler-loop-iterations" as const,
           limit: 4 as const,
           observed: candidate.finiteLoop.iterations,
+        } } : {}),
+        ...(candidate.handlerNesting !== undefined ? { handlerNestingBudget: {
+          name: "handler-nesting-depth" as const,
+          limit: 2 as const,
+          observed: candidate.handlerNesting,
         } } : {}),
         controlRegion: candidate.controlRegion,
         status: verified ? "verified" : "unknown",

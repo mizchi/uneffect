@@ -115,8 +115,10 @@ explicit conservative boundaries rather than untracked support.
    root budget while excess or mixed roots fail closed. One handler-local
    `for...of` over one to four literal values now unrolls into
    iteration-qualified blocks; dynamic, resource-bearing, and transfer-heavy
-   loops fail closed. The next bounded slice composes one nested try/catch
-   family; arbitrary joins and recurrence widening remain fail-closed.
+   loops fail closed. One depth-two nested try/catch now routes inner recovery
+   and rethrow through the outer handler under a named nesting budget. The next
+   bounded slice gives nested regions source-keyed identities and composes two
+   sibling regions; arbitrary joins and recurrence widening remain fail-closed.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
    temporal reasoning.

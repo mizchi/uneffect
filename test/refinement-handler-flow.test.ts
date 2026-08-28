@@ -175,6 +175,38 @@ describe("refinement handler flow", () => {
       .toHaveLength(2);
   });
 
+  it("lowers one nested try/catch under an explicit nesting budget", () => {
+    const [candidate] = findHandlerJoinCandidates(bodyOf(`
+      function recover(total: number, armed: boolean, invalid: boolean) {
+        try {
+          try {
+            if (armed) throw 1
+            total += 1
+          } catch {
+            total += 2
+            if (invalid) throw 2
+          }
+          total += 4
+        } catch { total += 8 }
+      }
+    `));
+    expect(candidate).toMatchObject({
+      lowering: "supported",
+      controlShape: "try",
+      handlerNesting: 2,
+    });
+    expect(runHandlerJoinFixedPoint(candidate!, 64)).toMatchObject({
+      converged: true,
+      incoming: ["normal", "throw"],
+      outgoing: ["normal"],
+      blockCompletions: expect.objectContaining({
+        "nested-catch": ["throw"],
+        "try-completion": ["normal", "throw"],
+        exit: ["normal"],
+      }),
+    });
+  });
+
   it("retains attempted-family lowering failures as unsupported", () => {
     for (const source of [
       `function route(kind: number) { try { switch (kind) { case 0: break } } catch {} finally {} }`,
@@ -189,6 +221,12 @@ describe("refinement handler flow", () => {
       `function route(kind: number) { try { kind += 1 } finally { for (const value of [1, 2] as const) { if (value) throw value } } }`,
       `function route(kind: number) { try { if (kind) { for (const value of [1, 2] as const) kind += value } } catch {} }`,
       `function route(kind: number) { try { if (kind) return } finally { while (kind) kind -= 1 } }`,
+      `function route(kind: number) { try { try { try { if (kind) throw kind } catch {} } catch {} } catch {} }`,
+      `function route(kind: number) { try { try { if (kind) throw kind } catch {} finally {} } catch {} }`,
+      `function route(kind: number) { try { try { if (kind) return } catch {} } catch {} }`,
+      `function route(kind: number) { try { try { while (kind) kind -= 1 } catch {} } catch {} }`,
+      `function route(kind: number) { try { try { using resource = acquire(); if (kind) throw kind } catch {} } catch {} }`,
+      `function route(kind: number) { try { if (kind) throw kind } catch { try { throw kind } catch {} } }`,
     ]) {
       const [candidate] = findHandlerJoinCandidates(bodyOf(source));
       expect(candidate?.lowering).toBe("unsupported");
@@ -209,7 +247,6 @@ describe("refinement handler flow", () => {
     for (const source of [
       `function route(kind: number) { try { while (kind) kind -= 1 } catch {} }`,
       `function route(kind: number) { try { label: if (kind) break label } catch {} }`,
-      `function route(kind: number) { try { try { throw kind } finally {} } catch {} }`,
     ]) expect(findHandlerJoinCandidates(bodyOf(source))).toEqual([]);
   });
 });

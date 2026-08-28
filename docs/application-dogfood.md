@@ -381,6 +381,17 @@ five literals records `observed: 5` and remains unsupported. The action updates
 only recovery/finalization counters, so the existing outcome-conservation
 invariant remains load-bearing.
 
+P2.11 adds `nestedTelemetryRecovery`. Its inner handler either completes
+normally, consumes the first rejection, or rethrows a second rejection into the
+outer catch. The artifact records `handler-nesting-depth: { limit: 2, observed:
+2 }` and retains both normal and throw at the outer try completion. Injecting a
+third handler depth records `observed: 3` and remains
+`unknown: unsupported-control-flow`; the model action and conservation
+invariant were not weakened to obtain Green. The first fixture incremented
+`dropped` in the outer catch without incrementing `attempted`; repository-wide
+dogfood detected the broken conservation proof, so the catch was changed to
+record a second `finalized` step instead.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as

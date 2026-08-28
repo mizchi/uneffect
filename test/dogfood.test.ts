@@ -210,6 +210,43 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("composes one bounded nested telemetry handler", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "nestedRecovery",
+      controlShape: "try",
+      status: "verified",
+      handlerNestingBudget: { name: "handler-nesting-depth", limit: 2, observed: 2 },
+      completionJoin: expect.objectContaining({
+        incoming: ["normal", "throw"],
+        outgoing: ["normal"],
+        caughtThrow: true,
+      }),
+      fixedPoint: expect.objectContaining({
+        converged: true,
+        blockCompletions: expect.objectContaining({
+          "nested-catch": ["throw"],
+          exit: ["normal"],
+        }),
+      }),
+    }));
+
+    const tooDeep = source.replace(
+      'if (runtime.auditArmed) throw "telemetry recovery required";',
+      'try { if (runtime.auditArmed) throw "telemetry recovery required"; } catch { throw "retry failed"; }',
+    );
+    const unsupported = analyzeRefinementActionBodies(fileName, tooDeep, "telemetryRouting", temporal);
+    expect(unsupported.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "nestedRecovery",
+      status: "unknown",
+      reason: "unsupported-control-flow",
+      handlerNestingBudget: { name: "handler-nesting-depth", limit: 2, observed: 3 },
+    }));
+  });
+
   it("correlates the caught path predicate with its value join", () => {
     const { fileName, source, temporal } = telemetryRoutingFixture();
     const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);

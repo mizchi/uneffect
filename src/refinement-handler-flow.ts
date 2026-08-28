@@ -3,10 +3,12 @@ import { solveBasicBlockFixedPoint } from "./refinement-flow.js";
 
 export type HandlerCompletionKind = "normal" | "return" | "throw" | "break" | "continue";
 
-type ControlRoot = ts.IfStatement | ts.SwitchStatement | ts.ForOfStatement;
+type ControlRoot = ts.IfStatement | ts.SwitchStatement | ts.ForOfStatement | ts.TryStatement;
 
-const controlShape = (statement: ControlRoot): "if" | "switch" | "for-of" =>
-  ts.isIfStatement(statement) ? "if" : ts.isSwitchStatement(statement) ? "switch" : "for-of";
+const controlShape = (statement: ControlRoot): "if" | "switch" | "for-of" | "try" =>
+  ts.isIfStatement(statement) ? "if"
+    : ts.isSwitchStatement(statement) ? "switch"
+    : ts.isForOfStatement(statement) ? "for-of" : "try";
 
 const literalForOfIterations = (statement: ts.ForOfStatement): number | undefined => {
   if (statement.awaitModifier) return undefined;
@@ -43,7 +45,7 @@ export interface HandlerJoinCandidate {
   readonly tryStatement: ts.TryStatement;
   readonly controlStatement: ControlRoot;
   readonly controlStatements: readonly ControlRoot[];
-  readonly controlShape: "if" | "switch" | "for-of";
+  readonly controlShape: "if" | "switch" | "for-of" | "try";
   readonly controlRegion: "try" | "finally";
   readonly mandatoryFinally: boolean;
   readonly catchesThrow: boolean;
@@ -54,6 +56,7 @@ export interface HandlerJoinCandidate {
     readonly kind: "for-of";
     readonly iterations: number;
   };
+  readonly handlerNesting?: number;
 }
 
 export interface HandlerJoinFixedPoint {
@@ -132,7 +135,36 @@ class HandlerCfgBuilder {
       }
       return this.add(blockId("for-of", statement, context), [{ to: entry }]);
     }
-    if (ts.isContinueStatement(statement) || ts.isTryStatement(statement)
+    if (ts.isTryStatement(statement)) {
+      if (!statement.catchClause || statement.finallyBlock) return undefined;
+      const hasUnsupportedAbrupt = (root: ts.Node): boolean => {
+        let unsupported = false;
+        const visit = (node: ts.Node): void => {
+          if (ts.isFunctionLike(node)) return;
+          if (ts.isReturnStatement(node) || ts.isBreakStatement(node) || ts.isContinueStatement(node)) {
+            unsupported = true;
+            return;
+          }
+          ts.forEachChild(node, visit);
+        };
+        ts.forEachChild(root, visit);
+        return unsupported;
+      };
+      if (hasUnsupportedAbrupt(statement)) return undefined;
+      this.add("nested-try-completion", []);
+      this.add("nested-catch-completion", []);
+      this.add("nested-handler-join", [{ to: next }]);
+      const nestedTryEntry = this.lowerStatements(
+        statement.tryBlock.statements, "nested-try-completion", "nested-try-completion", undefined, context,
+      );
+      const nestedCatchBody = this.lowerStatements(
+        statement.catchClause.block.statements, "nested-catch-completion", completionTarget, undefined, context,
+      );
+      if (!nestedTryEntry || !nestedCatchBody) return undefined;
+      this.add("nested-catch", [{ to: nestedCatchBody, completion: "normal" }]);
+      return this.add(blockId("try", statement, context), [{ to: nestedTryEntry }]);
+    }
+    if (ts.isContinueStatement(statement)
       || ts.isIterationStatement(statement, false) || ts.isLabeledStatement(statement)) return undefined;
     if (ts.isIfStatement(statement)) {
       const thenEntry = this.lowerStatement(statement.thenStatement, next, completionTarget, breakTarget, context);
@@ -202,13 +234,39 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     ts.forEachChild(root, visit);
     return iterations;
   };
+  const handlerNestingDepth = (root: ts.TryStatement): number => {
+    let maximum = 1;
+    const visit = (node: ts.Node, depth: number): void => {
+      if (ts.isFunctionLike(node)) return;
+      const nextDepth = ts.isTryStatement(node) ? depth + 1 : depth;
+      if (nextDepth > maximum) maximum = nextDepth;
+      ts.forEachChild(node, (child) => visit(child, nextDepth));
+    };
+    ts.forEachChild(root, (child) => visit(child, 1));
+    return maximum;
+  };
+  const containsTry = (root: ts.Node): boolean => {
+    let found = false;
+    const visit = (node: ts.Node): void => {
+      if (ts.isFunctionLike(node)) return;
+      if (ts.isTryStatement(node)) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(root, visit);
+    return found;
+  };
   for (const statement of body.statements) {
     if (!ts.isTryStatement(statement) || (!statement.catchClause && !statement.finallyBlock)) continue;
     const tryControlStatements = statement.tryBlock.statements.filter(
-      (child): child is ControlRoot => ts.isIfStatement(child) || ts.isSwitchStatement(child) || ts.isForOfStatement(child),
+      (child): child is ControlRoot => ts.isIfStatement(child) || ts.isSwitchStatement(child)
+        || ts.isForOfStatement(child) || ts.isTryStatement(child),
     );
     const finallyControlStatements = statement.finallyBlock?.statements.filter(
-      (child): child is ControlRoot => ts.isIfStatement(child) || ts.isSwitchStatement(child) || ts.isForOfStatement(child),
+      (child): child is ControlRoot => ts.isIfStatement(child) || ts.isSwitchStatement(child)
+        || ts.isForOfStatement(child) || ts.isTryStatement(child),
     ) ?? [];
     const controlRegion = tryControlStatements.length > 0 ? "try" as const : "finally" as const;
     const selectedControls = controlRegion === "try" ? tryControlStatements : finallyControlStatements;
@@ -222,7 +280,16 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     const selectedLoopSupported = iterations.length === 0
       || (controlRegion === "try" && ts.isForOfStatement(controlStatement)
         && iterations.length === 1 && iterations[0] === controlStatement);
-    const selectedRootCountSupported = selectedLoopSupported && (selectedControls.length === 1
+    const nestingDepth = handlerNestingDepth(statement);
+    const handlerPlacementSupported = (!statement.catchClause || !containsTry(statement.catchClause.block))
+      && (!statement.finallyBlock || !containsTry(statement.finallyBlock));
+    const selectedNestedHandlerSupported = !ts.isTryStatement(controlStatement)
+      || (controlRegion === "try" && selectedControls.length === 1 && nestingDepth === 2
+        && Boolean(controlStatement.catchClause) && !controlStatement.finallyBlock
+        && handlerPlacementSupported);
+    const selectedRootCountSupported = selectedLoopSupported && handlerPlacementSupported
+      && selectedNestedHandlerSupported
+      && (selectedControls.length === 1
       || (selectedControls.length === 2 && selectedControls.every(ts.isIfStatement)));
 
     const builder = new HandlerCfgBuilder();
@@ -231,10 +298,10 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     builder.add("handler-join", []);
     builder.add("exit", []);
 
-    const tryEntry = builder.lowerStatements(
+    const tryEntry = selectedRootCountSupported ? builder.lowerStatements(
       statement.tryBlock.statements, "try-completion", "try-completion",
-    );
-    const catchBodyEntry = statement.catchClause ? builder.lowerStatements(
+    ) : undefined;
+    const catchBodyEntry = selectedRootCountSupported && statement.catchClause ? builder.lowerStatements(
       statement.catchClause.block.statements, "catch-completion", "catch-completion",
     ) : undefined;
     const finallyOverrides = abruptFinallyKinds(statement.finallyBlock);
@@ -250,6 +317,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
         finallyOverrides,
         lowering: "unsupported",
         blocks: [],
+        ...(ts.isTryStatement(controlStatement) ? { handlerNesting: nestingDepth } : {}),
         ...(ts.isForOfStatement(controlStatement) && literalForOfIterations(controlStatement) !== undefined
           ? { finiteLoop: { kind: "for-of" as const, iterations: literalForOfIterations(controlStatement)! } }
           : {}),
@@ -275,6 +343,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
           finallyOverrides,
           lowering: "unsupported",
           blocks: [],
+          ...(ts.isTryStatement(controlStatement) ? { handlerNesting: nestingDepth } : {}),
           ...(ts.isForOfStatement(controlStatement) && literalForOfIterations(controlStatement) !== undefined
             ? { finiteLoop: { kind: "for-of" as const, iterations: literalForOfIterations(controlStatement)! } }
             : {}),
@@ -306,6 +375,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
       finallyOverrides,
       lowering: "supported",
       blocks,
+      ...(ts.isTryStatement(controlStatement) ? { handlerNesting: nestingDepth } : {}),
       ...(ts.isForOfStatement(controlStatement) && literalForOfIterations(controlStatement) !== undefined
         ? { finiteLoop: { kind: "for-of" as const, iterations: literalForOfIterations(controlStatement)! } }
         : {}),
@@ -343,6 +413,16 @@ export function runHandlerJoinFixedPoint(
             .filter((kind) => kind !== "throw" || !candidate.catchesThrow);
           if (uncaught.length > 0) edges.push({ to: "handler-join", value: value(...uncaught) });
           return edges;
+        }
+        if (block.id === "nested-try-completion") {
+          const edges: Array<{ to: string; value: Value }> = [];
+          if (input.has("throw")) edges.push({ to: "nested-catch", value: value("throw") });
+          const uncaught = orderedCompletions(input).filter((kind) => kind !== "throw");
+          if (uncaught.length > 0) edges.push({ to: "nested-handler-join", value: value(...uncaught) });
+          return edges;
+        }
+        if (block.id === "nested-catch-completion") {
+          return [{ to: "nested-handler-join", value: input }];
         }
         return block.edges.map((edge) => ({
           to: edge.to,

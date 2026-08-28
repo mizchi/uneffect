@@ -365,6 +365,12 @@ same property is proved for arbitrary TypeScript.
   named `handler-loop-iterations` limit and observed cardinality. Dynamic,
   empty, spread, destructured, `for await`, over-four, break/continue,
   resource-bearing, nested, catch-local, and finally-local loops fail closed.
+- One outer handler may contain one direct inner try/catch at total nesting
+  depth two. The shared graph routes a handled inner throw through the inner
+  join and an inner-catch rethrow into the outer catch, and evidence records
+  `handler-nesting-depth` with limit two. Depth three, inner finally,
+  return/break/continue, loops, resources, multiple nested regions, and nested
+  handlers in catch/finally fail closed.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no
