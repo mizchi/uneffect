@@ -94,12 +94,40 @@ describe("refinement handler flow", () => {
     expect(throwBlock?.[1]).toEqual(["normal"]);
   });
 
+  it("lowers return and throw overrides from an abrupt finally", () => {
+    const [candidate] = findHandlerJoinCandidates(bodyOf(`
+      function finalize(kind: number, stop: boolean, fail: boolean) {
+        try { kind += 1 } finally {
+          if (stop) return kind
+          if (fail) throw kind
+          kind += 2
+        }
+        kind += 4
+      }
+    `));
+    expect(candidate).toMatchObject({
+      controlRegion: "finally",
+      mandatoryFinally: true,
+      finallyOverrides: ["return", "throw"],
+      lowering: "supported",
+    });
+    expect(runHandlerJoinFixedPoint(candidate!, 32)).toMatchObject({
+      converged: true,
+      incoming: ["normal"],
+      outgoing: ["normal", "return", "throw"],
+      blockCompletions: expect.objectContaining({
+        finally: ["normal"],
+        exit: ["normal", "return", "throw"],
+      }),
+    });
+  });
+
   it("retains attempted-family lowering failures as unsupported", () => {
     for (const source of [
-      `function route(kind: number) { try { switch (kind) { default: break } } catch {} finally { return } }`,
       `function route(kind: number) { try { switch (kind) { case 0: break } } catch {} finally {} }`,
       `function route(kind: number) { try { if (kind) while (kind) kind -= 1 } catch {} }`,
       `function route(a: boolean, b: boolean) { try { if (a) throw a; if (b) return } catch {} }`,
+      `function route(kind: number) { try { if (kind) return } finally { while (kind) kind -= 1 } }`,
     ]) {
       const [candidate] = findHandlerJoinCandidates(bodyOf(source));
       expect(candidate?.lowering).toBe("unsupported");

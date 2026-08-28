@@ -19,7 +19,10 @@ export interface HandlerJoinCandidate {
   readonly tryStatement: ts.TryStatement;
   readonly controlStatement: ControlRoot;
   readonly controlShape: "if" | "switch";
+  readonly controlRegion: "try" | "finally";
   readonly mandatoryFinally: boolean;
+  readonly catchesThrow: boolean;
+  readonly finallyOverrides: readonly Extract<HandlerCompletionKind, "return" | "throw">[];
   readonly lowering: "supported" | "unsupported";
   readonly blocks: readonly LoweredBlock[];
 }
@@ -120,14 +123,19 @@ class HandlerCfgBuilder {
   }
 }
 
-function isNormalOnly(statement: ts.Statement): boolean {
-  if (ts.isBlock(statement)) return statement.statements.every(isNormalOnly);
-  if (ts.isIfStatement(statement)) {
-    return isNormalOnly(statement.thenStatement)
-      && (!statement.elseStatement || isNormalOnly(statement.elseStatement));
-  }
-  return ts.isExpressionStatement(statement) || ts.isVariableStatement(statement)
-    || ts.isEmptyStatement(statement) || ts.isDebuggerStatement(statement);
+function abruptFinallyKinds(block: ts.Block | undefined): Array<"return" | "throw"> {
+  const kinds = new Set<"return" | "throw">();
+  const visit = (statement: ts.Statement): void => {
+    if (ts.isReturnStatement(statement)) kinds.add("return");
+    else if (ts.isThrowStatement(statement)) kinds.add("throw");
+    else if (ts.isBlock(statement)) statement.statements.forEach(visit);
+    else if (ts.isIfStatement(statement)) {
+      visit(statement.thenStatement);
+      if (statement.elseStatement) visit(statement.elseStatement);
+    }
+  };
+  block?.statements.forEach(visit);
+  return ["return", "throw"].filter((kind): kind is "return" | "throw" => kinds.has(kind as "return" | "throw"));
 }
 
 /**
@@ -137,14 +145,18 @@ function isNormalOnly(statement: ts.Statement): boolean {
 export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[] {
   const candidates: HandlerJoinCandidate[] = [];
   for (const statement of body.statements) {
-    if (!ts.isTryStatement(statement) || !statement.catchClause) continue;
-    const controlStatements = statement.tryBlock.statements.filter(
+    if (!ts.isTryStatement(statement) || (!statement.catchClause && !statement.finallyBlock)) continue;
+    const tryControlStatements = statement.tryBlock.statements.filter(
       (child): child is ControlRoot => ts.isIfStatement(child) || ts.isSwitchStatement(child),
     );
-    const controlStatement = controlStatements[0];
+    const finallyControlStatements = statement.finallyBlock?.statements.filter(
+      (child): child is ControlRoot => ts.isIfStatement(child) || ts.isSwitchStatement(child),
+    ) ?? [];
+    const controlRegion = tryControlStatements.length > 0 ? "try" as const : "finally" as const;
+    const selectedControls = controlRegion === "try" ? tryControlStatements : finallyControlStatements;
+    const controlStatement = selectedControls[0];
     if (!controlStatement) continue;
-    const singleControlRoot = controlStatements.length === 1;
-    const normalFinally = !statement.finallyBlock || statement.finallyBlock.statements.every(isNormalOnly);
+    const selectedRootCountSupported = controlRegion === "finally" || selectedControls.length === 1;
 
     const builder = new HandlerCfgBuilder();
     builder.add("try-completion", []);
@@ -155,26 +167,45 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     const tryEntry = builder.lowerStatements(
       statement.tryBlock.statements, "try-completion", "try-completion",
     );
-    const catchBodyEntry = builder.lowerStatements(
+    const catchBodyEntry = statement.catchClause ? builder.lowerStatements(
       statement.catchClause.block.statements, "catch-completion", "catch-completion",
-    );
-    if (!tryEntry || !catchBodyEntry || !normalFinally || !singleControlRoot) {
+    ) : undefined;
+    const finallyOverrides = abruptFinallyKinds(statement.finallyBlock);
+    if (!tryEntry || (statement.catchClause && !catchBodyEntry) || !selectedRootCountSupported) {
       candidates.push({
         tryStatement: statement,
         controlStatement,
         controlShape: ts.isSwitchStatement(controlStatement) ? "switch" : "if",
+        controlRegion,
         mandatoryFinally: Boolean(statement.finallyBlock),
+        catchesThrow: Boolean(statement.catchClause),
+        finallyOverrides,
         lowering: "unsupported",
         blocks: [],
       });
       continue;
     }
-    const catchEntry = builder.add("catch", [{ to: catchBodyEntry, completion: "normal" }]);
+    const catchEntry = catchBodyEntry
+      ? builder.add("catch", [{ to: catchBodyEntry, completion: "normal" }])
+      : undefined;
 
     let joinDestination = "exit";
     if (statement.finallyBlock) {
       const finallyEntry = builder.lowerStatements(statement.finallyBlock.statements, "exit", "exit");
-      if (!finallyEntry) continue;
+      if (!finallyEntry) {
+        candidates.push({
+          tryStatement: statement,
+          controlStatement,
+          controlShape: ts.isSwitchStatement(controlStatement) ? "switch" : "if",
+          controlRegion,
+          mandatoryFinally: true,
+          catchesThrow: Boolean(statement.catchClause),
+          finallyOverrides,
+          lowering: "unsupported",
+          blocks: [],
+        });
+        continue;
+      }
       builder.add("finally", [{ to: finallyEntry }]);
       joinDestination = "finally";
     }
@@ -182,7 +213,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
 
     const blocks = builder.blocks.map((block) => {
       if (block.id === "try-completion") return { ...block, edges: [
-        { to: catchEntry, completion: "throw" as const },
+        ...(catchEntry ? [{ to: catchEntry, completion: "throw" as const }] : []),
         { to: "handler-join" },
       ] };
       if (block.id === "catch-completion") return { ...block, edges: [{ to: "handler-join" }] };
@@ -193,7 +224,10 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
       tryStatement: statement,
       controlStatement,
       controlShape: ts.isSwitchStatement(controlStatement) ? "switch" : "if",
+      controlRegion,
       mandatoryFinally: Boolean(statement.finallyBlock),
+      catchesThrow: Boolean(statement.catchClause),
+      finallyOverrides,
       lowering: "supported",
       blocks,
     });
@@ -225,8 +259,9 @@ export function runHandlerJoinFixedPoint(
       transfer: (input: Value) => {
         if (block.id === "try-completion") {
           const edges: Array<{ to: string; value: Value }> = [];
-          if (input.has("throw")) edges.push({ to: "catch", value: value("throw") });
-          const uncaught = orderedCompletions(input).filter((kind) => kind !== "throw");
+          if (candidate.catchesThrow && input.has("throw")) edges.push({ to: "catch", value: value("throw") });
+          const uncaught = orderedCompletions(input)
+            .filter((kind) => kind !== "throw" || !candidate.catchesThrow);
           if (uncaught.length > 0) edges.push({ to: "handler-join", value: value(...uncaught) });
           return edges;
         }

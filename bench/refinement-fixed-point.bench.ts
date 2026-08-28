@@ -114,4 +114,18 @@ describe("refinement CFG fixed point", () => {
       throw new Error("handler path/value correlation benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("analyze application abrupt-finally overrides", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 32 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "finalizeRecovery");
+    if (result.diagnostics.some((item) => item.modelName === "finalizeRecovery")
+      || obligation?.status !== "verified"
+      || obligation.completionJoin.finallyOverrides.join("|") !== "return|throw") {
+      throw new Error("abrupt finally CFG benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

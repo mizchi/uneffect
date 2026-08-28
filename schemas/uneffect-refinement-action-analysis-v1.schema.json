@@ -90,7 +90,7 @@
     "handlerJoin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "controlSpan", "controlShape", "status", "budget", "fixedPoint", "completionJoin"],
+      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "controlSpan", "controlShape", "controlRegion", "status", "budget", "fixedPoint", "completionJoin"],
       "properties": {
         "kind": { "const": "handler-join-fixed-point" },
         "adapterName": { "type": "string" },
@@ -99,6 +99,7 @@
         "trySpan": { "$ref": "#/$defs/span" },
         "controlSpan": { "$ref": "#/$defs/span" },
         "controlShape": { "enum": ["if", "switch"] },
+        "controlRegion": { "enum": ["try", "finally"] },
         "status": { "enum": ["verified", "unknown"] },
         "reason": { "enum": ["proof-budget-exhausted", "unsupported-control-flow", "action-validation-failed"] },
         "budget": {
@@ -125,12 +126,15 @@
         },
         "completionJoin": {
           "type": "object", "additionalProperties": false,
-          "required": ["incoming", "outgoing", "caughtThrow", "mandatoryFinally"],
+          "required": ["incoming", "outgoing", "caughtThrow", "mandatoryFinally", "finallyOverrides"],
           "properties": {
             "incoming": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
             "outgoing": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
             "caughtThrow": { "type": "boolean" },
-            "mandatoryFinally": { "type": "boolean" }
+            "mandatoryFinally": { "type": "boolean" },
+            "finallyOverrides": {
+              "type": "array", "items": { "enum": ["return", "throw"] }, "uniqueItems": true
+            }
           }
         },
         "pathCorrelation": {

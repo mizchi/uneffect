@@ -362,6 +362,10 @@ same property is proved for arbitrary TypeScript.
   predicate and `same-predicate-branch-restriction`; predicate drift emits no
   such evidence and remains an action mismatch. This rule is syntactic and does
   not claim general logical implication or solver-backed path feasibility.
+- Catch-less `try`/`finally` is included when a supported finalizer contains the
+  selected control roots. Normal finalizer paths preserve incoming completion;
+  direct return/throw blocks replace it and are listed in `finallyOverrides`.
+  Unsupported finalizer loops and statements produce an explicit non-proof.
 
 ## Async, resources, and event loops
 

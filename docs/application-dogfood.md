@@ -343,10 +343,20 @@ and the action stays `unknown: action-validation-failed`. The focused benchmark
 measured 2.1138 ms mean over 237 samples. This is exact syntactic path
 correlation, not Z3-proved predicate equivalence.
 
+P2.7 adds the catch-less `finalizeTelemetryRecovery` family. Its normal try
+completion enters a finalizer with two conditional abrupt exits. The graph
+records normal, return, and throw at exit together with ordered
+`finallyOverrides: [return, throw]`; return/throw blocks replace rather than
+forward their input completion. Removing the return is load-bearing: the
+override list becomes `[throw]`, return disappears from exit, and action
+validation remains `unknown`. The focused benchmark measured 2.1823 ms mean
+over 230 samples. Handler-local loops, labeled transfers, and unsupported
+finalizer statements still fail closed.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,747 summaries, 4,336 reviewed assumption occurrences, 74 files).
+`assumed` (3,750 summaries, 4,341 reviewed assumption occurrences, 74 files).
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

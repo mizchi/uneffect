@@ -182,6 +182,7 @@ export interface RefinementHandlerJoinObligation {
   trySpan: { start: number; end: number };
   controlSpan: { start: number; end: number };
   controlShape: "if" | "switch";
+  controlRegion: "try" | "finally";
   status: "verified" | "unknown";
   reason?: "proof-budget-exhausted" | "unsupported-control-flow" | "action-validation-failed";
   budget: {
@@ -198,6 +199,7 @@ export interface RefinementHandlerJoinObligation {
     outgoing: readonly HandlerCompletionKind[];
     caughtThrow: boolean;
     mandatoryFinally: boolean;
+    finallyOverrides: readonly Extract<HandlerCompletionKind, "return" | "throw">[];
   };
   pathCorrelation?: {
     caughtWhen: string;
@@ -4059,6 +4061,7 @@ export function analyzeRefinementActionBodies(
           end: candidate.controlStatement.getEnd(),
         },
         controlShape: candidate.controlShape,
+        controlRegion: candidate.controlRegion,
         status: verified ? "verified" : "unknown",
         ...(candidate.lowering === "unsupported"
           ? { reason: "unsupported-control-flow" as const }
@@ -4074,8 +4077,9 @@ export function analyzeRefinementActionBodies(
         completionJoin: {
           incoming: fixedPoint.incoming,
           outgoing: fixedPoint.outgoing,
-          caughtThrow: fixedPoint.incoming.includes("throw"),
+          caughtThrow: candidate.catchesThrow && fixedPoint.incoming.includes("throw"),
           mandatoryFinally: candidate.mandatoryFinally,
+          finallyOverrides: candidate.finallyOverrides,
         },
         ...(pathCorrelation ? { pathCorrelation: {
           caughtWhen: formatRefinementExpression(pathCorrelation.condition),

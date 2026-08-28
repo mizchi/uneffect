@@ -1878,3 +1878,9 @@ requiring `same-predicate-branch-restriction` evidence. It measured 2.1138 ms
 mean over 237 samples (473.07 operations per second). Predicate-loss is tested
 separately and must remain a mismatch; the timing is not evidence for logical
 implication between differently written predicates.
+
+The abrupt-finally application case requires verified
+`finalizeTelemetryRecovery` evidence and ordered return/throw override metadata.
+It measured 2.1823 ms mean over 230 samples (458.23 operations per second).
+The timing covers structural action validation and the completion worklist; it
+is not evidence for arbitrary finalizer loops, labels, or nested try.

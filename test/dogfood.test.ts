@@ -160,6 +160,41 @@ describe("Uneffect dogfood", () => {
       ? brokenObligation.pathCorrelation : undefined).toBeUndefined();
   });
 
+  it("records abrupt finally overrides for telemetry finalization", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "finalizeRecovery",
+      controlRegion: "finally",
+      status: "verified",
+      completionJoin: expect.objectContaining({
+        incoming: ["normal"],
+        outgoing: ["normal", "return", "throw"],
+        caughtThrow: false,
+        mandatoryFinally: true,
+        finallyOverrides: ["return", "throw"],
+      }),
+    }));
+
+    const finalizeStart = source.indexOf("export function finalizeTelemetryRecovery");
+    const lostReturn = source.slice(0, finalizeStart) + source.slice(finalizeStart).replace(
+      "      runtime.postProcessed += 1;\n      return;",
+      "      runtime.postProcessed += 1;",
+    );
+    const broken = analyzeRefinementActionBodies(fileName, lostReturn, "telemetryRouting", temporal);
+    expect(broken.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "finalizeRecovery",
+      status: "unknown",
+      reason: "action-validation-failed",
+      completionJoin: expect.objectContaining({
+        outgoing: ["normal", "throw"],
+        finallyOverrides: ["throw"],
+      }),
+    }));
+  });
+
   it("retains the dynamic lexical owner of a continue leaving a catch", () => {
     const fileName = "src/environment.ts";
     const source = readFileSync(fileName, "utf8");
