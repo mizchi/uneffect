@@ -28,10 +28,14 @@ For finite temporal Maps, `getOrElse(key, fallback)` is the supported total
 lookup. Its result is the stored value exactly when the key belongs to the Map
 domain and the fallback otherwise. This claim is backend-parity tested for
 Quint, runtime replay/assertions, and bounded Z3 with literal key universes.
+One state-derived scalar `getOrElse` key may reuse an immutable non-empty
+literal Set only after Z3 proves direct membership at init and across every
+action; the result exposes this finite-domain evidence.
 Ordinary `get` is deliberately partial and requires a structurally matching
 `keys().contains(key)` conjunct. Dynamic lookup keys do not receive a guessed
-finite observation domain: bounded Z3 counterexample extraction reports
-`unknown`, and solver unavailability also remains `unknown` rather than safety.
+finite observation domain: all dynamic shapes outside the proved single-key
+membership fragment report `unknown`, and solver unavailability also remains
+`unknown` rather than safety.
 
 ## Check profiles
 

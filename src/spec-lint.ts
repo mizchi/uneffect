@@ -3,7 +3,7 @@ import { parseTemporalExpression, typeCheckTemporalExpression, type TemporalExpr
 import { parseSpec } from "./spec-ir.js";
 import { createHash } from "node:crypto";
 import { createModelCounterexample, type ModelCounterexample, type ModelState } from "./model-replay.js";
-import { executeZ3, type Z3Execution, type Z3ExecutionOptions, type Z3ValueRequest } from "./z3.js";
+import { executeZ3, type Z3Backend, type Z3Execution, type Z3ExecutionOptions, type Z3ValueRequest } from "./z3.js";
 
 export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
@@ -504,9 +504,19 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
   throw new Error("this temporal value type is not supported by the Z3 lint backend");
 }
 
-function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: boolean[]; complete: boolean } {
+interface FiniteCollectionUniverse {
+  readonly int: number[];
+  readonly bool: boolean[];
+  readonly complete: boolean;
+  readonly dynamicMapLookupKeys: readonly TemporalExpression[];
+  readonly unsupportedDynamicCollection: boolean;
+}
+
+function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse {
   const integers = new Set<number>(), booleans = new Set<boolean>();
   let complete = true;
+  let unsupportedDynamicCollection = false;
+  const dynamicMapLookupKeys: TemporalExpression[] = [];
   const literal = (expression: TemporalExpression): number | boolean | undefined => {
     if (expression.kind === "integer") return Number(expression.value);
     if (expression.kind === "boolean") return expression.value;
@@ -518,17 +528,21 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
       const value = literal(item);
       if (typeof value === "number") integers.add(value);
       else if (typeof value === "boolean") booleans.add(value);
-      else complete = false;
+      else { complete = false; unsupportedDynamicCollection = true; }
     }
     if (expression.kind === "call" && expression.name === "Map") {
       const entries = expression.arguments[0];
-      if (!entries || entries.kind !== "array") complete = false;
+      if (!entries || entries.kind !== "array") { complete = false; unsupportedDynamicCollection = true; }
       else for (const pair of entries.elements) {
-        if (pair.kind !== "array" || pair.elements.length !== 2) { complete = false; continue; }
+        if (pair.kind !== "array" || pair.elements.length !== 2) {
+          complete = false;
+          unsupportedDynamicCollection = true;
+          continue;
+        }
         const key = literal(pair.elements[0]!);
         if (typeof key === "number") integers.add(key);
         else if (typeof key === "boolean") booleans.add(key);
-        else complete = false;
+        else { complete = false; unsupportedDynamicCollection = true; }
       }
     }
     if (expression.kind === "method" && (expression.name === "put" || expression.name === "remove"
@@ -536,7 +550,11 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
       const key = literal(expression.arguments[0]!);
       if (typeof key === "number") integers.add(key);
       else if (typeof key === "boolean") booleans.add(key);
-      else complete = false;
+      else {
+        complete = false;
+        if (expression.name === "getOrElse") dynamicMapLookupKeys.push(expression.arguments[0]!);
+        else unsupportedDynamicCollection = true;
+      }
     }
     if (expression.kind === "unary") visit(expression.operand);
     else if (expression.kind === "binary") { visit(expression.left); visit(expression.right); }
@@ -555,7 +573,133 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
   for (const property of spec.recurrences) visit(property.expressionAst);
   for (const property of spec.stabilizations) visit(property.expressionAst);
   for (const property of spec.responses) { visit(property.triggerAst); visit(property.responseAst); }
-  return { int: [...integers].sort((a, b) => a - b), bool: [...booleans].sort((a, b) => Number(a) - Number(b)), complete };
+  return {
+    int: [...integers].sort((a, b) => a - b),
+    bool: [...booleans].sort((a, b) => Number(a) - Number(b)),
+    complete,
+    dynamicMapLookupKeys,
+    unsupportedDynamicCollection,
+  };
+}
+
+interface ProvedFiniteCollectionUniverse {
+  readonly universe: FiniteCollectionUniverse;
+  readonly evidence: readonly TemporalObservationDomainEvidence[];
+}
+
+function scalarLiteralValue(expression: TemporalExpression): number | boolean | undefined {
+  if (expression.kind === "integer") return Number(expression.value);
+  if (expression.kind === "boolean") return expression.value;
+  if (expression.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") {
+    return -Number(expression.operand.value);
+  }
+  return undefined;
+}
+
+async function proveFiniteCollectionUniverse(
+  spec: TemporalSpec,
+  universe: FiniteCollectionUniverse,
+  options: Z3ExecutionOptions,
+): Promise<ProvedFiniteCollectionUniverse | undefined> {
+  if (universe.complete) return { universe, evidence: [] };
+  if (universe.unsupportedDynamicCollection || universe.dynamicMapLookupKeys.length === 0) return undefined;
+  const keyNames = new Set(universe.dynamicMapLookupKeys.map((key) => key.kind === "name" ? key.name : undefined));
+  if (keyNames.has(undefined) || keyNames.size !== 1) return undefined;
+  const keyState = [...keyNames][0]!;
+  const keyType = spec.states.find((state) => state.name === keyState)?.type;
+  if (keyType !== "int" && keyType !== "bool") return undefined;
+
+  const candidates = spec.states.flatMap((state) => {
+    if (typeof state.type === "string" || state.type.kind !== "set" || state.type.element !== keyType) return [];
+    const initializer = spec.init.find((assignment) => assignment.target === state.name)?.expressionAst;
+    if (!initializer || initializer.kind !== "call" || initializer.name !== "Set" || initializer.arguments.length === 0) return [];
+    const parsedValues = initializer.arguments.map(scalarLiteralValue);
+    if (parsedValues.some((value) => value === undefined)) return [];
+    const values = [...new Set(parsedValues as (number | boolean)[])].sort((left, right) => {
+      if (typeof left === "boolean" && typeof right === "boolean") return Number(left) - Number(right);
+      return Number(left) - Number(right);
+    });
+    if (spec.actions.some((action) => action.assignments.some((assignment) => assignment.target === state.name
+      && !(assignment.expressionAst.kind === "name" && assignment.expressionAst.name === state.name)))) return [];
+    const properties = spec.properties.filter((property) => {
+      const expression = property.expressionAst;
+      return expression.kind === "method" && expression.name === "contains"
+        && expression.receiver.kind === "name" && expression.receiver.name === state.name
+        && expression.arguments.length === 1
+        && expression.arguments[0]?.kind === "name" && expression.arguments[0].name === keyState;
+    });
+    return properties.length === 1 ? [{
+      domainState: state.name,
+      initializer,
+      property: properties[0]!,
+      values,
+    }] : [];
+  });
+  if (candidates.length !== 1) return undefined;
+  const candidate = candidates[0]!;
+
+  const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
+  const at = (name: string, step: number) => `uneffect_domain_${step}_${name}`;
+  const declarations = [
+    ...z3TypeDeclarations(spec.states.map((state) => state.type)),
+    ...[0, 1].flatMap((step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)),
+  ];
+  const init = spec.init.map((assignment) =>
+    `(= ${at(assignment.target, 0)} ${temporalAtStepToSmt(
+      assignment.expressionAst, "uneffect_domain", 0, symbols, symbols.get(assignment.target),
+    )})`);
+  const propertyAt = (step: number) => temporalAtStepToSmt(
+    candidate.property.expressionAst, "uneffect_domain", step, symbols,
+  );
+  const domainAt = (step: number) => `(= ${at(candidate.domainState, step)} ${temporalAtStepToSmt(
+    candidate.initializer, "uneffect_domain", step, symbols, symbols.get(candidate.domainState),
+  )})`;
+  const transitions = spec.actions.map((action) => {
+    const assignments = new Map(action.assignments.map((assignment) => [assignment.target, assignment]));
+    const guard = action.guard ? temporalAtStepToSmt(action.guard.expressionAst, "uneffect_domain", 0, symbols) : "true";
+    const updates = spec.states.map((state) => {
+      const assignment = assignments.get(state.name);
+      const value = assignment
+        ? temporalAtStepToSmt(assignment.expressionAst, "uneffect_domain", 0, symbols, state.type)
+        : at(state.name, 0);
+      return `(= ${at(state.name, 1)} ${value})`;
+    });
+    return `(and ${guard} ${updates.join(" ")})`;
+  });
+  const transition = transitions.length === 0 ? "false" : transitions.length === 1 ? transitions[0]! : `(or ${transitions.join(" ")})`;
+  const run = async (assertions: readonly string[]): Promise<Z3Execution> => executeZ3([
+      "(set-logic ALL)", ...declarations, ...assertions.map((assertion) => `(assert ${assertion})`),
+    ].join("\n"), options);
+  const initExecution = await run(init);
+  if (initExecution.status !== "sat") return undefined;
+  const initiationExecution = await run([...init, `(not ${propertyAt(0)})`]);
+  if (initiationExecution.status !== "unsat") return undefined;
+  const preservationExecution = await run([
+    domainAt(0), propertyAt(0), transition, `(not ${propertyAt(1)})`,
+  ]);
+  if (preservationExecution.status !== "unsat") return undefined;
+
+  return {
+    universe: { ...universe, complete: true },
+    evidence: [{
+      rule: "inductively-proved-finite-membership",
+      domainState: candidate.domainState,
+      keyState,
+      property: candidate.property.name,
+      values: candidate.values,
+      proof: {
+        initSatisfiable: "verified",
+        membershipInitiation: "verified",
+        domainStability: "verified-by-syntax",
+        membershipPreservation: "verified",
+        solverChecks: [
+          { obligation: "init-satisfiable", result: "sat", backend: initExecution.backend, version: initExecution.version },
+          { obligation: "membership-initiation", result: "unsat", backend: initiationExecution.backend, version: initiationExecution.version },
+          { obligation: "membership-preservation", result: "unsat", backend: preservationExecution.backend, version: preservationExecution.version },
+        ],
+      },
+    }],
+  };
 }
 
 function supportsZ3Expression(expression: TemporalExpression): boolean {
@@ -584,6 +728,58 @@ function supportsZ3SpecExpressions(spec: TemporalSpec): boolean {
   for (const property of spec.stabilizations) if (!supportsZ3Expression(property.expressionAst)) return false;
   for (const property of spec.responses) if (!supportsZ3Expression(property.triggerAst) || !supportsZ3Expression(property.responseAst)) return false;
   return true;
+}
+
+function temporalExpressionAtStep(
+  expression: TemporalExpression,
+  prefix: string,
+  step: number,
+  boundNames: ReadonlySet<string> = new Set(),
+): TemporalExpression {
+  if (expression.kind === "name") return boundNames.has(expression.name)
+    ? expression : { ...expression, name: `${prefix}_${step}_${expression.name}` };
+  if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+  if (expression.kind === "unary") return {
+    ...expression, operand: temporalExpressionAtStep(expression.operand, prefix, step, boundNames),
+  };
+  if (expression.kind === "binary") return {
+    ...expression,
+    left: temporalExpressionAtStep(expression.left, prefix, step, boundNames),
+    right: temporalExpressionAtStep(expression.right, prefix, step, boundNames),
+  };
+  if (expression.kind === "conditional") return {
+    ...expression,
+    condition: temporalExpressionAtStep(expression.condition, prefix, step, boundNames),
+    whenTrue: temporalExpressionAtStep(expression.whenTrue, prefix, step, boundNames),
+    whenFalse: temporalExpressionAtStep(expression.whenFalse, prefix, step, boundNames),
+  };
+  if (expression.kind === "array") return {
+    ...expression,
+    elements: expression.elements.map((item) => temporalExpressionAtStep(item, prefix, step, boundNames)),
+  };
+  if (expression.kind === "record") return {
+    ...expression,
+    ...(expression.base ? { base: temporalExpressionAtStep(expression.base, prefix, step, boundNames) } : {}),
+    fields: Object.fromEntries(Object.entries(expression.fields).map(([name, value]) => [
+      name, temporalExpressionAtStep(value, prefix, step, boundNames),
+    ])),
+  };
+  if (expression.kind === "field") return {
+    ...expression, receiver: temporalExpressionAtStep(expression.receiver, prefix, step, boundNames),
+  };
+  if (expression.kind === "lambda") return {
+    ...expression,
+    body: temporalExpressionAtStep(expression.body, prefix, step, new Set(boundNames).add(expression.parameter)),
+  };
+  if (expression.kind === "call") return {
+    ...expression,
+    arguments: expression.arguments.map((argument) => temporalExpressionAtStep(argument, prefix, step, boundNames)),
+  };
+  return {
+    ...expression,
+    receiver: temporalExpressionAtStep(expression.receiver, prefix, step, boundNames),
+    arguments: expression.arguments.map((argument) => temporalExpressionAtStep(argument, prefix, step, boundNames)),
+  };
 }
 
 function temporalToSmt(
@@ -700,6 +896,17 @@ function temporalToSmt(
   return `(${smtBinaryOperator(expression.operator)} ${temporalToSmt(expression.left, resolveName, symbols, undefined, boundName)} ${temporalToSmt(expression.right, resolveName, symbols, undefined, boundName)})`;
 }
 
+function temporalAtStepToSmt(
+  expression: TemporalExpression,
+  prefix: string,
+  step: number,
+  symbols: ReadonlyMap<string, TemporalValueType>,
+  expected?: TemporalValueType,
+): string {
+  const steppedSymbols = new Map([...symbols].map(([name, type]) => [`${prefix}_${step}_${name}`, type]));
+  return temporalToSmt(temporalExpressionAtStep(expression, prefix, step), undefined, steppedSymbols, expected);
+}
+
 async function executeCheck(spec: TemporalSpec, assertions: readonly string[], options: Z3ExecutionOptions = {}): Promise<Z3Execution> {
   const declarations = [...z3TypeDeclarations(spec.states.map((state) => state.type)), ...spec.states.map((state) => `(declare-const ${state.name} ${smtSort(state.type)})`)];
   return executeZ3(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"), options);
@@ -748,9 +955,29 @@ export async function checkTemporalExpressionEquivalenceWithZ3(
 }
 
 export type TemporalCounterexampleResult =
-  | { status: "counterexample"; depth: number; trace: ModelCounterexample }
-  | { status: "safe-within-bound"; depth: number }
+  | { status: "counterexample"; depth: number; trace: ModelCounterexample; observationDomains?: readonly TemporalObservationDomainEvidence[] }
+  | { status: "safe-within-bound"; depth: number; observationDomains?: readonly TemporalObservationDomainEvidence[] }
   | { status: "unknown"; depth: number };
+
+export interface TemporalObservationDomainEvidence {
+  readonly rule: "inductively-proved-finite-membership";
+  readonly domainState: string;
+  readonly keyState: string;
+  readonly property: string;
+  readonly values: readonly (number | boolean)[];
+  readonly proof: {
+    readonly initSatisfiable: "verified";
+    readonly membershipInitiation: "verified";
+    readonly domainStability: "verified-by-syntax";
+    readonly membershipPreservation: "verified";
+    readonly solverChecks: readonly {
+      readonly obligation: "init-satisfiable" | "membership-initiation" | "membership-preservation";
+      readonly result: "sat" | "unsat";
+      readonly backend: Z3Backend;
+      readonly version: string;
+    }[];
+  };
+}
 
 function parseZ3TemporalValue(value: string, type: "int" | "bool"): number | boolean {
   if (type === "bool") {
@@ -864,8 +1091,9 @@ export async function findTemporalCounterexampleWithZ3(
   if (!supportsZ3SpecExpressions(spec)) return { status: "unknown", depth: 0 };
   if (spec.states.some((state) => !supportsZ3FiniteCollectionState(state.type))) return { status: "unknown", depth: 0 };
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
-  const universe = finiteCollectionUniverse(spec);
-  if (!universe.complete) return { status: "unknown", depth: 0 };
+  const provedUniverse = await proveFiniteCollectionUniverse(spec, finiteCollectionUniverse(spec), options.z3 ?? {});
+  if (!provedUniverse) return { status: "unknown", depth: 0 };
+  const { universe, evidence: observationDomains } = provedUniverse;
   const at = (name: string, step: number) => `${name}__${step}`;
   const actionAt = (step: number) => `uneffect_action__${step}`;
   const stateDeclarations = Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)).flat();
@@ -918,9 +1146,15 @@ export async function findTemporalCounterexampleWithZ3(
       backend: "z3", modelHash, initialState: states[0]!,
       steps: actions.map((action, index) => ({ action, before: states[index]!, after: states[index + 1]! })),
     });
-    return { status: "counterexample", depth, trace };
+    return {
+      status: "counterexample", depth, trace,
+      ...(observationDomains.length > 0 ? { observationDomains } : {}),
+    };
   }
-  return { status: "safe-within-bound", depth: maxSteps };
+  return {
+    status: "safe-within-bound", depth: maxSteps,
+    ...(observationDomains.length > 0 ? { observationDomains } : {}),
+  };
 }
 
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */

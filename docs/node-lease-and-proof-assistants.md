@@ -68,10 +68,17 @@ read. A lease table entry has `{ epoch, valid }`; lookup of literal node `3`
 uses `getOrElse(3, { epoch: 0, valid: false })`, so absence fences the write.
 The same neutral expression executes in Quint, runtime replay/assertions, and
 bounded Z3. Changing the fallback to `valid: true` yields a one-step
-counterexample in which the unknown node gains write authority. A
-state-selected node key remains `unknown` in the Z3 trace extractor because
-the finite key observation universe cannot yet be proved complete. This is a
-soundness boundary, not evidence that the dynamic model is safe.
+counterexample in which the unknown node gains write authority.
+
+`examples/dogfood/node-lease-dynamic-map-domain.ts` then selects node `1` or
+`2` through state. Its immutable literal `nodes` registry and direct
+`nodes.contains(selectedNode)` property are not assumptions: Z3 separately
+checks satisfiable init, initiation, and preservation across every action.
+Only then does counterexample extraction decode the dynamic lease lookup. The
+fenced fallback is safe within depth two; changing it to `valid: true` produces
+a one-step replayable missing-lease trace. Mutable/non-literal registries,
+compound or multiple keys, failed induction, and unavailable solvers remain
+`unknown`.
 
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker

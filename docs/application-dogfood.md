@@ -570,6 +570,16 @@ meaning. A state-derived lookup key intentionally returns `unknown` from Z3
 counterexample extraction instead of treating the observed literal set as a
 complete dynamic domain.
 
+P2.28 adds `node-lease-dynamic-map-domain.ts`. A state-selected node is admitted
+only because the immutable `Set(1, 2)` registry and the exact
+`nodes.contains(selectedNode)` property produce independent satisfiable-init,
+initiation, and preservation proofs. The resulting counterexample artifact
+names the domain/key/property and its literal values. The record-valued fenced
+fallback is safe within two steps; changing only `valid: false` to `valid: true`
+produces a one-step trace after selecting the node without a lease. Dynamic
+collection construction or mutation, compound/multiple lookup keys, missing or
+non-inductive membership, and solver failure remain explicit non-proofs.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

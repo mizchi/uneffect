@@ -132,9 +132,23 @@ Quint receives `if (map.keys().contains(key)) map.get(key) else fallback`, the
 runtime/replay path uses `Map.has`, and Z3 uses an `ite` over the Map domain
 array. The fallback is evaluated only for an absent key. Literal lookup keys
 join the finite observation universe, so bounded counterexamples can contain
-the missing-key decision and JSON-safe Map entries. A state-derived lookup key
-still makes Z3 counterexample extraction `unknown`: Uneffect does not guess a
-finite key universe. This restriction does not affect Quint generation.
+the missing-key decision and JSON-safe Map entries. A state-derived scalar key
+is also observable in one bounded fragment: exactly one immutable `Set<int>`
+or `Set<bool>` state must have a non-empty literal initializer, and exactly one
+named temporal property must be the direct `domain.contains(key)` relation.
+Uneffect checks that the domain has no non-stuttering assignment, then asks Z3
+separately whether init is satisfiable, whether init establishes membership,
+and whether every action preserves it. Only after all checks succeed do the
+domain literals become the complete trace universe. The result carries
+`inductively-proved-finite-membership` evidence naming the domain, key,
+property, values, proof statuses, and the backend/version/result of every solver
+obligation. When Z3 evidence recording is enabled, these calls also retain their
+SMT-LIB inputs through the existing evidence path.
+
+Dynamic `Set(...)`, `Map(...)`, `put`, `remove`, partial `get`, compound lookup
+keys, multiple key/domain relations, mutable domains, failed induction, and
+solver failure remain `unknown`. This restriction does not affect Quint
+generation or runtime expression meaning.
 
 Z3 represents each Map type as a datatype containing a Boolean domain
 array and a separate total value array. This prevents the value at an absent
@@ -148,8 +162,10 @@ Counterexample extraction observes literal keys, recursively evaluates values,
 and emits stable JSON entry arrays such as `[[1, 0], [2, -1]]`. A state-derived
 key in `Map(...)` or `put(...)` keeps solver reasoning available but makes trace
 extraction return `unknown`, because the literal key universe is no longer
-complete. Values need not be literals because they are evaluated directly at
-each observed present key.
+complete. The proved-membership exception applies only to `getOrElse`
+observations and does not authorize dynamic collection mutation. Values need
+not be literals because they are evaluated directly at each observed present
+key.
 
 Closed TypeScript-style records are supported as state types and values, for
 example `{ owner: int, valid: bool }` and `{ ...lease, owner: 2 }`. Field reads

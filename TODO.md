@@ -69,11 +69,12 @@ one source-bound Boolean involution recurrence by parity. The next bounded
 child [#41](https://github.com/mizchi/uneffect/issues/41) is also complete and
 proves the complementary entry-read ordering for one triangular affine recurrence.
 
-There are 12 open implementation Issues after closing #23, #26, #27, #28, and
+There are 13 open implementation Issues after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42: one proof-boundary
 Issue in Phase 1, five specification-expressiveness Issues in Phase 2, five
 production-integration Issues in Phase 3, and one
-proof-consumer Issue in Phase 4. The completed bounded child
+proof-consumer Issue in Phase 4. Active child
+[#43](https://github.com/mizchi/uneffect/issues/43) belongs to #5 and follows the completed bounded child
 [#42](https://github.com/mizchi/uneffect/issues/42) belongs to #5, so the 12 non-overlapping epic estimates still total
 51–102 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
@@ -128,18 +129,20 @@ P2.24 completes #39's source-bound conditional-expression value join.
 P2.25 completes #40's source-bound Boolean involution recurrence.
 P2.26 completes #41's source-ordered entry-read triangular recurrence.
 P2.27 completed #42's total finite-Map lookup slice for Node Lease models.
+P2.28 is the active #43 inductively proved finite-domain slice for dynamic Map
+lookup keys.
 The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
 
-There is no active implementation Issue after the #42 handoff. Select the next
-bounded child from the phase-ordered backlog before implementation; selection
-must define Red tests, unsupported controls, and a handoff condition.
+[#43](https://github.com/mizchi/uneffect/issues/43) is the only active
+implementation Issue. It admits dynamic Map lookup trace extraction only after
+independently proving a finite literal Set membership invariant.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| — | — | No slice selected. |
+| 1 | [#43](https://github.com/mizchi/uneffect/issues/43) | Prove one finite literal Set membership invariant before decoding a state-derived Map lookup key; retain every unsupported premise as unknown. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -149,7 +152,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41 | 13–27 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 12 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Broad host/React semantics, evidence research, and proof-gated optimization remain; completed child #42 was already included within parent #5. |
+| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Active child #43 and completed child #42 are included within parent #5; broad host/React semantics, evidence research, and proof-gated optimization remain. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -176,8 +179,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42 handoffs:
-zero active children and twelve queued epics. Every open Issue has exactly one
+As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42 handoffs:
+one active bounded child and twelve queued epics. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -188,6 +191,7 @@ label.
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
+| Active | 2 | [#43](https://github.com/mizchi/uneffect/issues/43) | Dynamic Map key domains | Child of #5; completed #42 total lookup | Prove finite literal Set membership before Z3 trace decoding; all missing premises remain `unknown` |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |

@@ -161,7 +161,7 @@ export { evaluateQuality, formatQualityReport, qualityCriteria, qualityThreshold
 export type { DiagnosticScore, QualityCriterion, QualityReport } from "./diagnostic-quality.js";
 export { parseSpec } from "./spec-ir.js";
 export { checkTemporalExpressionEquivalenceWithZ3, findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "./spec-lint.js";
-export type { SpecLintDiagnostic, SpecLintWithZ3Options, TemporalCounterexampleResult, TemporalEquivalenceResult, TemporalReachabilityLintOptions } from "./spec-lint.js";
+export type { SpecLintDiagnostic, SpecLintWithZ3Options, TemporalCounterexampleResult, TemporalEquivalenceResult, TemporalObservationDomainEvidence, TemporalReachabilityLintOptions } from "./spec-lint.js";
 export type {
   CapabilitySpec,
   InvariantSpec,

@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 43];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -84,7 +84,7 @@ describe("TODO hierarchy consistency", () => {
     expect(phase(1)).toContain("issues/9");
     expect(phase(1)).toContain("issues/20");
     expect(phase(1)).toContain("issues/18");
-    for (const issue of [25, 37, 38, 39, 40, 41, 2, 5, 42, 4, 6]) {
+    for (const issue of [25, 37, 38, 39, 40, 41, 2, 5, 42, 43, 4, 6]) {
       expect(phase(2), `Phase 2 is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
     for (const issue of [24, 8, 10, 7, 16]) {
@@ -105,6 +105,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 25],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
+      ["Active", 2, 43],
       ["Queued", 2, 4],
       ["Queued", 2, 6],
       ["Queued", 3, 24],
@@ -114,7 +115,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toHaveLength(0);
+    expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -127,7 +128,9 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([]);
+    expect(rows).toEqual([
+      [1, 43, "Prove one finite literal Set membership invariant before decoding a state-derived Map lookup key; retain every unsupported premise as unknown."],
+    ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }

@@ -52,6 +52,7 @@ export const ciTestTiers = {
     "test/refinement-scalar-product-three-region.test.ts",
     "test/refinement-scalar-handler-join.test.ts",
     "test/typed-array-safety.test.ts",
+    "test/temporal-map-dynamic-domain.test.ts",
     "test/z3-backend.test.ts",
   ],
   quint: [

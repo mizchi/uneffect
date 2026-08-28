@@ -164,7 +164,9 @@ explicit conservative boundaries rather than untracked support.
    [#42](https://github.com/mizchi/uneffect/issues/42) adds total finite
    `Map.getOrElse` lookup across Quint, runtime replay, and bounded Z3. Ordinary
    `Map.get` remains partial, and dynamic-key counterexample extraction remains
-   `unknown` until a sound finite key universe is available.
+   `unknown` until a sound finite key universe is available. Active child
+   [#43](https://github.com/mizchi/uneffect/issues/43) admits one such universe
+   only from an independently proved, immutable finite-Set membership invariant.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
    reduces filtering and covers recursive/user-defined refinements.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)

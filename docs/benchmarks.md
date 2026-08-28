@@ -2057,6 +2057,18 @@ second, 0.97% RME). These development-host signals cover one literal absent
 integer key, one record fallback, and depth one. They exclude dynamic key
 universes, general quantified Maps, and unbounded Node Lease verification.
 
+The P2.28 focused benchmark adds three independent finite-domain obligations
+before decoding a state-derived Node Lease key. A selected run measured
+30.0748 ms mean over 17 bounded-safe samples (33.25 operations per second,
+2.06% RME). The broken-fallback counterexample measured 31.5021 ms mean over
+16 samples (31.74 operations per second, 1.95% RME). These development-host
+signals include one immutable two-element integer domain, one scalar selected
+key, one record-valued Map, and depth two. They deliberately exclude mutable or
+dynamic domains, compound/multiple keys, unbounded verification, and proof
+caching. The roughly two-times P2.27 latency reflects the additional
+satisfiable-init, initiation, and preservation solver calls; it is not hidden as
+ordinary trace-extraction cost.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).
