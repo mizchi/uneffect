@@ -100,4 +100,18 @@ describe("refinement CFG fixed point", () => {
       throw new Error("handler sequence CFG benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("correlate a caught path predicate with its value join", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 32 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "reject");
+    if (result.diagnostics.some((item) => item.modelName === "reject")
+      || obligation?.status !== "verified"
+      || obligation.pathCorrelation?.rule !== "same-predicate-branch-restriction") {
+      throw new Error("handler path/value correlation benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

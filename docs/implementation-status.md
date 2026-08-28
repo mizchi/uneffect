@@ -357,6 +357,11 @@ same property is proved for arbitrary TypeScript.
   have supported prefix and suffix statements; abrupt blocks have no edge into
   their suffix. Multiple sibling roots, general handler joins, and independent
   path-correlated value proof remain outside this bounded fragment.
+- An exact same-predicate catch join may restrict an inner conditional value to
+  the branch implied by the caught path. The artifact records the normalized
+  predicate and `same-predicate-branch-restriction`; predicate drift emits no
+  such evidence and remains an action mismatch. This rule is syntactic and does
+  not claim general logical implication or solver-backed path feasibility.
 
 ## Async, resources, and event loops
 

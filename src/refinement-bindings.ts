@@ -128,9 +128,15 @@ interface RefinementRankingRecurrenceTrace {
   readonly summaryUpdates: ReadonlyMap<string, TemporalExpression>;
 }
 
+interface RefinementHandlerValueJoinTrace {
+  readonly modelName: string;
+  readonly condition: TemporalExpression;
+}
+
 interface RefinementActionTraceSink {
   readonly tryCatchJoins: RefinementTryCatchValueTrace[];
   readonly rankingRecurrences: RefinementRankingRecurrenceTrace[];
+  readonly handlerValueJoins: RefinementHandlerValueJoinTrace[];
 }
 
 export interface RefinementRankingLoopObligation {
@@ -192,6 +198,10 @@ export interface RefinementHandlerJoinObligation {
     outgoing: readonly HandlerCompletionKind[];
     caughtThrow: boolean;
     mandatoryFinally: boolean;
+  };
+  pathCorrelation?: {
+    caughtWhen: string;
+    rule: "same-predicate-branch-restriction";
   };
 }
 
@@ -1750,12 +1760,32 @@ function validateRefinementActionBodiesInSource(
       const value = unwrap(expression);
       return ts.isStringLiteral(value) || value.kind === ts.SyntaxKind.NullKeyword;
     };
+    const pathCorrelatedConditional = (
+      condition: TemporalExpression,
+      whenTrue: TemporalExpression,
+      whenFalse: TemporalExpression,
+    ): { expression: TemporalExpression; correlated: boolean } => {
+      const constrainedTrue = whenTrue.kind === "conditional"
+        && sameRefinementExpression(condition, whenTrue.condition)
+        ? whenTrue.whenTrue : whenTrue;
+      const constrainedFalse = whenFalse.kind === "conditional"
+        && sameRefinementExpression(condition, whenFalse.condition)
+        ? whenFalse.whenFalse : whenFalse;
+      const expression: TemporalExpression = sameRefinementExpression(constrainedTrue, constrainedFalse)
+        ? constrainedTrue
+        : { kind: "conditional", condition, whenTrue: constrainedTrue, whenFalse: constrainedFalse };
+      return {
+        expression,
+        correlated: constrainedTrue !== whenTrue || constrainedFalse !== whenFalse,
+      };
+    };
     const mergeConditionalUpdates = (
       condition: TemporalExpression,
       whenTrue: ReadonlyMap<string, TemporalExpression>,
       whenFalse: ReadonlyMap<string, TemporalExpression>,
       before: ReadonlyMap<string, TemporalExpression>,
       target: Map<string, TemporalExpression> = updates,
+      retainPathCorrelation = false,
     ): void => {
       target.clear();
       const joined = joinFlowValues<string, TemporalExpression, TemporalExpression>({
@@ -1765,11 +1795,15 @@ function validateRefinementActionBodiesInSource(
         whenTrue: (name) => whenTrue.get(name),
         whenFalse: (name) => whenFalse.get(name),
         equivalent: sameRefinementExpression,
-        phi: (selected, trueValue, falseValue) => isBooleanCompletionPredicate(selected, true)
-          ? trueValue
-          : isBooleanCompletionPredicate(selected, false)
-            ? falseValue
-            : { kind: "conditional", condition: selected, whenTrue: trueValue, whenFalse: falseValue } as TemporalExpression,
+        phi: (selected, trueValue, falseValue) => {
+          if (isBooleanCompletionPredicate(selected, true)) return trueValue;
+          if (isBooleanCompletionPredicate(selected, false)) return falseValue;
+          const correlated = pathCorrelatedConditional(selected, trueValue, falseValue);
+          if (retainPathCorrelation && correlated.correlated && traceSink && currentModelName) {
+            traceSink.handlerValueJoins.push({ modelName: currentModelName, condition: selected });
+          }
+          return correlated.expression;
+        },
       });
       for (const [name, merged] of joined) {
         if (!sameRefinementExpression(merged, { kind: "name", name })) target.set(name, merged);
@@ -2829,7 +2863,7 @@ function validateRefinementActionBodiesInSource(
             if (isBooleanCompletionPredicate(throwWhen, true)) {
               updates.clear();
               for (const [name, value] of caughtUpdates) updates.set(name, value);
-            } else mergeConditionalUpdates(throwWhen, caughtUpdates, beforeCatch, beforeCatch);
+            } else mergeConditionalUpdates(throwWhen, caughtUpdates, beforeCatch, beforeCatch, updates, true);
             const tryReturnWhen = completionPredicate(tryCompletion, "return");
             const catchReturnWhen = completionPredicate(catchCompletion, "return");
             const tryReturnLocals = completionReturnLocals(tryCompletion);
@@ -3995,7 +4029,9 @@ export function analyzeRefinementActionBodies(
   if (!Number.isSafeInteger(limit) || limit <= 0) {
     throw new Error(`cfgFixedPointIterations must be a positive safe integer; received ${String(limit)}`);
   }
-  const traceSink: RefinementActionTraceSink = { tryCatchJoins: [], rankingRecurrences: [] };
+  const traceSink: RefinementActionTraceSink = {
+    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [],
+  };
   const diagnostics = validateRefinementActionBodiesInSource(
     source, text, adapterName, spec, undefined, undefined, {}, traceSink,
   );
@@ -4007,6 +4043,7 @@ export function analyzeRefinementActionBodies(
     for (const candidate of findHandlerJoinCandidates(implementation.body)) {
       const fixedPoint = runHandlerJoinFixedPoint(candidate, limit);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
+      const pathCorrelation = traceSink.handlerValueJoins.find((item) => item.modelName === action.name);
       const verified = candidate.lowering === "supported" && fixedPoint.converged && actionDiagnostics.length === 0;
       obligations.push({
         kind: "handler-join-fixed-point",
@@ -4040,6 +4077,10 @@ export function analyzeRefinementActionBodies(
           caughtThrow: fixedPoint.incoming.includes("throw"),
           mandatoryFinally: candidate.mandatoryFinally,
         },
+        ...(pathCorrelation ? { pathCorrelation: {
+          caughtWhen: formatRefinementExpression(pathCorrelation.condition),
+          rule: "same-predicate-branch-restriction" as const,
+        } } : {}),
       });
       if ((!fixedPoint.converged || candidate.lowering === "unsupported")
         && !actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body")) {

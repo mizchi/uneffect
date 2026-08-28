@@ -3175,6 +3175,9 @@ describe("annotated refinement bindings", () => {
             controlShape: { enum: ["if", "switch"] },
             reason: { enum: expect.arrayContaining(["unsupported-control-flow"]) },
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
+            pathCorrelation: {
+              properties: { rule: { const: "same-predicate-branch-restriction" } },
+            },
           },
         },
         rankingLoop: {

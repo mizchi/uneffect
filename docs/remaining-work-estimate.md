@@ -86,6 +86,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.3 direct handler-join CFG seed | #23 | Completed | under 1 week actual | One application direct `switch`/`catch`/mandatory-`finally` join emits budgeted completion states; exhaustion and action mismatches stay `unknown`. |
 | P2.4 reusable nested-handler lowering | #23 | Completed | under 1 week actual | Source-keyed blocks lower one nested `if`/throw/catch application family; attempted-family unsupported control remains an explicit non-proof. |
 | P2.5 handler-sequence lowering | #23 | Completed | under 1 week actual | Supported prefix/suffix statements retain abrupt suffix exclusion; the wider scan exposes one path-value mismatch as `unknown`. |
+| P2.6 caught-path value correlation | #23 | Completed | under 1 week actual | Exact same-predicate branch restriction verifies the surfaced mismatch; predicate drift retains a non-proof. |
 | P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
 
 P1.2a through P1.4 are complete. P2.1 is active next because general CFG joins
@@ -110,7 +111,9 @@ control reached inside this selected family is an explicit
 statements around one control root. The real `returnOrRejectTelemetry` action
 verifies, while the newly surfaced `rejectTelemetry` mismatch remains honestly
 `unknown` until CFG path predicates feed the value join. Nested try,
-handler-local loops, and general joins remain open.
+handler-local loops, and general joins remain open. P2.6 supplies that exact
+syntactic path restriction and records it in the artifact; it does not infer
+logical implication between different predicates.
 
 ## Dependency-critical order
 
@@ -138,7 +141,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #23 general refinement CFG | L | 1–2 weeks total remaining | Correlate handler CFG predicates with one application value join | Arbitrary joins, recurrence widening, loops, and irreducible control |
+| 1 | #23 general refinement CFG | L | 1–2 weeks total remaining | Application abrupt-finally return/throw override graph | Arbitrary joins, recurrence widening, loops, and irreducible control |
 | 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -186,20 +189,22 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.3 direct handler-join CFG seed | under 1 engineer-week actual | The telemetry routing switch/catch/finally join converges in six worklist steps; focused analysis measured 2.6685 ms mean over 189 samples. |
 | Completed sub-slice | P2.4 reusable nested-handler lowering | under 1 engineer-week actual | Nested-if/catch lowering measured 2.1111 ms mean over 237 samples; attempted-family unsupported control produces machine-readable `unknown`. |
 | Completed sub-slice | P2.5 handler-sequence lowering | under 1 engineer-week actual | `returnOrRejectTelemetry` preserves abrupt suffix exclusion; focused analysis measured 2.0640 ms mean over 243 samples. |
-| Current slice | P2.6 path-correlated handler values | 1 engineer-week | Use CFG predicates to prove or retain the application-backed redundant nested-ternary mismatch. |
+| Completed sub-slice | P2.6 path-correlated handler values | under 1 engineer-week actual | Exact caught-path restriction verifies `rejectTelemetry`; focused analysis measured 2.1138 ms mean over 237 samples. |
+| Current slice | P2.7 abrupt-finally override | 1 engineer-week | Lower `finalizeTelemetryRecovery` return/throw overrides without leaking overwritten incoming completions. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
 rather than silently absorbed.
 
-The #23 issue-level estimate is now 1–2 weeks after completing P2.5. The shared
+The #23 issue-level estimate remains 1–2 weeks after completing P2.6. The shared
 builder covers one nested control root plus surrounding supported statements.
-Path-correlated values, arbitrary joins, loop lowering, and general recurrence
-widening remain the dominant uncertainty.
+One exact caught-path value restriction is supported; abrupt finally override,
+arbitrary joins, loop lowering, and general recurrence widening remain the
+dominant uncertainty.
 
 ## Backlog interpretation
 
-- **Next implementable result:** P2.6 in #23, estimated at 1 engineer-week.
+- **Next implementable result:** P2.7 in #23, estimated at 1 engineer-week.
 - **Next foundation checkpoint:** finish and re-estimate #23, then activate a
   bounded #24 alias slice and a bounded #8 native-fact slice; the three-Issue
   foundation is 7–14 engineer-weeks in total, including #23.

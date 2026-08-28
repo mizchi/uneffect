@@ -120,6 +120,46 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("correlates the caught path predicate with its value join", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch",
+      modelName: "reject",
+      target: "dropped",
+    }));
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "reject",
+      status: "verified",
+      pathCorrelation: {
+        caughtWhen: "auditArmed",
+        rule: "same-predicate-branch-restriction",
+      },
+    }));
+
+    const predicateLoss = source.replace(
+      "if (armed) runtime.dropped += 1;",
+      "if (runtime.attempted > 0) runtime.dropped += 1;",
+    );
+    const broken = analyzeRefinementActionBodies(fileName, predicateLoss, "telemetryRouting", temporal);
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch",
+      modelName: "reject",
+      target: "dropped",
+    }));
+    expect(broken.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "reject",
+      status: "unknown",
+      reason: "action-validation-failed",
+    }));
+    const brokenObligation = broken.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "reject");
+    expect(brokenObligation?.kind === "handler-join-fixed-point"
+      ? brokenObligation.pathCorrelation : undefined).toBeUndefined();
+  });
+
   it("retains the dynamic lexical owner of a continue leaving a catch", () => {
     const fileName = "src/environment.ts";
     const source = readFileSync(fileName, "utf8");

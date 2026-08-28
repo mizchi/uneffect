@@ -63,9 +63,10 @@ lowering and covers the application-backed nested `if`/throw/catch family.
 Attempted-family loops, incomplete switches, and abrupt finally bodies produce
 an explicit `unsupported-control-flow` non-proof. P2.5 extends the graph across
 prefix and suffix statements surrounding one control root and proves that an
-abrupt branch cannot enter the suffix. This wider application scan exposes the
-next #23/P2.6 boundary: correlate CFG path predicates with value joins instead
-of leaving `rejectTelemetry` at a redundant nested-ternary mismatch.
+abrupt branch cannot enter the suffix. P2.6 correlates an exact caught-path
+predicate with its value join and discharges `rejectTelemetry`'s redundant
+nested ternary while retaining predicate loss as an explicit non-proof. The
+next #23 slice targets application-backed abrupt `finally` override semantics.
 The 49–96 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
@@ -77,7 +78,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Carry handler CFG path predicates into one application-backed value join; prove or retain the redundant nested-ternary mismatch as an explicit non-proof. |
+| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Lower application-backed abrupt `finally` return/throw override paths without allowing overwritten incoming completions to escape. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -203,6 +204,12 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   return has no edge into the following throw suffix. Multiple sibling control
   roots remain an explicit unsupported candidate. The wider scan honestly
   exposes `rejectTelemetry` as control-converged but value-validation-unknown.
+- [x] Restrict nested conditional values by an exact caught-path predicate at
+  the catch join. `rejectTelemetry` now simplifies the duplicated `auditArmed`
+  branch and verifies; changing the catch condition prevents both simplification
+  and `pathCorrelation` evidence. The strict artifact records the predicate and
+  `same-predicate-branch-restriction` rule. This is syntactic path evidence, not
+  solver-derived logical equivalence.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

@@ -132,6 +132,14 @@
             "caughtThrow": { "type": "boolean" },
             "mandatoryFinally": { "type": "boolean" }
           }
+        },
+        "pathCorrelation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["caughtWhen", "rule"],
+          "properties": {
+            "caughtWhen": { "type": "string", "minLength": 1 },
+            "rule": { "const": "same-predicate-branch-restriction" }
+          }
         }
       },
       "allOf": [{

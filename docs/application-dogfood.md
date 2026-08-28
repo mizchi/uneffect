@@ -332,10 +332,21 @@ value validation retains a redundant nested conditional and reports
 `action-validation-failed`. That result is intentionally still `unknown`; P2.5
 does not claim path-correlated value equivalence.
 
+P2.6 feeds the exact caught predicate into the value phi for that retained
+case. On the `auditArmed` catch path, an inner conditional guarded by the same
+normalized expression is restricted to its true branch, reducing the dropped
+update to the declared model expression. The artifact records
+`caughtWhen: auditArmed` and the
+`same-predicate-branch-restriction` rule. Replacing the catch guard with
+`attempted > 0` is a load-bearing negative: no correlation evidence is emitted
+and the action stays `unknown: action-validation-failed`. The focused benchmark
+measured 2.1138 ms mean over 237 samples. This is exact syntactic path
+correlation, not Z3-proved predicate equivalence.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,745 summaries, 4,334 reviewed assumption occurrences, 74 files).
+`assumed` (3,747 summaries, 4,336 reviewed assumption occurrences, 74 files).
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a
