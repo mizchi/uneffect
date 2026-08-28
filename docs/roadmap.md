@@ -143,7 +143,7 @@ explicit conservative boundaries rather than untracked support.
    Completed child [#38](https://github.com/mizchi/uneffect/issues/38) adds one
    source-ordered upper-triangular affine scalar dependency and its exact
    arithmetic-series summary without claiming general coupled recurrences.
-   Active child [#39](https://github.com/mizchi/uneffect/issues/39) lowers one
+   Completed child [#39](https://github.com/mizchi/uneffect/issues/39) lowers one
    loop-local conditional value into source-bound predecessor-value evidence
    without claiming arbitrary expression or CFG joins.
    The first
