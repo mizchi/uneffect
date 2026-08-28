@@ -140,7 +140,7 @@ explicit conservative boundaries rather than untracked support.
    completed child [#37](https://github.com/mizchi/uneffect/issues/37)
    replaces the parallel diamond/switch evidence fields with one ordered join
    IR and composes one bounded Boolean-then-switch sequence.
-   Active child [#38](https://github.com/mizchi/uneffect/issues/38) adds one
+   Completed child [#38](https://github.com/mizchi/uneffect/issues/38) adds one
    source-ordered upper-triangular affine scalar dependency and its exact
    arithmetic-series summary without claiming general coupled recurrences.
    The first
