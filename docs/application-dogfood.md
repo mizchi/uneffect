@@ -525,6 +525,18 @@ path-dependent updates, extra members, exhausted budgets, modified
 certificates, and solver unavailability remain non-proofs. This is one bounded
 upper-triangular family, not general coupled recurrence solving.
 
+P2.24 adds `cfg-conditional-weighted-flush.ts`, a telemetry loop that selects a
+per-item weight into a local value before updating `sent`. The evaluator had
+already derived the correct piecewise recurrence, but earlier structural
+evidence required a direct `if` or bounded `switch`. The new
+`loop-invariant-cfg-value-join` records the exact conditional-expression span,
+the unchanged Boolean `urgent` selector, expression-keyed then/else
+predecessors with values `2` and `1`, the common join, and a named one-join
+budget. Structural convergence remains provisional; Z3 independently verifies
+the recurrence. An unused selected value, nested or multiple selections,
+mutable/local/non-Boolean selectors, non-affine branches, budget exhaustion,
+and solver unavailability stay explicit non-proofs.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model
@@ -552,7 +564,7 @@ The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
 `assumed` (3,882 summaries, 4,469 reviewed assumption occurrences, 74 files),
-and all 104 isolated dogfood cases pass.
+and all 109 isolated dogfood cases pass.
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

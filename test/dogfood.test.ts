@@ -26,6 +26,41 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a loop-local conditional telemetry weight through predecessor-value evidence", async () => {
+    const fileName = "examples/dogfood/cfg-conditional-weighted-flush.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgConditionalWeightedFlush", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      controlJoins: [expect.objectContaining({
+        kind: "loop-invariant-cfg-value-join",
+        selector: { kind: "boolean-state", state: "urgent" },
+        rule: "source-bound-predecessor-value-phi",
+        budget: { name: "cfg-recurrence-value-joins", limit: 1, observed: 1 },
+      })],
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+
+    const unused = source.replace("runtime.sent += weight;", "void weight;\n    runtime.sent++;")
+      .replace(
+        "sent + (pending > 0 ? urgent ? 2 * pending : pending : 0)",
+        "sent + (pending > 0 ? pending : 0)",
+      );
+    const broken = analyzeRefinementActionBodies(
+      fileName, unused, "cfgConditionalWeightedFlush", parseSpec(fileName, unused).temporal,
+    );
+    expect(broken.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "unknown",
+      reason: "unsupported-recurrence",
+    }));
+  });
+
   it("proves source-ordered telemetry batch accumulation", async () => {
     const fileName = "examples/dogfood/cfg-coupled-batch-flush.ts";
     const source = readFileSync(fileName, "utf8");

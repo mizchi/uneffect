@@ -249,6 +249,12 @@ assurance result to a context-free green boolean.
 `verified` is always local to its artifact and assumptions. It is not a synonym
 for “this function is correct.”
 
+The Hoare-contract reliance line additionally includes exactly one loop-local
+conditional value join when an unchanged Boolean state selects two affine,
+source-bound predecessor values. Nested, multiple, unused, local-selector,
+mutable-selector, non-Boolean, and non-affine conditional values remain outside
+the claim; structural evidence alone is not verified evidence.
+
 ## Reliance matrix
 
 | Area | Safe reliance line | Outside the current claim |

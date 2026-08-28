@@ -125,6 +125,57 @@
             },
             "join": { "type": "string", "pattern": "^switch-join:[0-9]+$" }
           }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "order", "selector", "rule", "budget", "span", "predecessors", "join"],
+          "properties": {
+            "kind": { "const": "loop-invariant-cfg-value-join" },
+            "order": { "const": 0 },
+            "selector": {
+              "type": "object", "additionalProperties": false,
+              "required": ["kind", "state"],
+              "properties": {
+                "kind": { "const": "boolean-state" },
+                "state": { "type": "string", "minLength": 1 }
+              }
+            },
+            "rule": { "const": "source-bound-predecessor-value-phi" },
+            "budget": {
+              "type": "object", "additionalProperties": false,
+              "required": ["name", "limit", "observed"],
+              "properties": {
+                "name": { "const": "cfg-recurrence-value-joins" },
+                "limit": { "const": 1 },
+                "observed": { "const": 1 }
+              }
+            },
+            "span": { "$ref": "#/$defs/span" },
+            "predecessors": {
+              "type": "array", "minItems": 2, "maxItems": 2, "items": false,
+              "prefixItems": [
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["branch", "block", "value"],
+                  "properties": {
+                    "branch": { "const": "then" },
+                    "block": { "type": "string", "pattern": "^expression:[0-9]+$" },
+                    "value": { "type": "string", "minLength": 1 }
+                  }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["branch", "block", "value"],
+                  "properties": {
+                    "branch": { "const": "else" },
+                    "block": { "type": "string", "pattern": "^expression:[0-9]+$" },
+                    "value": { "type": "string", "minLength": 1 }
+                  }
+                }
+              ]
+            },
+            "join": { "type": "string", "pattern": "^value-join:[0-9]+$" }
+          }
         }
       ]
     },

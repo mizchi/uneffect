@@ -100,7 +100,13 @@ the accepted affine ranking counter, direction, one-iteration transformer, and
 closed-form summary through the back-edge and requires that certificate to
 stabilize, but structural convergence reports only
 `unknown: independent-proof-required`. The shape-specific affine lowering still
-constructs that summary. The opt-in async
+constructs that summary. One additional direct-loop family lowers exactly one
+loop-local conditional expression into a source-bound predecessor-value join:
+an unchanged Boolean state selects two affine values, and the strict artifact
+retains its expression span, expression-keyed predecessor blocks and values,
+common join, order, and named one-join budget. Nested/multiple conditionals,
+mutable/local/non-Boolean selectors, unused selections, and non-affine branches
+remain unsupported. The opt-in async
 `analyzeRefinementActionBodiesWithZ3` API independently reparses the certificate
 and proves a base case, an inductive step for every scalar state, and a
 well-founded guard-distance ranking obligation. A modified summary or ranking

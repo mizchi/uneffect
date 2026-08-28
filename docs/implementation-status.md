@@ -466,6 +466,16 @@ same property is proved for arbitrary TypeScript.
   until independent Z3 base/step/ranking checks pass. Cycles, multiple edges,
   self-amplification, path-dependent drivers, nonlinear terms, aliases, and
   additional changed members remain unsupported.
+- One loop-local conditional expression may feed a changed affine recurrence
+  member through a `loop-invariant-cfg-value-join`. The artifact retains the
+  exact expression span, Boolean state selector, two expression-keyed
+  predecessor blocks and values, common join identity, source order, and the
+  named `cfg-recurrence-value-joins` one-join budget. The value join is
+  provisional until the shared Z3 base/step/ranking verifier accepts the
+  resulting recurrence. Nested or multiple conditionals, local/mutable/non-
+  Boolean selectors, non-affine branches, unused selected values, and solver
+  failure remain non-proofs. This is predecessor-value evidence for one
+  expression family, not arbitrary expression CFG lowering.
 
 ## Async, resources, and event loops
 

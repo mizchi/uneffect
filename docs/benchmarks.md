@@ -2020,6 +2020,15 @@ ranking member, and one updated-driver read. They exclude multiple or cyclic
 edges, self-amplification, nonlinear/path-dependent updates, aliases, and
 general coupled-recurrence throughput.
 
+The P2.24 focused benchmark lowers one loop-local conditional telemetry weight
+into source-bound predecessor-value evidence. A selected run measured 0.2023 ms
+mean over 2,472 structural samples (4,942.99 operations per second, 3.57% RME).
+Independent Z3 validation measured 35.3969 ms mean over 15 samples (28.25
+operations per second, 2.66% RME). These are development-host regression
+signals. They cover exactly one unchanged Boolean selector and two affine
+predecessor values. They exclude nested/multiple expressions, mutable or local
+selectors, non-affine values, aliases, and arbitrary reducible-CFG throughput.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

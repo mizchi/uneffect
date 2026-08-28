@@ -3349,6 +3349,14 @@ describe("annotated refinement bindings", () => {
       oneOf: expect.arrayContaining([
         expect.objectContaining({ properties: expect.objectContaining({ kind: { const: "loop-invariant-cfg-diamond" } }) }),
         expect.objectContaining({ properties: expect.objectContaining({ kind: { const: "loop-invariant-cfg-switch" } }) }),
+        expect.objectContaining({
+          required: expect.arrayContaining(["span", "predecessors"]),
+          properties: expect.objectContaining({
+            kind: { const: "loop-invariant-cfg-value-join" },
+            rule: { const: "source-bound-predecessor-value-phi" },
+            span: { $ref: "#/$defs/span" },
+          }),
+        }),
       ]),
     });
 
