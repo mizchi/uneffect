@@ -4,7 +4,6 @@ import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectSet } from "./capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";
-import { analyzeProgramEffects } from "./effects.js";
 import type { CorsaCheckerFactFile } from "./corsa-checker-exporter.js";
 import { isAuthenticatedCorsaCheckerFacts } from "./corsa-fact-provenance.js";
 import { createProjectByteCoordinates, projectFunctionDisplayName } from "./project-coordinates.js";
@@ -189,13 +188,6 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
 
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
   const program = programOf(options.files), functions: NormalizedFrontendIr["functions"] = [];
-  const inferredByCallable = new Map<string, string[]>();
-  for (const summary of analyzeProgramEffects(program, { requireAnnotations: false }).summaries) {
-    if (!summary.fileName) continue;
-    const sourceName = projectFileName(options.files, summary.fileName);
-    if (!sourceName) continue;
-    inferredByCallable.set(`${sourceName}\0${summary.functionName}`, summary.effects.map(formatEffect));
-  }
   const coverageFailures = options.corsaFacts || options.requireCorsaCheckerFacts
     ? checkerCoverageFailures(program, options.files)
     : [];
@@ -203,10 +195,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const callable of topLevelCallables(source)) {
     const sourceName = projectFileName(options.files, source.fileName)!;
     const leading = source.text.slice(callable.declaration.getFullStart(), callable.declaration.getStart(source));
-    const effects = [...new Set([
-      ...extractAnnotations(leading, "effect").flatMap(parseEffectSet).map(formatEffect),
-      ...(inferredByCallable.get(`${sourceName}\0${callable.name}`) ?? []),
-    ])].sort();
+    const effects = extractAnnotations(leading, "effect").flatMap(parseEffectSet).map(formatEffect).sort();
     functions.push({ name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
@@ -222,6 +211,14 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   };
   const protocolSymbols = referenceInput.protocolSymbols.map((item) => ({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end }));
   const names = new Map(referenceInput.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
+  for (const symbol of referenceInput.symbols) {
+    const summary = functions.find((item) => item.name === symbol.name);
+    if (!summary) continue;
+    summary.effects = [...new Set([
+      ...summary.effects,
+      ...(symbol.inferredEffects ?? []).map((item: any) => item.effect as string),
+    ])].sort();
+  }
   const calls = referenceInput.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
   let changed = true;
   while (changed) {
