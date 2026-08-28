@@ -139,8 +139,7 @@ Build tooling can either resolve the manifest against already-loaded exports or
 emit a reviewable module containing direct namespace references. Normal
 TypeScript checking remains responsible for the concrete state/runtime types.
 
-An adapter may opt into the one proof-grade ambient runtime identity currently
-supported by Uneffect:
+An adapter may opt into a proof-relevant ambient runtime identity:
 
 ```ts
 /* uneffect: runtime lease@1 = globalThis */
@@ -152,9 +151,23 @@ refinement bindings. Cross-project composition then accepts the builtin
 `globalThis` symbol and records
 `{ kind: "ambient", root: "globalThis", identity:
 "ecmascript:realm.globalThis" }`. A locally shadowed `globalThis`, a property
-below it, `window`, Node `global`, Worker globals, iframe values, other host
-aliases, duplicate declarations, and version mismatches are rejected. This is
-not a claim that distinct Realms share a global object.
+below it, `window`, Worker globals, iframe values, other host aliases, duplicate
+declarations, and version mismatches are rejected. This is not a claim that
+distinct Realms share a global object.
+
+Node's ambient `global` requires both the `@types/node` major and an explicit
+realm label:
+
+```ts
+/* uneffect: runtime lease@1 = node:global@24#main */
+```
+
+Both sides must carry the exact same identity. The argument must resolve through
+the TypeChecker to the ambient `global` from `@types/node` major 24; a local
+shadow, `#worker`, another major, or an unversioned spelling fails closed. The
+label is a user contract used to prevent accidental equality. Uneffect does not
+discover deployment topology or prove that two processes or Workers share a
+Realm.
 
 An implementation may use a different top-level field name from the temporal
 model by declaring an explicit, version-matched abstraction relation:

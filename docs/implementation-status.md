@@ -89,6 +89,12 @@ same property is proved for arbitrary TypeScript.
   and two-helper links retain `ecmascript:realm.globalThis`; unannotated,
   shadowed, host-alias, descendant-property, Worker, and iframe identities fail
   closed.
+- A versioned `runtime adapter@version = node:global@24#main` annotation binds
+  the TypeChecker-resolved ambient `global` from `@types/node` major 24 to an
+  explicit realm label. Exact producer/consumer identity composes; a different
+  label, typings major, or local shadow fails closed with a source-attributed
+  runtime-identity diagnostic. Labels remain user contracts rather than
+  deployment-topology proof.
 - The linter detects syntactic and solver-level constant properties,
   contradictory initial constraints, globally impossible guards, duplicate or
   subsumed properties, bounded unreachability, and several inductively proved

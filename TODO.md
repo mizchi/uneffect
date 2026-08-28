@@ -27,20 +27,22 @@ Remaining volume and estimate assumptions are maintained in
 
 ## Current implementation snapshot
 
-[#20](https://github.com/mizchi/uneffect/issues/20) is the sole active issue.
-Its supported cross-project scalar-refinement fragment on `main` includes direct
+[#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
+cross-project scalar-refinement fragment on `main`, including direct
 calls, guarded wrappers, at most two write-screened sole-call helpers, exact
 compiler/config/declaration provenance, and one version-matched builtin
 `globalThis` runtime identity and one exact embedded-TypeScript declaration
-transform profile. Workhub-derived `StateStore.set` dogfood now
+transform profile. It also admits Node ambient `global` only with an exact
+`@types/node` major and explicit matching realm label; mismatched labels,
+typings majors, and local shadows fail closed. Workhub-derived `StateStore.set` dogfood
 retains its unsupported async class-method edge as a violation instead of
-silently reporting `not-applicable`. The next slice is one explicit
-non-`globalThis` realm identity with an incompatible-realm negative control.
+silently reporting `not-applicable`. [#18](https://github.com/mizchi/uneffect/issues/18)
+is the next active proof-boundary issue.
 
-There are 13 open implementation Issues: two proof-boundary Issues in Phase 1,
+There are 12 open implementation Issues: one proof-boundary Issue in Phase 1,
 five specification-expressiveness Issues in Phase 2, five production-integration
 Issues in Phase 3, and one proof-consumer Issue in Phase 4. The additive backlog
-is estimated at 54–105 engineer-weeks, while the Phase 1 critical path is 4–8
+is estimated at 53–103 engineer-weeks, while the remaining Phase 1 work is 3–6
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
@@ -49,23 +51,22 @@ General CFG and escaping-alias fixed points remain outside #9 and are owned by #
 
 ## Immediate execution queue
 
-Only the first row is active. #18 remains blocked until #20 establishes the
-required project-boundary evidence.
+Only the first row is active. #20 established the required project-boundary
+evidence and handed off to #18.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Model one explicit non-`globalThis` realm identity with an incompatible-realm negative control and reassess whether #20 can close. |
-| 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
+| 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Model one exact module-order seed with adjacent cycle/TLA failure controls. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
 
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
-| Proof-boundary MVP | #20, then the first exact slice of #18 | 4–8 engineer-weeks | Local evidence survives supported project and module boundaries. |
+| Proof-boundary MVP | First exact slice of #18 | 1–2 engineer-weeks for the next slice | Local evidence survives supported project and module boundaries. |
 | General analysis foundation | #23, the first executable slices of #24 and #8 | 10–19 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 for generated tests/numeric code | 11–27 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | All 13 open Issues | 54–105 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
+| Entire open research backlog | All 12 open Issues | 53–103 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -91,16 +92,15 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-28 there are 13 open implementation Issues: one `active`, one
-`blocked`, and eleven `queued`. Every open Issue has exactly one
+As of 2026-08-28 there are 12 open implementation Issues: one `active` and
+eleven `queued`. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
-| Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
+| Active | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
@@ -126,7 +126,9 @@ the common native/WASM Z3 execution layer closed [#17](https://github.com/mizchi
 reviewed external-registry configuration closed [#19](https://github.com/mizchi/uneffect/issues/19),
 reviewed TypeScript traversal callback timing closed [#21](https://github.com/mizchi/uneffect/issues/21),
 evidence-preserving external-verifier timeout recovery closed [#22](https://github.com/mizchi/uneffect/issues/22),
-and bounded Promise/exception/resource composition closed [#9](https://github.com/mizchi/uneffect/issues/9).
+bounded Promise/exception/resource composition closed [#9](https://github.com/mizchi/uneffect/issues/9),
+and exact project-boundary refinement provenance plus the first labeled Node
+realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
@@ -1058,7 +1060,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Bind an exported function-closure mutation root to a project/source/export identity, verify its current declaration with TypeChecker identity, and substitute only a matching named or namespace import in the parent; inaccessible, same-named-different, and non-exported roots remain unknown.
       - [x] Extend the same identity contract to module-initialization mutation regions and multi-hop re-export chains; the importing module must expose an exact TypeChecker-resolved binding or its module evidence becomes unknown.
       - [x] Define `globalThis` as the explicit `ecmascript:realm.globalThis` identity for function and module mutation composition within one runtime realm.
-      - [ ] Define opt-in runtime/realm-specific identities for aliases such as browser `window`, Node `global`/`process`, Workers, and iframes; non-exported lexical roots remain intentionally uncomposable. ([#20](https://github.com/mizchi/uneffect/issues/20))
+      - [x] Define the first opt-in host identity for Node ambient `global`, binding the `@types/node` major and an explicit realm label while rejecting incompatible labels, versions, and local shadows. Broader browser/Worker/iframe identities remain with [#10](https://github.com/mizchi/uneffect/issues/10).
     - [x] Instantiate fully bounded iterator Effect parameters across project-reference call boundaries, including direct/stored/pure/forwarded arguments, bound mismatch diagnostics, and Promise `Throw` conversion; unbounded or opaque inputs remain unknown.
   - [x] Share cross-project Effect composition with the `uneffect check --project` CLI workspace path and expose the same provenance/blocker ledger in JSON.
   - [x] Attach stable source identity and spans to Program-produced effect summaries so same-named callables remain distinguishable.

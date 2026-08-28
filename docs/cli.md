@@ -176,8 +176,12 @@ are not composed.
 An opt-in `runtime adapter@version = globalThis` refinement annotation permits
 the same TypeChecker-resolved builtin global object to cross the scalar link.
 The JSON link records `runtimeIdentity` with
-`ecmascript:realm.globalThis`. Host aliases, shadowed bindings, descendant
-properties, unannotated adapters, and other Realms remain uncomposed.
+`ecmascript:realm.globalThis`. Node adapters may instead use
+`runtime adapter@version = node:global@24#main`; the link records the Node
+major and realm label and accepts only the ambient `global` from the matching
+`@types/node` major. Host aliases, shadowed bindings, descendant properties,
+unannotated adapters, mismatched realm labels, and mismatched majors remain
+uncomposed. A realm label is a user contract, not discovered deployment proof.
 
 Add `--require-build-artifacts` when the checked boundary consumes composite
 outputs and CI must reject missing or stale `.d.ts`/`.tsbuildinfo` state:

@@ -13,7 +13,7 @@ import {
   type CompletionSummary,
 } from "./completion-flow.js";
 import {
-  SAME_REALM_GLOBAL_THIS_IDENTITY,
+  parseRefinementRuntimeIdentity,
   type RefinementRuntimeIdentity,
 } from "./runtime-identities.js";
 
@@ -182,10 +182,11 @@ export function buildRefinementBindingManifest(fileName: string, text: string, a
     if (match[2] !== bindings[0]!.version) {
       throw new Error(`refinement runtime identity ${match[1]} has version ${match[2]}, expected ${bindings[0]!.version}`);
     }
-    if (match[3] !== "globalThis") {
-      throw new Error(`unsupported refinement runtime identity: ${match[3]}; only same-realm globalThis is supported`);
+    const identity = parseRefinementRuntimeIdentity(match[3]!);
+    if (!identity) {
+      throw new Error(`unsupported refinement runtime identity: ${match[3]}; supported identities are globalThis and node:global@<major>#<realm>`);
     }
-    return [SAME_REALM_GLOBAL_THIS_IDENTITY];
+    return [identity];
   });
   if (runtimeIdentities.length > 1) throw new Error(`duplicate refinement runtime identity for ${adapterName}`);
   return {
@@ -961,12 +962,50 @@ function validateRefinementActionBodiesInSource(
         && !!named.name && ts.isIdentifier(named.name) && named.name.text === "globalThis";
     });
   };
+  const isNodeCurrentRealmGlobal = (node: ts.Expression, version: string): boolean => {
+    const value = unwrap(node);
+    if (!checker || !ts.isIdentifier(value) || value.text !== "global") return false;
+    const symbol = checker.getSymbolAtLocation(value);
+    const declarations = symbol?.declarations ?? [];
+    if (declarations.length === 0
+      || !declarations.every((declaration) => declaration.getSourceFile().isDeclarationFile)) return false;
+    return declarations.some((declaration) => {
+      const fileName = declaration.getSourceFile().fileName.replaceAll("\\", "/");
+      const marker = "/node_modules/@types/node/";
+      const index = fileName.lastIndexOf(marker);
+      if (index < 0) return false;
+      const packageJson = ts.sys.readFile(`${fileName.slice(0, index + marker.length - 1)}/package.json`);
+      if (!packageJson) return false;
+      try {
+        const packageVersion = (JSON.parse(packageJson) as { version?: unknown }).version;
+        return typeof packageVersion === "string" && packageVersion.split(".")[0] === version;
+      } catch {
+        return false;
+      }
+    });
+  };
+  let runtimeIdentityFailure: string | undefined;
   const sameRuntimeIdentity = (
     external: ExternalRefinementActionContract,
     argument: ts.Expression,
-  ): boolean => manifest.runtimeIdentity?.identity === "ecmascript:realm.globalThis"
-    && external.runtimeIdentity?.identity === manifest.runtimeIdentity.identity
-    && isSameRealmGlobalThis(argument);
+  ): boolean => {
+    const local = manifest.runtimeIdentity;
+    if (!local || !external.runtimeIdentity) {
+      runtimeIdentityFailure = "runtime identity is missing on the consumer or producer adapter";
+      return false;
+    }
+    if (external.runtimeIdentity.identity !== local.identity) {
+      runtimeIdentityFailure = `runtime identity mismatch: consumer ${local.identity}, producer ${external.runtimeIdentity.identity}`;
+      return false;
+    }
+    const valid = local.kind === "ambient"
+      ? isSameRealmGlobalThis(argument)
+      : local.host === "node" && local.root === "global" && isNodeCurrentRealmGlobal(argument, local.version);
+    if (!valid) runtimeIdentityFailure = local.kind === "ambient"
+      ? "runtime identity ecmascript:realm.globalThis is not backed by the TypeChecker-resolved builtin globalThis"
+      : `runtime identity ${local.identity} is not backed by the TypeChecker-resolved @types/node major ${local.version} ambient global`;
+    return valid;
+  };
   const earlyReturnGuard = (body: ts.Block, receiver: string): { guard?: TemporalExpression; updates: ts.Block } => {
     const first = body.statements[0];
     if (!first || !ts.isIfStatement(first) || first.elseStatement) return { updates: body };
@@ -3467,6 +3506,7 @@ function validateRefinementActionBodiesInSource(
   };
 
   for (const action of spec.actions) {
+    runtimeIdentityFailure = undefined;
     const exportName = manifest.actions[action.name];
     if (!exportName) {
       diagnostics.push({ code: "missing-action-binding", adapterName, modelName: action.name, message: `action ${action.name} has no ${adapterName} refinement binding to verify` });
@@ -3503,7 +3543,12 @@ function validateRefinementActionBodiesInSource(
       : undefined;
     permittedGuardedExternal = undefined;
     if (!completion) {
-      diagnostics.push({ code: "unsupported-action-body", adapterName, modelName: action.name, exportName, message: `${exportName} uses an action body outside the supported scalar refinement fragment` });
+      diagnostics.push({
+        code: "unsupported-action-body", adapterName, modelName: action.name, exportName,
+        message: runtimeIdentityFailure
+          ? `${exportName} cannot compose the external action: ${runtimeIdentityFailure}`
+          : `${exportName} uses an action body outside the supported scalar refinement fragment`,
+      });
       continue;
     }
     const expected = new Map(action.assignments.map(({ target, expressionAst }) => [target, expressionAst]));

@@ -141,6 +141,18 @@ composed call. The evidence link records
 shadowed binding, `window`, Node `global`, Worker globals, iframe values, or a
 property below the global object.
 
+For Node's ambient `global`, include the Node typings major and a user-chosen
+realm label on both sides:
+
+```ts
+/* uneffect: runtime counter@1 = node:global@24#main */
+```
+
+The composed call must use the TypeChecker-resolved `@types/node` major 24
+ambient symbol. A different label such as `#worker`, a different major, or a
+locally shadowed `global` is rejected. Realm labels are explicit contracts, not
+runtime discovery or proof of deployment topology.
+
 If a non-TypeScript file contains an exact TypeScript region that is emitted as
 a `.ts` file without changing its text, bind that relation explicitly:
 

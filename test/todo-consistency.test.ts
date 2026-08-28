@@ -101,8 +101,7 @@ describe("TODO hierarchy consistency", () => {
     );
 
     expect(rows).toEqual([
-      ["Active", 1, 20],
-      ["Blocked", 1, 18],
+      ["Active", 1, 18],
       ["Queued", 2, 23],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
@@ -129,8 +128,7 @@ describe("TODO hierarchy consistency", () => {
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
     expect(rows.map(([order, issue]) => [order, issue])).toEqual([
-      [1, 20],
-      [2, 18],
+      [1, 18],
     ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");

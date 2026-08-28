@@ -692,7 +692,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         status: "unknown",
         blockers: expect.arrayContaining([expect.objectContaining({
           classification: "violation", subject: "counter:increment",
-          message: expect.stringContaining("outside the supported scalar refinement fragment"),
+          message: expect.stringContaining("runtime identity is missing"),
         })]),
       });
 
@@ -707,7 +707,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         status: "unknown",
         blockers: expect.arrayContaining([expect.objectContaining({
           classification: "violation", subject: "counter:increment",
-          message: expect.stringContaining("outside the supported scalar refinement fragment"),
+          message: expect.stringContaining("TypeChecker-resolved builtin globalThis"),
         })]),
       });
 
@@ -725,10 +725,133 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           status: "unknown",
           blockers: expect.arrayContaining([expect.objectContaining({
             classification: "violation", subject: "counter:increment",
-            message: expect.stringContaining("outside the supported scalar refinement fragment"),
+            message: expect.stringContaining("TypeChecker-resolved builtin globalThis"),
           })]),
         });
       }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("composes an explicitly versioned Node global only within the same current realm", async () => {
+    const verifyProject = futureApi("verifyUneffectProject");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-project-node-realm-refinement-"));
+    const root = join(directory, "tsconfig.json");
+    const child = join(directory, "packages", "child");
+    const parent = join(directory, "packages", "parent");
+    try {
+      mkdirSync(join(directory, "node_modules", "typescript"), { recursive: true });
+      mkdirSync(join(directory, "node_modules", "@types", "node"), { recursive: true });
+      mkdirSync(join(child, "src"), { recursive: true });
+      mkdirSync(join(parent, "src"), { recursive: true });
+      writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({
+        name: "typescript", version: ts.version, main: "index.js",
+      }));
+      writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
+      writeFileSync(join(directory, "node_modules", "@types", "node", "package.json"), JSON.stringify({
+        name: "@types/node", version: "24.0.0", types: "index.d.ts",
+      }));
+      writeFileSync(join(directory, "node_modules", "@types", "node", "index.d.ts"),
+        "declare var global: typeof globalThis & { count: number };\n");
+      const model = `/* uneffect:
+        state count: int
+        init count = 0
+        action increment: count' = count + 1
+      */`;
+      const childSource = `${model}
+        export interface Runtime { count: number }
+        /* uneffect: runtime counter@1 = node:global@24#main */
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.count++ }
+      `;
+      writeFileSync(join(child, "src", "counter.ts"), childSource);
+      const parentSource = `import { increment as incrementChild } from "../../child/src/counter.js"
+        import type { Runtime } from "../../child/src/counter.js"
+        ${model}
+        /* uneffect: runtime counter@1 = node:global@24#main */
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        function apply(runtime: Runtime) { incrementChild(runtime) }
+        /* uneffect: effect Mutate<typeof global.count> */
+        /* uneffect: refinement counter@1 action increment */ export function increment(_runtime: Runtime) { apply(global) }
+      `;
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource);
+      const config = (references: unknown[] = []) => ({
+        compilerOptions: {
+          composite: true, declaration: true, emitDeclarationOnly: true,
+          rootDir: "src", outDir: "dist", strict: true,
+          module: "NodeNext", moduleResolution: "NodeNext", types: ["node"],
+        },
+        include: ["src/**/*.ts"], references,
+      });
+      writeFileSync(join(child, "tsconfig.json"), JSON.stringify(config()));
+      writeFileSync(join(parent, "tsconfig.json"), JSON.stringify(config([{ path: "../child" }])));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/parent" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+
+      const result = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; links: unknown[]; blockers: unknown[] };
+      };
+      expect(result.refinementComposition).toMatchObject({
+        status: "verified",
+        links: [expect.objectContaining({
+          runtimeIdentity: {
+            kind: "host", host: "node", root: "global", version: "24", realm: "main",
+            identity: "node:24:realm:main.global",
+          },
+          evidence: "verified",
+        })],
+        blockers: [],
+      });
+
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource.replace(
+        "runtime counter@1 = node:global@24#main", "runtime counter@1 = node:global@24#worker",
+      ));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const incompatible = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(incompatible.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          classification: "violation", subject: "counter:increment",
+          message: expect.stringContaining("runtime identity mismatch"),
+        })]),
+      });
+
+      writeFileSync(join(child, "src", "counter.ts"), childSource.replaceAll(
+        "node:global@24#main", "node:global@23#main",
+      ));
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource.replaceAll(
+        "node:global@24#main", "node:global@23#main",
+      ));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const typesVersionMismatch = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(typesVersionMismatch.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          classification: "violation", subject: "counter:increment",
+          message: expect.stringContaining("@types/node major 23"),
+        })]),
+      });
+      writeFileSync(join(child, "src", "counter.ts"), childSource);
+
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource.replace(
+        "import type { Runtime }", "const global: Runtime = { count: 0 }\nimport type { Runtime }",
+      ));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const shadowed = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(shadowed.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({ classification: "violation" })]),
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

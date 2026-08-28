@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 54–105 engineer-weeks; this is implementation volume, not a calendar
+estimate is 53–103 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -52,26 +52,27 @@ commitment.
    source-local sole-call helpers while retaining its call path, explicit depth
    budget, and child guard. An opt-in version-matched runtime annotation also
    preserves the TypeChecker-resolved same-realm `globalThis` identity without
-   equating host aliases or other Realms. A third helper, helper-local control
-   flow, collection edges, guarded wrappers with extra work, broader runtime
-   identities, and non-identical
-   declaration-transform validation remain. It consumes the
+   equating host aliases or other Realms. A versioned/labeled Node `global`
+   identity additionally binds the matching `@types/node` major and rejects
+   incompatible labels, versions, and local shadows. A third helper,
+   helper-local control flow, collection edges, guarded wrappers with extra
+   work, broader runtime identities, and non-identical declaration-transform
+   validation remain outside this completed bounded handoff. It consumes the
    completed #3 summary contract and does not technically depend on completion
-  of #9; it is now the active Phase 1 Issue.
-  A second read-only solution graph (`luna.mbt`) validates the multi-domain
-  loader and honest `not-applicable` composition result. A subsequent
-  Workhub-derived `StateStore.set` edge adds an attempted marker to the real
-  async class-method shape and retains that unsupported shape as a
-  source-attributed violation rather than widening it into the scalar fragment.
-  A versioned non-TypeScript declaration-transform mapping now supports one
-  digest/compiler-bound exact embedded-TypeScript span profile through the CLI
-  and programmatic verifier. Surrounding host semantics and non-identity
-  transforms remain non-proofs. The next slice is one explicit
-  non-`globalThis` realm identity; it must not infer equality from a shared
-  spelling.
+   of #9. A second read-only solution graph (`luna.mbt`) validates the
+   multi-domain loader and honest `not-applicable` composition result. A
+   subsequent Workhub-derived `StateStore.set` edge adds an attempted marker to
+   the real async class-method shape and retains that unsupported shape as a
+   source-attributed violation rather than widening it into the scalar fragment.
+   A versioned declaration-transform mapping supports one digest/compiler-bound
+   exact embedded-TypeScript span profile through the CLI and programmatic
+   verifier. Surrounding host semantics and non-identity transforms remain
+   non-proofs. Broader browser/Worker realm work remains in #10 and semantic
+   frontend mappings remain in #8.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.
+   It is the active Phase 1 issue after the #20 handoff.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
 is complete for the documented bounded, finite-state-complete, inductive,

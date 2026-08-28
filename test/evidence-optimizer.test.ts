@@ -69,7 +69,7 @@ describe("evidence and optimizer obligations", () => {
           properties: {
             callPath: { type: "array", items: { type: "string" }, minItems: 2 },
             helperDepthBudget: { type: "integer", const: 2 },
-            runtimeIdentity: { $ref: "#/$defs/sameRealmGlobalThisIdentity" }, guard: { type: "string" },
+            runtimeIdentity: { $ref: "#/$defs/refinementRuntimeIdentity" }, guard: { type: "string" },
           },
         } } } },
         },

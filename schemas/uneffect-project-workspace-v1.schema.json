@@ -58,7 +58,7 @@
             "modelName": { "type": "string" }, "evidence": { "enum": ["verified", "unknown"] },
             "callPath": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
             "helperDepthBudget": { "type": "integer", "const": 2 },
-            "runtimeIdentity": { "$ref": "#/$defs/sameRealmGlobalThisIdentity" },
+            "runtimeIdentity": { "$ref": "#/$defs/refinementRuntimeIdentity" },
             "guard": { "type": "string" },
             "declarationFile": { "type": "string" },
             "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
@@ -91,6 +91,22 @@
     "sameRealmGlobalThisIdentity": {
       "type": "object", "additionalProperties": false, "required": ["kind", "root", "identity"],
       "properties": { "kind": { "const": "ambient" }, "root": { "const": "globalThis" }, "identity": { "const": "ecmascript:realm.globalThis" } }
+    },
+    "nodeCurrentRealmGlobalIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "host", "root", "version", "realm", "identity"],
+      "properties": {
+        "kind": { "const": "host" }, "host": { "const": "node" }, "root": { "const": "global" },
+        "version": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "realm": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$.-]*$" },
+        "identity": { "type": "string", "pattern": "^node:[1-9][0-9]*:realm:[A-Za-z_$][A-Za-z0-9_$.-]*\\.global$" }
+      }
+    },
+    "refinementRuntimeIdentity": {
+      "oneOf": [
+        { "$ref": "#/$defs/sameRealmGlobalThisIdentity" },
+        { "$ref": "#/$defs/nodeCurrentRealmGlobalIdentity" }
+      ]
     },
     "declarationIntegrity": {
       "type": "object", "additionalProperties": false, "required": ["status", "fileName"],

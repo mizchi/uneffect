@@ -181,6 +181,9 @@ export function createCheckWorkspaceJsonReport(
         ...((effectComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
         ...((refinementComposition?.links.length ?? 0) > 0 ? ["verified child-project scalar refinement actions are composed through bounded resolved parent action call paths"] : []),
         ...((refinementComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by refinement composition exactly matches a same-compiler in-memory re-emission"] : []),
+        ...(refinementComposition?.links.some((link) => link.runtimeIdentity?.kind === "host"
+          && link.runtimeIdentity.host === "node")
+          ? ["Node global refinement identities match an explicit Node major and realm label backed by the corresponding @types/node ambient global symbol"] : []),
         ...([...(effectComposition?.links ?? []), ...(refinementComposition?.links ?? [])].some((link) => link.declarationIntegrity.transform) ? ["every transformed source consumed by cross-project composition is an exact embedded TypeScript span bound to transform and compiler identity"] : []),
         ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
         ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
@@ -189,6 +192,7 @@ export function createCheckWorkspaceJsonReport(
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
         "cross-project refinement composition is limited to scalar direct calls or at most two write-screened sole-call local helpers with exact declarations",
         "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
+        "runtime realm labels are explicit user contracts, not proof that deployment contexts share an ECMAScript Realm",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         ...(outputIntegrity.status === "verified" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
         "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",

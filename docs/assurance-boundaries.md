@@ -118,14 +118,16 @@ property chain, or a string-literal element chain. Missing/spread arguments and
 fresh or computed expressions remain unknown rather than inventing an alias.
 Inferred, trusted, unknown, or ambiguous summaries, non-exported or parent-inaccessible
 mutation regions, host/realm-specific ambient roots other than explicitly modeled
-same-realm `globalThis`, unbounded iterator parameters, and opaque iterator
+same-realm `globalThis` and versioned/labeled Node `global`, unbounded iterator parameters, and opaque iterator
 arguments remain blockers. Exported
 function-closure and module-initialization roots use a project/source/export
 identity and are substituted only through a parent named or namespace import
 whose TypeChecker declaration identity matches, including across re-export chains;
 same-spelled symbols are a negative case.
 `globalThis` uses `ecmascript:realm.globalThis`; it does not equate browser
-`window`, Node `global`/`process`, Workers, iframes, or other realms.
+`window`, Node `process`, Workers, iframes, or other realms. Node `global` is
+admitted only through `node:global@<major>#<realm>`, a matching `@types/node`
+major, and an exact realm label on both sides.
 A verified child iterator consumer whose every parameter has an
 `effect_parameter` bound is instantiated through resolved generator
 factories, supported stored iterators, forwarded iterator parameters, and
@@ -161,8 +163,16 @@ of a refinement link to the ECMAScript global object in the current Realm. The
 adapter/version must match and the argument must resolve to the builtin
 `globalThis` symbol. The link records `ecmascript:realm.globalThis`. Missing or
 duplicate annotations, locally shadowed names, properties below `globalThis`,
-`window`, Node `global`, Worker/iframe values, and cross-realm flows remain
+`window`, unannotated Node `global`, Worker/iframe values, and cross-realm flows remain
 non-proofs.
+
+Node adapters may instead declare, for example,
+`runtime adapter@version = node:global@24#main`. The argument must resolve to
+the ambient `global` declaration from `@types/node` major 24, and producer and
+consumer identities must match byte-for-byte, including `#main`. A local
+shadow, `#worker`, or another typings major fails closed. The realm label is an
+explicit deployment contract; Uneffect does not observe processes or Workers
+and therefore does not prove that the label describes actual topology.
 
 Success still excludes cross-project invariants, contracts, ownership, and
 temporal composition. Every `.d.ts` consumed by an Effect or refinement link

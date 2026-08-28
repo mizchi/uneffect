@@ -69,11 +69,29 @@ describe("annotated refinement bindings", () => {
     ), "counter")).toThrow(/version 2, expected 1/);
     expect(() => buildRefinementBindingManifest("counter.ts", source.replace(
       "runtime counter@1 = globalThis", "runtime counter@1 = globalThis.counter",
-    ), "counter")).toThrow(/only same-realm globalThis is supported/);
+    ), "counter")).toThrow(/supported identities are globalThis and node:global@<major>#<realm>/);
     expect(() => buildRefinementBindingManifest("counter.ts", source.replace(
       "/* uneffect: runtime counter@1 = globalThis */",
       "/* uneffect: runtime counter@1 = globalThis */\n/* uneffect: runtime counter@1 = globalThis */",
     ), "counter")).toThrow(/duplicate refinement runtime identity/);
+  });
+
+  it("records a versioned current-realm Node global identity", () => {
+    const source = `
+      /* uneffect: runtime counter@1 = node:global@24#main */
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: typeof global) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: typeof global) { return runtime }
+      /* uneffect: refinement counter@1 action increment */ export function incrementCounter(runtime: typeof global) { runtime }
+    `;
+    expect(buildRefinementBindingManifest("counter.ts", source, "counter")).toMatchObject({
+      runtimeIdentity: {
+        kind: "host", host: "node", root: "global", version: "24", realm: "main",
+        identity: "node:24:realm:main.global",
+      },
+    });
+    expect(() => buildRefinementBindingManifest("counter.ts", source.replace(
+      "node:global@24#main", "node:global@24",
+    ), "counter")).toThrow(/unsupported refinement runtime identity/);
   });
 
   it("rejects non-exported, incomplete, and duplicate bindings", () => {
