@@ -134,10 +134,10 @@ explicit conservative boundaries rather than untracked support.
    the earlier handler-backed ranking loop with the shared scalar recurrence
    evidence. [#35](https://github.com/mizchi/uneffect/issues/35) completes two
    source-ordered loop-invariant CFG diamonds before one shared recurrence back
-   edge. The active next child
-   [#36](https://github.com/mizchi/uneffect/issues/36) completes one bounded
+   edge. Completed child
+   [#36](https://github.com/mizchi/uneffect/issues/36) adds one bounded
    finite `switch` fan-out without admitting fallthrough or dynamic cases. The
-   active next child [#37](https://github.com/mizchi/uneffect/issues/37)
+   completed child [#37](https://github.com/mizchi/uneffect/issues/37)
    replaces the parallel diamond/switch evidence fields with one ordered join
    IR and composes one bounded Boolean-then-switch sequence.
    The first

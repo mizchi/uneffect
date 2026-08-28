@@ -54,15 +54,16 @@ children [#28](https://github.com/mizchi/uneffect/issues/28) and
 [#33](https://github.com/mizchi/uneffect/issues/33) and
 [#34](https://github.com/mizchi/uneffect/issues/34) and
 [#35](https://github.com/mizchi/uneffect/issues/35) and
-[#36](https://github.com/mizchi/uneffect/issues/36) are complete. The next
-executable child is [#37](https://github.com/mizchi/uneffect/issues/37), which
+[#36](https://github.com/mizchi/uneffect/issues/36) and
+[#37](https://github.com/mizchi/uneffect/issues/37) are complete. #37
 normalizes Boolean-diamond and finite-switch recurrence evidence into one
-ordered join IR and composes one bounded mixed sequence.
+ordered join IR and composes one bounded mixed sequence. No implementation
+Issue is active while the next product or foundation slice is selected.
 
-There are 13 open implementation Issues after closing #23, #26, #27, #28, and
-#29/#30/#31/#32/#33/#34/#35/#36 and opening #37: one proof-boundary
-Issue in Phase 1, six specification-expressiveness Issues in Phase 2 (including
-bounded child #37), five production-integration Issues in Phase 3, and one
+There are 12 open implementation Issues after closing #23, #26, #27, #28, and
+#29/#30/#31/#32/#33/#34/#35/#36/#37: one proof-boundary
+Issue in Phase 1, five specification-expressiveness Issues in Phase 2, five
+production-integration Issues in Phase 3, and one
 proof-consumer Issue in Phase 4. The 12 non-overlapping epic estimates total
 51–102 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
@@ -111,19 +112,19 @@ P2.16 adds the first divergent product join, P2.17 adds a direct affine CFG
 recurrence, P2.18 adds a predicate-correlated piecewise recurrence, and P2.19
 unifies handler/scalar recurrence evidence, and P2.20 composes two sequential
 invariant diamonds, and P2.21 adds one bounded finite `switch` fan-out. The next
-executable slice is #37's common ordered join IR and mixed sequence.
+P2.22 completes #37's common ordered join IR and mixed sequence.
 The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
 
-Only the first row is active. #20 and both bounded #18 module-order seeds have
-completed their proof-boundary handoff. General CFG work is now load-bearing
-for several remaining domains.
+There is intentionally no active implementation row while the next investment
+choice is made. #20 and both bounded #18 module-order seeds have completed their
+proof-boundary handoff; #37 completed the ordered recurrence-join handoff.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#37](https://github.com/mizchi/uneffect/issues/37) | Replace syntax-specific recurrence join fields with one ordered discriminated union and compose exactly one Boolean diamond followed by one bounded finite switch; retain reversed/nested/excess joins and selector/solver controls as non-proofs. |
+| — | None active | Choose a bounded child of #25, or deliberately pivot to the #2/#5 Node Lease product line or #8 capability-effect frontend parity. Record the choice as a Red/Green child Issue before implementation. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -131,9 +132,9 @@ backlog:
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
-| General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36 plus #37, the next executable #25 value slice | 1–2 weeks for #37; 13–27 weeks for parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37 | 13–27 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #37 is included in #25. |
+| Entire open research backlog | 12 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -160,9 +161,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34 handoffs:
-one `active`, eleven `queued`, and one queued parent with its bounded child
-active. Every open Issue has exactly one
+As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37 handoffs:
+zero `active` and twelve `queued`. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -171,7 +171,6 @@ label.
 | --- | --- | --- | --- | --- | --- |
 | Queued | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence plus synchronous-ring and direct cross-project TLA seeds | Broader ESM/external/dynamic initialization semantics; widen after CFG or application evidence |
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
-| Active | 2 | [#37](https://github.com/mizchi/uneffect/issues/37) | Common ordered recurrence join IR | Completed #36; child of #25 | Migrate diamond/switch evidence and compose one Boolean-then-switch sequence before one source-bound back edge |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
@@ -183,7 +182,7 @@ label.
 | Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #9, #10, #24 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
 | Queued | 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #7, #8, completed #23, #24; #25 for general joins | Evidence-gated transformations; general optimization remains unimplemented |
 
-The active child issue is widened one Red/Green acceptance slice at a time. Each slice
+Each active child Issue is widened one Red/Green acceptance slice at a time. Each slice
 must retain an adjacent unsupported negative control and add a benchmark when
 it expands solver or analysis work. The reusable completion contract delivered
 by #3 and the completed #23 source-keyed CFG fed the completed #26 alias seed.
@@ -197,8 +196,8 @@ adding a fourth linear region. Completed #32 moves one affine recurrence off the
 private handler-shaped path. Completed #33 adds the first CFG diamond
 recurrence. Completed #34 removes the remaining duplicate handler recurrence
 representation. Completed #35 composes two sequential invariant diamonds, and
-completed #36 adds the first bounded non-binary recurrence fan-out. Active #37
-normalizes both evidence families and admits one mixed ordered sequence.
+completed #36 adds the first bounded non-binary recurrence fan-out. Completed
+#37 normalizes both evidence families and admits one mixed ordered sequence.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -228,7 +227,7 @@ and [#33](https://github.com/mizchi/uneffect/issues/33). Handler/scalar
 recurrence unification closed [#34](https://github.com/mizchi/uneffect/issues/34).
 The two-diamond recurrence composition closed [#35](https://github.com/mizchi/uneffect/issues/35).
 The finite-switch recurrence fan-out closed [#36](https://github.com/mizchi/uneffect/issues/36).
-The common ordered join IR remains #37, and general value lattices remain parent #25.
+The common ordered join IR closed with #37, and general value lattices remain parent #25.
 
 - [x] Emit `uneffect-refinement-action-analysis/v1` for one direct ranking-loop
   normal/typed-throw catch join, enforce a named CFG reachability worklist

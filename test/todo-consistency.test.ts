@@ -103,7 +103,6 @@ describe("TODO hierarchy consistency", () => {
     expect(rows).toEqual([
       ["Queued", 1, 18],
       ["Queued", 2, 25],
-      ["Active", 2, 37],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
       ["Queued", 2, 4],
@@ -115,7 +114,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
+    expect(rows.filter(([status]) => status === "Active")).toHaveLength(0);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -128,9 +127,8 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows.map(([order, issue]) => [order, issue])).toEqual([
-      [1, 37],
-    ]);
+    expect(rows.map(([order, issue]) => [order, issue])).toEqual([]);
+    expect(immediateQueue).toContain("None active");
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }
@@ -140,7 +138,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const activeIndex = todo
       .split("## Active issue index", 2)[1]
-      ?.split(/The active (?:child )?issue is widened/, 1)[0] ?? "";
+      ?.split(/Each active child Issue is widened/, 1)[0] ?? "";
 
     expect(activeIndex).not.toContain("issues/1)");
     expect(activeIndex).not.toContain("issues/14)");
@@ -158,6 +156,7 @@ describe("TODO hierarchy consistency", () => {
     expect(activeIndex).not.toContain("issues/34)");
     expect(activeIndex).not.toContain("issues/35)");
     expect(activeIndex).not.toContain("issues/36)");
+    expect(activeIndex).not.toContain("issues/37)");
     expect(todo).toContain("closed [#1]");
     expect(todo).toContain("closed [#14]");
     expect(todo).toContain("closed [#17]");
@@ -175,5 +174,6 @@ describe("TODO hierarchy consistency", () => {
     expect(todo).toContain("recurrence unification closed [#34]");
     expect(todo).toContain("two-diamond recurrence composition closed [#35]");
     expect(todo).toContain("finite-switch recurrence fan-out closed [#36]");
+    expect(todo).toContain("common ordered join IR closed with #37");
   });
 });
