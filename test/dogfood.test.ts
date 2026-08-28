@@ -24,6 +24,55 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("emits budgeted CFG evidence for the telemetry switch/catch/finally join", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "routeRecovery",
+      status: "verified",
+      completionJoin: expect.objectContaining({
+        incoming: ["normal", "return", "throw"],
+        outgoing: ["normal", "return"],
+        caughtThrow: true,
+        mandatoryFinally: true,
+      }),
+      fixedPoint: expect.objectContaining({
+        converged: true,
+        blockCompletions: expect.objectContaining({
+          catch: ["throw"],
+          "handler-join": ["normal", "return"],
+          finally: ["normal", "return"],
+          exit: ["normal", "return"],
+        }),
+      }),
+    }));
+
+    const exhausted = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal, {
+      proofBudget: { cfgFixedPointIterations: 1 },
+    });
+    expect(exhausted.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "routeRecovery",
+      status: "unknown",
+      reason: "proof-budget-exhausted",
+      fixedPoint: expect.objectContaining({ converged: false }),
+    }));
+
+    const rethrow = source.replace(
+      "    runtime.attempted += 1;\n  } finally {",
+      "    runtime.attempted += 1;\n    throw runtime.dropped;\n  } finally {",
+    );
+    const rethrowAnalysis = analyzeRefinementActionBodies(fileName, rethrow, "telemetryRouting", temporal);
+    expect(rethrowAnalysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "routeRecovery",
+      status: "unknown",
+      reason: "action-validation-failed",
+      completionJoin: expect.objectContaining({ outgoing: ["normal", "return", "throw"] }),
+    }));
+  });
+
   it("retains the dynamic lexical owner of a continue leaving a catch", () => {
     const fileName = "src/environment.ts";
     const source = readFileSync(fileName, "utf8");

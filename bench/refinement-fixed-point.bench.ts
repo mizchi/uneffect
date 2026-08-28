@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { bench, describe } from "vitest";
 import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
@@ -34,6 +35,9 @@ const source = `/* uneffect:
   }
 `;
 const spec = parseSpec("refinement-fixed-point.ts", source).temporal;
+const handlerJoinFile = "examples/dogfood/telemetry-routing-accounting.ts";
+const handlerJoinSource = readFileSync(handlerJoinFile, "utf8");
+const handlerJoinSpec = parseSpec(handlerJoinFile, handlerJoinSource).temporal;
 
 describe("refinement CFG fixed point", () => {
   bench("analyze a ranking loop throw/normal join", () => {
@@ -51,9 +55,23 @@ describe("refinement CFG fixed point", () => {
       "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
       { analysis: { proofBudget: { cfgFixedPointIterations: 16 } } },
     );
+    const obligation = result.obligations.find((item) => item.kind === "ranking-loop-fixed-point");
     if (result.diagnostics.length !== 0
-      || result.obligations[0]?.recurrenceProof?.status !== "verified") {
+      || obligation?.recurrenceProof?.status !== "verified") {
       throw new Error("ranking-loop recurrence proof benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 2 });
+
+  bench("analyze an application switch/catch/finally join", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 16 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "routeRecovery");
+    if (result.diagnostics.some((item) => item.modelName === "routeRecovery")
+      || obligation?.status !== "verified") {
+      throw new Error("handler-join fixed-point benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

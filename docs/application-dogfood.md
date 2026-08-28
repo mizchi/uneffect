@@ -304,10 +304,22 @@ obligation `unknown` as an unsupported coupled recurrence.
 The example deliberately does not model the network send itself, so it is not
 evidence that a Datadog client or host I/O is bounded.
 
+The application-shaped `routeTelemetryRecovery` action in
+`telemetry-routing-accounting.ts` now emits a
+`handler-join-fixed-point` obligation. Its direct finite switch contributes
+normal, return, and throw completions; catch consumes the throw path; mandatory
+finally receives both remaining normal and return paths. The shared worklist
+converges in six block evaluations under the named
+`cfg-fixed-point-iterations` budget. A one-step budget is `unknown`, and a
+modified catch rethrow remains visible as an outgoing throw while action
+validation fails. The focused development-host benchmark measured 2.6685 ms
+mean over 189 samples. This is evidence for one direct switch/catch/finally
+shape, not general nested or irreducible handler CFG support.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,718 summaries, 4,310 reviewed assumption occurrences, 73 files).
+`assumed` (3,740 summaries, 4,325 reviewed assumption occurrences, 73 files).
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

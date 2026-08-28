@@ -13,7 +13,10 @@
     "sourceDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "typescriptVersion": { "type": "string", "minLength": 1 },
     "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
-    "obligations": { "type": "array", "items": { "$ref": "#/$defs/rankingLoop" } }
+    "obligations": {
+      "type": "array",
+      "items": { "anyOf": [{ "$ref": "#/$defs/rankingLoop" }, { "$ref": "#/$defs/handlerJoin" }] }
+    }
   },
   "$defs": {
     "span": {
@@ -80,6 +83,64 @@
         "status": { "enum": ["verified", "refuted", "unknown"] },
         "checks": { "type": "array", "items": { "$ref": "#/$defs/recurrenceProofCheck" }, "minItems": 1 }
       }
+    },
+    "handlerCompletion": {
+      "enum": ["normal", "return", "throw", "break", "continue"]
+    },
+    "handlerJoin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "switchSpan", "status", "budget", "fixedPoint", "completionJoin"],
+      "properties": {
+        "kind": { "const": "handler-join-fixed-point" },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "trySpan": { "$ref": "#/$defs/span" },
+        "switchSpan": { "$ref": "#/$defs/span" },
+        "status": { "enum": ["verified", "unknown"] },
+        "reason": { "enum": ["proof-budget-exhausted", "action-validation-failed"] },
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit"],
+          "properties": {
+            "name": { "const": "cfg-fixed-point-iterations" },
+            "limit": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fixedPoint": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "converged", "blockCompletions"],
+          "properties": {
+            "iterations": { "type": "integer", "minimum": 1 },
+            "converged": { "type": "boolean" },
+            "blockCompletions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true
+              }
+            }
+          }
+        },
+        "completionJoin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["incoming", "outgoing", "caughtThrow", "mandatoryFinally"],
+          "properties": {
+            "incoming": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
+            "outgoing": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
+            "caughtThrow": { "type": "boolean" },
+            "mandatoryFinally": { "const": true }
+          }
+        }
+      },
+      "allOf": [{
+        "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+        "then": {
+          "not": { "required": ["reason"] },
+          "properties": { "fixedPoint": { "properties": { "converged": { "const": true } } } }
+        },
+        "else": { "required": ["reason"] }
+      }]
     },
     "rankingLoop": {
       "type": "object",

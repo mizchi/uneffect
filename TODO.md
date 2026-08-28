@@ -46,7 +46,7 @@ is the active reusable-analysis issue.
 There are 12 open implementation Issues: one proof-boundary Issue in Phase 1,
 five specification-expressiveness Issues in Phase 2, five production-integration
 Issues in Phase 3, and one proof-consumer Issue in Phase 4. The additive backlog
-is estimated at 50–99 engineer-weeks, while the deferred Phase 1 breadth is 2–4
+is estimated at 49–98 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
@@ -56,10 +56,12 @@ General CFG and escaping-alias fixed points remain outside #9 and are owned by #
 P2.1 is complete for its direct affine ranking-loop seed. P2.2 now consumes
 resource-free dynamic outer-loop `continue` completions by lexical owner and
 models their cardinality as a nondeterministic repeat-or-exit choice. Dynamic
-resource-bearing loops remain unsupported. The immediate implementable unit is
-now #23/P2.3: lower one application-backed arbitrary handler join through the
-shared fixed-point representation with an explicit proof budget.
-The 50–99 week figure is the additive whole-backlog inventory, not the estimate
+resource-bearing loops remain unsupported. P2.3 emits a budgeted completion
+fixed-point for the application-backed direct `switch`/`catch`/`finally` join.
+The immediate implementable unit is now #23/P2.4: replace that seed's dedicated
+classifier with reusable AST-to-basic-block lowering for one nested handler
+family while keeping unsupported control irreducibility `unknown`.
+The 49–98 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
@@ -70,7 +72,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Lower one application-backed arbitrary handler join through the reusable CFG worklist; preserve completion kinds and retain budget exhaustion as `unknown`. |
+| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Lower one nested application-backed handler family through reusable AST-to-basic-block construction; preserve completion kinds and retain unsupported/over-budget graphs as `unknown`. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -78,9 +80,9 @@ backlog:
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
-| General analysis foundation | #23, the first executable slices of #24 and #8 | 8–17 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| General analysis foundation | #23, the first executable slices of #24 and #8 | 7–16 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 for generated tests/numeric code | 11–27 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | All 12 open Issues | 50–99 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
+| Entire open research backlog | All 12 open Issues | 49–98 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -178,6 +180,12 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   cardinality by nondeterministic repeat-or-exit actions. Loops containing
   `using`/`await using`, unresolved labels, and resource-generation joins remain
   unsupported rather than inheriting this abstraction.
+- [x] Emit a `handler-join-fixed-point` obligation for the application-backed
+  direct `switch`/`catch`/mandatory-`finally` routing shape. The shared worklist
+  retains normal/return/throw completion reachability, catch consumption, and
+  block states under `cfg-fixed-point-iterations`; exhaustion is `unknown` and
+  a rethrow remains an outgoing throw instead of being normalized to normal.
+  Nested/general AST-to-basic-block lowering remains #23.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

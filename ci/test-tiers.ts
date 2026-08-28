@@ -23,6 +23,7 @@ export const ciTestTiers = {
     "test/react-semantics.test.ts",
     "test/refinement-bindings.test.ts",
     "test/refinement-flow.test.ts",
+    "test/refinement-handler-flow.test.ts",
     "test/registry-config.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",

@@ -3102,8 +3102,9 @@ describe("annotated refinement bindings", () => {
         },
       }],
     });
-    expect(analysis.obligations[0]?.fixedPoint.iterations).toBeLessThanOrEqual(16);
-    const recurrence = analysis.obligations[0]?.fixedPoint.recurrence;
+    const rankingObligation = analysis.obligations.find((item) => item.kind === "ranking-loop-fixed-point");
+    expect(rankingObligation?.fixedPoint.iterations).toBeLessThanOrEqual(16);
+    const recurrence = rankingObligation?.fixedPoint.recurrence;
     expect(recurrence).toBeDefined();
     const recurrenceProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, recurrence!);
     expect(recurrenceProof).toMatchObject({
@@ -3167,6 +3168,12 @@ describe("annotated refinement bindings", () => {
         schemaVersion: { const: 1 },
       },
       $defs: {
+        handlerJoin: {
+          properties: {
+            kind: { const: "handler-join-fixed-point" },
+            budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
+          },
+        },
         rankingLoop: {
           properties: {
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
@@ -3186,7 +3193,7 @@ describe("annotated refinement bindings", () => {
       reason: "proof-budget-exhausted",
       fixedPoint: expect.objectContaining({ converged: false }),
     }));
-    expect(exhausted.obligations[0]?.fixedPoint.recurrence).toBeUndefined();
+    expect(exhausted.obligations.find((item) => item.kind === "ranking-loop-fixed-point")?.fixedPoint.recurrence).toBeUndefined();
     expect(exhausted.diagnostics).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body",
       modelName: "drain",

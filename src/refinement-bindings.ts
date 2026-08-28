@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
 import { joinFlowValues, solveBasicBlockFixedPoint } from "./refinement-flow.js";
+import { findDirectHandlerJoinCandidates, runDirectHandlerJoinFixedPoint, type HandlerCompletionKind } from "./refinement-handler-flow.js";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
@@ -167,6 +168,34 @@ export interface RefinementRankingLoopObligation {
   recurrenceProof?: RefinementRecurrenceProof;
 }
 
+export interface RefinementHandlerJoinObligation {
+  kind: "handler-join-fixed-point";
+  adapterName: string;
+  modelName: string;
+  exportName: string;
+  trySpan: { start: number; end: number };
+  switchSpan: { start: number; end: number };
+  status: "verified" | "unknown";
+  reason?: "proof-budget-exhausted" | "action-validation-failed";
+  budget: {
+    name: "cfg-fixed-point-iterations";
+    limit: number;
+  };
+  fixedPoint: {
+    iterations: number;
+    converged: boolean;
+    blockCompletions: Readonly<Record<string, readonly HandlerCompletionKind[]>>;
+  };
+  completionJoin: {
+    incoming: readonly HandlerCompletionKind[];
+    outgoing: readonly HandlerCompletionKind[];
+    caughtThrow: boolean;
+    mandatoryFinally: boolean;
+  };
+}
+
+export type RefinementActionObligation = RefinementRankingLoopObligation | RefinementHandlerJoinObligation;
+
 export interface RefinementRankingRecurrenceEvidence {
   counter: string;
   direction: "increase" | "decrease";
@@ -187,7 +216,7 @@ export interface RefinementActionAnalysis {
   sourceDigest: string;
   typescriptVersion: string;
   diagnostics: RefinementActionDiagnostic[];
-  obligations: RefinementRankingLoopObligation[];
+  obligations: RefinementActionObligation[];
 }
 
 export type RefinementInvariantDiagnosticCode = "missing-invariant-binding" | "unknown-invariant-binding" | "unsupported-invariant-body" | "invariant-expression-mismatch";
@@ -3969,11 +3998,55 @@ export function analyzeRefinementActionBodies(
   const diagnostics = validateRefinementActionBodiesInSource(
     source, text, adapterName, spec, undefined, undefined, {}, traceSink,
   );
-  const obligations: RefinementRankingLoopObligation[] = [];
+  const obligations: RefinementActionObligation[] = [];
   for (const action of spec.actions) {
     const exportName = manifest.actions[action.name];
     const implementation = exportName ? functions.get(exportName) : undefined;
     if (!exportName || !implementation?.body) continue;
+    for (const candidate of findDirectHandlerJoinCandidates(implementation.body)) {
+      const fixedPoint = runDirectHandlerJoinFixedPoint(candidate, limit);
+      const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
+      const verified = fixedPoint.converged && actionDiagnostics.length === 0;
+      obligations.push({
+        kind: "handler-join-fixed-point",
+        adapterName,
+        modelName: action.name,
+        exportName,
+        trySpan: {
+          start: candidate.tryStatement.getStart(source),
+          end: candidate.tryStatement.getEnd(),
+        },
+        switchSpan: {
+          start: candidate.switchStatement.getStart(source),
+          end: candidate.switchStatement.getEnd(),
+        },
+        status: verified ? "verified" : "unknown",
+        ...(!fixedPoint.converged
+          ? { reason: "proof-budget-exhausted" as const }
+          : actionDiagnostics.length > 0 ? { reason: "action-validation-failed" as const } : {}),
+        budget: { name: "cfg-fixed-point-iterations", limit },
+        fixedPoint: {
+          iterations: fixedPoint.iterations,
+          converged: fixedPoint.converged,
+          blockCompletions: fixedPoint.blockCompletions,
+        },
+        completionJoin: {
+          incoming: candidate.incoming,
+          outgoing: fixedPoint.outgoing,
+          caughtThrow: candidate.incoming.includes("throw"),
+          mandatoryFinally: true,
+        },
+      });
+      if (!fixedPoint.converged && !actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body")) {
+        diagnostics.push({
+          code: "unsupported-action-body",
+          adapterName,
+          modelName: action.name,
+          exportName,
+          message: `${exportName} exceeded the cfg-fixed-point-iterations proof budget (${limit})`,
+        });
+      }
+    }
     const candidates = findRankingLoopThrowJoinCandidates(implementation.body);
     for (const _candidate of candidates) {
       const trace = traceSink.tryCatchJoins.find((item) =>
@@ -4259,7 +4332,8 @@ export async function analyzeRefinementActionBodiesWithZ3(
 ): Promise<RefinementActionAnalysis> {
   const analysis = analyzeRefinementActionBodies(fileName, text, adapterName, spec, options.analysis);
   const addedDiagnostics: RefinementActionDiagnostic[] = [];
-  const obligations = await Promise.all(analysis.obligations.map(async (obligation): Promise<RefinementRankingLoopObligation> => {
+  const obligations = await Promise.all(analysis.obligations.map(async (obligation): Promise<RefinementActionObligation> => {
+    if (obligation.kind !== "ranking-loop-fixed-point") return obligation;
     const certificate = obligation.fixedPoint.recurrence;
     if (!certificate) return obligation;
     const recurrenceProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, certificate, options.z3);

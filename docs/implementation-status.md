@@ -345,6 +345,13 @@ same property is proved for arbitrary TypeScript.
 - Evidence artifacts bind source/model inputs, configuration, tool versions,
   and outcomes. They deliberately do not claim to be independently checkable
   proof terms.
+- Refinement analysis emits a budgeted `handler-join-fixed-point` artifact for
+  one application-backed direct finite `switch` inside `try`, followed by a
+  direct catch and mandatory normally completing finally. The shared worklist
+  retains normal/return/throw completion sets per block; caught throw becomes
+  the catch completion, while return bypasses the normal continuation. Budget
+  exhaustion and an action mismatch are non-proofs. Nested handler lowering and
+  irreducible control flow remain outside this direct seed.
 
 ## Async, resources, and event loops
 
