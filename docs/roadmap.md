@@ -160,7 +160,7 @@ explicit conservative boundaries rather than untracked support.
    temporal reasoning.
 3. [Collection-valued state and TLC interoperability](https://github.com/mizchi/uneffect/issues/5)
    makes Node Lease-style models direct and preserves external counterexamples.
-   Its active bounded child
+   Its completed bounded child
    [#42](https://github.com/mizchi/uneffect/issues/42) adds total finite
    `Map.getOrElse` lookup across Quint, runtime replay, and bounded Z3. Ordinary
    `Map.get` remains partial, and dynamic-key counterexample extraction remains

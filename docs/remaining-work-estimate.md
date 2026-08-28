@@ -26,10 +26,10 @@ not a suitable single implementation branch.
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
-| 2 — Specification expressiveness | #25, #2, #5 (active child #42), #4, #6 | 19–39 engineer-weeks | Low–medium |
+| 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 24–47 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 13 open Issues / 12 non-overlapping epics | **51–102 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues / 12 non-overlapping epics | **51–102 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -52,7 +52,7 @@ same rule applies to future child Issues split from an existing epic.
 #41 was a bounded child of #25 and is complete. Its effort was included in the
 #25 epic range and was not added again to the total.
 
-#42 is an active bounded child of #5. Its 1–2 engineer-week slice is included
+#42 is a completed bounded child of #5. Its 1–2 engineer-week estimate was included
 in the #5 epic range and is not added again to the total.
 
 There are three useful planning numbers:
@@ -129,7 +129,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.24 conditional predecessor value | #39 (child of #25) | Completed | under 1 engineer-week actual | Lower one loop-local conditional value into source-bound predecessor evidence independently of statement-shaped joins. |
 | P2.25 Boolean involution recurrence | #40 (child of #25) | Completed | completed in the current delivery | Prove one direct Boolean toggle by an exact parity summary while geometric growth remains unknown. |
 | P2.26 entry-read triangular recurrence | #41 (child of #25) | Completed | completed in the current delivery | Prove the source-order-sensitive entry-read closed form without admitting cycles or general coupled solving. |
-| P2.27 total finite Map lookup | #42 (child of #5) | Active | 1–2 engineer-weeks | Make missing-key lease reads total across Quint, runtime replay, and bounded Z3 while keeping ordinary `Map.get` partial. |
+| P2.27 total finite Map lookup | #42 (child of #5) | Completed | completed in the current delivery | Make missing-key lease reads total across Quint, runtime replay, and bounded Z3 while keeping ordinary `Map.get` partial. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27
@@ -208,7 +208,7 @@ be added to the owning Issue and reflected here before implementation begins.
 | 1 | #25 general CFG values | L | 3–8 weeks | Select the next bounded child after #41 | Value conflict, widening, recurrence, and irreducible control |
 | 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
-| 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Complete active child #42, then select the next Node Lease collection/trace slice | Collection semantics, dynamic-key finite universes, and external trace interoperability |
+| 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Select the next Node Lease collection/trace slice after completed child #42 | Collection semantics, dynamic-key finite universes, and external trace interoperability |
 | 5 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
 | 6 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
 | 7 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
@@ -278,7 +278,7 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | #39 conditional predecessor value | under 1 engineer-week actual | Lower one Boolean conditional expression into generic source-bound predecessor evidence and independently prove the recurrence. |
 | Completed sub-slice | #40 Boolean involution recurrence | completed in the current delivery | Carry one Boolean member through the shared recurrence and prove its parity summary. |
 | Completed sub-slice | #41 entry-read triangular recurrence | completed in the current delivery | Preserve source order and prove the entry-value triangular summary independently. |
-| Active slice | #42 total finite Map lookup | 1–2 engineer-weeks | Total missing-key lookup agrees across Quint/runtime/Z3 for the bounded literal-key fragment; dynamic-key extraction remains an explicit non-proof. |
+| Completed slice | #42 total finite Map lookup | completed in the current delivery | Total missing-key lookup agrees across Quint/runtime/Z3 for the bounded literal-key fragment; dynamic-key extraction remains an explicit non-proof. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
@@ -293,9 +293,9 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** finish active child #42, including negative
-  controls, benchmark, documentation, and remote CI; then select another bounded
-  child from #5 or return to the phase-ordered queue.
+- **Next implementable result:** select another bounded child from #5 or return
+  to the phase-ordered queue. No Issue is active, so the next slice must first
+  define Red tests, negative controls, benchmark needs, and its handoff boundary.
 - **Next foundation checkpoint:** #26, #27, #28, #29, #30, #31, #32, #33,
   #34, #35, #36, #37, and #38 are complete; completing parent #25/#24/#8 remains
   13–27 engineer-weeks.
@@ -304,7 +304,7 @@ closed bounded epic.
   both required for an initial useful release.
 - **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
   evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 13 Issues / 12 non-overlapping epics and 51–102
+- **Entire open backlog:** 12 Issues / 12 non-overlapping epics and 51–102
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 
