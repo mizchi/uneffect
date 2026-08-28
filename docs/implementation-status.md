@@ -353,8 +353,10 @@ same property is proved for arbitrary TypeScript.
   throw becomes normal catch entry, while return remains abrupt through normal
   finally. Budget exhaustion and action mismatch are non-proofs; attempted-family
   loops, incomplete switches, labeled transfers, nested try, and abrupt finally
-  produce `unknown: unsupported-control-flow`. General handler sequences and
-  independent value proof remain outside this bounded fragment.
+  produce `unknown: unsupported-control-flow`. One top-level control root may
+  have supported prefix and suffix statements; abrupt blocks have no edge into
+  their suffix. Multiple sibling roots, general handler joins, and independent
+  path-correlated value proof remain outside this bounded fragment.
 
 ## Async, resources, and event loops
 

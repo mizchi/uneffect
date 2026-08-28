@@ -321,10 +321,21 @@ switch family and 2.1111 ms over 237 samples for the nested-if family. This is
 control-reachability evidence coupled to action validation, not general nested
 try, loop, arbitrary-sequence, or independent value proof support.
 
+The same builder now spans the prefix and suffix around the single control root
+in `returnOrRejectTelemetry`. Its return branch reaches try completion directly
+and therefore cannot enter the following throw statement; catch turns only the
+throw branch into normal completion, while normally completing finally carries
+both normal and return to exit. The focused benchmark measured 2.0640 ms mean
+over 243 samples. Widening the application scan also discovers
+`rejectTelemetry`: its control graph converges in 14 evaluations, but structural
+value validation retains a redundant nested conditional and reports
+`action-validation-failed`. That result is intentionally still `unknown`; P2.5
+does not claim path-correlated value equivalence.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,744 summaries, 4,333 reviewed assumption occurrences, 74 files).
+`assumed` (3,745 summaries, 4,334 reviewed assumption occurrences, 74 files).
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

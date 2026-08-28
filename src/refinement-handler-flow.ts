@@ -138,9 +138,12 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
   const candidates: HandlerJoinCandidate[] = [];
   for (const statement of body.statements) {
     if (!ts.isTryStatement(statement) || !statement.catchClause) continue;
-    const controlStatement = statement.tryBlock.statements[0];
-    if (statement.tryBlock.statements.length !== 1 || !controlStatement
-      || (!ts.isIfStatement(controlStatement) && !ts.isSwitchStatement(controlStatement))) continue;
+    const controlStatements = statement.tryBlock.statements.filter(
+      (child): child is ControlRoot => ts.isIfStatement(child) || ts.isSwitchStatement(child),
+    );
+    const controlStatement = controlStatements[0];
+    if (!controlStatement) continue;
+    const singleControlRoot = controlStatements.length === 1;
     const normalFinally = !statement.finallyBlock || statement.finallyBlock.statements.every(isNormalOnly);
 
     const builder = new HandlerCfgBuilder();
@@ -155,7 +158,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     const catchBodyEntry = builder.lowerStatements(
       statement.catchClause.block.statements, "catch-completion", "catch-completion",
     );
-    if (!tryEntry || !catchBodyEntry || !normalFinally) {
+    if (!tryEntry || !catchBodyEntry || !normalFinally || !singleControlRoot) {
       candidates.push({
         tryStatement: statement,
         controlStatement,

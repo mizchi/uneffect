@@ -87,4 +87,17 @@ describe("refinement CFG fixed point", () => {
       throw new Error("nested handler CFG benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("analyze a handler sequence with abrupt suffix exclusion", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 32 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "returnOrReject");
+    if (result.diagnostics.some((item) => item.modelName === "returnOrReject")
+      || obligation?.status !== "verified") {
+      throw new Error("handler sequence CFG benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

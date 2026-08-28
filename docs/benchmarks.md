@@ -1864,3 +1864,10 @@ completion worklist, but exclude Z3 and TypeChecker Program construction. They
 are regression observations, not portable budgets or evidence for general
 handler sequences, nested try, loops, irreducible control, or independent value
 proof.
+
+The adjacent handler-sequence case includes prefix and suffix statements around
+one `if`, plus return/throw separation, catch, normal finally, and exit. It
+measured 2.0640 ms mean over 243 samples (484.51 operations per second). The
+fixture fails if `returnOrRejectTelemetry` is not verified. This does not time
+or establish the still-missing path-correlated value proof exposed by the
+separately retained `rejectTelemetry` mismatch.

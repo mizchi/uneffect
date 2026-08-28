@@ -29,7 +29,7 @@ not a suitable single implementation branch.
 | 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 17–35 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 24–47 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues | **49–97 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues | **49–96 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -45,7 +45,7 @@ There are three useful planning numbers:
   example, Node Lease prioritizes #23, #2, and #5; numeric/SHA-256 work
   prioritizes #23, the first #24 alias slice, and #6. These alternatives should
   not be added together unless both products are required.
-- **All currently requested work: 49–97 engineer-weeks.** This includes
+- **All currently requested work: 49–96 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -57,7 +57,7 @@ commitment to implement every row:
 | Decision point | Include | Exclude for this cut | Estimate | Exit decision |
 | --- | --- | --- | ---: | --- |
 | A — proof-boundary MVP | #20 plus synchronous-ring and direct cross-project TLA seeds | General CFG, aliases, broad host/framework semantics | Completed; 2–4 weeks of broader #18 work remains deferred | Application survey found no real TLA candidate; retain the narrow boundary and move to the reusable CFG core. |
-| B — reusable analyzer core | #23; first bounded child slices of #24 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 7–15 additional weeks | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
+| B — reusable analyzer core | #23; first bounded child slices of #24 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 7–14 additional weeks | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
 | C1 — temporal/Node Lease product | #2 and #5, consuming the core where needed | Property generators and complete SHA-256 | 7–14 weeks for these two Issues; roughly 10–20 weeks after Phase 1 when #23 is included | A realistic lease model checks, decodes, and replays a counterexample across supported backends. |
 | C2 — generated-test/numeric product | #4 and #6, consuming the core where needed | General temporal collections and broad React/event-loop work | 9–17 weeks for #4/#6; roughly 13–26 weeks after Phase 1 when #23 and one bounded #24 alias slice are included | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
 | D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 18–35 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence. |
@@ -65,7 +65,7 @@ commitment to implement every row:
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-49–97 week total remains additive and intentionally ignores speculative
+49–96 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -85,6 +85,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.2 target-aware outer-loop transfer | #23 | Completed | under 1 week actual | Resource-free dynamic outer-loop `continue` is consumed by its lexical owner; unresolved labels and resource-bearing dynamic loops stay `unknown`. |
 | P2.3 direct handler-join CFG seed | #23 | Completed | under 1 week actual | One application direct `switch`/`catch`/mandatory-`finally` join emits budgeted completion states; exhaustion and action mismatches stay `unknown`. |
 | P2.4 reusable nested-handler lowering | #23 | Completed | under 1 week actual | Source-keyed blocks lower one nested `if`/throw/catch application family; attempted-family unsupported control remains an explicit non-proof. |
+| P2.5 handler-sequence lowering | #23 | Completed | under 1 week actual | Supported prefix/suffix statements retain abrupt suffix exclusion; the wider scan exposes one path-value mismatch as `unknown`. |
 | P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
 
 P1.2a through P1.4 are complete. P2.1 is active next because general CFG joins
@@ -105,8 +106,11 @@ P2.3 applies the same named worklist budget to the telemetry routing
 classifier with reusable source-keyed statement/basic-block construction and
 also lowers the existing nested `if`/throw/catch rejection action. Unsupported
 control reached inside this selected family is an explicit
-`unsupported-control-flow` non-proof. General surrounding sequences, nested
-try, handler-local loops, and independent value proof remain open.
+`unsupported-control-flow` non-proof. P2.5 spans supported prefix and suffix
+statements around one control root. The real `returnOrRejectTelemetry` action
+verifies, while the newly surfaced `rejectTelemetry` mismatch remains honestly
+`unknown` until CFG path predicates feed the value join. Nested try,
+handler-local loops, and general joins remain open.
 
 ## Dependency-critical order
 
@@ -134,7 +138,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #23 general refinement CFG | L | 1–3 weeks total remaining | One application handler sequence around a nested control root | Arbitrary joins, recurrence widening, loops, and irreducible control |
+| 1 | #23 general refinement CFG | L | 1–2 weeks total remaining | Correlate handler CFG predicates with one application value join | Arbitrary joins, recurrence widening, loops, and irreducible control |
 | 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -152,7 +156,7 @@ be added to the owning Issue and reflected here before implementation begins.
 1. **Usable async module proof boundary:** completed for one direct exact
    cross-project straight-line TLA dependency. The real-application survey found
    no positive candidate, so do not generalize speculatively.
-2. **General analysis foundation (7–15 additional weeks):** continue with #23,
+2. **General analysis foundation (7–14 additional weeks):** continue with #23,
    #24's first alias slices, and #8's fact parity before widening specialized
    models. This reduces repeated shape-specific lowering.
 3. **Specification breadth (remaining Phase 2):** select #2/#5 for temporal and
@@ -181,29 +185,30 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.2 target-aware owner consumption | under 1 engineer-week actual | One lexical rule removed all seven real resource-free outer-loop `continue` diagnostics while preserving unresolved-label and dynamic-resource negative controls. |
 | Completed sub-slice | P2.3 direct handler-join CFG seed | under 1 engineer-week actual | The telemetry routing switch/catch/finally join converges in six worklist steps; focused analysis measured 2.6685 ms mean over 189 samples. |
 | Completed sub-slice | P2.4 reusable nested-handler lowering | under 1 engineer-week actual | Nested-if/catch lowering measured 2.1111 ms mean over 237 samples; attempted-family unsupported control produces machine-readable `unknown`. |
-| Current slice | P2.5 handler-sequence lowering | under 1 engineer-week | Preserve prefix/suffix and unreachable continuation around one supported nested control root. |
+| Completed sub-slice | P2.5 handler-sequence lowering | under 1 engineer-week actual | `returnOrRejectTelemetry` preserves abrupt suffix exclusion; focused analysis measured 2.0640 ms mean over 243 samples. |
+| Current slice | P2.6 path-correlated handler values | 1 engineer-week | Use CFG predicates to prove or retain the application-backed redundant nested-ternary mismatch. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
 rather than silently absorbed.
 
-The #23 issue-level estimate is now 1–3 weeks after completing P2.4. The shared
-builder removes the dedicated switch classifier and proves that nested branch
-completion sets fit the worklist. Arbitrary sequences/joins, loop lowering, and
-general recurrence widening remain the dominant uncertainty.
+The #23 issue-level estimate is now 1–2 weeks after completing P2.5. The shared
+builder covers one nested control root plus surrounding supported statements.
+Path-correlated values, arbitrary joins, loop lowering, and general recurrence
+widening remain the dominant uncertainty.
 
 ## Backlog interpretation
 
-- **Next implementable result:** P2.5 in #23, estimated under 1 engineer-week.
+- **Next implementable result:** P2.6 in #23, estimated at 1 engineer-week.
 - **Next foundation checkpoint:** finish and re-estimate #23, then activate a
   bounded #24 alias slice and a bounded #8 native-fact slice; the three-Issue
-  foundation is 7–15 engineer-weeks in total, including #23.
+  foundation is 7–14 engineer-weeks in total, including #23.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not
   both required for an initial useful release.
 - **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
   evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 49–97 engineer-weeks. This is an additive research
+- **Entire open backlog:** 49–96 engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 
 ## Re-estimation policy

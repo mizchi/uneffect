@@ -67,11 +67,39 @@ describe("refinement handler flow", () => {
     expect(Object.keys(result.blockCompletions).filter((id) => id.startsWith("if:"))).toHaveLength(2);
   });
 
+  it("preserves prefix, suffix, and abrupt unreachable flow around one control root", () => {
+    const [candidate] = findHandlerJoinCandidates(bodyOf(`
+      function route(kind: number, armed: boolean) {
+        try {
+          kind += 1
+          if (armed) return kind
+          kind += 2
+          throw kind
+        } catch { kind += 4 } finally { kind += 8 }
+        kind += 16
+      }
+    `));
+    const result = runHandlerJoinFixedPoint(candidate!, 32);
+    expect(candidate).toMatchObject({ controlShape: "if", lowering: "supported" });
+    expect(result).toMatchObject({
+      converged: true,
+      incoming: ["return", "throw"],
+      outgoing: ["normal", "return"],
+    });
+    const returnBlock = Object.entries(result.blockCompletions)
+      .find(([id]) => id.startsWith("return:"));
+    const throwBlock = Object.entries(result.blockCompletions)
+      .find(([id]) => id.startsWith("throw:"));
+    expect(returnBlock?.[1]).toEqual(["normal"]);
+    expect(throwBlock?.[1]).toEqual(["normal"]);
+  });
+
   it("retains attempted-family lowering failures as unsupported", () => {
     for (const source of [
       `function route(kind: number) { try { switch (kind) { default: break } } catch {} finally { return } }`,
       `function route(kind: number) { try { switch (kind) { case 0: break } } catch {} finally {} }`,
       `function route(kind: number) { try { if (kind) while (kind) kind -= 1 } catch {} }`,
+      `function route(a: boolean, b: boolean) { try { if (a) throw a; if (b) return } catch {} }`,
     ]) {
       const [candidate] = findHandlerJoinCandidates(bodyOf(source));
       expect(candidate?.lowering).toBe("unsupported");

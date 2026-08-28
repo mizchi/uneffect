@@ -105,6 +105,21 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("keeps an abrupt branch out of the following handler suffix", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "returnOrReject",
+      controlShape: "if",
+      status: "verified",
+      completionJoin: expect.objectContaining({
+        incoming: ["return", "throw"],
+        outgoing: ["normal", "return"],
+      }),
+    }));
+  });
+
   it("retains the dynamic lexical owner of a continue leaving a catch", () => {
     const fileName = "src/environment.ts";
     const source = readFileSync(fileName, "utf8");
