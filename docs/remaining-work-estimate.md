@@ -101,15 +101,17 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.15 three-region scalar product | #30 (child of #25) | Completed | under 1 week actual | Carry the two-member product across three source-keyed sibling regions without weakening conflict, budget, or solver controls. |
 | P2.16 conditional scalar-product join | #31 (child of #25) | Completed | under 1 week actual | Join branch-selected handler environments before one common successor with explicit predicate and predecessor evidence. |
 | P2.17 CFG-inferred affine recurrence | #32 (child of #25) | Completed | under 1 week actual | Infer one source-bound two-member transformer and summary from a reusable CFG back edge, then require Z3 base/step/ranking checks. |
-| P2.18 piecewise affine CFG recurrence | #33 (child of #25) | Active after #32 | 1–2 weeks | Join one loop-invariant conditional transformer through a source-bound CFG diamond and back edge. |
+| P2.18 piecewise affine CFG recurrence | #33 (child of #25) | Completed | under 1 week actual | Join one loop-invariant conditional transformer through a source-bound CFG diamond and back edge. |
+| P2.19 shared handler/scalar recurrence | #34 (child of #25) | Active after #33 | 1–2 weeks | Replace the legacy handler recurrence artifact with one shared scalar recurrence carrying handler-completion evidence. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27
 has completed the first checker-backed child of #8. #28 completed the first
 scalar-value child of #25 and #29 completed its two-member product environment;
 #30 completed three-region composition and #31 completed the first divergent
-product join; #32 completes the direct CFG recurrence and #33 is active for one piecewise recurrence, while general value lattices and recurrence widening remain
-in the parent.
+product join; #32 completes the direct CFG recurrence and #33 completes one
+piecewise recurrence. #34 is active for handler/scalar recurrence unification,
+while general value lattices and recurrence widening remain in the parent.
 
 P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
 emits a strict budgeted artifact, the reusable worklist carries payload,
@@ -165,7 +167,7 @@ same nested-try topology to three while retaining four as over-budget.
 5. #2/#5 and #4/#6 are selected according to the next dogfood product, rather
    than being treated as one mandatory serial queue.
 
-No broad Phase 3 or Phase 4 epic should pre-empt the bounded #33 handoff merely
+No broad Phase 3 or Phase 4 epic should pre-empt the bounded #34 handoff merely
 because it has an attractive isolated demo. New work that exposes a soundness dependency should
 be added to the owning Issue and reflected here before implementation begins.
 
@@ -173,8 +175,8 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #33 piecewise affine CFG recurrence (included in #25) | M | 1–2 weeks | Join one invariant conditional transformer at a shared back edge | Predicate correlation, widening soundness, and induction obligations |
-| 2 | #25 general CFG values | L | 3–8 weeks | Continue beyond bounded children #28/#29/#30/#31/#32/#33 | Value conflict, widening, recurrence, and irreducible control |
+| 1 | #34 shared handler/scalar recurrence (included in #25) | M | 1–2 weeks | Preserve handler completion evidence in the common scalar recurrence schema | Schema migration, evidence parity, and regression risk |
+| 2 | #25 general CFG values | L | 3–8 weeks | Continue beyond bounded children #28/#29/#30/#31/#32/#33/#34 | Value conflict, widening, recurrence, and irreducible control |
 | 3 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -193,7 +195,7 @@ be added to the owning Issue and reflected here before implementation begins.
    cross-project straight-line TLA dependency. The real-application survey found
    no positive candidate, so do not generalize speculatively.
 2. **General analysis foundation:** #23 and the first executable #26/#27 slices
-   #28, #29, #30, #31, and #32 are complete; #33 is the active 1–2 week next #25 value slice. Completing
+   #28, #29, #30, #31, #32, and #33 are complete; #34 is the active 1–2 week next #25 value slice. Completing
    parent #25/#24/#8 is 13–27 weeks. Keep these
    figures separate when deciding whether the first reusable boundary is enough
    to begin product dogfood.
@@ -238,7 +240,8 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | #30 three-region scalar product | under 1 engineer-week actual | Carry the two-member product through three sibling regions with conflict, budget, source-correlation, and solver controls. |
 | Completed sub-slice | #31 conditional scalar-product join | under 1 engineer-week actual | Join branch-selected product environments before a common successor without admitting arbitrary CFGs. |
 | Completed sub-slice | #32 CFG-inferred affine recurrence | under 1 engineer-week actual | Infer a source-bound two-member transformer and summary from one reusable CFG back edge and prove it independently. |
-| Current slice | #33 piecewise affine CFG recurrence | 1–2 engineer-weeks | Join one loop-invariant conditional transformer through a source-bound CFG diamond. |
+| Completed sub-slice | #33 piecewise affine CFG recurrence | under 1 engineer-week actual | One loop-invariant conditional transformer joins through a source-bound CFG diamond with independent Z3 checks. |
+| Current slice | #34 shared handler/scalar recurrence | 1–2 engineer-weeks | Preserve handler completion evidence while deleting the duplicate recurrence proof path. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
@@ -253,9 +256,9 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** #33, estimated at 1–2 engineer-weeks.
-- **Next foundation checkpoint:** complete #33, the bounded #25 piecewise
-  recurrence slice. #26, #27, #28, #29, #30, #31, and #32 are complete; completing parent #25/#24/#8 is 13–27
+- **Next implementable result:** #34, estimated at 1–2 engineer-weeks.
+- **Next foundation checkpoint:** complete #34, the bounded #25 recurrence
+  unification slice. #26, #27, #28, #29, #30, #31, #32, and #33 are complete; completing parent #25/#24/#8 is 13–27
   engineer-weeks.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not

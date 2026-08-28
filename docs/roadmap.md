@@ -127,8 +127,11 @@ explicit conservative boundaries rather than untracked support.
    three-region linear product. [#31](https://github.com/mizchi/uneffect/issues/31)
    completes the first divergent product join.
    [#32](https://github.com/mizchi/uneffect/issues/32) moves one direct affine
-   recurrence onto a source-bound CFG back edge. Its active next diamond child
-   is [#33](https://github.com/mizchi/uneffect/issues/33).
+   recurrence onto a source-bound CFG back edge.
+   [#33](https://github.com/mizchi/uneffect/issues/33) completes the first
+   loop-invariant CFG diamond recurrence. Its active next child
+   [#34](https://github.com/mizchi/uneffect/issues/34) unifies the earlier
+   handler-backed ranking loop with the shared scalar recurrence evidence.
    The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.
