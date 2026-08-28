@@ -16,6 +16,7 @@
     "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } },
     "effectComposition": { "$ref": "#/$defs/effectComposition" },
     "refinementComposition": { "$ref": "#/$defs/refinementComposition" },
+    "moduleInitializationComposition": { "$ref": "./uneffect-workspace-module-order-v1.schema.json" },
     "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
     "assurance": { "$ref": "#/$defs/assurance" }
   },

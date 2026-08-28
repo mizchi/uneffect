@@ -29,7 +29,7 @@ npx quint run protocol.qnt
 
 | Command | Purpose |
 | --- | --- |
-| `check [<file.ts> ...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. `--project` preserves consumer compiler options and can select the project's root files. |
+| `check [<file.ts> ...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. `--project` preserves consumer compiler options and can select the project's root files; `--module-entry` opts a solution workspace into the supported cross-project module-order composition. |
 | `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the selected Z3 backend, the optional Quint peer, and the optional `java` command. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
@@ -43,6 +43,9 @@ npx quint run protocol.qnt
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
 are listed, its `include`/`files` roots; report exact TypeScript package/version
 parity),
+`--module-entry <entry.ts>` (with project-only checking, emit the supported
+`uneffect-workspace-module-order/v1` composition and fail closed when its exact
+cross-project TLA shape cannot be established),
 `--declaration-transforms <manifest.json>` (with project-only checking, bind
 generated TypeScript files to exact UTF-16 spans in non-TypeScript sources),
 `--assurance no-unknown|declared|verified` (fail when emitted evidence does not

@@ -25,11 +25,11 @@ not a suitable single implementation branch.
 
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
-| 1 — Proof boundaries | #18 | 2–5 engineer-weeks | Medium |
+| 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 20–38 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 24–47 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues | **52–102 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues | **52–101 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -38,14 +38,14 @@ proof-boundary Issue limit useful parallelism.
 
 There are three useful planning numbers:
 
-- **Remaining Phase 1 critical path: 2–5 engineer-weeks.** #20 and #18's
-  synchronous simple-ring seed are complete; add the cross-project TLA seed,
-  then widen only from benchmark and dogfood evidence.
+- **Deferred Phase 1 breadth: 2–4 engineer-weeks.** #20 and both bounded #18
+  seeds are complete. The available application graphs contained no real TLA
+  candidate, so wider module semantics wait for #23 or new application evidence.
 - **One focused product line: roughly 11–27 engineer-weeks after Phase 1.** For
   example, Node Lease prioritizes #23, #2, and #5; numeric/SHA-256 work
   prioritizes #23, the first #24 alias slice, and #6. These alternatives should
   not be added together unless both products are required.
-- **All currently requested work: 52–102 engineer-weeks.** This includes
+- **All currently requested work: 52–101 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -56,7 +56,7 @@ commitment to implement every row:
 
 | Decision point | Include | Exclude for this cut | Estimate | Exit decision |
 | --- | --- | --- | ---: | --- |
-| A — proof-boundary MVP | Add one exact cross-project TLA fragment after the completed #20 and synchronous-ring seeds | General CFG, aliases, broad host/framework semantics | 1–2 weeks for the next seed; 2–5 weeks for remaining #18 | Dogfood on a solution-style Node application and decide whether project/module evidence is useful enough to continue. |
+| A — proof-boundary MVP | #20 plus synchronous-ring and direct cross-project TLA seeds | General CFG, aliases, broad host/framework semantics | Completed; 2–4 weeks of broader #18 work remains deferred | Application survey found no real TLA candidate; retain the narrow boundary and move to the reusable CFG core. |
 | B — reusable analyzer core | #23; first bounded child slices of #24 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 10–19 additional weeks | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
 | C1 — temporal/Node Lease product | #2 and #5, consuming the core where needed | Property generators and complete SHA-256 | 7–14 weeks for these two Issues; roughly 11–21 weeks after Phase 1 when #23 is included | A realistic lease model checks, decodes, and replays a counterexample across supported backends. |
 | C2 — generated-test/numeric product | #4 and #6, consuming the core where needed | General temporal collections and broad React/event-loop work | 9–17 weeks for #4/#6; roughly 14–27 weeks after Phase 1 when #23 and one bounded #24 alias slice are included | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
@@ -65,7 +65,7 @@ commitment to implement every row:
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-52–102 week total remains additive and intentionally ignores speculative
+52–101 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -80,12 +80,13 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P1.2a declaration-transform seed | #20 | Completed | completed in the current delivery | The strict manifest schema, CLI/programmatic APIs, exact-span/digest/compiler drift controls, report evidence, docs, and package checks are covered by local and CI gates. |
 | P1.2b realm-identity seed | #20 | Completed | completed in the current delivery | Versioned/labeled Node ambient `global` composes while incompatible labels, typings majors, and local shadows fail closed with machine-readable evidence. |
 | P1.3 synchronous cycle seed | #18 | Completed | under 1 week actual | A synchronous side-effect-only simple ring has executable DFS ordering evidence; runtime-binding, general-shape, and async cycles stay `unknown`. |
-| P1.4 cross-project TLA seed | #18 | Active next slice | 1–2 weeks | One straight-line TLA family crosses a project boundary with resolve/reject evidence; conditional awaits stay `unknown`. |
-| P2.1 CFG fixed-point seed | #23 | Queued | 1–2 weeks | The Issue's ranking-proven loop/throw join passes within an explicit proof budget and the unaligned recurrence stays `unknown`. |
+| P1.4 cross-project TLA seed | #18 | Completed | under 1 week actual | One exact direct child source/declaration with one straight-line TLA composes; conditional/looping await and await-then-throw stay `unknown`. |
+| P2.1 CFG fixed-point seed | #23 | Active next slice | 1–2 weeks | The Issue's ranking-proven loop/throw join passes within an explicit proof budget and the unaligned recurrence stays `unknown`. |
 | P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
 
-P1.2a, P1.2b, and P1.3 are complete. P1.4 is active next because #20 now supplies
-dependable cross-project evidence. P2.1 and P3.1 are planning-sized first slices, not a
+P1.2a through P1.4 are complete. P2.1 is active next because general CFG joins
+are now shared dependencies for refinements, typed arrays, aliases, and future
+module widening. P2.1 and P3.1 are planning-sized first slices, not a
 claim that their owning epics are otherwise complete.
 
 ## Dependency-critical order
@@ -98,14 +99,15 @@ claim that their owning epics are otherwise complete.
    realm identity. The Node seed now requires matching `@types/node` major and
    explicit realm label. Broader cross-realm, higher-order, and collection-valued
    cases remain non-proofs under their owning Issues.
-2. #18 is active after the #20 project-boundary handoff.
-3. #23 precedes CFG-sensitive portions of #6, #24, and #13.
+2. #18's two bounded handoff seeds are complete; broader widening is queued
+   until #23 or a real application boundary justifies a specific family.
+3. #23 is active and precedes CFG-sensitive portions of #6, #24, and #13.
 4. #24 and #8 provide alias/frontend evidence required before #13 can authorize
    transformations.
 5. #2/#5 and #4/#6 are selected according to the next dogfood product, rather
    than being treated as one mandatory serial queue.
 
-No Phase 3 or Phase 4 Issue should pre-empt #18 merely because it has an
+No Phase 3 or Phase 4 Issue should pre-empt #23 merely because it has an
 attractive isolated demo. New work that exposes a soundness dependency should
 be added to the owning Issue and reflected here before implementation begins.
 
@@ -113,8 +115,8 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #18 module initialization | L | 2–5 weeks | One exact cross-project straight-line TLA family after the completed synchronous ring | Async evaluation joins, host packages, and dynamic imports |
-| 2 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
+| 1 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
+| 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
 | 5 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
@@ -128,10 +130,10 @@ be added to the owning Issue and reflected here before implementation begins.
 
 ## Recommended delivery checkpoints
 
-1. **Usable async module proof boundary (1–2 weeks for the next seed):** implement the
-   supported cross-project straight-line TLA slice in #18 after the completed #20 and synchronous-ring seeds. This is the shortest path
-   to making assurance survive realistic project composition.
-2. **General analysis foundation (10–19 additional weeks):** prioritize #23,
+1. **Usable async module proof boundary:** completed for one direct exact
+   cross-project straight-line TLA dependency. The real-application survey found
+   no positive candidate, so do not generalize speculatively.
+2. **General analysis foundation (10–19 additional weeks):** start with #23,
    #24's first alias slices, and #8's fact parity before widening specialized
    models. This reduces repeated shape-specific lowering.
 3. **Specification breadth (remaining Phase 2):** select #2/#5 for temporal and
@@ -151,8 +153,9 @@ separates committed `main` from worktree progress.
 | Completed slice | P1.2a declaration transforms | completed | Strict schema, CLI/programmatic API, negative controls, report evidence, docs, and package gates agree. |
 | Completed slice | P1.2b one explicit Node realm identity | completed | Exact matching label/typings evidence and incompatible-realm controls close #20's bounded handoff. |
 | Completed slice | P1.3 synchronous cycle seed | under 1 engineer-week actual | Strict cycle-component evidence admits only side-effect-only simple rings and fails closed on runtime-binding/general/async cycles. |
-| Current slice | P1.4 cross-project TLA seed | 1–2 engineer-weeks | Establish one exact async #18 family and decide whether the Phase 1 MVP is useful in application dogfood. |
-| First useful checkpoint | Finish P1.4 plus stabilization | roughly 1–2 engineer-weeks | Re-estimate from actuals before entering CFG, aliases, temporal breadth, or React/event-loop breadth. |
+| Completed slice | P1.4 cross-project TLA seed | under 1 engineer-week actual | Exact declaration/source and resume/reject evidence compose; application survey found no eligible real boundary. |
+| Current slice | P2.1 CFG fixed-point seed | 1–2 engineer-weeks | Establish one ranking-bounded loop/throw join with an explicit proof budget and fail-closed non-convergence. |
+| First useful checkpoint | Finish P2.1 plus stabilization | roughly 1–2 engineer-weeks | Re-estimate before entering alias, temporal breadth, or React/event-loop breadth. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately

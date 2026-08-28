@@ -56,7 +56,10 @@ describe("evidence and optimizer obligations", () => {
         assurance: { status: "verified", passed: true },
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-project-workspace-v1.schema.json", "utf8"))).toMatchObject({
-        properties: { schema: { const: "uneffect-project-workspace/v1" } },
+        properties: {
+          schema: { const: "uneffect-project-workspace/v1" },
+          moduleInitializationComposition: { $ref: "./uneffect-workspace-module-order-v1.schema.json" },
+        },
         required: expect.arrayContaining(["buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
         $defs: {
           declarationIntegrity: { properties: { transform: { $ref: "#/$defs/declarationTransformEvidence" } } },

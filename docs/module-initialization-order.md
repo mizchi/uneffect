@@ -72,12 +72,43 @@ the `module-initialization` domain. When not selected, project assurance lists
 module ordering as an exclusion. This preserves gradual adoption and prevents
 ordinary effect checking from silently claiming temporal order.
 
+For a TypeScript solution, the same option may select an entry in a parent
+project:
+
+```ts
+const result = await verifyUneffectProject({
+  projectFile: rootTsconfig,
+  moduleInitializationEntry: parentEntry,
+  buildArtifacts: "require-exact",
+})
+```
+
+The initial workspace fragment emits
+`uneffect-workspace-module-order/v1`. It accepts exactly one direct
+child-project runtime dependency when the consumed declaration is reproduced
+byte-for-byte by the child Program, maps uniquely back to one child source,
+and that child is one acyclic module with exactly one straight-line top-level
+await and normal completion. The importer must be one synchronous acyclic
+module with normal completion. The composition retains both raw per-domain
+orders, explicitly lists the parent `external-static-import` unknown discharged
+by the exact declaration link, and adds only the child `complete` to importer
+`start` edge. The child order already contains the `resume | reject` choice, so
+rejection has no path to that completion edge.
+
+Conditional/looping await, await followed by unconditional throw, multiple or
+transitive child dependencies, transformed declarations, and asynchronous or
+multi-module importers remain `unknown`. The strict published composition
+schema is `schemas/uneffect-workspace-module-order-v1.schema.json`. This is a
+source-semantics claim; exact runtime emit bytes are checked only when the
+caller separately requests `buildArtifacts: "require-exact"`.
+
 Still unimplemented:
 
 - synchronous cycles beyond side-effect-import simple rings and every
   top-level-await cycle;
 - exact sibling-dependency initiation order while another dependency is
   suspended;
+- cross-project TLA beyond one direct child source/declaration link;
 - conditional/dynamic import branches and external package bodies;
 - decorator application ordering in the same event IR;
 - Quint lowering and bounded schedule checking for this artifact;

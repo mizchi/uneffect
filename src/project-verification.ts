@@ -32,6 +32,11 @@ import {
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { Z3ExecutionOptions } from "./z3.js";
 import {
+  composeWorkspaceModuleInitialization,
+  type CompletedModuleInitializationProject,
+  type WorkspaceModuleInitializationComposition,
+} from "./workspace-module-initialization.js";
+import {
   validateDeclarationTransformManifest,
   type DeclarationTransformManifest,
 } from "./declaration-transforms.js";
@@ -117,6 +122,7 @@ export interface VerifyUneffectWorkspaceResult {
   projects: ProjectWorkspaceVerificationDomain[];
   effectComposition: { status: "not-applicable" | "verified" | "unknown"; links: WorkspaceEffectLink[]; blockers: WorkspaceEffectCompositionBlocker[] };
   refinementComposition: { status: "not-applicable" | "verified" | "unknown"; links: WorkspaceRefinementLink[]; blockers: WorkspaceRefinementCompositionBlocker[] };
+  moduleInitializationComposition?: WorkspaceModuleInitializationComposition;
   blockers: ProjectWorkspaceVerificationBlocker[];
   assurance: ProjectWorkspaceAssurance;
 }
@@ -370,6 +376,8 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
   const refinementLinks: WorkspaceRefinementLink[] = [], refinementBlockers: WorkspaceRefinementCompositionBlocker[] = [];
   const completed: CompletedEffectProject[] = [];
   const completedRefinements: CompletedRefinementProject[] = [];
+  const completedModuleInitialization: CompletedModuleInitializationProject[] = [];
+  let moduleInitializationComposition: WorkspaceModuleInitializationComposition | undefined;
   const outputIntegrity: BuildOutputIntegrity = { status: options.buildArtifacts === "require-exact" ? "verified" : "not-checked", outputs: [] };
   const base: VerifyUneffectProjectBaseOptions = {
     ...(options.runtimeAssertions === undefined ? {} : { runtimeAssertions: options.runtimeAssertions }),
@@ -405,23 +413,38 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     blockers.push(...refinementComposition.blockers);
     const verification = await verifyUneffectProjectFiles({
       ...base, files: selected.files,
-      ...(moduleInitializationEntry !== undefined && project.fileNames.includes(moduleInitializationEntry)
-        ? { moduleInitializationEntry } : {}),
+      // Workspace module-order evidence is composed below so a matched child
+      // declaration can discharge only its exact external-import boundary.
     }, { project, program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts });
     projects.push({ project: project.provenance, rootFiles: project.fileNames, verification });
     const declarationOutputs = inspectDeclarationOutputs(program, options.declarationTransforms && transformValidation
       ? { manifest: options.declarationTransforms, validation: transformValidation } : undefined);
+    if (moduleInitializationEntry !== undefined && project.fileNames.includes(moduleInitializationEntry)) {
+      moduleInitializationComposition = composeWorkspaceModuleInitialization(
+        program, project, completedModuleInitialization, moduleInitializationEntry,
+      );
+      if (moduleInitializationComposition.evidence !== "verified") for (const unknown of moduleInitializationComposition.unknowns) blockers.push({
+        kind: "module-initialization", classification: "unknown", projectFile: unknown.projectFile,
+        subject: unknown.fileName, message: `${unknown.kind}: ${unknown.detail}`,
+      });
+    }
     completed.push({ project, summaries: verification.effects.summaries, declarationOutputs });
     const refinementAnalysis = analyzeProjectRefinements(program, project, refinementComposition.contracts);
     refinementBlockers.push(...refinementAnalysis.blockers);
     blockers.push(...refinementAnalysis.blockers);
     completedRefinements.push({ project, summaries: refinementAnalysis.summaries, declarationOutputs });
+    completedModuleInitialization.push({ project, program, declarationOutputs });
     for (const blocker of verification.assurance.blockers) blockers.push({
       kind: blocker.domain, classification: blocker.classification, projectFile: project.projectFile,
       subject: blocker.subject, message: blocker.message,
     });
   }
   const checkedConfigs = new Set(projects.map((item) => item.project.projectFile));
+  if (options.moduleInitializationEntry !== undefined && moduleInitializationComposition === undefined) blockers.push({
+    kind: "module-initialization", classification: "unknown", projectFile: workspace.rootProjectFile,
+    subject: resolve(options.moduleInitializationEntry),
+    message: "module entry is not selected by any loaded TypeScript project",
+  });
   for (const project of workspace.projects) if (!checkedConfigs.has(project.projectFile) && project.provenance.compiler.parity !== "exact") blockers.push({
     kind: "typescript", classification: "unknown", projectFile: project.projectFile,
     message: project.provenance.compiler.reason ?? "consumer TypeScript compiler parity is unknown",
@@ -439,6 +462,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       ...(effectLinks.length > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
       ...(refinementLinks.length > 0 ? ["verified child-project scalar refinement actions are composed through bounded resolved parent action call paths"] : []),
       ...(refinementLinks.length > 0 ? ["every declaration consumed by refinement composition exactly matches a same-compiler in-memory re-emission"] : []),
+      ...(moduleInitializationComposition?.evidence === "verified" ? ["one exact cross-project straight-line top-level-await dependency preserves async module completion order"] : []),
       ...([...effectLinks, ...refinementLinks].some((link) => link.declarationIntegrity.transform) ? ["every transformed source consumed by cross-project composition is an exact embedded TypeScript span bound to transform and compiler identity"] : []),
       ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
     ] : [],
@@ -464,6 +488,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     projects,
     effectComposition: { status: effectBlockers.length > 0 ? "unknown" : effectLinks.length > 0 ? "verified" : "not-applicable", links: effectLinks, blockers: effectBlockers },
     refinementComposition: { status: refinementBlockers.length > 0 ? "unknown" : refinementLinks.length > 0 ? "verified" : "not-applicable", links: refinementLinks, blockers: refinementBlockers },
+    ...(moduleInitializationComposition ? { moduleInitializationComposition } : {}),
     blockers, assurance,
   };
 }

@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 52–102 engineer-weeks; this is implementation volume, not a calendar
+estimate is 52–101 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -71,10 +71,12 @@ commitment.
    frontend mappings remain in #8.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    now has one exact synchronous, side-effect-only simple-ring family with
-   source/compiler-bound DFS ordering evidence. It must next add one exact
-   cross-project straight-line top-level-await family. Runtime-binding and
-   general-shape cycles, conditional async joins, external packages, and dynamic
-   initialization remain explicit non-proofs. It is the active Phase 1 issue.
+   source/compiler-bound DFS ordering evidence and one exact direct
+   cross-project straight-line top-level-await family with declaration-bound
+   completion evidence. Runtime-binding and general-shape cycles, conditional
+   async joins, external packages, and dynamic initialization remain explicit
+   non-proofs. The available application graphs contained no real TLA candidate,
+   so broader widening is queued behind #23 or new application evidence.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
 is complete for the documented bounded, finite-state-complete, inductive,
@@ -101,7 +103,8 @@ explicit conservative boundaries rather than untracked support.
 
 1. [General refinement CFG fixed points](https://github.com/mizchi/uneffect/issues/23)
    replaces the bounded path walker with explicit fixed points and proof budgets
-   while preserving completion kinds and fail-closed non-convergence.
+   while preserving completion kinds and fail-closed non-convergence. It is the
+   active slice after the bounded project/module proof-boundary handoff.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
    temporal reasoning.

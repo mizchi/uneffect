@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/schemas/uneffect-workspace-module-order-v1.schema.json",
+  "title": "Uneffect workspace module initialization composition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "entryFile", "evidence", "domains", "links", "constraints", "unknowns", "claims", "exclusions"],
+  "properties": {
+    "schema": { "const": "uneffect-workspace-module-order/v1" },
+    "schemaVersion": { "const": 1 },
+    "entryFile": { "type": "string" },
+    "evidence": { "enum": ["verified", "unknown"] },
+    "domains": { "type": "array", "items": { "$ref": "#/$defs/domain" }, "minItems": 1 },
+    "links": { "type": "array", "items": { "$ref": "#/$defs/link" }, "maxItems": 1 },
+    "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" }, "maxItems": 1 },
+    "unknowns": { "type": "array", "items": { "$ref": "#/$defs/unknown" } },
+    "claims": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
+    "exclusions": { "type": "array", "items": { "type": "string" }, "minItems": 3, "maxItems": 3 }
+  },
+  "allOf": [{
+    "if": { "properties": { "evidence": { "const": "verified" } }, "required": ["evidence"] },
+    "then": {
+      "properties": {
+        "links": { "minItems": 1, "maxItems": 1 },
+        "constraints": { "minItems": 1, "maxItems": 1 },
+        "unknowns": { "maxItems": 0 },
+        "claims": { "minItems": 3, "maxItems": 3 }
+      }
+    },
+    "else": { "properties": { "claims": { "maxItems": 0 } } }
+  }],
+  "$defs": {
+    "span": {
+      "type": "object", "additionalProperties": false, "required": ["start", "end"],
+      "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 } }
+    },
+    "sourceEvidence": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "sourceDigest"],
+      "properties": { "kind": { "const": "program-source" }, "sourceDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    },
+    "declarationIntegrity": {
+      "type": "object", "additionalProperties": false, "required": ["status", "fileName"],
+      "properties": {
+        "status": { "enum": ["verified", "missing", "mismatch", "error"] },
+        "fileName": { "type": "string" }, "expectedDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "actualDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "message": { "type": "string" }
+      }
+    },
+    "domain": {
+      "type": "object", "additionalProperties": false, "required": ["projectFile", "order", "dischargedUnknowns"],
+      "properties": {
+        "projectFile": { "type": "string" },
+        "order": { "$ref": "./uneffect-module-order-v1.schema.json" },
+        "dischargedUnknowns": { "type": "array", "items": { "$ref": "./uneffect-module-order-v1.schema.json#/$defs/unknown" } }
+      }
+    },
+    "link": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fromProject", "toProject", "importerFile", "dependencyEntryFile", "declarationFile", "importSpan", "semanticRule", "sourceEvidence", "declarationIntegrity"],
+      "properties": {
+        "fromProject": { "type": "string" }, "toProject": { "type": "string" },
+        "importerFile": { "type": "string" }, "dependencyEntryFile": { "type": "string" }, "declarationFile": { "type": "string" },
+        "importSpan": { "$ref": "#/$defs/span" },
+        "semanticRule": { "const": "ecma262-async-module-dependency-completion" },
+        "sourceEvidence": { "$ref": "#/$defs/sourceEvidence" },
+        "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" }
+      }
+    },
+    "constraint": {
+      "type": "object", "additionalProperties": false, "required": ["before", "after", "reason", "semanticRule", "link"],
+      "properties": {
+        "before": { "type": "string" }, "after": { "type": "string" },
+        "reason": { "const": "cross-project-static-dependency-completes" },
+        "semanticRule": { "const": "ecma262-async-module-dependency-completion" },
+        "link": { "const": 0 }
+      }
+    },
+    "unknown": {
+      "type": "object", "additionalProperties": false, "required": ["projectFile", "fileName", "kind", "detail"],
+      "properties": {
+        "projectFile": { "type": "string" }, "fileName": { "type": "string" },
+        "kind": { "type": "string" }, "detail": { "type": "string" }, "span": { "$ref": "#/$defs/span" }
+      }
+    }
+  }
+}

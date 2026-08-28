@@ -264,3 +264,21 @@ even though the workspace had already aggregated them. Workspace reports now
 replace the two project-local scope statements with one exact statement: the
 assessment covers selected source roots in every loaded tsconfig compiler
 domain. A regression test locks this distinction.
+
+## Cross-project top-level-await candidate survey
+
+On 2026-08-28, the first `uneffect-workspace-module-order/v1` slice was checked
+against the locally available `mizchi/workhub` and `mizchi/luna.mbt` solution
+graphs. A TypeScript AST scan searched their non-generated `.ts`, `.tsx`,
+`.mts`, and `.cts` sources for `AwaitExpression` nodes outside functions and
+classes. It found no top-level await in either graph, so neither application is
+an eligible positive case for the new cross-project TLA fragment.
+
+This is an honest negative dogfood result: the analyzer did not widen ordinary
+async functions into module initialization merely to produce a success. The
+load-bearing application-shaped acceptance case is therefore a two-project
+NodeNext solution fixture with exact declaration and runtime output checks. It
+accepts one child module with one straight-line TLA and rejects both a
+conditional TLA and an await followed by unconditional throw. A real external
+application claim remains absent until an application actually contains the
+supported boundary.

@@ -11,11 +11,16 @@ import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffec
 import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject, type WorkspaceRefinementComposition } from "./workspace-refinements.js";
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 import { loadDeclarationTransformManifest, validateDeclarationTransformManifest } from "./declaration-transforms.js";
+import {
+  composeWorkspaceModuleInitialization,
+  type CompletedModuleInitializationProject,
+  type WorkspaceModuleInitializationComposition,
+} from "./workspace-module-initialization.js";
 
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--module-entry <entry.ts>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
@@ -24,6 +29,7 @@ export const checkCommand: CliCommand = {
     "--config     load a versioned caller-owned semantic registry",
     "--declaration-transforms  bind generated TypeScript to exact spans in non-TypeScript sources",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
+    "--module-entry  compose the supported module-initialization order from this workspace entry",
     "--require-build-artifacts  fail unless SolutionBuilder reports composite outputs as current",
     "--require-exact-build-artifacts  also byte-compare TypeScript-emitted declarations and runtime JavaScript",
     "--json       emit a versioned decision report to stdout, including failures",
@@ -38,6 +44,7 @@ export const checkCommand: CliCommand = {
       config: { type: "string" },
       "declaration-transforms": { type: "string" },
       project: { type: "string" },
+      "module-entry": { type: "string" },
       "require-build-artifacts": { type: "boolean" },
       "require-exact-build-artifacts": { type: "boolean" },
       json: { type: "boolean" },
@@ -49,6 +56,9 @@ export const checkCommand: CliCommand = {
     }
     if (values["declaration-transforms"] !== undefined && (values.project === undefined || positionals.length > 0)) {
       throw new CliUsageError("declaration transform evidence requires --project without positional files");
+    }
+    if (values["module-entry"] !== undefined && (values.project === undefined || positionals.length > 0)) {
+      throw new CliUsageError("workspace module-order evidence requires --project without positional files");
     }
     const assurance = values.assurance;
     if (assurance !== undefined && assurance !== "no-unknown" && assurance !== "declared" && assurance !== "verified") {
@@ -71,10 +81,13 @@ export const checkCommand: CliCommand = {
       }
     }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"] || values["require-exact-build-artifacts"] || declarationTransforms)) {
+    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"] || values["require-exact-build-artifacts"] || declarationTransforms || values["module-entry"] !== undefined)) {
       const reports = [];
       const completed: CompletedEffectProject[] = [];
       const completedRefinements: CompletedRefinementProject[] = [];
+      const completedModuleInitialization: CompletedModuleInitializationProject[] = [];
+      let moduleInitializationComposition: WorkspaceModuleInitializationComposition | undefined;
+      const moduleEntry = values["module-entry"] === undefined ? undefined : resolve(String(values["module-entry"]));
       const composed: WorkspaceEffectComposition = { contracts: new Map(), moduleContracts: new Map(), links: [], blockers: [] };
       const composedRefinements: WorkspaceRefinementComposition = { contracts: new Map(), links: [], blockers: [] };
       const outputIntegrity: BuildOutputIntegrity = { status: values["require-exact-build-artifacts"] ? "verified" : "not-checked", outputs: [] };
@@ -100,17 +113,31 @@ export const checkCommand: CliCommand = {
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
         const declarationOutputs = inspectDeclarationOutputs(program, declarationTransforms && transformValidation
           ? { manifest: declarationTransforms, validation: transformValidation } : undefined);
+        if (moduleEntry !== undefined && domain.fileNames.includes(moduleEntry)) {
+          moduleInitializationComposition = composeWorkspaceModuleInitialization(
+            program, domain, completedModuleInitialization, moduleEntry,
+          );
+        }
         completed.push({ project: domain, summaries: domainResult.summaries, declarationOutputs });
         const refinementAnalysis = analyzeProjectRefinements(program, domain, refinementComposition.contracts);
         composedRefinements.blockers.push(...refinementAnalysis.blockers);
         completedRefinements.push({ project: domain, summaries: refinementAnalysis.summaries, declarationOutputs });
+        completedModuleInitialization.push({ project: domain, program, declarationOutputs });
       }
       const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
         requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"] || values["require-exact-build-artifacts"]), outputIntegrity,
-        additionalBlockers: transformValidation?.diagnostics.map((diagnostic) => ({
+        additionalBlockers: [
+          ...(transformValidation?.diagnostics.map((diagnostic) => ({
           kind: "declaration-transform", classification: "violation" as const,
           projectFile: workspace.rootProjectFile, subject: diagnostic.generatedFile, message: diagnostic.message,
-        })),
+          })) ?? []),
+          ...(moduleEntry !== undefined && moduleInitializationComposition === undefined ? [{
+            kind: "module-initialization", classification: "unknown" as const,
+            projectFile: workspace.rootProjectFile, subject: moduleEntry,
+            message: "module entry is not selected by any loaded TypeScript project",
+          }] : []),
+        ],
+        moduleInitializationComposition,
       }, composed, composedRefinements);
       if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
       else {

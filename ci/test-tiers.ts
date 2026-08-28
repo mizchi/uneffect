@@ -27,6 +27,7 @@ export const ciTestTiers = {
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
     "test/todo-consistency.test.ts",
+    "test/workspace-module-initialization.test.ts",
   ],
   z3: [
     "test/contracts.test.ts",

@@ -37,15 +37,16 @@ transform profile. It also admits Node ambient `global` only with an exact
 typings majors, and local shadows fail closed. Workhub-derived `StateStore.set` dogfood
 retains its unsupported async class-method edge as a violation instead of
 silently reporting `not-applicable`. [#18](https://github.com/mizchi/uneffect/issues/18)
-is the active proof-boundary issue. Its first exact module-order slice now
-admits only synchronous, side-effect-only simple import rings and records the
-ECMAScript depth-first postorder with source/compiler evidence. Runtime-binding,
-self, branching, multi-edge, and top-level-await cycles remain explicit unknowns.
+now has exact synchronous simple-ring and direct cross-project straight-line
+TLA seeds. A scan of the available Workhub and Luna solution sources found no
+real top-level-await candidate, so broader module semantics stay queued rather
+than being widened without application evidence. [#23](https://github.com/mizchi/uneffect/issues/23)
+is the active reusable-analysis issue.
 
 There are 12 open implementation Issues: one proof-boundary Issue in Phase 1,
 five specification-expressiveness Issues in Phase 2, five production-integration
 Issues in Phase 3, and one proof-consumer Issue in Phase 4. The additive backlog
-is estimated at 52–102 engineer-weeks, while the remaining Phase 1 work is 2–5
+is estimated at 52–101 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
@@ -54,22 +55,23 @@ General CFG and escaping-alias fixed points remain outside #9 and are owned by #
 
 ## Immediate execution queue
 
-Only the first row is active. #20 established the required project-boundary
-evidence and handed off to #18; #18's synchronous simple-ring seed is complete.
+Only the first row is active. #20 and both bounded #18 module-order seeds have
+completed their proof-boundary handoff. General CFG work is now load-bearing
+for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Add one exact straight-line top-level-await family across a project boundary, with resolve/reject and conditional-await negative controls. |
+| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Prove one ranking-bounded loop with a throw/normal join under an explicit proof budget; retain an unaligned recurrence as `unknown`. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
 
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
-| Proof-boundary MVP | Next exact TLA slice of #18 | 1–2 engineer-weeks for the next slice | Async module evidence survives one supported project boundary without claiming conditional scheduling. |
+| Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
 | General analysis foundation | #23, the first executable slices of #24 and #8 | 10–19 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 for generated tests/numeric code | 11–27 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | All 12 open Issues | 52–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
+| Entire open research backlog | All 12 open Issues | 52–101 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -90,7 +92,8 @@ issues; do not create a second work queue from them. Issue bodies own acceptance
 criteria and the current supported/unsupported boundary.
 
 `Status` is execution state, while `priority:P*` is assurance impact. A queued
-P1 item therefore does not outrank the active P0 proof-boundary slice. Only one
+P0 item therefore does not automatically pre-empt the active P1 reusable-core
+slice after its bounded handoff criteria are complete. Only one
 issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
@@ -103,8 +106,8 @@ label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence and synchronous simple-ring seed | Exact cross-project TLA, then broader ESM/external/dynamic initialization semantics |
-| Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
+| Queued | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence plus synchronous-ring and direct cross-project TLA seeds | Broader ESM/external/dynamic initialization semantics; widen after CFG or application evidence |
+| Active | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
@@ -119,8 +122,8 @@ label.
 The active issue is widened one Red/Green acceptance slice at a time. Each slice
 must retain an adjacent unsupported negative control and add a benchmark when
 it expands solver or analysis work. The reusable completion contract delivered
-by #3 now feeds the active #20 cross-project refinement slice. Phase 2 and later issues remain intentionally
-queued behind these proof-boundary items.
+by #3 and the completed proof-boundary seeds now feeds active #23. Later issues
+remain intentionally queued behind the reusable CFG result.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -651,6 +654,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Load caller-owned static/scoped effect and module-initialization registry extensions from a strict versioned CLI JSON configuration, publish its JSON Schema, reject unknown/ambiguous/drifted inputs, and bind the effective registry into evidence. Specialized platform operation records remain curated. ([#19](https://github.com/mizchi/uneffect/issues/19))
 - [x] Add an opt-in source-mapped `module-order/v1` partial-order IR and CLI/project assurance path for acyclic static dependencies, straight-line top-level-await resume/reject, unconditional synchronous throw, and blocked importers; conditional TLA, external/dynamic bodies, and TypeScript errors stay non-proof-grade.
 - [x] Admit synchronous side-effect-only simple import rings with source spans/digests, compiler identity, dependency/revisit evidence, and ECMAScript depth-first postorder; runtime-binding, self, branching, multi-edge, and async cycles remain non-proof-grade. ([#18](https://github.com/mizchi/uneffect/issues/18))
+- [x] Compose one exact child-project source/declaration containing one straight-line top-level await into one synchronous parent importer, preserving resume/reject and child-complete-before-importer-start evidence; conditional/looping await, await-then-throw, multiple/transitive children, transformed declarations, and broader importer shapes remain non-proof-grade. ([#18](https://github.com/mizchi/uneffect/issues/18))
 - [x] Load consumer compiler options and root-file selection through `check --project <tsconfig.json>` instead of silently applying Uneffect defaults; reject malformed and empty projects.
   - [x] Resolve consumer/analyzer TypeScript package provenance and make exact-version parity, mismatch, or resolution failure machine-readable; assurance fails closed unless an explicitly supplied project has exact parity.
   - [x] Expand acyclic solution-style project references in `check --project`, analyze each referenced config as a separate compiler-option/provenance domain, publish child-first build order and source ownership, and fail closed on missing, malformed, cyclic, or duplicate-root graphs with `uneffect-workspace-check/v1`.

@@ -1831,3 +1831,13 @@ digest emission. The fixture fails if the ring stops producing one verified
 four-module cycle component. On the 2026-08-28 development host, 1,492 warm
 samples measured 0.3352 ms mean (0.62% RME); this is a regression observation,
 not a portable latency budget.
+
+`workspace-module-initialization.bench.ts` measures the warm composition step
+for one exact child declaration/source with one straight-line TLA and one
+synchronous parent importer. Program construction, SolutionBuilder emission,
+and declaration re-emission are fixture setup and excluded from the timed loop;
+the loop still recomputes both module-order artifacts, declaration/source
+mapping, source digests, discharge, and the cross-project constraint. A
+2026-08-28 run measured 0.5088 ms mean over 983 samples (1,965.42 operations per
+second, 0.88% RME). This is a regression baseline, not a portable latency claim
+or evidence for multiple/transitive project dependencies.

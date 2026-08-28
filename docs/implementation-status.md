@@ -828,6 +828,14 @@ same property is proved for arbitrary TypeScript.
   published schema. Runtime-binding, self, branching, multi-edge, and async
   cycles, conditional TLA, external/dynamic bodies, sibling initiation order,
   and decorator ordering remain explicit non-claims.
+  A separate strict `uneffect-workspace-module-order/v1` composition discharges
+  one parent external-import boundary through an exact child declaration
+  re-emission/source mapping. It admits only one direct child module with one
+  straight-line top-level await and normal completion, retains the
+  resume/reject choice, and adds the child-complete to importer-start edge.
+  Conditional/looping await, await-then-throw, multiple/transitive children,
+  transformed declarations, and asynchronous or multi-module importers remain
+  explicit unknowns.
   Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize

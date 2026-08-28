@@ -197,6 +197,13 @@ write and may reject shadowed-name uncertainty. Mutable/imported/member/dynamic
 arguments and custom HOCs remain outside the wrapper claim; the annotated
 wrapper name is the Program/Suspense component identity.
 
+The module-initialization row also includes the strict
+`uneffect-workspace-module-order/v1` seed: one exact child declaration maps
+back to one source module with one straight-line TLA, and child normal
+completion precedes one synchronous importer start. Conditional/looping await,
+await-then-throw, multiple/transitive child dependencies, transformed
+declarations, and asynchronous or multi-module importers remain `unknown`.
+
 ## Verification confidence
 
 The strongest current claims are local and fragment-specific:

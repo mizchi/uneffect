@@ -8,6 +8,7 @@ import type { AssuranceProfile, AssuranceStatus } from "./assurance.js";
 import type { TypeScriptWorkspace } from "./typescript-project.js";
 import type { DeclarationOutputIntegrity, WorkspaceEffectComposition } from "./workspace-effects.js";
 import type { WorkspaceRefinementComposition, WorkspaceRefinementLink } from "./workspace-refinements.js";
+import type { WorkspaceModuleInitializationComposition } from "./workspace-module-initialization.js";
 import type { BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { EffectUnknownReason } from "./effects.js";
 import type { AssumptionLedger } from "./assumptions.js";
@@ -86,6 +87,7 @@ export interface CheckWorkspaceJsonReport {
     links: WorkspaceRefinementLink[];
     blockers: WorkspaceCheckBlocker[];
   };
+  moduleInitializationComposition?: WorkspaceModuleInitializationComposition;
   blockers: WorkspaceCheckBlocker[];
   assurance: WorkspaceCheckAssurance | null;
 }
@@ -125,7 +127,7 @@ export function createCheckWorkspaceJsonReport(
   workspace: TypeScriptWorkspace,
   projects: CheckJsonReport[],
   profile?: AssuranceProfile,
-  options: { requireFreshBuildArtifacts?: boolean; outputIntegrity?: BuildOutputIntegrity; additionalBlockers?: readonly WorkspaceCheckBlocker[] } = {},
+  options: { requireFreshBuildArtifacts?: boolean; outputIntegrity?: BuildOutputIntegrity; additionalBlockers?: readonly WorkspaceCheckBlocker[]; moduleInitializationComposition?: WorkspaceModuleInitializationComposition } = {},
   effectComposition?: WorkspaceEffectComposition,
   refinementComposition?: WorkspaceRefinementComposition,
 ): CheckWorkspaceJsonReport {
@@ -150,6 +152,13 @@ export function createCheckWorkspaceJsonReport(
   blockers.push(...compositionBlockers);
   const refinementCompositionBlockers: WorkspaceCheckBlocker[] = (refinementComposition?.blockers ?? []).map((blocker) => ({ ...blocker }));
   blockers.push(...refinementCompositionBlockers);
+  if (options.moduleInitializationComposition?.evidence !== undefined
+    && options.moduleInitializationComposition.evidence !== "verified") {
+    for (const unknown of options.moduleInitializationComposition.unknowns) blockers.push({
+      kind: "module-initialization", classification: "unknown", projectFile: unknown.projectFile,
+      subject: unknown.fileName, message: `${unknown.kind}: ${unknown.detail}`,
+    });
+  }
   const checkedConfigs = new Set(projects.flatMap((project) => project.project ? [project.project.projectFile] : []));
   if (profile) for (const project of workspace.projects) if (!checkedConfigs.has(project.projectFile) && project.provenance.compiler.parity !== "exact") blockers.push({
     kind: "typescript", classification: "unknown", projectFile: project.projectFile,
@@ -181,6 +190,8 @@ export function createCheckWorkspaceJsonReport(
         ...((effectComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
         ...((refinementComposition?.links.length ?? 0) > 0 ? ["verified child-project scalar refinement actions are composed through bounded resolved parent action call paths"] : []),
         ...((refinementComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by refinement composition exactly matches a same-compiler in-memory re-emission"] : []),
+        ...(options.moduleInitializationComposition?.evidence === "verified"
+          ? ["one exact cross-project straight-line top-level-await dependency preserves async module completion order"] : []),
         ...(refinementComposition?.links.some((link) => link.runtimeIdentity?.kind === "host"
           && link.runtimeIdentity.host === "node")
           ? ["Node global refinement identities match an explicit Node major and realm label backed by the corresponding @types/node ambient global symbol"] : []),
@@ -226,5 +237,7 @@ export function createCheckWorkspaceJsonReport(
       links: [...(refinementComposition?.links ?? [])],
       blockers: refinementCompositionBlockers,
     },
+    ...(options.moduleInitializationComposition
+      ? { moduleInitializationComposition: options.moduleInitializationComposition } : {}),
   };
 }
