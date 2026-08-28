@@ -327,6 +327,50 @@ const indirectRefinementCompleted: CompletedRefinementProject = {
     status: "verified", fileName: indirectRefinementDeclarationName,
   }]]),
 };
+const nodeRealmRefinementName = "/bench/node-realm-refinement.ts";
+const nodeRealmRefinementText = `
+  declare function incrementChild(runtime: typeof global): void
+  /* uneffect:
+    state count: int
+    init count = 0
+    action increment: count' = count + 1
+  */
+  /* uneffect: runtime counter@1 = node:global@24#main */
+  /* uneffect: refinement counter@1 create */ export function create(initial: typeof global) { return initial }
+  /* uneffect: refinement counter@1 observe */ export function observe(runtime: typeof global) { return runtime }
+  /* uneffect: refinement counter@1 action increment */ export function increment(_runtime: typeof global) { incrementChild(global) }
+`;
+const nodeRealmCompilerOptions: ts.CompilerOptions = { ...compilerOptions, types: ["node"] };
+const nodeRealmHost = ts.createCompilerHost(nodeRealmCompilerOptions);
+const defaultNodeRealmGetSourceFile = nodeRealmHost.getSourceFile.bind(nodeRealmHost);
+nodeRealmHost.fileExists = (fileName) => fileName === nodeRealmRefinementName || ts.sys.fileExists(fileName);
+nodeRealmHost.readFile = (fileName) => fileName === nodeRealmRefinementName ? nodeRealmRefinementText : ts.sys.readFile(fileName);
+nodeRealmHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => fileName === nodeRealmRefinementName
+  ? ts.createSourceFile(fileName, nodeRealmRefinementText, languageVersion, true)
+  : defaultNodeRealmGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+const nodeRealmProgram = ts.createProgram([nodeRealmRefinementName], nodeRealmCompilerOptions, nodeRealmHost);
+const nodeRealmSource = nodeRealmProgram.getSourceFile(nodeRealmRefinementName)!;
+const nodeRealmSpec = parseSpec(nodeRealmRefinementName, nodeRealmRefinementText).temporal;
+const nodeRealmChild = nodeRealmSource.statements.find((statement): statement is ts.FunctionDeclaration =>
+  ts.isFunctionDeclaration(statement) && statement.name?.text === "incrementChild")!;
+const nodeRealmExternalActions = new Map([[
+  `${nodeRealmRefinementName}:${nodeRealmChild.getStart(nodeRealmSource)}`,
+  {
+    adapterName: "counter", version: "1", modelName: "increment", exportName: "incrementChild",
+    runtimeIdentity: {
+      kind: "host" as const, host: "node" as const, root: "global" as const,
+      version: "24", realm: "main", identity: "node:24:realm:main.global",
+    },
+    assignments: [{
+      target: "count",
+      expressionAst: {
+        kind: "binary" as const, operator: "add" as const,
+        left: { kind: "name" as const, name: "count" }, right: { kind: "integer" as const, value: 1n },
+      },
+    }],
+    evidence: "verified" as const,
+  },
+]]);
 const compilerHost = ts.createCompilerHost(compilerOptions);
 const defaultGetSourceFile = compilerHost.getSourceFile.bind(compilerHost);
 compilerHost.fileExists = (fileName) => fileName === typedIntegerSourceName || ts.sys.fileExists(fileName);
@@ -404,6 +448,14 @@ describe("refinement receiver identity", () => {
       || result.blockers.length > 0) {
       throw new Error("indirect refinement benchmark fixture did not compose");
     }
+  }, { time: 500, iterations: 20 });
+
+  bench("validate a labeled Node realm against warm TypeChecker evidence", () => {
+    const diagnostics = validateRefinementActionBodiesInProgram(
+      nodeRealmProgram, nodeRealmRefinementName, "counter", nodeRealmSpec,
+      { externalActions: nodeRealmExternalActions },
+    );
+    if (diagnostics.length > 0) throw new Error(diagnostics.map(({ message }) => message).join("; "));
   }, { time: 500, iterations: 20 });
 });
 

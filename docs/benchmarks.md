@@ -1812,6 +1812,11 @@ and a prevalidated guarded child scalar summary, follows two
 TypeChecker-resolved local function helpers, applies both write screens, and
 verifies the four-declaration `callPath`, explicit `helperDepthBudget: 2`, and
 retained guard plus the shared `ecmascript:realm.globalThis` runtime identity.
+The adjacent `validate a labeled Node realm against warm TypeChecker evidence`
+case measures the additional ambient-symbol and `@types/node` major check for
+`node:global@24#main`; it fails the benchmark fixture if the proof path emits a
+diagnostic. Realm labels remain explicit contracts and are not timed as runtime
+topology discovery because no such discovery is implemented.
 A filtered run on 2026-08-28 measured 0.0618 ms mean (16,181.96
 operations/second over 8,091 samples, 0.33% relative margin of error). This
 excludes Program construction, child validation, filesystem declaration
