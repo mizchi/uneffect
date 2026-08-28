@@ -76,6 +76,10 @@ same property is proved for arbitrary TypeScript.
   write-screened source-local function helpers. The link records the complete
   `callPath` and `helperDepthBudget: 2`; reassignment, recursion, a third helper,
   and semantically visible helper updates fail closed.
+- Refinement binding markers are consumed only when attached to exported
+  top-level function declarations. A marker on a class method or any other
+  unsupported declaration shape is a source-attributed project-composition
+  violation; it cannot disappear into an empty `not-applicable` ledger.
 - The same sole-call chain may carry a guarded child action. Every helper
   declaration is bound to the exact child contract, so guard identity reaches
   parent revalidation; helper-local guards, extra work, and conditional

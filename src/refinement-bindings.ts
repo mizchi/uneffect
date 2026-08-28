@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { joinFlowValues } from "./refinement-flow.js";
-import { extractAnnotations } from "./annotations.js";
+import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
 import type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
@@ -137,17 +137,25 @@ function parseBinding(value: string, exportName: string, span: { start: number; 
 export function extractRefinementBindings(fileName: string, text: string): RefinementBinding[] {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const bindings: RefinementBinding[] = [];
+  const consumedAnnotations = new Set<string>();
+  const annotationKey = (span: { start: number; end: number }): string => `${span.start}:${span.end}`;
   for (const node of source.statements) {
     if (!ts.isFunctionDeclaration(node) || !node.name) continue;
     const leading = text.slice(node.getFullStart(), node.getStart(source));
-    for (const value of extractAnnotations(leading, "refinement")) {
+    for (const annotation of extractLocatedAnnotations(leading, "refinement", node.getFullStart())) {
+      consumedAnnotations.add(annotationKey(annotation.span));
       if (!node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) throw new Error(`refinement binding target ${node.name.text} must be exported`);
-      const binding = parseBinding(value, node.name.text, { start: node.getStart(source), end: node.getEnd() });
+      const binding = parseBinding(annotation.value, node.name.text, { start: node.getStart(source), end: node.getEnd() });
       const count = node.parameters.length;
       const validArity = binding.role === "action" ? count === 1 || count === 2 : count === 1;
       if (!validArity) throw new Error(`refinement ${binding.role} binding ${node.name.text} has ${count} parameters; expected ${binding.role === "action" ? "one runtime parameter and an optional trace-step parameter" : "exactly one parameter"}`);
       bindings.push(binding);
     }
+  }
+  const unsupported = extractLocatedAnnotations(text, "refinement")
+    .find((annotation) => !consumedAnnotations.has(annotationKey(annotation.span)));
+  if (unsupported) {
+    throw new Error(`refinement annotations are supported only on top-level function declarations; unsupported annotation in ${fileName} at ${unsupported.span.start}`);
   }
   return bindings;
 }

@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 51–100 engineer-weeks; this is implementation volume, not a calendar
+estimate is 54–105 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -58,11 +58,13 @@ commitment.
    declaration-transform validation remain. It consumes the
    completed #3 summary contract and does not technically depend on completion
   of #9; it is now the active Phase 1 Issue.
-  A second read-only solution graph (`luna.mbt`) now validates the multi-domain
-  loader and honest `not-applicable` composition result, but it contains no
-  annotated source-bearing cross-project edge. The next dogfood slice must
-  exercise such an edge rather than treating graph loading alone as composition
-  evidence.
+  A second read-only solution graph (`luna.mbt`) validates the multi-domain
+  loader and honest `not-applicable` composition result. A subsequent
+  Workhub-derived `StateStore.set` edge adds an attempted marker to the real
+  async class-method shape and retains that unsupported shape as a
+  source-attributed violation rather than widening it into the scalar fragment.
+  The next slice defines one versioned non-TypeScript declaration-transform
+  mapping with digest-bound fail-closed evidence.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.

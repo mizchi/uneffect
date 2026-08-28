@@ -31,13 +31,15 @@ Remaining volume and estimate assumptions are maintained in
 Its supported cross-project scalar-refinement fragment now includes direct
 calls, guarded wrappers, at most two write-screened sole-call helpers, exact
 compiler/config/declaration provenance, and one version-matched builtin
-`globalThis` runtime identity. The next slice is realistic monorepo dogfood; it
-must record unsupported graphs as blockers rather than widening the proof claim.
+`globalThis` runtime identity. Workhub-derived `StateStore.set` dogfood now
+retains its unsupported async class-method edge as a violation instead of
+silently reporting `not-applicable`. The next slice is one versioned,
+fail-closed non-TypeScript declaration-transform mapping.
 
 There are 13 open implementation Issues: two proof-boundary Issues in Phase 1,
 five specification-expressiveness Issues in Phase 2, five production-integration
 Issues in Phase 3, and one proof-consumer Issue in Phase 4. The additive backlog
-is estimated at 51–100 engineer-weeks, while the Phase 1 critical path is 4–8
+is estimated at 54–105 engineer-weeks, while the Phase 1 critical path is 4–8
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
@@ -51,7 +53,7 @@ required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Add opt-in annotations to an actual cross-project edge in a realistic monorepo and retain the exact supported graph or its blockers. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Accept one identity-preserving non-TypeScript declaration transform with bound input/output/compiler/transform evidence and reject every adjacent drift case. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 The current planning cut is intentionally narrower than the complete research
@@ -61,8 +63,8 @@ backlog:
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20, then the first exact slice of #18 | 4–8 engineer-weeks | Local evidence survives supported project and module boundaries. |
 | General analysis foundation | #23, the first executable slices of #24 and #8 | 10–19 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
-| Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 for generated tests/numeric code | 12–27 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | All 13 open Issues | 51–100 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
+| Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 for generated tests/numeric code | 11–27 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
+| Entire open research backlog | All 13 open Issues | 54–105 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -658,6 +660,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Generalize the sole-call chain to two write-screened local helpers, publish `helperDepthBudget: 2`, preserve the complete guarded call path, and reject a third helper.
     - [x] Add the version-matched `runtime adapter@version = globalThis` contract, share its identity with Effect composition, preserve it through two local helpers, and reject unannotated, shadowed, host-alias, Worker, iframe, descendant, duplicate, and version-mismatched forms.
     - [x] Reject stale/transformed, ambiguous, adapter-version-incompatible, and semantically incompatible scalar links with machine-readable blockers and adjacent negative controls.
+    - [x] Reject `refinement` markers attached to class methods or other unsupported declaration shapes instead of silently producing `not-applicable`; retain a Workhub `StateStore.set`-derived project-reference fixture and an unannotated negative control.
     - [ ] Generalize the supported refinement fragment and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
 - [x] Publish `check --json` as a versioned decision report containing normalized diagnostics, effect/contract evidence, assurance status, blockers, claims, exclusions, and coverage even when the check fails.
 - [x] Make `no-unknown` reject unresolved capability argument sets such as `Fetch<POST, Unknown<dynamic-url>>`, not only summaries whose outer evidence status is `unknown`.

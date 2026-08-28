@@ -134,6 +134,40 @@ The adoption probe did not require prebuilt outputs. Enabling
 `buildArtifacts: "require-fresh"` or the CLI flag would add a separate unknown
 blocker before any result could authorize consumption of those artifacts.
 
+### StateStore project-reference edge
+
+The same revision has a real source-bearing edge from packages such as
+`github-monitor` and `x-monitor` to `core`: consumers call the exported
+`StateStore.get/set` methods. A repository-derived acceptance fixture preserves
+the relevant class method, async suspension, dynamic record key, and
+project-reference call shape. It adds only this attempted marker to `set`:
+
+```ts
+/* uneffect: refinement stateStore@1 action set */
+async set(key: string, value: unknown): Promise<void> {
+  const data = await this.load()
+  data[key] = value
+  // filesystem persistence follows
+}
+```
+
+This is intentionally not accepted as a scalar cross-project proof. It requires
+class-method bindings, an async completion model, dynamic-key record
+abstraction, alias identity for `data`, and `FsWrite` composition. Previously
+the marker was silently ignored because refinement extraction visited only
+top-level function declarations, allowing the workspace ledger to appear
+`not-applicable`. It now produces a source-attributed
+`refinement-composition` violation stating that the declaration shape is
+unsupported, and workspace assurance fails. Removing the attempted marker is a
+load-bearing negative control and restores `not-applicable`; that result is not
+a proof of `StateStore`.
+
+The fixture is a compatibility/blocker probe, not a claim that the unmodified
+Workhub application is verified. Class/dynamic alias support belongs to #24,
+general async/resource completion remains outside the scalar #20 fragment, and
+collection-valued temporal state belongs to #5. This result closes the immediate
+dogfood question without widening any of those proof boundaries.
+
 ## luna.mbt bundled UI runtime
 
 Observed read-only on 2026-08-26 against `mizchi/luna.mbt` revision
@@ -219,9 +253,10 @@ observed revision and are not stable quality targets.
 Both `effectComposition` and `refinementComposition` were `not-applicable`, not
 `verified`: this star-shaped solution has no annotated source-bearing parent to
 child edge. In particular, the run does not exercise the supported guarded
-scalar/`globalThis` refinement link and cannot close that part of #20. A future
-positive dogfood case must add opt-in annotations to an actual cross-project
-edge without changing the analyzer's admitted fragment merely to make it pass.
+scalar/`globalThis` refinement link. The later Workhub `StateStore` probe above
+adds an attempted marker to an actual cross-project edge and correctly retains
+the unsupported shape as a blocker without changing the analyzer's admitted
+fragment merely to make it pass.
 
 This run exposed one reporting defect. The workspace-level exclusions inherited
 the child-only statement that referenced domains still required aggregation,

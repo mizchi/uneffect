@@ -116,6 +116,11 @@ must match the selected TypeScript compiler's exact in-memory declaration emit.
 Do not treat an empty (`not-applicable`) ledger as proof that refinements were
 composed.
 
+Refinement markers currently attach only to exported top-level function
+declarations. Placing one on a class method, arrow-function variable, or another
+unsupported declaration shape is an explicit violation. In particular, moving
+the same text to a different declaration is not a harmless no-op.
+
 An action may also use up to two source-local function helpers. Each helper must
 resolve by TypeChecker symbol identity, have no writes to its binding, and have
 a body consisting only of the next call. The report emits the complete

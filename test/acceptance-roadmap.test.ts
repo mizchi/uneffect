@@ -16,6 +16,77 @@ function futureApi(name: string): FutureApi {
 const files = (entries: Record<string, string>) => entries;
 
 describe("Uneffect end-to-end acceptance roadmap", () => {
+  it("reports an unsupported class-method refinement on a realistic project-reference edge", async () => {
+    const verifyProject = futureApi("verifyUneffectProject");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-workhub-state-store-"));
+    const root = join(directory, "tsconfig.json");
+    const core = join(directory, "packages", "core");
+    const monitor = join(directory, "packages", "monitor");
+    try {
+      mkdirSync(join(directory, "node_modules", "typescript"), { recursive: true });
+      mkdirSync(join(core, "src"), { recursive: true });
+      mkdirSync(join(monitor, "src"), { recursive: true });
+      writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({
+        name: "typescript", version: ts.version, main: "index.js",
+      }));
+      writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
+      const stateStore = `export class StateStore {
+        private data: Record<string, unknown> = {}
+        /* uneffect: refinement stateStore@1 action set */
+        async set(key: string, value: unknown): Promise<void> {
+          this.data[key] = value
+          await Promise.resolve()
+        }
+      }\n`;
+      writeFileSync(join(core, "src", "state.ts"), stateStore);
+      writeFileSync(join(monitor, "src", "index.ts"), `
+        import { StateStore } from "../../core/src/state.js"
+        export async function saveLastChecked(store: StateStore, value: string) {
+          await store.set("last_checked", value)
+        }
+      `);
+      const config = (references: unknown[] = []) => ({
+        compilerOptions: {
+          composite: true, declaration: true, emitDeclarationOnly: true,
+          rootDir: "src", outDir: "dist", strict: true,
+          module: "NodeNext", moduleResolution: "NodeNext", types: [],
+        },
+        include: ["src/**/*.ts"], references,
+      });
+      writeFileSync(join(core, "tsconfig.json"), JSON.stringify(config()));
+      writeFileSync(join(monitor, "tsconfig.json"), JSON.stringify(config([{ path: "../core" }])));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/monitor" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+
+      const unsupported = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; links: unknown[]; blockers: unknown[] };
+        assurance: { passed: boolean };
+      };
+      expect(unsupported.refinementComposition).toMatchObject({
+        status: "unknown",
+        links: [],
+        blockers: expect.arrayContaining([expect.objectContaining({
+          classification: "violation",
+          subject: join(core, "src", "state.ts"),
+          message: expect.stringContaining("supported only on top-level function declarations"),
+        })]),
+      });
+      expect(unsupported.assurance.passed).toBe(false);
+
+      writeFileSync(join(core, "src", "state.ts"), stateStore.replace(
+        "        /* uneffect: refinement stateStore@1 action set */\n",
+        "",
+      ));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const unannotated = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; links: unknown[]; blockers: unknown[] };
+      };
+      expect(unannotated.refinementComposition).toMatchObject({ status: "not-applicable", links: [], blockers: [] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes a guarded scalar refinement action across an exact direct project reference", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-project-guarded-refinement-"));

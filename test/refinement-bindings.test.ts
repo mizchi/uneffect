@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -92,6 +92,15 @@ describe("annotated refinement bindings", () => {
     expect(() => buildRefinementBindingManifest("arity.ts", `
       /* uneffect: refinement counter@1 create */ export function createCounter() {}
     `, "counter")).toThrow(/expected exactly one parameter/);
+  });
+
+  it("rejects a refinement marker attached to an unsupported declaration shape", () => {
+    expect(() => extractRefinementBindings("state-store.ts", `
+      export class StateStore {
+        /* uneffect: refinement stateStore@1 action set */
+        async set(key: string, value: unknown): Promise<void> { void key; void value }
+      }
+    `)).toThrow(/refinement annotations are supported only on top-level function declarations.*state-store\.ts/);
   });
 
   it("reports stale and missing temporal model bindings", () => {

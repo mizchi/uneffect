@@ -26,10 +26,10 @@ not a suitable single implementation branch.
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #20, #18 | 4–8 engineer-weeks | Medium |
-| 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 18–35 engineer-weeks | Low–medium |
-| 3 — Production integration | #24, #8, #10, #7, #16 | 23–45 engineer-weeks | Low |
+| 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 20–38 engineer-weeks | Low–medium |
+| 3 — Production integration | #24, #8, #10, #7, #16 | 24–47 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 13 open Issues | **51–100 engineer-weeks** | Low |
+| **Total additive effort** | 13 open Issues | **54–105 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -40,11 +40,11 @@ There are three useful planning numbers:
 
 - **Phase 1 critical path: 4–8 engineer-weeks.** Complete #20, then
   implement the first exact #18 module-ordering fragment.
-- **One focused product line: roughly 12–27 engineer-weeks after Phase 1.** For
+- **One focused product line: roughly 11–27 engineer-weeks after Phase 1.** For
   example, Node Lease prioritizes #23, #2, and #5; numeric/SHA-256 work
   prioritizes #23, the first #24 alias slice, and #6. These alternatives should
   not be added together unless both products are required.
-- **All currently requested work: 51–100 engineer-weeks.** This includes
+- **All currently requested work: 54–105 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -57,24 +57,42 @@ commitment to implement every row:
 | --- | --- | --- | ---: | --- |
 | A — proof-boundary MVP | Finish #20; implement one exact #18 ESM/TLA fragment | General CFG, aliases, broad host/framework semantics | 4–8 weeks total | Dogfood on a solution-style Node application and decide whether project/module evidence is useful enough to continue. |
 | B — reusable analyzer core | #23; first bounded child slices of #24 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 10–19 additional weeks | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
-| C1 — temporal/Node Lease product | #2 and #5, consuming the core where needed | Property generators and complete SHA-256 | 7–14 weeks for these two Issues; roughly 12–27 weeks after Phase 1 when required core work is included | A realistic lease model checks, decodes, and replays a counterexample across supported backends. |
-| C2 — generated-test/numeric product | #4 and #6, consuming the core where needed | General temporal collections and broad React/event-loop work | 7–14 weeks for #4/#6's lower bounds; roughly 12–27 weeks after Phase 1 when required core work is included | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
-| D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 17–33 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence. |
+| C1 — temporal/Node Lease product | #2 and #5, consuming the core where needed | Property generators and complete SHA-256 | 7–14 weeks for these two Issues; roughly 11–21 weeks after Phase 1 when #23 is included | A realistic lease model checks, decodes, and replays a counterexample across supported backends. |
+| C2 — generated-test/numeric product | #4 and #6, consuming the core where needed | General temporal collections and broad React/event-loop work | 9–17 weeks for #4/#6; roughly 14–27 weeks after Phase 1 when #23 and one bounded #24 alias slice are included | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
+| D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 18–35 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence. |
 | E — proof consumer | #13 | Any rewrite not authorized by replayable evidence | 6–12 weeks | Ship or reject one fail-closed stable-read transformation before considering general compression/mangling. |
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-51–100 week total remains additive and intentionally ignores speculative
+54–105 week total remains additive and intentionally ignores speculative
 parallel speed-up.
+
+## Executable work packages
+
+The epic totals above are useful for investment planning, but they are too wide
+for day-to-day execution. The following packages are the only work currently
+ready, or conditionally ready, to enter a Red/Green cycle:
+
+| Package | Owning Issue | State | Estimate | Exit condition |
+| --- | --- | --- | ---: | --- |
+| P1.1 realistic project edge | #20 | Completed | under 1 week actual | The Workhub-derived async class-method edge retains a source-attributed unsupported-shape blocker; removing the marker is `not-applicable`, not proof. |
+| P1.2 declaration-transform seed | #20 | Active | 1–2 weeks | One versioned identity-preserving non-TypeScript transform is accepted only with bound input/output/compiler/transform evidence and adjacent drift controls. |
+| P1.3 exact module-order seed | #18 | Blocked by #20 | 1–2 weeks | One cyclic ESM or straight-line TLA family has executable ordering evidence and adjacent failure controls. |
+| P2.1 CFG fixed-point seed | #23 | Queued | 1–2 weeks | The Issue's ranking-proven loop/throw join passes within an explicit proof budget and the unaligned recurrence stays `unknown`. |
+| P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
+
+Only P1.2 is active. P1.3 must not start before #20 supplies dependable
+cross-project evidence. P2.1 and P3.1 are planning-sized first slices, not a
+claim that their owning epics are otherwise complete.
 
 ## Dependency-critical order
 
-1. #20 is active. A second read-only solution graph now confirms exact compiler
-   domains and fail-closed non-applicability, but it has no annotated
-   source-bearing cross-project edge. The next slice adds opt-in annotations to
-   an actual application edge and retains either the exact supported link or
-   every blocker; broader cross-realm, higher-order, collection-valued, and
-   transformed-declaration cases remain non-proofs.
+1. #20 is active. The Workhub-derived `StateStore.set` edge now retains its
+   unsupported async class-method marker as a machine-readable violation. The
+   next slice admits one explicitly configured non-TypeScript declaration
+   transform only when input/output/compiler/transform identity and spans are
+   bound; broader cross-realm, higher-order, and collection-valued cases remain
+   non-proofs.
 2. #18 stays blocked until #20's project-boundary evidence is sufficient for
    module-order consumers.
 3. #23 precedes CFG-sensitive portions of #6, #24, and #13.
@@ -91,16 +109,16 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #20 TypeScript project parity | M | 1–2 weeks | Exercise an opt-in annotated edge in a realistic monorepo; the second unannotated solution graph is already recorded | Finding a natural scalar edge without weakening declaration, runtime, or compiler-domain compatibility |
+| 1 | #20 TypeScript project parity | M | 1–2 weeks | Accept one identity-preserving non-TypeScript declaration transform and reject changed exports/types, stale output, unknown transforms, and missing span provenance | Defining evidence that validates semantics rather than trusting source maps or coincidentally equal declaration text |
 | 2 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
 | 3 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
 | 6 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
-| 7 | #6 typed arrays/SHA-256 | XL | 4–9 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #23/#24 dependencies |
+| 7 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #23/#24 dependencies |
 | 8 | #24 aliases/dynamic refinement | XL | 6–12 weeks | One non-escaping mutable alias through a local helper | Region identity, higher-order flow, and closed-world dispatch |
 | 9 | #8 native Corsa parity | L | 4–7 weeks | Type-aware inferred-effect parity for a small fixture corpus | Corsa API maturity and source/type identity mapping |
-| 10 | #10 event-loop ownership | L–XL | 5–10 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
+| 10 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
 | 11 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
 | 12 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
 | 13 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
@@ -138,7 +156,7 @@ be added to the owning Issue and reflected here before implementation begins.
 - #9 is excluded from the remaining estimate after commit `5dfdb0e` passed all
   local checks and remote CI run 33105172614. General CFG and escaping-alias
   work discovered during #9 remains counted in #23 and #24.
-- Estimates for #13, #16, and #24 remain epic-level placeholders. Each must be
+- Estimates for #6, #10, #13, #16, and #24 remain epic-level placeholders. Each must be
   split into a bounded child Issue before activation; their upper bounds are
   materially less certain than Phase 1.
 - No estimate assumes that bounded Quint exploration proves unbounded JavaScript
