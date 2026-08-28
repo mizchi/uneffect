@@ -125,7 +125,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
+| 1 | #23 general refinement CFG | L | 4–7 weeks total remaining, including P2.1d | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
 | 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -173,6 +173,25 @@ separates committed `main` from worktree progress.
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
 rather than silently absorbed.
+
+The #23 issue-level 4–7 week range is the total remaining envelope and already
+contains the current 1–2 week P2.1d slice. These numbers must not be added. Work
+after P2.1d is intentionally not decomposed until its recurrence lattice and
+solver obligations provide evidence for a narrower estimate.
+
+## Backlog interpretation
+
+- **Next implementable result:** P2.1d in #23, estimated at 1–2 engineer-weeks.
+- **Next foundation checkpoint:** finish and re-estimate #23, then activate a
+  bounded #24 alias slice and a bounded #8 native-fact slice; the three-Issue
+  foundation is 10–19 engineer-weeks in total, including #23.
+- **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
+  or #4/#6 for generated tests and numeric verification. The two paths are not
+  both required for an initial useful release.
+- **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
+  evidence or their dependencies justify a bounded slice.
+- **Entire open backlog:** 52–101 engineer-weeks. This is an additive research
+  inventory, not a release estimate and not a claim that all work should ship.
 
 ## Re-estimation policy
 

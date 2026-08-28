@@ -53,6 +53,11 @@ user-visible boundary. Completed detail, including the closed Promise/resource
 work in #9, remains in the historical ledger and `docs/implementation-status.md`.
 General CFG and escaping-alias fixed points remain outside #9 and are owned by #23 and #24.
 
+The immediate implementable unit is #23/P2.1d at 1–2 engineer-weeks. Its cost is
+already included in #23's 4–7 week total remaining range and therefore must not
+be added twice. The 52–101 week figure is the additive whole-backlog inventory,
+not the estimate for a first useful release.
+
 ## Immediate execution queue
 
 Only the first row is active. #20 and both bounded #18 module-order seeds have
