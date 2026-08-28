@@ -42,11 +42,14 @@ TLA seeds. A scan of the available Workhub and Luna solution sources found no
 real top-level-await candidate, so broader module semantics stay queued rather
 than being widened without application evidence. The bounded reusable CFG
 handoff is complete in [#23](https://github.com/mizchi/uneffect/issues/23);
-[#26](https://github.com/mizchi/uneffect/issues/26) is the next executable slice.
+the bounded local-alias handoff is complete in
+[#26](https://github.com/mizchi/uneffect/issues/26), and
+[#27](https://github.com/mizchi/uneffect/issues/27) is the next executable slice.
 
-There are 13 open implementation Issues after closing #23: one proof-boundary
+There are 13 open implementation Issues after closing #23 and #26 and opening
+#27: one proof-boundary
 Issue in Phase 1, five specification-expressiveness Issues in Phase 2, six
-production-integration Issues in Phase 3 (including bounded child #26), and one
+production-integration Issues in Phase 3 (including bounded child #27), and one
 proof-consumer Issue in Phase 4. The 12 non-overlapping epic estimates total
 51–102 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
@@ -54,7 +57,7 @@ uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
 work in #9, remains in the historical ledger and `docs/implementation-status.md`.
 General CFG values and escaping-alias fixed points remain outside #9 and are
-owned by #25 and #24/#26.
+owned by #25 and #24. The completed #26 seed proves only one direct local alias.
 
 P2.1 is complete for its direct affine ranking-loop seed. P2.2 now consumes
 resource-free dynamic outer-loop `continue` completions by lexical owner and
@@ -80,8 +83,12 @@ iteration, or recurrence widening. P2.11 composes one application-backed
 depth-two nested try/catch family under a named nesting budget. P2.12 replaces
 its singleton block names with source-keyed region identities and composes two
 sibling nested handlers without admitting a third, deeper, or irreducible
-region. Remaining general value lattices and recurrence widening move to #25;
-the next executable integration slice is #26's non-escaping local alias.
+region. Remaining general value lattices and recurrence widening move to #25.
+P3.1 then adds one TypeChecker-backed, source-keyed, non-escaping local object
+alias through one direct helper; escape, reassignment, computed access,
+polymorphism, and dynamic/unresolved helper selection remain explicit
+non-proofs. The next executable integration slice is #27's checker-backed Corsa
+inferred-effect/call parity fixture.
 The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
@@ -93,7 +100,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#26](https://github.com/mizchi/uneffect/issues/26) | Track one non-escaping mutable alias through one TypeChecker-resolved local helper; retain escape and dynamic selection as non-proofs. |
+| 1 | [#27](https://github.com/mizchi/uneffect/issues/27) | Export one checker-backed Corsa inferred-effect and ordered direct-call fixture; reject a same-spelled symbol-distinct builtin. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -101,9 +108,9 @@ backlog:
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
-| General analysis foundation | Completed #23 plus #26 and the first executable #8 slice | 2–4 weeks for the two first slices; 10–19 weeks for parent #24 and #8 epics | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| General analysis foundation | Completed #23/#26 plus #27, the first executable #8 slice | 1–2 weeks for #27; 10–19 weeks for parent #24 and #8 epics | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #26 is included in #24. |
+| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #27 is included in #8. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -130,7 +137,7 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-28 there are 13 open implementation Issues after the #23 handoff:
+As of 2026-08-28 there are 13 open implementation Issues after the #23/#26 handoffs:
 one `active`, eleven `queued`, and one queued parent with its bounded child
 active. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
@@ -146,8 +153,8 @@ label.
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
-| Active | 3 | [#26](https://github.com/mizchi/uneffect/issues/26) | Local alias seed | Completed #23; child of #24 | One non-escaping mutable alias through one resolved local helper |
 | Queued | 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
+| Active | 3 | [#27](https://github.com/mizchi/uneffect/issues/27) | Corsa checker fact seed | Completed #23/#26; child of #8 | One inferred-effect and ordered-call parity fixture with a symbol-distinct negative control |
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
 | Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
 | Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #9, #10, #24 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
@@ -156,8 +163,8 @@ label.
 The active child issue is widened one Red/Green acceptance slice at a time. Each slice
 must retain an adjacent unsupported negative control and add a benchmark when
 it expands solver or analysis work. The reusable completion contract delivered
-by #3 and the completed #23 source-keyed CFG now feeds active #26. Later issues
-remain intentionally queued behind this alias handoff.
+by #3 and the completed #23 source-keyed CFG fed the completed #26 alias seed.
+Active #27 now tests the first real checker-backed Corsa fact handoff.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -172,6 +179,8 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
 The bounded, source-keyed handler CFG handoff closed
 [#23](https://github.com/mizchi/uneffect/issues/23); general value lattices and
 recurrence widening continue in #25.
+The TypeChecker-backed one-alias/one-helper region seed closed
+[#26](https://github.com/mizchi/uneffect/issues/26); broader aliases remain #24.
 
 - [x] Emit `uneffect-refinement-action-analysis/v1` for one direct ranking-loop
   normal/typed-throw catch join, enforce a named CFG reachability worklist

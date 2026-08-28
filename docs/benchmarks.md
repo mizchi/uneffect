@@ -1923,3 +1923,12 @@ for the single nested handler in the same run. The roughly 25% delta includes
 the additional application action, region graph, and validation work; one p99
 outlier reached 50.9288 ms, so the figure is a development-host signal rather
 than a portable latency guarantee.
+
+The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
+one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
+measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).
+This measures the bounded refinement evidence path after Program construction;
+it excludes compiler creation, general escape analysis, imported helpers,
+multiple regions, and the separate Program Effect analysis. It is therefore a
+regression signal for this slice, not a general alias-analysis throughput
+claim.

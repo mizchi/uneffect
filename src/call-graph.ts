@@ -33,6 +33,8 @@ export interface CallGraphEdge {
   unknownGeneratorConsumption?: boolean;
   unknownGeneratorParameterIndex?: number;
   dischargesUnknownGeneratorParameters?: boolean;
+  /** A local object alias reached this call but could not be reduced to one non-escaping addressable root. */
+  unresolvedMutationAlias?: boolean;
   /** Identifies the polymorphic iterator contract instantiated by this execution edge. */
   iteratorEffectInstantiation?: IteratorEffectInstantiation;
 }
@@ -260,6 +262,11 @@ export function buildProgramCallGraph(
   const edges: CallGraphEdge[] = [];
   for (const declaration of declarations) {
     const caller = stableId(declaration), parameters = new Map<string, number>();
+    const declarationSource = declaration.getSourceFile();
+    const leading = declarationSource.text.slice(
+      declaration.getFullStart(), declaration.getStart(declarationSource),
+    );
+    const refinementActionOwner = /\buneffect\s*:\s*refinement\s+[^\s]+\s+action\s+[^\s*]+/i.test(leading);
     const iteratorParameterIndices = new Map<ts.Symbol, number>();
     type IteratorBindingState = { generators: ts.FunctionLikeDeclaration[]; unknown: boolean; pure: boolean };
     const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration[]>(), unknownGeneratorBindings = new Set<ts.Symbol>(), pureIteratorBindings = new Set<ts.Symbol>();
@@ -360,6 +367,34 @@ export function buildProgramCallGraph(
           || ts.isTryStatement(current) || ts.isCatchClause(current) || ts.isIterationStatement(current, false)) return true;
       }
       return false;
+    };
+    const canonicalAddressableArgument = (argument: ts.Expression): { text: string; unresolvedAlias: boolean } => {
+      if (!ts.isIdentifier(argument)) return { text: argument.getText(), unresolvedAlias: false };
+      const symbol = resolvedSymbol(checker, argument);
+      const binding = symbol?.declarations?.find((candidate): candidate is ts.VariableDeclaration =>
+        ts.isVariableDeclaration(candidate) && ts.isIdentifier(candidate.name));
+      if (!symbol || !binding?.initializer || !ts.isVariableDeclarationList(binding.parent)
+        || (binding.parent.flags & ts.NodeFlags.Const) === 0
+        || (checker.getTypeAtLocation(argument).flags & ts.TypeFlags.Object) === 0) {
+        return { text: argument.getText(), unresolvedAlias: false };
+      }
+      const initializer = binding.initializer;
+      const addressable = ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer);
+      if (!addressable) return { text: argument.getText(), unresolvedAlias: true };
+      let owner: ts.Node | undefined = binding;
+      while (owner && !ts.isFunctionLike(owner)) owner = owner.parent;
+      if (!owner) return { text: argument.getText(), unresolvedAlias: true };
+      let escaped = false;
+      const inspect = (node: ts.Node): void => {
+        if (escaped || node !== owner && ts.isFunctionLike(node)) return;
+        if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === symbol
+          && node !== binding.name && node !== argument) { escaped = true; return; }
+        ts.forEachChild(node, inspect);
+      };
+      inspect(owner);
+      return escaped
+        ? { text: argument.getText(), unresolvedAlias: true }
+        : { text: initializer.getText(), unresolvedAlias: false };
     };
     const visit = (node: ts.Node, catchesThrow: boolean): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
@@ -494,7 +529,8 @@ export function buildProgramCallGraph(
               consumer: iteratorConsumer, parameterIndex: contract.index,
             }));
           });
-        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters });
+        const instantiatedArguments = node.arguments.map(canonicalAddressableArgument);
+        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: instantiatedArguments.map(({ text }) => text), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters, ...(refinementActionOwner && instantiatedArguments.some(({ unresolvedAlias }) => unresolvedAlias) ? { unresolvedMutationAlias: true } : {}) });
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") {
           const receiver = node.expression.expression;

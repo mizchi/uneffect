@@ -14,7 +14,7 @@ import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -24,6 +24,65 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("correlates a local refinement alias region with independently checked Mutate effects", () => {
+    const fileName = "examples/dogfood/local-alias-refinement.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const compilerOptions: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+    };
+    const program = ts.createProgram([fileName], compilerOptions);
+    const analysis = analyzeRefinementActionBodiesInProgram(program, fileName, "localAlias", temporal);
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "local-alias-helper",
+      status: "verified",
+      capabilityCorrelation: {
+        aliasRegion: "target",
+        declaration: "Mutate<typeof target.sent>",
+        rule: "source-correlated-not-equivalent",
+      },
+    }));
+    expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-escaped-alias-effect-"));
+    try {
+      const escapedFile = join(directory, "escaped.ts");
+      const escaped = source.replace(
+        "  incrementSent(target);",
+        "  incrementSent(target);\n  capture(target);",
+      ).replace(
+        "/* uneffect: effect Mutate<typeof target.sent> */\nfunction incrementSent(target: LocalAliasRuntime): void {",
+        "let captured: LocalAliasRuntime | undefined;\nfunction capture(value: LocalAliasRuntime): void { captured = value; }\n\n/* uneffect: effect Mutate<typeof target.sent> */\nfunction incrementSent(target: LocalAliasRuntime): void {",
+      ) + "\nexport function invokeEscapedAlias(runtime: LocalAliasRuntime): void { sendThroughLocalAlias(runtime); }\n";
+      writeFileSync(escapedFile, escaped);
+      const escapedProgram = ts.createProgram([escapedFile], compilerOptions);
+      const escapedEffects = analyzeProgramEffects(escapedProgram);
+      expect(escapedEffects.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          functionName: "sendThroughLocalAlias",
+          kind: "unknown",
+          effect: "Mutate<unknown-alias>",
+        }),
+        expect.objectContaining({
+          functionName: "sendThroughLocalAlias",
+          kind: "unused",
+          effect: "Mutate<typeof runtime.sent>",
+        }),
+      ]));
+      expect(escapedEffects.summaries.find(({ functionName }) => functionName === "invokeEscapedAlias"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unresolved-mutation-alias" })],
+        });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("emits budgeted CFG evidence for the telemetry switch/catch/finally join", () => {
     const { fileName, source, temporal } = telemetryRoutingFixture();
     const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);

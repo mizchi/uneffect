@@ -52,7 +52,7 @@ describe("TODO hierarchy consistency", () => {
     const issue9 = unfinished.filter((line) => line.includes("issues/9"));
 
     expect(issue9).toEqual([]);
-    expect(todo).toMatch(/General\s+CFG values and escaping-alias fixed points remain outside #9 and are\s+owned by #25 and #24\/#26\./);
+    expect(todo).toMatch(/General\s+CFG values and escaping-alias fixed points remain outside #9 and are\s+owned by #25 and #24\./);
   });
 
   it("tracks deferred optimizer implementation in the issue roadmap", () => {
@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 26];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 27];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -87,7 +87,7 @@ describe("TODO hierarchy consistency", () => {
     for (const issue of [25, 2, 5, 4, 6]) {
       expect(phase(2), `Phase 2 is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
-    for (const issue of [24, 26, 8, 10, 7, 16]) {
+    for (const issue of [24, 8, 27, 10, 7, 16]) {
       expect(phase(3), `Phase 3 is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
     expect(phase(4)).toContain("issues/13");
@@ -108,8 +108,8 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 4],
       ["Queued", 2, 6],
       ["Queued", 3, 24],
-      ["Active", 3, 26],
       ["Queued", 3, 8],
+      ["Active", 3, 27],
       ["Queued", 3, 10],
       ["Queued", 3, 7],
       ["Queued", 3, 16],
@@ -129,7 +129,7 @@ describe("TODO hierarchy consistency", () => {
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
     expect(rows.map(([order, issue]) => [order, issue])).toEqual([
-      [1, 26],
+      [1, 27],
     ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
@@ -147,10 +147,12 @@ describe("TODO hierarchy consistency", () => {
     expect(activeIndex).not.toContain("issues/17)");
     expect(activeIndex).not.toContain("issues/21)");
     expect(activeIndex).not.toContain("issues/9)");
+    expect(activeIndex).not.toContain("issues/26)");
     expect(todo).toContain("closed [#1]");
     expect(todo).toContain("closed [#14]");
     expect(todo).toContain("closed [#17]");
     expect(todo).toContain("closed [#21]");
     expect(todo).toContain("closed [#9]");
+    expect(todo).toContain("closed\n[#26]");
   });
 });

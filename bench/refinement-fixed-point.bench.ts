@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
 const source = `/* uneffect:
@@ -38,6 +39,15 @@ const spec = parseSpec("refinement-fixed-point.ts", source).temporal;
 const handlerJoinFile = "examples/dogfood/telemetry-routing-accounting.ts";
 const handlerJoinSource = readFileSync(handlerJoinFile, "utf8");
 const handlerJoinSpec = parseSpec(handlerJoinFile, handlerJoinSource).temporal;
+const aliasFile = "examples/dogfood/local-alias-refinement.ts";
+const aliasSource = readFileSync(aliasFile, "utf8");
+const aliasSpec = parseSpec(aliasFile, aliasSource).temporal;
+const aliasProgram = ts.createProgram([aliasFile], {
+  target: ts.ScriptTarget.ESNext,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  noEmit: true,
+});
 
 describe("refinement CFG fixed point", () => {
   bench("analyze a ranking loop throw/normal join", () => {
@@ -184,6 +194,16 @@ describe("refinement CFG fixed point", () => {
     if (result.diagnostics.some((item) => item.modelName === "stagedNestedRecovery")
       || obligation?.status !== "verified" || regionCount !== 2) {
       throw new Error("source-keyed sibling nested handler benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("analyze one TypeChecker-backed local alias helper region", () => {
+    const result = analyzeRefinementActionBodiesInProgram(
+      aliasProgram, aliasFile, "localAlias", aliasSpec,
+    );
+    const obligation = result.obligations.find((item) => item.kind === "local-alias-helper");
+    if (result.diagnostics.length !== 0 || obligation?.status !== "verified") {
+      throw new Error("local alias helper region benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
 });

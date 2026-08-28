@@ -34,6 +34,7 @@ export type EffectUnknownReasonCode =
   | "invalid-annotation"
   | "unknown-external-module"
   | "unresolved-effect-instantiation"
+  | "unresolved-mutation-alias"
   | "unreviewed-external-module"
   | "unresolved-decorator"
   | "possible-user-code"
@@ -1079,6 +1080,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   }
   const inferred = new Map([...direct].map(([id, effects]) => [id, [...effects]]));
   const unknownTiming = new Set<string>(), unknownGeneratorEvidence = new Set<string>(), unknownGeneratorParameterEvidence = new Set<string>();
+  const unknownMutationAliasEvidence = new Set<string>();
+  const unknownMutationAliasSpans = new Map<string, { start: number; end: number }>();
   let changed = true;
   while (changed) {
     changed = false;
@@ -1100,6 +1103,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (edge.executesBody === false) continue;
       if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
       const calleeParams = parameters.get(edge.callee) ?? [];
+      if (edge.unresolvedMutationAlias && inferred.get(edge.callee)!.some((effect) => effect.kind === "mutate"
+        && calleeParams.some((parameter) => effect.region === parameter
+          || effect.region.startsWith(`${parameter}.`) || effect.region.startsWith(`${parameter}[`)))) {
+        unknownMutationAliasEvidence.add(edge.caller);
+        if (!unknownMutationAliasSpans.has(edge.caller)) unknownMutationAliasSpans.set(edge.caller, edge.span);
+      }
       for (const raw of inferred.get(edge.callee)!) {
         if (raw.kind === "throw" && asyncOwners.has(edge.caller)) continue;
         if (edge.dischargesThrow && raw.kind === "throw") continue;
@@ -1121,6 +1130,17 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           if (!inherited.has(key)) inherited.set(key, { callee: edge.callee, calleeEffect: formatEffect(raw), fileName: callerSource.fileName, line: callerSource.getLineAndCharacterOfPosition(edge.span.start).line + 1 });
         }
       }
+    }
+  }
+  let mutationAliasUnknownChanged = true;
+  while (mutationAliasUnknownChanged) {
+    mutationAliasUnknownChanged = false;
+    for (const edge of graph.edges) {
+      if (!edge.callee || !unknownMutationAliasEvidence.has(edge.callee)
+        || unknownMutationAliasEvidence.has(edge.caller)) continue;
+      unknownMutationAliasEvidence.add(edge.caller);
+      unknownMutationAliasSpans.set(edge.caller, edge.span);
+      mutationAliasUnknownChanged = true;
     }
   }
   const names = new Map(graph.nodes.map((graphNode) => [graphNode.id, graphNode.name]));
@@ -1254,6 +1274,19 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   for (const graphNode of graph.nodes) {
     const actual = inferred.get(graphNode.id)!, allowed = declared.get(graphNode.id)!, source = nodes.get(graphNode.id)!.getSourceFile();
     const line = source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1;
+    if (unknownMutationAliasEvidence.has(graphNode.id)) {
+      const span = unknownMutationAliasSpans.get(graphNode.id) ?? graphNode.span;
+      diagnostics.push({
+        fileName: source.fileName,
+        functionName: graphNode.name,
+        effect: "Mutate<unknown-alias>",
+        kind: "unknown",
+        severity: "error",
+        line: source.getLineAndCharacterOfPosition(span.start).line + 1,
+        message: `${graphNode.name} passes or calls through a mutable object alias that is reassigned, escaping, computed, or otherwise not reducible to one addressable root`,
+        notes: [{ label: "because", detail: "only one const, non-escaping, direct identifier/property alias can instantiate a parameter-rooted Mutate effect" }],
+      });
+    }
     for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: options.mode === "strict" ? "error" : "warning", line, message: `${graphNode.name} declares unknown effect ${formatEffect(effect)}`, notes: unknownEffectNotes(allowed, effect) });
     for (const effect of actual) if (!permits(allowed, effect) && (declaredPresent.has(graphNode.id) || options.requireAnnotations !== false)) {
       const key = formatEffect(effect);
@@ -1280,6 +1313,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (invalidEffectParameterOwners.has(graphNode.id)) addUnknownReason("invalid-effect-parameter", "an effect_parameter annotation is invalid");
     if (invalidIteratorInstantiationCallers.has(graphNode.id)) addUnknownReason("invalid-iterator-instantiation", "an iterator effect argument exceeds or cannot satisfy its declared bound");
     if (unknownExternalEvidence.has(graphNode.id)) addUnknownReason("unknown-external-evidence", "a resolved external effect contract is unknown or cannot be instantiated at this call site");
+    if (unknownMutationAliasEvidence.has(graphNode.id)) addUnknownReason("unresolved-mutation-alias", "a mutable object alias cannot be reduced to one non-escaping addressable root");
     if (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator) addUnknownReason("unbounded-iterator-effect-parameter", "a declared function consumes caller-supplied iterator effects without an effect_parameter upper bound");
     const evidence: EvidenceStatus = invalidSources.has(source.fileName) || invalidAnnotationSources.has(source.fileName)
       || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id)
@@ -1287,6 +1321,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       || invalidEffectParameterOwners.has(graphNode.id)
       || invalidIteratorInstantiationCallers.has(graphNode.id)
       || unknownExternalEvidence.has(graphNode.id)
+      || unknownMutationAliasEvidence.has(graphNode.id)
       || (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator)
       ? "unknown" : fullyBoundIterator ? (own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified")
         : !declaredPresent.has(graphNode.id) ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";

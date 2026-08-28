@@ -133,10 +133,23 @@ interface RefinementHandlerValueJoinTrace {
   readonly condition: TemporalExpression;
 }
 
+interface RefinementAliasRegionTrace {
+  readonly modelName: string;
+  readonly aliasName: string;
+  readonly aliasSpan: { start: number; end: number };
+  readonly helperName: string;
+  readonly helperCallSpan: { start: number; end: number };
+  readonly helperDeclarationSpan: { start: number; end: number };
+  readonly helperDeclarationFile: string;
+  readonly helperSymbolIdentity: string;
+  readonly capabilityDeclaration: string;
+}
+
 interface RefinementActionTraceSink {
   readonly tryCatchJoins: RefinementTryCatchValueTrace[];
   readonly rankingRecurrences: RefinementRankingRecurrenceTrace[];
   readonly handlerValueJoins: RefinementHandlerValueJoinTrace[];
+  readonly aliasRegions: RefinementAliasRegionTrace[];
 }
 
 export interface RefinementRankingLoopObligation {
@@ -230,7 +243,37 @@ export interface RefinementHandlerJoinObligation {
   };
 }
 
-export type RefinementActionObligation = RefinementRankingLoopObligation | RefinementHandlerJoinObligation;
+export interface RefinementLocalAliasHelperObligation {
+  kind: "local-alias-helper";
+  adapterName: string;
+  modelName: string;
+  exportName: string;
+  status: "verified";
+  evidence: "typescript-program";
+  alias: {
+    name: string;
+    mutableObject: true;
+    binding: "const";
+    span: { start: number; end: number };
+    regionId: string;
+  };
+  helper: {
+    name: string;
+    callSpan: { start: number; end: number };
+    declarationSpan: { start: number; end: number };
+    declarationFile: string;
+    symbolIdentity: string;
+  };
+  capabilityCorrelation: {
+    aliasRegion: string;
+    declaration: string;
+    rule: "source-correlated-not-equivalent";
+  };
+}
+
+export type RefinementActionObligation = RefinementRankingLoopObligation
+  | RefinementHandlerJoinObligation
+  | RefinementLocalAliasHelperObligation;
 
 export interface RefinementRankingRecurrenceEvidence {
   counter: string;
@@ -1070,6 +1113,69 @@ function validateRefinementActionBodiesInSource(
   const resolveFunction = (expression: ts.Identifier | ts.PropertyAccessExpression, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
     if (!checker) return ts.isIdentifier(expression) ? functions.get(expression.text) : undefined;
     return resolveProgramFunction(checker, expression, seen);
+  };
+
+  const localAliasRegion = (
+    call: ts.CallExpression,
+    receiverArgument: ts.Expression,
+    receiver: string,
+    substitutions: ReadonlyMap<string, ts.Expression>,
+    helper: ts.FunctionDeclaration,
+  ): Omit<RefinementAliasRegionTrace, "modelName"> | undefined | "unsupported" => {
+    if (!checker || !ts.isIdentifier(receiverArgument)) return undefined;
+    const replacement = substitutions.get(receiverArgument.text);
+    if (!replacement || !ts.isIdentifier(replacement) || replacement.text !== receiver) return undefined;
+    const aliasSymbol = checker.getSymbolAtLocation(receiverArgument);
+    const declaration = aliasSymbol?.declarations?.find(ts.isVariableDeclaration);
+    if (!aliasSymbol || !declaration || !ts.isIdentifier(declaration.name)
+      || !declaration.initializer || !ts.isIdentifier(declaration.initializer)
+      || declaration.initializer.text !== receiver
+      || !ts.isVariableDeclarationList(declaration.parent)
+      || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+      || (checker.getTypeAtLocation(receiverArgument).flags & ts.TypeFlags.Object) === 0) return "unsupported";
+    if (!ts.isIdentifier(call.expression) || !helper.name || helper.getSourceFile() !== source
+      || helper.typeParameters?.length || helper.parameters.length !== 1
+      || !ts.isIdentifier(helper.parameters[0]!.name)) return "unsupported";
+    const directSymbol = checker.getSymbolAtLocation(call.expression);
+    if (!directSymbol?.declarations?.includes(helper)) return "unsupported";
+    let unsupportedHelper = false;
+    const inspectHelper = (node: ts.Node): void => {
+      if (unsupportedHelper) return;
+      if (node !== helper && ts.isFunctionLike(node)) { unsupportedHelper = true; return; }
+      if (ts.isElementAccessExpression(node)) { unsupportedHelper = true; return; }
+      ts.forEachChild(node, inspectHelper);
+    };
+    inspectHelper(helper.body!);
+    if (unsupportedHelper) return "unsupported";
+    let owner: ts.Node | undefined = declaration;
+    while (owner && !ts.isFunctionLike(owner)) owner = owner.parent;
+    if (!owner) return "unsupported";
+    let escaped = false;
+    const inspectOwner = (node: ts.Node): void => {
+      if (escaped || node !== owner && ts.isFunctionLike(node)) return;
+      if (ts.isIdentifier(node) && checker.getSymbolAtLocation(node) === aliasSymbol
+        && node !== declaration.name && node !== receiverArgument) { escaped = true; return; }
+      ts.forEachChild(node, inspectOwner);
+    };
+    inspectOwner(owner);
+    if (escaped) return "unsupported";
+    const helperSource = helper.getSourceFile();
+    const leading = helperSource.text.slice(helper.getFullStart(), helper.getStart(helperSource));
+    const parameterName = (helper.parameters[0]!.name as ts.Identifier).text;
+    const capabilityDeclaration = extractLocatedAnnotations(leading, "effect", helper.getFullStart())
+      .map(({ value }) => value)
+      .find((value) => value.split("|").some((part) => part.trim().startsWith(`Mutate<typeof ${parameterName}.`)));
+    if (!capabilityDeclaration) return "unsupported";
+    return {
+      aliasName: receiverArgument.text,
+      aliasSpan: { start: declaration.name.getStart(source), end: declaration.name.getEnd() },
+      helperName: helper.name!.text,
+      helperCallSpan: { start: call.getStart(source), end: call.getEnd() },
+      helperDeclarationSpan: { start: helper.getStart(source), end: helper.getEnd() },
+      helperDeclarationFile: helperSource.fileName,
+      helperSymbolIdentity: `${helperSource.fileName}:${helper.getStart(helperSource)}`,
+      capabilityDeclaration,
+    };
   };
 
   const knownSubclassCache = new Map<ts.ClassDeclaration, boolean>();
@@ -3493,6 +3599,12 @@ function validateRefinementActionBodiesInSource(
         if (!helper?.body || activeCalls.has(callKey) || helper.parameters.length !== node.arguments.length
           || helper.parameters.length === 0 || helper.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) return undefined;
         const receiverArgument = node.arguments[0]!;
+        const aliasRegion = localAliasRegion(node, receiverArgument, receiver, substitutions, helper);
+        if (aliasRegion === "unsupported") return undefined;
+        if (aliasRegion && traceSink && currentModelName) {
+          if (traceSink.aliasRegions.some((region) => region.modelName === currentModelName)) return undefined;
+          traceSink.aliasRegions.push({ modelName: currentModelName, ...aliasRegion });
+        }
         const substitutedReceiver = ts.isIdentifier(receiverArgument) ? substitutions.get(receiverArgument.text) : undefined;
         const receiverMatches = receiverArgument.kind === ts.SyntaxKind.ThisKeyword
           || ts.isIdentifier(receiverArgument) && (receiverArgument.text === receiver
@@ -4092,7 +4204,7 @@ export function analyzeRefinementActionBodies(
     throw new Error(`cfgFixedPointIterations must be a positive safe integer; received ${String(limit)}`);
   }
   const traceSink: RefinementActionTraceSink = {
-    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [],
+    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [], aliasRegions: [],
   };
   const diagnostics = validateRefinementActionBodiesInSource(
     source, text, adapterName, spec, undefined, undefined, {}, traceSink,
@@ -4248,6 +4360,66 @@ export function analyzeRefinementActionBodies(
     typescriptVersion: ts.version,
     diagnostics,
     obligations,
+  };
+}
+
+/**
+ * Adds TypeChecker-backed evidence for the deliberately bounded local mutable
+ * object alias fragment. Syntax-only analysis never emits this obligation.
+ */
+export function analyzeRefinementActionBodiesInProgram(
+  program: ts.Program,
+  fileName: string,
+  adapterName: string,
+  spec: TemporalSpec,
+  options: RefinementActionAnalysisOptions = {},
+): RefinementActionAnalysis {
+  const source = program.getSourceFile(fileName);
+  if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
+  const traceSink: RefinementActionTraceSink = {
+    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [], aliasRegions: [],
+  };
+  const diagnostics = validateRefinementActionBodiesInSource(
+    source, source.text, adapterName, spec, program.getTypeChecker(), program, {}, traceSink,
+  );
+  const base = analyzeRefinementActionBodies(fileName, source.text, adapterName, spec, options);
+  const manifest = buildRefinementBindingManifest(fileName, source.text, adapterName);
+  const invalidModels = new Set(diagnostics.map(({ modelName }) => modelName));
+  const aliasObligations: RefinementLocalAliasHelperObligation[] = traceSink.aliasRegions
+    .filter(({ modelName }) => !invalidModels.has(modelName))
+    .map((trace) => ({
+      kind: "local-alias-helper",
+      adapterName,
+      modelName: trace.modelName,
+      exportName: manifest.actions[trace.modelName]!,
+      status: "verified",
+      evidence: "typescript-program",
+      alias: {
+        name: trace.aliasName,
+        mutableObject: true,
+        binding: "const",
+        span: trace.aliasSpan,
+        regionId: `alias-region:${createHash("sha256")
+          .update(`${fileName}:${trace.aliasSpan.start}:${trace.aliasSpan.end}`)
+          .digest("hex").slice(0, 16)}`,
+      },
+      helper: {
+        name: trace.helperName,
+        callSpan: trace.helperCallSpan,
+        declarationSpan: trace.helperDeclarationSpan,
+        declarationFile: trace.helperDeclarationFile,
+        symbolIdentity: trace.helperSymbolIdentity,
+      },
+      capabilityCorrelation: {
+        aliasRegion: trace.aliasName,
+        declaration: trace.capabilityDeclaration,
+        rule: "source-correlated-not-equivalent",
+      },
+    }));
+  return {
+    ...base,
+    diagnostics,
+    obligations: [...base.obligations, ...aliasObligations],
   };
 }
 

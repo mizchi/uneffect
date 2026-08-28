@@ -928,6 +928,19 @@ same property is proved for arbitrary TypeScript.
   remain explicit unsupported boundaries. The telemetry Generator dogfood checks
   a realistic 64 KiB batching producer through the public project API and
   demonstrates that narrowing away `Throw<RangeError>` fails project assurance.
+- Program-backed refinement analysis now emits one `local-alias-helper`
+  obligation for a `const` object alias of the action receiver passed exactly
+  once to one direct, monomorphic, same-file helper. The artifact retains the
+  alias span, stable source-keyed region ID, helper call/declaration spans,
+  TypeChecker symbol identity, TypeScript version, and source digest. Its
+  `Mutate<typeof parameter.member>` correlation names a separately checked
+  capability declaration and explicitly does not equate capability evidence
+  with refinement evidence. Program Effect propagation reduces this exact
+  non-escaping alias to the parent-visible root. Escape, reassignment, computed
+  access, polymorphism, dynamic/unresolved selection, missing capability
+  declarations, additional alias uses, and imported helpers fail closed;
+  unresolved mutation aliases produce `Mutate<unknown-alias>` and unknown
+  evidence.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.

@@ -94,11 +94,13 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.10 finite handler-local loop | #23 | Completed | under 1 week actual | A one-to-four literal `for...of` is unrolled with iteration-keyed blocks; dynamic/resource/transfer cases fail closed. |
 | P2.11 bounded nested handler | #23 | Completed | under 1 week actual | One depth-two nested try/catch routes inner recovery/rethrow under a named nesting budget; deeper/resource/looped cases fail closed. |
 | P2.12 source-keyed nested regions | #23 | Completed | under 1 week actual | Two sibling nested handlers retain distinct source-keyed routing; a third region remains over-budget. |
-| P3.1 local alias seed | #26 (child of #24) | Active after the completed #23 handoff | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
+| P3.1 local alias seed | #26 (child of #24) | Completed | under 1 week actual | One non-escaping mutable object alias through one TypeChecker-resolved local helper emits source/compiler/symbol/region evidence; escape and dynamic selection remain negative controls. |
+| P3.2 checker-backed Corsa fact seed | #27 (child of #8) | Active after #26 | 1–2 weeks | One inferred-effect and ordered-call fixture reaches parity through the real checker path; a same-spelled symbol-distinct builtin remains negative. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
-handoff is ready to close. #26 is active next as the first executable child of
-#24; #25 separately owns general CFG value lattices and recurrence widening.
+handoff is closed. #26 has completed the first executable child of #24; #27 is
+active as the first checker-backed child of #8. #25 separately owns general CFG
+value lattices and recurrence widening.
 
 P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
 emits a strict budgeted artifact, the reusable worklist carries payload,
@@ -147,13 +149,13 @@ composes exactly two sibling inner handlers. A third root remains over-budget.
 2. #18's two bounded handoff seeds are complete; broader widening is queued
    until #25 or a real application boundary justifies a specific family.
 3. #23 has completed its bounded source-keyed CFG handoff. #25 owns general
-   value lattices and recurrence widening; #26 is the active bounded alias slice.
-4. #24/#26 and #8 provide alias/frontend evidence required before #13 can authorize
+   value lattices and recurrence widening; #26 completed the bounded alias seed.
+4. #24/#26 and #8/#27 provide alias/frontend evidence required before #13 can authorize
    transformations.
 5. #2/#5 and #4/#6 are selected according to the next dogfood product, rather
    than being treated as one mandatory serial queue.
 
-No broad Phase 3 or Phase 4 epic should pre-empt the bounded #26 handoff merely
+No broad Phase 3 or Phase 4 epic should pre-empt the bounded #27 handoff merely
 because it has an attractive isolated demo. New work that exposes a soundness dependency should
 be added to the owning Issue and reflected here before implementation begins.
 
@@ -161,14 +163,14 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #26 local alias seed (included in #24) | M | 1–2 weeks | One non-escaping alias through one resolved helper | Escape, reassignment, region identity, and dynamic selection |
+| 1 | #27 checker-backed Corsa fact seed (included in #8) | M | 1–2 weeks | One inferred-effect and ordered-call parity fixture | Real checker export shape, symbol identity, and source provenance |
 | 2 | #25 general CFG values | L | 3–8 weeks | One independent scalar value join over sibling handler regions | Value conflict, widening, recurrence, and irreducible control |
 | 3 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
 | 6 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
 | 7 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
-| 8 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue after child #26 | Region identity, higher-order flow, and closed-world dispatch |
+| 8 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
 | 9 | #8 native Corsa parity | L | 4–7 weeks | Type-aware inferred-effect parity for a small fixture corpus | Corsa API maturity and source/type identity mapping |
 | 10 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
 | 11 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
@@ -180,8 +182,8 @@ be added to the owning Issue and reflected here before implementation begins.
 1. **Usable async module proof boundary:** completed for one direct exact
    cross-project straight-line TLA dependency. The real-application survey found
    no positive candidate, so do not generalize speculatively.
-2. **General analysis foundation:** #23 is complete; the first executable #26
-   and #8 slices are 2–4 additional weeks. Completing parent #24 and #8 is
+2. **General analysis foundation:** #23 and the first executable #26 slice are
+   complete; #27 is the remaining 1–2 week first #8 slice. Completing parent #24 and #8 is
    10–19 weeks. Keep these
    figures separate when deciding whether the first reusable boundary is enough
    to begin product dogfood.
@@ -219,7 +221,8 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.10 finite handler-local loop | under 1 engineer-week actual | Two literal iterations verify with iteration-qualified blocks; whole-fixture analysis measured 2.9868 ms and five iterations remain unsupported. |
 | Completed sub-slice | P2.11 bounded nested handler | under 1 engineer-week actual | Inner recovery and rethrow compose at depth two; whole-fixture analysis measured 10.3053 ms in a same-run 10–12 ms application baseline. |
 | Completed sub-slice | P2.12 source-keyed nested regions | under 1 engineer-week actual | Two sibling regions verify with distinct IDs; whole-fixture analysis measured 12.8770 ms versus 10.3243 ms for one region in the same run. |
-| Current slice | #26 local alias seed | 1–2 engineer-weeks | Track one non-escaping mutable alias through one TypeChecker-resolved helper and retain escape/dynamic controls. |
+| Completed sub-slice | #26 local alias seed | under 1 engineer-week actual | One non-escaping alias verifies with separate refinement/Mutate evidence; escape, reassignment, computed, generic, dynamic, and unresolved controls fail closed. |
+| Current slice | #27 checker-backed Corsa fact seed | 1–2 engineer-weeks | Export one real checker inferred-effect and ordered-call fixture with symbol-distinct builtin rejection. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
@@ -234,9 +237,9 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** #26, estimated at 1–2 engineer-weeks.
-- **Next foundation checkpoint:** complete #26 and a bounded #8 native-fact
-  slice. Those first executable slices total 2–4 engineer-weeks; completing
+- **Next implementable result:** #27, estimated at 1–2 engineer-weeks.
+- **Next foundation checkpoint:** complete #27, the bounded #8 native-fact
+  slice. #26 is complete; completing
   parent #24 and #8 is 10–19 engineer-weeks.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not

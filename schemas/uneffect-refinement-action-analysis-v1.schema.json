@@ -15,7 +15,7 @@
     "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
     "obligations": {
       "type": "array",
-      "items": { "anyOf": [{ "$ref": "#/$defs/rankingLoop" }, { "$ref": "#/$defs/handlerJoin" }] }
+      "items": { "anyOf": [{ "$ref": "#/$defs/rankingLoop" }, { "$ref": "#/$defs/handlerJoin" }, { "$ref": "#/$defs/localAliasHelper" }] }
     }
   },
   "$defs": {
@@ -86,6 +86,50 @@
     },
     "handlerCompletion": {
       "enum": ["normal", "return", "throw", "break", "continue"]
+    },
+    "localAliasHelper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "status", "evidence", "alias", "helper", "capabilityCorrelation"],
+      "properties": {
+        "kind": { "const": "local-alias-helper" },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "status": { "const": "verified" },
+        "evidence": { "const": "typescript-program" },
+        "alias": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "mutableObject", "binding", "span", "regionId"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "mutableObject": { "const": true },
+            "binding": { "const": "const" },
+            "span": { "$ref": "#/$defs/span" },
+            "regionId": { "type": "string", "pattern": "^alias-region:[0-9a-f]{16}$" }
+          }
+        },
+        "helper": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "callSpan", "declarationSpan", "declarationFile", "symbolIdentity"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "callSpan": { "$ref": "#/$defs/span" },
+            "declarationSpan": { "$ref": "#/$defs/span" },
+            "declarationFile": { "type": "string", "minLength": 1 },
+            "symbolIdentity": { "type": "string", "minLength": 1 }
+          }
+        },
+        "capabilityCorrelation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["aliasRegion", "declaration", "rule"],
+          "properties": {
+            "aliasRegion": { "type": "string", "minLength": 1 },
+            "declaration": { "type": "string", "pattern": "(^|\\|\\s*)Mutate<typeof " },
+            "rule": { "const": "source-correlated-not-equivalent" }
+          }
+        }
+      }
     },
     "handlerJoin": {
       "type": "object",

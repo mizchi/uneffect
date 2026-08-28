@@ -3,12 +3,101 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3, buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram, verifyRefinementRecurrenceCertificateWithZ3 } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram, verifyRefinementRecurrenceCertificateWithZ3 } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
 
 describe("annotated refinement bindings", () => {
+  it("records one TypeChecker-backed non-escaping local alias helper region", () => {
+    const fileName = "examples/dogfood/local-alias-refinement.ts";
+    const source = readFileSync(fileName, "utf8");
+    const spec = parseSpec(fileName, source).temporal;
+    const compilerOptions: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+    };
+    const program = ts.createProgram([fileName], compilerOptions);
+    const analysis = analyzeRefinementActionBodiesInProgram(program, fileName, "localAlias", spec);
+
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "local-alias-helper",
+      modelName: "send",
+      status: "verified",
+      evidence: "typescript-program",
+      alias: {
+        name: "target",
+        mutableObject: true,
+        binding: "const",
+        span: { start: expect.any(Number), end: expect.any(Number) },
+        regionId: expect.stringMatching(/^alias-region:[0-9a-f]{16}$/),
+      },
+      helper: {
+        name: "incrementSent",
+        callSpan: { start: expect.any(Number), end: expect.any(Number) },
+        declarationSpan: { start: expect.any(Number), end: expect.any(Number) },
+        declarationFile: fileName,
+        symbolIdentity: expect.stringMatching(/local-alias-refinement\.ts:\d+$/),
+      },
+      capabilityCorrelation: {
+        aliasRegion: "target",
+        declaration: "Mutate<typeof target.sent>",
+        rule: "source-correlated-not-equivalent",
+      },
+    }));
+    expect(analyzeRefinementActionBodies(fileName, source, "localAlias", spec).obligations)
+      .not.toContainEqual(expect.objectContaining({ kind: "local-alias-helper" }));
+
+    const mutations = [
+      ["escape", source.replace(
+        "  incrementSent(target);",
+        "  incrementSent(target);\n  capture(target);",
+      ).replace(
+        "function incrementSent(target: LocalAliasRuntime): void {",
+        "let captured: LocalAliasRuntime | undefined;\nfunction capture(value: LocalAliasRuntime): void { captured = value; }\n\nfunction incrementSent(target: LocalAliasRuntime): void {",
+      )],
+      ["reassignment", source.replace(
+        "  const target = runtime;",
+        "  let target = runtime;\n  target = runtime;",
+      )],
+      ["computed", source.replace("target.sent += 1;", 'target["sent"] += 1;')],
+      ["dynamic helper", source.replace(
+        "  incrementSent(target);",
+        "  const selected = incrementSent;\n  selected(target);",
+      )],
+      ["polymorphic helper", source.replace(
+        "function incrementSent(target: LocalAliasRuntime): void {",
+        "function incrementSent<T extends LocalAliasRuntime>(target: T): void {",
+      )],
+      ["unresolved helper", source.replace("incrementSent(target);", "unknownIncrement(target);")],
+    ] as const;
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-local-alias-region-"));
+    try {
+      for (const [name, changed] of mutations) {
+        const changedFile = join(directory, `${name.replaceAll(" ", "-")}.ts`);
+        writeFileSync(changedFile, changed);
+        const changedProgram = ts.createProgram([changedFile], compilerOptions);
+        const changedSpec = parseSpec(changedFile, changed).temporal;
+        const changedAnalysis = analyzeRefinementActionBodiesInProgram(
+          changedProgram, changedFile, "localAlias", changedSpec,
+        );
+        expect(changedAnalysis.diagnostics, name).toContainEqual(expect.objectContaining({
+          code: "unsupported-action-body",
+          modelName: "send",
+        }));
+        expect(changedAnalysis.obligations, name).not.toContainEqual(expect.objectContaining({
+          kind: "local-alias-helper",
+          status: "verified",
+        }));
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("binds a backend counterexample to exported implementation functions", async () => {
     const source = `
       /* uneffect:
@@ -3180,6 +3269,15 @@ describe("annotated refinement bindings", () => {
         schemaVersion: { const: 1 },
       },
       $defs: {
+        localAliasHelper: {
+          properties: {
+            kind: { const: "local-alias-helper" },
+            evidence: { const: "typescript-program" },
+            capabilityCorrelation: {
+              properties: { rule: { const: "source-correlated-not-equivalent" } },
+            },
+          },
+        },
         handlerJoin: {
           required: expect.arrayContaining(["controlSpan", "controlShape", "controlRoots", "controlRootBudget", "controlRegion"]),
           properties: {

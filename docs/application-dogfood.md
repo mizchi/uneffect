@@ -400,6 +400,18 @@ two. Injecting a third inner handler records `handler-control-roots.observed: 3`
 and remains unsupported. The action updates only recovery, processing, and
 finalization counters, preserving telemetry outcome conservation.
 
+P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
+runtime object to one `const` alias and passes it once to the direct local
+`incrementSent` helper. Program-backed refinement analysis verifies the model
+update and emits source/compiler/symbol/region provenance. Program Effect
+analysis independently instantiates the helper's
+`Mutate<typeof target.sent>` as the action's
+`Mutate<typeof runtime.sent>`. Adding an escape makes refinement unsupported and
+Effect evidence `unknown` with `Mutate<unknown-alias>`; reassignment, computed
+member access, generic or dynamically selected helpers, and unresolved calls
+are adjacent negative controls. This proves one bounded alias shape, not heap
+alias analysis or interprocedural ownership.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
