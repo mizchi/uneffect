@@ -95,10 +95,10 @@ claim that their owning epics are otherwise complete.
    unsupported async class-method marker as a machine-readable violation. The
    completed declaration-transform slice admits one explicitly configured non-TypeScript declaration
    transform only when input/output/compiler/transform identity and spans are
-   bound. After it lands, the next independent slice is one explicit non-global
-   realm identity. The Node seed now requires matching `@types/node` major and
-   explicit realm label. Broader cross-realm, higher-order, and collection-valued
-   cases remain non-proofs under their owning Issues.
+   bound. The completed Node realm seed requires a matching `@types/node` major
+   and explicit realm label. Broader non-identity transform semantics belong to
+   #8; cross-realm, higher-order, and collection-valued cases remain non-proofs
+   under their owning Issues.
 2. #18's two bounded handoff seeds are complete; broader widening is queued
    until #23 or a real application boundary justifies a specific family.
 3. #23 is active and precedes CFG-sensitive portions of #6, #24, and #13.
