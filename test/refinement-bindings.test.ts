@@ -3184,9 +3184,10 @@ describe("annotated refinement bindings", () => {
           required: expect.arrayContaining(["controlSpan", "controlShape", "controlRoots", "controlRootBudget", "controlRegion"]),
           properties: {
             kind: { const: "handler-join-fixed-point" },
-            controlShape: { enum: ["if", "switch"] },
+            controlShape: { enum: ["if", "switch", "for-of"] },
             controlRoots: { minItems: 1 },
             controlRootBudget: { properties: { limit: { const: 2 } } },
+            finiteLoopBudget: { properties: { limit: { const: 4 } } },
             controlRegion: { enum: ["try", "finally"] },
             reason: { enum: expect.arrayContaining(["unsupported-control-flow"]) },
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },

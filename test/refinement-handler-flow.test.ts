@@ -149,12 +149,45 @@ describe("refinement handler flow", () => {
     });
   });
 
+  it("unrolls a one-to-four element literal for-of with iteration-keyed blocks", () => {
+    const [candidate] = findHandlerJoinCandidates(bodyOf(`
+      function scan(total: number, reject: boolean) {
+        try {
+          for (const units of [1, 2] as const) {
+            if (reject) throw units
+            total += units
+          }
+        } catch { total += 1 }
+      }
+    `));
+    expect(candidate).toMatchObject({
+      lowering: "supported",
+      controlShape: "for-of",
+      finiteLoop: { kind: "for-of", iterations: 2 },
+    });
+    const result = runHandlerJoinFixedPoint(candidate!, 32);
+    expect(result).toMatchObject({
+      converged: true,
+      incoming: ["normal", "throw"],
+      outgoing: ["normal"],
+    });
+    expect(Object.keys(result.blockCompletions).filter((id) => id.startsWith("if:") && id.includes("@for-of:")))
+      .toHaveLength(2);
+  });
+
   it("retains attempted-family lowering failures as unsupported", () => {
     for (const source of [
       `function route(kind: number) { try { switch (kind) { case 0: break } } catch {} finally {} }`,
       `function route(kind: number) { try { if (kind) while (kind) kind -= 1 } catch {} }`,
       `function route(a: boolean, b: boolean, c: boolean) { try { if (a) throw a; if (b) return; if (c) throw c } catch {} }`,
       `function route(kind: number, armed: boolean) { try { if (armed) throw kind; switch (kind) { default: break } } catch {} }`,
+      `function route(kind: number, values: number[]) { try { for (const value of values) { if (value) throw value } } catch {} }`,
+      `function route(kind: number) { try { for (const value of [1, 2, 3, 4, 5] as const) { if (value) throw value } } catch {} }`,
+      `function route(kind: number) { try { for (const value of [1, 2] as const) { if (value) break } } catch {} }`,
+      `function route(kind: number) { try { for (const value of [1, 2] as const) { using resource = acquire(); if (value) throw value } } catch {} }`,
+      `function route(kind: number) { try { if (kind) throw kind } catch { for (const value of [1, 2] as const) kind += value } }`,
+      `function route(kind: number) { try { kind += 1 } finally { for (const value of [1, 2] as const) { if (value) throw value } } }`,
+      `function route(kind: number) { try { if (kind) { for (const value of [1, 2] as const) kind += value } } catch {} }`,
       `function route(kind: number) { try { if (kind) return } finally { while (kind) kind -= 1 } }`,
     ]) {
       const [candidate] = findHandlerJoinCandidates(bodyOf(source));
@@ -166,6 +199,10 @@ describe("refinement handler flow", () => {
         outgoing: [],
       });
     }
+    const [overBudget] = findHandlerJoinCandidates(bodyOf(
+      `function route(kind: number) { try { for (const value of [1, 2, 3, 4, 5] as const) { if (value) throw value } } catch {} }`,
+    ));
+    expect(overBudget?.finiteLoop).toEqual({ kind: "for-of", iterations: 5 });
   });
 
   it("does not claim roots outside the selected handler family", () => {

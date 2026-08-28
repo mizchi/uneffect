@@ -1900,3 +1900,10 @@ parses and validates the complete telemetry fixture, so it is not directly
 comparable to a microbenchmark of only the new graph. Three roots, mixed sibling
 shapes, handler-local loops, and irreducible control remain outside the timing
 claim.
+
+The P2.10 whole-application benchmark requires verified `scanConfigured`
+evidence and an observed two-iteration finite-loop budget. It measured 2.9868
+ms mean over 168 samples (334.80 operations per second). Repeated loop-body
+blocks are iteration-qualified; this timing does not cover dynamic iteration,
+loop transfers, resources, loops in catch/finally, nested try, or recurrence
+widening.

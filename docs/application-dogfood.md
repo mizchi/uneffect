@@ -372,6 +372,15 @@ exposed an invalid dogfood design that incremented `dropped` without
 `attempted`; changing the catch observation to `finalized` preserved the
 existing telemetry conservation invariant rather than weakening it.
 
+P2.10 adds `scanConfiguredTelemetry`, whose handler-local `for...of` scans two
+statically configured weights. The shared CFG unrolls the body into two
+iteration-qualified copies, preserves each throw edge into catch, and emits
+`handler-loop-iterations: { limit: 4, observed: 2 }`. Replacing the literal
+tuple with a dynamic iterable stays `unsupported-control-flow`; extending it to
+five literals records `observed: 5` and remains unsupported. The action updates
+only recovery/finalization counters, so the existing outcome-conservation
+invariant remains load-bearing.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as

@@ -112,9 +112,11 @@ explicit conservative boundaries rather than untracked support.
    nested handler root, surrounding supported statements, exact caught-path
    correlation, abrupt finalizer override, and the canonical ranking-loop
    topology. Exactly two sibling top-level `if` roots now compose under a named
-   root budget while excess or mixed roots fail closed. The next bounded slice
-   admits one finite handler-local loop family; arbitrary joins, recurrence widening, and dynamic
-   resource-bearing loops remain fail-closed.
+   root budget while excess or mixed roots fail closed. One handler-local
+   `for...of` over one to four literal values now unrolls into
+   iteration-qualified blocks; dynamic, resource-bearing, and transfer-heavy
+   loops fail closed. The next bounded slice composes one nested try/catch
+   family; arbitrary joins and recurrence widening remain fail-closed.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
    temporal reasoning.

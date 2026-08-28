@@ -142,4 +142,18 @@ describe("refinement CFG fixed point", () => {
       throw new Error("bounded sibling handler CFG benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("analyze a finite handler-local for-of", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 32 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "scanConfigured");
+    if (result.diagnostics.some((item) => item.modelName === "scanConfigured")
+      || obligation?.status !== "verified"
+      || obligation.finiteLoopBudget?.observed !== 2) {
+      throw new Error("finite handler-local loop benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

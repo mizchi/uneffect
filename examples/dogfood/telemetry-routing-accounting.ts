@@ -28,6 +28,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action finalizeRecovery: recovered' = recovered + 1, postProcessed' = (auditArmed ? postProcessed + 1 : attempted < 0 ? postProcessed : postProcessed + 1), finalized' = (auditArmed || attempted < 0) ? finalized : finalized + 1
   action routeRecovery: recovered' = attempted === 0 ? recovered + 1 : attempted === 1 ? recovered + 2 : recovered + 3, dropped' = attempted === 1 ? dropped + 1 : dropped, attempted' = attempted === 1 ? attempted + 1 : attempted, finalized' = finalized + 1, postProcessed' = attempted === 0 ? postProcessed : postProcessed + 1
   action stagedReject: recovered' = auditArmed ? recovered : recovered + 1, finalized' = (auditArmed ? true : attempted < 0) ? finalized + 1 : finalized, postProcessed' = auditArmed ? postProcessed : attempted < 0 ? postProcessed : postProcessed + 1
+  action scanConfigured: recovered' = auditArmed ? recovered : (auditArmed ? recovered : recovered + 1) + 2, finalized' = auditArmed || !auditArmed && auditArmed ? finalized + 1 : finalized
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -225,6 +226,18 @@ export function stagedRejectTelemetry(runtime: TelemetryRoutingAccounting): void
     runtime.recovered += 1;
     if (runtime.attempted < 0) throw "invalid telemetry attempt count";
     runtime.postProcessed += 1;
+  } catch {
+    runtime.finalized += 1;
+  }
+}
+
+/* uneffect: refinement telemetryRouting@1 action scanConfigured */
+export function scanConfiguredTelemetry(runtime: TelemetryRoutingAccounting): void {
+  try {
+    for (const units of [1, 2] as const) {
+      if (runtime.auditArmed) throw units;
+      runtime.recovered += units;
+    }
   } catch {
     runtime.finalized += 1;
   }

@@ -359,6 +359,12 @@ same property is proved for arbitrary TypeScript.
   spans and the named `handler-control-roots` limit of two. Three roots, mixed
   sibling shapes, general handler joins, and independent path-correlated value
   proof remain outside this bounded fragment.
+- One top-level handler-local `for...of` over one to four direct numeric or
+  Boolean literal elements is structurally unrolled. Repeated source statements
+  receive iteration-qualified block IDs, and verified evidence includes the
+  named `handler-loop-iterations` limit and observed cardinality. Dynamic,
+  empty, spread, destructured, `for await`, over-four, break/continue,
+  resource-bearing, nested, catch-local, and finally-local loops fail closed.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no

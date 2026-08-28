@@ -118,6 +118,7 @@ describe("Uneffect dogfood", () => {
         outgoing: ["normal", "return"],
       }),
     }));
+
   });
 
   it("joins two bounded sibling handler roots without flattening either throw", () => {
@@ -168,6 +169,44 @@ describe("Uneffect dogfood", () => {
         expect.objectContaining({ shape: "if" }),
       ]),
       fixedPoint: expect.objectContaining({ converged: false, iterations: 0 }),
+    }));
+  });
+
+  it("unrolls a finite handler-local for-of loop before joining its throw", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "scanConfigured",
+      controlShape: "for-of",
+      status: "verified",
+      finiteLoopBudget: { name: "handler-loop-iterations", limit: 4, observed: 2 },
+      fixedPoint: expect.objectContaining({
+        converged: true,
+        blockCompletions: expect.objectContaining({
+          catch: ["throw"],
+          "try-completion": ["normal", "throw"],
+          exit: ["normal"],
+        }),
+      }),
+    }));
+
+    const dynamic = source.replace("[1, 2] as const", "runtime.configuredUnits");
+    const dynamicAnalysis = analyzeRefinementActionBodies(fileName, dynamic, "telemetryRouting", temporal);
+    expect(dynamicAnalysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "scanConfigured",
+      status: "unknown",
+      reason: "unsupported-control-flow",
+    }));
+    const overBudget = source.replace("[1, 2] as const", "[1, 2, 3, 4, 5] as const");
+    const overBudgetAnalysis = analyzeRefinementActionBodies(fileName, overBudget, "telemetryRouting", temporal);
+    expect(overBudgetAnalysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "scanConfigured",
+      status: "unknown",
+      reason: "unsupported-control-flow",
+      finiteLoopBudget: { name: "handler-loop-iterations", limit: 4, observed: 5 },
     }));
   });
 

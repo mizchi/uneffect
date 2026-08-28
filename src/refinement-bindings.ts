@@ -185,14 +185,19 @@ export interface RefinementHandlerJoinObligation {
   exportName: string;
   trySpan: { start: number; end: number };
   controlSpan: { start: number; end: number };
-  controlShape: "if" | "switch";
+  controlShape: "if" | "switch" | "for-of";
   controlRoots: readonly {
     span: { start: number; end: number };
-    shape: "if" | "switch";
+    shape: "if" | "switch" | "for-of";
   }[];
   controlRootBudget: {
     name: "handler-control-roots";
     limit: 2;
+    observed: number;
+  };
+  finiteLoopBudget?: {
+    name: "handler-loop-iterations";
+    limit: 4;
     observed: number;
   };
   controlRegion: "try" | "finally";
@@ -3859,7 +3864,7 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
         ));
         if (!handler || handler.lowering !== "supported" || handler.controlRegion !== "try"
           || !handler.catchesThrow || handler.finallyOverrides.length > 0
-          || hasUnsupportedLoopCompletion) continue;
+          || handler.finiteLoop || hasUnsupportedLoopCompletion) continue;
         const throws = containedThrows(statement.tryBlock);
         const hasNormalStatement = statement.tryBlock.statements.some((item) => !ts.isThrowStatement(item));
         if (throws.length === 1 && hasNormalStatement) candidates.push({
@@ -4113,13 +4118,19 @@ export function analyzeRefinementActionBodies(
         controlShape: candidate.controlShape,
         controlRoots: candidate.controlStatements.map((statement) => ({
           span: { start: statement.getStart(source), end: statement.getEnd() },
-          shape: ts.isSwitchStatement(statement) ? "switch" as const : "if" as const,
+          shape: ts.isIfStatement(statement) ? "if" as const
+            : ts.isSwitchStatement(statement) ? "switch" as const : "for-of" as const,
         })),
         controlRootBudget: {
           name: "handler-control-roots",
           limit: 2,
           observed: candidate.controlStatements.length,
         },
+        ...(candidate.finiteLoop ? { finiteLoopBudget: {
+          name: "handler-loop-iterations" as const,
+          limit: 4 as const,
+          observed: candidate.finiteLoop.iterations,
+        } } : {}),
         controlRegion: candidate.controlRegion,
         status: verified ? "verified" : "unknown",
         ...(candidate.lowering === "unsupported"
