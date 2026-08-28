@@ -212,8 +212,11 @@ same property is proved for arbitrary TypeScript.
   loop back-edge. The shared completion lowering also supplies each direct
   predecessor's `TemporalExpression` updates; the worklist specializes them by
   the throw condition and its join block constructs a correlated phi
-  environment before the back-edge and exit. Full loop-recurrence
-  iteration still comes from the affine walker, so this is not yet a general
+  environment before the back-edge and exit. It now also carries the accepted
+  affine recurrence certificate—ranking counter/direction, one-iteration
+  transformer, and closed-form summary—through the back-edge and requires an
+  identical stable value at convergence. Full loop-recurrence summary
+  construction still comes from the affine walker, so this is not yet an independently checked or general
   recurrence fixed point, arbitrary AST-to-basic-block lowering,
   Program/external-action analysis,
   irreducible-loop analysis, or CLI assurance artifact.

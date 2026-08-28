@@ -292,7 +292,10 @@ failure predecessor. `analyzeRefinementActionBodies` verifies the exact affine
 accounting and emits a converged `ranking-loop-fixed-point` obligation whose
 reusable worklist retains normalized model payload `pending`, both normal
 snapshot facts, their throw-specialized expression environments, and the
-correlated joined environment within a 16-step budget.
+correlated joined environment within a 16-step budget. It also retains a stable
+affine recurrence certificate for the `pending` countdown, its one-iteration
+updates, and its closed-form summary. The summary is still constructed by the
+shape-specific affine lowering and is not an independent recurrence proof.
 Replacing the caught amount with the normal-path delivered counter keeps the
 obligation `unknown` as an unsupported coupled recurrence.
 The example deliberately does not model the network send itself, so it is not
@@ -301,7 +304,7 @@ evidence that a Datadog client or host I/O is bounded.
 The repository-wide `just dogfood` run on 2026-08-28 still exited nonzero with
 seven existing `async/unsupported-control-transfer` diagnostics for `continue`
 statements leaving modeled catch handlers in outer loops. Its `no-unknown`
-assurance assessment passed as `assumed` (3,668 summaries, 4,265 reviewed
+assurance assessment passed as `assumed` (3,698 summaries, 4,294 reviewed
 assumption occurrences, 73 files), but diagnostics correctly prevent the gate
 from being reported green. This is direct evidence for #23's next value/owner
 CFG slice: target-aware outer-loop transfers must be consumed by their lexical

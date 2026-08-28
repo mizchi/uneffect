@@ -340,8 +340,12 @@ The reusable monotone worklist now carries abstract throw-payload and
 normal/catch snapshot facts through the back-edge and fails closed on lattice
 conflict. Direct predecessor `TemporalExpression` updates are specialized by
 the throw condition, then joined into a correlated phi environment inside the
-worklist. The existing affine lowering still proves the complete recurrence,
-so arbitrary CFG lowering and general loop fixed points remain open.
+worklist. The accepted affine ranking counter, direction, one-iteration
+transformer, and closed-form summary now travel through the same back-edge as a
+stable recurrence certificate. The existing affine lowering still constructs
+the complete summary, so independent summary validation, arbitrary CFG lowering,
+and general loop fixed points remain open. A self-amplifying recurrence remains
+an explicit `unknown` alongside the coupled-recurrence and budget controls.
 
 A twelfth case carries an initialized mutable scalar local through two
 sequential normally completing `if` diamonds and then consumes the resulting

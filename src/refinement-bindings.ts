@@ -113,8 +113,20 @@ interface RefinementTryCatchValueTrace {
   readonly catchUpdates: ReadonlyMap<string, TemporalExpression>;
 }
 
+interface RefinementRankingRecurrenceTrace {
+  readonly modelName: string;
+  readonly loopStart: number;
+  readonly counterName: string;
+  readonly counterDelta: number;
+  readonly direction: "increase" | "decrease";
+  readonly guard: TemporalExpression;
+  readonly iterationUpdates: ReadonlyMap<string, TemporalExpression>;
+  readonly summaryUpdates: ReadonlyMap<string, TemporalExpression>;
+}
+
 interface RefinementActionTraceSink {
   readonly tryCatchJoins: RefinementTryCatchValueTrace[];
+  readonly rankingRecurrences: RefinementRankingRecurrenceTrace[];
 }
 
 export interface RefinementRankingLoopObligation {
@@ -133,6 +145,15 @@ export interface RefinementRankingLoopObligation {
   fixedPoint: {
     iterations: number;
     converged: boolean;
+    recurrence?: {
+      counter: string;
+      direction: "increase" | "decrease";
+      delta: number;
+      guard: string;
+      iteration: Readonly<Record<string, string>>;
+      summary: Readonly<Record<string, string>>;
+      stable: boolean;
+    };
     valueLattice: {
       throwPayloads: readonly string[];
       normalSnapshots: readonly string[];
@@ -2626,6 +2647,22 @@ function validateRefinementActionBodiesInSource(
             whenFalse: entryValue,
           });
         }
+        if (traceSink && currentModelName) traceSink.rankingRecurrences.push({
+          modelName: currentModelName,
+          loopStart: statement.getStart(source),
+          counterName,
+          counterDelta,
+          direction: descending ? "decrease" : "increase",
+          guard: entryGuard,
+          iterationUpdates: new Map([...stateNames].map((name) => [
+            name,
+            iterationUpdates.get(name) ?? { kind: "name", name },
+          ])),
+          summaryUpdates: new Map([...stateNames].map((name) => [
+            name,
+            updates.get(name) ?? entryValues.get(name) ?? { kind: "name", name },
+          ])),
+        });
         continue;
       }
       if (ts.isDoStatement(statement)) {
@@ -3741,17 +3778,22 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
 interface RankingLoopValueState {
   readonly normal: ReadonlyMap<string, Readonly<Record<string, string>>>;
   readonly throws: ReadonlyMap<string, string>;
+  readonly recurrences: ReadonlyMap<string, RankingLoopRecurrenceEvidence>;
 }
+
+type RankingLoopRecurrenceEvidence = NonNullable<RefinementRankingLoopObligation["fixedPoint"]["recurrence"]>;
 
 function runRankingLoopJoinFixedPoint(
   candidate: RankingLoopJoinCandidate,
   source: ts.SourceFile,
   limit: number,
   trace?: RefinementTryCatchValueTrace,
+  recurrenceTrace?: RefinementRankingRecurrenceTrace,
 ): {
   iterations: number;
   converged: boolean;
   conflict: boolean;
+  recurrence?: RankingLoopRecurrenceEvidence;
   valueLattice: {
     throwPayloads: readonly string[];
     normalSnapshots: readonly string[];
@@ -3765,10 +3807,14 @@ function runRankingLoopJoinFixedPoint(
   const value = (
     normal: readonly (readonly [string, Readonly<Record<string, string>>])[] = [],
     throws: readonly (readonly [string, string])[] = [],
-  ): RankingLoopValueState => ({ normal: new Map(normal), throws: new Map(throws) });
+    recurrences: readonly (readonly [string, RankingLoopRecurrenceEvidence])[] = [],
+  ): RankingLoopValueState => ({
+    normal: new Map(normal), throws: new Map(throws), recurrences: new Map(recurrences),
+  });
   const key = (state: RankingLoopValueState): string => JSON.stringify({
     normal: [...state.normal].sort(([left], [right]) => left.localeCompare(right)),
     throws: [...state.throws].sort(([left], [right]) => left.localeCompare(right)),
+    recurrences: [...state.recurrences].sort(([left], [right]) => left.localeCompare(right)),
   });
   const specializedUpdates = (
     updates?: ReadonlyMap<string, TemporalExpression>,
@@ -3797,6 +3843,16 @@ function runRankingLoopJoinFixedPoint(
   const tryNormal = formatUpdates(tryExpressions);
   const catchNormal = formatUpdates(catchExpressions);
   const joinedNormal = formatUpdates(joinedExpressions);
+  const recurrenceKey = `${candidate.whileStatement.getStart(source)}:${candidate.whileStatement.getEnd()}`;
+  const recurrence: RankingLoopRecurrenceEvidence | undefined = recurrenceTrace ? {
+    counter: recurrenceTrace.counterName,
+    direction: recurrenceTrace.direction,
+    delta: recurrenceTrace.counterDelta,
+    guard: formatRefinementExpression(recurrenceTrace.guard),
+    iteration: formatUpdates(recurrenceTrace.iterationUpdates),
+    summary: formatUpdates(recurrenceTrace.summaryUpdates),
+    stable: false,
+  } : undefined;
   const payload = trace ? formatRefinementExpression(trace.throwValue) : candidate.throwStatement.expression.getText(source);
   const throwSnapshot = `throw@${candidate.throwStatement.getStart(source)}:${candidate.throwStatement.getEnd()}`;
   const result = solveBasicBlockFixedPoint({
@@ -3825,23 +3881,36 @@ function runRankingLoopJoinFixedPoint(
           };
           throws.set(throwPayload, snapshot);
         }
+        const recurrences = new Map(left.recurrences);
+        for (const [identity, incoming] of right.recurrences) {
+          const existing = recurrences.get(identity);
+          if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(incoming)) return {
+            status: "conflict" as const,
+            reason: `ranking recurrence ${identity} reached the join with incompatible transformers`,
+          };
+          recurrences.set(identity, incoming);
+        }
         return {
           status: "joined" as const,
-          value: value([...normal], [...throws]),
+          value: value([...normal], [...throws], [...recurrences]),
         };
       },
     },
     blocks: [
       { id: "header", transfer: (input) => [{ to: "try", value: input }] },
-      { id: "try", transfer: () => [
-        { to: "join", value: value([["try-normal", tryNormal]]) },
-        { to: "catch", value: value([], [[payload, throwSnapshot]]) },
+      { id: "try", transfer: (input) => [
+        { to: "join", value: value([["try-normal", tryNormal]], [], [...input.recurrences]) },
+        { to: "catch", value: value([], [[payload, throwSnapshot]], [...input.recurrences]) },
       ] },
-      { id: "catch", transfer: () => [{ to: "join", value: value([["catch-normal", catchNormal]]) }] },
+      { id: "catch", transfer: (input) => [{
+        to: "join", value: value([["catch-normal", catchNormal]], [], [...input.recurrences]),
+      }] },
       { id: "join", transfer: (input) => {
         const normal = new Map(input.normal);
         if (normal.has("try-normal") && normal.has("catch-normal")) normal.set("joined-normal", joinedNormal);
-        const joined = value([...normal], [...input.throws]);
+        const recurrences = new Map(input.recurrences);
+        if (recurrence) recurrences.set(recurrenceKey, recurrence);
+        const joined = value([...normal], [...input.throws], [...recurrences]);
         return [{ to: "header", value: joined }, { to: "exit", value: joined }];
       } },
       { id: "exit", transfer: () => [] },
@@ -3849,10 +3918,14 @@ function runRankingLoopJoinFixedPoint(
   });
   const catchState = result.states.get("catch") ?? value();
   const exitState = result.states.get("exit") ?? value();
+  const retainedRecurrence = exitState.recurrences.get(recurrenceKey);
   return {
     iterations: result.iterations,
     converged: result.status === "converged",
     conflict: result.status === "unknown" && result.reason === "lattice-conflict",
+    recurrence: retainedRecurrence
+      ? { ...retainedRecurrence, stable: result.status === "converged" }
+      : undefined,
     valueLattice: {
       throwPayloads: [...catchState.throws.keys()].sort(),
       normalSnapshots: [...exitState.normal.keys()].filter((snapshot) => snapshot !== "entry").sort(),
@@ -3882,7 +3955,7 @@ export function analyzeRefinementActionBodies(
   if (!Number.isSafeInteger(limit) || limit <= 0) {
     throw new Error(`cfgFixedPointIterations must be a positive safe integer; received ${String(limit)}`);
   }
-  const traceSink: RefinementActionTraceSink = { tryCatchJoins: [] };
+  const traceSink: RefinementActionTraceSink = { tryCatchJoins: [], rankingRecurrences: [] };
   const diagnostics = validateRefinementActionBodiesInSource(
     source, text, adapterName, spec, undefined, undefined, {}, traceSink,
   );
@@ -3895,7 +3968,9 @@ export function analyzeRefinementActionBodies(
     for (const _candidate of candidates) {
       const trace = traceSink.tryCatchJoins.find((item) =>
         item.modelName === action.name && item.tryStart === _candidate.tryStatement.getStart(source));
-      const fixedPoint = runRankingLoopJoinFixedPoint(_candidate, source, limit, trace);
+      const recurrenceTrace = traceSink.rankingRecurrences.find((item) =>
+        item.modelName === action.name && item.loopStart === _candidate.whileStatement.getStart(source));
+      const fixedPoint = runRankingLoopJoinFixedPoint(_candidate, source, limit, trace, recurrenceTrace);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
       const actionUnsupported = actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body");
       const retainedThrowPayload = fixedPoint.valueLattice.throwPayloads.length === 1;
@@ -3903,6 +3978,7 @@ export function analyzeRefinementActionBodies(
         && fixedPoint.valueLattice.normalSnapshots.includes("catch-normal")
         && fixedPoint.valueLattice.normalSnapshots.includes("joined-normal");
       const verified = fixedPoint.converged && !fixedPoint.conflict
+        && fixedPoint.recurrence?.stable === true
         && retainedThrowPayload && retainedNormalSnapshot && actionDiagnostics.length === 0;
       obligations.push({
         kind: "ranking-loop-fixed-point",
@@ -3928,6 +4004,7 @@ export function analyzeRefinementActionBodies(
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,
+          ...(fixedPoint.recurrence ? { recurrence: fixedPoint.recurrence } : {}),
           valueLattice: fixedPoint.valueLattice,
         },
         completionJoin: {

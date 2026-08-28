@@ -94,10 +94,11 @@ direct predecessor expression-value
 sub-slices: one direct normal/typed-throw catch join emits a strict budgeted
 artifact, and a reusable monotone basic-block engine carries payload/snapshot
 facts plus a condition-correlated phi environment through its back-edge. The
-1–2 week estimate still covers the remaining load-bearing step: iterate the
-complete recurrence in the worklist rather than relying on the shape-specific
-affine walker. The total is unchanged until that recurrence fixed point is
-measured.
+worklist now also converges a source-derived affine ranking/transformer/summary
+certificate. The 1–2 week estimate still covers the remaining load-bearing
+step: independently validate or construct the summary in the reusable analysis
+rather than relying on the shape-specific affine walker. The total is unchanged
+until that recurrence fixed point is measured.
 
 ## Dependency-critical order
 
@@ -167,7 +168,8 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.1a CFG reachability seed | under 1 engineer-week actual | A strict artifact records one direct ranking-loop throw/normal join, named budget, convergence, and fail-closed negative controls. |
 | Completed sub-slice | P2.1b abstract completion-value seed | under 1 engineer-week actual | A reusable monotone basic-block solver carries source-bound payload/snapshot facts and fails closed on budget/conflict. |
 | Completed sub-slice | P2.1c direct expression-value join | under 1 engineer-week actual | Throw-specialized predecessor environments produce a correlated phi snapshot in the reusable worklist. |
-| Current slice | P2.1d recurrence fixed-point seed | 1–2 engineer-weeks | Iterate the complete recurrence and ranking convergence in the reusable worklist instead of relying on the shape-specific affine walker. |
+| Completed sub-slice | P2.1d1 recurrence-certificate convergence | under 1 engineer-week actual | The worklist carries and stabilizes the affine ranking counter, transformer, and closed-form summary; coupled/self-amplifying recurrences stay `unknown`. |
+| Current slice | P2.1d2 independent recurrence validation | within the existing 1–2 engineer-week P2.1d envelope | Independently validate or construct the complete recurrence summary in reusable analysis instead of trusting the shape-specific affine lowering's certificate. |
 | First useful checkpoint | Finish P2.1 plus stabilization | roughly 1–2 engineer-weeks | Re-estimate before entering alias, temporal breadth, or React/event-loop breadth. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic

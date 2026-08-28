@@ -158,6 +158,11 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   a condition-correlated phi environment in the join block before propagating
   it through the back-edge and exit. General recurrence iteration and arbitrary
   AST-to-basic-block lowering remain #23 work.
+- [x] Carry the accepted affine loop's ranking counter, direction, one-iteration
+  transformer, and closed-form summary as a recurrence certificate through the
+  reusable worklist back-edge. Identical certificates stabilize; incompatible
+  lattice values fail closed. The affine walker still constructs the summary,
+  so independent summary validation and general recurrence widening remain #23.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

@@ -92,8 +92,12 @@ records retained throw payload and normal snapshot. Budget exhaustion and an
 unaligned recurrence remain `unknown`. A reusable monotone basic-block engine
 carries the normalized throw payload and normal/catch snapshot facts, rejects
 lattice conflicts, and joins direct predecessor `TemporalExpression`
-environments into a condition-correlated phi snapshot. Full recurrence
-iteration and arbitrary basic-block shapes remain owned by #23.
+environments into a condition-correlated phi snapshot. The worklist also carries
+the accepted affine ranking counter, direction, one-iteration transformer, and
+closed-form summary through the back-edge and requires that certificate to
+stabilize before reporting `verified`. The shape-specific affine lowering still
+constructs that summary; independent summary validation, recurrence widening,
+and arbitrary basic-block shapes remain owned by #23.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing

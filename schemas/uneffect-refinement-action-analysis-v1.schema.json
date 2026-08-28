@@ -44,6 +44,20 @@
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
+    "rankingRecurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counter", "direction", "delta", "guard", "iteration", "summary", "stable"],
+      "properties": {
+        "counter": { "type": "string", "minLength": 1 },
+        "direction": { "enum": ["increase", "decrease"] },
+        "delta": { "type": "integer", "not": { "const": 0 } },
+        "guard": { "type": "string", "minLength": 1 },
+        "iteration": { "$ref": "#/$defs/expressionSnapshot" },
+        "summary": { "$ref": "#/$defs/expressionSnapshot" },
+        "stable": { "type": "boolean" }
+      }
+    },
     "rankingLoop": {
       "type": "object",
       "additionalProperties": false,
@@ -71,6 +85,7 @@
           "properties": {
             "iterations": { "type": "integer", "minimum": 1 },
             "converged": { "type": "boolean" },
+            "recurrence": { "$ref": "#/$defs/rankingRecurrence" },
             "valueLattice": {
               "type": "object", "additionalProperties": false,
               "required": ["throwPayloads", "normalSnapshots", "expressionSnapshots"],
@@ -105,7 +120,13 @@
         "then": {
           "not": { "required": ["reason"] },
           "properties": {
-            "fixedPoint": { "properties": { "converged": { "const": true } } },
+            "fixedPoint": {
+              "required": ["recurrence"],
+              "properties": {
+                "converged": { "const": true },
+                "recurrence": { "properties": { "stable": { "const": true } } }
+              }
+            },
             "completionJoin": { "properties": { "retainedThrowPayload": { "const": true }, "retainedNormalSnapshot": { "const": true } } }
           }
         },
