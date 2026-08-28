@@ -1884,3 +1884,11 @@ The abrupt-finally application case requires verified
 It measured 2.1823 ms mean over 230 samples (458.23 operations per second).
 The timing covers structural action validation and the completion worklist; it
 is not evidence for arbitrary finalizer loops, labels, or nested try.
+
+After the ranking seed was moved onto the reusable source-keyed handler graph,
+its structural benchmark measured 0.3958 ms mean over 1,264 samples (2,526.46
+operations per second). The corresponding independent Z3 pass measured
+56.8153 ms mean over 9 samples. The roughly 26% structural increase from the
+prior 0.3134 ms observation buys shared if/throw/catch/finally/exit topology and
+is recorded rather than hidden. The graph converges in 42 evaluations under a
+default budget of 64; these results do not establish general loop widening.

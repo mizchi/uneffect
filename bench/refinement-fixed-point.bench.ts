@@ -43,7 +43,7 @@ describe("refinement CFG fixed point", () => {
   bench("analyze a ranking loop throw/normal join", () => {
     const result = analyzeRefinementActionBodies(
       "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
-      { proofBudget: { cfgFixedPointIterations: 16 } },
+      { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     if (result.diagnostics.length !== 0 || result.obligations[0]?.status !== "verified") {
       throw new Error("ranking-loop fixed-point benchmark fixture did not verify");
@@ -53,7 +53,7 @@ describe("refinement CFG fixed point", () => {
   bench("independently prove the recurrence summary with Z3", async () => {
     const result = await analyzeRefinementActionBodiesWithZ3(
       "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
-      { analysis: { proofBudget: { cfgFixedPointIterations: 16 } } },
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
     );
     const obligation = result.obligations.find((item) => item.kind === "ranking-loop-fixed-point");
     if (result.diagnostics.length !== 0

@@ -178,10 +178,20 @@
         },
         "fixedPoint": {
           "type": "object", "additionalProperties": false,
-          "required": ["iterations", "converged", "valueLattice"],
+          "required": ["iterations", "converged", "handlerCfg", "valueLattice"],
           "properties": {
             "iterations": { "type": "integer", "minimum": 1 },
             "converged": { "type": "boolean" },
+            "handlerCfg": {
+              "type": "object", "additionalProperties": false,
+              "required": ["reused", "blocks"],
+              "properties": {
+                "reused": { "const": true },
+                "blocks": {
+                  "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true
+                }
+              }
+            },
             "recurrence": { "$ref": "#/$defs/rankingRecurrence" },
             "valueLattice": {
               "type": "object", "additionalProperties": false,

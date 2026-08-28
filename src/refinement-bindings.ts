@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
 import { joinFlowValues, solveBasicBlockFixedPoint } from "./refinement-flow.js";
-import { findHandlerJoinCandidates, runHandlerJoinFixedPoint, type HandlerCompletionKind } from "./refinement-handler-flow.js";
+import { findHandlerJoinCandidates, runHandlerJoinFixedPoint, type HandlerCompletionKind, type HandlerJoinCandidate } from "./refinement-handler-flow.js";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
@@ -99,7 +99,7 @@ export interface RefinementActionProofBudget {
 }
 
 export const DEFAULT_REFINEMENT_ACTION_PROOF_BUDGET: Readonly<RefinementActionProofBudget> = {
-  cfgFixedPointIterations: 32,
+  cfgFixedPointIterations: 64,
 };
 
 export interface RefinementActionAnalysisOptions {
@@ -155,6 +155,10 @@ export interface RefinementRankingLoopObligation {
   fixedPoint: {
     iterations: number;
     converged: boolean;
+    handlerCfg: {
+      reused: true;
+      blocks: readonly string[];
+    };
     recurrence?: RefinementRankingRecurrenceEvidence;
     valueLattice: {
       throwPayloads: readonly string[];
@@ -3814,6 +3818,7 @@ interface RankingLoopJoinCandidate {
   readonly whileStatement: ts.WhileStatement;
   readonly tryStatement: ts.TryStatement;
   readonly throwStatement: ts.ThrowStatement;
+  readonly handler: HandlerJoinCandidate;
 }
 
 function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCandidate[] {
@@ -3834,14 +3839,25 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
       const loopBody = ts.isBlock(node.statement)
         ? node.statement
         : ts.factory.createBlock([node.statement], true);
+      const handlers = findHandlerJoinCandidates(loopBody);
       for (const statement of loopBody.statements) {
         if (!ts.isTryStatement(statement) || !statement.catchClause) continue;
+        const handler = handlers.find((item) => item.tryStatement === statement);
+        const hasUnsupportedLoopCompletion = handler?.blocks.some((block) => block.edges.some(
+          (edge) => edge.completion !== undefined
+            && edge.completion !== "normal"
+            && edge.completion !== "throw",
+        ));
+        if (!handler || handler.lowering !== "supported" || handler.controlRegion !== "try"
+          || !handler.catchesThrow || handler.finallyOverrides.length > 0
+          || hasUnsupportedLoopCompletion) continue;
         const throws = containedThrows(statement.tryBlock);
         const hasNormalStatement = statement.tryBlock.statements.some((item) => !ts.isThrowStatement(item));
         if (throws.length === 1 && hasNormalStatement) candidates.push({
           whileStatement: node,
           tryStatement: statement,
           throwStatement: throws[0]!,
+          handler,
         });
       }
     }
@@ -3867,6 +3883,7 @@ function runRankingLoopJoinFixedPoint(
   iterations: number;
   converged: boolean;
   conflict: boolean;
+  handlerCfg: { reused: true; blocks: readonly string[] };
   recurrence?: RefinementRankingRecurrenceEvidence;
   valueLattice: {
     throwPayloads: readonly string[];
@@ -3973,32 +3990,56 @@ function runRankingLoopJoinFixedPoint(
       },
     },
     blocks: [
-      { id: "header", transfer: (input) => [{ to: "try", value: input }] },
-      { id: "try", transfer: (input) => [
-        { to: "join", value: value([["try-normal", tryNormal]], [], [...input.recurrences]) },
-        { to: "catch", value: value([], [[payload, throwSnapshot]], [...input.recurrences]) },
-      ] },
-      { id: "catch", transfer: (input) => [{
-        to: "join", value: value([["catch-normal", catchNormal]], [], [...input.recurrences]),
-      }] },
-      { id: "join", transfer: (input) => {
-        const normal = new Map(input.normal);
-        if (normal.has("try-normal") && normal.has("catch-normal")) normal.set("joined-normal", joinedNormal);
-        const recurrences = new Map(input.recurrences);
-        if (recurrence) recurrences.set(recurrenceKey, recurrence);
-        const joined = value([...normal], [...input.throws], [...recurrences]);
-        return [{ to: "header", value: joined }, { to: "exit", value: joined }];
-      } },
-      { id: "exit", transfer: () => [] },
+      { id: "header", transfer: (input) => [{ to: "entry", value: input }] },
+      ...candidate.handler.blocks.map((block) => ({
+        id: block.id,
+        transfer: (input: RankingLoopValueState) => {
+          if (block.id === "try-completion") {
+            const edges: Array<{ to: string; value: RankingLoopValueState }> = [];
+            if (input.throws.size > 0) edges.push({ to: "catch", value: input });
+            if (input.normal.size > 0) edges.push({
+              to: "handler-join",
+              value: value([["try-normal", tryNormal]], [], [...input.recurrences]),
+            });
+            return edges;
+          }
+          if (block.id === "catch") return [{
+            to: block.edges[0]!.to,
+            value: value([["catch-normal", catchNormal]], [], [...input.recurrences]),
+          }];
+          if (block.id === "handler-join") {
+            const normal = new Map(input.normal);
+            if (normal.has("try-normal") && normal.has("catch-normal")) normal.set("joined-normal", joinedNormal);
+            return block.edges.map((edge) => ({
+              to: edge.to, value: value([...normal], [], [...input.recurrences]),
+            }));
+          }
+          if (block.id === "exit") {
+            const recurrences = new Map(input.recurrences);
+            if (recurrence) recurrences.set(recurrenceKey, recurrence);
+            const joined = value([...input.normal], [...input.throws], [...recurrences]);
+            return [{ to: "header", value: joined }, { to: "loop-exit", value: joined }];
+          }
+          return block.edges.map((edge) => {
+            if (edge.completion === "throw") return {
+              to: edge.to,
+              value: value([], [[payload, throwSnapshot]], [...input.recurrences]),
+            };
+            return { to: edge.to, value: input };
+          });
+        },
+      })),
+      { id: "loop-exit", transfer: () => [] },
     ],
   });
   const catchState = result.states.get("catch") ?? value();
-  const exitState = result.states.get("exit") ?? value();
+  const exitState = result.states.get("loop-exit") ?? value();
   const retainedRecurrence = exitState.recurrences.get(recurrenceKey);
   return {
     iterations: result.iterations,
     converged: result.status === "converged",
     conflict: result.status === "unknown" && result.reason === "lattice-conflict",
+    handlerCfg: { reused: true, blocks: candidate.handler.blocks.map((block) => block.id) },
     recurrence: retainedRecurrence
       ? { ...retainedRecurrence, stable: result.status === "converged" }
       : undefined,
@@ -4139,6 +4180,7 @@ export function analyzeRefinementActionBodies(
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,
+          handlerCfg: fixedPoint.handlerCfg,
           ...(fixedPoint.recurrence ? { recurrence: fixedPoint.recurrence } : {}),
           valueLattice: fixedPoint.valueLattice,
         },

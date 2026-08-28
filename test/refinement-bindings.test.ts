@@ -3047,7 +3047,7 @@ describe("annotated refinement bindings", () => {
     const spec = parseSpec("fixed-point-join.ts", source).temporal;
     const analysis = analyzeRefinementActionBodies(
       "fixed-point-join.ts", source, "fixedPointJoin", spec,
-      { proofBudget: { cfgFixedPointIterations: 16 } },
+      { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(analysis).toMatchObject({
       schema: "uneffect-refinement-action-analysis/v1",
@@ -3061,9 +3061,21 @@ describe("annotated refinement bindings", () => {
         status: "verified",
         loopSpan: { start: expect.any(Number), end: expect.any(Number) },
         trySpan: { start: expect.any(Number), end: expect.any(Number) },
-        budget: { name: "cfg-fixed-point-iterations", limit: 16 },
+        budget: { name: "cfg-fixed-point-iterations", limit: 64 },
         fixedPoint: {
           converged: true,
+          handlerCfg: {
+            reused: true,
+            blocks: expect.arrayContaining([
+              expect.stringMatching(/^if:/),
+              expect.stringMatching(/^throw:/),
+              "try-completion",
+              "catch",
+              "handler-join",
+              "finally",
+              "exit",
+            ]),
+          },
           recurrence: {
             counter: "pending",
             direction: "decrease",
@@ -3103,7 +3115,7 @@ describe("annotated refinement bindings", () => {
       }],
     });
     const rankingObligation = analysis.obligations.find((item) => item.kind === "ranking-loop-fixed-point");
-    expect(rankingObligation?.fixedPoint.iterations).toBeLessThanOrEqual(16);
+    expect(rankingObligation?.fixedPoint.iterations).toBeLessThanOrEqual(64);
     const recurrence = rankingObligation?.fixedPoint.recurrence;
     expect(recurrence).toBeDefined();
     const recurrenceProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, recurrence!);
@@ -3134,7 +3146,7 @@ describe("annotated refinement bindings", () => {
     });
     const independentlyChecked = await analyzeRefinementActionBodiesWithZ3(
       "fixed-point-join.ts", source, "fixedPointJoin", spec,
-      { analysis: { proofBudget: { cfgFixedPointIterations: 16 } } },
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
     );
     expect(independentlyChecked.obligations[0]).toMatchObject({
       status: "verified",
@@ -3143,7 +3155,7 @@ describe("annotated refinement bindings", () => {
     const unavailableProof = await analyzeRefinementActionBodiesWithZ3(
       "fixed-point-join.ts", source, "fixedPointJoin", spec,
       {
-        analysis: { proofBudget: { cfgFixedPointIterations: 16 } },
+        analysis: { proofBudget: { cfgFixedPointIterations: 64 } },
         z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
       },
     );
@@ -3184,7 +3196,10 @@ describe("annotated refinement bindings", () => {
         rankingLoop: {
           properties: {
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
-            fixedPoint: { properties: { recurrence: { $ref: "#/$defs/rankingRecurrence" } } },
+            fixedPoint: { properties: {
+              handlerCfg: { properties: { reused: { const: true } } },
+              recurrence: { $ref: "#/$defs/rankingRecurrence" },
+            } },
           },
         },
       },
@@ -3209,7 +3224,7 @@ describe("annotated refinement bindings", () => {
     const unaligned = source.replace("runtime.failed += amount", "runtime.failed += runtime.delivered");
     const unalignedAnalysis = analyzeRefinementActionBodies(
       "fixed-point-unaligned.ts", unaligned, "fixedPointJoin", spec,
-      { proofBudget: { cfgFixedPointIterations: 16 } },
+      { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(unalignedAnalysis.obligations).toContainEqual(expect.objectContaining({
       kind: "ranking-loop-fixed-point",
@@ -3223,7 +3238,7 @@ describe("annotated refinement bindings", () => {
     const selfAmplifying = source.replace("runtime.audited++", "runtime.audited += runtime.audited");
     const selfAmplifyingAnalysis = analyzeRefinementActionBodies(
       "fixed-point-self-amplifying.ts", selfAmplifying, "fixedPointJoin", spec,
-      { proofBudget: { cfgFixedPointIterations: 16 } },
+      { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(selfAmplifyingAnalysis.obligations).toContainEqual(expect.objectContaining({
       kind: "ranking-loop-fixed-point",
@@ -3231,6 +3246,22 @@ describe("annotated refinement bindings", () => {
       reason: "unsupported-recurrence",
     }));
     expect(selfAmplifyingAnalysis.diagnostics).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body",
+      modelName: "drain",
+    }));
+    const earlyReturn = source.replace(
+      "if (runtime.reject) throw runtime.pending",
+      "if (runtime.reject) { if (runtime.pending < 0) return; throw runtime.pending }",
+    );
+    const earlyReturnAnalysis = analyzeRefinementActionBodies(
+      "fixed-point-early-return.ts", earlyReturn, "fixedPointJoin", spec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    expect(earlyReturnAnalysis.obligations).not.toContainEqual(expect.objectContaining({
+      kind: "ranking-loop-fixed-point",
+      status: "verified",
+    }));
+    expect(earlyReturnAnalysis.diagnostics).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body",
       modelName: "drain",
     }));

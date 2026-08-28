@@ -67,8 +67,10 @@ abrupt branch cannot enter the suffix. P2.6 correlates an exact caught-path
 predicate with its value join and discharges `rejectTelemetry`'s redundant
 nested ternary while retaining predicate loss as an explicit non-proof. The
 P2.7 then lowers application-backed abrupt `finally` return/throw overrides.
-The next #23/P2.8 slice replaces the ranking-loop seed's separate handler graph
-with this shared statement/basic-block builder while retaining its back edge.
+P2.8 replaces the ranking-loop seed's separate handler graph with this shared
+statement/basic-block builder while retaining its back edge and recurrence
+proof. The next #23 slice widens one bounded sibling-join family without
+admitting handler-local loops or irreducible control.
 The 49–96 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
@@ -80,7 +82,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Reuse the handler CFG builder inside the existing canonical ranking loop and preserve its recurrence/back-edge evidence. |
+| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Lower one bounded application-backed sibling-handler join and retain unsupported growth under the named budget. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -217,6 +219,12 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   ordered `finallyOverrides: [return, throw]`; removing return changes both the
   override set and action result to a non-proof. Handler-local loops and other
   unsupported finalizer statements remain `unsupported-control-flow`.
+- [x] Replace the canonical ranking-loop seed's private handler graph with the
+  shared source-keyed handler blocks. The value lattice traverses if/throw,
+  catch, join, finally, exit, and the loop back edge before retaining the affine
+  recurrence and independent Z3 proof. The more detailed graph converges in 42
+  evaluations, so the documented default budget is now 64; exhaustion remains
+  an explicit non-proof.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

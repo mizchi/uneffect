@@ -88,12 +88,13 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.5 handler-sequence lowering | #23 | Completed | under 1 week actual | Supported prefix/suffix statements retain abrupt suffix exclusion; the wider scan exposes one path-value mismatch as `unknown`. |
 | P2.6 caught-path value correlation | #23 | Completed | under 1 week actual | Exact same-predicate branch restriction verifies the surfaced mismatch; predicate drift retains a non-proof. |
 | P2.7 abrupt-finally override | #23 | Completed | under 1 week actual | Catch-less application finalizer return/throw paths override incoming completion and emit strict metadata. |
+| P2.8 ranking-handler CFG reuse | #23 | Completed | under 1 week actual | Canonical ranking-loop evidence traverses the shared handler topology and preserves recurrence/Z3 validation. |
 | P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
 
-P1.2a through P1.4 are complete. P2.1 is active next because general CFG joins
-are now shared dependencies for refinements, typed arrays, aliases, and future
-module widening. P2.1 and P3.1 are planning-sized first slices, not a
-claim that their owning epics are otherwise complete.
+P1.2a through P1.4 and P2.1 through P2.8 are complete. P2.9 is active next
+because bounded sibling joins are the remaining handoff needed before the first
+CFG-sensitive alias slice. P2.9 and P3.1 are planning-sized slices, not a claim
+that their owning epics are otherwise complete.
 
 P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
 emits a strict budgeted artifact, the reusable worklist carries payload,
@@ -117,6 +118,8 @@ syntactic path restriction and records it in the artifact; it does not infer
 logical implication between different predicates.
 P2.7 adds catch-less abrupt-finally routing and explicit return/throw override
 metadata. Its unsupported statements still fail closed.
+P2.8 removes the ranking seed's separate handler graph. Its shared topology
+converges in 42 evaluations under the explicit default budget of 64.
 
 ## Dependency-critical order
 
@@ -144,7 +147,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #23 general refinement CFG | L | 1–2 weeks total remaining | Reuse handler blocks inside the canonical ranking-loop graph | Arbitrary joins, recurrence widening, loops, and irreducible control |
+| 1 | #23 general refinement CFG | L | 1–2 weeks total remaining | One bounded sibling-handler join family | Arbitrary joins, recurrence widening, loops, and irreducible control |
 | 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -194,21 +197,23 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.5 handler-sequence lowering | under 1 engineer-week actual | `returnOrRejectTelemetry` preserves abrupt suffix exclusion; focused analysis measured 2.0640 ms mean over 243 samples. |
 | Completed sub-slice | P2.6 path-correlated handler values | under 1 engineer-week actual | Exact caught-path restriction verifies `rejectTelemetry`; focused analysis measured 2.1138 ms mean over 237 samples. |
 | Completed sub-slice | P2.7 abrupt-finally override | under 1 engineer-week actual | `finalizeTelemetryRecovery` emits normal/return/throw plus ordered overrides; focused analysis measured 2.1823 ms over 230 samples. |
-| Current slice | P2.8 ranking-handler CFG reuse | 1 engineer-week | Replace the ranking seed's separate handler graph while retaining recurrence and Z3 evidence. |
+| Completed sub-slice | P2.8 ranking-handler CFG reuse | under 1 engineer-week actual | Shared handler blocks converge in 42 evaluations; structural analysis measured 0.3958 ms and Z3 56.8153 ms. |
+| Current slice | P2.9 bounded sibling-handler joins | 1 engineer-week | Admit one application-backed sibling control family and retain over-budget/irreducible cases as non-proofs. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
 rather than silently absorbed.
 
-The #23 issue-level estimate remains 1–2 weeks after completing P2.7. The shared
+The #23 issue-level estimate remains 1–2 weeks after completing P2.8. The shared
 builder covers one nested control root plus surrounding supported statements.
 One exact caught-path value restriction and abrupt finally override are
-supported; handler-loop reuse, arbitrary joins, and general recurrence widening remain the
+supported, and the canonical handler loop reuses the topology; arbitrary joins
+and general recurrence widening remain the
 dominant uncertainty.
 
 ## Backlog interpretation
 
-- **Next implementable result:** P2.8 in #23, estimated at 1 engineer-week.
+- **Next implementable result:** P2.9 in #23, estimated at 1 engineer-week.
 - **Next foundation checkpoint:** finish and re-estimate #23, then activate a
   bounded #24 alias slice and a bounded #8 native-fact slice; the three-Issue
   foundation is 7–14 engineer-weeks in total, including #23.

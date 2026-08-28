@@ -108,8 +108,11 @@ explicit conservative boundaries rather than untracked support.
    Resource-free dynamic outer-loop `continue` ownership is also retained and
    lowered as nondeterministic repeat-or-exit. One application-backed direct
    `switch`/`catch`/mandatory-`finally` join now emits budgeted completion CFG
-   evidence. The next slice replaces that dedicated classifier with reusable
-   AST-to-basic-block lowering for one nested handler family; dynamic
+   evidence. Reusable source-keyed AST-to-basic-block lowering now covers one
+   nested handler root, surrounding supported statements, exact caught-path
+   correlation, abrupt finalizer override, and the canonical ranking-loop
+   topology. The next bounded slice admits one sibling-handler join family;
+   arbitrary joins, handler-local loops, recurrence widening, and dynamic
    resource-bearing loops remain fail-closed.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested

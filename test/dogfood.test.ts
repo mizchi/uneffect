@@ -545,7 +545,7 @@ describe("Uneffect dogfood", () => {
     const temporal = parseSpec(fileName, source).temporal;
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "telemetryFixedPoint", temporal,
-      { analysis: { proofBudget: { cfgFixedPointIterations: 16 } } },
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
@@ -561,7 +561,7 @@ describe("Uneffect dogfood", () => {
     const coupled = source.replace("runtime.failed += amount;", "runtime.failed += runtime.delivered;");
     const broken = analyzeRefinementActionBodies(
       fileName, coupled, "telemetryFixedPoint", temporal,
-      { proofBudget: { cfgFixedPointIterations: 16 } },
+      { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(broken.obligations).toContainEqual(expect.objectContaining({
       status: "unknown",

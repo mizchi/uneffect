@@ -5,14 +5,14 @@ export type HandlerCompletionKind = "normal" | "return" | "throw" | "break" | "c
 
 type ControlRoot = ts.IfStatement | ts.SwitchStatement;
 
-interface LoweredEdge {
+export interface LoweredHandlerEdge {
   readonly to: string;
   readonly completion?: HandlerCompletionKind;
 }
 
-interface LoweredBlock {
+export interface LoweredHandlerBlock {
   readonly id: string;
-  readonly edges: readonly LoweredEdge[];
+  readonly edges: readonly LoweredHandlerEdge[];
 }
 
 export interface HandlerJoinCandidate {
@@ -24,7 +24,7 @@ export interface HandlerJoinCandidate {
   readonly catchesThrow: boolean;
   readonly finallyOverrides: readonly Extract<HandlerCompletionKind, "return" | "throw">[];
   readonly lowering: "supported" | "unsupported";
-  readonly blocks: readonly LoweredBlock[];
+  readonly blocks: readonly LoweredHandlerBlock[];
 }
 
 export interface HandlerJoinFixedPoint {
@@ -44,9 +44,9 @@ const orderedCompletions = (values: Iterable<HandlerCompletionKind>): HandlerCom
 const blockId = (kind: string, node: ts.Node): string => `${kind}:${node.getStart()}`;
 
 class HandlerCfgBuilder {
-  readonly blocks: LoweredBlock[] = [];
+  readonly blocks: LoweredHandlerBlock[] = [];
 
-  add(id: string, edges: readonly LoweredEdge[]): string {
+  add(id: string, edges: readonly LoweredHandlerEdge[]): string {
     if (this.blocks.some((block) => block.id === id)) throw new Error(`duplicate handler CFG block ${id}`);
     this.blocks.push({ id, edges });
     return id;

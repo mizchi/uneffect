@@ -353,10 +353,19 @@ validation remains `unknown`. The focused benchmark measured 2.1823 ms mean
 over 230 samples. Handler-local loops, labeled transfers, and unsupported
 finalizer statements still fail closed.
 
+P2.8 removes the separate ranking-loop handler topology used by the telemetry
+fixed-point drain. Its abstract payload, normal/catch snapshots, affine
+recurrence, and Z3 certificate now traverse the same source-keyed handler blocks
+before the loop back edge. The detailed graph converges in 42 evaluations under
+the raised default `cfg-fixed-point-iterations: 64`; a one-step budget remains
+`unknown`. The structural benchmark measured 0.3958 ms mean over 1,264 samples,
+while independent Z3 validation measured 56.8153 ms over 9 samples. This is
+canonical ranking-loop reuse, not general handler-loop widening.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,750 summaries, 4,341 reviewed assumption occurrences, 74 files).
+`assumed` (3,755 summaries, 4,350 reviewed assumption occurrences, 74 files).
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

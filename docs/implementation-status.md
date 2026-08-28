@@ -366,6 +366,11 @@ same property is proved for arbitrary TypeScript.
   selected control roots. Normal finalizer paths preserve incoming completion;
   direct return/throw blocks replace it and are listed in `finallyOverrides`.
   Unsupported finalizer loops and statements produce an explicit non-proof.
+- The direct affine ranking-loop analysis now reuses those same source-keyed
+  handler blocks before its loop back edge. Its payload/snapshot lattice,
+  recurrence certificate, and independent Z3 proof remain separate abstract
+  domains over the shared topology. The default named fixed-point budget is 64;
+  general handler loops and recurrence widening remain unsupported.
 
 ## Async, resources, and event loops
 
