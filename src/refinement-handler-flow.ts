@@ -60,6 +60,13 @@ export interface HandlerJoinCandidate {
     readonly iterations: number;
   };
   readonly handlerNesting?: number;
+  readonly conditionalHandlerJoin?: {
+    readonly ifStatement: ts.IfStatement;
+    readonly predicate: ts.Expression;
+    readonly thenRegion: ts.TryStatement;
+    readonly elseRegion: ts.TryStatement;
+    readonly successorRegion: ts.TryStatement;
+  };
 }
 
 export interface HandlerJoinFixedPoint {
@@ -266,6 +273,14 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     ts.forEachChild(root, visit);
     return found;
   };
+  const directBranchRegion = (statement: ts.Statement | undefined): ts.TryStatement | undefined => {
+    if (!statement) return undefined;
+    const statements = ts.isBlock(statement) ? [...statement.statements] : [statement];
+    const regions = statements.filter(ts.isTryStatement);
+    if (regions.length !== 1) return undefined;
+    const region = regions[0]!;
+    return region.catchClause && !region.finallyBlock ? region : undefined;
+  };
   for (const statement of body.statements) {
     if (!ts.isTryStatement(statement) || (!statement.catchClause && !statement.finallyBlock)) continue;
     const tryControlStatements = statement.tryBlock.statements.filter(
@@ -280,6 +295,25 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     const selectedControls = controlRegion === "try" ? tryControlStatements : finallyControlStatements;
     const controlStatement = selectedControls[0];
     if (!controlStatement) continue;
+    const conditionalHandlerJoin = controlRegion === "try"
+      && selectedControls.length === 2
+      && ts.isIfStatement(selectedControls[0])
+      && ts.isTryStatement(selectedControls[1])
+      ? (() => {
+          const thenRegion = directBranchRegion(selectedControls[0].thenStatement);
+          const elseRegion = directBranchRegion(selectedControls[0].elseStatement);
+          const successorRegion = selectedControls[1];
+          return thenRegion && elseRegion && successorRegion.catchClause && !successorRegion.finallyBlock
+            ? {
+                ifStatement: selectedControls[0],
+                predicate: selectedControls[0].expression,
+                thenRegion,
+                elseRegion,
+                successorRegion,
+              }
+            : undefined;
+        })()
+      : undefined;
     const iterations = [
       ...containedIterations(statement.tryBlock),
       ...(statement.catchClause ? containedIterations(statement.catchClause.block) : []),
@@ -302,7 +336,8 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
       || (selectedControls.length === HANDLER_CONTROL_ROOT_LIMIT
         && (selectedControls.every(ts.isIfStatement) || selectedControls.every(ts.isTryStatement)))
       || (selectedControls.length === HANDLER_NESTED_TRY_ROOT_LIMIT
-        && selectedControls.every(ts.isTryStatement)));
+        && selectedControls.every(ts.isTryStatement))
+      || conditionalHandlerJoin !== undefined);
 
     const builder = new HandlerCfgBuilder();
     builder.add("try-completion", []);
@@ -333,6 +368,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
         ...(ts.isForOfStatement(controlStatement) && literalForOfIterations(controlStatement) !== undefined
           ? { finiteLoop: { kind: "for-of" as const, iterations: literalForOfIterations(controlStatement)! } }
           : {}),
+        ...(conditionalHandlerJoin ? { conditionalHandlerJoin } : {}),
       });
       continue;
     }
@@ -359,6 +395,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
           ...(ts.isForOfStatement(controlStatement) && literalForOfIterations(controlStatement) !== undefined
             ? { finiteLoop: { kind: "for-of" as const, iterations: literalForOfIterations(controlStatement)! } }
             : {}),
+          ...(conditionalHandlerJoin ? { conditionalHandlerJoin } : {}),
         });
         continue;
       }
@@ -391,6 +428,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
       ...(ts.isForOfStatement(controlStatement) && literalForOfIterations(controlStatement) !== undefined
         ? { finiteLoop: { kind: "for-of" as const, iterations: literalForOfIterations(controlStatement)! } }
         : {}),
+      ...(conditionalHandlerJoin ? { conditionalHandlerJoin } : {}),
     });
   }
   return candidates;

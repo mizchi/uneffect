@@ -295,7 +295,7 @@ export interface RefinementHandlerScalarEnvironmentObligation {
   status: "verified" | "unknown";
   reason?: "independent-proof-required" | "lattice-conflict" | "proof-budget-exhausted"
     | "region-budget-exhausted" | "scalar-cardinality-unsupported" | "unsupported-scalar-environment" | "scalar-proof-refuted"
-    | "scalar-proof-unknown";
+    | "scalar-proof-unknown" | "predicate-correlation-lost";
   budget: { name: "cfg-fixed-point-iterations"; limit: number };
   regionBudget: { name: "handler-scalar-regions"; limit: 3; observed: number };
   fixedPoint: {
@@ -312,6 +312,17 @@ export interface RefinementHandlerScalarEnvironmentObligation {
         exit: string;
       }[];
     }[];
+  };
+  conditionalJoin?: {
+    kind: "if-handler-predecessors";
+    predicate: string;
+    rule: "predicate-correlated-phi";
+    predecessors: readonly {
+      branch: "then" | "else";
+      regionId: string;
+      span: { start: number; end: number };
+    }[];
+    successorRegionId: string;
   };
   proof?: {
     backend: "z3";
@@ -4256,6 +4267,8 @@ interface HandlerScalarEnvironmentResult {
     readonly actual: TemporalExpression;
     readonly regions: RefinementHandlerScalarEnvironmentObligation["fixedPoint"]["members"][number]["regions"];
   }[];
+  readonly predicateCorrelated: boolean;
+  readonly conditionalJoin?: RefinementHandlerScalarEnvironmentObligation["conditionalJoin"];
 }
 
 const HANDLER_SCALAR_REGION_LIMIT = 3;
@@ -4283,10 +4296,97 @@ function runHandlerScalarEnvironmentFixedPoint(
     new Map(spec.states.map(({ name }) => [name, stateExpression(environment, name)]));
   const controls = candidate.controlStatements.filter(ts.isTryStatement);
   const byStart = new Map(traces.map((trace) => [trace.tryStart, trace]));
-  const regions = controls.flatMap((control) => {
+  const conditional = candidate.conditionalHandlerJoin;
+  const regionControls = conditional
+    ? [conditional.thenRegion, conditional.elseRegion, conditional.successorRegion]
+    : controls;
+  const regions = regionControls.flatMap((control) => {
     const trace = byStart.get(control.getStart());
     return trace ? [{ control, trace }] : [];
   });
+  const runtimeStateExpression = (expression: ts.Expression): TemporalExpression | undefined =>
+    ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)
+      && spec.states.some(({ name }) => name === expression.name.text)
+      ? { kind: "name", name: expression.name.text }
+      : ts.isIdentifier(expression) && spec.states.some(({ name }) => name === expression.text)
+        ? { kind: "name", name: expression.text }
+        : undefined;
+  const firstCondition = (root: ts.Node): TemporalExpression | undefined => {
+    let found: TemporalExpression | undefined;
+    const visit = (node: ts.Node): void => {
+      if (found || ts.isFunctionLike(node)) return;
+      if (ts.isIfStatement(node)) {
+        found = runtimeStateExpression(node.expression);
+        if (found) return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(root, visit);
+    return found;
+  };
+  const containsConditionalCondition = (
+    expression: TemporalExpression,
+    condition: TemporalExpression,
+  ): boolean => {
+    if (expression.kind === "conditional") return sameRefinementExpression(expression.condition, condition)
+      || containsConditionalCondition(expression.condition, condition)
+      || containsConditionalCondition(expression.whenTrue, condition)
+      || containsConditionalCondition(expression.whenFalse, condition);
+    if (expression.kind === "binary") return containsConditionalCondition(expression.left, condition)
+      || containsConditionalCondition(expression.right, condition);
+    if (expression.kind === "unary") return containsConditionalCondition(expression.operand, condition);
+    if (expression.kind === "array") return expression.elements.some((item) => containsConditionalCondition(item, condition));
+    if (expression.kind === "record") return Boolean(expression.base && containsConditionalCondition(expression.base, condition))
+      || Object.values(expression.fields).some((item) => containsConditionalCondition(item, condition));
+    if (expression.kind === "field") return containsConditionalCondition(expression.receiver, condition);
+    if (expression.kind === "lambda") return containsConditionalCondition(expression.body, condition);
+    if (expression.kind === "call") return expression.arguments.some((item) => containsConditionalCondition(item, condition));
+    if (expression.kind === "method") return containsConditionalCondition(expression.receiver, condition)
+      || expression.arguments.some((item) => containsConditionalCondition(item, condition));
+    return false;
+  };
+  const hasCorrelatedConditional = (
+    expression: TemporalExpression,
+    predicate: TemporalExpression,
+    thenCondition: TemporalExpression,
+    elseCondition: TemporalExpression,
+  ): boolean => {
+    if (expression.kind === "conditional"
+      && sameRefinementExpression(expression.condition, predicate)
+      && containsConditionalCondition(expression.whenTrue, thenCondition)
+      && containsConditionalCondition(expression.whenFalse, elseCondition)) return true;
+    if (expression.kind === "conditional") return hasCorrelatedConditional(expression.condition, predicate, thenCondition, elseCondition)
+      || hasCorrelatedConditional(expression.whenTrue, predicate, thenCondition, elseCondition)
+      || hasCorrelatedConditional(expression.whenFalse, predicate, thenCondition, elseCondition);
+    if (expression.kind === "binary") return hasCorrelatedConditional(expression.left, predicate, thenCondition, elseCondition)
+      || hasCorrelatedConditional(expression.right, predicate, thenCondition, elseCondition);
+    if (expression.kind === "unary") return hasCorrelatedConditional(expression.operand, predicate, thenCondition, elseCondition);
+    return false;
+  };
+  const predicate = conditional ? runtimeStateExpression(conditional.predicate) : undefined;
+  const thenCondition = conditional ? firstCondition(conditional.thenRegion.tryBlock) : undefined;
+  const elseCondition = conditional ? firstCondition(conditional.elseRegion.tryBlock) : undefined;
+  const predicateCorrelated = !conditional || Boolean(predicate && thenCondition && elseCondition
+    && action.assignments.filter(({ target }) => spec.states.some(({ name, type }) => name === target && type === "int"))
+      .every(({ expressionAst }) => hasCorrelatedConditional(expressionAst, predicate, thenCondition, elseCondition)));
+  const conditionalJoin = conditional && predicate ? {
+    kind: "if-handler-predecessors" as const,
+    predicate: formatRefinementExpression(predicate),
+    rule: "predicate-correlated-phi" as const,
+    predecessors: [
+      {
+        branch: "then" as const,
+        regionId: `nested-handler-join:${conditional.thenRegion.getStart()}`,
+        span: { start: conditional.thenRegion.getStart(), end: conditional.thenRegion.getEnd() },
+      },
+      {
+        branch: "else" as const,
+        regionId: `nested-handler-join:${conditional.elseRegion.getStart()}`,
+        span: { start: conditional.elseRegion.getStart(), end: conditional.elseRegion.getEnd() },
+      },
+    ],
+    successorRegionId: `nested-handler-join:${conditional.successorRegion.getStart()}`,
+  } : undefined;
   const changedScalarStates = spec.states.filter(({ name, type }) => type === "int"
     && regions.length > 0
     && !sameRefinementExpression(
@@ -4309,26 +4409,29 @@ function runHandlerScalarEnvironmentFixedPoint(
       })),
     }))
     .sort((left, right) => left.state.localeCompare(right.state));
-  if (candidate.lowering !== "supported" || controls.length < 2
-    || controls.length > HANDLER_SCALAR_REGION_LIMIT || regions.length !== controls.length
+  if (candidate.lowering !== "supported" || regionControls.length < 2
+    || regionControls.length > HANDLER_SCALAR_REGION_LIMIT || regions.length !== regionControls.length
     || members.length < 1 || members.length > 2) {
-    return { iterations: 0, converged: false, conflict: false, members };
+    return { iterations: 0, converged: false, conflict: false, members, predicateCorrelated, conditionalJoin };
   }
 
   interface Value {
     readonly environment: ReadonlyMap<string, TemporalExpression>;
     readonly invalid: boolean;
     readonly reachable: boolean;
+    readonly branch?: "then" | "else" | "joined";
   }
   const value = (
     environment: ReadonlyMap<string, TemporalExpression>,
     invalid = false,
     reachable = true,
+    branch?: Value["branch"],
   ): Value => ({
-    environment: normalizeEnvironment(environment), invalid, reachable,
+    environment: normalizeEnvironment(environment), invalid, reachable, ...(branch ? { branch } : {}),
   });
   const equivalent = (left: Value, right: Value): boolean => left.reachable === right.reachable
     && left.invalid === right.invalid
+    && left.branch === right.branch
     && environmentKey(left.environment) === environmentKey(right.environment);
   const result = solveBasicBlockFixedPoint<Value>({
     entry: "entry",
@@ -4341,6 +4444,26 @@ function runHandlerScalarEnvironmentFixedPoint(
         : !right.reachable ? { status: "joined", value: left }
         : left.invalid || right.invalid
         ? { status: "conflict", reason: "a source-keyed region received an invalid scalar environment" }
+        : conditional && predicate && predicateCorrelated
+          && ((left.branch === "then" && right.branch === "else")
+            || (left.branch === "else" && right.branch === "then"))
+          ? { status: "joined", value: value(joinFlowValues({
+              keys: spec.states.map(({ name }) => name),
+              condition: predicate,
+              original: (name) => ({ kind: "name", name }) as TemporalExpression,
+              whenTrue: (name) => stateExpression(
+                left.branch === "then" ? left.environment : right.environment,
+                name,
+              ),
+              whenFalse: (name) => stateExpression(
+                left.branch === "else" ? left.environment : right.environment,
+                name,
+              ),
+              equivalent: sameRefinementExpression,
+              phi: (condition, whenTrue, whenFalse): TemporalExpression => ({
+                kind: "conditional", condition, whenTrue, whenFalse,
+              }),
+            }), false, true, "joined") }
         : environmentKey(left.environment) !== environmentKey(right.environment)
           ? { status: "conflict", reason: "scalar expressions disagree at a source-keyed CFG join" }
           : { status: "joined", value: left },
@@ -4351,15 +4474,21 @@ function runHandlerScalarEnvironmentFixedPoint(
         const tryMatch = /^try:(\d+)$/.exec(block.id);
         const joinMatch = /^nested-handler-join:(\d+)$/.exec(block.id);
         let output = input;
+        if (conditional && block.id === `if:${conditional.ifStatement.getStart()}`) {
+          return block.edges.map((edge, index) => ({
+            to: edge.to,
+            value: value(input.environment, input.invalid, input.reachable, index === 0 ? "then" : "else"),
+          }));
+        }
         if (tryMatch) {
           const trace = byStart.get(Number(tryMatch[1]));
           if (trace && environmentKey(input.environment) !== environmentKey(normalizeEnvironment(trace.entry))) {
-            output = value(input.environment, true);
+            output = value(input.environment, true, input.reachable, input.branch);
           }
         }
         if (joinMatch) {
           const trace = byStart.get(Number(joinMatch[1]));
-          if (trace) output = value(trace.exit, output.invalid);
+          if (trace) output = value(trace.exit, output.invalid, output.reachable, output.branch);
         }
         return block.edges.map((edge) => ({ to: edge.to, value: output }));
       },
@@ -4376,6 +4505,8 @@ function runHandlerScalarEnvironmentFixedPoint(
       ...member,
       actual: exit ? stateExpression(exit.environment, member.state) : member.actual,
     })),
+    predicateCorrelated,
+    conditionalJoin,
   };
 }
 
@@ -4478,17 +4609,21 @@ export function analyzeRefinementActionBodies(
           rule: "same-predicate-branch-restriction" as const,
         } } : {}),
       });
-      if (candidate.controlShape === "try") {
+      if (candidate.controlShape === "try" || candidate.conditionalHandlerJoin) {
         const regionTraces = traceSink.handlerRegions.filter((trace) => trace.modelName === action.name);
         const scalar = runHandlerScalarEnvironmentFixedPoint(candidate, regionTraces, spec, action, limit);
-        const observed = candidate.controlStatements.filter(ts.isTryStatement).length;
+        const observed = candidate.conditionalHandlerJoin
+          ? 3
+          : candidate.controlStatements.filter(ts.isTryStatement).length;
         if (scalar.members.length > 0) obligations.push({
           kind: "handler-scalar-environment-join",
           adapterName,
           modelName: action.name,
           exportName,
           status: "unknown",
-          reason: observed > HANDLER_SCALAR_REGION_LIMIT
+          reason: !scalar.predicateCorrelated
+            ? "predicate-correlation-lost"
+            : observed > HANDLER_SCALAR_REGION_LIMIT
             ? "region-budget-exhausted"
             : scalar.members.length > 2
               ? "scalar-cardinality-unsupported"
@@ -4509,6 +4644,7 @@ export function analyzeRefinementActionBodies(
               regions: member.regions,
             })),
           },
+          ...(scalar.conditionalJoin ? { conditionalJoin: scalar.conditionalJoin } : {}),
         });
       }
       if ((!fixedPoint.converged || candidate.lowering === "unsupported")

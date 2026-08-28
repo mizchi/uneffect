@@ -1948,6 +1948,13 @@ with Z3 measured 13.4408 ms mean over 38 samples (74.40 operations per second).
 This is a bounded regression signal: it excludes a fourth region, loops between
 regions, heap aliases, coupled recurrences, and arbitrary CFG growth.
 
+The P2.16 focused benchmark joins two branch-selected product environments
+before one common handler region. A selected run measured 1.4522 ms mean over
+345 samples (688.63 operations per second). Independently proving both members
+with Z3 measured 15.4220 ms mean over 33 samples (64.84 operations per second).
+This excludes nested choices, switch fan-out, loops, aliases, recurrence
+widening, and irreducible CFGs.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

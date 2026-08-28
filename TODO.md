@@ -48,14 +48,15 @@ Corsa inferred-effect handoff is complete in
 [#27](https://github.com/mizchi/uneffect/issues/27). The bounded scalar-value
 children [#28](https://github.com/mizchi/uneffect/issues/28) and
 [#29](https://github.com/mizchi/uneffect/issues/29) and
-[#30](https://github.com/mizchi/uneffect/issues/30) are complete. The next
-executable child is [#31](https://github.com/mizchi/uneffect/issues/31), which
-joins the product after a conditional handler-region choice.
+[#30](https://github.com/mizchi/uneffect/issues/30) and
+[#31](https://github.com/mizchi/uneffect/issues/31) are complete. The next
+executable child is [#32](https://github.com/mizchi/uneffect/issues/32), which
+moves one affine scalar-product recurrence onto the shared CFG back edge.
 
 There are 13 open implementation Issues after closing #23, #26, #27, #28, and
-#29/#30 and opening #31: one proof-boundary
+#29/#30/#31 and opening #32: one proof-boundary
 Issue in Phase 1, six specification-expressiveness Issues in Phase 2 (including
-bounded child #31), five production-integration Issues in Phase 3, and one
+bounded child #32), five production-integration Issues in Phase 3, and one
 proof-consumer Issue in Phase 4. The 12 non-overlapping epic estimates total
 51–102 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
@@ -100,7 +101,8 @@ coverage remains in #8. P2.13 then carries one integer environment through two
 source-keyed sibling handler regions and requires an independent Z3 equivalence
 proof before verification. P2.14 lifts that environment to two independently
 checked integer members. P2.15 carries that product through three regions. The
-next executable slice is #31's first divergent product join.
+P2.16 adds the first divergent product join. The next executable slice is
+#32's CFG-inferred affine recurrence.
 The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
@@ -112,7 +114,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#31](https://github.com/mizchi/uneffect/issues/31) | Join a one- or two-member scalar product after a conditional choice of source-keyed handler regions and before one common successor; retain predicate loss, predecessor conflict, mutation, budget, and solver controls as non-proofs. |
+| 1 | [#32](https://github.com/mizchi/uneffect/issues/32) | Infer one affine one- or two-member scalar recurrence from a reusable CFG back edge; require source-bound transformer/summary/ranking checks and retain coupled, self-amplifying, path-dependent, budget, and solver controls as non-proofs. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -120,9 +122,9 @@ backlog:
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
-| General analysis foundation | Completed #23/#26/#27/#28/#29/#30 plus #31, the next executable #25 value slice | 1–2 weeks for #31; 13–27 weeks for parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31 plus #32, the next executable #25 value slice | 1–2 weeks for #32; 13–27 weeks for parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #31 is included in #25. |
+| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #32 is included in #25. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -149,7 +151,7 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-28 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30 handoffs:
+As of 2026-08-28 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31 handoffs:
 one `active`, eleven `queued`, and one queued parent with its bounded child
 active. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
@@ -160,7 +162,7 @@ label.
 | --- | --- | --- | --- | --- | --- |
 | Queued | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence plus synchronous-ring and direct cross-project TLA seeds | Broader ESM/external/dynamic initialization semantics; widen after CFG or application evidence |
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
-| Active | 2 | [#31](https://github.com/mizchi/uneffect/issues/31) | Conditional scalar-product join | Completed #30; child of #25 | Join branch-selected handler environments before a common successor with explicit predicate/predecessor evidence |
+| Active | 2 | [#32](https://github.com/mizchi/uneffect/issues/32) | CFG-inferred affine recurrence | Completed #31; child of #25 | Infer a source-bound scalar-product transformer and summary at one reusable CFG back edge |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
@@ -181,8 +183,9 @@ Completed #28 carries one scalar environment through sibling handler regions
 without equating structural reachability with a value proof. Completed #29
 widens the environment cardinality to two independently checked integer
 members. Completed #30 widens only the linear region cardinality from two to
-three. Active #31 introduces the first divergent value join instead of adding a
-fourth linear region.
+three. Completed #31 introduces the first divergent value join instead of
+adding a fourth linear region. Active #32 moves one affine recurrence off the
+private shape-specific summary path.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -205,8 +208,9 @@ The one-integer, two-source-keyed-region value handoff closed
 [#28](https://github.com/mizchi/uneffect/issues/28). The two-integer product
 handoff closed [#29](https://github.com/mizchi/uneffect/issues/29). The
 three-region composition handoff closed
-[#30](https://github.com/mizchi/uneffect/issues/30); divergent joins and general
-value lattices remain #31 and parent #25.
+[#30](https://github.com/mizchi/uneffect/issues/30). The first divergent product
+join closed [#31](https://github.com/mizchi/uneffect/issues/31); CFG-inferred
+recurrence and general value lattices remain #32 and parent #25.
 
 - [x] Emit `uneffect-refinement-action-analysis/v1` for one direct ranking-loop
   normal/typed-throw catch join, enforce a named CFG reachability worklist
@@ -303,6 +307,10 @@ value lattices remain #31 and parent #25.
 - [x] Widen only the sibling nested-try topology to three source-keyed regions,
   retaining the existing two-root budget for other handler shapes. A fourth
   region, member conflict, budget exhaustion, and wrong member fail closed. (#30)
+- [x] Join a one- or two-member scalar environment from one direct `if/else`
+  pair of source-keyed handler predecessors before a common successor. Record
+  `predicate-correlated-phi` evidence; predicate loss, entry drift, inter-join
+  mutation, budget exhaustion, and solver failure fail closed. (#31)
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

@@ -142,7 +142,7 @@
         "exportName": { "type": "string", "minLength": 1 },
         "status": { "enum": ["verified", "unknown"] },
         "reason": {
-          "enum": ["independent-proof-required", "lattice-conflict", "proof-budget-exhausted", "region-budget-exhausted", "scalar-cardinality-unsupported", "unsupported-scalar-environment", "scalar-proof-refuted", "scalar-proof-unknown"]
+          "enum": ["independent-proof-required", "lattice-conflict", "proof-budget-exhausted", "region-budget-exhausted", "scalar-cardinality-unsupported", "unsupported-scalar-environment", "scalar-proof-refuted", "scalar-proof-unknown", "predicate-correlation-lost"]
         },
         "budget": {
           "type": "object", "additionalProperties": false,
@@ -192,6 +192,40 @@
                 }
               }
             }
+          }
+        },
+        "conditionalJoin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "predicate", "rule", "predecessors", "successorRegionId"],
+          "properties": {
+            "kind": { "const": "if-handler-predecessors" },
+            "predicate": { "type": "string", "minLength": 1 },
+            "rule": { "const": "predicate-correlated-phi" },
+            "predecessors": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["branch", "regionId", "span"],
+                  "properties": {
+                    "branch": { "const": "then" },
+                    "regionId": { "type": "string", "pattern": "^nested-handler-join:[0-9]+$" },
+                    "span": { "$ref": "#/$defs/span" }
+                  }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["branch", "regionId", "span"],
+                  "properties": {
+                    "branch": { "const": "else" },
+                    "regionId": { "type": "string", "pattern": "^nested-handler-join:[0-9]+$" },
+                    "span": { "$ref": "#/$defs/span" }
+                  }
+                }
+              ],
+              "items": false
+            },
+            "successorRegionId": { "type": "string", "pattern": "^nested-handler-join:[0-9]+$" }
           }
         },
         "proof": {

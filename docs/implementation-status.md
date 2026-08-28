@@ -404,6 +404,15 @@ same property is proved for arbitrary TypeScript.
   source-keyed handoffs and pass its own Z3 equivalence check. A fourth nested
   region, inter-region write, worklist exhaustion, or wrong member remains a
   machine-readable non-proof. This is not arbitrary reducible CFG support.
+- One direct conditional product topology is supported: a top-level `if/else`
+  contains one source-keyed nested handler per arm and is followed by one common
+  nested handler. The worklist labels then/else predecessor environments and
+  applies `predicate-correlated-phi` only when both changed integer actions
+  retain the matching route and branch conditions. The artifact records both
+  predecessor spans/region IDs and the successor region ID. Predicate loss,
+  predecessor drift, an inter-join mutation, budget exhaustion, refutation, and
+  solver failure remain non-proofs. Other mixed roots and arbitrary reducible
+  joins are not implied.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no

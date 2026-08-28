@@ -26,6 +26,41 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a conditional scalar-product join before a common handler region", async () => {
+    const fileName = "examples/dogfood/conditional-scalar-product.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName,
+      source,
+      "conditionalScalarProduct",
+      temporal,
+    );
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-scalar-environment-join",
+      modelName: "compose",
+      status: "verified",
+      conditionalJoin: {
+        kind: "if-handler-predecessors",
+        predicate: "route",
+        rule: "predicate-correlated-phi",
+        predecessors: [
+          expect.objectContaining({ branch: "then" }),
+          expect.objectContaining({ branch: "else" }),
+        ],
+        successorRegionId: expect.stringMatching(/^nested-handler-join:/),
+      },
+      proof: expect.objectContaining({
+        backend: "z3",
+        status: "verified",
+        checks: [
+          { state: "audited", status: "verified" },
+          { state: "total", status: "verified" },
+        ],
+      }),
+    }));
+  });
+
   it("proves a two-member scalar product across three sibling handler regions", async () => {
     const fileName = "examples/dogfood/scalar-product-three-region.ts";
     const source = readFileSync(fileName, "utf8");

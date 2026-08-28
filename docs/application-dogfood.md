@@ -431,6 +431,16 @@ whole product while retaining the other verified check. This widens only the
 bounded nested-try region count; loops between regions, heap aliases, coupled
 recurrences, and arbitrary reducible CFGs remain unsupported.
 
+P2.16 adds `conditional-scalar-product.ts`. A route predicate selects one of
+two source-keyed handler regions, their scalar environments meet at a reducible
+CFG join, and one common handler region consumes the predicate-correlated phi
+environment. The artifact names the predicate, then/else predecessor region
+IDs, successor region ID, and `predicate-correlated-phi` rule. Both `total` and
+`audited` still require independent Z3 equivalence checks. Predicate drift, a
+write before a branch region, a write between the join and successor, worklist
+exhaustion, one wrong member, and solver failure remain explicit non-proofs.
+This admits one exact `if/else` topology, not arbitrary branch fan-out.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

@@ -51,6 +51,12 @@ const scalarProductThreeRegionSpec = parseSpec(
   scalarProductThreeRegionFile,
   scalarProductThreeRegionSource,
 ).temporal;
+const conditionalScalarProductFile = "examples/dogfood/conditional-scalar-product.ts";
+const conditionalScalarProductSource = readFileSync(conditionalScalarProductFile, "utf8");
+const conditionalScalarProductSpec = parseSpec(
+  conditionalScalarProductFile,
+  conditionalScalarProductSource,
+).temporal;
 const aliasFile = "examples/dogfood/local-alias-refinement.ts";
 const aliasSource = readFileSync(aliasFile, "utf8");
 const aliasSpec = parseSpec(aliasFile, aliasSource).temporal;
@@ -295,6 +301,41 @@ describe("refinement CFG fixed point", () => {
       || obligation.proof?.checks.length !== 2
       || obligation.proof.checks.some((check) => check.status !== "verified")) {
       throw new Error("three-region scalar product Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
+  bench("join a scalar product after conditional handler selection", () => {
+    const result = analyzeRefinementActionBodies(
+      conditionalScalarProductFile,
+      conditionalScalarProductSource,
+      "conditionalScalarProduct",
+      conditionalScalarProductSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-scalar-environment-join");
+    if (obligation?.fixedPoint.converged !== true
+      || obligation.fixedPoint.members.length !== 2
+      || obligation.conditionalJoin?.rule !== "predicate-correlated-phi"
+      || obligation.reason !== "independent-proof-required") {
+      throw new Error("conditional scalar product benchmark fixture did not converge");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove both conditional product members with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      conditionalScalarProductFile,
+      conditionalScalarProductSource,
+      "conditionalScalarProduct",
+      conditionalScalarProductSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-scalar-environment-join");
+    if (obligation?.status !== "verified"
+      || obligation.proof?.checks.length !== 2
+      || obligation.proof.checks.some((check) => check.status !== "verified")) {
+      throw new Error("conditional scalar product Z3 benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 2 });
 

@@ -99,14 +99,15 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.13 scalar sibling-region value join | #28 (child of #25) | Completed | under 1 week actual | One integer environment joins across two source-keyed sibling handler regions; expression conflict, budget exhaustion, Z3 refutation, and solver unavailability remain non-proofs. |
 | P2.14 two-member scalar product join | #29 (child of #25) | Completed | under 1 week actual | Two independently checked integer states share one product environment; one mismatching member prevents verification. |
 | P2.15 three-region scalar product | #30 (child of #25) | Completed | under 1 week actual | Carry the two-member product across three source-keyed sibling regions without weakening conflict, budget, or solver controls. |
-| P2.16 conditional scalar-product join | #31 (child of #25) | Active after #30 | 1–2 weeks | Join branch-selected handler environments before one common successor with explicit predicate and predecessor evidence. |
+| P2.16 conditional scalar-product join | #31 (child of #25) | Completed | under 1 week actual | Join branch-selected handler environments before one common successor with explicit predicate and predecessor evidence. |
+| P2.17 CFG-inferred affine recurrence | #32 (child of #25) | Active after #31 | 1–2 weeks | Infer one source-bound scalar-product transformer and summary from a reusable CFG back edge. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27
 has completed the first checker-backed child of #8. #28 completed the first
 scalar-value child of #25 and #29 completed its two-member product environment;
-#30 completed three-region composition; #31 is active for the first divergent
-product join, while general value lattices and recurrence widening remain
+#30 completed three-region composition and #31 completed the first divergent
+product join; #32 is active for a CFG-inferred recurrence, while general value lattices and recurrence widening remain
 in the parent.
 
 P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
@@ -163,7 +164,7 @@ same nested-try topology to three while retaining four as over-budget.
 5. #2/#5 and #4/#6 are selected according to the next dogfood product, rather
    than being treated as one mandatory serial queue.
 
-No broad Phase 3 or Phase 4 epic should pre-empt the bounded #31 handoff merely
+No broad Phase 3 or Phase 4 epic should pre-empt the bounded #32 handoff merely
 because it has an attractive isolated demo. New work that exposes a soundness dependency should
 be added to the owning Issue and reflected here before implementation begins.
 
@@ -171,8 +172,8 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #31 conditional scalar-product join (included in #25) | M | 1–2 weeks | Join branch-selected environments before a common handler region | Predicate correlation, predecessor conflict, and state-space growth |
-| 2 | #25 general CFG values | L | 3–8 weeks | Continue beyond bounded children #28/#29/#30/#31 | Value conflict, widening, recurrence, and irreducible control |
+| 1 | #32 CFG-inferred affine recurrence (included in #25) | M | 1–2 weeks | Infer one product transformer/summary at a shared back edge | Widening soundness, coupled updates, and induction obligations |
+| 2 | #25 general CFG values | L | 3–8 weeks | Continue beyond bounded children #28/#29/#30/#31/#32 | Value conflict, widening, recurrence, and irreducible control |
 | 3 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -191,7 +192,7 @@ be added to the owning Issue and reflected here before implementation begins.
    cross-project straight-line TLA dependency. The real-application survey found
    no positive candidate, so do not generalize speculatively.
 2. **General analysis foundation:** #23 and the first executable #26/#27 slices
-   #28, #29, and #30 are complete; #31 is the active 1–2 week next #25 value slice. Completing
+   #28, #29, #30, and #31 are complete; #32 is the active 1–2 week next #25 value slice. Completing
    parent #25/#24/#8 is 13–27 weeks. Keep these
    figures separate when deciding whether the first reusable boundary is enough
    to begin product dogfood.
@@ -234,7 +235,8 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | #28 scalar sibling-region value join | under 1 engineer-week actual | One integer environment converges through two source-keyed regions; only an independent Z3 equivalence check verifies it. |
 | Completed sub-slice | #29 two-member scalar product join | under 1 engineer-week actual | Two independently checked integers traverse the same two regions; every member requires an independent Z3 check. |
 | Completed sub-slice | #30 three-region scalar product | under 1 engineer-week actual | Carry the two-member product through three sibling regions with conflict, budget, source-correlation, and solver controls. |
-| Current slice | #31 conditional scalar-product join | 1–2 engineer-weeks | Join branch-selected product environments before a common successor without admitting arbitrary CFGs. |
+| Completed sub-slice | #31 conditional scalar-product join | under 1 engineer-week actual | Join branch-selected product environments before a common successor without admitting arbitrary CFGs. |
+| Current slice | #32 CFG-inferred affine recurrence | 1–2 engineer-weeks | Infer a source-bound transformer and summary from one reusable CFG back edge. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
@@ -249,9 +251,9 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** #31, estimated at 1–2 engineer-weeks.
-- **Next foundation checkpoint:** complete #31, the bounded #25 divergent
-  product-value slice. #26, #27, #28, #29, and #30 are complete; completing parent #25/#24/#8 is 13–27
+- **Next implementable result:** #32, estimated at 1–2 engineer-weeks.
+- **Next foundation checkpoint:** complete #32, the bounded #25 CFG-inferred
+  recurrence slice. #26, #27, #28, #29, #30, and #31 are complete; completing parent #25/#24/#8 is 13–27
   engineer-weeks.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not

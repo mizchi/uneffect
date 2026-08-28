@@ -117,6 +117,17 @@ changed integer, a fourth region, one wrong member, and solver failure remain
 explicit non-proofs. Heap regions, aliases, cross-member recurrence, general
 path implication, recurrence widening, and irreducible CFGs are unsupported.
 
+One additional bounded topology selects exactly one nested handler region in
+each arm of a direct `if/else`, joins their environments with the exact route
+predicate, and enters one common nested handler region. The artifact records
+`if-handler-predecessors`, ordered then/else region identities, the successor
+identity, and `predicate-correlated-phi`. Predicate correlation is accepted
+only when every changed integer action contains the corresponding outer
+conditional and its branch-local handler conditions. Correlation loss or an
+unmodeled predecessor/successor-boundary write cannot verify. Switch fan-out,
+missing branches, nested choices, loops, aliases, and general path implication
+remain unsupported.
+
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing
 arms produce phi values; when one arm returns, only the normal predecessor's

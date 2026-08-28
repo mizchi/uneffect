@@ -3301,6 +3301,13 @@ describe("annotated refinement bindings", () => {
             regionBudget: { properties: { name: { const: "handler-scalar-regions" }, limit: { const: 3 } } },
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
             fixedPoint: { properties: { members: { maxItems: 3 } } },
+            conditionalJoin: {
+              properties: {
+                kind: { const: "if-handler-predecessors" },
+                rule: { const: "predicate-correlated-phi" },
+                predecessors: { minItems: 2, maxItems: 2 },
+              },
+            },
             proof: { properties: { backend: { const: "z3" }, checks: { maxItems: 2 } } },
           },
         },
