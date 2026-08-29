@@ -26,10 +26,10 @@ not a suitable single implementation branch.
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 after completed child #57 | 1–3 engineer-weeks | Medium |
-| 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
+| 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 18–37 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 23–48 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **49–102 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **48–100 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -125,11 +125,11 @@ There are three useful planning numbers:
   #18 seeds, including #57's Workhub `main().catch(handler)` family, are complete.
   Another widening requires fresh application evidence or a reusable result
   from #25/#26.
-- **One focused product line: 7–19 engineer-weeks after Phase 1.** Node Lease
-  prioritizes #2 and #5 (7–14 weeks), consuming the completed #23 CFG. Numeric/SHA-256
+- **One focused product line: 6–17 engineer-weeks after Phase 1.** Node Lease
+  prioritizes #2 and #5 (6–12 weeks), consuming the completed #23 CFG. Numeric/SHA-256
   prioritizes #26 and #4/#6 (10–19 weeks). These alternatives
   should not be added together unless both products are required.
-- **All currently requested work: 49–102 engineer-weeks.** This includes
+- **All currently requested work: 48–100 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -142,14 +142,14 @@ commitment to implement every row:
 | --- | --- | --- | ---: | --- |
 | A — proof-boundary MVP | #20 plus synchronous-ring, direct cross-project TLA, and Workhub top-level Promise-launch seeds | General CFG, aliases, broad host/framework semantics | Completed; 1–3 weeks of broader #18 work remains deferred | Retain the three narrow boundaries and re-estimate before another module-order family. |
 | B — reusable analyzer core | Completed #23; first 1–2 week bounded slices #26 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 2–4 additional weeks for the first slices; 10–19 weeks for parent #24 and #8 epics | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
-| C1 — temporal/Node Lease product | #2 and #5, consuming completed #23 where needed | Property generators and complete SHA-256 | 7–14 weeks | A realistic lease model checks, decodes, and replays a counterexample across supported backends. |
+| C1 — temporal/Node Lease product | #2 and #5, consuming completed #23 where needed | Property generators and complete SHA-256 | 6–12 weeks | A realistic lease model checks, decodes, and replays a counterexample across supported backends, then one production binding exposes any remaining abstraction gap. |
 | C2 — generated-test/numeric product | #4 and #6 plus #26, consuming completed #23 where needed | General temporal collections and broad React/event-loop work | 10–19 weeks | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
 | D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 18–35 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence. |
 | E — proof consumer | #13 | Any rewrite not authorized by replayable evidence | 6–12 weeks | Ship or reject one fail-closed stable-read transformation before considering general compression/mangling. |
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-49–102 week total remains additive and intentionally ignores speculative
+48–100 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -287,7 +287,7 @@ be added to the owning Issue and reflected here before implementation begins.
 | 1 | #25 general CFG values | L | 3–8 weeks | Select the next application-backed bounded child after completed #48 | Value conflict, widening, recurrence, and irreducible control |
 | 2 | #18 module initialization | M | 1–3 weeks | Re-estimate before selecting another application-backed family after completed #57 | Async evaluation joins, host packages, dynamic imports, and Promise execution after launch |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
-| 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Select the next bounded child after completed #42/#43/#44/#45 | Collection semantics, broader correlated invariants, wider finite universes, and external trace interoperability |
+| 4 | #5 collection temporal state/TLC | M | 2–4 weeks | Capture one unsupported Node Lease/TLC value or trace shape as a skipped acceptance test before selecting a child | Broader correlated collection observations, wider finite universes, and external trace interoperability |
 | 5 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
 | 6 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
 | 7 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
@@ -307,7 +307,7 @@ be added to the owning Issue and reflected here before implementation begins.
    #25/#24/#8 is 12–28 weeks. Keep these
    figures separate when deciding whether the first reusable boundary is enough
    to begin product dogfood.
-3. **Specification breadth (remaining Phase 2):** select #2/#5 for temporal and
+3. **Specification breadth (remaining Phase 2):** select #2/#5 (6–12 weeks) for temporal and
    Node Lease use cases, or #4/#6 for generated tests and numeric code. These are
    product choices rather than a single mandatory chain.
 4. **Proof consumers and broad framework semantics:** keep #13 and the unbounded
@@ -389,7 +389,7 @@ closed bounded epic.
 - **Deferred breadth:** #18's broader semantics and #7, #10, #16, and #13
   remain queued until application evidence
   or dependencies justify another bounded slice.
-- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 49–102
+- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 48–100
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 
