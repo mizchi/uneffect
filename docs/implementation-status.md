@@ -507,7 +507,7 @@ same property is proved for arbitrary TypeScript.
   counts, additive/nonlinear updates, repeated writes, or multiple self-affine
   members.
 
-- Active P2.32 composes the finite self-affine rule with one shared handler CFG.
+- Completed P2.32 composes the finite self-affine rule with one shared handler CFG.
   An unchanged Boolean state must route exactly one throw into catch, the catch
   must contain the only multiplicative update, and a mandatory `finally` must
   perform the unit countdown. The strict evidence adds

@@ -156,7 +156,7 @@ explicit conservative boundaries rather than untracked support.
    proves one realistic self-affine retry backoff only under an exact finite
    `requires` bound. It is not a general exponentiation proof or an
    unconditional call-site guarantee.
-   Active child [#48](https://github.com/mizchi/uneffect/issues/48) composes that
+   Completed child [#48](https://github.com/mizchi/uneffect/issues/48) composes that
    finite rule with one source-bound catch/finally topology and one immutable
    Boolean failure selector. Mutable selectors and arbitrary handler-dependent
    exponentiation remain outside the admitted fragment.
