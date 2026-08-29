@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 47–98 engineer-weeks; this is implementation volume, not a calendar
+estimate is 46–97 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -193,7 +193,7 @@ explicit conservative boundaries rather than untracked support.
    through counterexample extraction; dynamic composite elements remain a
    fail-closed non-proof.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
-   reduces filtering and covers recursive/user-defined refinements. Active
+   reduces filtering and covers recursive/user-defined refinements. Completed
    bounded child [#60](https://github.com/mizchi/uneffect/issues/60) admits one
    versioned finite candidate universe for an exported source-local unary
    predicate, rechecks the real predicate in generated Vitest, and rejects

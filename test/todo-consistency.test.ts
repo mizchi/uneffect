@@ -105,7 +105,6 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 25],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
-      ["Active", 2, 60],
       ["Queued", 2, 4],
       ["Queued", 2, 6],
       ["Queued", 3, 24],
@@ -115,7 +114,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toEqual([["Active", 2, 60]]);
+    expect(rows.filter(([status]) => status === "Active")).toEqual([]);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {

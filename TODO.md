@@ -75,12 +75,12 @@ Bounded child [#48](https://github.com/mizchi/uneffect/issues/48) is complete an
 composes that finite rule with one source-bound catch/finally handler topology
 and immutable Boolean failure selector.
 
-There are 13 open implementation Issues, including active bounded child #60,
-after completing bounded children #58
+There are 12 open implementation Issues after completing bounded child #60 and
+bounded children #58
 and #59 and children #56 and #57,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-12 parent/epic Issues remain and one bounded child is active: one proof-boundary
+12 parent/epic Issues remain and no bounded child is active: one proof-boundary
 parent in Phase 1, five specification-expressiveness parents in
 Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
@@ -92,7 +92,7 @@ completed bounded children
 follow-up [#46](https://github.com/mizchi/uneffect/issues/46) owns the landed
 solver-heavy CI timing and sharding handoff. Completed child #47 remains inside
 parent #25's estimate, so the 11 non-overlapping epic
-estimates total 47–98
+estimates total 46–97
 engineer-weeks, while the deferred Phase 1 breadth is 1–3
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
@@ -176,16 +176,18 @@ P2.31 completed #58's production-shaped string identity slice through finite
 Set/Map, Quint, native/WASM Z3, TLC trace import, and replay.
 P2.32 completed #59's exact literal record-valued lease grant Set observation
 through native/WASM Z3, Quint, TLC trace import, and replay.
-The 47–98 week figure is the additive whole-backlog inventory, not the estimate
+P2.33 completed #60's explicit finite user-predicate property specialization,
+real-predicate recheck, vacuity failure, and precondition-preserving shrink.
+The 46–97 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
 
-Active bounded child [#60](https://github.com/mizchi/uneffect/issues/60)
+Completed bounded child [#60](https://github.com/mizchi/uneffect/issues/60)
 adds one versioned finite specialization for an exported source-local unary
 property predicate. Its Red, Green, vacuity control, unsupported controls,
-Datadog-shaped dogfood, and benchmark are present locally; it remains active
-until full local gates and remote CI pass. Completed bounded child
+Datadog-shaped dogfood, benchmark, full local gates, and remote CI run
+33247276099 are green. Completed bounded child
 [#59](https://github.com/mizchi/uneffect/issues/59) retains an
 application-shaped record-valued Node Lease grant Set across native/WASM Z3,
 Quint, TLC import, and replay while dynamic composite elements remain
@@ -208,7 +210,7 @@ three simultaneously active implementation branches:
 | Candidate | Parent | First bounded Red | Slice estimate | Why it is bounded |
 | --- | --- | --- | ---: | --- |
 | Temporal/Node Lease | #5 | Import and replay one value or trace shape emitted by a realistic lease model but currently reported `unknown` | 1–2 weeks | The fixture chooses the value universe before any backend is widened. |
-| Property testing | #4 via active #60 | Register one explicit user predicate, construct valid values, and shrink a counterexample without violating its precondition | under 1 week | Red/Green is implemented locally; recursion and higher-order predicates stay outside the specialization. |
+| Property testing | #4 after completed #60 | Select one recursive or cross-file predicate boundary from a real application | 1–2 weeks | The explicit source-local unary specialization is complete; recursion and higher-order predicates stay outside it. |
 | Numeric/SHA-256 | #6 | Preserve bounds and element range through one non-escaping interprocedural typed-array alias | 1–2 weeks | Resize, sharing, and full SHA-256 composition remain separate children. |
 
 Choose exactly one candidate by first landing its skipped acceptance test and
@@ -223,8 +225,8 @@ backlog:
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the bounded #18 seeds through #57 | Completed; broader #18 is 1–3 weeks if justified by new evidence | Local evidence survives one supported project boundary, one exact async module dependency, and one exact top-level Promise launch/handler attachment. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#50/#51/#52/#53/#54/#55/#56 | 12–28 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
-| Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 5–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 11 non-overlapping epics | 47–98 engineer-weeks | Active child #60 is contained in #4; completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45/#58/#59 narrow parent #5. |
+| Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 5–16 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
+| Entire open research backlog | 12 Issues / 11 non-overlapping epics | 46–97 engineer-weeks | Completed child #60 narrows #4; completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45/#58/#59 narrow parent #5. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -251,8 +253,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57/#58/#59 handoffs:
-twelve queued parent/epic Issues and active bounded child #60. Every open Issue has exactly one
+As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57/#58/#59/#60 handoffs:
+twelve queued parent/epic Issues and no active bounded child. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -263,7 +265,6 @@ label.
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 only for quantified/correlated invariants; basic finite collections are independent | Wider collection correlation and remaining TLC values/traces |
-| Active | 2 | [#60](https://github.com/mizchi/uneffect/issues/60) | User predicate property specialization | Parent #4 | Full local/package/dogfood gates, remote CI, and closure reconciliation |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
