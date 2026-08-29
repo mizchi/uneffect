@@ -10,6 +10,148 @@ import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectP
 const execFileAsync = promisify(execFile);
 
 describe("property-test generation", () => {
+  it("resolves a directly imported property predicate by TypeChecker symbol identity", () => {
+    const validators = `
+      export function isMetricName(value: string): boolean {
+        return /^[a-z][a-z0-9_.]{0,31}$/.test(value)
+      }
+    `;
+    const metrics = `
+      import { isMetricName } from "./validators.js"
+      /* uneffect: requires isMetricName(name) */
+      /* uneffect: ensures result === name */
+      export function metricKey(name: string): string { return name }
+    `;
+    const generated = generateUneffectPropertyTests({
+      files: { "validators.ts": validators, "metrics.ts": metrics },
+      predicateSpecializations: {
+        "validators.ts:isMetricName": {
+          version: "uneffect-property-predicate/v1",
+          values: ["bad space", "requests.total", "a"],
+        },
+      },
+    });
+
+    expect(generated.diagnostics).toEqual([]);
+    expect(generated.boundaries[0]?.generators).toEqual([{
+      kind: "specialized",
+      predicate: "isMetricName",
+      values: ["bad space", "requests.total", "a"],
+    }]);
+    expect(generated.generatedFiles["metrics.uneffect.test.ts"]).toContain(
+      'import { isMetricName } from "./validators.js"',
+    );
+    expect(generated.generatedFiles["metrics.uneffect.test.ts"]).toContain(
+      'import { metricKey } from "./metrics.js"',
+    );
+  });
+
+  it("executes the real directly imported predicate in generated Vitest", async () => {
+    const directory = mkdtempSync(join(process.cwd(), ".tmp-uneffect-cross-predicate-"));
+    try {
+      const validatorName = join(directory, "validators.ts");
+      const consumerName = join(directory, "metrics.ts");
+      const outputName = join(directory, "metrics.uneffect.test.ts");
+      const validators = `export function isMetricName(value: string): boolean { return /^[a-z]+$/.test(value) }`;
+      const metrics = `
+        import { isMetricName } from "./validators.js"
+        /* uneffect: requires isMetricName(name) */
+        /* uneffect: ensures result === name */
+        export function metricKey(name: string): string { return name }
+      `;
+      const generated = generateUneffectPropertyTests({
+        files: { [validatorName]: validators, [consumerName]: metrics },
+        predicateSpecializations: {
+          [`${validatorName}:isMetricName`]: {
+            version: "uneffect-property-predicate/v1",
+            values: ["bad space", "valid"],
+          },
+        },
+      });
+      expect(generated.diagnostics).toEqual([]);
+      await writeFile(validatorName, validators);
+      await writeFile(consumerName, metrics);
+      await writeFile(outputName, generated.generatedFiles[outputName]!);
+      const executed = await execFileAsync("pnpm", ["vitest", "run", outputName], { cwd: process.cwd() });
+      expect(executed.stdout).toContain("1 passed");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }, 15_000);
+
+  it("fails closed for symbol-distinct and indirect cross-file predicates", () => {
+    const files = {
+      "validators.ts": `export function accepted(value: string): boolean { return value.length > 0 }`,
+      "barrel.ts": `export { accepted } from "./validators.js"`,
+      "consumer.ts": `
+        import { accepted } from "./barrel.js"
+        /* uneffect: requires accepted(value) */
+        /* uneffect: ensures result === value */
+        export function identity(value: string): string { return value }
+      `,
+      "shadow.ts": `
+        import { accepted as importedAccepted } from "./validators.js"
+        function accepted(value: string): boolean { return importedAccepted(value) }
+        /* uneffect: requires accepted(value) */
+        /* uneffect: ensures result === value */
+        export function identity(value: string): string { return value }
+      `,
+    };
+    const result = generateUneffectPropertyTests({
+      files,
+      predicateSpecializations: {
+        "validators.ts:accepted": { version: "uneffect-property-predicate/v1", values: ["a"] },
+      },
+    });
+
+    expect(result.generatedFiles).toEqual({});
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics.every((diagnostic) => diagnostic.message.includes("directly imported"))).toBe(true);
+  });
+
+  it("rejects namespace, default, type-only, and dynamically selected predicate imports", () => {
+    const result = generateUneffectPropertyTests({
+      files: {
+        "validators.ts": `
+          export default function acceptedDefault(value: string): boolean { return value.length > 0 }
+          export function accepted(value: string): boolean { return value.length > 0 }
+        `,
+        "namespace.ts": `
+          import * as validators from "./validators.js"
+          /* uneffect: requires validators.accepted(value) */
+          /* uneffect: ensures result === value */
+          export function namespaceIdentity(value: string): string { return value }
+        `,
+        "default.ts": `
+          import accepted from "./validators.js"
+          /* uneffect: requires accepted(value) */
+          /* uneffect: ensures result === value */
+          export function defaultIdentity(value: string): string { return value }
+        `,
+        "type-only.ts": `
+          import type { accepted } from "./validators.js"
+          /* uneffect: requires accepted(value) */
+          /* uneffect: ensures result === value */
+          export function typeIdentity(value: string): string { return value }
+        `,
+        "dynamic.ts": `
+          import { accepted } from "./validators.js"
+          const selected = accepted
+          /* uneffect: requires selected(value) */
+          /* uneffect: ensures result === value */
+          export function dynamicIdentity(value: string): string { return value }
+        `,
+      },
+      predicateSpecializations: {
+        "validators.ts:accepted": { version: "uneffect-property-predicate/v1", values: ["a"] },
+        "validators.ts:acceptedDefault": { version: "uneffect-property-predicate/v1", values: ["a"] },
+      },
+    });
+
+    expect(result.generatedFiles).toEqual({});
+    expect(result.diagnostics.map(({ functionName }) => functionName).sort()).toEqual([
+      "defaultIdentity", "dynamicIdentity", "namespaceIdentity", "typeIdentity",
+    ]);
+  });
+
   it("constructs and shrinks a source-local user predicate specialization", async () => {
     const source = `
       export function isMetricName(value: string): boolean {

@@ -8,13 +8,19 @@ change TypeScript emit and add no production runtime dependency.
 
 Arbitrary TypeScript predicates cannot be inverted into constructive generators
 in general. For one bounded fragment, callers can provide a finite, versioned
-candidate universe for an exported source-local unary predicate:
+candidate universe for an exported unary predicate. The predicate may be in
+the contract source or directly named-imported from one other supplied source:
 
 ```ts
-// metrics.ts
+// validators.ts
 export function isMetricName(value: string): boolean {
   return /^[a-z][a-z0-9_.]{0,31}$/.test(value)
 }
+```
+
+```ts
+// metrics.ts
+import { isMetricName } from "./validators.js"
 
 /* uneffect: requires isMetricName(name) */
 /* uneffect: ensures result === name */
@@ -25,9 +31,9 @@ export function metricKey(name: string): string {
 
 ```ts
 generateUneffectPropertyTests({
-  files: { "metrics.ts": source },
+  files: { "validators.ts": validators, "metrics.ts": metrics },
   predicateSpecializations: {
-    "metrics.ts:isMetricName": {
+    "validators.ts:isMetricName": {
       version: "uneffect-property-predicate/v1",
       values: ["bad space", "requests.total", "a"],
     },
@@ -43,20 +49,26 @@ real precondition still holds and the property still fails.
 
 This fragment requires all of the following:
 
-- the key is the exact `<source file>:<predicate name>` pair;
+- the key is the canonical declaration `<source file>:<exported predicate name>`
+  pair, not the consumer file;
 - the schema is exactly `uneffect-property-predicate/v1`;
-- the predicate is an exported function declaration in the same source file;
+- the predicate is an exported function declaration in the same source file or
+  a direct named import resolved to exactly one supplied source declaration by
+  the TypeScript TypeChecker;
 - it has exactly one identifier parameter;
 - the contract is exactly `requires predicate(parameter)`;
 - candidates are non-empty primitive values matching the parameter's ordinary
   `string`, `number`, or `boolean` annotation.
 
 Missing registrations, empty universes, non-exported or multi-argument
-predicates, nested predicate expressions, cross-file predicates, recursion,
-higher-order predicates, and inferred candidate generation remain unsupported.
+predicates, nested predicate expressions, barrel re-exports, namespace/default
+imports, recursion, higher-order predicates, and inferred candidate generation
+remain unsupported. Same-spelled local wrappers do not inherit a registered
+predicate's identity.
 The Z3 generator does not translate the predicate body; it preserves the
 ordinary finite generated-test path instead.
 
-The checked-in Datadog-shaped fixture is
-`examples/dogfood/datadog-metric-name.ts`. It demonstrates the integration
-shape only; it is not a claim about Datadog's complete naming rules.
+The checked-in Datadog-shaped fixture separates
+`examples/dogfood/datadog-validator.ts` from
+`examples/dogfood/datadog-metric-name.ts`. It demonstrates the direct-import
+integration shape only; it is not a claim about Datadog's complete naming rules.

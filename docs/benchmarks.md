@@ -2204,3 +2204,13 @@ Vitest sources. A selected run measured 1.4222 ms mean over 352 samples
 matching, registry validation, and source generation; it does not execute the
 generated predicates or establish performance for recursive, cross-file, or
 higher-order specialization.
+
+The #61 direct cross-file specialization benchmark resolves 16 named imports
+from one supplied validator module, binds each alias to its canonical function
+declaration with a minimal no-library TypeScript Program, validates the finite
+registries, and emits standalone Vitest sources. A selected run measured
+1.2507 ms mean over 400 samples (799.57 operations per second, 3.79% RME).
+An earlier standard-library-loading implementation measured 229.45 ms mean and
+was rejected before landing. The retained benchmark does not execute generated
+tests and does not cover barrels, namespace/default imports, recursive
+predicates, or full consumer-project type checking.

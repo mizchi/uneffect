@@ -91,7 +91,13 @@ export interface CheckUneffectPropertyResult {
   tested: number;
 }
 
-interface InternalBoundary extends PropertyTestBoundary { parameters: string[]; predicateImports: string[] }
+interface PredicateImport {
+  localName: string;
+  exportedName: string;
+  declarationFileName: string;
+}
+
+interface InternalBoundary extends PropertyTestBoundary { parameters: string[]; predicateImports: PredicateImport[] }
 
 const supported = new Set<PropertyBoundaryKind>(["Int", "Nat", "U8", "U32", "I32"]);
 const edgeValues: Record<PropertyBoundaryKind, readonly number[]> = {
@@ -407,12 +413,84 @@ function exactUnaryPredicate(requirement: string, parameter: string): string | u
   } catch { return undefined; }
 }
 
-function exportedUnaryPredicate(source: ts.SourceFile, name: string): boolean {
-  return source.statements.some((statement) => ts.isFunctionDeclaration(statement)
-    && statement.name?.text === name && statement.body !== undefined
-    && statement.parameters.length === 1 && statement.parameters[0] !== undefined
-    && ts.isIdentifier(statement.parameters[0].name)
-    && statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
+function createPropertyProgram(files: Record<string, string>): ts.Program {
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2024,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    noLib: true,
+    types: [],
+    noEmit: true,
+  };
+  const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+  host.fileExists = (fileName) => Object.hasOwn(files, fileName) || ts.sys.fileExists(fileName);
+  host.readFile = (fileName) => files[fileName] ?? ts.sys.readFile(fileName);
+  host.getSourceFile = (fileName, version, onError, fresh) => Object.hasOwn(files, fileName)
+    ? ts.createSourceFile(fileName, files[fileName]!, version, true, ts.ScriptKind.TS)
+    : original(fileName, version, onError, fresh);
+  const resolveModule = (moduleName: string, containingFile: string): ts.ResolvedModuleFull | undefined => {
+    if (moduleName.startsWith(".")) {
+      const joined = posix.normalize(posix.join(posix.dirname(containingFile), moduleName));
+      const absoluteStem = joined.replace(/\.[cm]?js$/, "");
+      const stems = posix.isAbsolute(absoluteStem)
+        ? [absoluteStem, posix.relative(process.cwd().replaceAll("\\", "/"), absoluteStem)] : [absoluteStem];
+      const candidate = stems.flatMap((stem) => [`${stem}.ts`, `${stem}.tsx`, `${stem}.mts`, `${stem}.cts`, `${stem}/index.ts`])
+        .find((name) => Object.hasOwn(files, name));
+      if (candidate) return {
+        resolvedFileName: candidate,
+        extension: candidate.endsWith(".tsx") ? ts.Extension.Tsx : candidate.endsWith(".mts") ? ts.Extension.Mts : candidate.endsWith(".cts") ? ts.Extension.Cts : ts.Extension.Ts,
+        isExternalLibraryImport: false,
+      };
+    }
+    return ts.resolveModuleName(moduleName, containingFile, options, host).resolvedModule;
+  };
+  host.resolveModuleNames = (moduleNames, containingFile) => moduleNames.map((moduleName) => resolveModule(moduleName, containingFile));
+  host.resolveModuleNameLiterals = (moduleLiterals, containingFile) => moduleLiterals.map((moduleLiteral) => ({ resolvedModule: resolveModule(moduleLiteral.text, containingFile) }));
+  return ts.createProgram(Object.keys(files), options, host);
+}
+
+function exportedUnaryDeclaration(declaration: ts.Node | undefined): declaration is ts.FunctionDeclaration & { name: ts.Identifier } {
+  return Boolean(declaration && ts.isFunctionDeclaration(declaration) && declaration.name && declaration.body
+    && declaration.parameters.length === 1 && declaration.parameters[0] && ts.isIdentifier(declaration.parameters[0].name)
+    && declaration.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
+}
+
+function resolvePredicateImport(
+  source: ts.SourceFile,
+  predicate: string,
+  checker: ts.TypeChecker | undefined,
+  files: Readonly<Record<string, string>>,
+): PredicateImport | undefined {
+  const local = source.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === predicate);
+  if (local) return exportedUnaryDeclaration(local) ? {
+    localName: predicate,
+    exportedName: predicate,
+    declarationFileName: source.fileName,
+  } : undefined;
+
+  if (!checker) return undefined;
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.importClause?.isTypeOnly) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    const specifier = bindings.elements.find((element) => element.name.text === predicate);
+    if (!specifier || specifier.isTypeOnly) continue;
+    const symbol = checker.getSymbolAtLocation(specifier.name);
+    const canonical = symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
+    const declaration = canonical?.declarations?.length === 1 ? canonical.declarations[0] : undefined;
+    if (!exportedUnaryDeclaration(declaration)) return undefined;
+    const moduleSymbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+    const moduleSource = moduleSymbol?.declarations?.length === 1 && ts.isSourceFile(moduleSymbol.declarations[0])
+      ? moduleSymbol.declarations[0] : undefined;
+    if (!moduleSource || moduleSource.fileName !== declaration.getSourceFile().fileName
+      || !Object.hasOwn(files, declaration.getSourceFile().fileName)) return undefined;
+    return {
+      localName: predicate,
+      exportedName: declaration.name.text,
+      declarationFileName: declaration.getSourceFile().fileName,
+    };
+  }
+  return undefined;
 }
 
 function specializationValueMatches(type: ts.TypeNode | undefined, value: PropertyLiteral): boolean {
@@ -641,10 +719,22 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
   const parameterNames = boundary.parameters;
   const predicates = boundary.requires.length ? boundary.requires.map((value) => `(${value})`).join(" && ") : "true";
   const postconditions = boundary.ensures.map((value) => `(${value})`).join(" && ");
+  const imports = new Map<string, Map<string, string>>();
+  const addImport = (fileName: string, exportedName: string, localName = exportedName): void => {
+    const names = imports.get(fileName) ?? new Map<string, string>();
+    names.set(exportedName, localName);
+    imports.set(fileName, names);
+  };
+  boundary.predicateImports.forEach((item) => addImport(item.declarationFileName, item.exportedName, item.localName));
+  addImport(sourceName, boundary.functionName);
+  const importStatements = [...imports.entries()].map(([fileName, names]) => {
+    const bindings = [...names.entries()].map(([exportedName, localName]) => exportedName === localName ? exportedName : `${exportedName} as ${localName}`);
+    return `import { ${bindings.join(", ")} } from ${JSON.stringify(importPath(fileName, outputName))}\n`;
+  }).join("");
   return `// Generated by Uneffect. Test-only code; no production runtime dependency.\n` +
     `import { expect, test } from "vitest"\n` +
     (counterexamplePath ? `import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"\nimport { dirname } from "node:path"\n` : "") +
-    `import { ${[...new Set([...boundary.predicateImports, boundary.functionName])].join(", ")} } from ${JSON.stringify(importPath(sourceName, outputName))}\n\n` +
+    `${importStatements}\n` +
     `const domains = ${JSON.stringify(boundary.generators)} as const\n` +
     `const refinementValues = ${JSON.stringify(boundary.generatorHints)} as const\n` +
     `const refinementTuples = ${JSON.stringify(boundary.generatorTuples)} as const\n` +
@@ -680,8 +770,10 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
   if (options.backend !== undefined && options.backend !== "quickcheck") throw new Error(`unsupported property backend: ${options.backend}`);
   const maximumGeneratedArrayLength = arrayCap(options.arrayLengthCap);
   const generatedFiles: Record<string, string> = {}, boundaries: InternalBoundary[] = [], diagnostics: GenerateUneffectPropertyTestsResult["diagnostics"] = [];
+  const program = options.predicateSpecializations && Object.keys(options.files).length > 1 ? createPropertyProgram(options.files) : undefined;
+  const checker = program?.getTypeChecker();
   for (const [fileName, text] of Object.entries(options.files)) {
-    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const source = program?.getSourceFile(fileName) ?? ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const fileBoundaries: InternalBoundary[] = [];
     for (const node of source.statements) {
       if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
@@ -693,7 +785,7 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
         diagnostics.push({ fileName, functionName: node.name.text, message: "property generation currently supports identifier parameters only" }); continue;
       }
       const parameters = node.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
-      const predicateImports = new Set<string>();
+      const predicateImports = new Map<string, PredicateImport>();
       const specializationErrors: string[] = [];
       const domains = node.parameters.map((parameter, index): PropertyTestDomain | undefined => {
         const inferred = typeDomain(parameter.type);
@@ -703,15 +795,17 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
           specializationErrors.push(`${parameters[index]} requires exactly one direct unary predicate clause`);
           return undefined;
         }
-        const predicate = matches[0]!, specialization = options.predicateSpecializations?.[`${fileName}:${predicate}`];
-        if (!specialization) { specializationErrors.push(`${predicate} has no ${fileName}:${predicate} specialization`); return undefined; }
+        const predicate = matches[0]!, predicateImport = resolvePredicateImport(source, predicate, checker, options.files);
+        if (!predicateImport) { specializationErrors.push(`${predicate} is neither an exported source-local nor a directly imported exported unary function declaration`); return undefined; }
+        const specializationKey = `${predicateImport.declarationFileName}:${predicateImport.exportedName}`;
+        const specialization = options.predicateSpecializations?.[specializationKey];
+        if (!specialization) { specializationErrors.push(`${predicate} has no ${specializationKey} specialization`); return undefined; }
         if (specialization.version !== "uneffect-property-predicate/v1") { specializationErrors.push(`${predicate} uses an unsupported specialization version`); return undefined; }
         if (specialization.values.length === 0) { specializationErrors.push(`${predicate} has an empty candidate universe`); return undefined; }
-        if (!exportedUnaryPredicate(source, predicate)) { specializationErrors.push(`${predicate} is not an exported source-local unary function declaration`); return undefined; }
         if (specialization.values.some((value) => !specializationValueMatches(parameter.type, value))) {
           specializationErrors.push(`${predicate} candidates do not match the ordinary primitive parameter type`); return undefined;
         }
-        predicateImports.add(predicate);
+        predicateImports.set(predicate, predicateImport);
         return { kind: "specialized", predicate, values: [...new Set(specialization.values)] };
       });
       if (domains.some((value) => !value)) {
@@ -721,7 +815,7 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
           message: `property generation currently supports identifier parameters with scalar, bounded typed-array, literal-union, or explicitly specialized exported unary-predicate boundaries${specializationErrors.length ? `: ${specializationErrors.join("; ")}` : ""}`,
         }); continue;
       }
-      try { [...requires, ...ensures].forEach((expression) => validateExpression(expression, predicateImports)); } catch (cause) {
+      try { [...requires, ...ensures].forEach((expression) => validateExpression(expression, new Set(predicateImports.keys()))); } catch (cause) {
         diagnostics.push({ fileName, functionName: node.name.text, message: cause instanceof Error ? cause.message : String(cause) }); continue;
       }
       const generatorHints = refinementHints(requires, parameters, domains as PropertyTestDomain[]);
@@ -729,7 +823,7 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
       const suppliedTuples = options.refinementTuples?.[boundaryKey(fileName, node.name.text)] ?? [];
       const generatorTuples = [...derivedTuples, ...suppliedTuples.map((tuple) => [...tuple])]
         .filter((tuple, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(tuple)) === index);
-      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, predicateImports: [...predicateImports], requires, ensures };
+      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, predicateImports: [...predicateImports.values()], requires, ensures };
       boundaries.push(boundary); fileBoundaries.push(boundary);
     }
     if (fileBoundaries.length > 0) {

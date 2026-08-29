@@ -879,12 +879,14 @@ same property is proved for arbitrary TypeScript.
   boundaries, literal unions, records, nested optional presence, and bounded
   arrays, with deterministic counterexamples for the supported subset.
 - A versioned explicit property-predicate registry admits one exported,
-  source-local unary function used directly as `requires predicate(parameter)`.
+  source-local or directly named-imported unary function used exactly as
+  `requires predicate(parameter)`. Cross-file resolution binds the TypeChecker
+  symbol to its canonical declaration file and exported name.
   Its finite primitive candidates are rechecked by the real predicate in the
   generated Vitest; zero valid candidates fail as vacuous, and shrinking stays
   within smaller registered candidates that preserve the precondition.
-  Cross-file, recursive, higher-order, multi-argument, nested-call, and inferred
-  predicate domains remain unsupported.
+  Recursive, higher-order, multi-argument, nested-call, barrel/namespace/default
+  import, and inferred predicate domains remain unsupported.
 - Typed-array analysis checks supported allocation bounds, index bounds,
   element ranges, bitwise/shift semantics, and optional runtime refinements.
   SHA-256 building blocks are covered, but the complete interprocedural proof
