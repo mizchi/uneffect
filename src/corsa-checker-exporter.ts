@@ -32,7 +32,7 @@ export interface CorsaCheckerFactFile {
 export interface CorsaCheckerPromiseObservationFact {
   owner: number;
   source: string;
-  observation: "await";
+  observation: "await" | "return";
   catchesRejection: false;
   conditional: boolean;
   controlConditions: CorsaCheckerControlCondition[];
@@ -100,6 +100,7 @@ interface PendingPromiseObservation {
   start: number;
   end: number;
   control: { ifStart: number; expected: boolean } | null;
+  observation: "await" | "return";
 }
 
 interface RawCorsaCheckerFacts {
@@ -280,7 +281,23 @@ export const corsaCheckerFactRule = createRule({
               ifStart: byteOffset(text, awaitControl.control.node.range[0]),
               expected: awaitControl.control.expected,
             },
+            observation: "await",
           });
+        }
+        const returnedExpression = directReturnedCallExpression(node);
+        if (returnedExpression && (isExplicitCorsaPromiseType(checker, returnedExpression.expression)
+          || (type ? isExplicitCorsaPromiseReturn(checker, type, node) : false))) {
+          const returnControl = classifyDirectAwaitControl(returnedExpression.returnStatement, caller.node);
+          if (returnControl.supported && returnControl.control === null) {
+            promiseObservations.push({
+              ownerSymbolId: caller.symbolId,
+              source: text.slice(returnedExpression.expression.range[0], returnedExpression.expression.range[1]),
+              start: byteOffset(text, returnedExpression.expression.range[0]),
+              end: byteOffset(text, returnedExpression.expression.range[1]),
+              control: null,
+              observation: "return",
+            });
+          }
         }
         const inferred = directSymbol ? checkerBuiltinEffect(
           checker, node, directSymbol, callee, text, rootFiles, importedBuiltinBindings.get(directSymbol.id),
@@ -473,7 +490,7 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
         return {
           owner,
           source: item.source,
-          observation: "await",
+          observation: item.observation,
           catchesRejection: false,
           conditional: condition !== null,
           controlConditions: condition === null ? [] : [condition],
@@ -624,6 +641,45 @@ function classifyDirectAwaitControl(awaitNode: any, ownerNode: any): {
     child = current;
   }
   return { supported: true, control };
+}
+
+function directReturnedCallExpression(call: any): { expression: any; returnStatement: any } | null {
+  if (call.parent?.type === "ReturnStatement" && call.parent.argument === call) {
+    return { expression: call, returnStatement: call.parent };
+  }
+  if (call.parent?.type === "TSAsExpression" && call.parent.expression === call
+    && call.parent.parent?.type === "ReturnStatement" && call.parent.parent.argument === call.parent) {
+    return { expression: call.parent, returnStatement: call.parent.parent };
+  }
+  return null;
+}
+
+function isExplicitCorsaPromiseType(checker: CorsaTypeCheckerShape, expression: Node): boolean {
+  const type = checker.getTypeAtLocation(expression);
+  if (!type) return false;
+  return /^(?:Promise|PromiseLike)<.+>$/.test(checker.typeToString(type));
+}
+
+function isExplicitCorsaPromiseReturn(checker: CorsaTypeCheckerShape, type: CorsaType, call: any): boolean {
+  const argumentTypeTexts = (call.arguments ?? []).map((argument: Node) => {
+    const argumentType = checker.getTypeAtLocation(argument);
+    if (!argumentType) return ["unknown"];
+    const base = checker.getBaseTypeOfLiteralType(argumentType);
+    return [...new Set([
+      checker.typeToString(argumentType),
+      ...(base ? [checker.typeToString(base)] : []),
+      ...checker.getTypesOfType(argumentType).map((item) => checker.typeToString(item)),
+    ])];
+  });
+  const explicitTypeArgumentTexts = (call.typeArguments ?? []).map((argument: Node) => {
+    const argumentType = checker.getTypeAtLocation(argument);
+    return argumentType ? checker.typeToString(argumentType) : "unknown";
+  });
+  const signature = checker.getCallSignatureFacts(
+    type, SignatureKind.Call, argumentTypeTexts, explicitTypeArgumentTexts,
+  ).signature;
+  const result = signature && checker.getReturnTypeOfSignature(signature);
+  return Boolean(result && /^(?:Promise|PromiseLike)<.+>$/.test(checker.typeToString(result)));
 }
 
 function leadingUneffectTrivia(text: string, before: number): { text: string; start: number; end: number } | null {

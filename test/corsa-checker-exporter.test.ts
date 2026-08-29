@@ -200,6 +200,63 @@ describe("corsa-bind checker fact exporter", () => {
     expect(facts.promiseObservations[1]!.span.start).toBeGreaterThan(Buffer.byteLength(files["a.ts"]));
   });
 
+  it("exports Workhub-shaped direct Promise return observations", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-promise-returns.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations.map((item) => ({
+      source: item.source,
+      observation: item.observation,
+      conditional: item.conditional,
+      paths: item.controlPaths,
+    }))).toEqual([
+      { source: "response.arrayBuffer()", observation: "return", conditional: false, paths: [[]] },
+      { source: "response.json() as Promise<T>", observation: "return", conditional: false, paths: [[]] },
+    ]);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared, JSON.stringify(compared.schemaDrift, null, 2)).toMatchObject({
+      equivalent: true,
+      semanticEquivalent: true,
+      checkerMetadataEquivalent: true,
+      schemaDrift: [],
+    });
+  });
+
+  it("keeps conditional and non-call Promise returns outside the direct-return fragment", async () => {
+    for (const source of [
+      `export function choose(enabled: boolean, response: Response): Promise<unknown> { if (enabled) return response.json(); throw new Error("disabled") }`,
+      `export function identity(value: Promise<unknown>): Promise<unknown> { return value }`,
+      `export function nested(response: Response): Promise<unknown> { return response.json() as unknown as Promise<unknown> }`,
+    ]) {
+      const files = { "fixture.ts": source };
+      const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+      expect(facts.promiseObservations).toEqual([]);
+      const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+      expect(compared).toMatchObject({ equivalent: false, checkerMetadataEquivalent: false });
+    }
+  });
+
+  it("rejects tampered direct-return source, span, owner, and observation evidence", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-promise-returns.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const mutations = [
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.source = "response.text()"; },
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.span.end -= 1; },
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.owner = 999; },
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.observation = "await"; },
+    ];
+    for (const mutate of mutations) {
+      const tampered = structuredClone(facts);
+      mutate(tampered);
+      const compared = await compareUneffectFrontends({ files, corsaFacts: tampered, requireCorsaCheckerFacts: true });
+      expect(compared).toMatchObject({ equivalent: false, checkerMetadataEquivalent: false });
+      expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+        message: expect.stringContaining("checker-backed Promise observation evidence differs"),
+      }));
+    }
+  });
+
   it("does not attribute a nested callback await to its outer function", async () => {
     const files = {
       "fixture.ts": `

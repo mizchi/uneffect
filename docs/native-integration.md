@@ -111,6 +111,15 @@ awaits under loop/catch ownership remain omitted, which makes checker Promise
 evidence differ instead of flattening path semantics.
 Nested function and callback awaits are not attributed to the outer owner, and
 source/span/owner tampering fails metadata parity.
+The direct-return extension emits `observation: "return"` only when an
+unconditional returned expression is a checker-resolved call whose selected
+signature returns explicit `Promise<T>`/`PromiseLike<T>`, or when that call has
+one `as Promise<T>` wrapper. Its source and project UTF-8 span cover the full
+returned expression, including the assertion. Conditional returns, bare
+Promise identifiers, and nested assertions remain omitted and therefore fail
+Promise-evidence parity. Promise comparison now includes every observation
+kind instead of filtering to `await`, so omitted return evidence cannot hide
+behind semantic projection.
 Calls outside the exported project symbol set are not emitted. Traversal stops
 at unsupported nested function and callback boundaries, so their work is not
 misreported as an immediate call by the outer function; comparison with a

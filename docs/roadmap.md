@@ -218,7 +218,9 @@ rejection ownership, callbacks, loops, and other Promise records remain
 explicit gaps. Completed bounded child
 [#52](https://github.com/mizchi/uneffect/issues/52) adds only direct awaits
 beneath one enclosing `if` branch with exact condition identity and polarity;
-nested/loop/catch controls and chains remain explicit gaps. The completed
+nested/loop/catch controls and chains remain explicit gaps. Active child
+[#53](https://github.com/mizchi/uneffect/issues/53) adds only unconditional
+direct Promise-call returns, with one optional `as Promise<T>` wrapper. The completed
 [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
 splits the long integration gate, retains timing artifacts, calibrates one
 measured timeout, and preserves every existing fail-closed obligation.

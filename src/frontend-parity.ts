@@ -356,9 +356,9 @@ function checkerMetadataParityFailures(reference: any, actual: any): FrontendSch
     controlPaths: item.controlPaths,
     span: item.span,
   });
-  const expectedPromises = reference.promiseObservations.filter((item: any) => item.observation === "await")
+  const expectedPromises = reference.promiseObservations
     .map((item: any) => promiseKey(item, referenceNames)).sort();
-  const observedPromises = actual.promiseObservations.filter((item: any) => item.observation === "await")
+  const observedPromises = actual.promiseObservations
     .map((item: any) => promiseKey(item, actualNames)).sort();
   if (JSON.stringify(expectedPromises) !== JSON.stringify(observedPromises)) failures.push({
     frontend: "corsa",

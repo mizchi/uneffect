@@ -660,6 +660,15 @@ loop controls remain absent and therefore fail parity rather than being
 flattened. Condition ID, polarity, and path tampering also fail checker metadata
 parity.
 
+The `corsa-workhub-promise-returns.ts` corpus is derived from direct
+`response.arrayBuffer()` and asserted `response.json() as Promise<T>` returns
+in Workhub's Freee, Gmail, and GitHub clients at the same revision. Corsa emits
+the full returned expression source and project UTF-8 span as an unconditional
+`return` observation. Conditional returns, bare Promise identifiers, and a
+double assertion remain explicit parity failures. Source/span/owner/observation
+tampering is rejected. This does not prove rejection handling or arbitrary
+thenable behavior.
+
 P2.31 adds `cfg-bounded-retry-backoff.ts`, a realistic retry loop that doubles
 one delay while decrementing a retry counter. The function's inline Uneffect
 contract states `0 <= retries <= 8`; analysis records that exact source span,

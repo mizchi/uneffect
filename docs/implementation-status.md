@@ -898,6 +898,10 @@ same property is proved for arbitrary TypeScript.
   owner-local condition ID, then/else polarity, and singleton control path.
   Nested/loop/catch conditional await evidence still differs explicitly, nested
   callback awaits stay outside the outer owner, and metadata tampering fails.
+  The direct-return follow-up additionally exports unconditional checker-resolved
+  Promise-call returns, including one `as Promise<T>` wrapper, with the full
+  expression source/span. Promise metadata parity now compares all observation
+  kinds. Conditional, non-call, and nested-wrapper returns remain explicit gaps.
   Broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
