@@ -4,6 +4,8 @@ import { analyzeAsyncSafety, generateResourceSafetyQuint, type AsyncSafetyResult
 import { analyzePromiseChains } from "./promise-chains.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
 import { generateResourceHostTemporalQuint, resourceHostTemporalSupport } from "./resource-host-temporal.js";
+import { generateQuint } from "./spec-backends.js";
+import type { TemporalDslLink } from "./temporal-dsl.js";
 
 export type TemporalRuntime = "web" | "node";
 
@@ -13,6 +15,7 @@ export interface GenerateTemporalModelOptions {
   runtime: TemporalRuntime;
   root?: string;
   nodeTopLevelMode?: "commonjs" | "esm";
+  linkedTemporal?: TemporalDslLink;
 }
 
 export interface TemporalModelResult {
@@ -28,7 +31,7 @@ export interface TemporalModelResult {
 }
 
 export interface TemporalModelProjection {
-  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle" | "resource-host-lifecycle";
+  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "resource-lifecycle" | "resource-host-lifecycle";
   module: string;
   owner?: string;
   properties: string[];
@@ -64,6 +67,15 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
     properties: hostProperties,
     quint: hostQuint,
   }];
+  if (options.linkedTemporal) {
+    const linkedModule = moduleName(options.linkedTemporal.specificationFile);
+    models.push({
+      kind: "user-temporal",
+      module: linkedModule,
+      properties: options.linkedTemporal.spec.properties.map((property) => property.name),
+      quint: generateQuint(linkedModule, options.linkedTemporal.spec),
+    });
+  }
   const resourceOwner = options.root ?? "main";
   const asyncSafety = analyzeAsyncSafety(options.fileName, options.source);
   const resources = asyncSafety.resources.filter((resource) => resource.owner === resourceOwner);
@@ -102,7 +114,7 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
     backend: "quint",
     runtime: options.runtime,
     includedDomains: [
-      ...(temporal ? ["user-temporal" as const] : []),
+      ...(temporal || options.linkedTemporal ? ["user-temporal" as const] : []),
       "async-patterns",
       "promise-chains",
       ...(resources.length > 0 ? ["resource-lifecycle" as const] : []),

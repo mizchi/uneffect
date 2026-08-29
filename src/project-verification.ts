@@ -10,6 +10,7 @@ import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { generateTemporalModel } from "./temporal-model.js";
+import { resolveTemporalDslLink } from "./temporal-dsl.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import {
@@ -138,7 +139,7 @@ export interface ProjectTemporalProperty {
 
 export interface ProjectTemporalModel {
   fileName: string;
-  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle" | "resource-host-lifecycle";
+  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "resource-lifecycle" | "resource-host-lifecycle";
   module?: string;
   owner?: string;
   quint: string;
@@ -174,6 +175,8 @@ function inMemoryProgram(
   const moduleDirectory = dirname(fileURLToPath(import.meta.url));
   const selfPackageEntry = [join(moduleDirectory, "index.ts"), join(moduleDirectory, "index.d.ts")]
     .find((candidate) => ts.sys.fileExists(candidate));
+  const selfSpecEntry = [join(moduleDirectory, "temporal-dsl.ts"), join(moduleDirectory, "temporal-dsl.d.ts")]
+    .find((candidate) => ts.sys.fileExists(candidate));
   const virtualDirectories = new Set(Object.keys(files).flatMap((fileName) => {
     const directories: string[] = [];
     for (let current = dirname(fileName); current !== dirname(current); current = dirname(current)) directories.push(current);
@@ -189,6 +192,11 @@ function inMemoryProgram(
     if (moduleName === "@mizchi/uneffect" && selfPackageEntry) return {
       resolvedFileName: selfPackageEntry,
       extension: selfPackageEntry.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts,
+      isExternalLibraryImport: true,
+    };
+    if (moduleName === "@mizchi/uneffect/spec" && selfSpecEntry) return {
+      resolvedFileName: selfSpecEntry,
+      extension: selfSpecEntry.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts,
       isExternalLibraryImport: true,
     };
     return ts.resolveModuleName(moduleName, containingFile, compilerOptions, host).resolvedModule;
@@ -297,12 +305,14 @@ async function verifyUneffectProjectFiles(
       compilerOptions: { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.ESNext },
     }).outputText;
     if (options.temporalRuntime === "web" || options.temporalRuntime === "node") {
+      const linkedTemporal = resolveTemporalDslLink(fileName, source, options.files);
       const model = generateTemporalModel({
         fileName,
         source,
         runtime: options.temporalRuntime,
         root: options.temporalRoot ?? "main",
         nodeTopLevelMode: options.nodeTopLevelMode ?? "commonjs",
+        ...(linkedTemporal ? { linkedTemporal } : {}),
       });
       for (const projection of model.models) {
         temporalModels.push({ fileName, kind: projection.kind, module: projection.module, owner: projection.owner, quint: projection.quint });

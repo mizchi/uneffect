@@ -102,6 +102,13 @@ interleaved into that product.
   - [ ] Define the Uneffect DSL independently of Quint syntax. Preserve the ([#64](https://github.com/mizchi/uneffect/issues/64))
     TypeScript-oriented surface, zero-runtime comment embedding, gradual
     adoption, and optional runtime-assertion lowering.
+    - [x] Add the first typed `*.uneffect.ts` temporal authoring fragment and
+      lower it to the backend-neutral `TemporalSpec` without executing it.
+    - [x] Connect an implementation with
+      `/* uneffect:temporal from "./model.uneffect.ts#default" */`, resolve it
+      in project verification, and verify linked safety invariants.
+    - [ ] Resolve DSL helpers through TypeChecker symbol identity. ([#64](https://github.com/mizchi/uneffect/issues/64))
+    - [ ] Add typed Set/Map/record descriptors and package-level spec imports. ([#64](https://github.com/mizchi/uneffect/issues/64))
   - [ ] Version a backend-neutral AST and module interface shared by capability ([#64](https://github.com/mizchi/uneffect/issues/64))
     effects, Hoare contracts/invariants, and temporal specifications without
     collapsing their distinct semantics.

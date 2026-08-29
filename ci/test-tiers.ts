@@ -80,6 +80,7 @@ export const ciTestTiers = {
     "test/fixtures.test.ts",
     "test/node-lease.test.ts",
     "test/spec-backends.test.ts",
+    "test/temporal-dsl.test.ts",
     "test/temporal-map-default.test.ts",
   ],
 } as const;
@@ -97,6 +98,7 @@ export const ciIntegrationShards = {
   applications: [
     "test/async-safety.test.ts",
     "test/spec-backends.test.ts",
+    "test/temporal-dsl.test.ts",
     "test/temporal-map-default.test.ts",
   ],
   dogfood: [
@@ -146,6 +148,7 @@ export const ciExternalVerifierTestFiles: readonly string[] = [
   ...ciTestTiers.quint,
   "test/async-safety.test.ts",
   "test/spec-backends.test.ts",
+  "test/temporal-dsl.test.ts",
   "test/temporal-map-default.test.ts",
 ];
 export const ciIsolatedTestTimeoutMs = 60_000;

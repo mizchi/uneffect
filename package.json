@@ -40,6 +40,10 @@
       "types": "./dist/src/experimental.d.ts",
       "import": "./dist/src/experimental.js"
     },
+    "./spec": {
+      "types": "./dist/src/temporal-dsl.d.ts",
+      "import": "./dist/src/temporal-dsl.js"
+    },
     "./schemas/*": "./schemas/*",
     "./package.json": "./package.json"
   },

@@ -11,11 +11,15 @@ read emitted exclusions together with every result.
 | `@mizchi/uneffect` | Public | TypeScript helpers, analyzers, evidence APIs, project verification, and stable high-level model facades. |
 | `@mizchi/uneffect/corsa` | Public integration boundary | Versioned Corsa/tsgo fact export. Pin the package and frontend versions. |
 | `@mizchi/uneffect/experimental` | Experimental | Low-level async, Promise, event-loop, and resource Quint generators. Names, options, and generated text may change without notice. |
+| `@mizchi/uneffect/spec` | Initial public authoring fragment | Type-checked, declarative `*.uneffect.ts` temporal specifications. Uneffect parses these modules but does not execute them. |
 | `@mizchi/uneffect/schemas/*` | Versioned data contract | Published JSON schemas. Compatibility follows the schema identifier, not an unversioned TypeScript implementation detail. |
 | `@mizchi/uneffect/package.json` | Public metadata | Exact package version and package metadata. |
 
 Do not import unpublished paths such as `dist/src/async-patterns.js`. Package
 exports intentionally block those implementation paths.
+
+See [TypeScript temporal specification modules](./temporal-dsl.md) for the
+initial `@mizchi/uneffect/spec` syntax and its explicit unsupported boundary.
 
 ## Stable temporal facade
 
@@ -41,6 +45,7 @@ const result = generateTemporalModel({
 | `runtime` | Required host profile: `web` or `node`. |
 | `root` | Temporal and resource root; defaults to `main`. |
 | `nodeTopLevelMode` | Node top-level scheduling profile; defaults to `commonjs`. |
+| `linkedTemporal` | A resolved `.uneffect.ts` link. Project verification resolves `uneffect:temporal from` comments automatically. |
 
 `TemporalModelResult` is tagged with
 `schema: "uneffect-temporal-model/v1"`. Its fields are:

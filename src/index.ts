@@ -185,6 +185,8 @@ export { generateComposedQuint, parseTemporalComposition } from "./temporal-comp
 export type { TemporalCall, TemporalComposition, TemporalFunctionSummary } from "./temporal-compose.js";
 export { generateTemporalModel } from "./temporal-model.js";
 export type { GenerateTemporalModelOptions, TemporalModelProjection, TemporalModelResult, TemporalRuntime } from "./temporal-model.js";
+export { parseTemporalDsl, resolveTemporalDslLink } from "./temporal-dsl.js";
+export type { TemporalDslLink } from "./temporal-dsl.js";
 export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";
