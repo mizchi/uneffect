@@ -634,7 +634,7 @@ named `node:fs/promises` imports in `packages/core/src/config.ts` and
 Same-spelled local declarations and local-module imports are negative controls,
 and builtin-key tampering fails checker metadata parity.
 
-Active child #51 adds the five direct, unconditional `await` observations with
+Completed child #51 adds the five direct, unconditional `await` observations with
 exact owner, source text, UTF-8 call span, empty control conditions, and one
 empty control path. The Workhub-shaped corpus now has
 `checkerMetadataEquivalent`, `semanticEquivalent`, and overall `equivalent`

@@ -99,7 +99,7 @@ import specifier and module/export pair; it does not claim identity with the
 underlying `@types/node` declaration. Same-spelled local declarations and
 local-module imports remain effect-free. Tampering with the module/export atom
 sets `checkerMetadataEquivalent` to false.
-The active direct-await slice additionally emits source-ordered Promise records
+The completed direct-await slice additionally emits source-ordered Promise records
 when a resolved call is the direct operand of an unconditional `await` in the
 exported owner. Each record binds the numeric owner, exact source text, UTF-8
 call span, `observation: "await"`, and an explicit unconditional control path.
