@@ -27,6 +27,7 @@ export const ciTestTiers = {
     "test/registry-config.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
+    "test/test-timeouts.test.ts",
     "test/todo-consistency.test.ts",
     "test/workspace-module-initialization.test.ts",
   ],

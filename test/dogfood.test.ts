@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
@@ -413,7 +414,7 @@ describe("Uneffect dogfood", () => {
       { caller: "main", callee: "emit" },
       { caller: "main", callee: "emit" },
     ]);
-  }, 20_000);
+  }, externalCheckerTestTimeoutMs());
 
   it("correlates a local refinement alias region with independently checked Mutate effects", () => {
     const fileName = "examples/dogfood/local-alias-refinement.ts";
