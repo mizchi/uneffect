@@ -80,8 +80,10 @@ reconnects explicit temporal specifications with extracted JavaScript async
 semantics. The first slice adds one stable `generateTemporalModel` entry,
 composes user properties in both Web and Node profiles, and moves standalone
 backend-specific generators to `@mizchi/uneffect/experimental`. Promise
-ownership and resource lifecycle remain explicit exclusions until their IR is
-lowered into the same model.
+ownership remains an explicit exclusion. The second slice co-verifies the root
+function's `using`/`await using` lifecycle through the same facade and project
+pipeline. Resource acquisition/disposal is not yet synchronized with host queue
+steps, so `resource-host-scheduling` remains an explicit exclusion.
 
 There are 14 open implementation Issues after completing bounded children #60 and #61 and
 bounded children #58

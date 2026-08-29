@@ -121,9 +121,13 @@ composed with those host transitions by `generateTemporalModel`; Web and Node
 share that public entry. `all`, `allSettled`, `race`, and `any` have distinct
 settlement guards and empty-input semantics. The projection also retains
 direct await/catch context and escaping aggregate rejection. Promise ownership
-and resource lifecycle are still reported exclusions from this unified facade;
-their existing low-level Quint projections remain experimental while #63
-tracks the remaining lowering. It does not make
+is still a reported exclusion from this unified facade. For a selected root
+containing `using` or `await using`, the facade also emits and verifies a
+resource-lifecycle projection covering acquisition, reverse disposal, async
+disposal suspension, and failure completion. This is co-verification, not yet a
+state-product proof: resource steps are not synchronized with host queue steps,
+and `resource-host-scheduling` is reported as an exclusion while #63 tracks
+that remaining composition. It does not make
 the local function-summary composer itself concurrent.
 
 Promise reaction chains use a separate settlement-state projection. Builtin

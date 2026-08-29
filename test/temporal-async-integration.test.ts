@@ -78,4 +78,50 @@ describe("unified async temporal model", () => {
     expect(result.quint).toContain("callback_1_due' = node_clock + 1");
     expect(result.quint).not.toContain("callback_1_due' = clock + 1");
   });
+
+  it("co-verifies using disposal through the temporal facade and keeps host scheduling as an explicit gap", () => {
+    const usingSource = `
+      class Resource {
+        [Symbol.dispose](): void {}
+      }
+      export function main(): void {
+        using outer = new Resource()
+        using inner = new Resource()
+      }
+    `;
+    const result = generateTemporalModel({ fileName: "using.ts", source: usingSource, runtime: "node", root: "main" });
+
+    expect(result.includedDomains).toContain("resource-lifecycle");
+    expect(result.exclusions).not.toContain("resource-lifecycle");
+    expect(result.exclusions).toContain("resource-host-scheduling");
+    expect(result.models).toContainEqual(expect.objectContaining({
+      kind: "resource-lifecycle",
+      owner: "main",
+      properties: ["resourceSafe"],
+    }));
+    expect(result.quint).toContain("module using_resource_main");
+    expect(result.quint.indexOf("action dispose_1")).toBeLessThan(result.quint.indexOf("action dispose_0"));
+  });
+
+  it("checks using resourceSafe as part of project temporal verification", async () => {
+    const usingSource = `
+      class Resource {
+        async [Symbol.asyncDispose](): Promise<void> {}
+      }
+      export async function main(): Promise<void> {
+        await using resource = new Resource()
+      }
+    `;
+    const result = await verifyUneffectProject({
+      files: { "src/using.ts": usingSource },
+      temporalRuntime: "web",
+      temporalRoot: "main",
+    });
+
+    expect(result.temporal?.models).toContainEqual(expect.objectContaining({ kind: "resource-lifecycle" }));
+    expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
+      name: "main.resourceSafe",
+      result: "verified",
+    }));
+  }, 30_000);
 });

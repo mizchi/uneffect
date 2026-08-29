@@ -129,8 +129,10 @@ it does not pass arbitrary annotation text directly to Quint. Generated bounded
 Z3/Quint evidence finds counterexamples within the selected model and bounds.
 Supported Promise, timer, microtask, and host event-loop observations compose
 with this user model through `generateTemporalModel` or `spec temporal
---runtime web|node`. Promise ownership and resource lifecycle are currently
-reported exclusions from that unified model rather than silently claimed.
+--runtime web|node`. A selected root's `using`/`await using` lifecycle is
+co-verified through the same facade. Promise ownership and synchronization of
+resource suspension with host queues are reported exclusions rather than
+silently claimed.
 
 ## Opt into React semantics
 

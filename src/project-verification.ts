@@ -138,7 +138,9 @@ export interface ProjectTemporalProperty {
 
 export interface ProjectTemporalModel {
   fileName: string;
-  kind: "web-event-loop" | "node-event-loop";
+  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle";
+  module?: string;
+  owner?: string;
   quint: string;
 }
 
@@ -194,18 +196,18 @@ function inMemoryProgram(
   return ts.createProgram({ rootNames: Object.keys(files), options: compilerOptions, host, projectReferences });
 }
 
-function verifyQuintInvariant(fileName: string, program: string, invariant: string): ProjectTemporalProperty {
+function verifyQuintInvariant(fileName: string, program: string, invariant: string, main?: string, displayName = invariant): ProjectTemporalProperty {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-project-quint-"));
   const path = join(directory, "model.qnt");
   try {
     writeFileSync(path, program);
-    const verification = spawnSync("pnpm", ["exec", "quint", "run", path, `--invariant=${invariant}`, "--max-steps=12", "--max-samples=500", "--seed=0x756e656666656374", "--verbosity=1"], {
+    const verification = spawnSync("pnpm", ["exec", "quint", "run", path, ...(main ? [`--main=${main}`] : []), `--invariant=${invariant}`, "--max-steps=12", "--max-samples=500", "--seed=0x756e656666656374", "--verbosity=1"], {
       encoding: "utf8",
       timeout: 30_000,
     });
     const output = `${verification.stdout ?? ""}${verification.stderr ?? ""}`;
     const result = verification.error ? "error" : verification.status === 0 ? "verified" : /violation|counterexample/i.test(output) ? "counterexample" : "error";
-    return { fileName, name: invariant, result, output };
+    return { fileName, name: displayName, result, output };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -302,11 +304,15 @@ async function verifyUneffectProjectFiles(
         root: options.temporalRoot ?? "main",
         nodeTopLevelMode: options.nodeTopLevelMode ?? "commonjs",
       });
-      temporalModels.push({ fileName, kind: options.temporalRuntime === "web" ? "web-event-loop" : "node-event-loop", quint: model.quint });
-      const verifyTemporalProperty = (name: string): ProjectTemporalProperty => invalidSources.has(fileName)
-        ? { fileName, name, result: "error", output: `TypeScript errors in ${fileName} prevent proof-grade temporal evidence` }
-        : verifyQuintInvariant(fileName, model.quint, name);
-      temporalProperties.push(...model.properties.map(verifyTemporalProperty));
+      for (const projection of model.models) {
+        temporalModels.push({ fileName, kind: projection.kind, module: projection.module, owner: projection.owner, quint: projection.quint });
+        for (const property of projection.properties) {
+          const displayName = projection.owner ? `${projection.owner}.${property}` : property;
+          temporalProperties.push(invalidSources.has(fileName)
+            ? { fileName, name: displayName, result: "error", output: `TypeScript errors in ${fileName} prevent proof-grade temporal evidence` }
+            : verifyQuintInvariant(fileName, projection.quint, property, projection.module, displayName));
+        }
+      }
     }
   }
   const temporal = options.temporalRuntime === "web" || options.temporalRuntime === "node"

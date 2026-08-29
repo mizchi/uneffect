@@ -1,5 +1,6 @@
 import { extractAnnotations } from "./annotations.js";
 import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
+import { analyzeAsyncSafety, generateResourceSafetyQuint, type AsyncSafetyResult } from "./async-safety.js";
 import { analyzePromiseChains } from "./promise-chains.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
 
@@ -18,8 +19,17 @@ export interface TemporalModelResult {
   sourceLanguage: "uneffect-ts";
   backend: "quint";
   runtime: TemporalRuntime;
-  includedDomains: Array<"user-temporal" | "async-patterns" | "promise-chains">;
-  exclusions: Array<"async-ownership" | "resource-lifecycle">;
+  includedDomains: Array<"user-temporal" | "async-patterns" | "promise-chains" | "resource-lifecycle">;
+  exclusions: Array<"async-ownership" | "resource-lifecycle" | "resource-host-scheduling">;
+  models: TemporalModelProjection[];
+  properties: string[];
+  quint: string;
+}
+
+export interface TemporalModelProjection {
+  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle";
+  module: string;
+  owner?: string;
   properties: string[];
   quint: string;
 }
@@ -43,9 +53,35 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
     ? parseTemporalComposition(options.fileName, options.source, options.root ?? "main")
     : undefined;
   const name = moduleName(options.fileName);
-  const quint = options.runtime === "web"
+  const hostQuint = options.runtime === "web"
     ? generateWebEventLoopQuint(name, asyncPatterns, {}, promiseChains, temporal)
     : generateNodeEventLoopQuint(name, asyncPatterns, { topLevelMode: options.nodeTopLevelMode ?? "commonjs" }, promiseChains, temporal);
+  const hostProperties = [options.runtime === "web" ? "eventLoopSafe" : "nodeEventLoopSafe", ...(temporal?.properties.map((property) => property.name) ?? [])];
+  const models: TemporalModelProjection[] = [{
+    kind: options.runtime === "web" ? "web-event-loop" : "node-event-loop",
+    module: name,
+    properties: hostProperties,
+    quint: hostQuint,
+  }];
+  const resourceOwner = options.root ?? "main";
+  const asyncSafety = analyzeAsyncSafety(options.fileName, options.source);
+  const resources = asyncSafety.resources.filter((resource) => resource.owner === resourceOwner);
+  if (resources.length > 0) {
+    const scopeIds = new Set(resources.map((resource) => resource.scopeId));
+    const resourceResult: AsyncSafetyResult = {
+      ...asyncSafety,
+      resources,
+      disposals: asyncSafety.disposals.filter((disposal) => disposal.owner === resourceOwner && scopeIds.has(disposal.scopeId)),
+    };
+    const resourceModule = `${name}_resource_${moduleName(resourceOwner)}`;
+    models.push({
+      kind: "resource-lifecycle",
+      module: resourceModule,
+      owner: resourceOwner,
+      properties: ["resourceSafe"],
+      quint: generateResourceSafetyQuint(resourceModule, resourceResult),
+    });
+  }
   return {
     schema: "uneffect-temporal-model/v1",
     sourceLanguage: "uneffect-ts",
@@ -55,9 +91,11 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
       ...(temporal ? ["user-temporal" as const] : []),
       "async-patterns",
       "promise-chains",
+      ...(resources.length > 0 ? ["resource-lifecycle" as const] : []),
     ],
-    exclusions: ["async-ownership", "resource-lifecycle"],
-    properties: [options.runtime === "web" ? "eventLoopSafe" : "nodeEventLoopSafe", ...(temporal?.properties.map((property) => property.name) ?? [])],
-    quint,
+    exclusions: ["async-ownership", resources.length > 0 ? "resource-host-scheduling" : "resource-lifecycle"],
+    models,
+    properties: [...hostProperties, ...(resources.length > 0 ? [`${resourceOwner}.resourceSafe`] : [])],
+    quint: models.map((model) => model.quint).join("\n"),
   };
 }

@@ -184,7 +184,7 @@ export { generateQuint, generateSmtLib } from "./spec-backends.js";
 export { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
 export type { TemporalCall, TemporalComposition, TemporalFunctionSummary } from "./temporal-compose.js";
 export { generateTemporalModel } from "./temporal-model.js";
-export type { GenerateTemporalModelOptions, TemporalModelResult, TemporalRuntime } from "./temporal-model.js";
+export type { GenerateTemporalModelOptions, TemporalModelProjection, TemporalModelResult, TemporalRuntime } from "./temporal-model.js";
 export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";

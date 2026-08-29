@@ -683,10 +683,13 @@ same property is proved for arbitrary TypeScript.
   timers, intervals, microtasks, animation frames, Promise jobs, cancellation,
   and selected Node phases. `generateTemporalModel` is the stable public entry:
   both profiles compose user temporal state, callback summaries, and safety
-  properties with those extracted observations. Promise ownership and resource
-  lifecycle remain explicit exclusions from that combined model; their direct
-  generators moved to `@mizchi/uneffect/experimental` while #63 tracks the
-  remaining lowering. Host-specific gaps remain explicit.
+  properties with those extracted observations. A selected root's
+  `using`/`await using` lifecycle is co-verified as a second projection through
+  the same result and project pipeline. Promise ownership and synchronization
+  between resource disposal suspension and host queues remain explicit
+  exclusions; direct low-level generators live under
+  `@mizchi/uneffect/experimental` while #63 tracks the remaining composition.
+  Host-specific gaps remain explicit.
 - Real-time annotations use logical clocks, guards, deadlines, and bounded
   exploration. They are opt-in and are not assumed for ordinary programs.
 
