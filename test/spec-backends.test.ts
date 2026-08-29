@@ -498,7 +498,7 @@ describe("spec IR and generated verifier programs", () => {
     await expect(lintTemporalReachabilityWithZ3(recordSet, { maxSteps: 1 })).resolves.not.toContainEqual(expect.objectContaining({
       code: "unsupported-backend-domain",
     }));
-    await expect(findTemporalCounterexampleWithZ3(recordSet, "validOwners", { maxSteps: 1 })).resolves.toEqual({ status: "unknown", depth: 0 });
+    await expect(findTemporalCounterexampleWithZ3(recordSet, "validOwners", { maxSteps: 1 })).resolves.toEqual({ status: "safe-within-bound", depth: 1 });
   });
   it("extracts the shortest bounded Z3 trace and replays its actions", async () => {
     const temporal = parseSpec("counter.ts", `/* uneffect:

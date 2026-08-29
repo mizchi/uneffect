@@ -188,6 +188,10 @@ explicit conservative boundaries rather than untracked support.
    preserves production-shaped string node identities through the same finite
    collection, solver, trace, and replay path without admitting string
    arithmetic or unbounded generation.
+   Active bounded child [#59](https://github.com/mizchi/uneffect/issues/59)
+   retains one application-shaped finite Set of literal lease-grant records
+   through counterexample extraction; dynamic composite elements remain a
+   fail-closed non-proof.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
    reduces filtering and covers recursive/user-defined refinements.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)

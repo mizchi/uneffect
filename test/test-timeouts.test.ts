@@ -11,6 +11,6 @@ describe("external checker test timeout policy", () => {
 
   it("keeps the observed checker dogfood on the named policy", () => {
     const dogfood = readFileSync("test/dogfood.test.ts", "utf8");
-    expect(dogfood).toContain("}, externalCheckerTestTimeoutMs());");
+    expect(dogfood).toMatch(/it\("classifies every unknown summary while analyzing its own implementation",[\s\S]*?\}, externalCheckerTestTimeoutMs\(\)\);/u);
   });
 });

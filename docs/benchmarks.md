@@ -2189,3 +2189,10 @@ function-local await from TLA, and launch/handler-attachment event extraction.
 It excludes Program construction, later Promise execution, host scheduling,
 and unsupported launch shapes, so it is a regression signal rather than an
 end-to-end CLI latency claim.
+
+The P2.32 finite record-valued Node Lease Set benchmark extracts the depth-one
+invalid-grant counterexample from `node-lease-record-grants.ts`. A selected
+native-Z3 run measured 40.0453 ms mean over 13 samples (24.9717 operations per
+second, 5.81% RME). This bounds two directly written three-field record
+literals at depth two; it does not measure dynamic record enumeration, nested
+collection fields, or general symbolic heap values.

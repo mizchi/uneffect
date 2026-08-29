@@ -105,6 +105,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 25],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
+      ["Active", 2, 59],
       ["Queued", 2, 4],
       ["Queued", 2, 6],
       ["Queued", 3, 24],
@@ -114,7 +115,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toEqual([]);
+    expect(rows.filter(([status]) => status === "Active")).toEqual([["Active", 2, 59]]);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -127,7 +128,7 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([]);
+    expect(rows).toEqual([[1, 59, expect.any(String)]]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }

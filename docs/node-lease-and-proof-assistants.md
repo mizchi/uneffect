@@ -105,6 +105,15 @@ ordering, arithmetic, control-character SMT literals, unbounded string
 generation, and observation outside the complete literal/proved finite domain
 remain non-proofs.
 
+`examples/dogfood/node-lease-record-grants.ts` keeps a grant as one domain
+record inside a finite Set instead of flattening owner, epoch, and validity into
+parallel collections. For directly written scalar-field record literals,
+Uneffect builds the complete observed element universe and decodes exact
+native/WASM Z3 membership values into the same canonical record order used by
+TLC import and TypeScript replay. A state-derived element, record spread,
+nested collection field, or otherwise incomplete composite universe remains
+`unknown`; this is not general heap or symbolic-record enumeration.
+
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker
 never crashes and the resource remains held. Declaring weak fairness for both

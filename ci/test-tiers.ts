@@ -118,6 +118,7 @@ export function resolveCiTierFiles(tier: CiTestTier, requestedFile?: string, req
 
 export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = {
   "test/node-lease.test.ts": [
+    "extracts record-valued lease grants across Quint, Z3, TLC, and replay",
     "preserves production string node identities across Quint, Z3, TLC trace import, and replay",
     "defaults a missing node lease to a fenced record across Quint and Z3",
     "dogfoods synthesized subset authority and catches an unchecked request",

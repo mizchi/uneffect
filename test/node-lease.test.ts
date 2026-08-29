@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
-import { parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample, type ModelState } from "../src/model-replay.js";
+import { parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample, type ModelState, type ModelValue } from "../src/model-replay.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 
 function leaseModel(skewGrace: number): string {
@@ -158,6 +158,71 @@ function runLeaseLifecycle(fencedCommit: boolean) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("extracts record-valued lease grants across Quint, Z3, TLC, and replay", async () => {
+    const fileName = "examples/dogfood/node-lease-record-grants.ts";
+    const source = readFileSync(fileName, "utf8");
+    const safe = parseSpec(fileName, source).temporal;
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-record-grants-"));
+    const quintPath = join(directory, "record-grants.qnt");
+    writeFileSync(quintPath, generateQuint("node_lease_record_grants", safe));
+    const quintRun = spawnSync("pnpm", ["exec", "quint", "run", quintPath,
+      "--invariant=validGrantHasEpoch", "--max-steps=3", "--max-samples=100"],
+    { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(quintRun.status, quintRun.stdout + quintRun.stderr).toBe(0);
+    await expect(findTemporalCounterexampleWithZ3(safe, "validGrantHasEpoch", { maxSteps: 2 }))
+      .resolves.toEqual({ status: "safe-within-bound", depth: 2 });
+
+    const broken = parseSpec(fileName, source.replace("epoch: 2", "epoch: 0")).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "validGrantHasEpoch", { maxSteps: 2 }))
+      .resolves.toMatchObject({
+        status: "counterexample",
+        depth: 1,
+        trace: { steps: [{
+          action: "admitStandby",
+          after: { grants: [
+            { owner: "node-b", epoch: 0, valid: true },
+            { owner: "node-a", epoch: 1, valid: true },
+          ] },
+        }] },
+      });
+    await expect(findTemporalCounterexampleWithZ3(broken, "validGrantHasEpoch", {
+      maxSteps: 2,
+      z3: { preference: "wasm" },
+    })).resolves.toMatchObject({ status: "counterexample", depth: 1 });
+
+    const dynamic = parseSpec("dynamic-record-grant.ts", `/* uneffect:
+      state candidate: { owner: string, epoch: int, valid: bool }
+      state grants: Set<{ owner: string, epoch: int, valid: bool }>
+      init candidate = { owner: "node-a", epoch: 1, valid: true }
+      init grants = Set(candidate)
+      action retain: grants' = grants
+      temporal validGrantHasEpoch: grants.forall(grant => !grant.valid || grant.epoch > 0)
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(dynamic, "validGrantHasEpoch", { maxSteps: 1 }))
+      .resolves.toEqual({ status: "unknown", depth: 0 });
+
+    const tlc = `Invariant validGrantHasEpoch is violated.\nState 1: <Initial predicate>\n/\\ grants = {[owner |-> "node-a", epoch |-> 1, valid |-> TRUE]}\nState 2: <admitStandby line 1, col 1 to line 1, col 1>\n/\\ grants = {[owner |-> "node-a", epoch |-> 1, valid |-> TRUE], [owner |-> "node-b", epoch |-> 0, valid |-> TRUE]}`;
+    const trace = parseTlcCounterexample(tlc, broken, "record-grant-node-lease");
+    expect(trace.steps[0]?.after).toEqual({ grants: [
+      { owner: "node-b", epoch: 0, valid: true },
+      { owner: "node-a", epoch: 1, valid: true },
+    ] });
+    await expect(replayModelCounterexample(trace, {
+      schema: "uneffect-refinement-adapter/v1",
+      name: "record-grant-node-lease",
+      version: "1",
+      create: (state) => structuredClone(state),
+      observe: (state) => structuredClone(state),
+      actions: {
+        admitStandby: (state) => { state.grants = [
+          { owner: "node-b", epoch: 0, valid: true },
+          ...(state.grants as ModelValue[]),
+        ]; },
+      },
+    })).resolves.toMatchObject({ status: "replayed", matchedSteps: 1 });
+  });
+
   it("preserves production string node identities across Quint, Z3, TLC trace import, and replay", async () => {
     const fileName = "examples/dogfood/node-lease-string-identities.ts";
     const temporal = parseSpec(fileName, readFileSync(fileName, "utf8")).temporal;

@@ -71,6 +71,10 @@ same property is proved for arbitrary TypeScript.
   Quint, native/WASM Z3 bounded extraction, TLC console traces, and refinement
   replay. Strings admit equality but not arithmetic, ordering, or unbounded
   generation.
+- A finite Set whose elements are directly written records with scalar fields
+  has exact bounded Z3 observation and canonical Quint/TLC/replay values. A
+  dynamic record element, spread, nested collection field, or incomplete
+  composite universe remains `unknown`.
 - Solution workspaces compose a locally verified scalar refinement action
   through a direct referenced-project call. A guarded action is admitted only
   through a sole direct wrapper call, whose inherited guard is checked against

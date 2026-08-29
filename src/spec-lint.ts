@@ -2,7 +2,7 @@ import type { ParsedSpec, TemporalSpec } from "./spec-ir.js";
 import { parseTemporalExpression, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import { parseSpec } from "./spec-ir.js";
 import { createHash } from "node:crypto";
-import { createModelCounterexample, type ModelCounterexample, type ModelState } from "./model-replay.js";
+import { createModelCounterexample, type ModelCounterexample, type ModelState, type ModelValue } from "./model-replay.js";
 import { executeZ3, type Z3Backend, type Z3Execution, type Z3ExecutionOptions, type Z3ValueRequest } from "./z3.js";
 
 export interface SpecLintDiagnostic {
@@ -69,7 +69,7 @@ function supportsZ3SemanticType(type: TemporalValueType): boolean {
 
 function supportsZ3FiniteCollectionState(type: TemporalValueType): boolean {
   if (typeof type === "string") return true;
-  if (type.kind === "set") return type.element === "int" || type.element === "bool" || type.element === "string" || type.element === "never";
+  if (type.kind === "set") return type.element === "never" || supportsZ3FiniteCollectionState(type.element);
   if (type.kind === "map") return type.key !== "never" && type.value !== "never" && supportsZ3FiniteCollectionState(type.value);
   for (const field of Object.values(type.fields)) if (!supportsZ3FiniteCollectionState(field)) return false;
   return true;
@@ -521,13 +521,26 @@ interface FiniteCollectionUniverse {
   readonly int: number[];
   readonly bool: boolean[];
   readonly string: string[];
+  readonly composite: Readonly<Record<string, readonly CompositeObservationValue[]>>;
   readonly complete: boolean;
   readonly dynamicMapLookupKeys: readonly TemporalExpression[];
   readonly unsupportedDynamicCollection: boolean;
 }
 
+interface CompositeObservationValue {
+  readonly expression: TemporalExpression;
+  readonly value: ModelValue;
+}
+
+function stableModelValue(value: ModelValue): string {
+  return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right)))
+    : item);
+}
+
 function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse {
   const integers = new Set<number>(), booleans = new Set<boolean>(), strings = new Set<string>();
+  const composites = new Map<string, Map<string, CompositeObservationValue>>();
   let complete = true;
   let unsupportedDynamicCollection = false;
   const dynamicMapLookupKeys: TemporalExpression[] = [];
@@ -538,13 +551,33 @@ function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse 
     if (expression.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") return -Number(expression.operand.value);
     return undefined;
   };
+  const recordLiteral = (expression: TemporalExpression): ModelValue | undefined => {
+    if (expression.kind !== "record" || expression.base) return undefined;
+    const fields: Record<string, ModelValue> = {};
+    for (const [name, field] of Object.entries(expression.fields)) {
+      const value = literal(field);
+      if (value === undefined) return undefined;
+      fields[name] = value;
+    }
+    return fields;
+  };
+  const addComposite = (expression: TemporalExpression): boolean => {
+    const value = recordLiteral(expression);
+    if (value === undefined) return false;
+    const type = z3TemporalType(expression, new Map());
+    const key = z3TypeKey(type);
+    const values = composites.get(key) ?? new Map<string, CompositeObservationValue>();
+    values.set(stableModelValue(value), { expression, value });
+    composites.set(key, values);
+    return true;
+  };
   const visit = (expression: TemporalExpression): void => {
     if (expression.kind === "call" && expression.name === "Set") for (const item of expression.arguments) {
       const value = literal(item);
       if (typeof value === "number") integers.add(value);
       else if (typeof value === "boolean") booleans.add(value);
       else if (typeof value === "string") strings.add(value);
-      else { complete = false; unsupportedDynamicCollection = true; }
+      else if (!addComposite(item)) { complete = false; unsupportedDynamicCollection = true; }
     }
     if (expression.kind === "call" && expression.name === "Map") {
       const entries = expression.arguments[0];
@@ -595,6 +628,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse 
     int: [...integers].sort((a, b) => a - b),
     bool: [...booleans].sort((a, b) => Number(a) - Number(b)),
     string: [...strings].sort(),
+    composite: Object.fromEntries([...composites].map(([key, values]) => [key, [...values.values()]])),
     complete,
     dynamicMapLookupKeys,
     unsupportedDynamicCollection,
@@ -1086,13 +1120,27 @@ function observationValues(type: "int" | "bool" | "string" | "never", universe: 
   return type === "bool" ? universe.bool : type === "string" ? universe.string : universe.int;
 }
 
+function compositeObservationValues(type: TemporalValueType, universe: FiniteUniverse): readonly CompositeObservationValue[] {
+  return universe.composite[z3TypeKey(type)] ?? [];
+}
+
+function observationSetValues(type: TemporalValueType | "never", universe: FiniteUniverse): readonly (number | boolean | string | CompositeObservationValue)[] {
+  return type === "never" ? [] : typeof type === "string" ? observationValues(type, universe) : compositeObservationValues(type, universe);
+}
+
+function observationValueSmt(value: number | boolean | string | CompositeObservationValue, type: TemporalValueType | "never"): string {
+  if (typeof value !== "object") return smtScalarLiteral(value);
+  return temporalToSmt(value.expression, () => { throw new Error("finite composite observation literals cannot reference state"); }, new Map(), type === "never" ? undefined : type);
+}
+
 function z3ObservationDeclarations(prefix: string, expression: string, type: TemporalValueType, universe: FiniteUniverse): string[] {
   if (typeof type === "string") return [`(declare-const ${prefix} ${smtSort(type)})`, `(assert (= ${prefix} ${expression}))`];
   if (type.kind === "set") {
-    if (type.element !== "int" && type.element !== "bool" && type.element !== "string" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
-    return observationValues(type.element, universe).flatMap((value, index) => [
+    const values = observationSetValues(type.element, universe);
+    if (type.element !== "never" && typeof type.element !== "string" && values.length === 0) throw new Error("Z3 counterexample observation requires an exact finite composite Set universe");
+    return values.flatMap((value, index) => [
       `(declare-const ${prefix}__member__${index} Bool)`,
-      `(assert (= ${prefix}__member__${index} (select ${expression} ${smtScalarLiteral(value)})))`,
+      `(assert (= ${prefix}__member__${index} (select ${expression} ${observationValueSmt(value, type.element)})))`,
     ]);
   }
   if (type.kind === "map") {
@@ -1116,8 +1164,9 @@ function z3ObservationDeclarations(prefix: string, expression: string, type: Tem
 function z3ObservationRequests(prefix: string, type: TemporalValueType, universe: FiniteUniverse): Z3ValueRequest[] {
   if (typeof type === "string") return [{ name: prefix, expression: prefix, sort: type === "int" ? "Int" : type === "bool" ? "Bool" : "String" }];
   if (type.kind === "set") {
-    if (type.element !== "int" && type.element !== "bool" && type.element !== "string" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
-    return observationValues(type.element, universe).map((_value, index) => ({ name: `${prefix}__member__${index}`, expression: `${prefix}__member__${index}`, sort: "Bool" }));
+    const values = observationSetValues(type.element, universe);
+    if (type.element !== "never" && typeof type.element !== "string" && values.length === 0) throw new Error("Z3 counterexample observation requires an exact finite composite Set universe");
+    return values.map((_value, index) => ({ name: `${prefix}__member__${index}`, expression: `${prefix}__member__${index}`, sort: "Bool" }));
   }
   if (type.kind === "map") {
     const mapType = z3MapType(type);
@@ -1140,8 +1189,11 @@ function decodeZ3Observation(values: Readonly<Record<string, string>>, prefix: s
     return parseZ3TemporalValue(value, type);
   }
   if (type.kind === "set") {
-    if (type.element !== "int" && type.element !== "bool" && type.element !== "string" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
-    return observationValues(type.element, universe).filter((_value, index) => values[`${prefix}__member__${index}`] === "true");
+    const candidates = observationSetValues(type.element, universe);
+    if (type.element !== "never" && typeof type.element !== "string" && candidates.length === 0) throw new Error("Z3 counterexample observation requires an exact finite composite Set universe");
+    return candidates.filter((_value, index) => values[`${prefix}__member__${index}`] === "true")
+      .map((value) => typeof value === "object" ? value.value : value)
+      .sort((left, right) => stableModelValue(left).localeCompare(stableModelValue(right)));
   }
   if (type.kind === "map") {
     const mapType = z3MapType(type);

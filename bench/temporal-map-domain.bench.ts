@@ -27,8 +27,20 @@ const jointBroken = parseSpec(jointFileName, jointSource.replace(
 const stringFileName = "examples/dogfood/node-lease-string-identities.ts";
 const stringSource = readFileSync(stringFileName, "utf8");
 const stringSafe = parseSpec(stringFileName, stringSource).temporal;
+const recordGrantFileName = "examples/dogfood/node-lease-record-grants.ts";
+const recordGrantSource = readFileSync(recordGrantFileName, "utf8");
+const recordGrantBroken = parseSpec(recordGrantFileName, recordGrantSource.replace("epoch: 2", "epoch: 0")).temporal;
 
 describe("proved dynamic Map key domain", () => {
+  bench("extract the record-valued Node Lease grant", async () => {
+    const result = await findTemporalCounterexampleWithZ3(
+      recordGrantBroken, "validGrantHasEpoch", { maxSteps: 2 },
+    );
+    if (result.status !== "counterexample" || result.depth !== 1) {
+      throw new Error(`expected record-valued Set counterexample, got ${result.status}`);
+    }
+  }, { time: 500, iterations: 2 });
+
   bench("prove the string-identity Node Lease lookup", async () => {
     const result = await findTemporalCounterexampleWithZ3(
       stringSafe, "missingLeaseIsFenced", { maxSteps: 3 },

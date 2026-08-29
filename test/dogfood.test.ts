@@ -2462,7 +2462,7 @@ describe("Uneffect dogfood", () => {
       .toEqual({});
     expect(unknown.map((summary) => summary.fileName?.split("/").at(-1)).sort())
       .toEqual([]);
-  }, 20_000);
+  }, externalCheckerTestTimeoutMs());
 
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
