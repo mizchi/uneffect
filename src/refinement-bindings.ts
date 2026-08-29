@@ -14,7 +14,7 @@ import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
 import type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 import { formatTemporalValueType, generateRuntimeAssertionExpression, parseTemporalExpression } from "./temporal-expressions.js";
-import { checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
+import { checkTemporalExpressionEquivalenceUnderAssumptionsWithZ3, checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
 import type { Z3ExecutionOptions } from "./z3.js";
 import {
   isTransferOwnedByLoop,
@@ -135,6 +135,42 @@ interface RefinementRankingRecurrenceTrace {
   readonly summaryUpdates: ReadonlyMap<string, TemporalExpression>;
   readonly affineDependencies?: RefinementAffineDependencies;
   readonly booleanInvolutions?: RefinementBooleanInvolutions;
+  readonly boundedSelfAffine?: RefinementBoundedSelfAffineTrace;
+}
+
+interface RefinementBoundedSelfAffineTrace {
+  readonly rule: "precondition-bounded-self-affine";
+  readonly state: string;
+  readonly counter: string;
+  readonly multiplier: number;
+  readonly precondition: {
+    readonly expression: TemporalExpression;
+    readonly text: string;
+    readonly span: { start: number; end: number };
+  };
+  readonly budget: {
+    readonly name: "cfg-recurrence-geometric-iterations";
+    readonly limit: 8;
+    readonly observed: number;
+  };
+  readonly update: { readonly state: string; readonly span: { start: number; end: number } };
+}
+
+export interface RefinementBoundedSelfAffine {
+  readonly rule: "precondition-bounded-self-affine";
+  readonly state: string;
+  readonly counter: string;
+  readonly multiplier: number;
+  readonly precondition: {
+    readonly expression: string;
+    readonly span: { start: number; end: number };
+  };
+  readonly budget: {
+    readonly name: "cfg-recurrence-geometric-iterations";
+    readonly limit: 8;
+    readonly observed: number;
+  };
+  readonly update: { readonly state: string; readonly span: { start: number; end: number } };
 }
 
 export interface RefinementAffineDependencies {
@@ -261,6 +297,7 @@ export interface RefinementScalarRecurrenceObligation {
   })[];
   affineDependencies?: RefinementAffineDependencies;
   booleanInvolutions?: RefinementBooleanInvolutions;
+  boundedSelfAffine?: RefinementBoundedSelfAffine;
   memberBudget: {
     name: "cfg-recurrence-members";
     limit: 2 | 3 | 8;
@@ -430,6 +467,8 @@ export interface RefinementRankingRecurrenceEvidence {
   guard: string;
   iteration: Readonly<Record<string, string>>;
   summary: Readonly<Record<string, string>>;
+  assumptions?: readonly string[];
+  boundedSelfAffine?: RefinementBoundedSelfAffine;
   stable: boolean;
 }
 
@@ -638,6 +677,23 @@ export function formatRefinementExpression(expression: TemporalExpression): stri
   return generateRuntimeAssertionExpression(expression);
 }
 
+function boundedSelfAffineEvidence(
+  trace: RefinementBoundedSelfAffineTrace | undefined,
+): RefinementBoundedSelfAffine | undefined {
+  return trace ? {
+    rule: trace.rule,
+    state: trace.state,
+    counter: trace.counter,
+    multiplier: trace.multiplier,
+    precondition: {
+      expression: formatRefinementExpression(trace.precondition.expression),
+      span: trace.precondition.span,
+    },
+    budget: trace.budget,
+    update: trace.update,
+  } : undefined;
+}
+
 function refinementExpressionKey(expression: TemporalExpression): string {
   const alphaNormalize = (value: TemporalExpression, bindings: ReadonlyMap<string, string> = new Map()): TemporalExpression => {
     if (value.kind === "name") return { ...value, name: bindings.get(value.name) ?? value.name };
@@ -719,6 +775,7 @@ const MAX_AFFINE_LOOP_BRANCH_LEAVES = 8;
 const MAX_AFFINE_LOOP_BREAK_UPDATES = 8;
 const MAX_AFFINE_LOOP_BREAK_LEAVES = 8;
 const MAX_AFFINE_LOOP_BOOLEAN_ATOMS = 16;
+const MAX_BOUNDED_GEOMETRIC_ITERATIONS = 8;
 
 /** Extracts an exact safe-integer affine form without guessing unsupported operations. */
 function decomposeAffineStateExpression(expression: TemporalExpression): AffineStateExpression | undefined {
@@ -1258,6 +1315,35 @@ function validateRefinementActionBodiesInSource(
   };
   const diagnostics: RefinementActionDiagnostic[] = [];
   let currentModelName: string | undefined;
+  let currentActionPrecondition: RefinementBoundedSelfAffineTrace["precondition"] | undefined;
+
+  const functionPrecondition = (
+    implementation: ts.FunctionDeclaration,
+    receiver: string,
+  ): RefinementBoundedSelfAffineTrace["precondition"] | undefined => {
+    const start = implementation.getStart(source);
+    const annotations = extractLocatedAnnotations(
+      text.slice(implementation.getFullStart(), start), "requires", implementation.getFullStart(),
+    );
+    if (annotations.length !== 1) return undefined;
+    const annotation = annotations[0]!;
+    const expressionSource = ts.createSourceFile(
+      "__uneffect_requires.ts", `const __requires = (${annotation.value});`,
+      ts.ScriptTarget.Latest, true, ts.ScriptKind.TS,
+    );
+    const declaration = expressionSource.statements[0];
+    const initializer = declaration && ts.isVariableStatement(declaration)
+      ? declaration.declarationList.declarations[0]?.initializer : undefined;
+    if (!initializer) return undefined;
+    const expression = normalizeRefinementExpression(
+      initializer, receiver, new Map(), expressionStateNames,
+    );
+    return expression ? {
+      expression: canonicalize(expression),
+      text: annotation.value,
+      span: annotation.span,
+    } : undefined;
+  };
 
   const resolveFunction = (expression: ts.Identifier | ts.PropertyAccessExpression, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
     if (!checker) return ts.isIdentifier(expression) ? functions.get(expression.text) : undefined;
@@ -2765,6 +2851,32 @@ function validateRefinementActionBodiesInSource(
           name,
           decomposeAffineStateExpression(iterationUpdates.get(name) ?? { kind: "name", name }),
         ]));
+        const boundedCounterPrecondition = (): number | undefined => {
+          const expression = currentActionPrecondition?.expression;
+          if (!expression || expression.kind !== "binary" || expression.operator !== "and") return undefined;
+          const lower = expression.left;
+          const upper = expression.right;
+          if (lower.kind !== "binary" || lower.operator !== "gte"
+            || lower.left.kind !== "name" || lower.left.name !== counterName
+            || lower.right.kind !== "integer" || lower.right.value !== "0"
+            || upper.kind !== "binary" || upper.operator !== "lte"
+            || upper.left.kind !== "name" || upper.left.name !== counterName
+            || upper.right.kind !== "integer") return undefined;
+          const value = Number(upper.right.value);
+          return Number.isSafeInteger(value) && value >= 1
+            && value <= MAX_BOUNDED_GEOMETRIC_ITERATIONS ? value : undefined;
+        };
+        const geometricBound = boundedCounterPrecondition();
+        const geometricCandidates = geometricBound === undefined ? [] : [...affineForms].flatMap(([name, form]) => {
+          if (!form || name === counterName || form.constant !== 0 || form.coefficients.size !== 1) return [];
+          const multiplier = form.coefficients.get(name);
+          const spans = directMutationSpans.get(name);
+          if (multiplier === undefined || !Number.isSafeInteger(multiplier) || multiplier <= 1
+            || spans?.length !== 1 || !Number.isSafeInteger(multiplier ** geometricBound)) return [];
+          return [{ name, multiplier, span: spans[0]! }];
+        });
+        const geometric = geometricCandidates.length === 1 && currentActionPrecondition
+          ? geometricCandidates[0] : undefined;
         const dependencyCandidates = [...affineForms].flatMap(([dependent, form]) => {
           if (!form || dependent === counterName || form.coefficients.get(dependent) !== 1) return [];
           const foreign = [...form.coefficients].filter(([symbol, coefficient]) =>
@@ -2959,6 +3071,7 @@ function validateRefinementActionBodiesInSource(
             deltas.set(name, { kind: "affine", value: { constant: counterDelta, counterCoefficient: 0 } });
             continue;
           }
+          if (geometric && name === geometric.name) continue;
           if (name === booleanInvolutionName) continue;
           const delta = piecewiseDelta(name, iterationUpdates.get(name) ?? { kind: "name", name });
           if (!delta) return undefined;
@@ -3152,6 +3265,27 @@ function validateRefinementActionBodiesInSource(
             whenFalse: entryValue,
           });
         }
+        if (geometric) {
+          if (hasInvariantEarlyBreak || stepValue !== 1 || counterDelta !== -1
+            || !sameRefinementExpression(loopIterations, entryCounter)) return undefined;
+          const entryValue = entryValues.get(geometric.name)!;
+          let factor: TemporalExpression = one;
+          for (let iteration = geometricBound!; iteration >= 1; iteration--) {
+            factor = {
+              kind: "conditional",
+              condition: {
+                kind: "binary", operator: "eq", left: entryCounter, right: integerExpression(iteration),
+              },
+              whenTrue: integerExpression(geometric.multiplier ** iteration),
+              whenFalse: factor,
+            };
+          }
+          updates.set(geometric.name, {
+            kind: "conditional", condition: entryGuard,
+            whenTrue: { kind: "binary", operator: "multiply", left: entryValue, right: factor },
+            whenFalse: entryValue,
+          });
+        }
         if (booleanInvolutionName) {
           if (hasInvariantEarlyBreak || stepValue !== 1) return undefined;
           const entryValue = entryValues.get(booleanInvolutionName)!;
@@ -3198,6 +3332,21 @@ function validateRefinementActionBodiesInSource(
             name,
             updates.get(name) ?? entryValues.get(name) ?? { kind: "name", name },
           ])),
+          ...(geometric && currentActionPrecondition ? {
+            boundedSelfAffine: {
+              rule: "precondition-bounded-self-affine" as const,
+              state: geometric.name,
+              counter: counterName,
+              multiplier: geometric.multiplier,
+              precondition: currentActionPrecondition,
+              budget: {
+                name: "cfg-recurrence-geometric-iterations" as const,
+                limit: MAX_BOUNDED_GEOMETRIC_ITERATIONS as 8,
+                observed: geometricBound!,
+              },
+              update: { state: geometric.name, span: geometric.span },
+            },
+          } : {}),
           ...(upperTriangular && sourceOrderedAffineUpdates ? {
             affineDependencies: {
               rule: "source-ordered-upper-triangular-affine" as const,
@@ -4183,8 +4332,15 @@ function validateRefinementActionBodiesInSource(
         if (!right) return undefined;
         const resolvedRight = expandLocalSnapshots(resolveCurrentState(right));
         if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) writePath(target, fields, resolvedRight);
-        else if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken || node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
-          writePath(target, fields, { kind: "binary", operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add" : "subtract", left: readPath(target, fields), right: resolvedRight });
+        else if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken
+          || node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken
+          || node.operatorToken.kind === ts.SyntaxKind.AsteriskEqualsToken) {
+          writePath(target, fields, {
+            kind: "binary",
+            operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add"
+              : node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken ? "subtract" : "multiply",
+            left: readPath(target, fields), right: resolvedRight,
+          });
         } else return undefined;
         continue;
       }
@@ -4241,6 +4397,8 @@ function validateRefinementActionBodiesInSource(
     const implementation = functions.get(exportName);
     const runtimeParameter = implementation?.parameters[0];
     const receiver = runtimeParameter && ts.isIdentifier(runtimeParameter.name) ? runtimeParameter.name.text : undefined;
+    currentActionPrecondition = implementation && receiver
+      ? functionPrecondition(implementation, receiver) : undefined;
     const guardedBody = implementation?.body && receiver ? earlyReturnGuard(implementation.body, receiver) : undefined;
     const inheritedExternal = guardedBody && receiver
       ? directExternalAction(guardedBody.updates, receiver) : undefined;
@@ -4292,6 +4450,7 @@ function validateRefinementActionBodiesInSource(
     }
   }
   currentModelName = undefined;
+  currentActionPrecondition = undefined;
   const modelActions = new Set(spec.actions.map(({ name }) => name));
   for (const [modelName, exportName] of Object.entries(manifest.actions)) {
     if (modelActions.has(modelName)) continue;
@@ -4442,6 +4601,11 @@ function runHandlerBackedScalarRecurrenceFixedPoint(
     guard: formatRefinementExpression(recurrenceTrace.guard),
     iteration: formatUpdates(recurrenceTrace.iterationUpdates),
     summary: formatUpdates(recurrenceTrace.summaryUpdates),
+    ...(recurrenceTrace.boundedSelfAffine
+      ? { assumptions: [formatRefinementExpression(recurrenceTrace.boundedSelfAffine.precondition.expression)] }
+      : {}),
+    ...(recurrenceTrace.boundedSelfAffine
+      ? { boundedSelfAffine: boundedSelfAffineEvidence(recurrenceTrace.boundedSelfAffine)! } : {}),
     stable: false,
   } : undefined;
   const payload = trace ? formatRefinementExpression(trace.throwValue) : candidate.throwStatement.expression.getText(source);
@@ -4727,6 +4891,11 @@ function recurrenceEvidenceFromTrace(
     guard: formatRefinementExpression(trace.guard),
     iteration: formatUpdates(trace.iterationUpdates),
     summary: formatUpdates(trace.summaryUpdates),
+    ...(trace.boundedSelfAffine
+      ? { assumptions: [formatRefinementExpression(trace.boundedSelfAffine.precondition.expression)] }
+      : {}),
+    ...(trace.boundedSelfAffine
+      ? { boundedSelfAffine: boundedSelfAffineEvidence(trace.boundedSelfAffine)! } : {}),
     stable,
   };
 }
@@ -4747,6 +4916,7 @@ function runScalarRecurrenceFixedPoint(
   readonly controlJoins?: RefinementScalarRecurrenceObligation["controlJoins"];
   readonly affineDependencies?: RefinementAffineDependencies;
   readonly booleanInvolutions?: RefinementBooleanInvolutions;
+  readonly boundedSelfAffine?: RefinementBoundedSelfAffine;
   readonly unsupportedPiecewise: boolean;
 } {
   const header = `while-header:${candidate.whileStatement.getStart(source)}`;
@@ -4970,6 +5140,18 @@ function runScalarRecurrenceFixedPoint(
     ...(controlJoins ? { controlJoins } : {}),
     ...(trace?.affineDependencies ? { affineDependencies: trace.affineDependencies } : {}),
     ...(trace?.booleanInvolutions ? { booleanInvolutions: trace.booleanInvolutions } : {}),
+    ...(trace?.boundedSelfAffine ? { boundedSelfAffine: {
+      rule: trace.boundedSelfAffine.rule,
+      state: trace.boundedSelfAffine.state,
+      counter: trace.boundedSelfAffine.counter,
+      multiplier: trace.boundedSelfAffine.multiplier,
+      precondition: {
+        expression: formatRefinementExpression(trace.boundedSelfAffine.precondition.expression),
+        span: trace.boundedSelfAffine.precondition.span,
+      },
+      budget: trace.boundedSelfAffine.budget,
+      update: trace.boundedSelfAffine.update,
+    } } : {}),
     unsupportedPiecewise: (piecewise || Boolean(candidate.valueJoin)) && !controlJoins,
   };
 }
@@ -5492,6 +5674,7 @@ export function analyzeRefinementActionBodies(
         ...(fixedPoint.controlJoins ? { controlJoins: fixedPoint.controlJoins } : {}),
         ...(fixedPoint.affineDependencies ? { affineDependencies: fixedPoint.affineDependencies } : {}),
         ...(fixedPoint.booleanInvolutions ? { booleanInvolutions: fixedPoint.booleanInvolutions } : {}),
+        ...(fixedPoint.boundedSelfAffine ? { boundedSelfAffine: fixedPoint.boundedSelfAffine } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,
@@ -5596,6 +5779,7 @@ export interface RefinementRecurrenceProof {
   backend: "z3";
   status: "verified" | "refuted" | "unknown";
   checks: readonly RefinementRecurrenceProofCheck[];
+  assumptions?: readonly string[];
 }
 
 function substituteRefinementState(
@@ -5660,13 +5844,16 @@ export async function verifyRefinementRecurrenceCertificateWithZ3(
     }],
   };
   const checks: RefinementRecurrenceProofCheck[] = [];
+  let assumptions: TemporalExpression[] = [];
   const record = async (
     kind: RefinementRecurrenceProofCheck["kind"],
     state: string,
     left: TemporalExpression,
     right: TemporalExpression,
   ): Promise<void> => {
-    const result = await checkTemporalExpressionEquivalenceWithZ3(spec, left, right, options);
+    const result = await checkTemporalExpressionEquivalenceUnderAssumptionsWithZ3(
+      spec, left, right, assumptions, options,
+    );
     checks.push(result.status === "equivalent"
       ? { kind, state, status: "verified" }
       : result.status === "different"
@@ -5674,6 +5861,7 @@ export async function verifyRefinementRecurrenceCertificateWithZ3(
         : { kind, state, status: "unknown", reason: result.reason });
   };
   try {
+    assumptions = (certificate.assumptions ?? []).map(parseTemporalExpression);
     const stateTypes = new Map(spec.states.map((state) => [state.name, state.type]));
     const guard = parseTemporalExpression(certificate.guard);
     const iterations = new Map(Object.entries(certificate.iteration)
@@ -5701,6 +5889,58 @@ export async function verifyRefinementRecurrenceCertificateWithZ3(
       }
       return undefined;
     };
+    const bounded = certificate.boundedSelfAffine;
+    const boundedMetadataMismatch = (): RefinementRecurrenceProof => ({
+      backend: "z3",
+      status: "refuted",
+      checks: [{
+        kind: "step",
+        state: bounded?.state ?? certificate.counter,
+        status: "refuted",
+        reason: "bounded-self-affine-metadata-mismatch",
+      }],
+      ...(certificate.assumptions?.length ? { assumptions: certificate.assumptions } : {}),
+    });
+    if ((certificate.assumptions?.length ?? 0) > 0 && !bounded) {
+      return boundedMetadataMismatch();
+    }
+    if (bounded) {
+      const assumption = assumptions.length === 1 ? assumptions[0] : undefined;
+      const upper = assumption?.kind === "binary" && assumption.operator === "and"
+        ? assumption.right : undefined;
+      const lower = assumption?.kind === "binary" && assumption.operator === "and"
+        ? assumption.left : undefined;
+      const observed = upper?.kind === "binary" ? signedInteger(upper.right) : undefined;
+      const iteration = iterations.get(bounded.state);
+      const iterationForm = iteration ? decomposeAffineStateExpression(iteration) : undefined;
+      const expectedPrecondition = assumption ? formatRefinementExpression(assumption) : undefined;
+      const metadataMatches = bounded.rule === "precondition-bounded-self-affine"
+        && bounded.counter === certificate.counter
+        && bounded.state !== bounded.counter
+        && stateTypes.get(bounded.state) === "int"
+        && bounded.update.state === bounded.state
+        && bounded.budget.name === "cfg-recurrence-geometric-iterations"
+        && bounded.budget.limit === MAX_BOUNDED_GEOMETRIC_ITERATIONS
+        && Number.isSafeInteger(bounded.budget.observed)
+        && bounded.budget.observed >= 1
+        && bounded.budget.observed <= MAX_BOUNDED_GEOMETRIC_ITERATIONS
+        && Number.isSafeInteger(bounded.multiplier)
+        && bounded.multiplier > 1
+        && Number.isSafeInteger(bounded.multiplier ** bounded.budget.observed)
+        && certificate.assumptions?.length === 1
+        && certificate.assumptions[0] === bounded.precondition.expression
+        && expectedPrecondition === bounded.precondition.expression
+        && lower?.kind === "binary" && lower.operator === "gte"
+        && lower.left.kind === "name" && lower.left.name === bounded.counter
+        && signedInteger(lower.right) === 0
+        && upper?.kind === "binary" && upper.operator === "lte"
+        && upper.left.kind === "name" && upper.left.name === bounded.counter
+        && observed === bounded.budget.observed
+        && iterationForm?.constant === 0
+        && iterationForm.coefficients.size === 1
+        && iterationForm.coefficients.get(bounded.state) === bounded.multiplier;
+      if (!metadataMatches) return boundedMetadataMismatch();
+    }
     const guardBound = guard.kind === "binary" ? signedInteger(guard.right) : undefined;
     const guardDirection = guard.kind === "binary" && (guard.operator === "gt" || guard.operator === "gte")
       ? "decrease" : guard.kind === "binary" && (guard.operator === "lt" || guard.operator === "lte")
@@ -5782,6 +6022,7 @@ export async function verifyRefinementRecurrenceCertificateWithZ3(
     status: checks.some((check) => check.status === "refuted") ? "refuted"
       : checks.some((check) => check.status === "unknown") ? "unknown" : "verified",
     checks,
+    ...(certificate.assumptions?.length ? { assumptions: certificate.assumptions } : {}),
   };
 }
 

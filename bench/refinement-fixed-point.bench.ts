@@ -84,6 +84,12 @@ const cfgEntryReadBatchFlushSpec = parseSpec(
   cfgEntryReadBatchFlushFile,
   cfgEntryReadBatchFlushSource,
 ).temporal;
+const cfgBoundedRetryBackoffFile = "examples/dogfood/cfg-bounded-retry-backoff.ts";
+const cfgBoundedRetryBackoffSource = readFileSync(cfgBoundedRetryBackoffFile, "utf8");
+const cfgBoundedRetryBackoffSpec = parseSpec(
+  cfgBoundedRetryBackoffFile,
+  cfgBoundedRetryBackoffSource,
+).temporal;
 const cfgConditionalWeightedFlushFile = "examples/dogfood/cfg-conditional-weighted-flush.ts";
 const cfgConditionalWeightedFlushSource = readFileSync(cfgConditionalWeightedFlushFile, "utf8");
 const cfgConditionalWeightedFlushSpec = parseSpec(
@@ -104,6 +110,42 @@ const aliasProgram = ts.createProgram([aliasFile], {
 });
 
 describe("refinement CFG fixed point", () => {
+  bench("derive one precondition-bounded self-affine recurrence", () => {
+    const result = analyzeRefinementActionBodies(
+      cfgBoundedRetryBackoffFile,
+      cfgBoundedRetryBackoffSource,
+      "boundedRetryBackoff",
+      cfgBoundedRetryBackoffSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.reason !== "independent-proof-required"
+      || obligation.boundedSelfAffine?.multiplier !== 2
+      || obligation.boundedSelfAffine.budget.observed !== 8) {
+      throw new Error("bounded self-affine recurrence benchmark fixture did not converge provisionally");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove the bounded self-affine recurrence with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      cfgBoundedRetryBackoffFile,
+      cfgBoundedRetryBackoffSource,
+      "boundedRetryBackoff",
+      cfgBoundedRetryBackoffSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.status !== "verified"
+      || obligation.boundedSelfAffine?.rule !== "precondition-bounded-self-affine"
+      || obligation.recurrenceProof?.status !== "verified") {
+      throw new Error("bounded self-affine recurrence Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
   bench("derive one Boolean involution recurrence", () => {
     const result = analyzeRefinementActionBodies(
       cfgRoundRobinDrainFile,

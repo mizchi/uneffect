@@ -198,6 +198,46 @@
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
+    "proofAssumptions": {
+      "type": "array", "minItems": 1, "maxItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "boundedSelfAffine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "state", "counter", "multiplier", "precondition", "budget", "update"],
+      "properties": {
+        "rule": { "const": "precondition-bounded-self-affine" },
+        "state": { "type": "string", "minLength": 1 },
+        "counter": { "type": "string", "minLength": 1 },
+        "multiplier": { "type": "integer", "minimum": 2 },
+        "precondition": {
+          "type": "object", "additionalProperties": false,
+          "required": ["expression", "span"],
+          "properties": {
+            "expression": { "type": "string", "minLength": 1 },
+            "span": { "$ref": "#/$defs/span" }
+          }
+        },
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit", "observed"],
+          "properties": {
+            "name": { "const": "cfg-recurrence-geometric-iterations" },
+            "limit": { "const": 8 },
+            "observed": { "type": "integer", "minimum": 1, "maximum": 8 }
+          }
+        },
+        "update": {
+          "type": "object", "additionalProperties": false,
+          "required": ["state", "span"],
+          "properties": {
+            "state": { "type": "string", "minLength": 1 },
+            "span": { "$ref": "#/$defs/span" }
+          }
+        }
+      }
+    },
     "rankingRecurrence": {
       "type": "object",
       "additionalProperties": false,
@@ -211,8 +251,15 @@
         "guard": { "type": "string", "minLength": 1 },
         "iteration": { "$ref": "#/$defs/expressionSnapshot" },
         "summary": { "$ref": "#/$defs/expressionSnapshot" },
+        "assumptions": { "$ref": "#/$defs/proofAssumptions" },
+        "boundedSelfAffine": { "$ref": "#/$defs/boundedSelfAffine" },
         "stable": { "type": "boolean" }
-      }
+      },
+      "allOf": [{
+        "if": { "required": ["assumptions"] },
+        "then": { "required": ["boundedSelfAffine"] },
+        "else": { "not": { "required": ["boundedSelfAffine"] } }
+      }]
     },
     "recurrenceProofCheck": {
       "type": "object",
@@ -232,7 +279,8 @@
       "properties": {
         "backend": { "const": "z3" },
         "status": { "enum": ["verified", "refuted", "unknown"] },
-        "checks": { "type": "array", "items": { "$ref": "#/$defs/recurrenceProofCheck" }, "minItems": 1 }
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/recurrenceProofCheck" }, "minItems": 1 },
+        "assumptions": { "$ref": "#/$defs/proofAssumptions" }
       }
     },
     "handlerCompletion": {
@@ -666,6 +714,7 @@
             }
           }
         },
+        "boundedSelfAffine": { "$ref": "#/$defs/boundedSelfAffine" },
         "memberBudget": {
           "type": "object", "additionalProperties": false,
           "required": ["name", "limit", "observed"],

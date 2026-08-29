@@ -490,8 +490,22 @@ same property is proved for arbitrary TypeScript.
   through the shared scalar recurrence and remains provisional until Z3 proves
   its base/step obligations and the integer ranking obligation. Multiple,
   compound, path-dependent, helper-mediated, or repeated toggles and non-unit
-  ranking steps remain unsupported. Integer self-amplification and unbounded
+  ranking steps remain unsupported. General self-amplification and unbounded
   geometric/exponential summaries remain explicit non-proofs.
+
+- The active P2.31 slice admits one deliberately finite self-affine exception.
+  A direct unit-countdown loop may carry exactly one integer update `x *= k`
+  when the annotated function has the exact normalized precondition
+  `requires counter >= 0 && counter <= N`, `k` is a safe integer greater than
+  one, and `1 <= N <= 8`. Structural analysis expands an exact finite piecewise
+  summary and remains provisional. Independent Z3 base, step, and ranking
+  checks run under the explicit precondition. The certificate binds that
+  assumption to counter/state/multiplier/update-span and named-budget metadata;
+  narrowing or deleting the assumption, changing the multiplier, or deleting
+  the structured metadata is `refuted`. This does not prove the contract at
+  every call site and does not admit general exponentiation, unbounded retry
+  counts, additive/nonlinear updates, repeated writes, or multiple self-affine
+  members.
 
 ## Async, resources, and event loops
 

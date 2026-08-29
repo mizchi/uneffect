@@ -964,6 +964,17 @@ export async function checkTemporalExpressionEquivalenceWithZ3(
   right: TemporalExpression,
   options: Z3ExecutionOptions = {},
 ): Promise<TemporalEquivalenceResult> {
+  return checkTemporalExpressionEquivalenceUnderAssumptionsWithZ3(spec, left, right, [], options);
+}
+
+/** Proves scalar equivalence only inside an explicit, reviewable predicate domain. */
+export async function checkTemporalExpressionEquivalenceUnderAssumptionsWithZ3(
+  spec: TemporalSpec,
+  left: TemporalExpression,
+  right: TemporalExpression,
+  assumptions: readonly TemporalExpression[],
+  options: Z3ExecutionOptions = {},
+): Promise<TemporalEquivalenceResult> {
   if (spec.states.some((state) => !supportsZ3SemanticType(state.type)) || !supportsZ3Expression(left) || !supportsZ3Expression(right)) {
     return { status: "unknown", backend: "z3", reason: "unsupported-backend-domain" };
   }
@@ -974,8 +985,15 @@ export async function checkTemporalExpressionEquivalenceWithZ3(
     if ((leftType !== "bool" && leftType !== "int") || leftType !== rightType) {
       return { status: "unknown", backend: "z3", reason: "equivalence-requires-matching-scalar-expressions" };
     }
+    if (assumptions.some((assumption) => !supportsZ3Expression(assumption)
+      || typeCheckTemporalExpression(assumption, symbols) !== "bool")) {
+      return { status: "unknown", backend: "z3", reason: "equivalence-assumptions-require-boolean-expressions" };
+    }
     const unequal = `(not (= ${temporalToSmt(left, (name) => name, symbols)} ${temporalToSmt(right, (name) => name, symbols)}))`;
-    const execution = await executeCheck(spec, [unequal], options);
+    const execution = await executeCheck(spec, [
+      ...assumptions.map((assumption) => temporalToSmt(assumption, (name) => name, symbols, "bool")),
+      unequal,
+    ], options);
     const status = execution.status;
     return status === "unsat"
       ? { status: "equivalent", backend: "z3" }

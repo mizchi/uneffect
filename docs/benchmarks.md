@@ -2116,6 +2116,15 @@ portable performance claims: GitHub runner setup, CPU contention, native Z3,
 Quint, and Java startup can change wall time. Remote timing artifacts remain
 the authority for timeout calibration and future rebalancing.
 
+The P2.31 focused benchmark derives the eight-step finite self-affine retry
+summary. A selected run measured 0.1803 ms mean over 2,773 structural samples
+(5,545.98 operations per second, 0.48% RME). Independent Z3 validation under
+the explicit retry bound measured 27.1336 ms mean over 19 samples (36.85
+operations per second, 1.88% RME). These are development-host regression
+signals. They cover one multiplier, one direct update, one unit countdown, and
+an exact bound of eight; they do not measure general exponentiation, multiple
+self-affine states, call-site contract validation, or larger/unbounded bounds.
+
 Corsa checker inferred-effect handoff (2026-08-28, Apple Silicon, one sample):
 
 - `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`

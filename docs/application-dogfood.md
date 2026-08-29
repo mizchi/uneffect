@@ -624,6 +624,17 @@ order, and operation spans. This establishes one builtin and one direct-call
 family only, not general Console coverage, arbitrary globals, nested callbacks,
 dynamic dispatch, Content Mapper semantics, or persisted fact authentication.
 
+P2.31 adds `cfg-bounded-retry-backoff.ts`, a realistic retry loop that doubles
+one delay while decrementing a retry counter. The function's inline Uneffect
+contract states `0 <= retries <= 8`; analysis records that exact source span,
+the multiplier, update span, and eight-iteration expansion budget. Its temporal
+action uses the corresponding finite factor table, and independent Z3 checks
+verify the recurrence only under the recorded precondition. Removing or
+oversizing the bound, naming the wrong counter, changing the runtime factor,
+adding a constant, repeating the write, adding another self-affine member, or
+tampering with certificate metadata fails closed. The result is not an
+unconditional call-site proof and is not a general exponential solver.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as

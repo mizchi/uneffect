@@ -120,8 +120,16 @@ One further direct-loop family admits exactly one Boolean involution beside a
 unit integer countdown. It retains the Boolean update span and named
 one-involution budget, derives an exact modulo-two summary, and requires the
 same independent Z3 base/step/ranking checks. Multiple, compound,
-path-dependent, repeated, or helper-mediated toggles, non-unit ranking, and
-integer geometric growth remain unsupported.
+path-dependent, repeated, or helper-mediated toggles and non-unit ranking remain
+unsupported. One direct integer self-amplification is admitted only as
+`x *= k` with safe integer `k > 1`, a unit countdown, and the exact
+function-scoped contract `requires counter >= 0 && counter <= N` for
+`1 <= N <= 8`. Uneffect emits a finite piecewise summary and Z3 checks it under
+that recorded assumption. The assumption, counter, multiplier, iteration,
+update, and named expansion budget must agree or the certificate is refuted.
+This is a conditional bounded result: call-site satisfaction, unbounded
+exponentiation, additive/nonlinear forms, repeated writes, and multiple
+self-amplifying members remain non-proofs.
 
 The v2 artifact also defines `handler-scalar-environment-join` for one or two
 changed integers carried across two or three source-keyed sibling nested-handler

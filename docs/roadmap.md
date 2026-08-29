@@ -152,6 +152,10 @@ explicit conservative boundaries rather than untracked support.
    Completed child [#41](https://github.com/mizchi/uneffect/issues/41) proves the
    complementary entry-read order for one triangular affine dependency while
    retaining cycles and general coupled recurrences as explicit non-proofs.
+   Active bounded child [#47](https://github.com/mizchi/uneffect/issues/47)
+   targets one realistic self-affine retry backoff only under an exact finite
+   `requires` bound. It is not a general exponentiation proof, and local
+   worktree evidence is not a shipped capability until its handoff closes.
    The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.
