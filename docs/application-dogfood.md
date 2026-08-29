@@ -283,6 +283,21 @@ conditional TLA and an await followed by unconditional throw. A real external
 application claim remains absent until an application actually contains the
 supported boundary.
 
+## Workhub top-level Promise launch boundary
+
+The same Workhub revision does contain a repeated real entry-point boundary:
+eight CLI families end in top-level `main().catch(handler)`. Bounded child #57
+models that expression as synchronous Promise launch followed by rejection
+handler attachment before module completion. The dogfood fixture
+`examples/dogfood/workhub-main-catch.ts` retains an `await` inside `main`; that
+nested await must not become a module `suspend` event. A focused Red test first
+exposed that false TLA classification, and the corrected result contains only
+`start`, `promise-launch`, `rejection-handler-attach`, and `complete`.
+
+This does not prove that `main` completes, that its later effects occur, that
+the handler runs, or when either job is selected by the host event loop. Bare
+launches and unsupported catch targets remain explicit unknowns.
+
 ## Budgeted refinement CFG seed
 
 The application-shaped `examples/dogfood/telemetry-fixed-point-drain.ts` models

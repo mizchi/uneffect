@@ -76,7 +76,10 @@ commitment.
    completion evidence. Runtime-binding and general-shape cycles, conditional
    async joins, external packages, and dynamic initialization remain explicit
    non-proofs. The available application graphs contained no real TLA candidate,
-   so broader widening is queued behind #25 or new application evidence.
+   but Workhub did provide a top-level `main().catch(handler)` Promise-launch
+   boundary. Bounded child [#57](https://github.com/mizchi/uneffect/issues/57)
+   is active for that exact launch-before-handler-attachment ordering; later
+   Promise execution and host queues remain outside its claim.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
 is complete for the documented bounded, finite-state-complete, inductive,

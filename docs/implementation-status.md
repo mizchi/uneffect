@@ -1062,6 +1062,13 @@ same property is proved for arbitrary TypeScript.
   published schema. Runtime-binding, self, branching, multi-edge, and async
   cycles, conditional TLA, external/dynamic bodies, sibling initiation order,
   and decorator ordering remain explicit non-claims.
+  The same artifact now recognizes one Workhub-shaped top-level
+  `main().catch(handler)` only when TypeChecker identity proves a source-local
+  top-level async function and the standard `Promise.catch` member. It emits
+  synchronous launch/handler-attachment events and no longer misclassifies an
+  `await` nested inside a function declaration as module TLA. Promise execution,
+  completion, handler execution, process exit, and host queues remain explicit
+  exclusions; bare or unsupported launches fail closed.
   A separate strict `uneffect-workspace-module-order/v1` composition discharges
   one parent external-import boundary through an exact child declaration
   re-emission/source mapping. It admits only one direct child module with one

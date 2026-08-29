@@ -18,12 +18,23 @@ export function isRuntimeModuleDependency(
     || statement.exportClause.elements.some((element) => !element.isTypeOnly);
 }
 
-export type ModuleInitializationEventKind = "start" | "suspend" | "resume" | "reject" | "throw" | "complete";
+export type ModuleInitializationEventKind =
+  | "start"
+  | "promise-launch"
+  | "rejection-handler-attach"
+  | "suspend"
+  | "resume"
+  | "reject"
+  | "throw"
+  | "complete";
 export type ModuleInitializationUnknownKind =
   | "entry-not-found"
   | "cycle"
   | "external-static-import"
   | "dynamic-import"
+  | "unhandled-top-level-promise-launch"
+  | "unsupported-top-level-promise-handler"
+  | "unsupported-mixed-top-level-async-shape"
   | "conditional-top-level-await"
   | "conditional-top-level-throw"
   | "class-initialization-order"
@@ -106,11 +117,13 @@ export interface ModuleInitializationOrder {
     "top-level await may resume or reject",
     "an unconditional top-level throw prevents normal completion",
     "a synchronous side-effect-import simple ring executes in specification DFS postorder",
+    "a supported top-level Promise rejection handler is attached synchronously before module completion",
   ];
   exclusions: readonly [
     "host scheduling time is not modeled",
     "only synchronous side-effect-import simple rings have proof-grade cyclic order",
     "dynamic and external module bodies are not modeled",
+    "Promise execution after a top-level launch is not modeled",
   ];
 }
 
@@ -123,6 +136,10 @@ interface ModuleRecord {
     sideEffectOnly: boolean;
   }>;
   awaits: ts.AwaitExpression[];
+  handledPromiseLaunch?: {
+    launchSpan: { start: number; end: number };
+    handlerSpan: { start: number; end: number };
+  };
   directThrow?: ts.ThrowStatement;
 }
 
@@ -133,7 +150,7 @@ function digest(value: string): string {
 function collectTopLevelNodes(source: ts.SourceFile): Array<{ node: ts.Node; statement: ts.Statement }> {
   const nodes: Array<{ node: ts.Node; statement: ts.Statement }> = [];
   const walk = (node: ts.Node, statement: ts.Statement): void => {
-    if (node !== statement && (ts.isFunctionLike(node) || ts.isClassDeclaration(node) || ts.isClassExpression(node))) return;
+    if (ts.isFunctionLike(node) || ts.isClassDeclaration(node) || ts.isClassExpression(node)) return;
     nodes.push({ node, statement });
     ts.forEachChild(node, (child) => walk(child, statement));
   };
@@ -186,6 +203,29 @@ export function analyzeModuleInitializationOrder(program: ts.Program, entryFile:
     kind: "program-source",
     sourceDigest: digest(program.getSourceFile(fileName)?.text ?? ""),
   });
+  const checker = program.getTypeChecker();
+  const sourceLocalTopLevelAsyncFunction = (
+    call: ts.CallExpression,
+    source: ts.SourceFile,
+  ): ts.FunctionDeclaration | undefined => {
+    if (call.arguments.length !== 0 || !ts.isIdentifier(call.expression)) return undefined;
+    const symbol = checker.getSymbolAtLocation(call.expression);
+    const declaration = symbol?.valueDeclaration;
+    if (!declaration || !ts.isFunctionDeclaration(declaration)
+      || declaration.getSourceFile() !== source || declaration.parent !== source
+      || !declaration.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)) return undefined;
+    return declaration;
+  };
+  const isStandardPromiseCatch = (access: ts.PropertyAccessExpression): boolean => {
+    const symbol = checker.getSymbolAtLocation(access.name);
+    return symbol?.declarations?.some((declaration) => {
+      const owner = declaration.parent;
+      return declaration.getSourceFile().isDeclarationFile
+        && /^lib\..*\.d\.ts$/u.test(declaration.getSourceFile().fileName.split(/[\\/]/u).at(-1) ?? "")
+        && ts.isInterfaceDeclaration(owner)
+        && owner.name.text === "Promise";
+    }) === true;
+  };
   const inspect = (source: ts.SourceFile): ModuleRecord => {
     const existing = records.get(source.fileName);
     if (existing) return existing;
@@ -214,6 +254,47 @@ export function analyzeModuleInitializationOrder(program: ts.Program, entryFile:
         }
       }
       if (ts.isThrowStatement(statement) && !record.directThrow) record.directThrow = statement;
+      if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) continue;
+      const expression = statement.expression;
+      if (ts.isPropertyAccessExpression(expression.expression) && expression.expression.name.text === "catch") {
+        const access = expression.expression;
+        const launch = access.expression;
+        const handler = expression.arguments[0];
+        const supported = ts.isCallExpression(launch)
+          && sourceLocalTopLevelAsyncFunction(launch, source) !== undefined
+          && expression.arguments.length === 1
+          && handler !== undefined
+          && (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler))
+          && isStandardPromiseCatch(access);
+        if (!supported) {
+          addUnknown({
+            fileName: source.fileName,
+            kind: "unsupported-top-level-promise-handler",
+            span: { start: expression.getStart(source), end: expression.getEnd() },
+            detail: "top-level catch is outside the source-local async main().catch(handler) fragment",
+          });
+        } else if (record.handledPromiseLaunch) {
+          addUnknown({
+            fileName: source.fileName,
+            kind: "unsupported-top-level-promise-handler",
+            span: { start: expression.getStart(source), end: expression.getEnd() },
+            detail: "multiple top-level Promise launches are outside the supported fragment",
+          });
+          record.handledPromiseLaunch = undefined;
+        } else {
+          record.handledPromiseLaunch = {
+            launchSpan: { start: launch.getStart(source), end: launch.getEnd() },
+            handlerSpan: { start: access.name.getStart(source), end: expression.getEnd() },
+          };
+        }
+      } else if (sourceLocalTopLevelAsyncFunction(expression, source)) {
+        addUnknown({
+          fileName: source.fileName,
+          kind: "unhandled-top-level-promise-launch",
+          span: { start: expression.getStart(source), end: expression.getEnd() },
+          detail: "a top-level source-local async function launch has no supported rejection handler",
+        });
+      }
     }
     for (const { node, statement } of collectTopLevelNodes(source)) {
       if (ts.isAwaitExpression(node)) {
@@ -249,6 +330,12 @@ export function analyzeModuleInitializationOrder(program: ts.Program, entryFile:
       });
     }
     record.awaits.sort((left, right) => left.getStart(source) - right.getStart(source));
+    if (record.handledPromiseLaunch && record.awaits.length > 0) addUnknown({
+      fileName: source.fileName,
+      kind: "unsupported-mixed-top-level-async-shape",
+      span: record.handledPromiseLaunch.launchSpan,
+      detail: "top-level await mixed with a top-level Promise launch is outside the supported fragment",
+    });
     return record;
   };
   const stack: string[] = [];
@@ -380,6 +467,24 @@ export function analyzeModuleInitializationOrder(program: ts.Program, entryFile:
       choices.push({ after: suspend, alternatives: [resume, reject], reason: "await-settlement" });
       predecessor = resume;
     }
+    if (record.handledPromiseLaunch && record.handledPromiseLaunch.launchSpan.start < throwStart) {
+      const launch = `${fileName}#promise-launch:0`;
+      const attach = `${fileName}#rejection-handler-attach:0`;
+      events.push(
+        { id: launch, kind: "promise-launch", span: record.handledPromiseLaunch.launchSpan },
+        { id: attach, kind: "rejection-handler-attach", span: record.handledPromiseLaunch.handlerSpan },
+      );
+      constraints.push({
+        before: predecessor, after: launch, reason: "module-sequencing",
+        sourceFile: fileName, sourceSpan: record.handledPromiseLaunch.launchSpan,
+        semanticRule: "source-order", evidence: sourceEvidence(fileName),
+      }, {
+        before: launch, after: attach, reason: "module-sequencing",
+        sourceFile: fileName, sourceSpan: record.handledPromiseLaunch.handlerSpan,
+        semanticRule: "source-order", evidence: sourceEvidence(fileName),
+      });
+      predecessor = attach;
+    }
     if (record.directThrow) {
       const id = `${fileName}#throw`;
       events.push({ id, kind: "throw", span: { start: record.directThrow.getStart(source), end: record.directThrow.getEnd() } });
@@ -438,11 +543,13 @@ export function analyzeModuleInitializationOrder(program: ts.Program, entryFile:
       "top-level await may resume or reject",
       "an unconditional top-level throw prevents normal completion",
       "a synchronous side-effect-import simple ring executes in specification DFS postorder",
+      "a supported top-level Promise rejection handler is attached synchronously before module completion",
     ],
     exclusions: [
       "host scheduling time is not modeled",
       "only synchronous side-effect-import simple rings have proof-grade cyclic order",
       "dynamic and external module bodies are not modeled",
+      "Promise execution after a top-level launch is not modeled",
     ],
   };
 }

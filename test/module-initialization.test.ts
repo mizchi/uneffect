@@ -66,6 +66,96 @@ describe("ESM module initialization order IR", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("models a Workhub-shaped top-level Promise launch and synchronous catch attachment", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-main-catch-"));
+    try {
+      const entry = join(directory, "entry.mts");
+      const result = analyzeModuleInitializationOrder(program({
+        [entry]: `
+          async function main(): Promise<void> { await Promise.resolve() }
+          main().catch((error) => { console.error(error) })
+        `,
+      }), entry);
+      const module = result.modules[0]!;
+
+      expect(result.evidence).toBe("verified");
+      expect(result.unknowns).toEqual([]);
+      expect(module.events.map((event) => event.kind)).toEqual([
+        "start", "promise-launch", "rejection-handler-attach", "complete",
+      ]);
+      expect(module.events.some((event) => event.kind === "suspend")).toBe(false);
+      expect(result.constraints).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          before: `${entry}#start`, after: `${entry}#promise-launch:0`,
+          reason: "module-sequencing", semanticRule: "source-order",
+        }),
+        expect.objectContaining({
+          before: `${entry}#promise-launch:0`, after: `${entry}#rejection-handler-attach:0`,
+          reason: "module-sequencing", semanticRule: "source-order",
+        }),
+        expect.objectContaining({
+          before: `${entry}#rejection-handler-attach:0`, after: `${entry}#complete`,
+          reason: "module-sequencing", semanticRule: "source-order",
+        }),
+      ]));
+      expect(result.claims).toContain("a supported top-level Promise rejection handler is attached synchronously before module completion");
+      expect(JSON.parse(readFileSync("schemas/uneffect-module-order-v1.schema.json", "utf8"))).toMatchObject({
+        $defs: { event: { properties: { kind: { enum: expect.arrayContaining(["promise-launch", "rejection-handler-attach"]) } } } },
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps an unhandled or unsupported top-level Promise launch non-proof-grade", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-main-unhandled-"));
+    try {
+      const unhandledFile = join(directory, "unhandled.mts");
+      const unhandled = analyzeModuleInitializationOrder(program({
+        [unhandledFile]: `async function main(): Promise<void> {}
+          main()`,
+      }), unhandledFile);
+      expect(unhandled.evidence).toBe("unknown");
+      expect(unhandled.unknowns).toContainEqual(expect.objectContaining({
+        kind: "unhandled-top-level-promise-launch",
+      }));
+
+      const unsupportedFile = join(directory, "unsupported.mts");
+      const unsupported = analyzeModuleInitializationOrder(program({
+        [unsupportedFile]: `
+          const runner = { async main(): Promise<void> {} }
+          runner.main().catch(() => {})
+        `,
+      }), unsupportedFile);
+      expect(unsupported.evidence).toBe("unknown");
+      expect(unsupported.unknowns).toContainEqual(expect.objectContaining({
+        kind: "unsupported-top-level-promise-handler",
+      }));
+
+      const mixedFile = join(directory, "mixed.mts");
+      const mixed = analyzeModuleInitializationOrder(program({
+        [mixedFile]: `async function main(): Promise<void> {}
+          await Promise.resolve()
+          main().catch(() => {})`,
+      }), mixedFile);
+      expect(mixed.evidence).toBe("unknown");
+      expect(mixed.unknowns).toContainEqual(expect.objectContaining({
+        kind: "unsupported-mixed-top-level-async-shape",
+      }));
+
+      const shadowedFile = join(directory, "shadowed.mts");
+      const shadowed = analyzeModuleInitializationOrder(program({
+        [shadowedFile]: `
+          async function main(): Promise<void> {}
+          const launched = main() as Promise<void> & { catch(handler: () => void): void }
+          launched.catch(() => {})
+        `,
+      }), shadowedFile);
+      expect(shadowed.evidence).toBe("unknown");
+      expect(shadowed.unknowns).toContainEqual(expect.objectContaining({
+        kind: "unsupported-top-level-promise-handler",
+      }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("models an unconditional synchronous throw as terminal and blocks completion", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-throw-"));
     try {

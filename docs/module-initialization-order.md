@@ -25,6 +25,11 @@ cycle family. It represents:
 - straight-line top-level `await` as `suspend`, followed by an explicit
   `resume` or `reject` choice;
 - an unconditional top-level `throw` as terminal, with no normal completion;
+- one top-level `main().catch(handler)` expression where `main` resolves by
+  TypeChecker identity to a source-local top-level async function, takes no
+  arguments, and `catch` resolves to the standard `Promise` member. This emits
+  `promise-launch` followed by `rejection-handler-attach` before module
+  completion, without emitting a TLA suspension for awaits inside `main`;
 - `blockedBy` on importers whose dependency has no normal-completion event;
 - a simple ring of two or more modules when every runtime edge inside the ring
   is a side-effect-only import, every member has exactly one runtime dependency,
@@ -47,6 +52,14 @@ This is not a total schedule. It proves only the constraints named in
 arbitrary JavaScript expressions cannot throw. Host timing is excluded.
 Sibling dependency start order is currently over-approximated rather than
 claimed exactly.
+
+For the supported Promise-launch form, only launch and synchronous handler
+attachment are represented. Execution or completion of `main`, effects after
+its first suspension, handler execution, process exit, and event-loop queue
+selection are explicitly excluded. A bare source-local async `main()` launch
+is `unhandled-top-level-promise-launch`. Member, renamed, reassigned,
+non-standard-catch, multiple-launch, or mixed TLA/launch shapes remain
+proof-grade `unknown` rather than being accepted by spelling.
 
 The artifact remains `unknown` for named/default/namespace/re-export cycles,
 self-cycles, branching or multi-edge SCCs, every asynchronous cycle, an
@@ -111,6 +124,8 @@ Still unimplemented:
 - cross-project TLA beyond one direct child source/declaration link;
 - conditional/dynamic import branches and external package bodies;
 - decorator application ordering in the same event IR;
+- Promise execution after a supported top-level launch and its host-queue
+  relationship;
 - Quint lowering and bounded schedule checking for this artifact;
 - liveness, host scheduling time, and promise settlement guarantees.
 

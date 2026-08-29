@@ -2172,3 +2172,12 @@ not measure nested handler CFG construction or rejection-binding ownership.
 The dynamic-import case additionally constructs matching TypeScript and Corsa
 binding evidence for one exact awaited shorthand destructuring form. Its
 single cold sample is not evidence for general module-resolution performance.
+
+The P1.5 warm module-order benchmark reuses one TypeScript `Program` containing
+the Workhub-shaped source-local async `main().catch(handler)` entry. A selected
+run measured 0.2571 ms mean over 1,946 samples (3,890.16 operations per second,
+0.56% RME). It covers TypeChecker identity checks, exclusion of the nested
+function-local await from TLA, and launch/handler-attachment event extraction.
+It excludes Program construction, later Promise execution, host scheduling,
+and unsupported launch shapes, so it is a regression signal rather than an
+end-to-end CLI latency claim.

@@ -22,8 +22,8 @@
     "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } },
     "cycleComponents": { "type": "array", "items": { "$ref": "#/$defs/cycleComponent" } },
     "unknowns": { "type": "array", "items": { "$ref": "#/$defs/unknown" } },
-    "claims": { "type": "array", "items": { "type": "string" }, "minItems": 5, "maxItems": 5 },
-    "exclusions": { "type": "array", "items": { "type": "string" }, "minItems": 3, "maxItems": 3 }
+    "claims": { "type": "array", "items": { "type": "string" }, "minItems": 6, "maxItems": 6 },
+    "exclusions": { "type": "array", "items": { "type": "string" }, "minItems": 4, "maxItems": 4 }
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -45,7 +45,7 @@
       "type": "object", "additionalProperties": false, "required": ["id", "kind", "span"],
       "properties": {
         "id": { "type": "string" },
-        "kind": { "enum": ["start", "suspend", "resume", "reject", "throw", "complete"] },
+        "kind": { "enum": ["start", "promise-launch", "rejection-handler-attach", "suspend", "resume", "reject", "throw", "complete"] },
         "span": { "$ref": "#/$defs/span" }
       }
     },
@@ -108,7 +108,7 @@
       "type": "object", "additionalProperties": false, "required": ["fileName", "kind", "detail"],
       "properties": {
         "fileName": { "type": "string" },
-        "kind": { "enum": ["entry-not-found", "cycle", "external-static-import", "dynamic-import", "conditional-top-level-await", "conditional-top-level-throw", "class-initialization-order", "typescript-error"] },
+        "kind": { "enum": ["entry-not-found", "cycle", "external-static-import", "dynamic-import", "unhandled-top-level-promise-launch", "unsupported-top-level-promise-handler", "unsupported-mixed-top-level-async-shape", "conditional-top-level-await", "conditional-top-level-throw", "class-initialization-order", "typescript-error"] },
         "span": { "$ref": "#/$defs/span" }, "detail": { "type": "string" }
       }
     }

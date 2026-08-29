@@ -25,11 +25,11 @@ not a suitable single implementation branch.
 
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
-| 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
+| 1 — Proof boundaries | #18, including active child #57 | 2–4 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 23–48 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **50–103 engineer-weeks** | Low |
+| **Total additive effort** | 13 open Issues / 11 non-overlapping epics | **50–103 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -121,10 +121,11 @@ or dynamic-import domains in #8. The epic therefore returns to its `effort:L`
 
 There are three useful planning numbers:
 
-- **Deferred Phase 1 breadth: 2–4 engineer-weeks.** #20 and both bounded #18
-  seeds are complete. The available application graphs contained no real TLA
-  candidate, so wider module semantics wait for new application evidence or a
-  reusable result from #25/#26.
+- **Phase 1 remaining breadth: 2–4 engineer-weeks.** #20 and the first two
+  bounded #18 seeds are complete. Active child #57 consumes the newly surfaced
+  Workhub `main().catch(handler)` evidence and remains included in this range.
+  Another widening requires fresh application evidence or a reusable result
+  from #25/#26.
 - **One focused product line: 7–19 engineer-weeks after Phase 1.** Node Lease
   prioritizes #2 and #5 (7–14 weeks), consuming the completed #23 CFG. Numeric/SHA-256
   prioritizes #26 and #4/#6 (10–19 weeks). These alternatives
@@ -165,6 +166,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P1.2b realm-identity seed | #20 | Completed | completed in the current delivery | Versioned/labeled Node ambient `global` composes while incompatible labels, typings majors, and local shadows fail closed with machine-readable evidence. |
 | P1.3 synchronous cycle seed | #18 | Completed | under 1 week actual | A synchronous side-effect-only simple ring has executable DFS ordering evidence; runtime-binding, general-shape, and async cycles stay `unknown`. |
 | P1.4 cross-project TLA seed | #18 | Completed | under 1 week actual | One exact direct child source/declaration with one straight-line TLA composes; conditional/looping await and await-then-throw stay `unknown`. |
+| P1.5 Workhub top-level Promise launch | #57 (child of #18) | Red tests written; implementation active | less than 1 week planned | Model one source-local async `main().catch(handler)` as launch then synchronous handler attachment, without claiming async completion or host scheduling. |
 | P2.1 CFG fixed-point seed | #23 | Completed | under 1 week actual | The direct ranking-loop throw/normal join converges under a named budget and its summary receives independent Z3 base/step/ranking validation; unaligned recurrence stays `unknown`. |
 | P2.2 target-aware outer-loop transfer | #23 | Completed | under 1 week actual | Resource-free dynamic outer-loop `continue` is consumed by its lexical owner; unresolved labels and resource-bearing dynamic loops stay `unknown`. |
 | P2.3 direct handler-join CFG seed | #23 | Completed | under 1 week actual | One application direct `switch`/`catch`/mandatory-`finally` join emits budgeted completion states; exhaustion and action mismatches stay `unknown`. |
@@ -264,8 +266,10 @@ same nested-try topology to three while retaining four as over-budget.
    and explicit realm label. Broader non-identity transform semantics belong to
    #8; cross-realm, higher-order, and collection-valued cases remain non-proofs
    under their owning Issues.
-2. #18's two bounded handoff seeds are complete; broader widening is queued
-   until #25 or a real application boundary justifies a specific family.
+2. #18's first two bounded handoff seeds are complete. Workhub supplied a real
+   top-level `main().catch(handler)` boundary, so #57 is active for that exact
+   family. It remains inside #18's 2–4 week estimate and does not claim later
+   Promise execution or host-queue semantics.
 3. #23 has completed its bounded source-keyed CFG handoff. #25 owns general
    value lattices and recurrence widening; #26 completed the bounded alias seed.
 4. #24/#26 and #8/#27 provide alias/frontend evidence required before #13 can authorize
@@ -282,7 +286,7 @@ be added to the owning Issue and reflected here before implementation begins.
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
 | 1 | #25 general CFG values | L | 3–8 weeks | Select the next application-backed bounded child after completed #48 | Value conflict, widening, recurrence, and irreducible control |
-| 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
+| 2 | #18 module initialization | M | 2–4 weeks | Complete active child #57, then re-estimate before selecting another family | Async evaluation joins, host packages, dynamic imports, and Promise execution after launch |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Select the next bounded child after completed #42/#43/#44/#45 | Collection semantics, broader correlated invariants, wider finite universes, and external trace interoperability |
 | 5 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
@@ -373,18 +377,20 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Current implementable result:** #56 completed the exact function-local
-  awaited dynamic fs import. The current Workhub function-level corpus is
-  exhausted; no #8 child is active, and broader parity remains unproved.
+- **Current implementable result:** #57 is active with Red tests for the exact
+  Workhub top-level `main().catch(handler)` module-order family. No implementation
+  is committed yet. #56 completed the function-local awaited dynamic fs import;
+  no #8 child is active, and broader frontend parity remains unproved.
 - **Next foundation checkpoint:** #26, #27, #28, #29, #30, #31, #32, #33,
   #34, #35, #36, #37, and #38 are complete; completing parent #25/#24/#8 remains
   12–28 engineer-weeks.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not
   both required for an initial useful release.
-- **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
-  evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 50–103
+- **Deferred breadth:** #18 has one active bounded child (#57); its broader
+  semantics and #7, #10, #16, and #13 remain queued until application evidence
+  or dependencies justify another bounded slice.
+- **Entire open backlog:** 13 Issues / 11 non-overlapping epics and 50–103
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

@@ -44,6 +44,19 @@ cycleHost.getSourceFile = (name, languageVersion, onError, shouldCreateNewSource
     : ts.createSourceFile(name, source, languageVersion, true);
 };
 const cycleProgram = ts.createProgram(cycleFiles, options, cycleHost);
+const promiseLaunchFile = "/bench/workhub-main-catch.mts";
+const promiseLaunchSource = `
+  async function main(): Promise<void> { await Promise.resolve() }
+  main().catch((error) => { console.error(error) })
+`;
+const promiseLaunchHost = ts.createCompilerHost(options);
+const originalPromiseLaunchGetSourceFile = promiseLaunchHost.getSourceFile.bind(promiseLaunchHost);
+promiseLaunchHost.fileExists = (name) => name === promiseLaunchFile || ts.sys.fileExists(name);
+promiseLaunchHost.readFile = (name) => name === promiseLaunchFile ? promiseLaunchSource : ts.sys.readFile(name);
+promiseLaunchHost.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => name === promiseLaunchFile
+  ? ts.createSourceFile(name, promiseLaunchSource, languageVersion, true)
+  : originalPromiseLaunchGetSourceFile(name, languageVersion, onError, shouldCreateNewSourceFile);
+const promiseLaunchProgram = ts.createProgram([promiseLaunchFile], options, promiseLaunchHost);
 
 describe("reviewed compiler callback timing", () => {
   bench("build a call graph for 32 TypeScript transformer chains", () => {
@@ -56,6 +69,15 @@ describe("module initialization order", () => {
     const result = analyzeModuleInitializationOrder(cycleProgram, cycleFiles[0]!);
     if (result.evidence !== "verified" || result.cycleComponents[0]?.executionOrder.length !== 4) {
       throw new Error("synchronous cycle benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("analyze a warm Workhub-shaped top-level Promise launch", () => {
+    const result = analyzeModuleInitializationOrder(promiseLaunchProgram, promiseLaunchFile);
+    if (result.evidence !== "verified"
+      || result.modules[0]?.events[1]?.kind !== "promise-launch"
+      || result.modules[0]?.events[2]?.kind !== "rejection-handler-attach") {
+      throw new Error("top-level Promise launch benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
 });

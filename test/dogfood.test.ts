@@ -18,6 +18,7 @@ import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } fr
 import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
+import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -27,6 +28,25 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("models a Workhub-shaped CLI launch without misclassifying its nested await as TLA", () => {
+    const fileName = "examples/dogfood/workhub-main-catch.ts";
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      types: ["node"],
+      noEmit: true,
+    });
+    const result = analyzeModuleInitializationOrder(program, fileName);
+
+    expect(result.evidence).toBe("verified");
+    expect(result.unknowns).toEqual([]);
+    expect(result.modules[0]?.events.map((event) => event.kind)).toEqual([
+      "start", "promise-launch", "rejection-handler-attach", "complete",
+    ]);
+    expect(result.exclusions).toContain("Promise execution after a top-level launch is not modeled");
+  });
+
   it("proves an entry-read batch accounting recurrence", async () => {
     const fileName = "examples/dogfood/cfg-entry-read-batch-flush.ts";
     const source = readFileSync(fileName, "utf8");
