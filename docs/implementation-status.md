@@ -507,6 +507,17 @@ same property is proved for arbitrary TypeScript.
   counts, additive/nonlinear updates, repeated writes, or multiple self-affine
   members.
 
+- Active P2.32 composes the finite self-affine rule with one shared handler CFG.
+  An unchanged Boolean state must route exactly one throw into catch, the catch
+  must contain the only multiplicative update, and a mandatory `finally` must
+  perform the unit countdown. The strict evidence adds
+  `activation: { selector, when, predecessor: "catch" }`; the verifier binds
+  this metadata to the actual conditional iteration and refutes deleted,
+  inverted, non-Boolean, or otherwise mismatched activation. The success path
+  stutters the self-affine state. Dynamic/mutable selectors, both-path updates,
+  early exits, additive forms, and general handler recurrence solving remain
+  unsupported.
+
 ## Async, resources, and event loops
 
 - `completion-flow.ts` defines the shared completion kinds, loop-target identity,

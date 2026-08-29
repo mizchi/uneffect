@@ -41,6 +41,7 @@ export const ciTestTiers = {
     "test/refinement-cfg-affine-recurrence.test.ts",
     "test/refinement-cfg-boolean-involution-recurrence.test.ts",
     "test/refinement-cfg-bounded-self-affine-recurrence.test.ts",
+    "test/refinement-cfg-caught-self-affine-recurrence.test.ts",
     "test/refinement-cfg-conditional-value-recurrence.test.ts",
     "test/refinement-cfg-coupled-recurrence.test.ts",
     "test/refinement-cfg-entry-read-recurrence.test.ts",

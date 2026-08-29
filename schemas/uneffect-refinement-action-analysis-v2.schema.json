@@ -207,7 +207,7 @@
       "additionalProperties": false,
       "required": ["rule", "state", "counter", "multiplier", "precondition", "budget", "update"],
       "properties": {
-        "rule": { "const": "precondition-bounded-self-affine" },
+        "rule": { "enum": ["precondition-bounded-self-affine", "precondition-bounded-guarded-self-affine"] },
         "state": { "type": "string", "minLength": 1 },
         "counter": { "type": "string", "minLength": 1 },
         "multiplier": { "type": "integer", "minimum": 2 },
@@ -235,8 +235,22 @@
             "state": { "type": "string", "minLength": 1 },
             "span": { "$ref": "#/$defs/span" }
           }
+        },
+        "activation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["selector", "when", "predecessor"],
+          "properties": {
+            "selector": { "type": "string", "minLength": 1 },
+            "when": { "type": "boolean" },
+            "predecessor": { "const": "catch" }
+          }
         }
-      }
+      },
+      "allOf": [{
+        "if": { "properties": { "rule": { "const": "precondition-bounded-guarded-self-affine" } }, "required": ["rule"] },
+        "then": { "required": ["activation"] },
+        "else": { "not": { "required": ["activation"] } }
+      }]
     },
     "rankingRecurrence": {
       "type": "object",

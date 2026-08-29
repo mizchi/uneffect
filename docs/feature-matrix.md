@@ -130,6 +130,13 @@ update, and named expansion budget must agree or the certificate is refuted.
 This is a conditional bounded result: call-site satisfaction, unbounded
 exponentiation, additive/nonlinear forms, repeated writes, and multiple
 self-amplifying members remain non-proofs.
+The same finite rule may compose with one exact try/catch/mandatory-finally
+loop when one unchanged Boolean state selects the caught predecessor, the catch
+contains the sole `x *= k` update, and the normal predecessor stutters `x`.
+Evidence records the selector, Boolean branch, `catch` predecessor, update span,
+and existing handler completion graph. Mutable or non-Boolean selectors,
+updates on both predecessors, early handler exits, and arbitrary path-dependent
+self-amplification remain non-proofs.
 
 The v2 artifact also defines `handler-scalar-environment-join` for one or two
 changed integers carried across two or three source-keyed sibling nested-handler

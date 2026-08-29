@@ -72,10 +72,10 @@ Bounded child [#47](https://github.com/mizchi/uneffect/issues/47) is complete an
 proves one finite self-affine retry-backoff summary only under an exact recorded
 precondition of at most eight iterations.
 
-There are 12 open implementation Issues after closing #23, #26, #27, #28, and
+There are 13 open implementation Issues after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-12 open implementation Issues remain: one
-proof-boundary Issue in Phase 1, five specification-expressiveness Issues in
+13 open implementation Issues remain: one
+proof-boundary Issue in Phase 1, six specification-expressiveness Issues in
 Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
 [#45](https://github.com/mizchi/uneffect/issues/45) belongs to #5 and follows
@@ -151,12 +151,13 @@ for a first useful release.
 
 ## Immediate execution queue
 
-There is no active implementation Issue. Select and create one bounded child
-from the phase-ordered index only after identifying its application-backed Red
-case and unsupported negative control.
+[#48](https://github.com/mizchi/uneffect/issues/48) is the sole active bounded
+child of #25. It composes caught-path handler evidence with the finite
+self-affine rule and remains provisional until remote CI passes.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
+| 1 | [#48](https://github.com/mizchi/uneffect/issues/48) | Prove one caught failure-path backoff under an immutable Boolean selector and exact finite `requires` bound; retain handler provenance, tamper controls, benchmark, and CI evidence. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -166,7 +167,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41 | 13–27 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 12 Issues / 11 non-overlapping epics | 51–102 engineer-weeks | Completed child #47 is included within parent #25; completed children #42/#43/#44/#45 are included within parent #5 and completed #46 owns the CI timing handoff. |
+| Entire open research backlog | 13 Issues / 11 non-overlapping epics | 51–102 engineer-weeks | Active child #48 and completed child #47 are included within parent #25; completed children #42/#43/#44/#45 are included within parent #5. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -193,8 +194,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47 handoffs:
-twelve queued epics. Every open Issue has exactly one
+As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47 handoffs:
+one active bounded child and twelve queued epics. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -202,6 +203,7 @@ label.
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
 | Queued | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence plus synchronous-ring and direct cross-project TLA seeds | Broader ESM/external/dynamic initialization semantics; widen after CFG or application evidence |
+| Active | 2 | [#48](https://github.com/mizchi/uneffect/issues/48) | Caught retry recurrence | Parent #25, #47, shared handler CFG | One immutable Boolean caught-path selector and bound at most eight; mutable/dynamic selection and general path-dependent exponentiation remain unsupported |
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |

@@ -2125,6 +2125,15 @@ signals. They cover one multiplier, one direct update, one unit countdown, and
 an exact bound of eight; they do not measure general exponentiation, multiple
 self-affine states, call-site contract validation, or larger/unbounded bounds.
 
+The P2.32 focused benchmark composes the finite geometric rule with one
+catch/finally handler graph and immutable Boolean activation. A selected run
+measured 0.3707 ms mean over 1,349 structural samples (2,697.91 operations per
+second, 1.43% RME). Independent Z3 validation measured 36.0512 ms mean over 14
+samples (27.74 operations per second, 2.38% RME). These development-host
+signals cover one four-step bound and one catch predecessor. They exclude
+async I/O, changing failure outcomes, multiple handlers or multipliers, and
+general path-dependent exponentiation.
+
 Corsa checker inferred-effect handoff (2026-08-28, Apple Silicon, one sample):
 
 - `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`

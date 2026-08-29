@@ -90,6 +90,12 @@ const cfgBoundedRetryBackoffSpec = parseSpec(
   cfgBoundedRetryBackoffFile,
   cfgBoundedRetryBackoffSource,
 ).temporal;
+const cfgCaughtRetryBackoffFile = "examples/dogfood/cfg-caught-retry-backoff.ts";
+const cfgCaughtRetryBackoffSource = readFileSync(cfgCaughtRetryBackoffFile, "utf8");
+const cfgCaughtRetryBackoffSpec = parseSpec(
+  cfgCaughtRetryBackoffFile,
+  cfgCaughtRetryBackoffSource,
+).temporal;
 const cfgConditionalWeightedFlushFile = "examples/dogfood/cfg-conditional-weighted-flush.ts";
 const cfgConditionalWeightedFlushSource = readFileSync(cfgConditionalWeightedFlushFile, "utf8");
 const cfgConditionalWeightedFlushSpec = parseSpec(
@@ -110,6 +116,41 @@ const aliasProgram = ts.createProgram([aliasFile], {
 });
 
 describe("refinement CFG fixed point", () => {
+  bench("derive one caught-path bounded self-affine recurrence", () => {
+    const result = analyzeRefinementActionBodies(
+      cfgCaughtRetryBackoffFile,
+      cfgCaughtRetryBackoffSource,
+      "caughtRetryBackoff",
+      cfgCaughtRetryBackoffSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.reason !== "independent-proof-required"
+      || obligation.boundedSelfAffine?.activation?.predecessor !== "catch") {
+      throw new Error("caught-path self-affine recurrence benchmark fixture did not converge provisionally");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove the caught-path self-affine recurrence with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      cfgCaughtRetryBackoffFile,
+      cfgCaughtRetryBackoffSource,
+      "caughtRetryBackoff",
+      cfgCaughtRetryBackoffSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.status !== "verified"
+      || obligation.boundedSelfAffine?.rule !== "precondition-bounded-guarded-self-affine"
+      || obligation.recurrenceProof?.status !== "verified") {
+      throw new Error("caught-path self-affine recurrence Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
   bench("derive one precondition-bounded self-affine recurrence", () => {
     const result = analyzeRefinementActionBodies(
       cfgBoundedRetryBackoffFile,

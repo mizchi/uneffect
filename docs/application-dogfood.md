@@ -635,6 +635,16 @@ adding a constant, repeating the write, adding another self-affine member, or
 tampering with certificate metadata fails closed. The result is not an
 unconditional call-site proof and is not a general exponential solver.
 
+P2.32 adds `cfg-caught-retry-backoff.ts`. A retry attempt throws a scalar token
+when the immutable `reject` state is true, doubles `delay` in catch, and always
+decrements `attempts` in `finally`. The exact `attempts <= 4` contract permits a
+finite conditional factor table. Evidence retains the normal/throw handler
+predecessors and records `reject=true` as the caught activation branch. Z3
+checks the closed form under the explicit bound. Inverting or deleting the
+activation metadata, mutating the selector, changing the runtime factor,
+updating both predecessors, or adding a constant fails closed. This models one
+deterministic failure selector, not per-attempt nondeterminism or async I/O.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
