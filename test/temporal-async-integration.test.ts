@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { generateTemporalModel, verifyUneffectProject } from "../src/index.js";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { analyzeAsyncSafety, generateTemporalModel, verifyUneffectProject } from "../src/index.js";
 import * as stable from "../src/index.js";
 import * as experimental from "../src/experimental.js";
 
@@ -93,7 +97,7 @@ describe("unified async temporal model", () => {
 
     expect(result.includedDomains).toContain("resource-lifecycle");
     expect(result.exclusions).not.toContain("resource-lifecycle");
-    expect(result.exclusions).toContain("resource-host-scheduling");
+    expect(result.exclusions).not.toContain("resource-host-scheduling");
     expect(result.models).toContainEqual(expect.objectContaining({
       kind: "resource-lifecycle",
       owner: "main",
@@ -119,9 +123,40 @@ describe("unified async temporal model", () => {
     });
 
     expect(result.temporal?.models).toContainEqual(expect.objectContaining({ kind: "resource-lifecycle" }));
+    expect(result.temporal?.models).toContainEqual(expect.objectContaining({ kind: "resource-host-lifecycle" }));
+    const temporalFacade = generateTemporalModel({ fileName: "src/using.ts", source: usingSource, runtime: "web", root: "main" });
+    expect(temporalFacade.exclusions).not.toContain("resource-host-scheduling");
+    expect(temporalFacade.exclusions).toContain("resource-host-callback-interleavings");
     expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
       name: "main.resourceSafe",
       result: "verified",
     }));
+    expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
+      name: "main.resourceHostSafe",
+      result: "verified",
+    }));
+  }, 30_000);
+
+  it("finds a counterexample when await disposal resumes outside the microtask checkpoint", () => {
+    const usingSource = `
+      class Resource { async [Symbol.asyncDispose](): Promise<void> {} }
+      export async function main(): Promise<void> {
+        await using resource = new Resource()
+      }
+    `;
+    const analysis = analyzeAsyncSafety("broken-using.ts", usingSource);
+    const quint = experimental.generateResourceHostTemporalQuint("broken_resource_host", analysis, "main", {
+      resumeOutsideMicrotask: true,
+    });
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-host-"));
+    const path = join(directory, "model.qnt");
+    try {
+      writeFileSync(path, quint);
+      const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--main=broken_resource_host", "--invariant=resourceHostSafe", "--max-steps=8", "--max-samples=100", "--seed=0x756e6566"], { encoding: "utf8" });
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/violation|counterexample/iu);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }, 30_000);
 });

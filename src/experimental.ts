@@ -37,3 +37,5 @@ export type {
   PromiseThenablePattern,
 } from "./promise-chains.js";
 export { generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "./async-safety.js";
+export { generateResourceHostTemporalQuint, resourceHostTemporalSupport } from "./resource-host-temporal.js";
+export type { ResourceHostTemporalOptions, ResourceHostTemporalSupport } from "./resource-host-temporal.js";

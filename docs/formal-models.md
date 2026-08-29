@@ -125,9 +125,13 @@ is still a reported exclusion from this unified facade. For a selected root
 containing `using` or `await using`, the facade also emits and verifies a
 resource-lifecycle projection covering acquisition, reverse disposal, async
 disposal suspension, and failure completion. This is co-verification, not yet a
-state-product proof: resource steps are not synchronized with host queue steps,
-and `resource-host-scheduling` is reported as an exclusion while #63 tracks
-that remaining composition. It does not make
+state-product proof for every control shape. Straight-line `await using` roots
+also receive a bounded resource/host product: async disposal must start a
+microtask checkpoint and may resume only inside it. A load-bearing broken model
+resumes outside the checkpoint and Quint finds the violation. Conditional or
+loop acquisition still reports `resource-host-scheduling`; the supported
+product reports `resource-host-callback-interleavings` because arbitrary host
+callbacks are not yet in the product. #63 tracks that remaining composition. It does not make
 the local function-summary composer itself concurrent.
 
 Promise reaction chains use a separate settlement-state projection. Builtin

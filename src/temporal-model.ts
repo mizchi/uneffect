@@ -3,6 +3,7 @@ import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQ
 import { analyzeAsyncSafety, generateResourceSafetyQuint, type AsyncSafetyResult } from "./async-safety.js";
 import { analyzePromiseChains } from "./promise-chains.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
+import { generateResourceHostTemporalQuint, resourceHostTemporalSupport } from "./resource-host-temporal.js";
 
 export type TemporalRuntime = "web" | "node";
 
@@ -20,14 +21,14 @@ export interface TemporalModelResult {
   backend: "quint";
   runtime: TemporalRuntime;
   includedDomains: Array<"user-temporal" | "async-patterns" | "promise-chains" | "resource-lifecycle">;
-  exclusions: Array<"async-ownership" | "resource-lifecycle" | "resource-host-scheduling">;
+  exclusions: Array<"async-ownership" | "resource-lifecycle" | "resource-host-scheduling" | "resource-host-callback-interleavings">;
   models: TemporalModelProjection[];
   properties: string[];
   quint: string;
 }
 
 export interface TemporalModelProjection {
-  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle";
+  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle" | "resource-host-lifecycle";
   module: string;
   owner?: string;
   properties: string[];
@@ -42,8 +43,8 @@ function moduleName(fileName: string): string {
  * Build one host-aware temporal model from explicit temporal annotations and
  * statically extracted JavaScript asynchronous observations.
  *
- * Promise ownership and resource lifecycle are deliberately reported as
- * exclusions until their control-flow IR is lowered into this projection.
+ * Promise ownership and unsupported resource/host interleavings are reported
+ * as exclusions instead of being implied by the generated projections.
  */
 export function generateTemporalModel(options: GenerateTemporalModelOptions): TemporalModelResult {
   const asyncPatterns = analyzeAsyncPatterns(options.fileName, options.source);
@@ -81,7 +82,20 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
       properties: ["resourceSafe"],
       quint: generateResourceSafetyQuint(resourceModule, resourceResult),
     });
+    const hostSupport = resourceHostTemporalSupport(resources);
+    if (hostSupport.supported) {
+      const resourceHostModule = `${name}_resource_host_${moduleName(resourceOwner)}`;
+      models.push({
+        kind: "resource-host-lifecycle",
+        module: resourceHostModule,
+        owner: resourceOwner,
+        properties: ["resourceHostSafe"],
+        quint: generateResourceHostTemporalQuint(resourceHostModule, resourceResult, resourceOwner),
+      });
+    }
   }
+  const hasAsyncResource = resources.some((resource) => resource.asynchronous);
+  const hasResourceHostModel = models.some((model) => model.kind === "resource-host-lifecycle");
   return {
     schema: "uneffect-temporal-model/v1",
     sourceLanguage: "uneffect-ts",
@@ -93,9 +107,14 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
       "promise-chains",
       ...(resources.length > 0 ? ["resource-lifecycle" as const] : []),
     ],
-    exclusions: ["async-ownership", resources.length > 0 ? "resource-host-scheduling" : "resource-lifecycle"],
+    exclusions: [
+      "async-ownership",
+      ...(resources.length === 0 ? ["resource-lifecycle" as const] : []),
+      ...(hasAsyncResource && !hasResourceHostModel ? ["resource-host-scheduling" as const] : []),
+      ...(hasAsyncResource && hasResourceHostModel ? ["resource-host-callback-interleavings" as const] : []),
+    ],
     models,
-    properties: [...hostProperties, ...(resources.length > 0 ? [`${resourceOwner}.resourceSafe`] : [])],
+    properties: [...hostProperties, ...models.filter((model) => model.owner).flatMap((model) => model.properties.map((property) => `${model.owner}.${property}`))],
     quint: models.map((model) => model.quint).join("\n"),
   };
 }

@@ -131,8 +131,10 @@ Supported Promise, timer, microtask, and host event-loop observations compose
 with this user model through `generateTemporalModel` or `spec temporal
 --runtime web|node`. A selected root's `using`/`await using` lifecycle is
 co-verified through the same facade. Promise ownership and synchronization of
-resource suspension with host queues are reported exclusions rather than
-silently claimed.
+conditional resource suspension with host queues are reported exclusions. A
+straight-line `await using` root additionally checks that disposal resumes in a
+microtask checkpoint; arbitrary callback interleavings remain excluded rather
+than silently claimed.
 
 ## Opt into React semantics
 

@@ -138,7 +138,7 @@ export interface ProjectTemporalProperty {
 
 export interface ProjectTemporalModel {
   fileName: string;
-  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle";
+  kind: "web-event-loop" | "node-event-loop" | "resource-lifecycle" | "resource-host-lifecycle";
   module?: string;
   owner?: string;
   quint: string;

@@ -84,6 +84,11 @@ ownership remains an explicit exclusion. The second slice co-verifies the root
 function's `using`/`await using` lifecycle through the same facade and project
 pipeline. Resource acquisition/disposal is not yet synchronized with host queue
 steps, so `resource-host-scheduling` remains an explicit exclusion.
+The next bounded slice synchronizes straight-line `await using` disposal with a
+microtask checkpoint in a resource/host state product. Conditional acquisition
+still reports `resource-host-scheduling`; the supported product reports
+`resource-host-callback-interleavings` because arbitrary callbacks are not yet
+interleaved into that product.
 
 There are 14 open implementation Issues after completing bounded children #60 and #61 and
 bounded children #58

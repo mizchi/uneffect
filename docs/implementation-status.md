@@ -686,8 +686,10 @@ same property is proved for arbitrary TypeScript.
   properties with those extracted observations. A selected root's
   `using`/`await using` lifecycle is co-verified as a second projection through
   the same result and project pipeline. Promise ownership and synchronization
-  between resource disposal suspension and host queues remain explicit
-  exclusions; direct low-level generators live under
+  between conditional/loop resource disposal and host queues remain explicit
+  exclusions. Straight-line `await using` has a bounded host product that
+  requires resumption inside a microtask checkpoint, but arbitrary callback
+  interleavings remain excluded. Direct low-level generators live under
   `@mizchi/uneffect/experimental` while #63 tracks the remaining composition.
   Host-specific gaps remain explicit.
 - Real-time annotations use logical clocks, guards, deadlines, and bounded
