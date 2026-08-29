@@ -63,15 +63,16 @@ change syntax or report fields outside an explicitly versioned schema.
 The following areas have meaningful executable coverage but remain research
 prototypes rather than generally safe language semantics:
 
-- general temporal-property and invariant synthesis;
-- complete Node/browser event-loop and Promise timing;
-- React function-component lifecycle and concurrent scheduling;
-- Corsa/native frontend parity beyond the documented symbol families;
-- arbitrary CFG fixed points, aliases, dynamic dispatch, and heap reasoning;
-- recursive, higher-order, inferred, or multi-argument property predicates;
-- complete SHA-256, resizable/shared buffers, Atomics, and shared-memory proofs;
-- proof-guided compression, mangling, reordering, or dead-code elimination;
-- independently checkable proof certificates for every solver result.
+- general temporal-property and invariant synthesis ([#2](https://github.com/mizchi/uneffect/issues/2), [#5](https://github.com/mizchi/uneffect/issues/5));
+- complete Node/browser event-loop and Promise timing ([#10](https://github.com/mizchi/uneffect/issues/10), [#18](https://github.com/mizchi/uneffect/issues/18));
+- React function-component lifecycle and concurrent scheduling ([#16](https://github.com/mizchi/uneffect/issues/16));
+- Corsa/native frontend parity beyond the documented symbol families ([#8](https://github.com/mizchi/uneffect/issues/8));
+- arbitrary CFG fixed points, aliases, dynamic dispatch, and heap reasoning ([#25](https://github.com/mizchi/uneffect/issues/25), [#24](https://github.com/mizchi/uneffect/issues/24));
+- recursive, higher-order, inferred, or multi-argument property predicates ([#4](https://github.com/mizchi/uneffect/issues/4));
+- complete SHA-256, resizable/shared buffers, Atomics, and shared-memory proofs ([#6](https://github.com/mizchi/uneffect/issues/6));
+- proof-guided compression, mangling, reordering, or dead-code elimination ([#13](https://github.com/mizchi/uneffect/issues/13));
+- independently checkable proof certificates for every solver result ([#7](https://github.com/mizchi/uneffect/issues/7));
+- compatibility guarantees for the alpha public surface ([#62](https://github.com/mizchi/uneffect/issues/62)).
 
 Z3, Quint, and TLC artifacts are useful reproducible evidence. They are not by
 themselves certificates checked independently of Uneffect's translation.

@@ -112,6 +112,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 10],
       ["Queued", 3, 7],
       ["Queued", 3, 16],
+      ["Queued", 3, 62],
       ["Queued", 4, 13],
     ]);
     expect(rows.filter(([status]) => status === "Active")).toEqual([]);

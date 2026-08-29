@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 46–97 engineer-weeks; this is implementation volume, not a calendar
+estimate is 48–102 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -197,8 +197,12 @@ explicit conservative boundaries rather than untracked support.
    bounded child [#60](https://github.com/mizchi/uneffect/issues/60) admits one
    versioned finite candidate universe for an exported source-local unary
    predicate, rechecks the real predicate in generated Vitest, and rejects
-   vacuous coverage. Cross-file, recursive, higher-order, multi-argument, and
-   inferred predicate domains remain in the parent.
+   vacuous coverage. Completed child
+   [#61](https://github.com/mizchi/uneffect/issues/61) adds one direct
+   named-import boundary resolved by TypeChecker declaration identity while
+   rejecting barrels, namespace/default/type-only imports, dynamic selection,
+   and same-spelled wrappers. Recursive, higher-order, multi-argument, nested,
+   barrel-traversing, and inferred predicate domains remain in the parent.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)
    completes alias, resize, control-flow, and shared-memory reasoning.
 
@@ -222,6 +226,9 @@ explicit conservative boundaries rather than untracked support.
 5. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
    extends the tested symbol-resolved lifecycle fragment through dynamic
     component/Hook flow, server boundaries, and broader concurrent scheduling.
+6. [Supported-fragment stability contract](https://github.com/mizchi/uneffect/issues/62)
+   defines compatibility, deprecation, schema evolution, and release criteria
+   before any tested alpha fragment is presented as a stable public surface.
 The completed bounded child
 [#50](https://github.com/mizchi/uneffect/issues/50) extends #8 with the
 Workhub-observed named `node:fs/promises` read/write and global `fetch` corpus.

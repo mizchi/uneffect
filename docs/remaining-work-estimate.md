@@ -30,10 +30,10 @@ totals are calculated from them, not by mechanically adding label bounds.
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 after completed child #57 | 1–3 engineer-weeks | Medium |
-| 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 16–34 engineer-weeks | Low–medium |
-| 3 — Production integration | #24, #8, #10, #7, #16 | 23–48 engineer-weeks | Low |
+| 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 15–33 engineer-weeks | Low–medium |
+| 3 — Production integration | #24, #8, #10, #7, #16, #62 | 26–54 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **46–97 engineer-weeks** | Low |
+| **Total additive effort** | 13 open Issues / 12 non-overlapping epics | **48–102 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -85,6 +85,16 @@ precondition-preserving shrink, and a vacuity failure. Its focused tests,
 Datadog-shaped dogfood, package gates, full local suite, and remote CI run
 33247276099 are green. The remaining #4 range narrows from 3–5 to 2–4
 engineer-weeks; cross-file, recursive, higher-order, and inferred predicate
+domains remain in the parent.
+
+#61 is a completed bounded child of #4. It resolves one direct named import by
+TypeChecker symbol identity, keys the finite specialization by the canonical
+declaration, executes the real imported predicate, and fails closed for
+barrels, namespace/default/type-only imports, dynamic selection, and
+same-spelled wrappers. Its focused tests, Datadog-shaped two-file dogfood,
+benchmark, package/full local gates, and remote CI run 33248955681 are green.
+The remaining #4 range narrows from 2–4 to 1–3 engineer-weeks; recursive,
+higher-order, multi-argument, nested, barrel-traversing, and inferred predicate
 domains remain in the parent.
 
 #46 is a completed operational slice. It was created from an observed remote-run
@@ -148,11 +158,11 @@ There are three useful planning numbers:
   #18 seeds, including #57's Workhub `main().catch(handler)` family, are complete.
   Another widening requires fresh application evidence or a reusable result
   from #25/#26.
-- **One focused product line: 5–16 engineer-weeks after Phase 1.** Node Lease
+- **One focused product line: 5–15 engineer-weeks after Phase 1.** Node Lease
   prioritizes #2 and #5 (5–10 weeks), consuming the completed #23 CFG. Numeric/SHA-256
-  prioritizes #26 and #4/#6 (8–16 weeks). These alternatives
+  prioritizes #26 and #4/#6 (7–15 weeks). These alternatives
   should not be added together unless both products are required.
-- **All currently requested work: 46–97 engineer-weeks.** This includes
+- **All currently requested work: 48–102 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -166,13 +176,13 @@ commitment to implement every row:
 | A — proof-boundary MVP | #20 plus synchronous-ring, direct cross-project TLA, and Workhub top-level Promise-launch seeds | General CFG, aliases, broad host/framework semantics | Completed; 1–3 weeks of broader #18 work remains deferred | Retain the three narrow boundaries and re-estimate before another module-order family. |
 | B — reusable analyzer core | Completed #23; first 1–2 week bounded slices #26 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 2–4 additional weeks for the first slices; 10–19 weeks for parent #24 and #8 epics | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
 | C1 — temporal/Node Lease product | #2 and #5, consuming completed #23 where needed | Property generators and complete SHA-256 | 5–10 weeks | A realistic lease model checks, decodes, and replays a counterexample across supported backends, then one production binding exposes any remaining abstraction gap. |
-| C2 — generated-test/numeric product | #4 and #6 plus #26, consuming completed #23 where needed | General temporal collections and broad React/event-loop work | 8–16 weeks | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
-| D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 18–35 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence. |
+| C2 — generated-test/numeric product | #4 and #6 plus #26, consuming completed #23 where needed | General temporal collections and broad React/event-loop work | 7–15 weeks | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
+| D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 and the #62 stability contract | Optimizer transformations | 21–41 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence and stabilize only the public fragments intended for adoption. |
 | E — proof consumer | #13 | Any rewrite not authorized by replayable evidence | 6–12 weeks | Ship or reject one fail-closed stable-read transformation before considering general compression/mangling. |
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-46–97 week total remains additive and intentionally ignores speculative
+48–102 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -224,6 +234,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.31 temporal string identities | #58 (child of #5) | Completed | under 1 engineer-week actual | Preserve exact production-shaped node IDs through finite Set/Map, Quint, native/WASM Z3, TLC trace import, and replay while rejecting string arithmetic and unbounded generation. |
 | P2.32 record-valued lease grant Sets | #59 (child of #5) | Completed | under 1 engineer-week actual | Extract an exact finite literal record universe through native/WASM Z3 and cross-backend replay while dynamic composite elements remain unknown. Remote CI run 33245382408 is green. |
 | P2.33 explicit user-predicate specialization | #60 (child of #4) | Completed | under 1 engineer-week actual | Recheck one finite exported source-local unary predicate in generated Vitest, preserve it during shrink, and reject vacuous or unsupported specializations. Remote CI run 33247276099 is green. |
+| P2.34 direct cross-file predicate specialization | #61 (child of #4) | Completed | under 1 engineer-week actual | Resolve one direct named import to its canonical declaration, execute the real predicate, and reject indirect or dynamic identity. Remote CI run 33248955681 is green. |
 | P3.3 solver-heavy CI stability | #46 | Completed | completed in the current delivery | Three checked shards, timing artifacts, calibrated timeout, and a real hard-deadline control without weakened obligations. |
 | P3.4 checker dogfood timeout policy | #49 | Completed | under 1 engineer-week actual | Replace one observed fixed-timeout false negative with a named finite local/CI policy and a first-attempt green remote run. |
 | P3.5 Workhub-shaped checker builtins | #50 (child of #8) | Completed | under 1 engineer-week actual | Exact checker-backed `FsRead`, `FsWrite`, and `Fetch` metadata passes with symbol-distinct controls, tamper rejection, benchmark/docs/full local gates, and CI run 33230163122. Full Promise-record parity remains explicitly false. |
@@ -314,14 +325,15 @@ be added to the owning Issue and reflected here before implementation begins.
 | 2 | #18 module initialization | M | 1–3 weeks | Re-estimate before selecting another application-backed family after completed #57 | Async evaluation joins, host packages, dynamic imports, and Promise execution after launch |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | M | 1–2 weeks | Capture one unsupported Node Lease/TLC value or trace shape as a skipped acceptance test before selecting a child | Broader correlated collection observations, wider finite universes, and external trace interoperability |
-| 5 | #4 property generation/shrinking | M | 2–4 weeks | Select one application-backed recursive or cross-file predicate child after completed #60 | Recursion budgets, higher-order predicates, and constructive inference |
+| 5 | #4 property generation/shrinking | M | 1–3 weeks | Select one application-backed recursive predicate child after completed #60/#61 | Recursion budgets, higher-order predicates, barrel traversal, and constructive inference |
 | 6 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
 | 7 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
 | 8 | #8 native Corsa parity | L | 3–8 weeks | Wait for new application evidence or select one explicitly justified neutral-IR domain | Corsa API maturity, rejection/resource ownership, callback timing, and source/type identity mapping |
 | 9 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
 | 10 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
 | 11 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
-| 12 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
+| 12 | #62 supported-fragment stability | L | 3–6 weeks | Split API inventory, schema compatibility, and release-policy enforcement into bounded children | Compatibility policy and the minimum promotable public surface |
+| 13 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
 
 ## Recommended delivery checkpoints
 
@@ -342,15 +354,16 @@ be added to the owning Issue and reflected here before implementation begins.
 
 ## Next bounded-slice decision
 
-No implementation Issue is currently active. Bounded child #60 completed the
-first generated-tests direction with full local gates and green remote CI. The
+No implementation Issue is currently active. Bounded children #60 and #61
+completed the source-local and direct-cross-file generated-tests direction with
+full local gates and green remote CI. The
 next investment should start with exactly one skipped acceptance test and an
 adjacent negative control:
 
 | Product direction | Parent | Proposed first child | Estimate | Explicitly excluded |
 | --- | --- | --- | ---: | --- |
 | Temporal/Node Lease | #5 | One realistic currently-unknown TLC/value/trace shape through generation, decoding, and replay | 1–2 weeks | Synthetic catalogue expansion and general quantified collections |
-| Generated tests | #4 | One versioned explicit user-predicate specialization with constructive samples and precondition-preserving shrink | under 1 week | Recursive and higher-order predicate inference |
+| Generated tests | #4 | One recursive predicate specialization with an explicit depth/size budget | 1–2 weeks | Higher-order predicates, barrel traversal, and constructive inference |
 | Numeric/SHA-256 | #6 | One non-escaping interprocedural typed-array alias with bounds and element-range evidence | 1–2 weeks | Resizable/shared buffers and complete SHA-256 composition |
 
 These are alternatives, not additive commitments. After the Red test identifies
@@ -433,7 +446,7 @@ closed bounded epic.
 - **Deferred breadth:** #18's broader semantics and #7, #10, #16, and #13
   remain queued until application evidence
   or dependencies justify another bounded slice.
-- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 46–97
+- **Entire open backlog:** 13 Issues / 12 non-overlapping epics and 48–102
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 
