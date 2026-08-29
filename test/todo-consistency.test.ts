@@ -109,12 +109,13 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 6],
       ["Queued", 3, 24],
       ["Queued", 3, 8],
+      ["Active", 3, 51],
       ["Queued", 3, 10],
       ["Queued", 3, 7],
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toHaveLength(0);
+    expect(rows.filter(([status]) => status === "Active")).toEqual([["Active", 3, 51]]);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -127,7 +128,13 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([]);
+    expect(rows).toEqual([
+      [
+        1,
+        51,
+        "The Workhub-shaped direct/unconditional `await` corpus reaches full parity; conditional and nested-callback controls, metadata tamper rejection, benchmark, docs, full checks, and remote CI pass.",
+      ],
+    ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }

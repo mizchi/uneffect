@@ -634,12 +634,18 @@ named `node:fs/promises` imports in `packages/core/src/config.ts` and
 Same-spelled local declarations and local-module imports are negative controls,
 and builtin-key tampering fails checker metadata parity.
 
-This result deliberately does not claim full frontend parity for the async
-function: TypeScript reference facts contain five Promise observations while
-the Corsa exporter currently emits none, so `semanticEquivalent` and overall
-`equivalent` remain false even though `checkerMetadataEquivalent` is true.
+Active child #51 adds the five direct, unconditional `await` observations with
+exact owner, source text, UTF-8 call span, empty control conditions, and one
+empty control path. The Workhub-shaped corpus now has
+`checkerMetadataEquivalent`, `semanticEquivalent`, and overall `equivalent`
+all true for this exact fragment. Conditional awaits stay absent from Corsa
+facts and therefore produce an explicit Promise-evidence parity failure;
+nested callback awaits do not leak into the outer owner. Source, span, and
+owner tampering also fails parity.
 Path/URL/method scopes, StateStore completion/refinement, alias identity, and
-filesystem ordering remain outside this slice. The Workhub checkout had
+filesystem ordering remain outside these slices. Return/catch observations,
+rejection ownership, combinators, chains, loops, callback ownership, and
+resource records are not implied. The Workhub checkout had
 unrelated local changes during the read-only survey; only the named revision
 and observed committed source shapes are evidence here.
 

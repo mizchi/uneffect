@@ -27,9 +27,9 @@ not a suitable single implementation branch.
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
-| 3 — Production integration | #24, #8, #10, #7, #16 | 23–46 engineer-weeks | Low |
+| 3 — Production integration | #24, #8 (including active child #51), #10, #7, #16 | 23–46 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **50–101 engineer-weeks** | Low |
+| **Total additive effort** | 13 open Issues / 11 non-overlapping epics | **50–101 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -87,6 +87,10 @@ attempt. It does not change the research-backlog estimate.
 engineer-week actual with TDD, negative controls, a benchmark, documentation,
 local package/dogfood gates, and seven green remote CI jobs. Its completed
 scope narrows #8's remaining epic range from 4–7 to 3–6 engineer-weeks.
+
+#51 is the active bounded child of #8. Its 1–4 engineer-week label covers the
+direct/unconditional `await` Promise-observation handoff surfaced by #50 and is
+contained in #8's 3–6 engineer-week remaining range.
 
 There are three useful planning numbers:
 
@@ -169,6 +173,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P3.3 solver-heavy CI stability | #46 | Completed | completed in the current delivery | Three checked shards, timing artifacts, calibrated timeout, and a real hard-deadline control without weakened obligations. |
 | P3.4 checker dogfood timeout policy | #49 | Completed | under 1 engineer-week actual | Replace one observed fixed-timeout false negative with a named finite local/CI policy and a first-attempt green remote run. |
 | P3.5 Workhub-shaped checker builtins | #50 (child of #8) | Completed | under 1 engineer-week actual | Exact checker-backed `FsRead`, `FsWrite`, and `Fetch` metadata passes with symbol-distinct controls, tamper rejection, benchmark/docs/full local gates, and CI run 33230163122. Full Promise-record parity remains explicitly false. |
+| P3.6 direct-await checker records | #51 (child of #8) | Active | 1–4 engineer-weeks | Export exact owner/source/span records for direct unconditional awaits while conditional/callback/tampered cases fail closed. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27
@@ -251,7 +256,7 @@ be added to the owning Issue and reflected here before implementation begins.
 | 5 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
 | 6 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
 | 7 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
-| 8 | #8 native Corsa parity | L | 3–6 weeks after completed #50 | Select the next application-backed neutral-IR child | Corsa API maturity and source/type identity mapping |
+| 8 | #8 native Corsa parity | L | 3–6 weeks including active #51 | Complete the direct-await child, then re-estimate | Corsa API maturity and source/type identity mapping |
 | 9 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
 | 10 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
 | 11 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
@@ -336,9 +341,9 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** select one application-backed bounded child
-  from #25, #2, #5, or #8 only after its Red case identifies a reusable proof
-  boundary and an adjacent unsupported control.
+- **Current implementable result:** complete #51's exact direct/unconditional
+  `await` record family without widening into control-flow, rejection ownership,
+  callbacks, loops, combinators, or resource records.
 - **Next foundation checkpoint:** #26, #27, #28, #29, #30, #31, #32, #33,
   #34, #35, #36, #37, and #38 are complete; completing parent #25/#24/#8 remains
   12–26 engineer-weeks.
@@ -347,7 +352,7 @@ closed bounded epic.
   both required for an initial useful release.
 - **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
   evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 50–101
+- **Entire open backlog:** 13 Issues / 11 non-overlapping epics and 50–101
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

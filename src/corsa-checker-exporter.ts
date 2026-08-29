@@ -22,11 +22,22 @@ export interface CorsaCheckerFactFile {
   calls: Array<Record<string, unknown>>;
   trivia: Array<Record<string, unknown>>;
   protocolSymbols: Array<Record<string, unknown>>;
-  promiseObservations: Array<Record<string, unknown>>;
+  promiseObservations: CorsaCheckerPromiseObservationFact[];
   rejectionOwnership: Array<Record<string, unknown>>;
   resourceScopes: Array<Record<string, unknown>>;
   disposals: Array<Record<string, unknown>>;
   suppressedErrors: Array<Record<string, unknown>>;
+}
+
+export interface CorsaCheckerPromiseObservationFact {
+  owner: number;
+  source: string;
+  observation: "await";
+  catchesRejection: false;
+  conditional: false;
+  controlConditions: [];
+  controlPaths: [[]];
+  span: { start: number; end: number };
 }
 
 export interface CorsaCheckerInferredEffectFact {
@@ -78,10 +89,18 @@ interface PendingCall {
   end: number;
 }
 
+interface PendingPromiseObservation {
+  ownerSymbolId: string;
+  source: string;
+  start: number;
+  end: number;
+}
+
 interface RawCorsaCheckerFacts {
   fileName: string;
   functions: Array<Omit<PendingFunction, "node"> & { trivia: { text: string; start: number; end: number } | null }>;
   calls: PendingCall[];
+  promiseObservations: PendingPromiseObservation[];
 }
 
 const createRule = OxlintUtils.RuleCreator(() => "https://github.com/mizchi/uneffect");
@@ -108,6 +127,7 @@ export const corsaCheckerFactRule = createRule({
     const text = context.sourceCode.text as string;
     const functions: PendingFunction[] = [];
     const calls: PendingCall[] = [];
+    const promiseObservations: PendingPromiseObservation[] = [];
     const functionStack: Array<PendingFunction | null> = [];
     const bindingFunctions = new WeakMap<object, PendingFunction>();
     const importedBuiltinBindings = new Map<string, ImportedCheckerBuiltinBinding>();
@@ -241,6 +261,14 @@ export const corsaCheckerFactRule = createRule({
         const type = checker.getTypeAtLocation(target as Node);
         const callee = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
         if (!callee) return;
+        if (node.parent?.type === "AwaitExpression" && !hasConditionalAwaitOwner(node.parent, caller.node)) {
+          promiseObservations.push({
+            ownerSymbolId: caller.symbolId,
+            source: text.slice(node.range[0], node.range[1]),
+            start: byteOffset(text, node.range[0]),
+            end: byteOffset(text, node.range[1]),
+          });
+        }
         const inferred = directSymbol ? checkerBuiltinEffect(
           checker, node, directSymbol, callee, text, rootFiles, importedBuiltinBindings.get(directSymbol.id),
         ) : undefined;
@@ -271,6 +299,7 @@ export const corsaCheckerFactRule = createRule({
             };
           }),
           calls,
+          promiseObservations,
         };
         const outputName = createHash("sha256").update(context.filename).digest("hex");
         writeFileSync(join(output, `${outputName}.json`), JSON.stringify(raw));
@@ -418,6 +447,22 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
         }];
       });
     });
+    const promiseObservations: CorsaCheckerPromiseObservationFact[] = rawFiles.flatMap((raw) => {
+      const fileName = sourceNameOf(raw.fileName);
+      return raw.promiseObservations.map((item): CorsaCheckerPromiseObservationFact => ({
+        owner: ids.get(item.ownerSymbolId)!,
+        source: item.source,
+        observation: "await",
+        catchesRejection: false,
+        conditional: false,
+        controlConditions: [],
+        controlPaths: [[]],
+        span: {
+          start: coordinates.base(fileName) + item.start,
+          end: coordinates.base(fileName) + item.end,
+        },
+      }));
+    });
     const facts: CorsaCheckerFactFile = {
       schemaVersion: 8,
       fileId: 1,
@@ -427,7 +472,7 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
       calls,
       trivia,
       protocolSymbols: [],
-      promiseObservations: [],
+      promiseObservations,
       rejectionOwnership: [],
       resourceScopes: [],
       disposals: [],
@@ -533,6 +578,17 @@ function safeWorkspacePath(workspace: string, fileName: string): string {
 
 function byteOffset(text: string, utf16Offset: number): number {
   return Buffer.byteLength(text.slice(0, utf16Offset));
+}
+
+function hasConditionalAwaitOwner(awaitNode: any, ownerNode: any): boolean {
+  for (let current = awaitNode.parent; current && current !== ownerNode; current = current.parent) {
+    if (current.type === "IfStatement" || current.type === "ConditionalExpression"
+      || current.type === "LogicalExpression" || current.type === "SwitchCase"
+      || current.type === "ForStatement" || current.type === "ForInStatement"
+      || current.type === "ForOfStatement" || current.type === "WhileStatement"
+      || current.type === "DoWhileStatement" || current.type === "CatchClause") return true;
+  }
+  return false;
 }
 
 function leadingUneffectTrivia(text: string, before: number): { text: string; start: number; end: number } | null {

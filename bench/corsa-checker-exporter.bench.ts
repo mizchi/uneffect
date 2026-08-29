@@ -30,11 +30,8 @@ describe("checker-backed Corsa inferred-effect handoff", () => {
       corsaFacts: facts,
       requireCorsaCheckerFacts: true,
     });
-    if (!comparison.checkerMetadataEquivalent) {
-      throw new Error(`Corsa checker metadata parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
-    }
-    if (comparison.semanticEquivalent) {
-      throw new Error("Workhub-shaped async fixture unexpectedly claimed full Promise-record parity");
+    if (!comparison.equivalent) {
+      throw new Error(`Corsa direct-await parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
     }
   }, { time: 500, iterations: 1 });
 });

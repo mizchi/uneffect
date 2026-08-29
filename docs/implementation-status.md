@@ -891,9 +891,12 @@ same property is proved for arbitrary TypeScript.
   named exact-module `node:fs/promises` reads/writes and standard global fetch
   as `FsRead`, `FsWrite`, and `Fetch`, with ordered spans, import-binding or
   library-declaration evidence, same-spelled local/local-module controls, and
-  builtin-key tamper detection. Its checker metadata reaches parity, while the
-  async corpus honestly retains unequal Promise records because Corsa does not
-  export them yet. Broader
+  builtin-key tamper detection. The active direct-await follow-up exports five
+  source-ordered unconditional Promise observations with exact owner/source/span
+  evidence, making the Workhub-shaped corpus fully equivalent for that bounded
+  fragment. Conditional await evidence still differs explicitly, nested
+  callback awaits stay outside the outer owner, and metadata tampering fails.
+  Broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test

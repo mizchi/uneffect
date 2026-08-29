@@ -211,8 +211,11 @@ The completed bounded child
 Workhub-observed named `node:fs/promises` read/write and global `fetch` corpus.
 It is limited to checker-backed effect identity, spans, parity, and negative
 controls; path/URL scopes, async completion, and alias ordering remain outside
-that slice. Its async corpus deliberately retains full semantic inequality
-because Promise observations are not checker-exported. The completed
+that slice. Active child
+[#51](https://github.com/mizchi/uneffect/issues/51) exports only direct,
+unconditional `await` observations from the same corpus; conditional awaits,
+rejection ownership, callbacks, loops, and other Promise records remain
+explicit gaps. The completed
 [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
 splits the long integration gate, retains timing artifacts, calibrates one
 measured timeout, and preserves every existing fail-closed obligation.

@@ -346,6 +346,24 @@ function checkerMetadataParityFailures(reference: any, actual: any): FrontendSch
       message: `checker-backed inferred-effect evidence differs for ${expected.name}: expected ${JSON.stringify(expectedEffects)}, observed ${JSON.stringify(observedEffects)}`,
     });
   }
+  const promiseKey = (item: any, names: Map<any, any>): string => JSON.stringify({
+    owner: names.get(item.owner),
+    source: item.source,
+    observation: item.observation,
+    catchesRejection: item.catchesRejection,
+    conditional: item.conditional,
+    controlConditions: item.controlConditions,
+    controlPaths: item.controlPaths,
+    span: item.span,
+  });
+  const expectedPromises = reference.promiseObservations.filter((item: any) => item.observation === "await")
+    .map((item: any) => promiseKey(item, referenceNames)).sort();
+  const observedPromises = actual.promiseObservations.filter((item: any) => item.observation === "await")
+    .map((item: any) => promiseKey(item, actualNames)).sort();
+  if (JSON.stringify(expectedPromises) !== JSON.stringify(observedPromises)) failures.push({
+    frontend: "corsa",
+    message: `checker-backed Promise observation evidence differs: expected ${JSON.stringify(expectedPromises)}, observed ${JSON.stringify(observedPromises)}`,
+  });
   const callKey = (call: any, names: Map<any, any>): string =>
     `${names.get(call.caller)}\0${names.get(call.callee)}\0${call.span.start}\0${call.span.end}`;
   const actualCalls = new Map(actual.calls.map((call: any) => [callKey(call, actualNames), call]));

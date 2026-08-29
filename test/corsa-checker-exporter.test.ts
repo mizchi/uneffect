@@ -30,26 +30,33 @@ describe("corsa-bind checker fact exporter", () => {
       typescriptIr: compared.typescriptIr,
       corsaIr: compared.corsaIr,
     }, null, 2)).toMatchObject({
-      equivalent: false,
-      semanticEquivalent: false,
+      equivalent: true,
+      semanticEquivalent: true,
       checkerMetadataEquivalent: true,
       schemaDrift: [],
     });
     expect(compared.corsaIr?.functions).toEqual([
       { name: "synchronizeState", effects: ["Fetch", "FsRead", "FsWrite"] },
     ]);
+    expect(compared.corsaIr?.promiseObservations).toEqual([
+      expect.objectContaining({ owner: "synchronizeState", source: 'readFile(path, "utf8")', observation: "await", conditional: false }),
+      expect.objectContaining({ owner: "synchronizeState", source: "fetch(endpoint)", observation: "await", conditional: false }),
+      expect.objectContaining({ owner: "synchronizeState", source: 'fetch(endpoint, { method: "PUT", body: current })', observation: "await", conditional: false }),
+      expect.objectContaining({ owner: "synchronizeState", source: "writeFile(path, await response.text())", observation: "await", conditional: false }),
+      expect.objectContaining({ owner: "synchronizeState", source: "response.text()", observation: "await", conditional: false }),
+    ]);
   });
 
   it("does not infer Workhub builtin effects from same-spelled local declarations", async () => {
     const files = {
       "fixture.ts": `
-        function readFile(_path: string): Promise<string> { return Promise.resolve("") }
-        function writeFile(_path: string, _body: string): Promise<void> { return Promise.resolve() }
-        function fetch(_url: string): Promise<string> { return Promise.resolve("") }
-        export async function synchronizeState(path: string, endpoint: string): Promise<void> {
-          const current = await readFile(path)
-          await fetch(endpoint)
-          await writeFile(path, current)
+        function readFile(_path: string): string { return "" }
+        function writeFile(_path: string, _body: string): void {}
+        function fetch(_url: string): void {}
+        export function synchronizeState(path: string, endpoint: string): void {
+          const current = readFile(path)
+          fetch(endpoint)
+          writeFile(path, current)
         }
       `,
     };
@@ -64,13 +71,13 @@ describe("corsa-bind checker fact exporter", () => {
   it("does not infer node builtin effects from a same-spelled local-module import", async () => {
     const files = {
       "local.ts": `
-        export function readFile(_path: string): Promise<string> { return Promise.resolve("") }
-        export function writeFile(_path: string, _body: string): Promise<void> { return Promise.resolve() }
+        export function readFile(_path: string): string { return "" }
+        export function writeFile(_path: string, _body: string): void {}
       `,
       "fixture.ts": `
         import { readFile, writeFile } from "./local.js"
-        export async function synchronizeState(path: string): Promise<void> {
-          await writeFile(path, await readFile(path))
+        export function synchronizeState(path: string): void {
+          writeFile(path, readFile(path))
         }
       `,
     };
@@ -98,6 +105,65 @@ describe("corsa-bind checker fact exporter", () => {
     expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
       message: expect.stringContaining("checker-backed inferred-effect evidence differs"),
     }));
+  });
+
+  it("keeps conditional awaits as an explicit Promise observation parity gap", async () => {
+    const files = {
+      "fixture.ts": `
+        export async function load(enabled: boolean, url: string): Promise<void> {
+          if (enabled) await fetch(url)
+        }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations).toEqual([]);
+
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared).toMatchObject({ equivalent: false, semanticEquivalent: false, checkerMetadataEquivalent: false });
+    expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining("checker-backed Promise observation evidence differs"),
+    }));
+    expect(compared.typescriptIr.promiseObservations).toEqual([
+      expect.objectContaining({ owner: "load", source: "fetch(url)", conditional: true }),
+    ]);
+  });
+
+  it("does not attribute a nested callback await to its outer function", async () => {
+    const files = {
+      "fixture.ts": `
+        export async function loadAll(urls: string[]): Promise<void> {
+          urls.map(async (url) => { await fetch(url) })
+          await fetch("https://example.com/done")
+        }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations).toEqual([
+      expect.objectContaining({ source: 'fetch("https://example.com/done")' }),
+    ]);
+
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.checkerMetadataEquivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
+  });
+
+  it("rejects tampered direct-await source, span, and owner metadata", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-builtins.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const mutations = [
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.source = "readFile(otherPath)"; },
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.span.start += 1; },
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.owner = 999; },
+    ];
+    for (const mutate of mutations) {
+      const tampered = structuredClone(facts);
+      mutate(tampered);
+      const compared = await compareUneffectFrontends({ files, corsaFacts: tampered, requireCorsaCheckerFacts: true });
+      expect(compared).toMatchObject({ equivalent: false, checkerMetadataEquivalent: false });
+      expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+        message: expect.stringContaining("checker-backed Promise observation evidence differs"),
+      }));
+    }
   });
 
   it("exports one checker-inferred builtin effect and preserves its ordered local call", async () => {
