@@ -228,11 +228,11 @@ describe("Z3 backend selection", () => {
   });
 
   it("extracts named scalar values from the WASM model", async () => {
-    const execution = await executeZ3("(set-logic QF_LIA)\n(declare-const x Int)\n(declare-const b Bool)\n(assert (= x (- 1)))\n(assert b)\n", {
+    const execution = await executeZ3("(set-logic ALL)\n(declare-const x Int)\n(declare-const b Bool)\n(declare-const s String)\n(assert (= x (- 1)))\n(assert b)\n(assert (= s \"node-a\"))\n", {
       preference: "wasm",
-      values: [{ name: "x", expression: "x", sort: "Int" }, { name: "b", expression: "b", sort: "Bool" }],
+      values: [{ name: "x", expression: "x", sort: "Int" }, { name: "b", expression: "b", sort: "Bool" }, { name: "s", expression: "s", sort: "String" }],
     });
-    expect(execution).toMatchObject({ backend: "wasm", status: "sat", values: { x: "(- 1)", b: "true" } });
+    expect(execution).toMatchObject({ backend: "wasm", status: "sat", values: { x: "(- 1)", b: "true", s: '"node-a"' } });
   });
 
   it("fails closed before the WASM parser can ignore malformed SMT-LIB", async () => {

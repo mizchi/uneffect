@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
-import { parseQuintItfCounterexample, replayModelCounterexample, type ModelState } from "../src/model-replay.js";
+import { parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample, type ModelState } from "../src/model-replay.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 
 function leaseModel(skewGrace: number): string {
@@ -158,6 +158,68 @@ function runLeaseLifecycle(fencedCommit: boolean) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("preserves production string node identities across Quint, Z3, TLC trace import, and replay", async () => {
+    const fileName = "examples/dogfood/node-lease-string-identities.ts";
+    const temporal = parseSpec(fileName, readFileSync(fileName, "utf8")).temporal;
+    expect(temporal.states.slice(0, 3).map((state) => state.type)).toEqual([
+      { kind: "set", element: "string" },
+      "string",
+      { kind: "map", key: "string", value: { kind: "record", fields: { epoch: "int", valid: "bool" } } },
+    ]);
+    const quint = generateQuint("node_lease_string_identities", temporal);
+    expect(quint).toContain("  var selectedNode: string\n");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-string-"));
+    const quintPath = join(directory, "node-lease-string.qnt");
+    writeFileSync(quintPath, quint);
+    const quintRun = spawnSync("pnpm", ["exec", "quint", "run", quintPath,
+      "--invariant=missingLeaseIsFenced", "--max-steps=5", "--max-samples=100"],
+    { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(quintRun.status, quintRun.stdout + quintRun.stderr).toBe(0);
+    await expect(findTemporalCounterexampleWithZ3(temporal, "missingLeaseIsFenced", { maxSteps: 3 }))
+      .resolves.toMatchObject({
+        status: "safe-within-bound", depth: 3,
+        observationDomains: [expect.objectContaining({ values: ["node-a", "node-b"] })],
+      });
+
+    const broken = parseSpec(fileName, readFileSync(fileName, "utf8").replace(
+      "{ epoch: 0, valid: false }).valid",
+      "{ epoch: 0, valid: true }).valid",
+    )).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "missingLeaseIsFenced", { maxSteps: 3 }))
+      .resolves.toMatchObject({
+        status: "counterexample",
+        trace: { steps: expect.arrayContaining([
+          expect.objectContaining({ action: "selectStandby", after: expect.objectContaining({ selectedNode: "node-b" }) }),
+        ]) },
+      });
+
+    const tlc = `Invariant missingLeaseIsFenced is violated.\nState 1: <Initial predicate>\n/\\ nodes = {"node-a", "node-b"}\n/\\ selectedNode = "node-a"\n/\\ leases = ["node-a" |-> [epoch |-> 1, valid |-> TRUE]]\n/\\ writeAllowed = FALSE\nState 2: <selectStandby line 1, col 1 to line 1, col 1>\n/\\ nodes = {"node-a", "node-b"}\n/\\ selectedNode = "node-b"\n/\\ leases = ["node-a" |-> [epoch |-> 1, valid |-> TRUE]]\n/\\ writeAllowed = FALSE`;
+    const trace = parseTlcCounterexample(tlc, temporal, "string-node-lease");
+    expect(trace.steps).toEqual([
+      expect.objectContaining({ action: "selectStandby", after: expect.objectContaining({ selectedNode: "node-b" }) }),
+    ]);
+    await expect(replayModelCounterexample(trace, {
+      schema: "uneffect-refinement-adapter/v1",
+      name: "string-node-lease",
+      version: "1",
+      create: (state) => structuredClone(state),
+      observe: (state) => structuredClone(state),
+      actions: {
+        selectStandby: (state) => { state.selectedNode = "node-b"; state.writeAllowed = false; },
+      },
+    })).resolves.toMatchObject({ status: "replayed", matchedSteps: 1 });
+
+    const unsupportedControlCharacter = parseSpec("string-control.ts", `/* uneffect:
+      state id: string
+      init id = "\\n"
+      action retain: id' = id
+      temporal stable: id === "\\n"
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(unsupportedControlCharacter, "stable", { maxSteps: 1 }))
+      .resolves.toEqual({ status: "unknown", depth: 0 });
+  });
+
   it("defaults a missing node lease to a fenced record across Quint and Z3", async () => {
     const fileName = "examples/dogfood/node-lease-total-map-lookup.ts";
     const source = readFileSync(fileName, "utf8");

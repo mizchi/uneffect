@@ -9,6 +9,19 @@ import {
 } from "../src/temporal-expressions.js";
 
 describe("restricted TypeScript temporal expressions", () => {
+  it("types string literals and string-keyed finite collections without numeric coercion", () => {
+    const nodes = parseTemporalExpression('Set("node-a", "node-b")');
+    const leases = parseTemporalExpression('Map([["node-a", true]])');
+    expect(typeCheckTemporalExpression(nodes, new Map())).toEqual({ kind: "set", element: "string" });
+    expect(typeCheckTemporalExpression(leases, new Map())).toEqual({ kind: "map", key: "string", value: "bool" });
+    expect(generateQuintExpression(nodes)).toBe('Set("node-a", "node-b")');
+    expect(generateRuntimeAssertionExpression(leases)).toBe('new Map([["node-a", true]])');
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression('"node-a" < "node-b"'), new Map()))
+      .toThrow(/requires integer operands/);
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression('"node-a" + "node-b"'), new Map()))
+      .toThrow(/requires integer operands/);
+  });
+
   it("lowers one neutral AST to Quint and runtime JavaScript", () => {
     const expression = parseTemporalExpression("phase === 0 && !cancelled");
     expect(generateQuintExpression(expression)).toBe("phase == 0 and not(cancelled)");

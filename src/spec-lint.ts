@@ -40,6 +40,7 @@ function smtBinaryOperator(operator: Exclude<Extract<TemporalExpression, { kind:
 function smtSort(type: TemporalValueType | "never"): string {
   if (type === "int") return "Int";
   if (type === "bool") return "Bool";
+  if (type === "string") return "String";
   if (type === "never") return "Int";
   if (type.kind === "set" && (type.element === "never" || supportsZ3SemanticType(type.element))) return `(Array ${smtSort(type.element)} Bool)`;
   const mapType = z3MapType(type);
@@ -47,6 +48,15 @@ function smtSort(type: TemporalValueType | "never"): string {
   const recordType = z3RecordType(type);
   if (recordType) return recordNames(recordType).sort;
   throw new Error("this temporal value type is not supported by the Z3 lint backend");
+}
+
+function smtStringLiteral(value: string): string {
+  if (/[\u0000-\u001f\u007f]/u.test(value)) throw new Error("temporal SMT strings do not support control characters");
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function smtScalarLiteral(value: number | boolean | string): string {
+  return typeof value === "string" ? smtStringLiteral(value) : String(value);
 }
 
 function supportsZ3SemanticType(type: TemporalValueType): boolean {
@@ -59,7 +69,7 @@ function supportsZ3SemanticType(type: TemporalValueType): boolean {
 
 function supportsZ3FiniteCollectionState(type: TemporalValueType): boolean {
   if (typeof type === "string") return true;
-  if (type.kind === "set") return type.element === "int" || type.element === "bool" || type.element === "never";
+  if (type.kind === "set") return type.element === "int" || type.element === "bool" || type.element === "string" || type.element === "never";
   if (type.kind === "map") return type.key !== "never" && type.value !== "never" && supportsZ3FiniteCollectionState(type.value);
   for (const field of Object.values(type.fields)) if (!supportsZ3FiniteCollectionState(field)) return false;
   return true;
@@ -68,6 +78,7 @@ function supportsZ3FiniteCollectionState(type: TemporalValueType): boolean {
 function finiteTypeCardinality(type: TemporalValueType | "never"): bigint | undefined {
   if (type === "bool") return 2n;
   if (type === "int") return undefined;
+  if (type === "string") return undefined;
   if (type === "never") return 0n;
   if (type.kind === "record") {
     let total = 1n;
@@ -315,7 +326,7 @@ function synthesizedRelationalStrengtheningProperties(
 }
 
 function synthesizedCollectionStrengtheningProperties(spec: TemporalSpec): TemporalSpec["properties"] {
-  const collections: Array<{ name: string; type: Exclude<TemporalValueType, "int" | "bool"> }> = [];
+  const collections: Array<{ name: string; type: Exclude<TemporalValueType, "int" | "bool" | "string"> }> = [];
   const collect = (name: string, type: TemporalValueType): void => {
     if (typeof type === "string") return;
     collections.push({ name, type });
@@ -331,7 +342,7 @@ function synthesizedCollectionStrengtheningProperties(spec: TemporalSpec): Tempo
     if (type.kind !== "map") return [];
     return [
       ...(type.key !== "never" ? [{ name: `${name}.keys()`, type: { kind: "set", element: type.key } as const }] : []),
-      ...(type.value === "int" || type.value === "bool" ? [{ name: `${name}.values()`, type: { kind: "set", element: type.value } as const }] : []),
+      ...(type.value === "int" || type.value === "bool" || type.value === "string" ? [{ name: `${name}.values()`, type: { kind: "set", element: type.value } as const }] : []),
     ];
   });
   candidates.push(...setViews.flatMap((left, leftIndex) => setViews.slice(leftIndex + 1).flatMap((right) => {
@@ -348,10 +359,10 @@ function synthesizedCollectionStrengtheningProperties(spec: TemporalSpec): Tempo
   }));
 }
 
-type MapType = Extract<TemporalValueType, { kind: "map" }> & { key: "int" | "bool"; value: TemporalValueType };
+type MapType = Extract<TemporalValueType, { kind: "map" }> & { key: "int" | "bool" | "string"; value: TemporalValueType };
 type RecordType = Extract<TemporalValueType, { kind: "record" }>;
-type ScalarMapType = MapType & { value: "int" | "bool" };
-type ScalarRecordType = RecordType & { fields: Readonly<Record<string, "int" | "bool">> };
+type ScalarMapType = MapType & { value: "int" | "bool" | "string" };
+type ScalarRecordType = RecordType & { fields: Readonly<Record<string, "int" | "bool" | "string">> };
 
 function z3TypeKey(type: TemporalValueType | "never"): string {
   if (typeof type === "string") return type;
@@ -376,7 +387,7 @@ function mapNames(type: MapType) {
 
 function scalarMapType(type: TemporalValueType | undefined): ScalarMapType | undefined {
   return type && typeof type !== "string" && type.kind === "map" && type.key !== "never"
-    && (type.value === "int" || type.value === "bool") ? type as ScalarMapType : undefined;
+    && (type.value === "int" || type.value === "bool" || type.value === "string") ? type as ScalarMapType : undefined;
 }
 
 function z3MapType(type: TemporalValueType | undefined): MapType | undefined {
@@ -386,7 +397,7 @@ function z3MapType(type: TemporalValueType | undefined): MapType | undefined {
 
 function scalarRecordType(type: TemporalValueType | undefined): ScalarRecordType | undefined {
   if (!type || typeof type === "string" || type.kind !== "record") return undefined;
-  for (const field of Object.values(type.fields)) if (field !== "int" && field !== "bool") return undefined;
+  for (const field of Object.values(type.fields)) if (field !== "int" && field !== "bool" && field !== "string") return undefined;
   return type as ScalarRecordType;
 }
 
@@ -434,6 +445,7 @@ function z3TypeDeclarations(types: readonly TemporalValueType[]): string[] {
 function defaultSmtValue(type: TemporalValueType | "never"): string {
   if (type === "int" || type === "never") return "0";
   if (type === "bool") return "false";
+  if (type === "string") return '""';
   if (type.kind === "set") return `((as const ${smtSort(type)}) false)`;
   const mapType = z3MapType(type);
   if (mapType) {
@@ -456,6 +468,7 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
   }
   if (expression.kind === "integer") return "int";
   if (expression.kind === "boolean") return "bool";
+  if (expression.kind === "string") return "string";
   if (expression.kind === "record") {
     const base = expression.base ? z3TemporalType(expression.base, symbols) : undefined;
     if (base && (typeof base === "string" || base.kind !== "record")) throw new Error("Z3 record spread requires a record");
@@ -481,7 +494,7 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
     const pair = entries.elements[0];
     if (!pair || pair.kind !== "array" || pair.elements.length !== 2) throw new Error("Z3 Map entries must be key/value pairs");
     const key = z3TemporalType(pair.elements[0]!, symbols), value = z3TemporalType(pair.elements[1]!, symbols);
-    if (key !== "int" && key !== "bool") throw new Error("Z3 Map keys must be scalar");
+    if (key !== "int" && key !== "bool" && key !== "string") throw new Error("Z3 Map keys must be scalar");
     return { kind: "map", key, value };
   }
   if (expression.kind === "method") {
@@ -507,19 +520,21 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
 interface FiniteCollectionUniverse {
   readonly int: number[];
   readonly bool: boolean[];
+  readonly string: string[];
   readonly complete: boolean;
   readonly dynamicMapLookupKeys: readonly TemporalExpression[];
   readonly unsupportedDynamicCollection: boolean;
 }
 
 function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse {
-  const integers = new Set<number>(), booleans = new Set<boolean>();
+  const integers = new Set<number>(), booleans = new Set<boolean>(), strings = new Set<string>();
   let complete = true;
   let unsupportedDynamicCollection = false;
   const dynamicMapLookupKeys: TemporalExpression[] = [];
-  const literal = (expression: TemporalExpression): number | boolean | undefined => {
+  const literal = (expression: TemporalExpression): number | boolean | string | undefined => {
     if (expression.kind === "integer") return Number(expression.value);
     if (expression.kind === "boolean") return expression.value;
+    if (expression.kind === "string") return expression.value;
     if (expression.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") return -Number(expression.operand.value);
     return undefined;
   };
@@ -528,6 +543,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse 
       const value = literal(item);
       if (typeof value === "number") integers.add(value);
       else if (typeof value === "boolean") booleans.add(value);
+      else if (typeof value === "string") strings.add(value);
       else { complete = false; unsupportedDynamicCollection = true; }
     }
     if (expression.kind === "call" && expression.name === "Map") {
@@ -542,6 +558,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse 
         const key = literal(pair.elements[0]!);
         if (typeof key === "number") integers.add(key);
         else if (typeof key === "boolean") booleans.add(key);
+        else if (typeof key === "string") strings.add(key);
         else { complete = false; unsupportedDynamicCollection = true; }
       }
     }
@@ -550,6 +567,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse 
       const key = literal(expression.arguments[0]!);
       if (typeof key === "number") integers.add(key);
       else if (typeof key === "boolean") booleans.add(key);
+      else if (typeof key === "string") strings.add(key);
       else {
         complete = false;
         if (expression.name === "getOrElse") dynamicMapLookupKeys.push(expression.arguments[0]!);
@@ -576,6 +594,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): FiniteCollectionUniverse 
   return {
     int: [...integers].sort((a, b) => a - b),
     bool: [...booleans].sort((a, b) => Number(a) - Number(b)),
+    string: [...strings].sort(),
     complete,
     dynamicMapLookupKeys,
     unsupportedDynamicCollection,
@@ -587,9 +606,10 @@ interface ProvedFiniteCollectionUniverse {
   readonly evidence: readonly TemporalObservationDomainEvidence[];
 }
 
-function scalarLiteralValue(expression: TemporalExpression): number | boolean | undefined {
+function scalarLiteralValue(expression: TemporalExpression): number | boolean | string | undefined {
   if (expression.kind === "integer") return Number(expression.value);
   if (expression.kind === "boolean") return expression.value;
+  if (expression.kind === "string") return expression.value;
   if (expression.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") {
     return -Number(expression.operand.value);
   }
@@ -609,14 +629,15 @@ async function proveFiniteCollectionUniverse(
   if (keys.length === 0) return undefined;
   const candidates = keys.map((keyState) => {
     const keyType = spec.states.find((state) => state.name === keyState)?.type;
-    if (keyType !== "int" && keyType !== "bool") return undefined;
+    if (keyType !== "int" && keyType !== "bool" && keyType !== "string") return undefined;
     const matching = spec.states.flatMap((state) => {
       if (typeof state.type === "string" || state.type.kind !== "set" || state.type.element !== keyType) return [];
       const initializer = spec.init.find((assignment) => assignment.target === state.name)?.expressionAst;
       if (!initializer || initializer.kind !== "call" || initializer.name !== "Set" || initializer.arguments.length === 0) return [];
       const parsedValues = initializer.arguments.map(scalarLiteralValue);
       if (parsedValues.some((value) => value === undefined)) return [];
-      const values = [...new Set(parsedValues as (number | boolean)[])].sort((left, right) => {
+      const values = [...new Set(parsedValues as (number | boolean | string)[])].sort((left, right) => {
+        if (typeof left === "string" && typeof right === "string") return left.localeCompare(right);
         if (typeof left === "boolean" && typeof right === "boolean") return Number(left) - Number(right);
         return Number(left) - Number(right);
       });
@@ -738,6 +759,7 @@ async function proveFiniteCollectionUniverse(
 }
 
 function supportsZ3Expression(expression: TemporalExpression): boolean {
+  if (expression.kind === "string") return !/[\u0000-\u001f\u007f]/u.test(expression.value);
   if (expression.kind === "method" && expression.name === "size") return false;
   if (expression.kind === "unary") return supportsZ3Expression(expression.operand);
   if (expression.kind === "binary") return supportsZ3Expression(expression.left) && supportsZ3Expression(expression.right);
@@ -773,7 +795,7 @@ function temporalExpressionAtStep(
 ): TemporalExpression {
   if (expression.kind === "name") return boundNames.has(expression.name)
     ? expression : { ...expression, name: `${prefix}_${step}_${expression.name}` };
-  if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+  if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "string") return expression;
   if (expression.kind === "unary") return {
     ...expression, operand: temporalExpressionAtStep(expression.operand, prefix, step, boundNames),
   };
@@ -827,6 +849,7 @@ function temporalToSmt(
   if (expression.kind === "name") return expression.name === boundName ? expression.name : resolveName(expression.name);
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
+  if (expression.kind === "string") return smtStringLiteral(expression.value);
   if (expression.kind === "unary") return expression.operator === "not" ? `(not ${temporalToSmt(expression.operand, resolveName, symbols, undefined, boundName)})` : `(- ${temporalToSmt(expression.operand, resolveName, symbols, undefined, boundName)})`;
   if (expression.kind === "conditional") return `(ite ${temporalToSmt(expression.condition, resolveName, symbols, undefined, boundName)} ${temporalToSmt(expression.whenTrue, resolveName, symbols, expected, boundName)} ${temporalToSmt(expression.whenFalse, resolveName, symbols, expected, boundName)})`;
   if (expression.kind === "call" && expression.name === "Set") {
@@ -1017,7 +1040,7 @@ export interface TemporalObservationDomainEvidence {
   readonly domainState: string;
   readonly keyState: string;
   readonly property: string;
-  readonly values: readonly (number | boolean)[];
+  readonly values: readonly (number | boolean | string)[];
   readonly proof: {
     readonly initSatisfiable: "verified";
     readonly membershipInitiation: "verified";
@@ -1033,11 +1056,15 @@ export interface TemporalObservationDomainEvidence {
   };
 }
 
-function parseZ3TemporalValue(value: string, type: "int" | "bool"): number | boolean {
+function parseZ3TemporalValue(value: string, type: "int" | "bool" | "string"): number | boolean | string {
   if (type === "bool") {
     if (value === "true") return true;
     if (value === "false") return false;
     throw new Error(`Z3 returned a non-boolean temporal value: ${value}`);
+  }
+  if (type === "string") {
+    if (!value.startsWith('"') || !value.endsWith('"')) throw new Error(`Z3 returned a non-string temporal value: ${value}`);
+    return value.slice(1, -1).replaceAll('""', '"');
   }
   if (/^-?\d+$/.test(value)) {
     const parsed = Number(value);
@@ -1055,17 +1082,17 @@ function parseZ3TemporalValue(value: string, type: "int" | "bool"): number | boo
 
 type FiniteUniverse = ReturnType<typeof finiteCollectionUniverse>;
 
-function observationValues(type: "int" | "bool" | "never", universe: FiniteUniverse): readonly (number | boolean)[] {
-  return type === "bool" ? universe.bool : universe.int;
+function observationValues(type: "int" | "bool" | "string" | "never", universe: FiniteUniverse): readonly (number | boolean | string)[] {
+  return type === "bool" ? universe.bool : type === "string" ? universe.string : universe.int;
 }
 
 function z3ObservationDeclarations(prefix: string, expression: string, type: TemporalValueType, universe: FiniteUniverse): string[] {
   if (typeof type === "string") return [`(declare-const ${prefix} ${smtSort(type)})`, `(assert (= ${prefix} ${expression}))`];
   if (type.kind === "set") {
-    if (type.element !== "int" && type.element !== "bool" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
+    if (type.element !== "int" && type.element !== "bool" && type.element !== "string" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
     return observationValues(type.element, universe).flatMap((value, index) => [
       `(declare-const ${prefix}__member__${index} Bool)`,
-      `(assert (= ${prefix}__member__${index} (select ${expression} ${String(value)})))`,
+      `(assert (= ${prefix}__member__${index} (select ${expression} ${smtScalarLiteral(value)})))`,
     ]);
   }
   if (type.kind === "map") {
@@ -1074,8 +1101,8 @@ function z3ObservationDeclarations(prefix: string, expression: string, type: Tem
     const names = mapNames(mapType);
     return observationValues(mapType.key, universe).flatMap((key, index) => [
       `(declare-const ${prefix}__member__${index} Bool)`,
-      `(assert (= ${prefix}__member__${index} (select (${names.domain} ${expression}) ${String(key)})))`,
-      ...z3ObservationDeclarations(`${prefix}__value__${index}`, `(select (${names.values} ${expression}) ${String(key)})`, mapType.value, universe),
+      `(assert (= ${prefix}__member__${index} (select (${names.domain} ${expression}) ${smtScalarLiteral(key)})))`,
+      ...z3ObservationDeclarations(`${prefix}__value__${index}`, `(select (${names.values} ${expression}) ${smtScalarLiteral(key)})`, mapType.value, universe),
     ]);
   }
   const recordType = z3RecordType(type);
@@ -1087,9 +1114,9 @@ function z3ObservationDeclarations(prefix: string, expression: string, type: Tem
 }
 
 function z3ObservationRequests(prefix: string, type: TemporalValueType, universe: FiniteUniverse): Z3ValueRequest[] {
-  if (typeof type === "string") return [{ name: prefix, expression: prefix, sort: type === "int" ? "Int" : "Bool" }];
+  if (typeof type === "string") return [{ name: prefix, expression: prefix, sort: type === "int" ? "Int" : type === "bool" ? "Bool" : "String" }];
   if (type.kind === "set") {
-    if (type.element !== "int" && type.element !== "bool" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
+    if (type.element !== "int" && type.element !== "bool" && type.element !== "string" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
     return observationValues(type.element, universe).map((_value, index) => ({ name: `${prefix}__member__${index}`, expression: `${prefix}__member__${index}`, sort: "Bool" }));
   }
   if (type.kind === "map") {
@@ -1113,7 +1140,7 @@ function decodeZ3Observation(values: Readonly<Record<string, string>>, prefix: s
     return parseZ3TemporalValue(value, type);
   }
   if (type.kind === "set") {
-    if (type.element !== "int" && type.element !== "bool" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
+    if (type.element !== "int" && type.element !== "bool" && type.element !== "string" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
     return observationValues(type.element, universe).filter((_value, index) => values[`${prefix}__member__${index}`] === "true");
   }
   if (type.kind === "map") {

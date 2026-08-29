@@ -4,6 +4,7 @@ export type TemporalExpression =
   | { kind: "name"; name: string }
   | { kind: "integer"; value: string }
   | { kind: "boolean"; value: boolean }
+  | { kind: "string"; value: string }
   | { kind: "array"; elements: TemporalExpression[] }
   | { kind: "record"; base?: TemporalExpression; fields: Readonly<Record<string, TemporalExpression>> }
   | { kind: "field"; receiver: TemporalExpression; name: string }
@@ -18,8 +19,8 @@ export type TemporalBinaryOperator =
   | "eq" | "neq" | "and" | "or"
   | "lt" | "lte" | "gt" | "gte"
   | "add" | "subtract" | "multiply" | "divide" | "modulo";
-export type TemporalScalarType = "int" | "bool" | "never";
-export type TemporalValueType = "int" | "bool"
+export type TemporalScalarType = "int" | "bool" | "string" | "never";
+export type TemporalValueType = "int" | "bool" | "string"
   | { kind: "set"; element: TemporalValueType | "never" }
   | { kind: "map"; key: TemporalScalarType; value: TemporalValueType | "never" }
   | { kind: "record"; fields: Readonly<Record<string, TemporalValueType>> };
@@ -77,12 +78,13 @@ export function parseTemporalValueType(source: string): TemporalValueType {
   if (diagnostics.length > 0) throw new Error(`invalid temporal state type: ${source}`);
   const statement = file.statements[0];
   const convertType = (node: ts.TypeNode): TemporalValueType => {
+    if (node.kind === ts.SyntaxKind.StringKeyword) return "string";
     if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
       if ((node.typeName.text === "int" || node.typeName.text === "bool") && !node.typeArguments?.length) return node.typeName.text;
       if (node.typeName.text === "Set" && node.typeArguments?.length === 1) return { kind: "set", element: convertType(node.typeArguments[0]!) };
       if (node.typeName.text === "Map" && node.typeArguments?.length === 2) {
         const key = convertType(node.typeArguments[0]!), value = convertType(node.typeArguments[1]!);
-        if (key !== "int" && key !== "bool") throw new Error("temporal Map keys must be int or bool");
+        if (key !== "int" && key !== "bool" && key !== "string") throw new Error("temporal Map keys must be int, bool, or string");
         return { kind: "map", key, value };
       }
     }
@@ -113,6 +115,7 @@ export function typeCheckTemporalExpression(
   }
   if (expression.kind === "integer") return "int";
   if (expression.kind === "boolean") return "bool";
+  if (expression.kind === "string") return "string";
   if (expression.kind === "array") throw new Error("temporal array literals are only valid inside Map entries");
   if (expression.kind === "record") {
     const base = expression.base ? typeCheckTemporalExpression(expression.base, symbols) : undefined;
@@ -245,6 +248,7 @@ function convert(node: ts.Expression): TemporalExpression {
   if (ts.isParenthesizedExpression(node)) return convert(node.expression);
   if (ts.isIdentifier(node)) return { kind: "name", name: node.text };
   if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
+  if (ts.isStringLiteral(node)) return { kind: "string", value: node.text };
   if (node.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
   if (node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
   if (ts.isArrayLiteralExpression(node)) return { kind: "array", elements: node.elements.map((element) => {
@@ -341,6 +345,7 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
   if (expression.kind === "name") return expression.name;
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
+  if (expression.kind === "string") return JSON.stringify(expression.value);
   if (expression.kind === "array") return `[${expression.elements.map((item) => emit(item, backend)).join(", ")}]`;
   if (expression.kind === "record") {
     const fields = Object.entries(expression.fields);

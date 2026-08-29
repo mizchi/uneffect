@@ -94,6 +94,17 @@ assumptions and does not present the result as independent per-key proof.
 Arbitrary collection relations and a conjunction that fails preservation remain
 `unknown`.
 
+`examples/dogfood/node-lease-string-identities.ts` removes another artificial
+flattening step: production-shaped `"node-a"`/`"node-b"` identities remain
+strings in scalar state, finite Sets, Map keys, Quint, native/WASM Z3
+counterexamples, TLC console traces, and TypeScript replay. Switching the
+selected node explicitly invalidates the prior `writeAllowed` authority before
+the new lease is checked; the first acceptance run found that missing
+invalidation as a real counterexample. String equality is supported, while
+ordering, arithmetic, control-character SMT literals, unbounded string
+generation, and observation outside the complete literal/proved finite domain
+remain non-proofs.
+
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker
 never crashes and the resource remains held. Declaring weak fairness for both

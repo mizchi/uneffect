@@ -24,8 +24,21 @@ const jointBroken = parseSpec(jointFileName, jointSource.replace(
   "{ epoch: 0, valid: false }",
   "{ epoch: 0, valid: true }",
 )).temporal;
+const stringFileName = "examples/dogfood/node-lease-string-identities.ts";
+const stringSource = readFileSync(stringFileName, "utf8");
+const stringSafe = parseSpec(stringFileName, stringSource).temporal;
 
 describe("proved dynamic Map key domain", () => {
+  bench("prove the string-identity Node Lease lookup", async () => {
+    const result = await findTemporalCounterexampleWithZ3(
+      stringSafe, "missingLeaseIsFenced", { maxSteps: 3 },
+    );
+    if (result.status !== "safe-within-bound"
+      || result.observationDomains?.[0]?.values.join(",") !== "node-a,node-b") {
+      throw new Error(`expected proved string observation domain, got ${result.status}`);
+    }
+  }, { time: 500, iterations: 2 });
+
   bench("prove and decode the bounded-safe Node Lease lookup", async () => {
     const result = await findTemporalCounterexampleWithZ3(
       safe, "absentSelectedLeaseIsFenced", { maxSteps: 2 },

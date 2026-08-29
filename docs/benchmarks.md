@@ -2095,6 +2095,14 @@ cover one two-property membership conjunction only. Arbitrary invariant groups,
 mutable domains, compound keys, proof caching, and unbounded verification are
 not measured.
 
+The #58 string-identity Node Lease benchmark proves the complete two-member
+string observation domain and checks the bounded-safe lookup to depth three. A
+selected native-Z3 run measured 37.2001 ms mean over 14 samples (26.88
+operations per second, 1.89% RME). The integer-key single-selector baseline in
+the same run measured 30.1544 ms. This measures one two-literal identity domain,
+record-valued Map, and membership proof; it is not evidence for unbounded
+strings, large registries, or string arithmetic.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

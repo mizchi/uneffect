@@ -75,12 +75,12 @@ Bounded child [#48](https://github.com/mizchi/uneffect/issues/48) is complete an
 composes that finite rule with one source-bound catch/finally handler topology
 and immutable Boolean failure selector.
 
-There are 12 open implementation Issues after completing bounded children #56
-and #57,
+There are 13 open implementation Issues while bounded child #58 is active
+after completing children #56 and #57,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-12 open implementation Issues remain, all parent/epic Issues: one proof-boundary
-Issue in Phase 1, five specification-expressiveness Issues in
+12 parent/epic Issues remain plus active bounded child #58: one proof-boundary
+parent in Phase 1, five specification-expressiveness parents in
 Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
 [#45](https://github.com/mizchi/uneffect/issues/45) belongs to #5 and follows
@@ -176,7 +176,11 @@ for a first useful release.
 
 ## Immediate execution queue
 
-There is no active implementation Issue. Completed bounded child
+Bounded child [#58](https://github.com/mizchi/uneffect/issues/58) is active. Its
+skipped acceptance test started from production-shaped string Node Lease IDs;
+the current worktree carries the fragment through Quint, Z3, TLC trace import,
+and replay, but it is not completed until every local/remote gate and the
+documented handoff pass. Completed bounded child
 [#57](https://github.com/mizchi/uneffect/issues/57) proves the exact Workhub
 top-level `main().catch(handler)` launch/attachment family and fixes nested
 function `await` being misclassified as TLA. The current Workhub function-level
@@ -189,7 +193,7 @@ empty rather than treating a research topic as an executable task.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-No implementation slice is currently active.
+| 1 | [#58](https://github.com/mizchi/uneffect/issues/58) | String identities retain exact values through typed temporal AST, finite Set/Map, Quint, native/WASM Z3, TLC import, and replay; arithmetic/order remain rejected; benchmark/docs/full local and remote CI pass. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -226,8 +230,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57 handoffs:
-twelve queued parent/epic Issues and no active child. Every open Issue has exactly one
+As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57 handoffs:
+twelve queued parent/epic Issues and active bounded child #58. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -238,6 +242,7 @@ label.
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 only for quantified/correlated invariants; basic finite collections are independent | Wider collection correlation and remaining TLC values/traces |
+| Active | 2 | [#58](https://github.com/mizchi/uneffect/issues/58) | Temporal string identities | Parent #5 finite collection/TLC path | Exact string values through finite Set/Map, Quint, Z3, TLC trace import, and replay |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |

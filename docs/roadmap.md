@@ -184,6 +184,10 @@ explicit conservative boundaries rather than untracked support.
    Completed child [#45](https://github.com/mizchi/uneffect/issues/45) admits one
    failover family where the complete membership conjunction, rather than each
    property alone, is inductive. Joint assumptions remain explicit evidence.
+   Active bounded child [#58](https://github.com/mizchi/uneffect/issues/58)
+   preserves production-shaped string node identities through the same finite
+   collection, solver, trace, and replay path without admitting string
+   arithmetic or unbounded generation.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
    reduces filtering and covers recursive/user-defined refinements.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)

@@ -168,6 +168,7 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
   }
   if (expression.kind === "integer") return Number(expression.value);
   if (expression.kind === "boolean") return expression.value;
+  if (expression.kind === "string") return expression.value;
   if (expression.kind === "array") return expression.elements.map((item) => evaluateTemporalExpression(item, state));
   if (expression.kind === "record") {
     const base = expression.base ? evaluateTemporalExpression(expression.base, state) : {};
@@ -253,12 +254,16 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
   }
 }
 
-function parseTlcScalar(raw: string, type: "int" | "bool", name: string): number | boolean {
+function parseTlcScalar(raw: string, type: "int" | "bool" | "string", name: string): number | boolean | string {
   const value = raw.trim();
   if (type === "bool") {
     if (value === "TRUE") return true;
     if (value === "FALSE") return false;
     throw new Error(`TLC state ${name} is not a scalar boolean: ${value}`);
+  }
+  if (type === "string") {
+    if (!/^"(?:\\.|[^"\\])*"$/.test(value)) throw new Error(`TLC state ${name} is not a string: ${value}`);
+    try { return JSON.parse(value) as string; } catch { throw new Error(`TLC state ${name} is not a valid string: ${value}`); }
   }
   if (!/^-?\d+$/.test(value)) throw new Error(`TLC state ${name} is not a scalar integer: ${value}`);
   const parsed = Number(value);

@@ -66,6 +66,11 @@ same property is proved for arbitrary TypeScript.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint
   generation, and normalized counterexample traces for the documented subset.
+- The temporal scalar contract includes exact strings for identity values.
+  Finite `Set<string>` and string-keyed `Map` state preserve those values through
+  Quint, native/WASM Z3 bounded extraction, TLC console traces, and refinement
+  replay. Strings admit equality but not arithmetic, ordering, or unbounded
+  generation.
 - Solution workspaces compose a locally verified scalar refinement action
   through a direct referenced-project call. A guarded action is admitted only
   through a sole direct wrapper call, whose inherited guard is checked against

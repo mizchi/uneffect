@@ -708,7 +708,7 @@ function boundedSelfAffineEvidence(
 function refinementExpressionKey(expression: TemporalExpression): string {
   const alphaNormalize = (value: TemporalExpression, bindings: ReadonlyMap<string, string> = new Map()): TemporalExpression => {
     if (value.kind === "name") return { ...value, name: bindings.get(value.name) ?? value.name };
-    if (value.kind === "integer" || value.kind === "boolean") return value;
+    if (value.kind === "integer" || value.kind === "boolean" || value.kind === "string") return value;
     if (value.kind === "unary") return { ...value, operand: alphaNormalize(value.operand, bindings) };
     if (value.kind === "binary") return { ...value, left: alphaNormalize(value.left, bindings), right: alphaNormalize(value.right, bindings) };
     if (value.kind === "conditional") return { ...value, condition: alphaNormalize(value.condition, bindings), whenTrue: alphaNormalize(value.whenTrue, bindings), whenFalse: alphaNormalize(value.whenFalse, bindings) };
@@ -858,7 +858,7 @@ function isDeclarationFileSymbol(checker: ts.TypeChecker | undefined, node: ts.N
 
 function replaceRefinementName(expression: TemporalExpression, from: string, to: string): TemporalExpression {
   if (expression.kind === "name") return expression.name === from ? { kind: "name", name: to } : expression;
-  if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+  if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "string") return expression;
   if (expression.kind === "unary") return { ...expression, operand: replaceRefinementName(expression.operand, from, to) };
   if (expression.kind === "binary") return { ...expression, left: replaceRefinementName(expression.left, from, to), right: replaceRefinementName(expression.right, from, to) };
   if (expression.kind === "conditional") return { ...expression, condition: replaceRefinementName(expression.condition, from, to), whenTrue: replaceRefinementName(expression.whenTrue, from, to), whenFalse: replaceRefinementName(expression.whenFalse, from, to) };
@@ -894,7 +894,7 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
       if (parsed.kind === expectedKind && parsed.path === argumentPath) return { kind: "name", name: abstract };
     }
   }
-  if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "name") return expression;
+  if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "string" || expression.kind === "name") return expression;
   if (expression.kind === "unary") return { ...expression, operand: canonicalizeAbstractionExpression(expression.operand, abstraction) };
   if (expression.kind === "binary") return { ...expression, left: canonicalizeAbstractionExpression(expression.left, abstraction), right: canonicalizeAbstractionExpression(expression.right, abstraction) };
   if (expression.kind === "conditional") return { ...expression, condition: canonicalizeAbstractionExpression(expression.condition, abstraction), whenTrue: canonicalizeAbstractionExpression(expression.whenTrue, abstraction), whenFalse: canonicalizeAbstractionExpression(expression.whenFalse, abstraction) };
@@ -939,7 +939,7 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
         return { kind: "name", name: parameter };
       }
       if (value.kind === "name") return value.name === parameter ? undefined : value;
-      if (value.kind === "integer" || value.kind === "boolean") return value;
+      if (value.kind === "integer" || value.kind === "boolean" || value.kind === "string") return value;
       if (value.kind === "unary") { const operand = rewriteValue(value.operand); return operand ? { ...value, operand } : undefined; }
       if (value.kind === "binary") { const left = rewriteValue(value.left), right = rewriteValue(value.right); return left && right ? { ...value, left, right } : undefined; }
       if (value.kind === "conditional") {
@@ -2997,7 +2997,7 @@ function validateRefinementActionBodiesInSource(
           };
         };
         const scalarNames = (expression: TemporalExpression): ReadonlySet<string> | undefined => {
-          if (expression.kind === "integer" || expression.kind === "boolean") return new Set();
+          if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "string") return new Set();
           if (expression.kind === "name") return new Set([expression.name]);
           if (expression.kind === "unary") return scalarNames(expression.operand);
           if (expression.kind === "binary") {
@@ -3016,7 +3016,7 @@ function validateRefinementActionBodiesInSource(
           return undefined;
         };
         const atLoopEntry = (expression: TemporalExpression): TemporalExpression | undefined => {
-          if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+          if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "string") return expression;
           if (expression.kind === "name") return entryValues.get(expression.name) ?? expression;
           if (expression.kind === "unary") {
             const operand = atLoopEntry(expression.operand);
@@ -5878,7 +5878,7 @@ function substituteRefinementState(
   updates: ReadonlyMap<string, TemporalExpression>,
 ): TemporalExpression {
   if (expression.kind === "name") return updates.get(expression.name) ?? expression;
-  if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+  if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "string") return expression;
   if (expression.kind === "unary") return {
     ...expression, operand: substituteRefinementState(expression.operand, updates),
   };
