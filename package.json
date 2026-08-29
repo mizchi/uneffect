@@ -1,13 +1,15 @@
 {
   "name": "@mizchi/uneffect",
-  "version": "0.0.0-alpha.0",
-  "description": "Static effect, contract, and async-safety checking for existing TypeScript, driven by /* uneffect: ... */ comments.",
+  "version": "0.1.0",
+  "description": "Gradual effect, contract, async-safety, and temporal checking for existing TypeScript through comments.",
   "keywords": [
     "typescript",
     "effects",
     "static-analysis",
     "verification",
     "hoare-logic",
+    "temporal-logic",
+    "trusted-types",
     "z3",
     "quint",
     "cli"
@@ -23,6 +25,8 @@
   "license": "MIT",
   "author": "mizchi",
   "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
@@ -31,7 +35,9 @@
     "./corsa": {
       "types": "./dist/src/corsa-checker-exporter.d.ts",
       "import": "./dist/src/corsa-checker-exporter.js"
-    }
+    },
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
   },
   "bin": {
     "uneffect": "dist/src/cli.js"
@@ -39,11 +45,14 @@
   "files": [
     "dist/src",
     "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
     "docs",
     "schemas"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",

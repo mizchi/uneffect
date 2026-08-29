@@ -1,7 +1,8 @@
 # Stability and safe adoption
 
-Uneffect is published as `0.0.0-alpha.0`. No JavaScript API, CLI option, comment
-grammar, or semantic result is SemVer-stable yet. This page distinguishes a
+Uneffect 0.1 is an experimental release. Public JavaScript APIs, CLI options,
+comment grammar, and semantic behavior may change before 1.0. Versioned artifact
+schemas retain their own compatibility boundary. This page distinguishes a
 tested fragment that can be used conservatively today from experimental models
 and unsupported work. "Supported" below means covered by executable positive
 and negative tests for the exact documented shape; it does not mean complete
@@ -55,7 +56,7 @@ Within that workflow, these bounded capabilities have a supported fragment:
 - the exact bounded contract, typed-array, Promise/resource, temporal, and
   cross-project fragments listed as tested in the feature matrix.
 
-These are still alpha APIs. Pinning is required, and a future release may
+These are still experimental pre-1.0 APIs. Pinning is required, and a future release may
 change syntax or report fields outside an explicitly versioned schema.
 
 ## Experimental surfaces
@@ -72,7 +73,7 @@ prototypes rather than generally safe language semantics:
 - complete SHA-256, resizable/shared buffers, Atomics, and shared-memory proofs ([#6](https://github.com/mizchi/uneffect/issues/6));
 - proof-guided compression, mangling, reordering, or dead-code elimination ([#13](https://github.com/mizchi/uneffect/issues/13));
 - independently checkable proof certificates for every solver result ([#7](https://github.com/mizchi/uneffect/issues/7));
-- compatibility guarantees for the alpha public surface ([#62](https://github.com/mizchi/uneffect/issues/62)).
+- compatibility guarantees for the pre-1.0 public surface ([#62](https://github.com/mizchi/uneffect/issues/62)).
 
 Z3, Quint, and TLC artifacts are useful reproducible evidence. They are not by
 themselves certificates checked independently of Uneffect's translation.

@@ -1,5 +1,9 @@
 # uneffect
 
+[![npm version](https://img.shields.io/npm/v/%40mizchi%2Funeffect.svg)](https://www.npmjs.com/package/@mizchi/uneffect)
+[![CI](https://github.com/mizchi/uneffect/actions/workflows/ci.yml/badge.svg)](https://github.com/mizchi/uneffect/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/%40mizchi%2Funeffect.svg)](./LICENSE)
+
 Uneffect is a feasibility prototype for adding gradual effect specifications,
 Hoare-style contracts, and temporal models to existing TypeScript without
 rewriting the program around an effect runtime.
@@ -46,8 +50,8 @@ property does not.
 
 ## Status
 
-This package is an alpha-stage research prototype, not a verifier for all of
-JavaScript. It has executable coverage for selected fragments of:
+0.1 is an experimental release, not a verifier for all of JavaScript. It has
+executable coverage for selected fragments of:
 
 - capability effects, including Deno-shaped filesystem, network, environment,
   process, FFI, and system scopes;
@@ -69,7 +73,7 @@ independently checkable proof certificates.
 
 See [Implementation status](./docs/implementation-status.md) and the
 [feature matrix](./docs/feature-matrix.md) before relying on a specific proof.
-There is no SemVer-stable API yet. The [stability and safe-adoption guide](./docs/stability.md)
+Public APIs and semantics may still change before 1.0. The [stability and safe-adoption guide](./docs/stability.md)
 separates tested supported fragments from experimental and unsupported surfaces.
 
 ### Safe usage line
