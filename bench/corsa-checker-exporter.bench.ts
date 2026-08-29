@@ -14,6 +14,8 @@ const returnFileName = "examples/dogfood/corsa-workhub-promise-returns.ts";
 const returnFiles = { [returnFileName]: readFileSync(returnFileName, "utf8") };
 const directoryFileName = "examples/dogfood/corsa-workhub-fs-directory.ts";
 const directoryFiles = { [directoryFileName]: readFileSync(directoryFileName, "utf8") };
+const caughtAwaitFileName = "examples/dogfood/corsa-workhub-caught-await.ts";
+const caughtAwaitFiles = { [caughtAwaitFileName]: readFileSync(caughtAwaitFileName, "utf8") };
 const corsaExecutable = resolve("node_modules/.bin/tsgo");
 
 describe("checker-backed Corsa inferred-effect handoff", () => {
@@ -74,6 +76,18 @@ describe("checker-backed Corsa inferred-effect handoff", () => {
     });
     if (!comparison.equivalent) {
       throw new Error(`Corsa directory-fs parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
+    }
+  }, { time: 500, iterations: 1 });
+
+  bench("export and normalize Workhub-shaped caught await facts", async () => {
+    const facts = await exportCorsaCheckerFacts({ files: caughtAwaitFiles, corsaExecutable });
+    const comparison = await compareUneffectFrontends({
+      files: caughtAwaitFiles,
+      corsaFacts: facts,
+      requireCorsaCheckerFacts: true,
+    });
+    if (!comparison.equivalent) {
+      throw new Error(`Corsa caught-await parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
     }
   }, { time: 500, iterations: 1 });
 });

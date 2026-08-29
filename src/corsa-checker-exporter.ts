@@ -33,7 +33,7 @@ export interface CorsaCheckerPromiseObservationFact {
   owner: number;
   source: string;
   observation: "await" | "return";
-  catchesRejection: false;
+  catchesRejection: boolean;
   conditional: boolean;
   controlConditions: CorsaCheckerControlCondition[];
   controlPaths: CorsaCheckerControlCondition[][];
@@ -101,6 +101,7 @@ interface PendingPromiseObservation {
   end: number;
   control: { ifStart: number; expected: boolean } | null;
   observation: "await" | "return";
+  catchesRejection: boolean;
 }
 
 interface RawCorsaCheckerFacts {
@@ -272,7 +273,8 @@ export const corsaCheckerFactRule = createRule({
           ? classifyDirectAwaitControl(node.parent, caller.node)
           : { supported: false as const };
         if (awaitControl.supported) {
-          promiseObservations.push({
+          const rejectionCatch = classifyDirectAwaitRejectionCatch(node.parent, caller.node);
+          if (rejectionCatch.supported) promiseObservations.push({
             ownerSymbolId: caller.symbolId,
             source: text.slice(node.range[0], node.range[1]),
             start: byteOffset(text, node.range[0]),
@@ -282,6 +284,7 @@ export const corsaCheckerFactRule = createRule({
               expected: awaitControl.control.expected,
             },
             observation: "await",
+            catchesRejection: rejectionCatch.catchesRejection,
           });
         }
         const returnedExpression = directReturnedCallExpression(node);
@@ -296,6 +299,7 @@ export const corsaCheckerFactRule = createRule({
               end: byteOffset(text, returnedExpression.expression.range[1]),
               control: null,
               observation: "return",
+              catchesRejection: false,
             });
           }
         }
@@ -491,7 +495,7 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
           owner,
           source: item.source,
           observation: item.observation,
-          catchesRejection: false,
+          catchesRejection: item.catchesRejection,
           conditional: condition !== null,
           controlConditions: condition === null ? [] : [condition],
           controlPaths: condition === null ? [[]] : [[condition]],
@@ -645,6 +649,26 @@ function classifyDirectAwaitControl(awaitNode: any, ownerNode: any): {
     child = current;
   }
   return { supported: true, control };
+}
+
+function classifyDirectAwaitRejectionCatch(awaitNode: any, ownerNode: any): {
+  supported: true;
+  catchesRejection: boolean;
+} | { supported: false } {
+  let catchesRejection = false;
+  let protectedTryCount = 0;
+  let child = awaitNode;
+  for (let current = awaitNode.parent; current && current !== ownerNode; current = current.parent) {
+    if (current.type === "CatchClause") return { supported: false };
+    if (current.type === "TryStatement") {
+      if (current.block !== child) return { supported: false };
+      protectedTryCount += 1;
+      if (protectedTryCount > 1) return { supported: false };
+      catchesRejection = current.handler !== null;
+    }
+    child = current;
+  }
+  return { supported: true, catchesRejection };
 }
 
 function directReturnedCallExpression(call: any): { expression: any; returnStatement: any } | null {

@@ -2147,6 +2147,8 @@ per case):
   674.24 ms
 - Workhub-shaped directory/append filesystem fixture exported and normalized:
   636.83 ms
+- Workhub-shaped direct catch-protected await fixture exported and normalized:
+  656.62 ms
 
 This is an end-to-end latency observation, not a throughput claim: it includes
 temporary project creation, `corsa-oxlint` plus `tsgo`, a TypeScript reference
@@ -2163,3 +2165,5 @@ The directory/append case adds four exact named async-fs operations whose
 ordered evidence projects to the two-atom `FsRead | FsWrite` set. Sync,
 namespace, compound read/write, and path-scoped filesystem semantics are not
 measured.
+The caught-await case adds one lexical protected-block classification and does
+not measure nested handler CFG construction or rejection-binding ownership.

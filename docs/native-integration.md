@@ -115,8 +115,13 @@ path. The completed application-backed extension admits exactly one enclosing
 `if` then/else branch and binds its owner-local file-offset condition ID
 and branch polarity into one singleton control path. The Workhub-shaped corpora
 reach full semantic parity for these exact families. Nested conditionals and
-awaits under loop/catch ownership remain omitted, which makes checker Promise
+awaits under loop ownership remain omitted, which makes checker Promise
 evidence differ instead of flattening path semantics.
+The direct caught-await extension additionally marks `catchesRejection: true`
+when the awaited call is lexically inside the protected block of exactly one
+`try` with a `catch`. One optional enclosing `if` retains its existing control
+path. Awaits in catch/finally, nested try regions, and nested functions remain
+omitted rather than receiving invented rejection ownership.
 Nested function and callback awaits are not attributed to the outer owner, and
 source/span/owner tampering fails metadata parity.
 The direct-return extension emits `observation: "return"` only when an
@@ -133,7 +138,7 @@ at unsupported nested function and callback boundaries, so their work is not
 misreported as an immediate call by the outer function; comparison with a
 reference edge then fails rather than claiming parity. Other Console methods
 and filesystem/fetch forms outside that exact slice, path/URL/method scope
-inference, return/catch/conditional Promise observations, rejection ownership,
+inference, broader catch/conditional Promise observations, rejection-binding ownership,
 Promise chains/combinators, resource records, computed or polymorphically
 dispatched methods, nested callbacks, method/generic overload edge cases, and
 callback timing are not

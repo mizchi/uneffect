@@ -191,6 +191,80 @@ describe("corsa-bind checker fact exporter", () => {
     });
   });
 
+  it("exports Workhub-shaped direct try/catch await ownership", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-caught-await.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations).toEqual([
+      expect.objectContaining({
+        source: 'readFile(path, "utf8")',
+        observation: "await",
+        catchesRejection: true,
+        conditional: false,
+        controlConditions: [],
+        controlPaths: [[]],
+      }),
+    ]);
+
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared, JSON.stringify(compared.schemaDrift, null, 2)).toMatchObject({
+      equivalent: true,
+      semanticEquivalent: true,
+      checkerMetadataEquivalent: true,
+      schemaDrift: [],
+    });
+  });
+
+  it("does not claim caught rejection ownership outside the supported protected block", async () => {
+    const files = { "fixture.ts": `
+      declare function operation(): Promise<void>
+      export async function escapes(): Promise<void> { await operation() }
+      export async function inCatch(): Promise<void> {
+        try { throw new Error("failure") }
+        catch { await operation() }
+      }
+      export async function nested(): Promise<void> {
+        try { try { await operation() } catch {} } catch {}
+      }
+    ` };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations).toEqual([
+      expect.objectContaining({ source: "operation()", catchesRejection: false }),
+    ]);
+  });
+
+  it("preserves one if control path inside the supported caught region", async () => {
+    const files = { "fixture.ts": `
+      declare function operation(): Promise<void>
+      export async function maybe(flag: boolean): Promise<void> {
+        try { if (flag) await operation() } catch {}
+      }
+    ` };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations).toEqual([
+      expect.objectContaining({
+        source: "operation()",
+        catchesRejection: true,
+        conditional: true,
+        controlConditions: [expect.objectContaining({ expected: true })],
+      }),
+    ]);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.equivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
+  });
+
+  it("rejects tampered direct try/catch await ownership", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-caught-await.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    facts.promiseObservations[0]!.catchesRejection = false;
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared).toMatchObject({ equivalent: false, semanticEquivalent: false });
+    expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining("checker-backed Promise observation evidence differs"),
+    }));
+  });
+
   it("preserves opposite polarity for one direct if/else await", async () => {
     const files = { "fixture.ts": `
       export async function choose(enabled: boolean, left: Response, right: Response): Promise<string> {

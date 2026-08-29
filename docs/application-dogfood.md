@@ -677,6 +677,15 @@ operation records. Same-spelled locals and local-module imports remain
 effect-free, and builtin-key tampering fails. This evidence does not cover sync
 filesystem APIs, compound operations such as `copyFile`, or path permissions.
 
+The `corsa-workhub-caught-await.ts` corpus is derived from Workhub's
+`chrome-token-extractor/src/dotenvx-writer.ts` at the same revision. Its direct
+`await readFile(...)` is inside one catch-protected try block, so Corsa exports
+`catchesRejection: true` together with the existing owner/source/span record.
+An escaping await remains false; awaits in catch/finally and nested try regions
+are omitted. A single `if` inside the protected block retains condition
+identity and polarity. Catch-flag tampering fails parity. This does not export
+rejection-binding ownership or general exception-aware control flow.
+
 P2.31 adds `cfg-bounded-retry-backoff.ts`, a realistic retry loop that doubles
 one delay while decrementing a retry counter. The function's inline Uneffect
 contract states `0 <= retries <= 8`; analysis records that exact source span,
