@@ -1963,6 +1963,31 @@ describe("Uneffect dogfood", () => {
       && Number(value.rollout.minReplicas) >= 4 && value.rollout.maxReplicas === 9)).toBe(true);
   });
 
+  it("constructs a finite property domain from the real Datadog metric-name validator", () => {
+    const fileName = "examples/dogfood/datadog-metric-name.ts";
+    const result = generateUneffectPropertyTests({
+      files: { [fileName]: readFileSync(fileName, "utf8") },
+      predicateSpecializations: {
+        [`${fileName}:isDatadogMetricName`]: {
+          version: "uneffect-property-predicate/v1",
+          values: ["bad space", "requests.total", "a"],
+        },
+      },
+      cases: 3,
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.boundaries).toContainEqual(expect.objectContaining({
+      functionName: "datadogMetricKey",
+      generators: [{
+        kind: "specialized",
+        predicate: "isDatadogMetricName",
+        values: ["bad space", "requests.total", "a"],
+      }],
+    }));
+    expect(result.generatedFiles["examples/dogfood/datadog-metric-name.uneffect.test.ts"])
+      .toContain("import { isDatadogMetricName, datadogMetricKey }");
+  });
+
   it("proves that every telemetry attempt has exactly one outcome", async () => {
     const fileName = "examples/dogfood/telemetry-accounting.ts";
     const source = readFileSync(fileName, "utf8");

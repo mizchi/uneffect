@@ -860,6 +860,20 @@ describe("typed-array static verification", () => {
     generateUneffectPropertyTests({ files: { "src/packets.ts": `import type { BoundedUint8Array, Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
 
+  bench("generate 16 explicit user-predicate property specializations", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      export function metricPredicate${index}(value: string): boolean { return /^[a-z][a-z0-9_.]{0,31}$/.test(value) }
+      /* uneffect: requires metricPredicate${index}(name) */
+      /* uneffect: ensures result === name */
+      export function metric${index}(name: string): string { return name }
+    `).join("\n");
+    const predicateSpecializations = Object.fromEntries(Array.from({ length: 16 }, (_, index) => [
+      `src/metrics.ts:metricPredicate${index}`,
+      { version: "uneffect-property-predicate/v1" as const, values: ["bad space", "requests.total", "a"] },
+    ]));
+    generateUneffectPropertyTests({ files: { "src/metrics.ts": functions }, predicateSpecializations, shrinking: true });
+  }, { time: 500, iterations: 20 });
+
   bench("derive generator hints for 16 refined scalar contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
       /* uneffect: requires value >= ${index * 10} && value < ${index * 10 + 10} */

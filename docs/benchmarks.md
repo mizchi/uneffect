@@ -2196,3 +2196,11 @@ native-Z3 run measured 40.0453 ms mean over 13 samples (24.9717 operations per
 second, 5.81% RME). This bounds two directly written three-field record
 literals at depth two; it does not measure dynamic record enumeration, nested
 collection fields, or general symbolic heap values.
+
+The #60 property-specialization benchmark generates 16 source-local exported
+metric-name predicates, their finite registries, and standalone shrinking
+Vitest sources. A selected run measured 1.4222 ms mean over 352 samples
+(703.14 operations per second, 4.13% RME). It measures parse, exact predicate
+matching, registry validation, and source generation; it does not execute the
+generated predicates or establish performance for recursive, cross-file, or
+higher-order specialization.

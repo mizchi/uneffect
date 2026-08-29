@@ -13,6 +13,7 @@ export type PropertyTestDomain = PropertyBoundaryKind
   | { kind: "bounded-set"; element: PropertyBoundaryKind; maximum: number }
   | { kind: "bounded-map"; key: PropertyBoundaryKind; value: PropertyBoundaryKind; maximum: number }
   | { kind: "record"; fields: Record<string, PropertyTestDomain>; optional?: string[] }
+  | { kind: "specialized"; predicate: string; values: PropertyLiteral[] }
   | { kind: "union"; members: Array<PropertyBoundaryKind | { kind: "literal"; value: PropertyLiteral }> };
 export type PropertyRecord = { [name: string]: PropertyValue };
 export type PropertyValue = PropertyLiteral | number[] | PropertyRecord;
@@ -28,6 +29,11 @@ export interface PropertyTestBoundary {
   ensures: string[];
 }
 
+export interface PropertyPredicateSpecialization {
+  version: "uneffect-property-predicate/v1";
+  values: readonly PropertyLiteral[];
+}
+
 export interface GenerateUneffectPropertyTestsOptions {
   files: Record<string, string>;
   backend?: "quickcheck";
@@ -38,6 +44,8 @@ export interface GenerateUneffectPropertyTestsOptions {
   /** Persists minimized failures and replays them before generated candidates. */
   counterexampleDirectory?: string;
   refinementTuples?: Record<string, readonly (readonly PropertyValue[])[]>;
+  /** Finite, reviewable candidate universes for exact source-local unary predicates. */
+  predicateSpecializations?: Record<string, PropertyPredicateSpecialization>;
 }
 
 export interface GenerateUneffectPropertyTestsWithZ3Options extends GenerateUneffectPropertyTestsOptions { solverCases?: number; z3?: Z3ExecutionOptions }
@@ -83,7 +91,7 @@ export interface CheckUneffectPropertyResult {
   tested: number;
 }
 
-interface InternalBoundary extends PropertyTestBoundary { parameters: string[] }
+interface InternalBoundary extends PropertyTestBoundary { parameters: string[]; predicateImports: string[] }
 
 const supported = new Set<PropertyBoundaryKind>(["Int", "Nat", "U8", "U32", "I32"]);
 const edgeValues: Record<PropertyBoundaryKind, readonly number[]> = {
@@ -156,6 +164,8 @@ function domainAccepts(domain: PropertyTestDomain, value: PropertyValue): boolea
       const entry = value[name];
       return entry === undefined ? Boolean(domain.optional?.includes(name) && !Object.hasOwn(value, name)) : domainAccepts(field, entry);
     });
+  if (domain.kind === "specialized") return typeof value !== "object"
+    && domain.values.some((candidate) => candidate === value);
   if (typeof value === "object") return false;
   return domain.members.some((member) => typeof member === "string" ? scalarAccepts(member, value) : member.value === value);
 }
@@ -176,6 +186,7 @@ function domainValues(domain: PropertyTestDomain, arrayLengthCap = 4_096, refine
     for (const member of domain.members) values.push(...(typeof member === "string" ? edgeValues[member] : [member.value]));
     return unique([...refinementValues.filter((value) => domainAccepts(domain, value)), ...values]);
   }
+  if (domain.kind === "specialized") return unique([...domain.values]);
   if (domain.kind === "record") {
     const entries = Object.entries(domain.fields);
     let values: PropertyRecord[] = [{}];
@@ -205,6 +216,9 @@ function domainValues(domain: PropertyTestDomain, arrayLengthCap = 4_096, refine
 function shrinkValue(value: PropertyValue, domain: PropertyTestDomain): PropertyValue[] {
   if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : [];
   if (domain.kind === "union") return domain.members.flatMap((member) => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []);
+  if (domain.kind === "specialized") return domain.values
+    .filter((candidate) => candidate !== value)
+    .sort((left, right) => sampleSize([left]) - sampleSize([right]));
   if (domain.kind === "record") {
     if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
     return Object.entries(domain.fields).flatMap(([name, field]) => {
@@ -382,6 +396,32 @@ function importPath(sourceName: string, generatedFile: string): string {
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
+function exactUnaryPredicate(requirement: string, parameter: string): string | undefined {
+  try {
+    let expression = propertyExpression(requirement);
+    while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+    return ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)
+      && expression.arguments.length === 1 && ts.isIdentifier(expression.arguments[0]!)
+      && expression.arguments[0]!.text === parameter
+      ? expression.expression.text : undefined;
+  } catch { return undefined; }
+}
+
+function exportedUnaryPredicate(source: ts.SourceFile, name: string): boolean {
+  return source.statements.some((statement) => ts.isFunctionDeclaration(statement)
+    && statement.name?.text === name && statement.body !== undefined
+    && statement.parameters.length === 1 && statement.parameters[0] !== undefined
+    && ts.isIdentifier(statement.parameters[0].name)
+    && statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
+}
+
+function specializationValueMatches(type: ts.TypeNode | undefined, value: PropertyLiteral): boolean {
+  if (type?.kind === ts.SyntaxKind.StringKeyword) return typeof value === "string";
+  if (type?.kind === ts.SyntaxKind.NumberKeyword) return typeof value === "number" && Number.isFinite(value);
+  if (type?.kind === ts.SyntaxKind.BooleanKeyword) return typeof value === "boolean";
+  return false;
+}
+
 function propertyExpression(expression: string): ts.Expression {
   const source = ts.createSourceFile("property-expression.ts", `const value = (${expression})`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const statement = source.statements[0];
@@ -390,13 +430,17 @@ function propertyExpression(expression: string): ts.Expression {
   return value;
 }
 
-function validateStructuredPropertyExpression(node: ts.Expression): void {
+function validateStructuredPropertyExpression(node: ts.Expression, allowedPredicates: ReadonlySet<string> = new Set()): void {
   if (ts.isIdentifier(node) || ts.isNumericLiteral(node) || ts.isStringLiteral(node) || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return;
-  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return validateStructuredPropertyExpression(node.expression);
-  if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.ExclamationToken, ts.SyntaxKind.MinusToken].includes(node.operator)) return validateStructuredPropertyExpression(node.operand);
+  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return validateStructuredPropertyExpression(node.expression, allowedPredicates);
+  if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.ExclamationToken, ts.SyntaxKind.MinusToken].includes(node.operator)) return validateStructuredPropertyExpression(node.operand, allowedPredicates);
   if (ts.isPropertyAccessExpression(node) && propertyPath(node)) return;
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ["has", "get"].includes(node.expression.name.text)
     && ts.isIdentifier(node.expression.expression) && node.arguments.length === 1 && ts.isNumericLiteral(node.arguments[0]!)) return;
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && allowedPredicates.has(node.expression.text) && node.arguments.length === 1) {
+    validateStructuredPropertyExpression(node.arguments[0]!, allowedPredicates);
+    return;
+  }
   if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression
     && (ts.isNumericLiteral(node.argumentExpression) || ts.isIdentifier(node.argumentExpression))) return;
   if (ts.isBinaryExpression(node) && [
@@ -405,15 +449,15 @@ function validateStructuredPropertyExpression(node: ts.Expression): void {
     ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
     ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken,
   ].includes(node.operatorToken.kind)) {
-    validateStructuredPropertyExpression(node.left);
-    validateStructuredPropertyExpression(node.right);
+    validateStructuredPropertyExpression(node.left, allowedPredicates);
+    validateStructuredPropertyExpression(node.right, allowedPredicates);
     return;
   }
   throw new Error(`unsupported property expression: ${node.getText()}`);
 }
 
-function validateExpression(expression: string): void {
-  try { parseLogicExpression(expression); } catch { validateStructuredPropertyExpression(propertyExpression(expression)); }
+function validateExpression(expression: string, allowedPredicates: ReadonlySet<string> = new Set()): void {
+  try { parseLogicExpression(expression); } catch { validateStructuredPropertyExpression(propertyExpression(expression), allowedPredicates); }
 }
 
 function integerValue(expression: LogicExpression): number | undefined {
@@ -600,16 +644,16 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
   return `// Generated by Uneffect. Test-only code; no production runtime dependency.\n` +
     `import { expect, test } from "vitest"\n` +
     (counterexamplePath ? `import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"\nimport { dirname } from "node:path"\n` : "") +
-    `import { ${boundary.functionName} } from ${JSON.stringify(importPath(sourceName, outputName))}\n\n` +
+    `import { ${[...new Set([...boundary.predicateImports, boundary.functionName])].join(", ")} } from ${JSON.stringify(importPath(sourceName, outputName))}\n\n` +
     `const domains = ${JSON.stringify(boundary.generators)} as const\n` +
     `const refinementValues = ${JSON.stringify(boundary.generatorHints)} as const\n` +
     `const refinementTuples = ${JSON.stringify(boundary.generatorTuples)} as const\n` +
     `const limits: Record<string, readonly number[]> = ${JSON.stringify(edgeValues)}\n` +
     (counterexamplePath ? `const counterexamplePath = ${JSON.stringify(counterexamplePath)}\nconst replay = existsSync(counterexamplePath) ? JSON.parse(readFileSync(counterexamplePath, "utf8")) : undefined\n` : `const replay = undefined\n`) +
     `type Domain = typeof domains[number]\n` +
-    `function values(domain: any, refined: readonly any[] = []): any[] { if (typeof domain === "string") return [...new Set([...refined, ...limits[domain]!] as any[])]; if (domain.kind === "union") return [...new Set([...refined, ...domain.members.flatMap((member: any) => typeof member === "string" ? limits[member]! : [member.value])] as any[])]; if (domain.kind === "record") { let out: any[] = [{}]; for (const [name, field] of Object.entries(domain.fields)) { const fieldValues = [...(domain.optional?.includes(name) ? [undefined] : []), ...values(field).slice(0, 5)]; out = out.flatMap(record => fieldValues.map(value => value === undefined ? record : ({ ...record, [name]: value }))).slice(0, 64) } return out } if (domain.kind === "bounded-set") { const edges = limits[domain.element]!.slice(0, Math.max(1, domain.maximum)); return Array.from({ length: Math.min(domain.maximum, edges.length) + 1 }, (_, length) => edges.slice(0, length)) } if (domain.kind === "bounded-map") { const keys = limits[domain.key]!.slice(0, Math.max(1, domain.maximum)); return Array.from({ length: Math.min(domain.maximum, keys.length) + 1 }, (_, length) => ({ keys: keys.slice(0, length), values: keys.slice(0, length).map((_: number, index: number) => limits[domain.value]![index % limits[domain.value]!.length]!) })) } const maximum = Math.min(domain.maximum, ${arrayLengthCap}); const lengths = [...new Set([0, Math.min(1, maximum), Math.min(2, maximum), maximum])]; return lengths.map((length, offset) => Array.from({ length }, (_, index) => limits[domain.element]![(index + offset) % limits[domain.element]!.length]!)) }\n` +
+    `function values(domain: any, refined: readonly any[] = []): any[] { if (typeof domain === "string") return [...new Set([...refined, ...limits[domain]!] as any[])]; if (domain.kind === "union") return [...new Set([...refined, ...domain.members.flatMap((member: any) => typeof member === "string" ? limits[member]! : [member.value])] as any[])]; if (domain.kind === "specialized") return [...domain.values]; if (domain.kind === "record") { let out: any[] = [{}]; for (const [name, field] of Object.entries(domain.fields)) { const fieldValues = [...(domain.optional?.includes(name) ? [undefined] : []), ...values(field).slice(0, 5)]; out = out.flatMap(record => fieldValues.map(value => value === undefined ? record : ({ ...record, [name]: value }))).slice(0, 64) } return out } if (domain.kind === "bounded-set") { const edges = limits[domain.element]!.slice(0, Math.max(1, domain.maximum)); return Array.from({ length: Math.min(domain.maximum, edges.length) + 1 }, (_, length) => edges.slice(0, length)) } if (domain.kind === "bounded-map") { const keys = limits[domain.key]!.slice(0, Math.max(1, domain.maximum)); return Array.from({ length: Math.min(domain.maximum, keys.length) + 1 }, (_, length) => ({ keys: keys.slice(0, length), values: keys.slice(0, length).map((_: number, index: number) => limits[domain.value]![index % limits[domain.value]!.length]!) })) } const maximum = Math.min(domain.maximum, ${arrayLengthCap}); const lengths = [...new Set([0, Math.min(1, maximum), Math.min(2, maximum), maximum])]; return lengths.map((length, offset) => Array.from({ length }, (_, index) => limits[domain.element]![(index + offset) % limits[domain.element]!.length]!)) }\n` +
     `function shrinkNumber(value: number, domain: string): number[] { const values: number[] = []; let current = value; while (Math.abs(current) > 1) { current = Math.trunc(current / 2); values.push(current) } values.push(0); return [...new Set(values)].filter(value => !["Nat", "U8", "U32"].includes(domain) || value >= 0) }\n` +
-    `function shrink(value: any, domain: any): any[] { if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : []; if (domain.kind === "union") return domain.members.flatMap((member: any) => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []); if (domain.kind === "record") return Object.entries(domain.fields).flatMap(([name, field]) => { const omitted = domain.optional?.includes(name) && Object.hasOwn(value, name) ? [Object.fromEntries(Object.entries(value).filter(([key]) => key !== name))] : []; return [...omitted, ...shrink(value[name], field).map(candidate => ({ ...value, [name]: candidate }))] }); if (domain.kind === "bounded-set") return [...value.map((_: any, index: number) => value.filter((__: any, at: number) => at !== index)), ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).filter((candidate: number) => !value.some((other: number, at: number) => at !== index && other === candidate)).map((candidate: number) => value.with(index, candidate))), []]; if (domain.kind === "bounded-map") return [...value.keys.map((_: any, index: number) => ({ keys: value.keys.filter((__: any, at: number) => at !== index), values: value.values.filter((__: any, at: number) => at !== index) })), ...value.values.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.value).map(candidate => ({ keys: value.keys, values: value.values.with(index, candidate) }))), { keys: [], values: [] }]; const structural: number[][] = []; for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length)); if (value.length > 1) structural.push(value.slice(0, 1)); return [...structural, ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).map(candidate => value.with(index, candidate))), []] }\n` +
+    `function shrink(value: any, domain: any): any[] { if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : []; if (domain.kind === "union") return domain.members.flatMap((member: any) => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []); if (domain.kind === "specialized") return domain.values.filter((candidate: any) => candidate !== value).sort((left: any, right: any) => sampleSize([left]) - sampleSize([right])); if (domain.kind === "record") return Object.entries(domain.fields).flatMap(([name, field]) => { const omitted = domain.optional?.includes(name) && Object.hasOwn(value, name) ? [Object.fromEntries(Object.entries(value).filter(([key]) => key !== name))] : []; return [...omitted, ...shrink(value[name], field).map(candidate => ({ ...value, [name]: candidate }))] }); if (domain.kind === "bounded-set") return [...value.map((_: any, index: number) => value.filter((__: any, at: number) => at !== index)), ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).filter((candidate: number) => !value.some((other: number, at: number) => at !== index && other === candidate)).map((candidate: number) => value.with(index, candidate))), []]; if (domain.kind === "bounded-map") return [...value.keys.map((_: any, index: number) => ({ keys: value.keys.filter((__: any, at: number) => at !== index), values: value.values.filter((__: any, at: number) => at !== index) })), ...value.values.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.value).map(candidate => ({ keys: value.keys, values: value.values.with(index, candidate) }))), { keys: [], values: [] }]; const structural: number[][] = []; for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length)); if (value.length > 1) structural.push(value.slice(0, 1)); return [...structural, ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).map(candidate => value.with(index, candidate))), []] }\n` +
     `function materialize(value: any, domain: Domain): any { if (typeof domain === "object" && domain.kind === "bounded-array") return domain.element === "U8" ? new Uint8Array(value) : new Uint32Array(value); if (typeof domain === "object" && domain.kind === "bounded-set") return new Set(value); if (typeof domain === "object" && domain.kind === "bounded-map") return new Map(value.keys.map((key: number, index: number) => [key, value.values[index]])); return value }\n` +
     `function sampleSize(values: readonly any[]): number { const size = (value: any): number => Array.isArray(value) ? value.length + value.reduce((sum: number, entry: any) => sum + size(entry), 0) : value !== null && typeof value === "object" ? Object.values(value).reduce((sum: number, entry) => sum + size(entry), 0) : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value); return values.reduce((total, value) => total + size(value), 0) }\n` +
     `function random(seed: number) { let state = seed >>> 0; return () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x100000000) }\n` +
@@ -617,14 +661,17 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
     `const precondition = (${parameterNames.join(", ")}) => ${predicates}\n` +
     `const property = (${parameterNames.join(", ")}) => { const result = ${boundary.functionName}(${parameterNames.join(", ")}); return ${postconditions} }\n\n` +
     `test(${JSON.stringify(`uneffect property: ${boundary.functionName}`)}, () => {\n` +
+    (boundary.predicateImports.length ? `  let tested = 0\n` : "") +
     `  for (const candidate of samples()) {\n` +
     `    const invoke = (values: any[]) => values.map((value, index) => materialize(value, domains[index]!))\n` +
     `    if (!precondition(...invoke(candidate))) continue\n` +
+    (boundary.predicateImports.length ? `    tested++\n` : "") +
     `    if (property(...invoke(candidate))) continue\n` +
     (shrinking ? `    const minimal = [...candidate]; for (const joint of refinementTuples.map(row => [...row]).sort((left, right) => sampleSize(left) - sampleSize(right))) { if (sampleSize(joint) < sampleSize(minimal) && precondition(...invoke(joint)) && !property(...invoke(joint))) minimal.splice(0, minimal.length, ...joint) } for (let index = 0; index < minimal.length; index++) for (const value of shrink(minimal[index]!, domains[index]!)) { const next = minimal.with(index, value); if (precondition(...invoke(next)) && !property(...invoke(next))) minimal[index] = value }\n` : `    const minimal = candidate\n`) +
     (counterexamplePath ? `    mkdirSync(dirname(counterexamplePath), { recursive: true }); writeFileSync(counterexamplePath, JSON.stringify({ version: "uneffect-counterexample/v2", functionName: ${JSON.stringify(boundary.functionName)}, arguments: minimal, seed: ${seed} }, null, 2) + "\\n")\n` : "") +
     `    expect.fail("Uneffect counterexample: " + JSON.stringify({ functionName: ${JSON.stringify(boundary.functionName)}, arguments: minimal, replayed: Boolean(replay && JSON.stringify(candidate) === JSON.stringify(replay.arguments)) }))\n` +
     `  }\n` +
+    (boundary.predicateImports.length ? `  expect(tested, "Uneffect predicate specialization produced no valid candidates").toBeGreaterThan(0)\n` : "") +
     `})\n`;
 }
 
@@ -642,20 +689,47 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
       const requires = extractAnnotations(comments, "requires"), ensures = extractAnnotations(comments, "ensures");
       if (requires.length === 0 && ensures.length === 0) continue;
       if (ensures.length === 0) { diagnostics.push({ fileName, functionName: node.name.text, message: "property generation requires at least one ensures clause" }); continue; }
-      const domains = node.parameters.map((parameter) => typeDomain(parameter.type));
-      if (domains.some((value) => !value) || node.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) {
-        diagnostics.push({ fileName, functionName: node.name.text, message: "property generation currently supports identifier parameters with scalar, bounded typed-array, or literal-union boundaries" }); continue;
-      }
-      try { [...requires, ...ensures].forEach(validateExpression); } catch (cause) {
-        diagnostics.push({ fileName, functionName: node.name.text, message: cause instanceof Error ? cause.message : String(cause) }); continue;
+      if (node.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) {
+        diagnostics.push({ fileName, functionName: node.name.text, message: "property generation currently supports identifier parameters only" }); continue;
       }
       const parameters = node.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
+      const predicateImports = new Set<string>();
+      const specializationErrors: string[] = [];
+      const domains = node.parameters.map((parameter, index): PropertyTestDomain | undefined => {
+        const inferred = typeDomain(parameter.type);
+        if (inferred) return inferred;
+        const matches = requires.map((requirement) => exactUnaryPredicate(requirement, parameters[index]!)).filter((value): value is string => value !== undefined);
+        if (matches.length !== 1) {
+          specializationErrors.push(`${parameters[index]} requires exactly one direct unary predicate clause`);
+          return undefined;
+        }
+        const predicate = matches[0]!, specialization = options.predicateSpecializations?.[`${fileName}:${predicate}`];
+        if (!specialization) { specializationErrors.push(`${predicate} has no ${fileName}:${predicate} specialization`); return undefined; }
+        if (specialization.version !== "uneffect-property-predicate/v1") { specializationErrors.push(`${predicate} uses an unsupported specialization version`); return undefined; }
+        if (specialization.values.length === 0) { specializationErrors.push(`${predicate} has an empty candidate universe`); return undefined; }
+        if (!exportedUnaryPredicate(source, predicate)) { specializationErrors.push(`${predicate} is not an exported source-local unary function declaration`); return undefined; }
+        if (specialization.values.some((value) => !specializationValueMatches(parameter.type, value))) {
+          specializationErrors.push(`${predicate} candidates do not match the ordinary primitive parameter type`); return undefined;
+        }
+        predicateImports.add(predicate);
+        return { kind: "specialized", predicate, values: [...new Set(specialization.values)] };
+      });
+      if (domains.some((value) => !value)) {
+        diagnostics.push({
+          fileName,
+          functionName: node.name.text,
+          message: `property generation currently supports identifier parameters with scalar, bounded typed-array, literal-union, or explicitly specialized exported unary-predicate boundaries${specializationErrors.length ? `: ${specializationErrors.join("; ")}` : ""}`,
+        }); continue;
+      }
+      try { [...requires, ...ensures].forEach((expression) => validateExpression(expression, predicateImports)); } catch (cause) {
+        diagnostics.push({ fileName, functionName: node.name.text, message: cause instanceof Error ? cause.message : String(cause) }); continue;
+      }
       const generatorHints = refinementHints(requires, parameters, domains as PropertyTestDomain[]);
       const derivedTuples = correlatedRefinementTuples(requires, parameters, domains as PropertyTestDomain[], generatorHints);
       const suppliedTuples = options.refinementTuples?.[boundaryKey(fileName, node.name.text)] ?? [];
       const generatorTuples = [...derivedTuples, ...suppliedTuples.map((tuple) => [...tuple])]
         .filter((tuple, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(tuple)) === index);
-      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, requires, ensures };
+      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, predicateImports: [...predicateImports], requires, ensures };
       boundaries.push(boundary); fileBoundaries.push(boundary);
     }
     if (fileBoundaries.length > 0) {
@@ -664,7 +738,7 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
         options.counterexampleDirectory ? join(options.counterexampleDirectory, `${boundary.functionName}.uneffect-counterexample.json`) : undefined)).join("\n");
     }
   }
-  return { generatedFiles, boundaries: boundaries.map(({ parameters: _, ...boundary }) => boundary), diagnostics };
+  return { generatedFiles, boundaries: boundaries.map(({ parameters: _, predicateImports: __, ...boundary }) => boundary), diagnostics };
 }
 
 function z3Integer(value: string): number | undefined {

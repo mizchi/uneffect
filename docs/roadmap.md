@@ -193,7 +193,12 @@ explicit conservative boundaries rather than untracked support.
    through counterexample extraction; dynamic composite elements remain a
    fail-closed non-proof.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
-   reduces filtering and covers recursive/user-defined refinements.
+   reduces filtering and covers recursive/user-defined refinements. Active
+   bounded child [#60](https://github.com/mizchi/uneffect/issues/60) admits one
+   versioned finite candidate universe for an exported source-local unary
+   predicate, rechecks the real predicate in generated Vitest, and rejects
+   vacuous coverage. Cross-file, recursive, higher-order, multi-argument, and
+   inferred predicate domains remain in the parent.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)
    completes alias, resize, control-flow, and shared-memory reasoning.
 

@@ -33,7 +33,7 @@ totals are calculated from them, not by mechanically adding label bounds.
 | 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 17–35 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 23–48 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **47–98 engineer-weeks** | Low |
+| **Total additive effort** | 13 open Issues / 11 non-overlapping epics | **47–98 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -215,6 +215,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.30 jointly inductive Map key domains | #45 (child of #5) | Completed | completed in the current delivery | Prove one failover membership conjunction while retaining explicit joint assumptions and whole-universe failure. |
 | P2.31 temporal string identities | #58 (child of #5) | Completed | under 1 engineer-week actual | Preserve exact production-shaped node IDs through finite Set/Map, Quint, native/WASM Z3, TLC trace import, and replay while rejecting string arithmetic and unbounded generation. |
 | P2.32 record-valued lease grant Sets | #59 (child of #5) | Completed | under 1 engineer-week actual | Extract an exact finite literal record universe through native/WASM Z3 and cross-backend replay while dynamic composite elements remain unknown. Remote CI run 33245382408 is green. |
+| P2.33 explicit user-predicate specialization | #60 (child of #4) | Active | under 1 engineer-week | Recheck one finite exported source-local unary predicate in generated Vitest, preserve it during shrink, and reject vacuous or unsupported specializations. |
 | P3.3 solver-heavy CI stability | #46 | Completed | completed in the current delivery | Three checked shards, timing artifacts, calibrated timeout, and a real hard-deadline control without weakened obligations. |
 | P3.4 checker dogfood timeout policy | #49 | Completed | under 1 engineer-week actual | Replace one observed fixed-timeout false negative with a named finite local/CI policy and a first-attempt green remote run. |
 | P3.5 Workhub-shaped checker builtins | #50 (child of #8) | Completed | under 1 engineer-week actual | Exact checker-backed `FsRead`, `FsWrite`, and `Fetch` metadata passes with symbol-distinct controls, tamper rejection, benchmark/docs/full local gates, and CI run 33230163122. Full Promise-record parity remains explicitly false. |
@@ -333,8 +334,10 @@ be added to the owning Issue and reflected here before implementation begins.
 
 ## Next bounded-slice decision
 
-No implementation Issue is currently active. The next investment should start
-with exactly one skipped acceptance test and an adjacent negative control:
+Bounded child #60 is currently active for the generated-tests direction. Its
+Red test and adjacent controls are implemented locally; closure still requires
+the full local gates and remote CI. After it closes, the next investment should
+start with exactly one skipped acceptance test and an adjacent negative control:
 
 | Product direction | Parent | Proposed first child | Estimate | Explicitly excluded |
 | --- | --- | --- | ---: | --- |
@@ -422,7 +425,7 @@ closed bounded epic.
 - **Deferred breadth:** #18's broader semantics and #7, #10, #16, and #13
   remain queued until application evidence
   or dependencies justify another bounded slice.
-- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 47–98
+- **Entire open backlog:** 13 Issues / 11 non-overlapping epics and 47–98
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

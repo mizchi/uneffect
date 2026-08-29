@@ -10,6 +10,113 @@ import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectP
 const execFileAsync = promisify(execFile);
 
 describe("property-test generation", () => {
+  it("constructs and shrinks a source-local user predicate specialization", async () => {
+    const source = `
+      export function isMetricName(value: string): boolean {
+        return /^[a-z][a-z0-9_.]{0,31}$/.test(value)
+      }
+      /* uneffect: requires isMetricName(name) */
+      /* uneffect: ensures result !== "requests.total" */
+      export function metricKey(name: string): string { return name }
+    `;
+    const specialization = {
+      version: "uneffect-property-predicate/v1" as const,
+      values: ["bad space", "requests.total", "a"],
+    };
+    const generated = generateUneffectPropertyTests({
+      files: { "metrics.ts": source },
+      predicateSpecializations: { "metrics.ts:isMetricName": specialization },
+      cases: 3,
+    });
+
+    expect(generated.diagnostics).toEqual([]);
+    expect(generated.boundaries[0]?.generators).toEqual([{
+      kind: "specialized",
+      predicate: "isMetricName",
+      values: specialization.values,
+    }]);
+    expect(generated.generatedFiles["metrics.uneffect.test.ts"]).toContain("import { isMetricName, metricKey }");
+
+    const checked = await checkUneffectProperty({
+      functionName: "metricKey",
+      domains: generated.boundaries[0]!.generators,
+      cases: 3,
+      precondition: (name) => /^[a-z][a-z0-9_.]{0,31}$/.test(name),
+      property: (name) => name !== "requests.total",
+    });
+    expect(checked).toMatchObject({
+      status: "counterexample",
+      tested: 1,
+      counterexample: { version: "uneffect-counterexample/v2", arguments: ["requests.total"] },
+    });
+  });
+
+  it("executes the real predicate and rejects an all-invalid specialization as vacuous", async () => {
+    const directory = mkdtempSync(join(process.cwd(), ".tmp-uneffect-predicate-"));
+    try {
+      const source = `
+        export function isMetricName(value: string): boolean {
+          return /^[a-z][a-z0-9_.]{0,31}$/.test(value)
+        }
+        /* uneffect: requires isMetricName(name) */
+        /* uneffect: ensures result === name */
+        export function metricKey(name: string): string { return name }
+      `;
+      const fileName = join(directory, "metrics.ts"), generatedName = join(directory, "metrics.uneffect.test.ts");
+      const generated = generateUneffectPropertyTests({
+        files: { [fileName]: source },
+        predicateSpecializations: {
+          [`${fileName}:isMetricName`]: { version: "uneffect-property-predicate/v1", values: ["bad space"] },
+        },
+      });
+      await writeFile(fileName, source);
+      await writeFile(generatedName, generated.generatedFiles[generatedName]!);
+      try {
+        await execFileAsync("pnpm", ["vitest", "run", generatedName], { cwd: process.cwd() });
+        expect.fail("the generated property test should reject vacuous specialization coverage");
+      } catch (cause) {
+        const output = `${String((cause as { stdout?: string }).stdout)}\n${String((cause as { stderr?: string }).stderr)}`;
+        expect(output).toContain("produced no valid candidates");
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }, 15_000);
+
+  it("fails closed for incomplete or ambiguous user predicate specializations", () => {
+    const source = `
+      function localPredicate(value: string): boolean { return value.length > 0 }
+      export function pairPredicate(value: string, suffix: string): boolean { return value.endsWith(suffix) }
+      /* uneffect: requires localPredicate(name) */
+      /* uneffect: ensures result === name */
+      export function local(name: string): string { return name }
+      /* uneffect: requires pairPredicate(name, "x") */
+      /* uneffect: ensures result === name */
+      export function pair(name: string): string { return name }
+    `;
+    const result = generateUneffectPropertyTests({
+      files: { "unsupported-predicates.ts": source },
+      predicateSpecializations: {
+        "unsupported-predicates.ts:localPredicate": { version: "uneffect-property-predicate/v1", values: ["a"] },
+        "unsupported-predicates.ts:pairPredicate": { version: "uneffect-property-predicate/v1", values: ["x"] },
+      },
+    });
+    expect(result.generatedFiles).toEqual({});
+    expect(result.diagnostics.map((diagnostic) => diagnostic.functionName)).toEqual(["local", "pair"]);
+    expect(result.diagnostics.every((diagnostic) => diagnostic.message.includes("explicitly specialized exported unary-predicate"))).toBe(true);
+
+    const empty = generateUneffectPropertyTests({
+      files: { "empty.ts": `
+        export function accepted(value: string): boolean { return value.length > 0 }
+        /* uneffect: requires accepted(value) */
+        /* uneffect: ensures result === value */
+        export function identity(value: string): string { return value }
+      ` },
+      predicateSpecializations: {
+        "empty.ts:accepted": { version: "uneffect-property-predicate/v1", values: [] },
+      },
+    });
+    expect(empty.diagnostics[0]?.message).toContain("empty candidate universe");
+  });
+
   it("rejects unsupported parameter boundaries without pretending to generate coverage", () => {
     const result = generateUneffectPropertyTests({ files: { "value.ts": `/* uneffect: ensures result === value */ function identity(value: string) { return value }` } });
     expect(result.generatedFiles).toEqual({});
