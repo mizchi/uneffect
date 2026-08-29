@@ -624,7 +624,7 @@ order, and operation spans. This establishes one builtin and one direct-call
 family only, not general Console coverage, arbitrary globals, nested callbacks,
 dynamic dispatch, Content Mapper semantics, or persisted fact authentication.
 
-The active checker-builtin slice adds
+The completed checker-builtin slice adds
 `corsa-workhub-builtins.ts`, derived from Workhub revision
 `089c385082644d30f4fceef88e41236b624a6b29`. The observed source families are
 named `node:fs/promises` imports in `packages/core/src/config.ts` and
