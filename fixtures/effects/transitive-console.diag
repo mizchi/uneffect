@@ -2,12 +2,12 @@ $ uneffect check --evidence fixtures/effects/transitive-console.ts
 # Effects propagate through calls: `summarize` inherits Console from `report` and must declare it.
 
 error effect/missing fixtures/effects/transitive-console.ts:7 in summarize
-  message: summarize requires /* uneffect: effect Console */
+  message: summarize requires /* uneffect:capability effect Console */
   7 | export function summarize(left: number, right: number) {
     | ^
-  declared: (no /* uneffect: effect ... */ comment)
+  declared: (no /* uneffect:capability effect ... */ comment)
   because: summarize calls report at line 8; report performs console.log(value) at line 4
-  hint: declare the effect in the function's /* uneffect: effect ... */ comment, or move the operation into a callee that already declares it
+  hint: declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it
 
 1 error(s), 0 warning(s)
 

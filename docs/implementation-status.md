@@ -681,7 +681,12 @@ same property is proved for arbitrary TypeScript.
   continuing input state; a conditional clear remains a disposed-use error.
 - Web and Node event-loop models cover the implemented ordering fragments for
   timers, intervals, microtasks, animation frames, Promise jobs, cancellation,
-  and selected Node phases. Host-specific gaps remain explicit.
+  and selected Node phases. `generateTemporalModel` is the stable public entry:
+  both profiles compose user temporal state, callback summaries, and safety
+  properties with those extracted observations. Promise ownership and resource
+  lifecycle remain explicit exclusions from that combined model; their direct
+  generators moved to `@mizchi/uneffect/experimental` while #63 tracks the
+  remaining lowering. Host-specific gaps remain explicit.
 - Real-time annotations use logical clocks, guards, deadlines, and bounded
   exploration. They are opt-in and are not assumed for ordinary programs.
 

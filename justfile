@@ -61,6 +61,10 @@ spec-quint file:
 spec-compose file function:
     pnpm tsx src/cli.ts spec compose {{ file }} {{ function }}
 
+# Canonical host-aware model. The specialized recipes below are experimental compatibility projections.
+spec-temporal file runtime="web" root="main":
+    pnpm tsx src/cli.ts spec temporal {{ file }} {{ root }} --runtime {{ runtime }}
+
 spec-async-quint file:
     pnpm tsx src/cli.ts spec async-quint {{ file }}
 

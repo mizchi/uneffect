@@ -68,6 +68,7 @@ export const ciTestTiers = {
     "test/formal-models.test.ts",
     "test/ownership.test.ts",
     "test/promise-chains.test.ts",
+    "test/temporal-async-integration.test.ts",
     "test/temporal-compose.test.ts",
   ],
   integration: [

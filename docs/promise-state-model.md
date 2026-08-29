@@ -15,9 +15,14 @@ const promise = new Promise<number>((resolve) => resolve(1))
 return promise.then(transform).catch(recover).finally(cleanup)
 ```
 
+Promise observations compose into the host-aware temporal model:
+
 ```sh
-just spec-promise-quint examples/promise-chain.ts
+pnpm exec uneffect spec temporal examples/promise-chain.ts main --runtime web
 ```
+
+The old `promise-quint` output and its direct generator remain experimental
+compatibility projections, not a separate proof domain.
 
 The analyzer recognizes the builtin constructor and prototype methods through
 TypeChecker declaration symbols. A source-defined class named `Promise` or a

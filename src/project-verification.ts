@@ -4,15 +4,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 import { verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
-import { analyzePromiseChains } from "./promise-chains.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
-import { extractAnnotations } from "./annotations.js";
-import { parseTemporalComposition } from "./temporal-compose.js";
+import { generateTemporalModel } from "./temporal-model.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import {
@@ -297,31 +294,19 @@ async function verifyUneffectProjectFiles(
       fileName,
       compilerOptions: { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.ESNext },
     }).outputText;
-    if (options.temporalRuntime === "web") {
-      const temporalComposition = extractAnnotations(source, "state").length > 0
-        ? parseTemporalComposition(fileName, source, options.temporalRoot ?? "main")
-        : undefined;
-      const quint = generateWebEventLoopQuint(
-        fileName.replace(/[^A-Za-z0-9_]/g, "_"),
-        analyzeAsyncPatterns(fileName, source),
-        {},
-        analyzePromiseChains(fileName, source),
-        temporalComposition,
-      );
-      temporalModels.push({ fileName, kind: "web-event-loop", quint });
+    if (options.temporalRuntime === "web" || options.temporalRuntime === "node") {
+      const model = generateTemporalModel({
+        fileName,
+        source,
+        runtime: options.temporalRuntime,
+        root: options.temporalRoot ?? "main",
+        nodeTopLevelMode: options.nodeTopLevelMode ?? "commonjs",
+      });
+      temporalModels.push({ fileName, kind: options.temporalRuntime === "web" ? "web-event-loop" : "node-event-loop", quint: model.quint });
       const verifyTemporalProperty = (name: string): ProjectTemporalProperty => invalidSources.has(fileName)
         ? { fileName, name, result: "error", output: `TypeScript errors in ${fileName} prevent proof-grade temporal evidence` }
-        : verifyQuintInvariant(fileName, quint, name);
-      temporalProperties.push(verifyTemporalProperty("eventLoopSafe"));
-      for (const property of temporalComposition?.properties ?? []) temporalProperties.push(verifyTemporalProperty(property.name));
-    } else if (options.temporalRuntime === "node") {
-      const quint = generateNodeEventLoopQuint(fileName.replace(/[^A-Za-z0-9_]/g, "_"), analyzeAsyncPatterns(fileName, source), {
-        topLevelMode: options.nodeTopLevelMode ?? "commonjs",
-      }, analyzePromiseChains(fileName, source));
-      temporalModels.push({ fileName, kind: "node-event-loop", quint });
-      temporalProperties.push(invalidSources.has(fileName)
-        ? { fileName, name: "nodeEventLoopSafe", result: "error", output: `TypeScript errors in ${fileName} prevent proof-grade temporal evidence` }
-        : verifyQuintInvariant(fileName, quint, "nodeEventLoopSafe"));
+        : verifyQuintInvariant(fileName, model.quint, name);
+      temporalProperties.push(...model.properties.map(verifyTemporalProperty));
     }
   }
   const temporal = options.temporalRuntime === "web" || options.temporalRuntime === "node"

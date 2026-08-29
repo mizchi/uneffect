@@ -14,9 +14,14 @@ async function loadAll() {
 }
 ```
 
+These observations are inputs to the temporal verifier rather than an
+independent specification domain:
+
 ```sh
-just spec-async-quint examples/async-patterns.ts
+pnpm exec uneffect spec temporal examples/async-patterns.ts main --runtime web
 ```
+
+The old `async-quint` projection remains an experimental compatibility tool.
 
 ## `setTimeout` loops
 
@@ -40,10 +45,11 @@ before an eligible timer callback in the Web profile. The negative controls
 allow post-cancellation firing and timer-before-microtask firing; Quint finds
 both.
 
-The initial Node 24 profile is available through
-`just spec-node-event-loop <file>`, `node-loop-quint`,
-`generateNodeEventLoopQuint`, and project verification with
-`temporalRuntime: "node"`. TypeChecker-resolved `process.nextTick` callbacks
+The initial Node 24 profile is available through `spec temporal --runtime
+node`, `generateTemporalModel`, and project verification with
+`temporalRuntime: "node"`. The low-level `generateNodeEventLoopQuint` is
+available from `@mizchi/uneffect/experimental` only. TypeChecker-resolved
+`process.nextTick` callbacks
 use a separate next-tick queue, `queueMicrotask` uses the V8 microtask queue,
 and `setImmediate` uses a check queue. At an ordinary callback checkpoint the
 next-tick queue must drain before V8 microtasks, and both drain before another

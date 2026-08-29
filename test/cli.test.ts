@@ -831,6 +831,16 @@ describe("uneffect command line", () => {
     expect(JSON.parse(io.stdout)).toMatchObject({ fileName: "examples/spec.ts" });
   });
 
+  it.each(["web", "node"] as const)("emits the unified %s temporal model", async (runtime) => {
+    const io = capture();
+    expect(await runCli([
+      "spec", "temporal", "examples/dogfood/telemetry-once.ts", "main", "--runtime", runtime,
+    ], io)).toBe(exitCode.success);
+    expect(io.stdout).toContain("var telemetrySends: int");
+    expect(io.stdout).toContain("val sendsAtMostOnce = telemetrySends <= 1");
+    expect(io.stdout).toContain(runtime === "web" ? "val eventLoopSafe" : "val nodeEventLoopSafe");
+  });
+
   it("emits module-order evidence and can require a proof-grade extraction", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-order-cli-"));
     const dependency = join(directory, "dependency.mts"), entry = join(directory, "entry.mts"), external = join(directory, "external.mts");

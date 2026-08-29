@@ -111,13 +111,19 @@ This is contract composition, not body inlining. A callee may additionally decla
 
 The composition graph supports explicit return, non-empty catch/finally bodies, synchronous throws, awaited Promise rejection, suspension/resume, and cancellation exits. `pc = -1`, `-2`, and `-3` distinguish uncaught throw, unhandled rejection, and cancellation. A return cuts off unreachable following statements. Calls in catch and finally blocks receive explicit control-flow targets rather than being flattened onto the normal path. Branches, loops, recursion, callbacks, and concurrent environment steps remain outside this local composition subset. Regression tests remove requirement guards, expose uncaught errors, and enable cancellation; Quint must find the corresponding violations. Progress requirements use `temporal_eventually`, trigger-sensitive `temporal_response`, infinitely-often `temporal_repeatedly`, or eventually-permanent `temporal_stabilizes`, and a suspending summary may declare weak or strong action fairness; generated programs are Quint-typechecked even though fixed-step simulation remains a safety oracle rather than a liveness proof.
 
-Builtin async-pattern projection is a separate bounded abstraction. It turns a
+Builtin async observations are a bounded input projection to the same temporal
+model. The projection turns a
 direct recursive `setTimeout` into a cyclic timer transition, links definite
 `clearTimeout` calls to local handles, orders microtasks before timers, and
 turns literal Promise combinator inputs into nondeterministic branch and
-aggregate states. `all`, `allSettled`, `race`, and `any` have distinct
+aggregate states. User-authored temporal state and callback summaries are
+composed with those host transitions by `generateTemporalModel`; Web and Node
+share that public entry. `all`, `allSettled`, `race`, and `any` have distinct
 settlement guards and empty-input semantics. The projection also retains
-direct await/catch context and escaping aggregate rejection. It does not make
+direct await/catch context and escaping aggregate rejection. Promise ownership
+and resource lifecycle are still reported exclusions from this unified facade;
+their existing low-level Quint projections remain experimental while #63
+tracks the remaining lowering. It does not make
 the local function-summary composer itself concurrent.
 
 Promise reaction chains use a separate settlement-state projection. Builtin

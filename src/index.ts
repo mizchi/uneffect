@@ -183,6 +183,8 @@ export { extractLocatedAnnotations, validateUneffectAnnotations } from "./annota
 export { generateQuint, generateSmtLib } from "./spec-backends.js";
 export { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
 export type { TemporalCall, TemporalComposition, TemporalFunctionSummary } from "./temporal-compose.js";
+export { generateTemporalModel } from "./temporal-model.js";
+export type { GenerateTemporalModelOptions, TemporalModelResult, TemporalRuntime } from "./temporal-model.js";
 export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";
@@ -248,11 +250,7 @@ export { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnership
 export type { OptimizationDecision, OptimizationEvent, OptimizationObligation, OwnershipAssertionRewrite, OwnershipGuardElisionObligation, PropertyMangleObligation, StableReadReuseObligation, StableReadRewrite } from "./optimizer.js";
 export { optimizeUneffectProject } from "./project-optimizer.js";
 export type { OptimizeUneffectProjectOptions, OptimizeUneffectProjectResult, ProjectOptimizationTransformation, StaleProjectEvidence } from "./project-optimizer.js";
-export { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
-export type { AbortCompositionPattern, AsyncPatternModel, PromiseCombinatorPattern, TimerCancellation, TimerHandleEscape, TimerPattern } from "./async-patterns.js";
-export { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "./promise-chains.js";
-export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern, PromiseThenablePattern } from "./promise-chains.js";
-export { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "./async-safety.js";
+export { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt } from "./async-safety.js";
 export type { AsyncControlCompletionPath, AsyncControlCondition, AsyncControlEdge, AsyncControlLoop, AsyncControlRegion, AsyncControlStatement, AsyncControlTransferOwner, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceAliasEscape, ResourceBinding, ResourceDisposal, ResourceError, ResourceEscape, ResourceExit } from "./async-safety.js";
 export { formatTargetedCompletion, isLoopTransfer, isTransferOwnedByLoop, loopTransferTarget } from "./completion-flow.js";
 export type { AbruptCompletion, CompletionKind, CompletionPath, CompletionSummary, CompletionTarget, LoopTransferKind, PredicateCompletionSummary, TargetedCompletion } from "./completion-flow.js";

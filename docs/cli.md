@@ -31,7 +31,7 @@ npx quint run protocol.qnt
 | --- | --- |
 | `check [<file.ts> ...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. `--project` preserves consumer compiler options and can select the project's root files; `--module-entry` opts a solution workspace into the supported cross-project module-order composition. |
 | `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the selected Z3 backend, the optional Quint peer, and the optional `java` command. |
-| `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
+| `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes. `temporal --runtime web|node` is the public host-aware model combining user temporal annotations with supported JavaScript async observations. `ir`, `lint`, `z3`, `quint`, and `compose` expose the other specification projections. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
 | `module-order <entry.ts>` | The source-mapped ESM initialization partial-order artifact; `--require` rejects non-proof-grade extraction. |
@@ -61,6 +61,13 @@ schema is published as `schemas/uneffect-check-v1.schema.json`. Both `check` and
 registry. `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.
+
+`async-quint`, `promise-quint`, `web-loop-quint`, and `node-loop-quint` remain
+experimental compatibility backends while their observations are migrated to
+the unified temporal projection. They are not independent proof domains and
+may change or be removed before 1.0. The corresponding low-level TypeScript
+generators are available only from `@mizchi/uneffect/experimental`; the stable
+root exports `generateTemporalModel`.
 
 ## Checking the prerequisites
 

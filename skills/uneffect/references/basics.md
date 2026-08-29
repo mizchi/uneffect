@@ -60,7 +60,8 @@ The main dialects are:
 - `capability`: unordered may-effect bounds and module initialization bounds.
 - `contract`: preconditions, postconditions, loop invariants, and assertions.
 - `temporal`: states, initialization, actions, invariants, and transitions.
-- `async`: Promise rejection/resource ownership contracts.
+- `async`: Promise rejection/resource ownership boundary contracts that feed
+  temporal analysis; it is not an independent formal-specification domain.
 - `react-component`: opt-in React functional-component analysis.
 - `runtime`, `refinement`, and other specialized markers: bindings between
   static specifications, runtime identities, and implementation evidence.

@@ -388,6 +388,14 @@ Temporal predicates use a restricted TypeScript-style expression language rather
 
 The temporal composition IR declares `explicit-unchanged` stuttering: each generated action assigns every state, copying any state omitted by its summary. Function summaries and composed call sites retain UTF-16 source spans so counterexamples can later map back to TypeScript.
 
+`async` is boundary-contract vocabulary, not a fourth formal-specification
+domain. Supported timers, microtasks, Promise reactions/combinators, and host
+event-loop observations are extracted from TypeScript and composed with the
+explicit temporal projection by `generateTemporalModel`. Web and Node use the
+same versioned result shape. Promise ownership and resource lifecycle are
+currently named exclusions from that facade; their low-level generators remain
+experimental until #63 completes the shared lowering.
+
 ```text
 TypeScript + Uneffect comments
              |
@@ -395,11 +403,11 @@ TypeScript + Uneffect comments
      attachment + symbol resolution
              |
              v
-         ParsedSpec
-       /      |      \
-      v       v       v
- capability  SMT     Quint
- lattice     Z3      transition model
+         ParsedSpec + extracted async observations
+       /                    |                 \
+      v                     v                  v
+ capability               SMT        host-aware temporal
+ lattice                   Z3          Quint model
 ```
 
 ## Prototype commands

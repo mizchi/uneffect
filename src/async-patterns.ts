@@ -1858,8 +1858,10 @@ export function generateNodeEventLoopQuint(
     allowWrongPhase?: boolean;
     topLevelMode?: "commonjs" | "esm";
     allowEsmNextTickBeforeMicrotask?: boolean;
+    allowCallbackPreconditionViolation?: boolean;
   } = {},
   promiseModel?: PromiseChainModel,
+  temporalComposition?: TemporalComposition,
 ): string {
   for (const timer of model.timers) if (timer.delay === undefined
     || (timer.handleFamily !== "timeout" && (!Number.isFinite(timer.delay) || timer.delay < 0))) {
@@ -1875,6 +1877,10 @@ export function generateNodeEventLoopQuint(
   const polls = supported.filter((index) => model.timers[index]!.queue === "poll");
   const checks = supported.filter((index) => model.timers[index]!.queue === "check");
   const closes = supported.filter((index) => model.timers[index]!.queue === "close");
+  const temporalStates = temporalComposition?.states ?? [];
+  const temporalInit = new Map(temporalComposition?.init.map((item) => [item.target, generateQuintExpression(item.expressionAst)]) ?? []);
+  const temporalStateNames = new Set(temporalStates.map((state) => state.name));
+  const clock = temporalStateNames.has("clock") ? "node_clock" : "clock";
   const multiInstanceTimers = new Set(supported.filter((index) => {
     const timer = model.timers[index]!;
     return timer.queue === "timer" && timer.enqueuedBy !== undefined
@@ -1905,7 +1911,8 @@ export function generateNodeEventLoopQuint(
   const initialV8Pending = initialV8Jobs.map((job) => job.key.startsWith("callback:")
     ? `callback_${job.key.slice("callback:".length)}_pending`
     : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`);
-  const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var node_phase: int", "  var resume_phase: int", "  var wrong_checkpoint_order: bool", "  var wrong_phase: bool"];
+  const lines = [`module ${safe(moduleName)} {`, `  var ${clock}: int`, "  var node_phase: int", "  var resume_phase: int", "  var wrong_checkpoint_order: bool", "  var wrong_phase: bool", "  var callback_precondition_broken: bool"];
+  temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${formatTemporalValueType(state.type)}`));
   supported.forEach((index) => {
     lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`);
     if (multiInstanceTimers.has(index)) lines.push(`  var callback_${index}_instances: int`, `  var callback_${index}_due_times: List[int]`);
@@ -1913,7 +1920,12 @@ export function generateNodeEventLoopQuint(
     if (closableSources.has(index)) lines.push(`  var callback_${index}_source_open: bool`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
-  lines.push("", "  action init = all {", "    clock' = 0,", "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint || options.allowEsmNextTickBeforeMicrotask)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`);
+  lines.push("", "  action init = all {", `    ${clock}' = 0,`, "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint || options.allowEsmNextTickBeforeMicrotask)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`, "    callback_precondition_broken' = false,");
+  temporalStates.forEach((state) => {
+    const value = temporalInit.get(state.name);
+    if (value === undefined) throw new Error(`missing temporal init for ${state.name}`);
+    lines.push(`    ${safe(state.name)}' = ${value},`);
+  });
   supported.forEach((index) => {
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
@@ -1931,7 +1943,7 @@ export function generateNodeEventLoopQuint(
   }));
   lines.push("  }");
   const reactionVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`])) ?? [];
-  const variables = ["clock", "node_phase", "resume_phase", "wrong_checkpoint_order", "wrong_phase", ...supported.flatMap((index) => [
+  const variables = [clock, "node_phase", "resume_phase", "wrong_checkpoint_order", "wrong_phase", "callback_precondition_broken", ...temporalStates.map((state) => safe(state.name)), ...supported.flatMap((index) => [
     `callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`,
     ...(multiInstanceTimers.has(index) ? [`callback_${index}_instances`, `callback_${index}_due_times`] : []),
     ...(externalRegistrations.has(index) ? [`callback_${index}_registered`] : []),
@@ -1944,6 +1956,14 @@ export function generateNodeEventLoopQuint(
     variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
+  const applyCallbackSummary = (index: number, guards: string[], updates: Map<string, string>): void => {
+    const summary = temporalComposition?.summaries.get(model.timers[index]!.callback);
+    if (!summary) return;
+    const requirements = summary.requires.map(generateQuintExpression);
+    if (!options.allowCallbackPreconditionViolation) guards.push(...requirements);
+    else if (requirements.length) updates.set("callback_precondition_broken", `callback_precondition_broken or not(${requirements.map((item) => `(${item})`).join(" and ")})`);
+    summary.ensures.forEach((item) => updates.set(safe(item.target), generateQuintExpression(item.expressionAst)));
+  };
   const enqueueNodeChildren = (parent: number, updates: Map<string, string>, alternative?: number): void => {
     const belongsToAlternative = (index: number): boolean => model.timers[index]!.parentAlternative === undefined
       || model.timers[index]!.parentAlternative === alternative;
@@ -1951,16 +1971,16 @@ export function generateNodeEventLoopQuint(
       .forEach((child) => updates.set(`callback_${child}_pending`, "true"));
     checks.filter((index) => model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index)).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
-      updates.set(`callback_${child}_due`, "clock + 1");
+      updates.set(`callback_${child}_due`, `${clock} + 1`);
     });
     timers.filter((index) => model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index)).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
       if (multiInstanceTimers.has(child)) {
         updates.set(`callback_${child}_instances`, `callback_${child}_instances + 1`);
-        updates.set(`callback_${child}_due_times`, `callback_${child}_due_times.append(clock + ${nodeDelay(model.timers[child]!)})`);
-        updates.set(`callback_${child}_due`, `if (callback_${child}_pending) callback_${child}_due else clock + ${nodeDelay(model.timers[child]!)}`);
+        updates.set(`callback_${child}_due_times`, `callback_${child}_due_times.append(${clock} + ${nodeDelay(model.timers[child]!)})`);
+        updates.set(`callback_${child}_due`, `if (callback_${child}_pending) callback_${child}_due else ${clock} + ${nodeDelay(model.timers[child]!)}`);
       } else {
-        updates.set(`callback_${child}_due`, `clock + ${nodeDelay(model.timers[child]!)}`);
+        updates.set(`callback_${child}_due`, `${clock} + ${nodeDelay(model.timers[child]!)}`);
       }
     });
     [...polls, ...closes].filter((index) => externalRegistrations.has(index)
@@ -2000,13 +2020,15 @@ export function generateNodeEventLoopQuint(
       const updates = new Map<string, string>([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", phaseViolation(0)]]);
       enqueueNodeChildren(index, updates, alternative);
       const baseName = `drain_next_tick_${index}`;
-      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, [
+      const guards = [
         ...phaseGuard(0), `callback_${index}_pending`,
         ...(options.allowMicrotaskBeforeNextTick ? microtasks.map((microtask) => `not(callback_${microtask}_pending)`) : []),
         ...(options.topLevelMode === "esm" && esmInitialNextTicks.has(index) && !options.allowEsmNextTickBeforeMicrotask
           ? initialV8Pending.map((pending) => `not(${pending})`) : []),
         ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
-      ], updates);
+      ];
+      applyCallbackSummary(index, guards, updates);
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, guards, updates);
     }
   });
   microtasks.forEach((index, order) => {
@@ -2031,11 +2053,13 @@ export function generateNodeEventLoopQuint(
       ]);
       enqueueNodeChildren(index, updates, alternative);
       const baseName = `drain_microtask_${index}`;
-      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, [
+      const guards = [
         ...phaseGuard(0), `callback_${index}_pending`,
         ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
         ...earlierV8.map((pending) => `not(${pending})`),
-      ], updates);
+      ];
+      applyCallbackSummary(index, guards, updates);
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, guards, updates);
     }
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
@@ -2077,9 +2101,9 @@ export function generateNodeEventLoopQuint(
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
       [`callback_${index}_due`, multiInstanceTimers.has(index)
         ? timer.repeats
-          ? `if (callback_${index}_instances > 1) callback_${index}_due_times.tail().head() else clock + ${nodeDelay(timer)}`
+          ? `if (callback_${index}_instances > 1) callback_${index}_due_times.tail().head() else ${clock} + ${nodeDelay(timer)}`
           : `if (callback_${index}_instances > 1) callback_${index}_due_times.tail().head() else callback_${index}_due`
-        : timer.repeats ? `clock + ${nodeDelay(timer)}` : `callback_${index}_due`],
+        : timer.repeats ? `${clock} + ${nodeDelay(timer)}` : `callback_${index}_due`],
       ["node_phase", "0"],
       ["resume_phase", String(phase)],
       ["wrong_checkpoint_order", `wrong_checkpoint_order or (${checkpointPending.join(" or ") || "false"})`],
@@ -2088,17 +2112,19 @@ export function generateNodeEventLoopQuint(
       if (multiInstanceTimers.has(index)) {
         updates.set(`callback_${index}_instances`, timer.repeats ? `callback_${index}_instances` : `callback_${index}_instances - 1`);
         updates.set(`callback_${index}_due_times`, timer.repeats
-          ? `callback_${index}_due_times.tail().append(clock + ${nodeDelay(timer)})`
+          ? `callback_${index}_due_times.tail().append(${clock} + ${nodeDelay(timer)})`
           : `callback_${index}_due_times.tail()`);
       }
       for (const source of timer.closesSources ?? []) updates.set(`callback_${source}_source_open`, "false");
       enqueueNodeChildren(index, updates, alternative);
       const baseName = timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : timer.queue === "close" ? `run_close_${index}` : `run_timer_${index}`;
-      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, [
-        ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
+      const guards = [
+        ...phaseGuard(phase), `callback_${index}_pending`, `${clock} >= callback_${index}_due`,
         ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
-        ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
-      ], updates);
+        ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > ${clock}`),
+      ];
+      applyCallbackSummary(index, guards, updates);
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, guards, updates);
     }
   };
   timers.forEach((index, order) => macro(index, timers.slice(0, order), 1));
@@ -2106,20 +2132,28 @@ export function generateNodeEventLoopQuint(
   checks.forEach((index, order) => macro(index, checks.slice(0, order), 3));
   closes.forEach((index, order) => macro(index, closes.slice(0, order), 4));
   action("advance_timers_to_poll", [
-    ...phaseGuard(1), ...timers.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
+    ...phaseGuard(1), ...timers.map((index) => `not(callback_${index}_pending) or callback_${index}_due > ${clock}`),
   ], new Map([["node_phase", "2"], ["wrong_phase", phaseViolation(1)]]));
   action("advance_poll_to_check", [
     ...phaseGuard(2), ...polls.map((index) => `not(callback_${index}_pending)`),
   ], new Map([["node_phase", "3"], ["wrong_phase", phaseViolation(2)]]));
   action("advance_check_to_close", [
-    ...phaseGuard(3), ...checks.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
+    ...phaseGuard(3), ...checks.map((index) => `not(callback_${index}_pending) or callback_${index}_due > ${clock}`),
   ], new Map([["node_phase", "4"], ["wrong_phase", phaseViolation(3)]]));
   action("advance_close_to_next_iteration", [
     ...phaseGuard(4), ...closes.map((index) => `not(callback_${index}_pending)`),
   ], new Map([
-    ["clock", "clock + 1"], ["node_phase", "0"], ["resume_phase", "1"], ["wrong_phase", phaseViolation(4)],
+    [clock, `${clock} + 1`], ["node_phase", "0"], ["resume_phase", "1"], ["wrong_phase", phaseViolation(4)],
   ]));
-  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", "  val nodeEventLoopSafe = not(wrong_checkpoint_order) and not(wrong_phase)", "}", "");
+  const callbackPreconditions = model.timers.flatMap((timer, index) => {
+    const summary = temporalComposition?.summaries.get(timer.callback);
+    if (!summary?.requires.length) return [];
+    const requirement = summary.requires.map((item) => `(${generateQuintExpression(item)})`).join(" and ");
+    return [`(not(callback_${index}_pending) or ${clock} < callback_${index}_due or (${requirement}))`];
+  });
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
+  temporalComposition?.properties.forEach((property) => lines.push("", `  val ${safe(property.name)} = ${generateQuintExpression(property.expressionAst)}`));
+  lines.push("", `  val nodeEventLoopSafe = not(wrong_checkpoint_order) and not(wrong_phase) and not(callback_precondition_broken)${callbackPreconditions.map((term) => ` and ${term}`).join("")}`, "}", "");
   return lines.join("\n");
 }
 

@@ -92,8 +92,10 @@ the generated `apm.lock.yaml`.
 - Preconditions, postconditions, loop invariants, machine-number domains, and
   selected typed-array bounds.
 - Promise rejection ownership, timers, supported Promise combinators, and
-  explicit resource management.
-- Temporal specifications lowered to a neutral IR, Z3, and Quint.
+  explicit resource management. Async observations are inputs to the temporal
+  model, not a separate formal-specification domain.
+- User temporal specifications and supported JavaScript async observations
+  lowered into one host-aware Quint model.
 - Opt-in React functional-component and Trusted Types fragments.
 
 Start with [`uneffect check --infer`](./docs/adoption-patterns.md) on a selected
@@ -102,16 +104,16 @@ only where the relevant fragment is supported.
 
 ## Assurance boundary
 
-Uneffect 0.2 is experimental. It is useful as an additional, fail-closed review
-and CI layer on explicitly selected TypeScript boundaries. A `verified` artifact
-applies only to its exact claim, source snapshot, configuration, supported
-syntax fragment, and recorded backend.
+Uneffect 0.2 is an experimental release. It is useful as an additional,
+fail-closed review and CI layer on explicitly selected TypeScript boundaries. A
+`verified` artifact applies only to its exact claim, source snapshot,
+configuration, supported syntax fragment, and recorded backend.
 
-Do not use Uneffect as the sole security boundary, a replacement for runtime
-validation, a whole-program correctness claim, or proof of arbitrary
-third-party/native behavior. Exit code 0 without an assurance profile means the
-enabled checks passed; it is not a proof. `assumed` depends on its trust ledger,
-and `unknown` establishes nothing.
+Uneffect is not a verifier for all of JavaScript. Do not use it as the sole
+security boundary, a replacement for runtime validation, a whole-program
+correctness claim, or proof of arbitrary third-party/native behavior. Exit code
+0 without an assurance profile means the enabled checks passed; it is not a
+proof. `assumed` depends on its trust ledger, and `unknown` establishes nothing.
 
 Before relying on a result, read:
 
@@ -146,13 +148,14 @@ Detailed references:
 ## CLI
 
 The package publishes the `uneffect` binary. Its main commands are `check`,
-`doctor`, `spec`, `instrument`, and `evidence`.
+`doctor`, `spec`, `instrument`, and `evidence`. Use `spec temporal` for the
+combined user/JavaScript async model:
 
 ```sh
 npx uneffect check --project tsconfig.json --infer
 npx uneffect check --project tsconfig.json \
   --assurance no-unknown --json > uneffect-check.json
-npx uneffect spec quint src/protocol.ts > protocol.qnt
+npx uneffect spec temporal src/protocol.ts main --runtime web > protocol.qnt
 ```
 
 See the [CLI reference](./docs/cli.md) for all commands, options, exit codes,
@@ -170,7 +173,7 @@ just check
 ## Documentation and roadmap
 
 - [Documentation index](./docs/README.md)
-- [Adoption patterns](./docs/adoption-patterns.md)
+- [Adoption patterns guide](./docs/adoption-patterns.md)
 - [Native integration](./docs/native-integration.md)
 - [Roadmap and known gaps](./docs/roadmap.md)
 - [Implementation TODO](./TODO.md)

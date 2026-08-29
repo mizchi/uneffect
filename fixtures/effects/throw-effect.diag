@@ -2,12 +2,12 @@ $ uneffect check --evidence fixtures/effects/throw-effect.ts
 # Throwing is an effect: an uncaught throw needs Throw<TypeError> in the declaration.
 
 error effect/missing fixtures/effects/throw-effect.ts:3 in parsePort
-  message: parsePort requires /* uneffect: effect Throw<TypeError> */
+  message: parsePort requires /* uneffect:capability effect Throw<TypeError> */
   3 | export function parsePort(value: string) {
     | ^
   declared: Console
   because: parsePort performs throw new TypeError("port must be numeric"); at line 6
-  hint: declare the effect in the function's /* uneffect: effect ... */ comment, or move the operation into a callee that already declares it
+  hint: declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it
 
 1 error(s), 0 warning(s)
 

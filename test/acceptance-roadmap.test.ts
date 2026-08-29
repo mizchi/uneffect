@@ -5,12 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import * as uneffect from "../src/index.js";
+import * as experimental from "../src/experimental.js";
 
 type FutureApi = (...args: unknown[]) => unknown;
 
 function futureApi(name: string): FutureApi {
-  const candidate = (uneffect as unknown as Record<string, unknown>)[name];
-  expect(candidate, `public API ${name} is not implemented`).toBeTypeOf("function");
+  const candidate = (uneffect as unknown as Record<string, unknown>)[name]
+    ?? (experimental as unknown as Record<string, unknown>)[name];
+  expect(candidate, `stable or experimental API ${name} is not implemented`).toBeTypeOf("function");
   return candidate as FutureApi;
 }
 

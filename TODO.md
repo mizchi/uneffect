@@ -1,6 +1,6 @@
 # Uneffect implementation ledger
 
-Last reconciled with GitHub Issues: 2026-08-29.
+Last reconciled with GitHub Issues: 2026-08-30.
 
 This file is the historical implementation ledger. Completed work is summarized
 in `docs/implementation-status.md` and classified by confidence in
@@ -75,12 +75,20 @@ Bounded child [#48](https://github.com/mizchi/uneffect/issues/48) is complete an
 composes that finite rule with one source-bound catch/finally handler topology
 and immutable Boolean failure selector.
 
-There are 13 open implementation Issues after completing bounded children #60 and #61 and
+Active proof-boundary issue [#63](https://github.com/mizchi/uneffect/issues/63)
+reconnects explicit temporal specifications with extracted JavaScript async
+semantics. The first slice adds one stable `generateTemporalModel` entry,
+composes user properties in both Web and Node profiles, and moves standalone
+backend-specific generators to `@mizchi/uneffect/experimental`. Promise
+ownership and resource lifecycle remain explicit exclusions until their IR is
+lowered into the same model.
+
+There are 14 open implementation Issues after completing bounded children #60 and #61 and
 bounded children #58
 and #59 and children #56 and #57,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-13 parent/epic Issues remain and no bounded child is active: one proof-boundary
+14 parent/epic Issues remain with #63 active: two proof-boundary
 parent in Phase 1, five specification-expressiveness parents in
 Phase 2, six production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child

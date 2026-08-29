@@ -127,6 +127,10 @@ timer ordering, cancellation, and resource states.
 Uneffect parses a TypeScript-oriented annotation language into a neutral IR;
 it does not pass arbitrary annotation text directly to Quint. Generated bounded
 Z3/Quint evidence finds counterexamples within the selected model and bounds.
+Supported Promise, timer, microtask, and host event-loop observations compose
+with this user model through `generateTemporalModel` or `spec temporal
+--runtime web|node`. Promise ownership and resource lifecycle are currently
+reported exclusions from that unified model rather than silently claimed.
 
 ## Opt into React semantics
 

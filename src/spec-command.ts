@@ -7,8 +7,9 @@ import { generateQuint, generateSmtLib } from "./spec-backends.js";
 import { parseSpec } from "./spec-ir.js";
 import { lintSpecWithZ3 } from "./spec-lint.js";
 import { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
+import { generateTemporalModel } from "./temporal-model.js";
 
-const backends = ["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"] as const;
+const backends = ["ir", "lint", "z3", "quint", "compose", "temporal", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"] as const;
 type Backend = typeof backends[number];
 
 function moduleNameOf(fileName: string): string {
@@ -34,11 +35,13 @@ export const specCommand: CliCommand = {
     "z3                 SMT-LIB for one invariant, selected by the optional function argument",
     "quint              the temporal Quint module",
     "compose            the composed temporal Quint module rooted at the required function argument",
-    "async-quint        the async-pattern Quint module",
-    "web-loop-quint     the Web event-loop Quint module",
-    "node-loop-quint    the Node event-loop Quint module",
-    "promise-quint      the Promise-chain Quint module",
+    "temporal           the unified user + JavaScript async temporal model",
+    "async-quint        experimental compatibility projection: async patterns only",
+    "web-loop-quint     experimental compatibility alias for temporal --runtime=web",
+    "node-loop-quint    experimental compatibility alias for temporal --runtime=node",
+    "promise-quint      experimental compatibility projection: Promise chains only",
     "",
+    "--runtime=web|node                       host profile for the temporal backend",
     "--node-top-level=commonjs|esm            top-level scheduling mode for node-loop-quint",
     "--strengthening=<name,...>               strengthen the lint with these properties, repeatable",
     "--discover-strengthening                 discover strengthening properties from the specification",
@@ -52,6 +55,7 @@ export const specCommand: CliCommand = {
   async run(args, io) {
     const { values, positionals } = parseCommandArgs(args, {
       "node-top-level": { type: "string" },
+      runtime: { type: "string" },
       strengthening: { type: "string", multiple: true },
       "discover-strengthening": { type: "boolean" },
       "synthesize-strengthening": { type: "boolean" },
@@ -71,6 +75,10 @@ export const specCommand: CliCommand = {
     const nodeTopLevel = values["node-top-level"] as string | undefined;
     if (nodeTopLevel !== undefined && nodeTopLevel !== "commonjs" && nodeTopLevel !== "esm") {
       throw new CliUsageError("--node-top-level must be commonjs or esm");
+    }
+    const runtime = values.runtime as string | undefined;
+    if (runtime !== undefined && runtime !== "web" && runtime !== "node") {
+      throw new CliUsageError("--runtime must be web or node");
     }
     const source = await readFile(fileName, "utf8");
     const moduleName = moduleNameOf(fileName);
@@ -107,6 +115,17 @@ export const specCommand: CliCommand = {
     if (backend === "compose") {
       if (!selectedFunction) throw new CliUsageError("spec compose needs a root function");
       io.out(generateComposedQuint(moduleName, parseTemporalComposition(fileName, source, selectedFunction)));
+      return exitCode.success;
+    }
+    if (backend === "temporal") {
+      const selectedRuntime = runtime ?? "web";
+      io.out(generateTemporalModel({
+        fileName,
+        source,
+        runtime: selectedRuntime,
+        root: selectedFunction ?? "main",
+        nodeTopLevelMode: nodeTopLevel ?? "commonjs",
+      }).quint);
       return exitCode.success;
     }
     if (backend === "async-quint") {

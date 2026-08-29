@@ -2,12 +2,12 @@ $ uneffect check --evidence fixtures/effects/missing-console.ts
 # An effectful call with no declaration: the report names the operation that produced the effect.
 
 error effect/missing fixtures/effects/missing-console.ts:2 in report
-  message: report requires /* uneffect: effect Console */
+  message: report requires /* uneffect:capability effect Console */
   2 | export function report(value: number) {
     | ^
-  declared: (no /* uneffect: effect ... */ comment)
+  declared: (no /* uneffect:capability effect ... */ comment)
   because: report performs console.log(value) at line 3
-  hint: declare the effect in the function's /* uneffect: effect ... */ comment, or move the operation into a callee that already declares it
+  hint: declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it
 
 1 error(s), 0 warning(s)
 
