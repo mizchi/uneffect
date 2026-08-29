@@ -84,7 +84,11 @@ describe("CI test tier manifest", () => {
   it("calibrates the measured native project test above observed remote variance", () => {
     expect(ciMeasuredNativeProjectTimeoutMs).toBe(45_000);
     const source = readFileSync(join(process.cwd(), "test/evidence-optimizer.test.ts"), "utf8");
-    expect(source).toContain("}, ciMeasuredNativeProjectTimeoutMs);");
+    const timeoutFor = (title: string) => source.split(`it("${title}"`, 2)[1]?.split("\n  it(", 1)[0];
+    expect(timeoutFor("verifies solution projects as independent compiler domains and aggregates provenance fail closed"))
+      .toContain("}, ciMeasuredNativeProjectTimeoutMs);");
+    expect(timeoutFor("substitutes verified child-project Mutate regions through exact parameter and export identities"))
+      .toContain("}, ciMeasuredNativeProjectTimeoutMs);");
   });
 
   it("does not place direct verifier subprocesses in a tier lacking that verifier", () => {

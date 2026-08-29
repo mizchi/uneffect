@@ -145,7 +145,7 @@ export const ciExternalVerifierTestFiles: readonly string[] = [
   "test/temporal-map-default.test.ts",
 ];
 export const ciIsolatedTestTimeoutMs = 60_000;
-/** 1.5x the 30.375s remote observation for the project-wide mutation substitution case. */
+/** 1.5x the observed 30-second remote project-analysis overruns. */
 export const ciMeasuredNativeProjectTimeoutMs = 45_000;
 /** Parent-process deadline for synchronous WASM calls that can block Vitest's own timer. */
 export const ciIsolatedProcessTimeoutMs = ciIsolatedTestTimeoutMs + 15_000;

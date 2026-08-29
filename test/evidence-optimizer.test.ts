@@ -283,7 +283,7 @@ describe("evidence and optimizer obligations", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, ciMeasuredNativeProjectTimeoutMs);
 
   it("rejects a post-build runtime output mismatch under exact artifact assurance", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-project-runtime-integrity-"));

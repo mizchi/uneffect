@@ -87,9 +87,11 @@ local timing placed the short isolated Node Lease suite in `core`, producing
 roughly balanced test bodies of 103, 138, and 163 seconds without paying for a
 fourth runner setup.
 
-The measured project-wide mutation-substitution case has a 45-second budget,
-1.5 times the observed failing duration. This is a timeout calibration, not an
-automatic retry: an ordinary Vitest timeout still fails immediately. Every
+The measured project-wide mutation-substitution and solution-domain cases have
+a 45-second budget, 1.5 times the observed failing duration. The solution case
+first exceeded its literal 30-second limit in run 33245063564 while all six
+other jobs, including the repaired dogfood shard, passed. This is a timeout
+calibration, not an automatic retry: an ordinary Vitest timeout still fails immediately. Every
 shard writes `uneffect.ci-timing/v1` JSONL start/completion events with file,
 test selector, attempt, duration, exit status, signal, and a failure class.
 Artifacts distinguish semantic/test failures, external-verifier timeouts,
