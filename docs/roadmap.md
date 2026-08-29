@@ -225,7 +225,11 @@ direct Promise-call returns, with one optional `as Promise<T>` wrapper. Complete
 `access`/`readdir` reads and `appendFile`/`mkdir` writes. Completed bounded child
 [#55](https://github.com/mizchi/uneffect/issues/55) adds direct await rejection
 ownership for one catch-protected try block; nested handler regions,
-catch/finally awaits, chains, and binding ownership remain outside it. The completed
+catch/finally awaits, chains, and binding ownership remain outside it. Active
+bounded child [#56](https://github.com/mizchi/uneffect/issues/56) aligns one
+exact Workhub function-local `const { readFile } = await import("node:fs/promises")`
+binding across the TypeScript and Corsa frontends without claiming general
+dynamic module semantics. The completed
 [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
 splits the long integration gate, retains timing artifacts, calibrates one
 measured timeout, and preserves every existing fail-closed obligation.

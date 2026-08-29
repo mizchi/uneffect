@@ -265,6 +265,72 @@ describe("corsa-bind checker fact exporter", () => {
     }));
   });
 
+  it("exports Workhub-shaped dynamic fs import and read facts", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-dynamic-fs-import.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.symbols.find((symbol) => symbol.name === "loadConfigText")?.inferredEffects).toEqual([
+      expect.objectContaining({
+        effect: "FsRead",
+        builtin: { module: "node:fs/promises", export: "readFile" },
+      }),
+    ]);
+    expect(facts.promiseObservations.map((item) => ({
+      source: item.source,
+      observation: item.observation,
+      catchesRejection: item.catchesRejection,
+    }))).toEqual([
+      { source: 'import("node:fs/promises")', observation: "await", catchesRejection: false },
+      { source: 'readFile(path, "utf8")', observation: "await", catchesRejection: false },
+    ]);
+
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared, JSON.stringify(compared.schemaDrift, null, 2)).toMatchObject({
+      equivalent: true,
+      semanticEquivalent: true,
+      checkerMetadataEquivalent: true,
+      schemaDrift: [],
+    });
+  });
+
+  it("does not infer dynamic fs effects for unsupported binding shapes", async () => {
+    const files = { "fixture.ts": `
+      export async function namespaceLater(path: string): Promise<string> {
+        const fs = await import("node:fs/promises")
+        return fs.readFile(path, "utf8")
+      }
+      export async function nonLiteral(path: string, moduleName: string): Promise<string> {
+        const { readFile } = await import(moduleName)
+        return readFile(path, "utf8")
+      }
+      export async function renamed(path: string): Promise<string> {
+        const { readFile: load } = await import("node:fs/promises")
+        return load(path, "utf8")
+      }
+    ` };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.symbols.flatMap((symbol) => symbol.inferredEffects)).toEqual([]);
+  });
+
+  it("rejects tampered dynamic fs import effect and observation evidence", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-dynamic-fs-import.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const original = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const mutations = [
+      (facts: typeof original) => { facts.symbols[0]!.inferredEffects[0]!.builtin.module = "node:fs"; },
+      (facts: typeof original) => { facts.symbols[0]!.inferredEffects[0]!.builtin.export = "writeFile"; },
+      (facts: typeof original) => { facts.promiseObservations[0]!.source = 'import("./local.js")'; },
+      (facts: typeof original) => { facts.promiseObservations[0]!.span.start += 1; },
+    ];
+    for (const mutate of mutations) {
+      const facts = structuredClone(original);
+      mutate(facts);
+      const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+      expect(compared.equivalent).toBe(false);
+      expect(compared.schemaDrift.some((item) => item.message.includes("checker-backed"))).toBe(true);
+    }
+  });
+
   it("preserves opposite polarity for one direct if/else await", async () => {
     const files = { "fixture.ts": `
       export async function choose(enabled: boolean, left: Response, right: Response): Promise<string> {

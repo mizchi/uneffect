@@ -2149,6 +2149,8 @@ per case):
   636.83 ms
 - Workhub-shaped direct catch-protected await fixture exported and normalized:
   656.62 ms
+- Workhub-shaped dynamic filesystem import fixture exported and normalized:
+  933.23 ms
 
 This is an end-to-end latency observation, not a throughput claim: it includes
 temporary project creation, `corsa-oxlint` plus `tsgo`, a TypeScript reference
@@ -2167,3 +2169,6 @@ namespace, compound read/write, and path-scoped filesystem semantics are not
 measured.
 The caught-await case adds one lexical protected-block classification and does
 not measure nested handler CFG construction or rejection-binding ownership.
+The dynamic-import case additionally constructs matching TypeScript and Corsa
+binding evidence for one exact awaited shorthand destructuring form. Its
+single cold sample is not evidence for general module-resolution performance.

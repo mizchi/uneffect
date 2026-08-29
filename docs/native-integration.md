@@ -107,6 +107,13 @@ bindings and local-module imports remain effect-free, and builtin-key tampering
 fails metadata parity. Sync `node:fs`, namespace/default/CommonJS forms,
 `copyFile`'s compound read/write semantics, other operations, and path-scope
 inference remain outside this slice.
+The dynamic-import extension recognizes exactly one function-local immutable
+shorthand object-destructuring binding from direct
+`await import("node:fs/promises")`. Both frontends bind `readFile` to `FsRead`;
+Corsa also emits the import expression itself as an `await` observation with
+its exact source and project UTF-8 span. Renamed, namespace, non-literal,
+mutable, multi-binding, and other-module forms remain unsupported. This is not
+a model of ESM initialization, host resolution, or a dynamic module graph.
 The completed direct-await slice additionally emits source-ordered Promise records
 when a resolved call is the direct operand of an `await` in the exported owner.
 Each record binds the numeric owner, exact source text, UTF-8 call span, and
@@ -137,7 +144,7 @@ Calls outside the exported project symbol set are not emitted. Traversal stops
 at unsupported nested function and callback boundaries, so their work is not
 misreported as an immediate call by the outer function; comparison with a
 reference edge then fails rather than claiming parity. Other Console methods
-and filesystem/fetch forms outside that exact slice, path/URL/method scope
+and filesystem/fetch or dynamic-import forms outside those exact slices, path/URL/method scope
 inference, broader catch/conditional Promise observations, rejection-binding ownership,
 Promise chains/combinators, resource records, computed or polymorphically
 dispatched methods, nested callbacks, method/generic overload edge cases, and

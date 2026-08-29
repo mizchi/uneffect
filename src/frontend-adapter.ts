@@ -122,6 +122,39 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
       }
     }
+    for (const source of program.getSourceFiles()) {
+      const visitDynamicImports = (node: ts.Node): void => {
+        if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name)
+          && node.name.elements.length === 1 && node.initializer && ts.isAwaitExpression(node.initializer)
+          && ts.isCallExpression(node.initializer.expression)
+          && node.initializer.expression.expression.kind === ts.SyntaxKind.ImportKeyword
+          && node.initializer.expression.arguments.length === 1
+          && ts.isStringLiteral(node.initializer.expression.arguments[0]!)) {
+          const declarationList = node.parent;
+          const element = node.name.elements[0]!;
+          const moduleName = node.initializer.expression.arguments[0].text;
+          const immutable = ts.isVariableDeclarationList(declarationList)
+            && declarationList.declarations.length === 1
+            && (declarationList.flags & ts.NodeFlags.Const) !== 0;
+          const importedName = element.propertyName === undefined && ts.isIdentifier(element.name)
+            ? element.name.text
+            : undefined;
+          const contract = immutable && importedName
+            ? modules.get(moduleName)?.find((candidate) => candidate.symbol.export === importedName
+              && builtinContractApplies(program, source.fileName, candidate))
+            : undefined;
+          const symbol = contract && ts.isIdentifier(element.name)
+            ? this.#checker.getSymbolAtLocation(element.name)
+            : undefined;
+          if (contract && symbol) {
+            this.#contracts.set(symbol, contract);
+            for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
+          }
+        }
+        ts.forEachChild(node, visitDynamicImports);
+      };
+      visitDynamicImports(source);
+    }
     for (const moduleSymbol of this.#checker.getAmbientModules()) {
       const moduleName = moduleSymbol.name.replace(/^"|"$/g, "");
       const contracts = moduleName.startsWith("node:")

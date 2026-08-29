@@ -99,6 +99,13 @@ runner or child process is interrupted. A green rerun remains operational
 evidence and does not erase an earlier timeout or justify weakening a proof
 obligation.
 
+During the #56 full local gate, the unchanged same-realm cross-project
+refinement and Hoare-plus-Valibot acceptance cases exceeded Vitest's default
+15-second per-test budget at 15.136 and 16.247 seconds. The latter then passed
+unchanged in isolation at 14.78 seconds. Both multi-process cases now have an
+explicit finite 30-second test budget; assertions and solver obligations are
+unchanged, and the full gate must still pass without retry before delivery.
+
 Checker-backed dogfood has a separate named finite policy. Local execution is
 bounded at 20 seconds; CI execution is bounded at 60 seconds, exactly matching
 the isolated-test allowance. This replaced a call-site literal that overrode

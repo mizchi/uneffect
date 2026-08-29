@@ -732,7 +732,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("composes an explicitly versioned Node global only within the same current realm", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
@@ -3956,7 +3956,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }), runtimeAssertions: "fallback" }) as { obligations: Array<{ backend: string; result: string }>; emittedFiles: Record<string, string> };
     expect(result.obligations).toContainEqual(expect.objectContaining({ backend: "z3", result: "verified" }));
     expect(result.emittedFiles["src/numeric.js"]).toContain("valibot");
-  });
+  }, 30_000);
 
   it("composes temporal function contracts with the Web event loop instead of passing inline Quint through", async () => {
     const verifyProject = futureApi("verifyUneffectProject");

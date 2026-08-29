@@ -202,9 +202,50 @@ export const corsaCheckerFactRule = createRule({
       },
       VariableDeclarator(node: any) {
         const initializer = node.init;
+        const caller = functionStack.at(-1);
+        const declaration = node.parent;
+        const imported = initializer?.type === "AwaitExpression" ? initializer.argument : undefined;
+        if (caller && declaration?.type === "VariableDeclaration" && declaration.kind === "const"
+          && declaration.declarations?.length === 1 && node.id?.type === "ObjectPattern"
+          && node.id.properties?.length === 1 && imported?.type === "ImportExpression"
+          && imported.source?.type === "Literal" && typeof imported.source.value === "string") {
+          const property = node.id.properties[0];
+          const importedName = property?.type === "Property" && property.shorthand === true && !property.computed
+            && property.key?.type === "Identifier" && property.value?.type === "Identifier"
+            ? property.key.name
+            : undefined;
+          const contract = importedName
+            ? checkerImportedBuiltinContracts.get(`${imported.source.value}\0${importedName}`)
+            : undefined;
+          const symbol = contract ? checker.getSymbolAtLocation(property.value as Node) : undefined;
+          const awaitControl = contract ? classifyDirectAwaitControl(initializer, caller.node) : { supported: false as const };
+          const rejectionCatch = contract ? classifyDirectAwaitRejectionCatch(initializer, caller.node) : { supported: false as const };
+          if (contract && symbol && awaitControl.supported && rejectionCatch.supported) {
+            importedBuiltinBindings.set(symbol.id, {
+              contract,
+              symbolIdentity: symbol.id,
+              declaration: {
+                fileName: context.filename,
+                start: byteOffset(text, property.range[0]),
+                end: byteOffset(text, property.range[1]),
+              },
+            });
+            promiseObservations.push({
+              ownerSymbolId: caller.symbolId,
+              source: text.slice(imported.range[0], imported.range[1]),
+              start: byteOffset(text, imported.range[0]),
+              end: byteOffset(text, imported.range[1]),
+              control: awaitControl.control === null ? null : {
+                ifStart: byteOffset(text, awaitControl.control.node.range[0]),
+                expected: awaitControl.control.expected,
+              },
+              observation: "await",
+              catchesRejection: rejectionCatch.catchesRejection,
+            });
+          }
+        }
         if (!initializer || (initializer.type !== "ArrowFunctionExpression" && initializer.type !== "FunctionExpression")) return;
         if (node.id?.type !== "Identifier") return;
-        const declaration = node.parent;
         const wrapper = declaration?.parent?.type === "ExportNamedDeclaration" ? declaration.parent : declaration;
         if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" || declaration.declarations?.length !== 1) return;
         if (wrapper?.parent?.type !== "Program") return;

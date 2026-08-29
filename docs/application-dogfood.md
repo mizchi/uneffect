@@ -686,6 +686,15 @@ are omitted. A single `if` inside the protected block retains condition
 identity and polarity. Catch-flag tampering fails parity. This does not export
 rejection-binding ownership or general exception-aware control flow.
 
+The `corsa-workhub-dynamic-fs-import.ts` corpus is derived from Workhub's
+`packages/core/src/config.ts`. It preserves the exact function-local
+`const { readFile } = await import("node:fs/promises")` followed by a direct
+awaited read. The TypeScript adapter and Corsa exporter now agree on the
+immutable binding's `FsRead` atom, and Corsa exports both await observations in
+source order. Namespace-later access, non-literal module names, renamed
+bindings, reassignment, and general module initialization stay outside this
+evidence. Module/export/source/span tampering fails parity.
+
 P2.31 adds `cfg-bounded-retry-backoff.ts`, a realistic retry loop that doubles
 one delay while decrementing a retry counter. The function's inline Uneffect
 contract states `0 <= retries <= 8`; analysis records that exact source span,
