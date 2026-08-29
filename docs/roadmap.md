@@ -220,7 +220,9 @@ explicit gaps. Completed bounded child
 beneath one enclosing `if` branch with exact condition identity and polarity;
 nested/loop/catch controls and chains remain explicit gaps. Completed child
 [#53](https://github.com/mizchi/uneffect/issues/53) adds only unconditional
-direct Promise-call returns, with one optional `as Promise<T>` wrapper. The completed
+direct Promise-call returns, with one optional `as Promise<T>` wrapper. Active child
+[#54](https://github.com/mizchi/uneffect/issues/54) adds exact named async-fs
+`access`/`readdir` reads and `appendFile`/`mkdir` writes. The completed
 [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
 splits the long integration gate, retains timing artifacts, calibrates one
 measured timeout, and preserves every existing fail-closed obligation.

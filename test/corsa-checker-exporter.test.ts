@@ -68,15 +68,62 @@ describe("corsa-bind checker fact exporter", () => {
     expect(compared.checkerMetadataEquivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
   });
 
+  it("exports Workhub-shaped directory and append filesystem effects in source order", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-fs-directory.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const update = facts.symbols.find((symbol) => symbol.name === "updateArchive")!;
+    expect(update.inferredEffects.map(({ effect, builtin }) => ({ effect, builtin }))).toEqual([
+      { effect: "FsRead", builtin: { module: "node:fs/promises", export: "access" } },
+      { effect: "FsRead", builtin: { module: "node:fs/promises", export: "readdir" } },
+      { effect: "FsWrite", builtin: { module: "node:fs/promises", export: "mkdir" } },
+      { effect: "FsWrite", builtin: { module: "node:fs/promises", export: "appendFile" } },
+    ]);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared, JSON.stringify(compared.schemaDrift, null, 2)).toMatchObject({
+      equivalent: true,
+      semanticEquivalent: true,
+      checkerMetadataEquivalent: true,
+      schemaDrift: [],
+    });
+    expect(compared.corsaIr?.functions).toEqual([
+      { name: "updateArchive", effects: ["FsRead", "FsWrite"] },
+    ]);
+  });
+
+  it("does not infer directory or append effects from same-spelled local bindings", async () => {
+    const files = { "fixture.ts": `
+      function access(_path: string): void {}
+      function readdir(_path: string): string[] { return [] }
+      function mkdir(_path: string): void {}
+      function appendFile(_path: string, _value: string): void {}
+      export function update(path: string): void {
+        access(path); readdir(path); mkdir(path); appendFile(path, "x")
+      }
+    ` };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.symbols.find((symbol) => symbol.name === "update")?.inferredEffects).toEqual([]);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.checkerMetadataEquivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
+  });
+
   it("does not infer node builtin effects from a same-spelled local-module import", async () => {
     const files = {
       "local.ts": `
+        export function access(_path: string): void {}
+        export function appendFile(_path: string, _body: string): void {}
+        export function mkdir(_path: string): void {}
+        export function readdir(_path: string): string[] { return [] }
         export function readFile(_path: string): string { return "" }
         export function writeFile(_path: string, _body: string): void {}
       `,
       "fixture.ts": `
-        import { readFile, writeFile } from "./local.js"
+        import { access, appendFile, mkdir, readdir, readFile, writeFile } from "./local.js"
         export function synchronizeState(path: string): void {
+          access(path)
+          appendFile(path, "x")
+          mkdir(path)
+          readdir(path)
           writeFile(path, readFile(path))
         }
       `,
@@ -102,6 +149,20 @@ describe("corsa-bind checker fact exporter", () => {
       equivalent: false,
       checkerMetadataEquivalent: false,
     });
+    expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining("checker-backed inferred-effect evidence differs"),
+    }));
+  });
+
+  it("rejects tampered directory and append builtin metadata", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-fs-directory.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const tampered = structuredClone(facts);
+    const update = tampered.symbols.find((symbol) => symbol.name === "updateArchive")!;
+    update.inferredEffects.find((effect) => effect.builtin.export === "mkdir")!.builtin.export = "rm";
+    const compared = await compareUneffectFrontends({ files, corsaFacts: tampered, requireCorsaCheckerFacts: true });
+    expect(compared).toMatchObject({ equivalent: false, semanticEquivalent: true, checkerMetadataEquivalent: false });
     expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
       message: expect.stringContaining("checker-backed inferred-effect evidence differs"),
     }));

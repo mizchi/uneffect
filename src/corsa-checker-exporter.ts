@@ -541,7 +541,11 @@ interface ImportedCheckerBuiltinBinding {
 }
 
 const checkerImportedBuiltinContracts = new Map<string, CheckerBuiltinIdentity>([
+  ["node:fs/promises\0access", { module: "node:fs/promises", export: "access", effect: "FsRead" }],
+  ["node:fs/promises\0readdir", { module: "node:fs/promises", export: "readdir", effect: "FsRead" }],
   ["node:fs/promises\0readFile", { module: "node:fs/promises", export: "readFile", effect: "FsRead" }],
+  ["node:fs/promises\0appendFile", { module: "node:fs/promises", export: "appendFile", effect: "FsWrite" }],
+  ["node:fs/promises\0mkdir", { module: "node:fs/promises", export: "mkdir", effect: "FsWrite" }],
   ["node:fs/promises\0writeFile", { module: "node:fs/promises", export: "writeFile", effect: "FsWrite" }],
 ]);
 

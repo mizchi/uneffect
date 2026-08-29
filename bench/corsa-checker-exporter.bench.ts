@@ -12,6 +12,8 @@ const conditionalFileName = "examples/dogfood/corsa-workhub-conditional-await.ts
 const conditionalFiles = { [conditionalFileName]: readFileSync(conditionalFileName, "utf8") };
 const returnFileName = "examples/dogfood/corsa-workhub-promise-returns.ts";
 const returnFiles = { [returnFileName]: readFileSync(returnFileName, "utf8") };
+const directoryFileName = "examples/dogfood/corsa-workhub-fs-directory.ts";
+const directoryFiles = { [directoryFileName]: readFileSync(directoryFileName, "utf8") };
 const corsaExecutable = resolve("node_modules/.bin/tsgo");
 
 describe("checker-backed Corsa inferred-effect handoff", () => {
@@ -60,6 +62,18 @@ describe("checker-backed Corsa inferred-effect handoff", () => {
     });
     if (!comparison.equivalent) {
       throw new Error(`Corsa Promise-return parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
+    }
+  }, { time: 500, iterations: 1 });
+
+  bench("export and normalize Workhub-shaped directory fs facts", async () => {
+    const facts = await exportCorsaCheckerFacts({ files: directoryFiles, corsaExecutable });
+    const comparison = await compareUneffectFrontends({
+      files: directoryFiles,
+      corsaFacts: facts,
+      requireCorsaCheckerFacts: true,
+    });
+    if (!comparison.equivalent) {
+      throw new Error(`Corsa directory-fs parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
     }
   }, { time: 500, iterations: 1 });
 });

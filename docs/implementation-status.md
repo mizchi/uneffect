@@ -902,6 +902,9 @@ same property is proved for arbitrary TypeScript.
   Promise-call returns, including one `as Promise<T>` wrapper, with the full
   expression source/span. Promise metadata parity now compares all observation
   kinds. Conditional, non-call, and nested-wrapper returns remain explicit gaps.
+  The Workhub filesystem follow-up adds exact named async imports `access` and
+  `readdir` as `FsRead`, plus `appendFile` and `mkdir` as `FsWrite`, preserving
+  ordered checker/import/span evidence and symbol-distinct negative controls.
   Broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration

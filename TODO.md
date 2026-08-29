@@ -75,10 +75,11 @@ Bounded child [#48](https://github.com/mizchi/uneffect/issues/48) is complete an
 composes that finite rule with one source-bound catch/finally handler topology
 and immutable Boolean failure selector.
 
-There are 12 open implementation Issues after completing bounded child #53,
+There are 13 open implementation Issues, including active bounded child #54,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-12 open implementation Issues remain, all parent/epic Issues: one
+13 open implementation Issues remain: one active bounded child plus twelve
+parent/epic Issues: one
 proof-boundary Issue in Phase 1, five specification-expressiveness Issues in
 Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
@@ -112,6 +113,8 @@ Completed child [#52](https://github.com/mizchi/uneffect/issues/52) admits only 
 direct await beneath one enclosing `if` branch, using Workhub XClient evidence.
 Completed child [#53](https://github.com/mizchi/uneffect/issues/53) addresses only
 unconditional direct-call Promise returns, including one `as Promise<T>` wrapper.
+Active child [#54](https://github.com/mizchi/uneffect/issues/54) adds the
+Workhub-observed `access`/`readdir` read and `appendFile`/`mkdir` write atoms.
 
 P2.1 is complete for its direct affine ranking-loop seed. P2.2 now consumes
 resource-free dynamic outer-loop `continue` completions by lexical owner and
@@ -169,12 +172,13 @@ for a first useful release.
 
 ## Immediate execution queue
 
-There is no active implementation Issue at this handoff. Promote the next
-application-backed bounded child from a parent Issue before implementation.
+[#54](https://github.com/mizchi/uneffect/issues/54) is the only active
+implementation Issue. It is a bounded child of #8 and is already included in
+the parent estimate.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| — | — | Select one bounded child with a Red test, an adjacent unsupported control, and an owning parent estimate. |
+| 1 | [#54](https://github.com/mizchi/uneffect/issues/54) | Workhub-shaped directory/append fs atoms reach parity; local/local-module controls, metadata tampering, benchmark, docs, full checks, and remote CI pass. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -184,7 +188,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#50/#51/#52/#53 | 10–23 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 12 Issues / 11 non-overlapping epics | 48–98 engineer-weeks | Completed children #50/#51/#52/#53 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45 are included within parent #5. |
+| Entire open research backlog | 13 Issues / 11 non-overlapping epics | 48–98 engineer-weeks | Active child #54 is included within parent #8; completed children #50/#51/#52/#53 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45 are included within parent #5. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -211,8 +215,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53 handoffs:
-twelve queued parent/epic Issues and no active child. Every open Issue has exactly one
+As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53 handoffs:
+one active bounded child and twelve queued parent/epic Issues. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -227,6 +231,7 @@ label.
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
 | Queued | 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
+| Active | 3 | [#54](https://github.com/mizchi/uneffect/issues/54) | Directory/append fs atoms | Child of #8; completed #50 fs seed | Exact named async fs imports for four Workhub-observed operations |
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
 | Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
 | Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #9, #10, #24 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |

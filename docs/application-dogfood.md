@@ -669,6 +669,14 @@ double assertion remain explicit parity failures. Source/span/owner/observation
 tampering is rejected. This does not prove rejection handling or arbitrary
 thenable behavior.
 
+The `corsa-workhub-fs-directory.ts` corpus is derived from Workhub archive,
+search, items-log, and report-writer modules. Exact named
+`node:fs/promises` imports classify `access` and `readdir` as `FsRead`, then
+`mkdir` and `appendFile` as `FsWrite`, preserving all four source-ordered
+operation records. Same-spelled locals and local-module imports remain
+effect-free, and builtin-key tampering fails. This evidence does not cover sync
+filesystem APIs, compound operations such as `copyFile`, or path permissions.
+
 P2.31 adds `cfg-bounded-retry-backoff.ts`, a realistic retry loop that doubles
 one delay while decrementing a retry counter. The function's inline Uneffect
 contract states `0 <= retries <= 8`; analysis records that exact source span,

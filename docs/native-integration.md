@@ -99,6 +99,14 @@ import specifier and module/export pair; it does not claim identity with the
 underlying `@types/node` declaration. Same-spelled local declarations and
 local-module imports remain effect-free. Tampering with the module/export atom
 sets `checkerMetadataEquivalent` to false.
+The Workhub directory/archive extension uses the same exact named-import
+identity rule for `access` and `readdir` as `FsRead`, and for `appendFile` and
+`mkdir` as `FsWrite`. Ordered evidence retains all four operations even though
+the normalized function effect set contains only two atoms. Same-spelled local
+bindings and local-module imports remain effect-free, and builtin-key tampering
+fails metadata parity. Sync `node:fs`, namespace/default/CommonJS forms,
+`copyFile`'s compound read/write semantics, other operations, and path-scope
+inference remain outside this slice.
 The completed direct-await slice additionally emits source-ordered Promise records
 when a resolved call is the direct operand of an `await` in the exported owner.
 Each record binds the numeric owner, exact source text, UTF-8 call span, and

@@ -2138,13 +2138,15 @@ Corsa checker inferred-effect handoff (2026-08-29, Apple Silicon, one sample
 per case):
 
 - `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`
-- inferred `Console` fixture exported and normalized: 637.48 ms
+- inferred `Console` fixture exported and normalized: 672.38 ms
 - Workhub-shaped `FsRead`/`Fetch`/`FsWrite` fixture exported and normalized:
-  640.86 ms
+  658.23 ms
 - Workhub-shaped single-`if` conditional-await fixture exported and normalized:
-  641.33 ms
+  659.06 ms
 - Workhub-shaped direct Promise-return fixture exported and normalized:
-  643.04 ms
+  674.24 ms
+- Workhub-shaped directory/append filesystem fixture exported and normalized:
+  636.83 ms
 
 This is an end-to-end latency observation, not a throughput claim: it includes
 temporary project creation, `corsa-oxlint` plus `tsgo`, a TypeScript reference
@@ -2157,3 +2159,7 @@ the single-enclosing-`if` case adds one owner-qualified condition and polarity;
 the direct-return case adds plain and singly asserted Promise calls. Conditional
 returns, nested assertions, loop, catch, and other Promise observation families
 remain outside it.
+The directory/append case adds four exact named async-fs operations whose
+ordered evidence projects to the two-atom `FsRead | FsWrite` set. Sync,
+namespace, compound read/write, and path-scoped filesystem semantics are not
+measured.
