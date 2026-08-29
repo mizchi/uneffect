@@ -26,10 +26,10 @@ not a suitable single implementation branch.
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
-| 2 — Specification expressiveness | #47 (inside #25), #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
+| 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 24–47 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 13 open Issues / 11 non-overlapping epics | **51–102 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **51–102 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -68,10 +68,10 @@ inside the unchanged #5 epic range rather than added to the total.
 timeout and long integration wall time and closed after two independent green
 remote runs retained all three timing artifacts.
 
-#47 is the active bounded child of #25. Its 1–2 engineer-week planning estimate
-is already contained in #25's 3–8 week epic range and is therefore not added to
-the total. Worktree progress is not counted as delivered until the Issue's
-negative controls, benchmark, documentation, local suite, and remote CI pass.
+#47 is a completed bounded child of #25. Its 1–2 engineer-week planning estimate
+was contained in #25's epic range and was not added to the total. It closed
+after certificate-binding negative controls, benchmark, documentation, the full
+local suite, and remote CI passed.
 
 There are three useful planning numbers:
 
@@ -227,19 +227,18 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #47 bounded self-affine retry backoff (child of #25) | M | 1–2 weeks | Bind the exact finite precondition and recurrence metadata, then prove the bounded summary | Preventing weakened or tampered assumptions from being mistaken for an unconditional proof |
-| 2 | #25 general CFG values | L | 3–8 weeks inclusive of #47 | Complete #47, then select the next application-backed bounded child | Value conflict, widening, recurrence, and irreducible control |
-| 3 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
-| 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
-| 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Select the next bounded child after completed #42/#43/#44/#45 | Collection semantics, broader correlated invariants, wider finite universes, and external trace interoperability |
-| 6 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
-| 7 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
-| 8 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
-| 9 | #8 native Corsa parity | L | 4–7 weeks | Type-aware inferred-effect parity for a small fixture corpus | Corsa API maturity and source/type identity mapping |
-| 10 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
-| 11 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
-| 12 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
-| 13 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
+| 1 | #25 general CFG values | L | 3–8 weeks | Select the next application-backed bounded child after completed #47 | Value conflict, widening, recurrence, and irreducible control |
+| 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
+| 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
+| 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Select the next bounded child after completed #42/#43/#44/#45 | Collection semantics, broader correlated invariants, wider finite universes, and external trace interoperability |
+| 5 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
+| 6 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
+| 7 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
+| 8 | #8 native Corsa parity | L | 4–7 weeks | Type-aware inferred-effect parity for a small fixture corpus | Corsa API maturity and source/type identity mapping |
+| 9 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
+| 10 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
+| 11 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
+| 12 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
 
 ## Recommended delivery checkpoints
 
@@ -304,7 +303,7 @@ separates committed `main` from worktree progress.
 | Completed slice | #42 total finite Map lookup | completed in the current delivery | Total missing-key lookup agrees across Quint/runtime/Z3 for the bounded literal-key fragment; dynamic-key extraction remains an explicit non-proof. |
 | Completed slice | #43 proved dynamic Map key domain | completed in the current delivery | Independently prove one immutable finite-Set membership invariant before decoding a state-derived lookup key. |
 | Completed slice | #44 multiple proved Map key domains | completed in the current delivery | Prove every direct scalar selector separately before decoding one combined finite observation universe. |
-| Active slice | #47 bounded self-affine retry backoff | 1–2 engineer-weeks, included in #25 | Prove one finite geometric summary only under an exact checked `requires` bound; fail closed for missing, oversized, or certificate-mismatched assumptions. |
+| Completed slice | #47 bounded self-affine retry backoff | completed within #25 | One finite geometric summary is proved only under an exact checked `requires` bound; missing, oversized, or certificate-mismatched assumptions fail closed. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
@@ -319,8 +318,8 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** finish #47's bounded, application-backed retry
-  recurrence handoff without widening it into general exponentiation.
+- **Next implementable result:** select one bounded child from #25, #2, or #5
+  only after an application-backed Red case identifies a reusable proof boundary.
 - **Next foundation checkpoint:** #26, #27, #28, #29, #30, #31, #32, #33,
   #34, #35, #36, #37, and #38 are complete; completing parent #25/#24/#8 remains
   13–27 engineer-weeks.
@@ -329,7 +328,7 @@ closed bounded epic.
   both required for an initial useful release.
 - **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
   evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 13 Issues / 11 non-overlapping epics and 51–102
+- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 51–102
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

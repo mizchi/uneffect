@@ -493,7 +493,7 @@ same property is proved for arbitrary TypeScript.
   ranking steps remain unsupported. General self-amplification and unbounded
   geometric/exponential summaries remain explicit non-proofs.
 
-- The active P2.31 slice admits one deliberately finite self-affine exception.
+- The completed P2.31 slice admits one deliberately finite self-affine exception.
   A direct unit-countdown loop may carry exactly one integer update `x *= k`
   when the annotated function has the exact normalized precondition
   `requires counter >= 0 && counter <= N`, `k` is a safe integer greater than
