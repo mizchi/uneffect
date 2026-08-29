@@ -1,5 +1,22 @@
 # Application dogfood
 
+## Datadog wrapper and static CDN boundary
+
+`examples/dogfood/datadog-browser-wrapper.ts` applies the existing
+`DatadogOnce` cardinality validator to a realistic
+`datadogRum.addAction` wrapper. A conditional call specializes to an exact
+upper bound of one; sequential duplicate calls and unresolved callback paths
+remain negative controls in the validator suite. A separate exact-version
+registry test binds `@datadog/browser-rum@6.0.0` to one reviewed intake URL.
+That registry entry is a trusted assumption about the SDK, not verification of
+its implementation.
+
+`examples/dogfood/static-cdn-script-loader.ts` exercises the fixed external
+script fragment with a literal HTTPS URL, SRI token, CORS mode, and direct DOM
+insertion. Its inferred `ScriptLoad`, `ExecuteExternalCode`, and `Net` effects
+describe the host integration boundary only. Downloaded code, redirects, CSP,
+and subsequently loaded code are not verified.
+
 Uneffect is periodically run against unmodified application code outside this
 repository. These observations are compatibility probes, not claims that the
 whole application was verified. Each entry records the source revision, chosen

@@ -587,6 +587,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add the initial typed builtin overlay entry for `node:os.tmpdir() -> Path<"$TEMP">`.
   - [x] Teach the TypeChecker frontend adapter to apply builtin return refinements at call sites.
 - [x] Add a registry for builtin and user-defined effect schemas.
+- [ ] Add `GlobalVarsRead<KeySet>` and `GlobalVarsWrite<KeySet>` with explicit realm identity, TypeChecker-resolved `globalThis`/host-global aliases, finite literal-key containment, and dynamic-key fail-closed behavior; do not equate declaration merging, module globals, Worker/iframe globals, or same-spelled local objects without evidence. ([#8](https://github.com/mizchi/uneffect/issues/8))
 - [x] Diagnose unknown effect names; warning in gradual mode and error in strict mode.
 - [x] Implement Fetch as the first scoped-effect vertical slice.
   - [x] Infer `GET` for a missing method.
@@ -1420,3 +1421,10 @@ just formal-exhaustive # requires Java/Apalache
 just package-check
 just dogfood
 ```
+## Semantics modules
+
+- [x] Add fail-closed `uneffect-module/v1` manifests for namespaced effect schemas and reviewed registry overlays, with an evidence digest ledger.
+
+## Trusted Types
+
+- [x] Add provenance-based checks for the initial W3C `TrustedScript` sink fragment without treating TypeScript casts as trust evidence.

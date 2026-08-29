@@ -348,3 +348,56 @@ Z3 is invoked only for functions carrying logical contracts. Temporal interleavi
 - Transferable objects require flow-sensitive state, not only a may-effect set.
 - Redirects, URL canonicalization, and dynamic request construction complicate Fetch scopes.
 - `any` and unresolved calls must never be interpreted as an empty effect.
+
+## Static external scripts
+
+The first external-code fragment recognizes one `const` created by the
+TypeChecker-resolved `document.createElement("script")`, direct literal writes
+to `src`, `integrity`, `crossOrigin`, and `type`, followed by the
+TypeChecker-resolved `Node.appendChild`. In that exact shape it emits:
+
+```text
+ScriptLoad<Classic | Module, UrlSet>
+ExecuteExternalCode<UrlSet, IntegritySet>
+Net<HostSet>
+```
+
+The integrity value must be an SRI `sha256-`, `sha384-`, or `sha512-` token and
+the loader must select `anonymous` or `use-credentials`. A dynamic URL,
+missing or malformed integrity, or missing CORS mode is retained as an
+`Unknown<...>` capability argument and blocks `no-unknown` assurance. The
+effect proves only the application's loading authority and content identity;
+it does not prove the downloaded program's behavior. Aliases, element escape,
+event timing, redirects, CSP, Trusted Types, dynamically inserted child
+scripts, and script execution order remain outside this first fragment.
+
+## Browser storage permissions
+
+Browser persistence uses four zero-argument permissions in the initial
+fragment:
+
+```text
+CookieRead | CookieWrite | LocalStorageRead | LocalStorageWrite
+```
+
+The TypeChecker adapter recognizes `Document.cookie` reads and writes, plus
+`Storage.getItem`, `key`, `length`, `setItem`, `removeItem`, and `clear` by
+their `lib.dom.d.ts` symbol identity. `localStorage` and `sessionStorage` share
+the `LocalStorage*` permission family for now because both expose the Web
+Storage API and origin-scoped persistent browser state. A same-named method on
+a user-defined interface does not acquire these effects.
+
+Cookie name/path/domain attributes and storage key sets are not yet authority
+arguments. The current effects answer whether the boundary may read or write
+the store, not which individual record is accessible.
+
+## Network transport evidence
+
+`Net<HostSet>` remains the common permission lattice. Program effect summaries
+add a separate `networkBoundaries` ledger whose entries retain `via`, target
+URL, normalized host authority, exact/unknown evidence, and source location.
+The implemented producers currently distinguish direct `fetch` and the static
+script-loader fragment. The schema reserves `beacon` and `websocket`, but their
+builtin producers are not implemented yet. This ledger is provenance for a
+permission; it is not a separate authority that could accidentally diverge
+from `Net` containment.

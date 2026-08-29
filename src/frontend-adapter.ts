@@ -17,15 +17,23 @@ export interface ResolvedPropertySite {
   span: SourceSpan;
   operation: Extract<BuiltinOperation, { kind: "dom-property" }>;
 }
+export interface ResolvedEffectPropertySite {
+  symbol: BuiltinSymbolKey;
+  span: SourceSpan;
+  operation: Extract<BuiltinOperation, { kind: "effect-property" }>;
+}
 
 export interface FrontendSymbolAdapter {
   resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined;
   resolveProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedPropertySite | undefined;
+  resolveEffectProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedEffectPropertySite | undefined;
   resolveDomReceiverRegion(expression: ts.Expression): ts.Expression | undefined;
   isDomReceiver(expression: ts.Expression): boolean;
   mayInvokeUserCode(node: ts.Node): boolean;
   ownershipKind(expression: ts.Expression): "detached" | "transferred" | "locked" | "shared";
   thrownErrorType(expression: ts.Expression): string;
+  resolveConstInitializer(expression: ts.Expression): ts.Expression | undefined;
+  isSameReference(left: ts.Expression, right: ts.Expression): boolean;
 }
 
 function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
@@ -272,6 +280,17 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     };
   }
 
+  resolveEffectProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedEffectPropertySite | undefined {
+    const literalName = ts.isElementAccessExpression(access) && access.argumentExpression && ts.isStringLiteralLike(access.argumentExpression)
+      ? access.argumentExpression.text : undefined;
+    const lookup = ts.isPropertyAccessExpression(access) ? access.name
+      : literalName === undefined ? undefined : this.#checker.getPropertyOfType(this.#checker.getTypeAtLocation(access.expression), literalName)?.valueDeclaration;
+    const symbol = lookup ? targetSymbol(this.#checker, lookup) : undefined;
+    const contract = symbol ? this.#resolveSymbolContract(symbol) : undefined;
+    if (contract?.operation?.kind !== "effect-property") return undefined;
+    return { symbol: contract.symbol, span: { start: access.getStart(), end: access.getEnd() }, operation: contract.operation };
+  }
+
   resolveDomReceiverRegion(original: ts.Expression): ts.Expression | undefined {
     const seen = new Set<ts.Symbol>();
     const resolve = (value: ts.Expression): ts.Expression | undefined => {
@@ -353,6 +372,21 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     const type = this.#checker.getTypeAtLocation(expression);
     if (!this.#errorType || !this.#checker.isTypeAssignableTo(type, this.#errorType)) return "unknown";
     return this.#checker.typeToString(type, expression, ts.TypeFormatFlags.NoTruncation);
+  }
+
+  resolveConstInitializer(expression: ts.Expression): ts.Expression | undefined {
+    if (!ts.isIdentifier(expression)) return undefined;
+    const declaration = targetSymbol(this.#checker, expression)?.valueDeclaration;
+    return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+      && ts.isVariableDeclarationList(declaration.parent)
+      && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+      ? declaration.initializer : undefined;
+  }
+
+  isSameReference(left: ts.Expression, right: ts.Expression): boolean {
+    if (!ts.isIdentifier(left) || !ts.isIdentifier(right)) return false;
+    const leftSymbol = targetSymbol(this.#checker, left), rightSymbol = targetSymbol(this.#checker, right);
+    return leftSymbol !== undefined && leftSymbol === rightSymbol;
   }
 }
 

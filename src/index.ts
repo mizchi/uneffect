@@ -193,6 +193,10 @@ export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
 export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract } from "./builtin-contracts.js";
 export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "./registry-config.js";
+export { installUneffectModules, loadUneffectModules, parseUneffectModuleManifest, uneffectModuleSchema, UneffectModuleError } from "./modules.js";
+export type { UneffectModuleLedgerEntry, UneffectModuleManifest } from "./modules.js";
+export { analyzeTrustedScriptSinks } from "./trusted-types.js";
+export type { TrustedTypesDiagnostic } from "./trusted-types.js";
 export {
   declarationTransformEvidenceSchema, declarationTransformManifestSchema,
   DeclarationTransformManifestError, loadDeclarationTransformManifest,

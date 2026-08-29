@@ -46,6 +46,28 @@ fn builtin_capability_domains_come_from_a_versioned_schema() {
 
     let fs_read = builtin_effect_schema("FsRead").unwrap();
     assert_eq!(fs_read.arguments(), &[AtomDomain::Path]);
+    assert_eq!(
+        builtin_effect_schema("ScriptLoad").unwrap().arguments(),
+        &[AtomDomain::Token, AtomDomain::Url]
+    );
+    assert_eq!(
+        builtin_effect_schema("ExecuteExternalCode")
+            .unwrap()
+            .arguments(),
+        &[AtomDomain::Url, AtomDomain::Literal]
+    );
+    assert!(
+        builtin_effect_schema("CookieRead")
+            .unwrap()
+            .arguments()
+            .is_empty()
+    );
+    assert!(
+        builtin_effect_schema("LocalStorageWrite")
+            .unwrap()
+            .arguments()
+            .is_empty()
+    );
     assert!(builtin_effect_schema("app.Database").is_none());
 }
 

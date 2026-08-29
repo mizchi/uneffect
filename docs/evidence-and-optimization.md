@@ -70,7 +70,7 @@ bundlers, and post-emit transforms do not satisfy that stronger claim.
 The composition status is deliberately non-vacuous: zero links and zero
 blockers is `not-applicable`, not `verified`.
 
-`uneffect evidence file.ts` emits `schemaVersion: 3`. Each summary retains its
+`uneffect evidence file.ts` emits `schemaVersion: 4`. Each summary retains its
 stable Program identity, source file, UTF-16 span, formatted concrete effects,
 and evidence status; polymorphic Generator consumers
 also retain `iteratorEffectParameters` and their formatted

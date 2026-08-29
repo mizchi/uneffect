@@ -72,8 +72,13 @@ export interface DomPropertyBuiltinOperation {
   mutatesWriteRegionOnWrite?: boolean;
   invokesUserCodeOnWrite?: boolean;
 }
+export interface EffectPropertyBuiltinOperation {
+  kind: "effect-property";
+  readEffect?: string;
+  writeEffect?: string;
+}
 
-export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | InlineCallbackBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | DomPropertyBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
+export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | InlineCallbackBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | DomPropertyBuiltinOperation | EffectPropertyBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
 export interface CallableResultContract {
   /** Operation performed when the returned function is called. Omission means zero reviewed authority. */
@@ -123,6 +128,18 @@ export interface BuiltinContractRegistry {
   contracts: readonly BuiltinContract[];
   moduleInitializations: readonly ModuleInitializationContract[];
   declarations: readonly DeclarationFingerprint[];
+  /** Declarative semantic modules that contributed trusted analyzer inputs. */
+  modules?: readonly SemanticModuleLedgerEntry[];
+}
+
+export interface SemanticModuleLedgerEntry {
+  name: string;
+  version: string;
+  namespace: string;
+  evidence: "trusted";
+  trustOwner: string;
+  trustReason: string;
+  digest: string;
 }
 
 export interface BuiltinContractRegistryExtension {
@@ -153,6 +170,7 @@ export function extendBuiltinContractRegistry(
     declarations: extension.declarations
       ? [...extension.declarations, ...base.declarations.filter((item) => !declarationIds.has(item.library))]
       : base.declarations,
+    ...(base.modules ? { modules: base.modules } : {}),
   };
 }
 
@@ -450,6 +468,12 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       symbol: { module: "node:child_process", export: name }, operation: { kind: "scoped-effect", effect: "Run" },
     })),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
+    ...["getItem", "key"].map((name): BuiltinContract => trusted({
+      symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageRead" },
+    })),
+    ...["setItem", "removeItem", "clear"].map((name): BuiltinContract => trusted({
+      symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageWrite" },
+    })),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
       ...trusted({
         symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" },
@@ -486,6 +510,12 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     })),
     ...domBuiltinContracts(),
     ...domPropertyBuiltinContracts(),
+    trusted({ symbol: { module: "lib.dom", export: "Document#cookie" }, operation: {
+      kind: "effect-property", readEffect: "CookieRead", writeEffect: "CookieWrite",
+    } }),
+    trusted({ symbol: { module: "lib.dom", export: "Storage#length" }, operation: {
+      kind: "effect-property", readEffect: "LocalStorageRead",
+    } }),
   ],
 };
 
@@ -608,6 +638,11 @@ function domPropertyBuiltinContracts(): BuiltinContract[] {
       kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"],
       mutatesReceiverOnWrite: true,
     }],
+    ...["src", "integrity", "crossOrigin", "type", "async", "defer", "referrerPolicy", "nonce"]
+      .map((name): [string, DomPropertyBuiltinOperation] => [`HTMLScriptElement#${name}`, {
+        kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"],
+        mutatesReceiverOnWrite: true,
+      }]),
   ];
   return entries.map(([key, operation]) => trusted({ symbol: { module: "lib.dom", export: key }, operation }));
 }

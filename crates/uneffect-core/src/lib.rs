@@ -222,7 +222,16 @@ impl EffectSchemaRegistry {
     pub fn with_builtins() -> Self {
         let mut registry = Self::default();
         for (name, arguments) in [
+            ("CookieRead", vec![]),
+            ("CookieWrite", vec![]),
+            ("LocalStorageRead", vec![]),
+            ("LocalStorageWrite", vec![]),
             ("Fetch", vec![AtomDomain::Token, AtomDomain::Url]),
+            ("ScriptLoad", vec![AtomDomain::Token, AtomDomain::Url]),
+            (
+                "ExecuteExternalCode",
+                vec![AtomDomain::Url, AtomDomain::Literal],
+            ),
             ("Dom", vec![AtomDomain::Token, AtomDomain::Region]),
             ("FsRead", vec![AtomDomain::Path]),
             ("FsWrite", vec![AtomDomain::Path]),

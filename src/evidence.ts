@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { generateOwnershipObligationQuint, generateOwnershipObligationSmt, type OwnershipGuardObligation } from "./async-safety.js";
-import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
+import { builtinContractRegistry, type BuiltinContractRegistry, type SemanticModuleLedgerEntry } from "./builtin-contracts.js";
 import { formatEffect, parseEffectExpression, unknownCapabilityReasons } from "./capabilities.js";
 import type { EffectSummary, EvidenceStatus } from "./effects.js";
 import { executeZ3, type Z3Backend, type Z3ExecutionResult } from "./z3.js";
@@ -23,7 +23,7 @@ export interface EvidenceArtifactSummary {
   iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
 }
 export interface EvidenceArtifact {
-  schemaVersion: 3;
+  schemaVersion: 4;
   uneffectVersion: string;
   compilerRevision: string;
   tsconfigHash: string;
@@ -32,6 +32,8 @@ export interface EvidenceArtifact {
   /** Hashes every non-declaration source that contributed to Program-wide analysis. */
   sourceHashes: Record<string, string>;
   builtinContractDigest: string;
+  /** Trusted semantic inputs; these are dependencies of the claim, not proofs. */
+  modules: readonly SemanticModuleLedgerEntry[];
   summaries: EvidenceArtifactSummary[];
 }
 
@@ -45,6 +47,7 @@ export type EvidenceArtifactValidationReason =
   | "source-hash-mismatch"
   | "source-hashes-mismatch"
   | "builtin-contract-mismatch"
+  | "module-ledger-mismatch"
   | "summary-mismatch";
 
 export interface EvidenceArtifactValidation {
@@ -86,7 +89,7 @@ export function createEvidenceArtifact(
     .sort((left, right) => left.fileName.localeCompare(right.fileName))
     .map((item) => [item.fileName, digest(item.text)]));
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     uneffectVersion,
     compilerRevision: ts.version,
     tsconfigHash: digest(JSON.stringify(program.getCompilerOptions(), Object.keys(program.getCompilerOptions()).sort())),
@@ -94,6 +97,7 @@ export function createEvidenceArtifact(
     sourceHash: digest(source.text),
     sourceHashes,
     builtinContractDigest: builtinContractDigest(registry),
+    modules: registry.modules ?? [],
     summaries: summaries.map((summary) => {
       if (!summary.id || !summary.fileName || !summary.span) {
         throw new Error(`cannot create proof evidence for ${summary.functionName} without Program source identity`);
@@ -149,6 +153,7 @@ export function validateEvidenceArtifact(
   if (actual.sourceHash !== expected.sourceHash) reasons.push("source-hash-mismatch");
   if (canonicalJson(actual.sourceHashes) !== canonicalJson(expected.sourceHashes)) reasons.push("source-hashes-mismatch");
   if (actual.builtinContractDigest !== expected.builtinContractDigest) reasons.push("builtin-contract-mismatch");
+  if (canonicalJson(actual.modules) !== canonicalJson(expected.modules)) reasons.push("module-ledger-mismatch");
   if (canonicalJson(actual.summaries) !== canonicalJson(expected.summaries)) reasons.push("summary-mismatch");
   return { valid: reasons.length === 0, reasons };
 }

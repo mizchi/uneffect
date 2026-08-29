@@ -27,7 +27,12 @@ export type AtomDomain = "token" | "literal" | "url" | "path" | "host" | "env" |
 export interface EffectSchema { name: string; version: number; arguments: readonly AtomDomain[] }
 
 const schemas = new Map<string, EffectSchema>([
-  ...["Console", "Storage", "Random", "Timer", "InvokeUserCode"].map((name): [string, EffectSchema] => [name, { name, version: 1, arguments: [] }]),
+  ...[
+    "Console", "Storage", "Random", "Timer", "InvokeUserCode",
+    "CookieRead", "CookieWrite", "LocalStorageRead", "LocalStorageWrite",
+  ].map((name): [string, EffectSchema] => [name, { name, version: 1, arguments: [] }]),
+  ["ScriptLoad", { name: "ScriptLoad", version: 1, arguments: ["token", "url"] }],
+  ["ExecuteExternalCode", { name: "ExecuteExternalCode", version: 1, arguments: ["url", "literal"] }],
   ["Fetch", { name: "Fetch", version: 1, arguments: ["token", "url"] }],
   ["Dom", { name: "Dom", version: 1, arguments: ["token", "region"] }],
   ["Clone", { name: "Clone", version: 1, arguments: ["region"] }],
@@ -60,6 +65,11 @@ export function unknownCapabilityReasons(effect: Effect): string[] {
 
 export function registerEffectSchema(schema: EffectSchema): void {
   schemas.set(schema.name, { name: schema.name, version: schema.version, arguments: [...schema.arguments] });
+}
+
+/** Internal transaction support for declarative module installation. */
+export function unregisterEffectSchema(name: string): void {
+  schemas.delete(name);
 }
 
 export function splitTopLevel(input: string, separator: string): string[] {

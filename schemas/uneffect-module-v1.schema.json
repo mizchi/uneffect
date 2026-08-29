@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/schemas/uneffect-module-v1.schema.json",
+  "title": "Uneffect declarative semantics module",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name", "version", "namespace", "evidence", "trustOwner", "trustReason", "effectSchemas", "registry"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "schema": { "const": "uneffect-module/v1" },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "namespace": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$" },
+    "evidence": { "const": "trusted" },
+    "trustOwner": { "type": "string", "minLength": 1 },
+    "trustReason": { "type": "string", "minLength": 1 },
+    "effectSchemas": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "version", "arguments"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "version": { "type": "integer", "minimum": 1 },
+          "arguments": { "type": "array", "items": { "enum": ["token", "literal", "url", "path", "host", "env", "sys", "region"] } }
+        }
+      }
+    },
+    "registry": { "$ref": "./uneffect-registry-v1.schema.json" }
+  }
+}

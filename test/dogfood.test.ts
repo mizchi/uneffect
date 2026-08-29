@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
-import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
+import { analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
 import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
@@ -19,6 +19,7 @@ import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, 
 import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
+import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -28,6 +29,42 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("checks the fixed URL and SRI boundary of a static CDN script loader", () => {
+    const fileName = "examples/dogfood/static-cdn-script-loader.ts";
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+    });
+    const source = program.getSourceFile(fileName)!;
+    expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+    expect(analyzeProgramEffects(program).summaries.find((summary) => summary.functionName === "loadAnalyticsScript")?.effects)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "capability", name: "ScriptLoad" }),
+        expect.objectContaining({ kind: "capability", name: "ExecuteExternalCode" }),
+        expect.objectContaining({ kind: "capability", name: "Net" }),
+      ]));
+  });
+
+  it("specializes the Datadog wrapper as at-most-once", async () => {
+    const source = readFileSync("examples/dogfood/datadog-browser-wrapper.ts", "utf8");
+    const validator = defineUneffectValidator({
+      name: "DatadogOnce", version: "browser-rum-wrapper/v1", rule: "at-most-once",
+      sink: { module: "@datadog/browser-rum", export: "datadogRum.addAction" },
+      specialization: { kind: "call-cardinality", maximum: 1 },
+    });
+    const result = await analyzeUneffectProject({
+      files: { "src/datadog-browser-wrapper.ts": source }, validators: [validator],
+      entrypoint: "reportCriticalFailure",
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.entrypoint).toMatchObject({ functionName: "reportCriticalFailure", sinkMaximum: 1 });
+    expect(result.summaries).toContainEqual(expect.objectContaining({
+      functionName: "reportCriticalFailure",
+      specializations: [expect.objectContaining({ evidence: "verified", inferredMaximum: "1" })],
+    }));
+  });
+
   it("models a Workhub-shaped CLI launch without misclassifying its nested await as TLA", () => {
     const fileName = "examples/dogfood/workhub-main-catch.ts";
     const program = ts.createProgram([fileName], {

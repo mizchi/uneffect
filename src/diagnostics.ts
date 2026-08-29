@@ -5,6 +5,7 @@ import type { CheckResult } from "./check.js";
 import type { ContractDiagnostic } from "./contracts.js";
 import type { EffectDiagnostic } from "./effects.js";
 import type { ReactSemanticDiagnostic } from "./react-semantics.js";
+import type { TrustedTypesDiagnostic } from "./trusted-types.js";
 
 export type DiagnosticSeverity = "error" | "warning";
 /** One explanation line under a diagnostic: `because`, `counterexample`, `evaluation`, `hint`, ... */
@@ -42,7 +43,7 @@ export function fromTypeScriptDiagnostic(
     ],
   };
 }
-export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TypeScriptCheckerDiagnostic;
+export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TrustedTypesDiagnostic | TypeScriptCheckerDiagnostic;
 
 export interface ReportedDiagnostic {
   code: string;
@@ -101,6 +102,7 @@ const hints: Readonly<Record<string, string>> = {
   "typescript/syntax": "fix the TypeScript syntax error before relying on Uneffect evidence",
   "typescript/semantic": "fix the TypeScript type error or correct the project inputs before relying on TypeChecker-derived evidence",
   "typescript/options": "fix the TypeScript compiler configuration before running Uneffect assurance",
+  "trusted-types/untrusted-script-sink": "create the value with a reviewed trustedTypes policy and pass the resulting TrustedScript without casting it to or from string",
 };
 
 export function diagnosticHint(code: string): string | undefined { return hints[code]; }
@@ -111,6 +113,7 @@ function severityOf(diagnostic: CheckerDiagnostic): DiagnosticSeverity {
 
 function codeOf(diagnostic: CheckerDiagnostic): string {
   if ("domain" in diagnostic && diagnostic.domain === "typescript") return `typescript/${diagnostic.kind}`;
+  if ("domain" in diagnostic && diagnostic.domain === "trusted-types") return `trusted-types/${diagnostic.kind}`;
   if ("component" in diagnostic) return `react/${diagnostic.kind}`;
   if ("effect" in diagnostic) return `effect/${diagnostic.kind}`;
   if ("clause" in diagnostic) return diagnostic.clause === "unsupported" ? "contract/unsupported" : `contract/${diagnostic.clause}`;

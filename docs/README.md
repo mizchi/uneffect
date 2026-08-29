@@ -16,6 +16,8 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Gradual annotations](./gradual-annotations.md): comment marker, grammar, attachment, contracts, and optional Valibot assertions.
 - [Builtin semantic contracts](./builtin-contracts.md): scoped Fetch authority, DOM operations, Worker messaging, transfer ownership, and extensible overlays.
 - [Module initialization order](./module-initialization-order.md): source-mapped ESM dependency, top-level-await, rejection, and throw ordering evidence.
+- [Semantics modules](./semantics-modules.md): declarative, namespaced effect extensions and their trusted evidence boundary.
+- [Trusted Types](./trusted-types.md): provenance checks for the experimental W3C `TrustedScript` sink fragment.
 - [Deno-compatible permissions](./deno-permissions.md): filesystem, network, environment, subprocess, system, FFI, and import authority semantics.
 - [Formal models](./formal-models.md): Z3 boundary, Quint invalidation model, ownership obligations, and verification ledger.
 - [Real-time models](./real-time-models.md): logical clocks, guarded actions, deadlines, and hard-real-time boundaries.

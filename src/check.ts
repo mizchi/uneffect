@@ -8,6 +8,7 @@ import { analyzeReactProgram } from "./react-semantics.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 import { collectAssumptionLedger, type AssumptionLedger } from "./assumptions.js";
+import { analyzeTrustedScriptSinks } from "./trusted-types.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -105,6 +106,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     artifacts.push(...contracts.artifacts);
     const sourceFile = program.getSourceFile(fileName);
     if (sourceFile) {
+      diagnostics.push(...analyzeTrustedScriptSinks(program, sourceFile));
       diagnostics.push(...(react.get(sourceFile.fileName)?.diagnostics ?? []));
       diagnostics.push(...analyzeAsyncSafetyInProgram(program, sourceFile).diagnostics);
     }

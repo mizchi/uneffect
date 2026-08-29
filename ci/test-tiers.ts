@@ -17,6 +17,7 @@ export const ciTestTiers = {
     "test/frontend-parity.test.ts",
     "test/model-replay.test.ts",
     "test/module-initialization.test.ts",
+    "test/modules.test.ts",
     "test/numeric-types.test.ts",
     "test/project-optimizer.test.ts",
     "test/quicksort.test.ts",
@@ -29,6 +30,7 @@ export const ciTestTiers = {
     "test/temporal-expressions.test.ts",
     "test/test-timeouts.test.ts",
     "test/todo-consistency.test.ts",
+    "test/trusted-types.test.ts",
     "test/workspace-module-initialization.test.ts",
   ],
   z3: [

@@ -5,6 +5,7 @@ import { CliUsageError } from "./cli-support.js";
 import { formatCheckEvidence, formatDiagnostics } from "./diagnostics.js";
 import { assessCheckAssurance, formatAssuranceAssessment, type AssuranceProfile } from "./assurance.js";
 import { loadBuiltinRegistryConfig } from "./registry-config.js";
+import { loadUneffectModules } from "./modules.js";
 import { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
 import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
@@ -20,13 +21,14 @@ import {
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--module-entry <entry.ts>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
     "--evidence   also print the proved obligations and the inferred effect of every function",
     "--assurance  fail on non-proof evidence: no-unknown, declared, or verified",
     "--config     load a versioned caller-owned semantic registry",
+    "--semantics-module  load a declarative trusted semantics module; repeat to compose modules",
     "--declaration-transforms  bind generated TypeScript to exact spans in non-TypeScript sources",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
     "--module-entry  compose the supported module-initialization order from this workspace entry",
@@ -42,6 +44,7 @@ export const checkCommand: CliCommand = {
       infer: { type: "boolean" }, strict: { type: "boolean" }, evidence: { type: "boolean" },
       assurance: { type: "string" },
       config: { type: "string" },
+      "semantics-module": { type: "string", multiple: true },
       "declaration-transforms": { type: "string" },
       project: { type: "string" },
       "module-entry": { type: "string" },
@@ -65,7 +68,12 @@ export const checkCommand: CliCommand = {
       throw new CliUsageError(`unknown assurance profile ${String(assurance)}; expected no-unknown, declared, or verified`);
     }
     let builtinRegistry;
-    try { builtinRegistry = values.config === undefined ? undefined : await loadBuiltinRegistryConfig(String(values.config)); }
+    try {
+      builtinRegistry = values.config === undefined ? undefined : await loadBuiltinRegistryConfig(String(values.config));
+      if (values["semantics-module"] !== undefined) {
+        builtinRegistry = (await loadUneffectModules(values["semantics-module"] as string[], builtinRegistry)).registry;
+      }
+    }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
     let declarationTransforms;
     try { declarationTransforms = values["declaration-transforms"] === undefined

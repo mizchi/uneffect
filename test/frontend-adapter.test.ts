@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import ts from "typescript";
@@ -10,6 +10,159 @@ import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-sa
 import { analyzeUneffectProject } from "../src/custom-validators.js";
 
 describe("TypeChecker symbol adapter", () => {
+  it("infers fixed external script loading only after a script element is inserted", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-static-script-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        /* uneffect: effect Dom<Create, typeof document> | Dom<PropertyWrite, typeof script> | Dom<NodeWrite, typeof document.head> | Mutate<typeof document.head> | InvokeUserCode | ScriptLoad<Classic, "https://cdn.example.com/sdk.js"> | ExecuteExternalCode<"https://cdn.example.com/sdk.js", "sha384-YWJj"> | Net<"cdn.example.com:443"> */
+        export function load() {
+          const script = document.createElement("script");
+          script.src = "https://cdn.example.com/sdk.js";
+          script.integrity = "sha384-YWJj";
+          script.crossOrigin = "anonymous";
+          document.head.appendChild(script);
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+      expect(analyzeProgramEffects(program).summaries.find((summary) => summary.functionName === "load")?.effects)
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ kind: "capability", name: "ScriptLoad" }),
+          expect.objectContaining({ kind: "capability", name: "ExecuteExternalCode" }),
+          expect.objectContaining({ kind: "capability", name: "Net" }),
+        ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps dynamic script URLs and missing integrity explicitly unknown", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dynamic-script-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        export function load(url: string) {
+          const script = document.createElement("script");
+          script.src = url;
+          document.head.appendChild(script);
+        }
+        export function conditional(flag: boolean) {
+          const script = document.createElement("script");
+          if (flag) script.src = "https://cdn.example.com/sdk.js";
+          script.integrity = "sha384-YWJj";
+          script.crossOrigin = "anonymous";
+          document.head.appendChild(script);
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const summary = analyzeProgramEffects(program).summaries.find((item) => item.functionName === "load")!;
+      expect(summary.effects).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "capability", name: "ScriptLoad", arguments: expect.arrayContaining([expect.objectContaining({ kind: "unknown", reason: "dynamic-script-url" })]) }),
+        expect.objectContaining({ kind: "capability", name: "ExecuteExternalCode", arguments: expect.arrayContaining([expect.objectContaining({ kind: "unknown", reason: "missing-script-integrity" })]) }),
+      ]));
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "conditional")?.effects)
+        .toContainEqual(expect.objectContaining({
+          kind: "capability", name: "ScriptLoad",
+          arguments: expect.arrayContaining([expect.objectContaining({ kind: "unknown", reason: "dynamic-script-url" })]),
+        }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("binds a Datadog sink contract to its exact package version and intake authority", () => {
+    const directory = mkdtempSync(join(process.cwd(), ".uneffect-datadog-contract-"));
+    const packageRoot = join(directory, "node_modules", "@datadog", "browser-rum");
+    const fileName = join(directory, "input.ts");
+    try {
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(join(packageRoot, "package.json"), JSON.stringify({
+        name: "@datadog/browser-rum", version: "6.0.0", types: "index.d.ts",
+      }));
+      writeFileSync(join(packageRoot, "index.d.ts"), `
+        export declare const datadogRum: { addAction(name: string, context?: object): void };
+      `);
+      writeFileSync(fileName, `
+        import { datadogRum } from "@datadog/browser-rum";
+        export function report() { datadogRum.addAction("critical_failure"); }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const registry = (version: string) => extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
+        symbol: { module: "@datadog/browser-rum", export: "datadogRum#addAction" },
+        runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
+        operation: { kind: "effect" as const, effect: "Fetch<POST, \"https://browser-intake-datadoghq.com/api/v2/**\">" },
+        trustReason: "reviewed Datadog wrapper delivery authority", trustOwner: "telemetry-platform",
+      }] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "report"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.1") }).summaries.find((item) => item.functionName === "report"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("tracks cookie and Web Storage reads and writes by DOM symbol identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-browser-storage-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        /* uneffect: effect CookieRead | CookieWrite */
+        export function cookies() { const before = document.cookie; document.cookie = "theme=dark"; return before }
+        /* uneffect: effect LocalStorageRead | LocalStorageWrite */
+        export function preferences() { const before = localStorage.getItem("theme"); localStorage.setItem("theme", "dark"); return before }
+        interface StorageLike { getItem(key: string): string | null; setItem(key: string, value: string): void }
+        /* uneffect: effect none */
+        export function shadowed(storage: StorageLike) { storage.getItem("theme"); storage.setItem("theme", "dark") }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "cookies")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind))
+        .toEqual(expect.arrayContaining(["CookieRead", "CookieWrite"]));
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "preferences")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind))
+        .toEqual(expect.arrayContaining(["LocalStorageRead", "LocalStorageWrite"]));
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "shadowed")?.effects).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("records network transport separately from the shared Net authority", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-network-via-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        export async function request() { await fetch("https://api.example.com/v1/users") }
+        export async function main() { await request() }
+        export function script() {
+          const node = document.createElement("script");
+          node.src = "https://cdn.example.com/sdk.js";
+          node.integrity = "sha384-YWJj";
+          node.crossOrigin = "anonymous";
+          document.head.appendChild(node);
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const summaries = analyzeProgramEffects(program).summaries;
+      expect(summaries.find((item) => item.functionName === "request")?.networkBoundaries)
+        .toContainEqual(expect.objectContaining({ via: "fetch", authority: "api.example.com:443", target: "https://api.example.com/v1/users" }));
+      expect(summaries.find((item) => item.functionName === "script")?.networkBoundaries)
+        .toContainEqual(expect.objectContaining({ via: "script", authority: "cdn.example.com:443", target: "https://cdn.example.com/sdk.js" }));
+      expect(summaries.find((item) => item.functionName === "main")?.networkBoundaries)
+        .toContainEqual(expect.objectContaining({ via: "fetch", authority: "api.example.com:443" }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("resolves a reviewed callable result and exposes its captured callbacks", () => {
     const directory = mkdtempSync(join(process.cwd(), ".uneffect-callable-result-"));
     const fileName = join(directory, "input.ts");

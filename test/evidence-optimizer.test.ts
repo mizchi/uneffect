@@ -988,7 +988,7 @@ describe("evidence and optimizer obligations", () => {
     expect(artifact.summaries.filter((item) => item.functionName !== "<module>").map((item) => item.evidence))
       .toEqual(["verified", "inferred", "unknown"]);
     expect(artifact).toMatchObject({
-      schemaVersion: 3, sourceFile: source.fileName,
+      schemaVersion: 4, sourceFile: source.fileName,
       compilerRevision: expect.any(String), tsconfigHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       sourceHashes: { [source.fileName]: expect.stringMatching(/^[a-f0-9]{64}$/) },

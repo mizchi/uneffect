@@ -106,6 +106,34 @@ describe("uneffect command line", () => {
     }
   });
 
+  it("loads declarative semantics modules and records their trusted ledger", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-module-"));
+    const fileName = join(directory, "main.ts"), moduleFile = join(directory, "audit.uneffect.json");
+    try {
+      writeFileSync(fileName, '/* uneffect: module_effect Acme.Audit.Init */\nimport "node:path"; export const ready = true');
+      writeFileSync(moduleFile, JSON.stringify({
+        schema: "uneffect-module/v1", name: "@acme/audit-semantics", version: "1.0.0", namespace: "Acme.Audit",
+        evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed test module",
+        effectSchemas: [{ name: "Acme.Audit.Init", version: 1, arguments: [] }],
+        registry: {
+          schema: "uneffect-registry/v1", builtinRegistryVersion: 2,
+          moduleInitializations: [{
+            module: "node:path", runtime: { kind: "node", major: Number.parseInt(process.versions.node.split(".")[0]!, 10) },
+            effects: ["Acme.Audit.Init"], evidence: "trusted", trustReason: "reviewed initialization", trustOwner: "security-platform",
+          }],
+        },
+      }));
+      const checked = capture();
+      expect(await runCli(["check", "--semantics-module", moduleFile, "--assurance", "no-unknown", fileName], checked)).toBe(exitCode.success);
+      const evidence = capture();
+      expect(await runCli(["evidence", "--semantics-module", moduleFile, fileName], evidence)).toBe(exitCode.success);
+      expect((JSON.parse(evidence.stdout) as { artifact: { modules: Array<{ name: string; evidence: string }> } }).artifact.modules)
+        .toEqual([expect.objectContaining({ name: "@acme/audit-semantics", evidence: "trusted" })]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("separates gradual lint success from explicit assurance profiles", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-assurance-"));
     const unknownFile = join(directory, "unknown.ts"), inferredFile = join(directory, "inferred.ts");
@@ -787,7 +815,7 @@ describe("uneffect command line", () => {
       const io = capture();
       expect(await runCli(["evidence", fileName], io)).toBe(exitCode.success);
       const output = JSON.parse(io.stdout) as { artifact: { schemaVersion: number; summaries: Array<Record<string, unknown>> }; eligibility: { eligible: boolean; vacuous: boolean; blockers: unknown[] } };
-      expect(output.artifact.schemaVersion).toBe(3);
+      expect(output.artifact.schemaVersion).toBe(4);
       expect(output.eligibility).toEqual({ eligible: true, vacuous: false, blockers: [] });
       expect(output.artifact.summaries.find((summary) => summary.functionName === "consume")).toMatchObject({
         evidence: "verified",
