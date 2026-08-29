@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 49–100 engineer-weeks; this is implementation volume, not a calendar
+estimate is 48–99 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -215,7 +215,7 @@ that slice. Completed child
 [#51](https://github.com/mizchi/uneffect/issues/51) exports only direct,
 unconditional `await` observations from the same corpus; conditional awaits,
 rejection ownership, callbacks, loops, and other Promise records remain
-explicit gaps. Active bounded child
+explicit gaps. Completed bounded child
 [#52](https://github.com/mizchi/uneffect/issues/52) adds only direct awaits
 beneath one enclosing `if` branch with exact condition identity and polarity;
 nested/loop/catch controls and chains remain explicit gaps. The completed

@@ -103,7 +103,7 @@ The completed direct-await slice additionally emits source-ordered Promise recor
 when a resolved call is the direct operand of an `await` in the exported owner.
 Each record binds the numeric owner, exact source text, UTF-8 call span, and
 `observation: "await"`. Unconditional calls have an explicit empty control
-path. The active application-backed extension admits exactly one enclosing
+path. The completed application-backed extension admits exactly one enclosing
 `if` then/else branch and binds its owner-local file-offset condition ID
 and branch polarity into one singleton control path. The Workhub-shaped corpora
 reach full semantic parity for these exact families. Nested conditionals and
