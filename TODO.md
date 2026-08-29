@@ -75,12 +75,12 @@ Bounded child [#48](https://github.com/mizchi/uneffect/issues/48) is complete an
 composes that finite rule with one source-bound catch/finally handler topology
 and immutable Boolean failure selector.
 
-There are 13 open implementation Issues after completing bounded child #56 and
-starting bounded child #57,
+There are 12 open implementation Issues after completing bounded children #56
+and #57,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-13 open implementation Issues remain: 12 parent/epic Issues and one active
-bounded child. The parents comprise one proof-boundary Issue in Phase 1, five specification-expressiveness Issues in
+12 open implementation Issues remain, all parent/epic Issues: one proof-boundary
+Issue in Phase 1, five specification-expressiveness Issues in
 Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
 [#45](https://github.com/mizchi/uneffect/issues/45) belongs to #5 and follows
@@ -91,8 +91,8 @@ completed bounded children
 follow-up [#46](https://github.com/mizchi/uneffect/issues/46) owns the landed
 solver-heavy CI timing and sharding handoff. Completed child #47 remains inside
 parent #25's estimate, so the 11 non-overlapping epic
-estimates total 50–103
-engineer-weeks, while the deferred Phase 1 breadth is 2–4
+estimates total 49–102
+engineer-weeks, while the deferred Phase 1 breadth is 1–3
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
@@ -171,24 +171,20 @@ P2.29 completed #44's per-key proof composition slice for primary/backup Map
 selectors.
 P2.30 completed #45's joint-induction slice for failover selectors whose
 membership preservation depends on another selector's membership property.
-The 50–103 week figure is the additive whole-backlog inventory, not the estimate
+The 49–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
 
-[#57](https://github.com/mizchi/uneffect/issues/57) is the only active
-implementation Issue. It is a bounded child of #18 derived from Workhub's
-top-level `main().catch(handler)` entry-point pattern. Its Red tests are written
-locally; implementation, schema, benchmark, dogfood, documentation, full
-validation, and remote CI remain incomplete. The current Workhub function-level
+There is no active implementation Issue. Completed bounded child
+[#57](https://github.com/mizchi/uneffect/issues/57) proves the exact Workhub
+top-level `main().catch(handler)` launch/attachment family and fixes nested
+function `await` being misclassified as TLA. The current Workhub function-level
 #8 corpus is exhausted; another #8 child requires new application evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#57](https://github.com/mizchi/uneffect/issues/57) | Prove one exact source-local async `main().catch(handler)` launch/attachment order; unsupported launch shapes fail closed; schema, benchmark, dogfood, docs, full gates, and remote CI pass. |
-
-No #57 implementation slice is currently committed; only its Red tests are in
-the working tree.
+No implementation slice is currently active.
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -198,7 +194,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#50/#51/#52/#53/#54/#55/#56 | 12–28 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 11 non-overlapping epics | 50–103 engineer-weeks | Active child #57 is included within #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45 are included within parent #5. |
+| Entire open research backlog | 12 Issues / 11 non-overlapping epics | 49–102 engineer-weeks | Completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45 are included within parent #5. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -225,15 +221,14 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56 handoffs:
-twelve queued parent/epic Issues and one active child. Every open Issue has exactly one
+As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57 handoffs:
+twelve queued parent/epic Issues and no active child. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#57](https://github.com/mizchi/uneffect/issues/57) | Top-level Promise launch | Bounded child of #18; Workhub `main().catch(handler)` evidence | Exact source-local async launch and synchronous rejection-handler attachment only; later async execution and host queues remain outside the claim |
 | Queued | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence plus synchronous-ring and direct cross-project TLA seeds | Broader ESM/external/dynamic initialization semantics; widen after CFG or application evidence |
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |

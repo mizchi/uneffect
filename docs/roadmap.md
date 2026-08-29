@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 50–103 engineer-weeks; this is implementation volume, not a calendar
+estimate is 49–102 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -77,8 +77,8 @@ commitment.
    async joins, external packages, and dynamic initialization remain explicit
    non-proofs. The available application graphs contained no real TLA candidate,
    but Workhub did provide a top-level `main().catch(handler)` Promise-launch
-   boundary. Bounded child [#57](https://github.com/mizchi/uneffect/issues/57)
-   is active for that exact launch-before-handler-attachment ordering; later
+   boundary. Completed bounded child [#57](https://github.com/mizchi/uneffect/issues/57)
+   proves that exact launch-before-handler-attachment ordering; later
    Promise execution and host queues remain outside its claim.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)

@@ -101,7 +101,6 @@ describe("TODO hierarchy consistency", () => {
     );
 
     expect(rows).toEqual([
-      ["Active", 1, 57],
       ["Queued", 1, 18],
       ["Queued", 2, 25],
       ["Queued", 2, 2],
@@ -115,7 +114,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toEqual([["Active", 1, 57]]);
+    expect(rows.filter(([status]) => status === "Active")).toEqual([]);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -128,11 +127,7 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([[
-      1,
-      57,
-      "Prove one exact source-local async `main().catch(handler)` launch/attachment order; unsupported launch shapes fail closed; schema, benchmark, dogfood, docs, full gates, and remote CI pass.",
-    ]]);
+    expect(rows).toEqual([]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }
