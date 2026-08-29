@@ -1,0 +1,4 @@
+interface:
+  display_name: "Uneffect"
+  short_description: "Apply gradual effects and formal checks to TypeScript"
+  default_prompt: "Use $uneffect to add the smallest useful Uneffect checks to this TypeScript boundary."
