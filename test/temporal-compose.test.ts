@@ -7,25 +7,10 @@ import { analyzeAsyncPatterns, generateWebEventLoopQuint } from "../src/async-pa
 import { generateComposedQuint, parseTemporalComposition } from "../src/temporal-compose.js";
 
 const source = `
-/*
- * uneffect:
- * state phase: int
- * init phase = 0
- * temporal completedInOrder: pc !== 2 || phase === 2
- */
-/*
- * uneffect:
- * temporal_requires phase === 0
- * temporal_ensures phase' = 1
- * temporal_modifies phase
- */
+/* uneffect:temporal state phase: int */ /* uneffect:temporal init phase = 0 */ /* uneffect:temporal invariant completedInOrder: pc !== 2 || phase === 2 */
+/* uneffect:temporal-summary requires phase === 0 */ /* uneffect:temporal-summary ensures phase' = 1 */ /* uneffect:temporal-summary modifies phase */
 function open() {}
-/*
- * uneffect:
- * temporal_requires phase === 1
- * temporal_ensures phase' = 2
- * temporal_modifies phase
- */
+/* uneffect:temporal-summary requires phase === 1 */ /* uneffect:temporal-summary ensures phase' = 2 */ /* uneffect:temporal-summary modifies phase */
 function close() {}
 function main() { open(); close() }
 `;
@@ -60,13 +45,10 @@ describe("temporal function-summary composition", () => {
 
   it("discharges a declared synchronous throw at a try/catch boundary", () => {
     const throwing = `
-      /* uneffect: state phase: int */
-      /* uneffect: init phase = 0 */
-      /* uneffect: temporal neverEscapes: pc !== -1 */
-      /*
-       * uneffect:
-       * temporal_throws RangeError
-       */
+      /* uneffect:temporal state phase: int */
+      /* uneffect:temporal init phase = 0 */
+      /* uneffect:temporal invariant neverEscapes: pc !== -1 */
+      /* uneffect:temporal-summary throws RangeError */
       function dangerous() {}
       function main() { try { dangerous() } catch {} }
     `;
@@ -78,10 +60,10 @@ describe("temporal function-summary composition", () => {
 
   it("keeps an uncaught throw as an escaping control state", () => {
     const throwing = `
-      /* uneffect: state phase: int */
-      /* uneffect: init phase = 0 */
-      /* uneffect: temporal neverEscapes: pc !== -1 */
-      /* uneffect: temporal_throws RangeError */
+      /* uneffect:temporal state phase: int */
+      /* uneffect:temporal init phase = 0 */
+      /* uneffect:temporal invariant neverEscapes: pc !== -1 */
+      /* uneffect:temporal-summary throws RangeError */
       function dangerous() {}
       function main() { dangerous() }
     `;
@@ -94,13 +76,13 @@ describe("temporal function-summary composition", () => {
 
   it("composes non-empty catch/finally bodies and skips statements after return", () => {
     const supported = `
-      /* uneffect: state phase: int */
-      /* uneffect: init phase = 0 */
-      /* uneffect: temporal_throws Error */ function dangerous() {}
-      /* uneffect: temporal_ensures phase' = phase + 1 */
-      /* uneffect: temporal_modifies phase */ function recover() {}
-      /* uneffect: temporal_ensures phase' = phase + 1 */
-      /* uneffect: temporal_modifies phase */ function cleanup() {}
+      /* uneffect:temporal state phase: int */
+      /* uneffect:temporal init phase = 0 */
+      /* uneffect:temporal-summary throws Error */ function dangerous() {}
+      /* uneffect:temporal-summary ensures phase' = phase + 1 */
+      /* uneffect:temporal-summary modifies phase */ function recover() {}
+      /* uneffect:temporal-summary ensures phase' = phase + 1 */
+      /* uneffect:temporal-summary modifies phase */ function cleanup() {}
       function main() { try { dangerous() } catch { recover() } finally { cleanup() } return; dangerous() }
     `;
     const composition = parseTemporalComposition("catch.ts", supported, "main");
@@ -112,18 +94,18 @@ describe("temporal function-summary composition", () => {
 
   it("models awaited rejection, suspension, resume, and cancellation exits", () => {
     const asyncSource = `
-      /* uneffect: state phase: int */
-      /* uneffect: init phase = 0 */
-      /* uneffect: temporal neverRejects: pc !== -2 */
-      /* uneffect: temporal neverCancels: !cancelled */
-      /* uneffect: temporal_eventually finishes: pc === 1 */
-      /* uneffect: temporal_response resumedFinishes: suspended => pc === 1 */
-      /* uneffect: temporal_repeatedly becomesUnsuspended: !suspended */
-      /* uneffect: temporal_stabilizes eventuallyFinishes: pc === 1 */
-      /* uneffect: temporal_rejects Error */
-      /* uneffect: temporal_suspends true */
-      /* uneffect: temporal_cancellable true */
-      /* uneffect: temporal_fair weak */
+      /* uneffect:temporal state phase: int */
+      /* uneffect:temporal init phase = 0 */
+      /* uneffect:temporal invariant neverRejects: pc !== -2 */
+      /* uneffect:temporal invariant neverCancels: !cancelled */
+      /* uneffect:temporal eventually finishes: pc === 1 */
+      /* uneffect:temporal response resumedFinishes: suspended => pc === 1 */
+      /* uneffect:temporal repeatedly becomesUnsuspended: !suspended */
+      /* uneffect:temporal stabilizes eventuallyFinishes: pc === 1 */
+      /* uneffect:temporal-summary rejects Error */
+      /* uneffect:temporal-summary suspends true */
+      /* uneffect:temporal-summary cancellable true */
+      /* uneffect:temporal-summary fair weak */
       async function wait() {}
       async function main() { try { await wait() } catch {} }
     `;
@@ -151,15 +133,10 @@ describe("temporal function-summary composition", () => {
 
   it("composes callback summaries into Web queue transitions", () => {
     const webSource = `
-      /* uneffect: state committed: int */
-      /* uneffect: init committed = 0 */
-      /* uneffect: temporal atMostOne: committed <= 1 */
-      /*
-       * uneffect:
-       * temporal_requires committed === 0
-       * temporal_ensures committed' = committed + 1
-       * temporal_modifies committed
-       */
+      /* uneffect:temporal state committed: int */
+      /* uneffect:temporal init committed = 0 */
+      /* uneffect:temporal invariant atMostOne: committed <= 1 */
+      /* uneffect:temporal-summary requires committed === 0 */ /* uneffect:temporal-summary ensures committed' = committed + 1 */ /* uneffect:temporal-summary modifies committed */
       function commit() {}
       function main() { setInterval(commit, 0) }
     `;

@@ -165,9 +165,9 @@ User assumptions attach review metadata without changing JSDoc semantics:
 
 ```ts
 function encodePacket(output: BoundedUint8Array<1>, value: number) {
-  /* uneffect: trust typed-array:u8-write validated by the packet conformance suite */
-  /* uneffect: trust_owner telemetry-platform */
-  /* uneffect: trust_expires 2027-06-30 */
+  /* uneffect:trust trust typed-array:u8-write validated by the packet conformance suite */
+  /* uneffect:trust trust_owner telemetry-platform */
+  /* uneffect:trust trust_expires 2027-06-30 */
   output[0] = value
 }
 ```

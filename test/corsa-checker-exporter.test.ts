@@ -581,7 +581,7 @@ describe("corsa-bind checker fact exporter", () => {
 
   it("exports checker-backed functions, trivia, and resolved call edges", async () => {
     const files = { "fixture.ts": `
-      /* uneffect: effect Console */
+      /* uneffect:capability effect Console */
       export function emit(message: string): void { console.log(message) }
       export function main() { emit("x") }
     ` };
@@ -598,7 +598,7 @@ describe("corsa-bind checker fact exporter", () => {
         expect.objectContaining({ name: "main", typeRepr: expect.any(String) }),
       ]),
       calls: [expect.objectContaining({ callbackTiming: "none" })],
-      trivia: [expect.objectContaining({ text: expect.stringContaining("uneffect: effect Console") })],
+      trivia: [expect.objectContaining({ text: expect.stringContaining("uneffect:capability effect Console") })],
     });
 
     const compared = await compareUneffectFrontends({
@@ -643,7 +643,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("preserves cross-file Corsa symbol identity in deterministic project byte coordinates", async () => {
     const files = {
       "b.ts": `import { emit } from "./a.js"; export function main() { emit("x") }`,
-      "a.ts": `/* uneffect: effect Console */ export function emit(message: string): void { console.log(message) }`,
+      "a.ts": `/* uneffect:capability effect Console */ export function emit(message: string): void { console.log(message) }`,
     };
     const facts = await exportCorsaCheckerFacts({
       files,
@@ -673,7 +673,7 @@ describe("corsa-bind checker fact exporter", () => {
 
   it("qualifies duplicate function names so cross-file edges cannot alias by spelling", async () => {
     const files = {
-      "a.ts": `/* uneffect: effect Console */ export function run() { console.log("a") }`,
+      "a.ts": `/* uneffect:capability effect Console */ export function run() { console.log("a") }`,
       "b.ts": `import { run as dependencyRun } from "./a.js"; export function run() { dependencyRun() }`,
     };
     const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
@@ -697,7 +697,7 @@ describe("corsa-bind checker fact exporter", () => {
 
   it("exports checker-backed top-level const arrows and function expressions across imports", async () => {
     const files = {
-      "a.ts": `/* uneffect: effect Console */ export const emit = (message: string): void => { console.log(message) }`,
+      "a.ts": `/* uneffect:capability effect Console */ export const emit = (message: string): void => { console.log(message) }`,
       "b.ts": `import { emit } from "./a.js"; export const main = function () { emit("x") }`,
     };
     const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
@@ -724,7 +724,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("does not mislabel calls inside unsupported callbacks as immediate outer calls", async () => {
     const files = {
       "fixture.ts": `
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         function emit() { console.log("x") }
         export function main() { [1].forEach(() => emit()) }
       `,
@@ -751,7 +751,7 @@ describe("corsa-bind checker fact exporter", () => {
     const files = {
       "a.ts": `
         export class Logger {
-          /* uneffect: effect Console */
+          /* uneffect:capability effect Console */
           emit(message: string): void { console.log(message) }
         }
       `,
@@ -782,7 +782,7 @@ describe("corsa-bind checker fact exporter", () => {
       "fixture.ts": `
         const key = "emit" as const;
         class Logger {
-          /* uneffect: effect Console */
+          /* uneffect:capability effect Console */
           [key]() { console.log("x") }
         }
         export function main(logger: Logger) { logger[key]() }
@@ -804,7 +804,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("exports checker-backed overload candidates and the selected call signature", async () => {
     const files = {
       "fixture.ts": `
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function parse(value: string): string;
         export function parse(value: number): number;
         export function parse(value: string | number): string | number {

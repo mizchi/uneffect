@@ -11,7 +11,7 @@ export interface NonUniformThrowChannel extends AsyncDisposable {
   send(): Promise<void>;
 }
 
-/* uneffect: effect Throw<NonUniformDeliveryError> */
+/* uneffect:capability effect Throw<NonUniformDeliveryError> */
 export async function deliverNonUniformThrow(
   throwEarly: boolean,
   laterRoute: NonUniformThrowRoute,

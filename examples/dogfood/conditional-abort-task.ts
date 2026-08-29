@@ -1,5 +1,5 @@
 /** Schedule work under one of two complete, path-correlated cancellation policies. */
-/* uneffect: effect Timer */
+/* uneffect:capability effect Timer */
 export function scheduleConditionalRefresh(disabled: boolean, shutdown: AbortSignal): void {
   const sources = disabled
     ? [AbortSignal.abort("refresh-disabled")]

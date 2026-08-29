@@ -63,9 +63,7 @@ observes or transfers it. A branch on which no Promise was assigned creates no
 obligation, while an assigned-but-unobserved branch is diagnosed.
 
 ```ts
-/* uneffect:
- * consumes_rejection 0
- */
+/* uneffect:async consumes_rejection 0 */
 declare function enqueue(job: Promise<void>): void
 
 const job = startJob()
@@ -95,7 +93,7 @@ or propagate callback contracts through higher-order wrappers.
 Promise-returning callbacks have a separate ownership boundary:
 
 ```ts
-/* uneffect: consumes_callback_rejection 0 */
+/* uneffect:async consumes_callback_rejection 0 */
 declare function schedule(task: () => Promise<void>): void
 
 schedule(async () => work())       // accepted
@@ -290,7 +288,7 @@ being treated as proofs.
 Conditional APIs can expose the guard explicitly:
 
 ```ts
-/* uneffect: consumes_rejection_when 1: enabled */
+/* uneffect:async consumes_rejection_when 1: enabled */
 declare function maybeEnqueue(enabled: boolean, job: Promise<void>): void
 
 maybeEnqueue(true, job)  // must-consume: ownership transfers
@@ -449,13 +447,13 @@ for the selected disposal method propagate to the function containing the
 
 ```ts
 class Resource {
-  /* uneffect: effect Console */
+  /* uneffect:capability effect Console */
   [Symbol.dispose]() {
     console.log("disposed")
   }
 }
 
-/* uneffect: effect Console */
+/* uneffect:capability effect Console */
 function work() {
   using resource = new Resource()
 }

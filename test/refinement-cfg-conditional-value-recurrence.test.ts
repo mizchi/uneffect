@@ -6,19 +6,11 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state pending: int
-  state urgent: bool
-  state sent: int
-  init pending = 0
-  init urgent = false
-  init sent = 0
-  action flush: pending' = pending > 0 ? 0 : pending, urgent' = urgent, sent' = sent + (pending > 0 ? urgent ? 2 * pending : pending : 0)
-*/
+const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state urgent: bool */ /* uneffect:temporal state sent: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init urgent = false */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action flush: pending' = pending > 0 ? 0 : pending, urgent' = urgent, sent' = sent + (pending > 0 ? urgent ? 2 * pending : pending : 0) */
 interface Runtime { pending: number; urgent: boolean; sent: number }
-/* uneffect: refinement cfgConditionalValueFlush@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect: refinement cfgConditionalValueFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect: refinement cfgConditionalValueFlush@1 action flush */
+/* uneffect:refinement refinement cfgConditionalValueFlush@1 create */ export function create(initial: Runtime) { return initial }
+/* uneffect:refinement refinement cfgConditionalValueFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }
+/* uneffect:refinement refinement cfgConditionalValueFlush@1 action flush */
 export function flush(runtime: Runtime) {
   while (runtime.pending > 0) {
     const weight = runtime.urgent ? 2 : 1

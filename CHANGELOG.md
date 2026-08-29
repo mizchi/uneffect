@@ -2,6 +2,24 @@
 
 All notable changes to Uneffect are documented in this file.
 
+## 0.2.0 - 2026-08-29
+
+### Changed
+
+- Made `uneffect:<dialect>` the explicit annotation header, including
+  `uneffect:capability`, `uneffect:contract`, `uneffect:temporal`, and
+  `uneffect:react-component`.
+- Reject untagged annotations and directives placed in the wrong dialect,
+  reducing ambiguity between Hoare-style contracts and temporal models.
+- Migrated documentation, examples, fixtures, benchmarks, and frontend parity
+  coverage to the compact one-line annotation syntax.
+
+### Safety boundary
+
+Uneffect 0.2 remains experimental. A successful check only supports the
+specific emitted claims and analyzed domains; it is not a whole-program
+JavaScript verification result.
+
 ## 0.1.0 - 2026-08-29
 
 First experimental minor release.

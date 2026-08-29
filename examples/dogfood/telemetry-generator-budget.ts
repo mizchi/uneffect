@@ -3,7 +3,7 @@ export interface TelemetryRecord {
   readonly bytes: number;
 }
 
-/* uneffect: effect Console | Throw<RangeError> */
+/* uneffect:capability effect Console | Throw<RangeError> */
 export function* buildTelemetryBatches(records: readonly TelemetryRecord[]): Generator<string> {
   for (const record of records) {
     console.log(`queueing ${record.name}`)
@@ -12,14 +12,14 @@ export function* buildTelemetryBatches(records: readonly TelemetryRecord[]): Gen
   }
 }
 
-/* uneffect: effect_parameter batches extends Console | Throw<RangeError> */
+/* uneffect:capability effect_parameter batches extends Console | Throw<RangeError> */
 export function drainTelemetryBatches(batches: IteratorObject<unknown>): void {
   for (const _batch of batches) {
     // The production sink is intentionally outside this focused lazy-effect example.
   }
 }
 
-/* uneffect: effect Console | Throw<RangeError> */
+/* uneffect:capability effect Console | Throw<RangeError> */
 export function flushTelemetry(records: readonly TelemetryRecord[]): void {
   drainTelemetryBatches(buildTelemetryBatches(records))
 }

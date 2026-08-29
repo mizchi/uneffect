@@ -1,14 +1,4 @@
-/* uneffect:
- * state billedUnits: int
- * state auditedUnits: int
- * state deliveryFailed: bool
- * state retryImmediately: bool
- * init billedUnits = 0
- * init auditedUnits = 0
- * init deliveryFailed = false
- * init retryImmediately = false
- * action recordBatch: billedUnits' = billedUnits + (deliveryFailed ? (retryImmediately ? 7 : 13) : 5), auditedUnits' = auditedUnits + (deliveryFailed ? (retryImmediately ? 11 : 18) : 6)
- */
+/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state retryImmediately: bool */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init retryImmediately = false */ /* uneffect:temporal action recordBatch: billedUnits' = billedUnits + (deliveryFailed ? (retryImmediately ? 7 : 13) : 5), auditedUnits' = auditedUnits + (deliveryFailed ? (retryImmediately ? 11 : 18) : 6) */
 
 export interface RetryBatchAccounting {
   billedUnits: number;
@@ -17,17 +7,17 @@ export interface RetryBatchAccounting {
   retryImmediately: boolean;
 }
 
-/* uneffect: refinement retryBatchAccounting@1 create */
+/* uneffect:refinement refinement retryBatchAccounting@1 create */
 export function createRetryBatchAccounting(initial: RetryBatchAccounting): RetryBatchAccounting {
   return initial;
 }
 
-/* uneffect: refinement retryBatchAccounting@1 observe */
+/* uneffect:refinement refinement retryBatchAccounting@1 observe */
 export function observeRetryBatchAccounting(runtime: RetryBatchAccounting): RetryBatchAccounting {
   return runtime;
 }
 
-/* uneffect: refinement retryBatchAccounting@1 action recordBatch */
+/* uneffect:refinement refinement retryBatchAccounting@1 action recordBatch */
 export function recordConfiguredBatch(runtime: RetryBatchAccounting): void {
   let units = 1;
   // This is a bounded two-attempt delivery policy, not a claim about an

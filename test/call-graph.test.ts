@@ -13,8 +13,8 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        /* uneffect: module_effect none */
-        /* uneffect: effect none */ export function pure(value: number) { return value + 1 }
+        /* uneffect:capability module_effect none */
+        /* uneffect:capability effect none */ export function pure(value: number) { return value + 1 }
         export function merelyInferred(value: number) { return value + 1 }
       `);
       const program = ts.createProgram([entry], {
@@ -34,7 +34,7 @@ describe("multi-file call graph and effect polymorphism", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-empty-effect-violation-"));
     try {
       const entry = join(directory, "entry.ts");
-      writeFileSync(entry, `/* uneffect: effect none */ export function impure() { console.log("unexpected") }`);
+      writeFileSync(entry, `/* uneffect:capability effect none */ export function impure() { console.log("unexpected") }`);
       const program = ts.createProgram([entry], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
@@ -51,9 +51,9 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        /* uneffect: module_effect none | Console */
-        /* uneffect: effect none */
-        /* uneffect: effect_parameter iterator extends none | Console */
+        /* uneffect:capability module_effect none | Console */
+        /* uneffect:capability effect none */
+        /* uneffect:capability effect_parameter iterator extends none | Console */
         export function consume(iterator: Iterator<number>) { iterator.next() }
       `);
       const program = ts.createProgram([entry], {
@@ -75,13 +75,13 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const library = join(directory, "library.ts"), entry = join(directory, "entry.ts");
       writeFileSync(library, `
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function report(value: string): void
         export function report(value: number): void
         export function report(value: string | number) { console.log(value) }
       `);
       writeFileSync(entry, `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         import { report } from "./library.js"
         report("entry")
       `);
@@ -103,7 +103,7 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        /* uneffect: module_effect Dom */
+        /* uneffect:capability module_effect Dom */
         console.log("entry")
       `);
       const program = ts.createProgram([entry], {
@@ -125,7 +125,7 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        /* uneffect: module_effect Console | Timer */
+        /* uneffect:capability module_effect Console | Timer */
         function invoke(callback: () => void) { callback() }
         invoke(() => console.log("inline"))
         setTimeout(() => console.log("later"), 0)
@@ -147,11 +147,11 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const callbacks = join(directory, "callbacks.ts"), entry = join(directory, "entry.ts");
       writeFileSync(callbacks, `
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function importedCallback() { console.log("imported") }
       `);
       writeFileSync(entry, `
-        /* uneffect: module_effect Console | Timer */
+        /* uneffect:capability module_effect Console | Timer */
         import { importedCallback } from "./callbacks.js"
         const localCallback = () => console.log("local")
         setTimeout(localCallback, 0)
@@ -277,7 +277,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       const plugin = join(directory, "plugin.mts"), entry = join(directory, "entry.mts");
       writeFileSync(plugin, `console.log("plugin initialization")`);
       writeFileSync(entry, `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         declare const enabled: boolean
         if (enabled) await import("./plugin.mjs")
       `);
@@ -365,12 +365,12 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const a = join(directory, "a.ts"), b = join(directory, "b.ts");
       writeFileSync(a, `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         import "./b.js"
         console.log("a")
       `);
       writeFileSync(b, `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         import "./a.js"
       `);
       const program = ts.createProgram([a, b], {
@@ -393,7 +393,7 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         declare namespace Types { const label: string }
         export namespace Runtime {
           export const initialized = console.log("namespace")
@@ -417,10 +417,10 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        /* uneffect: module_effect Console | Timer */
-        /* uneffect: effect Timer */
+        /* uneffect:capability module_effect Console | Timer */
+        /* uneffect:capability effect Timer */
         function makeBase() { setTimeout(() => {}, 0); return class {} }
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         function memberName() { console.log("key"); return "run" }
         export class Service extends makeBase() {
           [memberName()]() {}
@@ -444,8 +444,8 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        /* uneffect: module_effect Console */
-        /* uneffect: effect Console */
+        /* uneffect:capability module_effect Console */
+        /* uneffect:capability effect Console */
         function audited(..._args: any[]) { console.log("decorate") }
         @audited
         export class Service {}
@@ -650,18 +650,18 @@ describe("multi-file call graph and effect polymorphism", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-program-effects-"));
     const library = join(directory, "library.ts"), barrel = join(directory, "index.ts"), main = join(directory, "main.ts");
     writeFileSync(library, `
-      /* uneffect: effect Console */
+      /* uneffect:capability effect Console */
       export function pick(x: string): string
       export function pick(x: number): number
       export function pick(x: string | number) { console.log(x); return x }
-      export class Service { /* uneffect: effect Console */ run() { console.log("run") } }
-      /* uneffect: effect Console */ export const arrow = () => console.log("arrow")
+      export class Service { /* uneffect:capability effect Console */ run() { console.log("run") } }
+      /* uneffect:capability effect Console */ export const arrow = () => console.log("arrow")
       export function invoke(cb: () => void) { cb() }
     `);
     writeFileSync(barrel, `export { pick, Service, arrow, invoke } from "./library.js"`);
     writeFileSync(main, `
       import { pick as choose, Service, arrow, invoke } from "./index.js"
-      /* uneffect: effect Console */
+      /* uneffect:capability effect Console */
       function main() { choose("x"); new Service().run(); arrow(); invoke(() => console.log("callback")) }
     `);
     const program = ts.createProgram([library, barrel, main], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
@@ -675,9 +675,9 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const library = join(directory, "library.ts"), main = join(directory, "main.ts");
       writeFileSync(library, `
-        /* uneffect: effect Throw<RangeError> */
+        /* uneffect:capability effect Throw<RangeError> */
         export function dangerous() { throw new RangeError("bad") }
-        /* uneffect: effect Throw<SyntaxError> */
+        /* uneffect:capability effect Throw<SyntaxError> */
         export async function rejects() { throw new SyntaxError("async") }
         export function invoke(callback: () => void) { callback() }
       `);
@@ -723,7 +723,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       const library = join(directory, "library.ts"), main = join(directory, "main.ts");
       writeFileSync(library, `
         export class Resource {
-          /* uneffect: effect Throw<RangeError> */
+          /* uneffect:capability effect Throw<RangeError> */
           [Symbol.dispose]() { throw new RangeError("dispose") }
         }
       `);
@@ -752,11 +752,11 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const library = join(directory, "library.ts"), main = join(directory, "main.ts");
       writeFileSync(library, `
-        /* uneffect: effect Console | Throw<RangeError> */
+        /* uneffect:capability effect Console | Throw<RangeError> */
         export function* generate() { console.log("step"); throw new RangeError("step") }
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function* logOnly() { console.log("log") }
-        /* uneffect: effect Throw<TypeError> */
+        /* uneffect:capability effect Throw<TypeError> */
         export function* failOnly() { throw new TypeError("fail") }
         export function chooseIterator(log: boolean) {
           if (log) return logOnly()
@@ -767,7 +767,7 @@ describe("multi-file call graph and effect polymorphism", () => {
           if (log) return logOnly()
           return externalIterator()
         }
-        /* uneffect: effect Throw<URIError> */
+        /* uneffect:capability effect Throw<URIError> */
         export function maybeThrowFactory(fail: boolean) {
           if (fail) throw new URIError("factory")
           return generate()
@@ -825,34 +825,31 @@ describe("multi-file call graph and effect polymorphism", () => {
           void Promise.all(choosePartial(log))
         }
         export function consumeIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function boundedIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
-        /* uneffect: effect_parameter iterator extends Console | Throw<Error> */
+        /* uneffect:capability effect_parameter iterator extends Console | Throw<Error> */
         export function constrainedIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         export function consumeKnownConstrainedIteratorParameter() { constrainedIteratorParameter(generate()) }
         export function consumeStoredConstrainedIteratorParameter() { const iterator = generate(); constrainedIteratorParameter(iterator) }
         export function consumeOpaqueConstrainedIteratorParameter() { constrainedIteratorParameter(choosePartial(false)) }
-        /* uneffect: effect_parameter iterator extends Console */
+        /* uneffect:capability effect_parameter iterator extends Console */
         export function narrowIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         export function consumeKnownNarrowIteratorParameter() { narrowIteratorParameter(generate()) }
         export function consumeStoredNarrowIteratorParameter() { const iterator = generate(); narrowIteratorParameter(iterator) }
         export function forwardNarrowIteratorParameter(iterator: IteratorObject<unknown>) { narrowIteratorParameter(iterator) }
         export function consumeKnownForwardNarrowIteratorParameter() { forwardNarrowIteratorParameter(generate()) }
-        /* uneffect: effect_parameter iterator extends Console | Throw<Error> */
+        /* uneffect:capability effect_parameter iterator extends Console | Throw<Error> */
         export function incompatibleForwardConstraint(iterator: IteratorObject<unknown>) { narrowIteratorParameter(iterator) }
-        /* uneffect: effect_parameter iterator Console */
+        /* uneffect:capability effect_parameter iterator Console */
         export function malformedIteratorConstraint(iterator: IteratorObject<unknown>) { iterator.next() }
-        /* uneffect: effect_parameter value extends Console */
+        /* uneffect:capability effect_parameter value extends Console */
         export function nonIteratorConstraint(value: number) { return value }
         export function consumeKnownIteratorParameter() { consumeIteratorParameter(generate()) }
         export function consumePureIteratorParameter() { consumeIteratorParameter([1, 2, 3].values()) }
         export function outerIteratorParameter(iterator: IteratorObject<unknown>) { consumeIteratorParameter(iterator) }
         export function consumeKnownOuterIteratorParameter() { outerIteratorParameter(generate()) }
         export function consumePromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
-        /* uneffect:
-         * effect InvokeUserCode
-         * effect_parameter iterator extends Console
-         */
+        /* uneffect:capability effect InvokeUserCode */ /* uneffect:capability effect_parameter iterator extends Console */
         export function constrainedPromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
         export function consumeKnownConstrainedPromiseIteratorParameter() { constrainedPromiseIteratorParameter(generate()) }
         export function outerPromiseIteratorParameter(iterator: IteratorObject<unknown>) { consumePromiseIteratorParameter(iterator) }
@@ -946,7 +943,7 @@ describe("multi-file call graph and effect polymorphism", () => {
         }
         export function outerPartialFactory(log: boolean) { consumePartialFactory(log) }
         export function consumeArrayFactory() { for (const value of values()) void value }
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function caughtConsumption() { try { generate().next() } catch {} }
       `);
       const program = ts.createProgram([library, main], {
@@ -1188,7 +1185,7 @@ describe("multi-file call graph and effect polymorphism", () => {
     const source = join(directory, "fs.ts");
     writeFileSync(source, `
       import { readFile as loadFile } from "node:fs"
-      /* uneffect: effect FsRead | Console */
+      /* uneffect:capability effect FsRead | Console */
       export function load() { loadFile("settings.json", () => console.log("loaded")) }
     `);
     const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true });

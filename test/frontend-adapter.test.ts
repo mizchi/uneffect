@@ -15,7 +15,7 @@ describe("TypeChecker symbol adapter", () => {
     const fileName = join(directory, "input.ts");
     try {
       writeFileSync(fileName, `
-        /* uneffect: effect Dom<Create, typeof document> | Dom<PropertyWrite, typeof script> | Dom<NodeWrite, typeof document.head> | Mutate<typeof document.head> | InvokeUserCode | ScriptLoad<Classic, "https://cdn.example.com/sdk.js"> | ExecuteExternalCode<"https://cdn.example.com/sdk.js", "sha384-YWJj"> | Net<"cdn.example.com:443"> */
+        /* uneffect:capability effect Dom<Create, typeof document> | Dom<PropertyWrite, typeof script> | Dom<NodeWrite, typeof document.head> | Mutate<typeof document.head> | InvokeUserCode | ScriptLoad<Classic, "https://cdn.example.com/sdk.js"> | ExecuteExternalCode<"https://cdn.example.com/sdk.js", "sha384-YWJj"> | Net<"cdn.example.com:443"> */
         export function load() {
           const script = document.createElement("script");
           script.src = "https://cdn.example.com/sdk.js";
@@ -112,12 +112,12 @@ describe("TypeChecker symbol adapter", () => {
     const fileName = join(directory, "input.ts");
     try {
       writeFileSync(fileName, `
-        /* uneffect: effect CookieRead | CookieWrite */
+        /* uneffect:capability effect CookieRead | CookieWrite */
         export function cookies() { const before = document.cookie; document.cookie = "theme=dark"; return before }
-        /* uneffect: effect LocalStorageRead | LocalStorageWrite */
+        /* uneffect:capability effect LocalStorageRead | LocalStorageWrite */
         export function preferences() { const before = localStorage.getItem("theme"); localStorage.setItem("theme", "dark"); return before }
         interface StorageLike { getItem(key: string): string | null; setItem(key: string, value: string): void }
-        /* uneffect: effect none */
+        /* uneffect:capability effect none */
         export function shadowed(storage: StorageLike) { storage.getItem("theme"); storage.setItem("theme", "dark") }
       `);
       const program = ts.createProgram([fileName], {
@@ -290,7 +290,7 @@ describe("TypeChecker symbol adapter", () => {
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
       import * as fs from "node:fs";
-      /* uneffect: effect FsRead<"a"> */
+      /* uneffect:capability effect FsRead<"a"> */
       function actual() { return fs.readFileSync("a") }
       function shadowed(fs: { readFileSync(path: string): string }) { return fs.readFileSync("a") }
     `);
@@ -351,7 +351,7 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-globals-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Console | Fetch | Net */
+      /* uneffect:capability effect Console | Fetch | Net */
       async function actual() { console.log("start"); await fetch("https://example.com/") }
       function shadowed(fetch: (url: string) => void) { fetch("https://example.com/") }
     `);
@@ -364,9 +364,9 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<NodeRead, typeof document> */
+      /* uneffect:capability effect Dom<NodeRead, typeof document> */
       function query() { return document.querySelector(".item") }
-      /* uneffect: effect Dom<NodeWrite, typeof root> | Mutate<typeof root> | Mutate<typeof child> | InvokeUserCode */
+      /* uneffect:capability effect Dom<NodeWrite, typeof root> | Mutate<typeof root> | Mutate<typeof child> | InvokeUserCode */
       function attach(root: Element, child: Node) { root.appendChild(child) }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
@@ -386,17 +386,17 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-categories-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<AttributeRead, typeof element> */
+      /* uneffect:capability effect Dom<AttributeRead, typeof element> */
       function inspectAttributes(element: Element) { return [element.hasAttribute("role"), element.getAttributeNames()] }
-      /* uneffect: effect Dom<AttributeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      /* uneffect:capability effect Dom<AttributeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
       function updateAttributes(element: Element) { element.removeAttribute("hidden"); element.toggleAttribute("open") }
-      /* uneffect: effect Dom<NodeRead, typeof node> */
+      /* uneffect:capability effect Dom<NodeRead, typeof node> */
       function inspectTopology(node: Node, other: Node) { return node.contains(other) && node.compareDocumentPosition(other) !== 0 }
-      /* uneffect: effect Dom<NodeWrite, typeof root> | Mutate<typeof root> | Mutate<typeof child> | Mutate<typeof before> | InvokeUserCode */
+      /* uneffect:capability effect Dom<NodeWrite, typeof root> | Mutate<typeof root> | Mutate<typeof child> | Mutate<typeof before> | InvokeUserCode */
       function insert(root: Node, child: Node, before: Node) { return root.insertBefore(child, before) }
-      /* uneffect: effect Dom<TextRead, typeof data> */
+      /* uneffect:capability effect Dom<TextRead, typeof data> */
       function readRange(data: CharacterData) { return data.substringData(0, 1) }
-      /* uneffect: effect Dom<TextWrite, typeof data> | Mutate<typeof data> */
+      /* uneffect:capability effect Dom<TextWrite, typeof data> | Mutate<typeof data> */
       function replaceRange(data: CharacterData) { data.replaceData(0, 1, "x") }
       interface LocalElement { hasAttribute(name: string): boolean; toggleAttribute(name: string): boolean }
       function localMethods(element: LocalElement) { return element.hasAttribute("x") || element.toggleAttribute("x") }
@@ -411,13 +411,13 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-compound-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<NodeRead, typeof node> | Dom<Create, typeof node> */
+      /* uneffect:capability effect Dom<NodeRead, typeof node> | Dom<Create, typeof node> */
       function clone(node: Node) { return node.cloneNode(true) }
-      /* uneffect: effect Dom<NodeWrite, typeof node> | Dom<TextWrite, typeof node> | Mutate<typeof node> */
+      /* uneffect:capability effect Dom<NodeWrite, typeof node> | Dom<TextWrite, typeof node> | Mutate<typeof node> */
       function normalize(node: Node) { node.normalize() }
-      /* uneffect: effect Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      /* uneffect:capability effect Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
       function insertMarkup(element: Element) { element.insertAdjacentHTML("beforeend", "<span>ready</span>") }
-      /* uneffect: effect Dom<TextWrite, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> */
+      /* uneffect:capability effect Dom<TextWrite, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> */
       function insertText(element: Element) { element.insertAdjacentText("beforeend", "ready") }
       interface LocalNode { cloneNode(deep?: boolean): LocalNode; normalize(): void }
       function local(node: LocalNode) { node.normalize(); return node.cloneNode(true) }
@@ -432,11 +432,11 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-live-view-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Mutate<typeof element> | Mutate<typeof attr> | InvokeUserCode */
+      /* uneffect:capability effect Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Mutate<typeof element> | Mutate<typeof attr> | InvokeUserCode */
       function direct(element: Element, attr: Attr) { element.attributes.setNamedItem(attr); return element.attributes.getNamedItem("role") }
-      /* uneffect: effect Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      /* uneffect:capability effect Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
       function immutableAlias(element: Element) { const attrs = element.attributes; attrs.removeNamedItem("hidden") }
-      /* uneffect: effect Dom<AttributeRead, typeof first> | Dom<AttributeRead, typeof second> | Dom<AttributeWrite, typeof attrs> | InvokeUserCode */
+      /* uneffect:capability effect Dom<AttributeRead, typeof first> | Dom<AttributeRead, typeof second> | Dom<AttributeWrite, typeof attrs> | InvokeUserCode */
       function mutableAlias(first: Element, second: Element) { let attrs = first.attributes; attrs = second.attributes; attrs.removeNamedItem("hidden") }
       interface LocalMap { setNamedItem(attr: object): void }
       function local(map: LocalMap, attr: object) { map.setNamedItem(attr) }
@@ -451,18 +451,18 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-markup-layout-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> */
+      /* uneffect:capability effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> */
       function readMarkup(element: Element) { return element.innerHTML }
-      /* uneffect: effect Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      /* uneffect:capability effect Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
       function writeMarkup(element: Element) { element.innerHTML = "<span>ready</span>" }
-      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> | Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      /* uneffect:capability effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> | Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
       function appendMarkup(element: Element) { element.innerHTML += "<span>ready</span>" }
-      /* uneffect: effect Dom<NodeRead, typeof root> | Dom<AttributeRead, typeof root> | Dom<TextRead, typeof root> */
+      /* uneffect:capability effect Dom<NodeRead, typeof root> | Dom<AttributeRead, typeof root> | Dom<TextRead, typeof root> */
       function readShadowMarkup(root: ShadowRoot) { return root.innerHTML }
-      /* uneffect: effect Dom<LayoutRead, typeof element> */
+      /* uneffect:capability effect Dom<LayoutRead, typeof element> */
       function measure(element: HTMLElement) { return element.clientWidth + element.scrollHeight + element.offsetHeight }
       interface LocalMarkup { innerHTML: string; clientWidth: number }
-      /* uneffect: effect Mutate<typeof value> */
+      /* uneffect:capability effect Mutate<typeof value> */
       function local(value: LocalMarkup) { value.innerHTML = String(value.clientWidth) }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
@@ -475,14 +475,14 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-outer-html-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> */
+      /* uneffect:capability effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> */
       function readOuter(element: Element) { return element.outerHTML }
-      /* uneffect: effect Dom<Parse, typeof element.parentNode> | Dom<NodeWrite, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode */
+      /* uneffect:capability effect Dom<Parse, typeof element.parentNode> | Dom<NodeWrite, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode */
       function replaceOuter(element: Element) { element.outerHTML = "<section>ready</section>" }
-      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> | Dom<Parse, typeof element.parentNode> | Dom<NodeWrite, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode */
+      /* uneffect:capability effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> | Dom<Parse, typeof element.parentNode> | Dom<NodeWrite, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode */
       function appendOuter(element: Element) { element.outerHTML += "<section>ready</section>" }
       interface LocalOuter { outerHTML: string; parentNode: object }
-      /* uneffect: effect Mutate<typeof value> */
+      /* uneffect:capability effect Mutate<typeof value> */
       function local(value: LocalOuter) { value.outerHTML = "local" }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
@@ -495,45 +495,45 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-property-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<TextRead, typeof node> */
+      /* uneffect:capability effect Dom<TextRead, typeof node> */
       function readText(node: Node) { return node.textContent }
-      /* uneffect: effect Dom<TextWrite, typeof node> | Dom<NodeWrite, typeof node> | Mutate<typeof node> | InvokeUserCode */
+      /* uneffect:capability effect Dom<TextWrite, typeof node> | Dom<NodeWrite, typeof node> | Mutate<typeof node> | InvokeUserCode */
       function replaceText(node: Node) { node.textContent = "updated" }
-      /* uneffect: effect Dom<TextWrite, typeof node> | Mutate<typeof node> */
+      /* uneffect:capability effect Dom<TextWrite, typeof node> | Mutate<typeof node> */
       function writeNodeValue(node: Node) { node.nodeValue = "updated" }
-      /* uneffect: effect Dom<TextRead, typeof data> */
+      /* uneffect:capability effect Dom<TextRead, typeof data> */
       function readCharacterData(data: CharacterData) { return data.data }
-      /* uneffect: effect Dom<TextWrite, typeof data> | Mutate<typeof data> */
+      /* uneffect:capability effect Dom<TextWrite, typeof data> | Mutate<typeof data> */
       function writeCharacterData(data: CharacterData) { data.data = "updated" }
-      /* uneffect: effect Dom<NodeRead, typeof node> */
+      /* uneffect:capability effect Dom<NodeRead, typeof node> */
       function readParent(node: Node) { return node.parentNode }
-      /* uneffect: effect Dom<NodeRead, typeof element> */
+      /* uneffect:capability effect Dom<NodeRead, typeof element> */
       function readChildren(element: Element) { return element.children }
-      /* uneffect: effect Dom<AttributeRead, typeof element> */
+      /* uneffect:capability effect Dom<AttributeRead, typeof element> */
       function readAttributes(element: Element) { return element.attributes }
-      /* uneffect: effect Dom<PropertyRead, typeof input> */
+      /* uneffect:capability effect Dom<PropertyRead, typeof input> */
       function readValue(input: HTMLInputElement) { return input.value }
-      /* uneffect: effect Dom<PropertyRead, typeof input> */
+      /* uneffect:capability effect Dom<PropertyRead, typeof input> */
       function readLiteralValue(input: HTMLInputElement) { return input["value"] }
-      /* uneffect: effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+      /* uneffect:capability effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
       function writeValue(input: HTMLInputElement) { input.value = "updated" }
-      /* uneffect: effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+      /* uneffect:capability effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
       function writeLiteralValue(input: HTMLInputElement) { input["value"] = "updated" }
-      /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+      /* uneffect:capability effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
       function appendValue(input: HTMLInputElement) { input.value += "!" }
-      /* uneffect: effect Dom<All, typeof input> */
+      /* uneffect:capability effect Dom<All, typeof input> */
       function dynamicRead(input: HTMLInputElement, key: "value" | "checked") { return input[key] }
-      /* uneffect: effect Dom<All, typeof input> | Mutate<typeof input> */
+      /* uneffect:capability effect Dom<All, typeof input> | Mutate<typeof input> */
       function dynamicWrite(input: HTMLInputElement, key: "value" | "checked") { input[key] = undefined as never }
-      /* uneffect: effect Dom<PropertyWrite, typeof proxy> | InvokeUserCode */
+      /* uneffect:capability effect Dom<PropertyWrite, typeof proxy> | InvokeUserCode */
       function proxyWrite(input: HTMLInputElement) { const proxy = new Proxy(input, {}); proxy.value = "proxied" }
       interface LocalInput { value: string }
-      /* uneffect: effect Mutate<typeof input> */
+      /* uneffect:capability effect Mutate<typeof input> */
       function localWrite(input: LocalInput) { input.value = "local" }
       interface LocalNode { parentNode: object; attributes: object }
       function localTopology(node: LocalNode) { return [node.parentNode, node.attributes] }
       interface LocalCharacterData { data: string }
-      /* uneffect: effect Mutate<typeof data> */
+      /* uneffect:capability effect Mutate<typeof data> */
       function localDataWrite(data: LocalCharacterData) { data.data = "local" }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
@@ -544,7 +544,7 @@ describe("TypeChecker symbol adapter", () => {
 
   it("preserves DOM property symbols in virtual project analysis", () => {
     const result = analyzeUneffectProject({ mode: "strict", files: { "src/app.ts": `
-      /* uneffect: effect Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Mutate<typeof target> | InvokeUserCode */
+      /* uneffect:capability effect Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Mutate<typeof target> | InvokeUserCode */
       export function render(target: HTMLElement) { target.textContent = "ready" }
     ` } });
     expect(result.diagnostics).toEqual([]);
@@ -555,18 +555,18 @@ describe("TypeChecker symbol adapter", () => {
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
       class Box { get value() { return 1 } }
-      /* uneffect: effect InvokeUserCode */ function getter(box: Box) { return box.value }
-      /* uneffect: effect InvokeUserCode */ function proxy() { const value = new Proxy({}, {}); return value.x }
-      /* uneffect: effect InvokeUserCode */ function assimilate(flag: boolean) {
+      /* uneffect:capability effect InvokeUserCode */ function getter(box: Box) { return box.value }
+      /* uneffect:capability effect InvokeUserCode */ function proxy() { const value = new Proxy({}, {}); return value.x }
+      /* uneffect:capability effect InvokeUserCode */ function assimilate(flag: boolean) {
         const foreign = { get then() { if (flag) throw new Error("getter"); return (resolve: (value: number) => void) => resolve(1) } }
         return new Promise<number>((resolve) => resolve(foreign))
       }
-      /* uneffect: effect InvokeUserCode */ async function collect(values: Iterable<Promise<number>>) { await Promise.all(values) }
-      /* uneffect: effect InvokeUserCode */ function key(value: object, key: object) { return (value as any)[key as any] }
+      /* uneffect:capability effect InvokeUserCode */ async function collect(values: Iterable<Promise<number>>) { await Promise.all(values) }
+      /* uneffect:capability effect InvokeUserCode */ function key(value: object, key: object) { return (value as any)[key as any] }
       function safeKey(value: Record<"success" | "failure", number>, key: "success" | "failure") { return value[key] }
       class RoutedBox { get success() { return 1 } get failure() { return 0 } }
-      /* uneffect: effect InvokeUserCode */ function routedGetter(value: RoutedBox, key: "success" | "failure") { return value[key] }
-      /* uneffect: effect InvokeUserCode */ function coerce(value: object) { return value + "" }
+      /* uneffect:capability effect InvokeUserCode */ function routedGetter(value: RoutedBox, key: "success" | "failure") { return value[key] }
+      /* uneffect:capability effect InvokeUserCode */ function coerce(value: object) { return value + "" }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
     expect(analyzeEffectsInProgram(program, program.getSourceFile(fileName)!)).toEqual([]);
@@ -576,11 +576,11 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-transfer-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Clone<typeof value> | Transfer<typeof buffer> */
+      /* uneffect:capability effect Clone<typeof value> | Transfer<typeof buffer> */
       function move(value: object, buffer: ArrayBuffer) { structuredClone(value, { transfer: [buffer] }) }
-      /* uneffect: effect Clone<typeof shared> | SharedMemory<typeof shared> */
+      /* uneffect:capability effect Clone<typeof shared> | SharedMemory<typeof shared> */
       function share(shared: SharedArrayBuffer) { structuredClone(shared) }
-      /* uneffect: effect Clone<typeof value> | Transfer<typeof buffer> */
+      /* uneffect:capability effect Clone<typeof value> | Transfer<typeof buffer> */
       function post(worker: Worker, value: object, buffer: ArrayBuffer) { worker.postMessage(value, [buffer]) }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });

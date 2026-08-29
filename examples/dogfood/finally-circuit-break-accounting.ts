@@ -1,14 +1,4 @@
-/* uneffect:
- * state billedUnits: int
- * state auditedUnits: int
- * state deliveryFailed: bool
- * state circuitOpen: bool
- * init billedUnits = 0
- * init auditedUnits = 0
- * init deliveryFailed = false
- * init circuitOpen = false
- * action recordAttempt: billedUnits' = deliveryFailed ? (circuitOpen ? billedUnits + 4 : billedUnits) : billedUnits + (circuitOpen ? 3 : 4), auditedUnits' = auditedUnits + (deliveryFailed ? 4 : 3)
- */
+/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state circuitOpen: bool */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init circuitOpen = false */ /* uneffect:temporal action recordAttempt: billedUnits' = deliveryFailed ? (circuitOpen ? billedUnits + 4 : billedUnits) : billedUnits + (circuitOpen ? 3 : 4), auditedUnits' = auditedUnits + (deliveryFailed ? 4 : 3) */
 
 export interface FinallyCircuitAccounting {
   billedUnits: number;
@@ -17,17 +7,17 @@ export interface FinallyCircuitAccounting {
   circuitOpen: boolean;
 }
 
-/* uneffect: refinement finallyCircuitBreakAccounting@1 create */
+/* uneffect:refinement refinement finallyCircuitBreakAccounting@1 create */
 export function createFinallyCircuitAccounting(initial: FinallyCircuitAccounting): FinallyCircuitAccounting {
   return initial;
 }
 
-/* uneffect: refinement finallyCircuitBreakAccounting@1 observe */
+/* uneffect:refinement refinement finallyCircuitBreakAccounting@1 observe */
 export function observeFinallyCircuitAccounting(runtime: FinallyCircuitAccounting): FinallyCircuitAccounting {
   return runtime;
 }
 
-/* uneffect: refinement finallyCircuitBreakAccounting@1 action recordAttempt */
+/* uneffect:refinement refinement finallyCircuitBreakAccounting@1 action recordAttempt */
 export function recordConfiguredAttempt(runtime: FinallyCircuitAccounting): void {
   let units = 1;
   for (let attempt = 0; attempt < 1; attempt++) {

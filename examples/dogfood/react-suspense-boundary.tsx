@@ -2,7 +2,7 @@ import { Suspense, useEffect } from "react";
 
 declare function readProfile(userId: string): string;
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function Profile({ userId }: { userId: string }) {
   const profile = readProfile(userId);
   useEffect(() => {
@@ -12,7 +12,7 @@ export function Profile({ userId }: { userId: string }) {
   return <article>{profile}</article>;
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function ProfileSpinner() {
   useEffect(() => {
     console.log("spinner visible");

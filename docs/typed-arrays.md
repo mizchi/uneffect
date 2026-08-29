@@ -8,7 +8,7 @@ trusting JavaScript's coercion semantics:
 ```ts
 import type { BoundedUint8Array, Nat, U8 } from "@mizchi/uneffect"
 
-/* uneffect: requires size >= 0 && size <= 1024 */
+/* uneffect:contract requires size >= 0 && size <= 1024 */
 function allocate(size: Nat): BoundedUint8Array<1024> {
   return new Uint8Array(size)
 }
@@ -130,7 +130,7 @@ const SHA256_K = u32Table([
   // ...
 ] as const)
 
-/* uneffect: requires round < SHA256_K.length */
+/* uneffect:contract requires round < SHA256_K.length */
 function constantForRound(round: Nat): U32 {
   return SHA256_K[round]!
 }
@@ -222,7 +222,7 @@ When a proof cannot be completed but an external review or validator establishes
 the invariant, a function may carry a reason-bearing escape hatch:
 
 ```ts
-/* uneffect: trust typed-array externally validated binary format */
+/* uneffect:trust trust typed-array externally validated binary format */
 function decode(output: BoundedUint8Array<1>, value: number) {
   output[0] = value
 }
@@ -235,9 +235,9 @@ statement form where possible:
 
 ```ts
 function decode(output: BoundedUint8Array<2>, tag: number, payload: number) {
-  /* uneffect: trust typed-array:u8-write validated packet tag */
-  /* uneffect: trust_owner wire-team */
-  /* uneffect: trust_expires 2027-06-30 */
+  /* uneffect:trust trust typed-array:u8-write validated packet tag */
+  /* uneffect:trust trust_owner wire-team */
+  /* uneffect:trust trust_expires 2027-06-30 */
   output[0] = tag
   output[1] = payload // still requires an independent proof
 }
@@ -280,7 +280,7 @@ dynamic shift produces an independent `shift-count` obligation requiring
 masking. Both can be discharged by `Nat` plus a `requires` upper bound:
 
 ```ts
-/* uneffect: requires index < 32 && shift <= 31 */
+/* uneffect:contract requires index < 32 && shift <= 31 */
 function write(bytes: BoundedUint8Array<32>, index: Nat, word: U32, shift: Nat) {
   bytes[index] = (word >>> shift) & 0xff
 }

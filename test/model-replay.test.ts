@@ -27,16 +27,7 @@ const afterPublish: LeaseState = { ...afterTakeover, residentEpochB: 2 };
 
 describe("model counterexample refinement replay", () => {
   it("normalizes a scalar TLC trace and recovers actions from the temporal IR", () => {
-    const spec = parseSpec("counter.ts", `/* uneffect:
-      state value: int
-      state ready: bool
-      init value = 0
-      init ready = false
-      action increment: value' = value + 1
-      action finish: ready' = true
-      action_when finish: value >= 2 && !ready
-      temporal unfinished: !ready
-    */`).temporal;
+    const spec = parseSpec("counter.ts", `/* uneffect:temporal state value: int */ /* uneffect:temporal state ready: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init ready = false */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal action finish: ready' = true */ /* uneffect:temporal action_when finish: value >= 2 && !ready */ /* uneffect:temporal invariant unfinished: !ready */`).temporal;
     const trace = parseTlcCounterexample(`
 Error: Invariant q_inv is violated.
 State 1: <Initial predicate>
@@ -68,16 +59,7 @@ Finished in 00s [violation] Found an issue.
   });
 
   it("normalizes finite Set, Map, and record TLC values and recovers collection actions", () => {
-    const spec = parseSpec("collections.ts", `/* uneffect:
-      state writers: Set<int>
-      state epochs: Map<int, int>
-      state lease: { owner: int, valid: bool }
-      init writers = Set(1)
-      init epochs = Map([[1, 1]])
-      init lease = { owner: 1, valid: true }
-      action publish: writers' = writers.union(Set(2)), epochs' = epochs.put(2, 1), lease' = { ...lease, owner: 2 }
-      temporal oneWriter: writers.size() <= 1
-    */`).temporal;
+    const spec = parseSpec("collections.ts", `/* uneffect:temporal state writers: Set<int> */ /* uneffect:temporal state epochs: Map<int, int> */ /* uneffect:temporal state lease: { owner: int, valid: bool } */ /* uneffect:temporal init writers = Set(1) */ /* uneffect:temporal init epochs = Map([[1, 1]]) */ /* uneffect:temporal init lease = { owner: 1, valid: true } */ /* uneffect:temporal action publish: writers' = writers.union(Set(2)), epochs' = epochs.put(2, 1), lease' = { ...lease, owner: 2 } */ /* uneffect:temporal invariant oneWriter: writers.size() <= 1 */`).temporal;
     const trace = parseTlcCounterexample(`
 Error: Invariant q_inv is violated.
 State 1: <Initial predicate>
@@ -108,13 +90,7 @@ Finished in 00s [violation] Found an issue.
   });
 
   it("rejects non-violations and ambiguous TLC action recovery", () => {
-    const spec = parseSpec("ambiguous.ts", `/* uneffect:
-      state value: int
-      init value = 0
-      action first: value' = value + 1
-      action second: value' = value + 1
-      temporal zero: value === 0
-    */`).temporal;
+    const spec = parseSpec("ambiguous.ts", `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action first: value' = value + 1 */ /* uneffect:temporal action second: value' = value + 1 */ /* uneffect:temporal invariant zero: value === 0 */`).temporal;
     const states = `State 1: <Initial predicate>\nvalue = 0\nState 2: <q_step>\nvalue = 1\n`;
     expect(() => parseTlcCounterexample(states, spec, "model")).toThrow(/does not report a property violation/);
     expect(() => parseTlcCounterexample(`Error: Invariant q_inv is violated.\n${states}`, spec, "model"))

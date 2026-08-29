@@ -1,16 +1,4 @@
-/* uneffect:
-  state total: int
-  state audited: int
-  state first: bool
-  state second: bool
-  state third: bool
-  init total = 0
-  init audited = 0
-  init first = false
-  init second = false
-  init third = false
-  action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4) + (third ? 32 : 16), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40) + (third ? 320 : 160)
-*/
+/* uneffect:temporal state total: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal state third: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init first = false */ /* uneffect:temporal init second = false */ /* uneffect:temporal init third = false */ /* uneffect:temporal action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4) + (third ? 32 : 16), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40) + (third ? 320 : 160) */
 
 export interface ThreeRegionAccountingState {
   total: number;
@@ -20,21 +8,21 @@ export interface ThreeRegionAccountingState {
   third: boolean;
 }
 
-/* uneffect: refinement scalarProductThreeRegion@1 create */
+/* uneffect:refinement refinement scalarProductThreeRegion@1 create */
 export function createThreeRegionAccountingState(
   initial: ThreeRegionAccountingState,
 ): ThreeRegionAccountingState {
   return { ...initial };
 }
 
-/* uneffect: refinement scalarProductThreeRegion@1 observe */
+/* uneffect:refinement refinement scalarProductThreeRegion@1 observe */
 export function observeThreeRegionAccountingState(
   runtime: ThreeRegionAccountingState,
 ): ThreeRegionAccountingState {
   return { ...runtime };
 }
 
-/* uneffect: refinement scalarProductThreeRegion@1 action compose */
+/* uneffect:refinement refinement scalarProductThreeRegion@1 action compose */
 export function composeThreeRegionAccounting(runtime: ThreeRegionAccountingState): void {
   try {
     try {

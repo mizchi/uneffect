@@ -11,17 +11,17 @@ Annotate a function declaration, function expression, or variable-bound arrow
 function explicitly. Custom Hooks use the parallel `react hook` role:
 
 ```tsx
-/* uneffect: react component */
+/* uneffect:react-component */
 export function Counter(props: { label: string }) {
   return <button>{props.label}</button>
 }
 
-/* uneffect: react hook */
+/* uneffect:react-hook */
 export function useCounterTelemetry() {
   // Hook body and nested built-in Effects receive phase semantics.
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export const LegacyInput = memo(forwardRef(function LegacyInput(props, ref) {
   return <input ref={ref} aria-label={props.label} />
 }))
@@ -286,8 +286,8 @@ Imported/module bindings are assumed stable, custom stability conventions are
 not inferred, unnecessary but stable dependencies are not rejected, and
 mutations behind an otherwise stable object identity are outside this proof.
 
-Malformed React payloads are errors. The accepted forms are `react component`,
-`react hook`, `react acquire Capability`, `react release Capability`, and the
+Malformed React payloads are errors. The accepted forms are `uneffect:react-component`,
+`uneffect:react-hook`, `uneffect:react-resource acquire Capability`, `uneffect:react-resource release Capability`, and the
 identity-aware lifecycle forms described below. Misspellings and unsupported
 fields are not silently ignored.
 
@@ -307,13 +307,13 @@ Capability effects alone do not imply resource ownership. A boundary must
 state that it acquires or releases a lifecycle capability:
 
 ```tsx
-/* uneffect: react acquire Subscription */
+/* uneffect:react-resource acquire Subscription */
 declare function subscribe(): void
 
-/* uneffect: react release Subscription */
+/* uneffect:react-resource release Subscription */
 declare function unsubscribe(): void
 
-/* uneffect: react component */
+/* uneffect:react-component */
 function Feed() {
   useEffect(() => {
     subscribe()
@@ -339,13 +339,13 @@ boundary can opt into local resource identity with `result` and `parameter N`:
 ```tsx
 interface Subscription { readonly id: string }
 
-/* uneffect: react acquire Subscription result */
+/* uneffect:react-resource acquire Subscription result */
 declare function subscribe(): Subscription
 
-/* uneffect: react release Subscription parameter 0 */
+/* uneffect:react-resource release Subscription parameter 0 */
 declare function unsubscribe(value: Subscription): void
 
-/* uneffect: react component */
+/* uneffect:react-component */
 function Feed() {
   useEffect(() => {
     const subscription = subscribe()

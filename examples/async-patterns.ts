@@ -1,9 +1,9 @@
-/* uneffect: effect Timer */
+/* uneffect:capability effect Timer */
 export function poll(): void {
   setTimeout(poll, 5)
 }
 
-/* uneffect: effect Timer */
+/* uneffect:capability effect Timer */
 export function scheduleThenCancel(callback: () => void): void {
   const handle = setTimeout(callback, 0)
   queueMicrotask(callback)

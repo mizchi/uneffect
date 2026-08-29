@@ -1,14 +1,4 @@
-/* uneffect:
- * state billedUnits: int
- * state auditedUnits: int
- * state deliveryFailed: bool
- * state circuitOpen: bool
- * init billedUnits = 0
- * init auditedUnits = 0
- * init deliveryFailed = false
- * init circuitOpen = false
- * action recordAttempt: billedUnits' = billedUnits + (deliveryFailed ? (circuitOpen ? 4 : 7) : 3), auditedUnits' = auditedUnits + (deliveryFailed ? (circuitOpen ? 4 : 6) : 2)
- */
+/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state circuitOpen: bool */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init circuitOpen = false */ /* uneffect:temporal action recordAttempt: billedUnits' = billedUnits + (deliveryFailed ? (circuitOpen ? 4 : 7) : 3), auditedUnits' = auditedUnits + (deliveryFailed ? (circuitOpen ? 4 : 6) : 2) */
 
 export interface BatchAccounting {
   billedUnits: number;
@@ -17,17 +7,17 @@ export interface BatchAccounting {
   circuitOpen: boolean;
 }
 
-/* uneffect: refinement circuitBreakerBatchAccounting@1 create */
+/* uneffect:refinement refinement circuitBreakerBatchAccounting@1 create */
 export function createBatchAccounting(initial: BatchAccounting): BatchAccounting {
   return initial;
 }
 
-/* uneffect: refinement circuitBreakerBatchAccounting@1 observe */
+/* uneffect:refinement refinement circuitBreakerBatchAccounting@1 observe */
 export function observeBatchAccounting(runtime: BatchAccounting): BatchAccounting {
   return runtime;
 }
 
-/* uneffect: refinement circuitBreakerBatchAccounting@1 action recordAttempt */
+/* uneffect:refinement refinement circuitBreakerBatchAccounting@1 action recordAttempt */
 export function recordConfiguredAttempt(runtime: BatchAccounting): void {
   let units = 1;
   // The singleton tuple represents one statically configured Datadog intake.

@@ -3,7 +3,7 @@ export interface ServiceConfig {
   datadogApiKey?: string;
 }
 
-/* uneffect: effect Env<"AWS_REGION" | "DD_API_KEY"> */
+/* uneffect:capability effect Env<"AWS_REGION" | "DD_API_KEY"> */
 export function loadServiceConfig(): ServiceConfig {
   return {
     region: process.env.AWS_REGION ?? "us-east-1",

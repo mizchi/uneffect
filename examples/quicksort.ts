@@ -1,7 +1,4 @@
-/*
- * uneffect:
- * effect Mutate<typeof values>
- */
+/* uneffect:capability effect Mutate<typeof values> */
 export function partition(values: number[], lo: number, hi: number): number {
   const pivot = values[hi]!
   let boundary = lo
@@ -16,11 +13,7 @@ export function partition(values: number[], lo: number, hi: number): number {
   return boundary
 }
 
-/*
- * uneffect:
- * effect Mutate<typeof values>
- * decreases hi - lo
- */
+/* uneffect:capability effect Mutate<typeof values> */ /* uneffect:contract decreases hi - lo */
 export function quicksort(
   values: number[],
   lo = 0,
@@ -32,7 +25,7 @@ export function quicksort(
   quicksort(values, pivot + 1, hi)
 }
 
-/* uneffect: effect Mutate<typeof values> */
+/* uneffect:capability effect Mutate<typeof values> */
 function swap(values: number[], left: number, right: number): void {
   const value = values[left]!
   values[left] = values[right]!

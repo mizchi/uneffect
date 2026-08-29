@@ -25,7 +25,7 @@ just effect-demo
 Effect TS represents computations as runtime values and tracks error and service requirements through TypeScript types. Uneffect preserves ordinary functions and execution while checking may-effects inferred from existing builtin operations.
 
 ```ts
-/* uneffect: effect Console | Mutate<typeof state> */
+/* uneffect:capability effect Console | Mutate<typeof state> */
 function increment(state: { count: number }) {
   state.count++
   console.log(state.count)

@@ -7,8 +7,8 @@ import { evaluateQuality, qualityCriteria, scoreDiagnostic } from "../src/diagno
 import { diagnosticHint, formatDiagnostics, reportDiagnostic, type CheckerDiagnostic } from "../src/diagnostics.js";
 import { lowerInvariantProgram, parseLogicExpression, InvariantLoweringError } from "../src/invariant-ir.js";
 
-const offByOne = `/* uneffect: requires x >= 0 */
-/* uneffect: ensures result > x */
+const offByOne = `/* uneffect:contract requires x >= 0 */
+/* uneffect:contract ensures result > x */
 function decrement(x: number) {
   return x - 1;
 }
@@ -58,7 +58,7 @@ describe("contract counterexample explanations", () => {
 
 describe("lowering rejections", () => {
   it("locates the construct that left the verified subset", () => {
-    const source = `/* uneffect: ensures result == n */
+    const source = `/* uneffect:contract ensures result == n */
 function announce(n: number) {
   report(n);
   return n;
@@ -79,7 +79,7 @@ function announce(n: number) {
 describe("diagnostic rendering", () => {
   const diagnostic: CheckerDiagnostic = {
     fileName: "/repo/src/a.ts", functionName: "report", effect: "Console", kind: "missing", severity: "error", line: 2,
-    message: "report requires /* uneffect: effect Console */",
+    message: "report requires /* uneffect:capability effect Console */",
     notes: [{ label: "because", detail: "report performs console.log(value) at line 3" }],
   };
 
@@ -106,7 +106,7 @@ describe("diagnostic quality rubric", () => {
   const source = "// head\nfunction report(value: number) {\n  console.log(value);\n}\n";
   const good: CheckerDiagnostic = {
     fileName: "a.ts", functionName: "report", effect: "Console", kind: "missing", severity: "error", line: 2,
-    message: "report requires /* uneffect: effect Console */",
+    message: "report requires /* uneffect:capability effect Console */",
     notes: [{ label: "because", detail: "report performs console.log(value) at line 3" }],
   };
 

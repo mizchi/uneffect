@@ -5,19 +5,11 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state pending: int
-  state processed: int
-  state sampled: bool
-  init pending = 0
-  init processed = 0
-  init sampled = false
-  action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (sampled ? pending : 0) : 0)
-*/
+const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (sampled ? pending : 0) : 0) */
 interface Runtime { pending: number; processed: number; sampled: boolean }
-/* uneffect: refinement cfgSampledDrain@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect: refinement cfgSampledDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect: refinement cfgSampledDrain@1 action drain */
+/* uneffect:refinement refinement cfgSampledDrain@1 create */ export function create(initial: Runtime) { return initial }
+/* uneffect:refinement refinement cfgSampledDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+/* uneffect:refinement refinement cfgSampledDrain@1 action drain */
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     if (runtime.sampled) runtime.processed++

@@ -1,14 +1,4 @@
-/* uneffect:
-  state total: int
-  state audited: int
-  state first: bool
-  state second: bool
-  init total = 0
-  init audited = 0
-  init first = false
-  init second = false
-  action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40)
-*/
+/* uneffect:temporal state total: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init first = false */ /* uneffect:temporal init second = false */ /* uneffect:temporal action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40) */
 
 export interface ScalarProductHandlerState {
   total: number;
@@ -17,21 +7,21 @@ export interface ScalarProductHandlerState {
   second: boolean;
 }
 
-/* uneffect: refinement scalarProductJoin@1 create */
+/* uneffect:refinement refinement scalarProductJoin@1 create */
 export function createScalarProductHandlerState(
   initial: ScalarProductHandlerState,
 ): ScalarProductHandlerState {
   return { ...initial };
 }
 
-/* uneffect: refinement scalarProductJoin@1 observe */
+/* uneffect:refinement refinement scalarProductJoin@1 observe */
 export function observeScalarProductHandlerState(
   runtime: ScalarProductHandlerState,
 ): ScalarProductHandlerState {
   return { ...runtime };
 }
 
-/* uneffect: refinement scalarProductJoin@1 action compose */
+/* uneffect:refinement refinement scalarProductJoin@1 action compose */
 export function composeScalarProductHandlers(runtime: ScalarProductHandlerState): void {
   try {
     try {

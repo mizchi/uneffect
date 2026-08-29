@@ -1,12 +1,4 @@
-/* uneffect:
- * state attempts: int
- * state delay: int
- * state reject: bool
- * init attempts = 0
- * init delay = 1
- * init reject = false
- * action retry: attempts' = attempts > 0 ? 0 : attempts, delay' = attempts > 0 ? delay * (reject ? (attempts === 1 ? 2 : attempts === 2 ? 4 : attempts === 3 ? 8 : attempts === 4 ? 16 : 1) : 1) : delay
- */
+/* uneffect:temporal state attempts: int */ /* uneffect:temporal state delay: int */ /* uneffect:temporal state reject: bool */ /* uneffect:temporal init attempts = 0 */ /* uneffect:temporal init delay = 1 */ /* uneffect:temporal init reject = false */ /* uneffect:temporal action retry: attempts' = attempts > 0 ? 0 : attempts, delay' = attempts > 0 ? delay * (reject ? (attempts === 1 ? 2 : attempts === 2 ? 4 : attempts === 3 ? 8 : attempts === 4 ? 16 : 1) : 1) : delay */
 
 export interface RetryRuntime {
   attempts: number;
@@ -14,20 +6,17 @@ export interface RetryRuntime {
   reject: boolean;
 }
 
-/* uneffect: refinement caughtRetryBackoff@1 create */
+/* uneffect:refinement refinement caughtRetryBackoff@1 create */
 export function createRetryRuntime(initial: RetryRuntime): RetryRuntime {
   return initial;
 }
 
-/* uneffect: refinement caughtRetryBackoff@1 observe */
+/* uneffect:refinement refinement caughtRetryBackoff@1 observe */
 export function observeRetryRuntime(runtime: RetryRuntime): RetryRuntime {
   return runtime;
 }
 
-/* uneffect:
- * requires runtime.attempts >= 0 && runtime.attempts <= 4
- * refinement caughtRetryBackoff@1 action retry
- */
+/* uneffect:contract requires runtime.attempts >= 0 && runtime.attempts <= 4 */ /* uneffect:refinement refinement caughtRetryBackoff@1 action retry */
 export function retryWithCaughtBackoff(runtime: RetryRuntime): void {
   while (runtime.attempts > 0) {
     try {

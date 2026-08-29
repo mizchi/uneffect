@@ -2265,7 +2265,7 @@ function analyzeReactSource(
           return;
         }
         if (looksLikeHook(called)) {
-          reportHook(node, { kind: "unknown-hook-summary", phase: "render", hook: called, message: `${called} has no resolved /* uneffect: react hook */ summary` });
+          reportHook(node, { kind: "unknown-hook-summary", phase: "render", hook: called, message: `${called} has no resolved /* uneffect:react-hook */ summary` });
           return;
         }
         if (called === "Date.now" || called === "Math.random" || called === "crypto.randomUUID" || called === "performance.now") reportHook(node, {
@@ -2814,7 +2814,7 @@ function analyzeReactSource(
           return;
         }
         if (looksLikeHook(called)) {
-          report(node, { kind: "unknown-hook-summary", phase: "render", hook: called, message: `${called} has no resolved /* uneffect: react hook */ summary` });
+          report(node, { kind: "unknown-hook-summary", phase: "render", hook: called, message: `${called} has no resolved /* uneffect:react-hook */ summary` });
           return;
         }
         const operation = knownNonIdempotentOperation(node);

@@ -1,12 +1,4 @@
-/* uneffect:
- * state recoveredUnits: int
- * state deliveryFailed: bool
- * state escalateFinalization: bool
- * init recoveredUnits = 0
- * init deliveryFailed = false
- * init escalateFinalization = false
- * action recoverDelivery: recoveredUnits' = recoveredUnits + (deliveryFailed ? (escalateFinalization ? 8 : 5) : (escalateFinalization ? 6 : 3))
- */
+/* uneffect:temporal state recoveredUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state escalateFinalization: bool */ /* uneffect:temporal init recoveredUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init escalateFinalization = false */ /* uneffect:temporal action recoverDelivery: recoveredUnits' = recoveredUnits + (deliveryFailed ? (escalateFinalization ? 8 : 5) : (escalateFinalization ? 6 : 3)) */
 
 export interface EscalationAccounting {
   recoveredUnits: number;
@@ -14,17 +6,17 @@ export interface EscalationAccounting {
   escalateFinalization: boolean;
 }
 
-/* uneffect: refinement finallyEscalationAccounting@1 create */
+/* uneffect:refinement refinement finallyEscalationAccounting@1 create */
 export function createEscalationAccounting(initial: EscalationAccounting): EscalationAccounting {
   return initial;
 }
 
-/* uneffect: refinement finallyEscalationAccounting@1 observe */
+/* uneffect:refinement refinement finallyEscalationAccounting@1 observe */
 export function observeEscalationAccounting(runtime: EscalationAccounting): EscalationAccounting {
   return runtime;
 }
 
-/* uneffect: refinement finallyEscalationAccounting@1 action recoverDelivery */
+/* uneffect:refinement refinement finallyEscalationAccounting@1 action recoverDelivery */
 export function recoverDelivery(runtime: EscalationAccounting): void {
   let units = 1;
   try {

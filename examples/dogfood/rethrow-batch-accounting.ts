@@ -1,14 +1,4 @@
-/* uneffect:
- * state recoveredUnits: int
- * state auditedUnits: int
- * state failed: bool
- * state escalate: bool
- * init recoveredUnits = 0
- * init auditedUnits = 0
- * init failed = false
- * init escalate = false
- * action record: recoveredUnits' = recoveredUnits + (failed ? (escalate ? 8 : 6) : 2), auditedUnits' = auditedUnits + (failed ? (escalate ? 4 : 6) : 2)
- */
+/* uneffect:temporal state recoveredUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state escalate: bool */ /* uneffect:temporal init recoveredUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init escalate = false */ /* uneffect:temporal action record: recoveredUnits' = recoveredUnits + (failed ? (escalate ? 8 : 6) : 2), auditedUnits' = auditedUnits + (failed ? (escalate ? 4 : 6) : 2) */
 
 export interface RethrowBatchAccounting {
   recoveredUnits: number;
@@ -17,17 +7,17 @@ export interface RethrowBatchAccounting {
   escalate: boolean;
 }
 
-/* uneffect: refinement rethrowBatchAccounting@1 create */
+/* uneffect:refinement refinement rethrowBatchAccounting@1 create */
 export function createRethrowBatchAccounting(initial: RethrowBatchAccounting): RethrowBatchAccounting {
   return initial;
 }
 
-/* uneffect: refinement rethrowBatchAccounting@1 observe */
+/* uneffect:refinement refinement rethrowBatchAccounting@1 observe */
 export function observeRethrowBatchAccounting(runtime: RethrowBatchAccounting): RethrowBatchAccounting {
   return runtime;
 }
 
-/* uneffect: refinement rethrowBatchAccounting@1 action record */
+/* uneffect:refinement refinement rethrowBatchAccounting@1 action record */
 export function recordRethrowBatch(runtime: RethrowBatchAccounting): void {
   let units = 1;
   try {

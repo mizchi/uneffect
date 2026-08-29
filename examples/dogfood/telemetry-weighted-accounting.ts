@@ -1,19 +1,4 @@
-/* uneffect:
-  state accepted: int
-  state rejected: int
-  state attemptedCost: int
-  state auditArmed: bool
-  init accepted = 0
-  init rejected = 0
-  init attemptedCost = 0
-  init auditArmed = false
-  action accept: accepted' = accepted + 1, attemptedCost' = attemptedCost + 2
-  action reject: rejected' = rejected + 1, attemptedCost' = attemptedCost + 1
-  action armAudit: auditArmed' = true
-  action observeAccountingDrift: auditArmed' = auditArmed
-  action_when observeAccountingDrift: auditArmed && 2 * accepted + rejected !== attemptedCost
-  temporal accountingConserved: 2 * accepted + rejected === attemptedCost
-*/
+/* uneffect:temporal state accepted: int */ /* uneffect:temporal state rejected: int */ /* uneffect:temporal state attemptedCost: int */ /* uneffect:temporal state auditArmed: bool */ /* uneffect:temporal init accepted = 0 */ /* uneffect:temporal init rejected = 0 */ /* uneffect:temporal init attemptedCost = 0 */ /* uneffect:temporal init auditArmed = false */ /* uneffect:temporal action accept: accepted' = accepted + 1, attemptedCost' = attemptedCost + 2 */ /* uneffect:temporal action reject: rejected' = rejected + 1, attemptedCost' = attemptedCost + 1 */ /* uneffect:temporal action armAudit: auditArmed' = true */ /* uneffect:temporal action observeAccountingDrift: auditArmed' = auditArmed */ /* uneffect:temporal action_when observeAccountingDrift: auditArmed && 2 * accepted + rejected !== attemptedCost */ /* uneffect:temporal invariant accountingConserved: 2 * accepted + rejected === attemptedCost */
 
 export class TelemetryWeightedAccounting {
   accepted = 0;

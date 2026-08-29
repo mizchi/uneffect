@@ -6,21 +6,16 @@ import {
 import { parseSpec } from "../src/spec-ir.js";
 
 const fixture = (between = "", third = "") => `
-/* uneffect:
-  state total: int
-  state first: bool
-  state second: bool
-  action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4)${between ? " + 16" : ""}
-*/
+/* uneffect:temporal state total: int */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4)${between ? " + 16" : ""} */
 interface Runtime { total: number; first: boolean; second: boolean }
 
-/* uneffect: refinement scalarHandlerJoin@1 create */
+/* uneffect:refinement refinement scalarHandlerJoin@1 create */
 export function create(initial: Runtime): Runtime { return { ...initial } }
 
-/* uneffect: refinement scalarHandlerJoin@1 observe */
+/* uneffect:refinement refinement scalarHandlerJoin@1 observe */
 export function observe(runtime: Runtime): Runtime { return { ...runtime } }
 
-/* uneffect: refinement scalarHandlerJoin@1 action compose */
+/* uneffect:refinement refinement scalarHandlerJoin@1 action compose */
 export function compose(runtime: Runtime): void {
   try {
     try {

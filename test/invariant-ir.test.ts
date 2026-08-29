@@ -3,8 +3,8 @@ import { generateObligationSmt, lowerInvariantProgram, proveBooleanImplication }
 
 describe("shared invariant obligation IR", () => {
   const source = `
-    /* uneffect: requires n >= 0 */
-    /* uneffect: ensures result >= n */
+    /* uneffect:contract requires n >= 0 */
+    /* uneffect:contract ensures result >= n */
     function choose(n: Nat, flag: boolean): Nat {
       let value = n
       if (flag) value = value + 1
@@ -28,11 +28,11 @@ describe("shared invariant obligation IR", () => {
 
   it("creates initialization, preservation, and exit/post obligations for loops", () => {
     const obligations = lowerInvariantProgram("loop.ts", `
-      /* uneffect: requires n >= 0 */
-      /* uneffect: ensures result == n */
+      /* uneffect:contract requires n >= 0 */
+      /* uneffect:contract ensures result == n */
       function count(n: Int) {
         let i = 0
-        /* uneffect: invariant i >= 0 && i <= n */
+        /* uneffect:contract invariant i >= 0 && i <= n */
         while (i < n) { i = i + 1 }
         return i
       }
@@ -42,7 +42,7 @@ describe("shared invariant obligation IR", () => {
 
   it("preserves Float as a distinct Real-backed domain", () => {
     const [obligation] = lowerInvariantProgram("float.ts", `
-      /* uneffect: ensures result == x */
+      /* uneffect:contract ensures result == x */
       function identity(x: Float): Float { return x }
     `);
     expect(obligation?.variables[0]).toEqual({ name: "x", domain: "float", sort: "Real" });

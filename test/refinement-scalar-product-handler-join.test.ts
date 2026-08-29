@@ -6,19 +6,13 @@ import {
 import { parseSpec } from "../src/spec-ir.js";
 
 const fixture = (between = "") => `
-/* uneffect:
-  state total: int
-  state audited: int
-  state first: bool
-  state second: bool
-  action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40)${between ? " + 16" : ""}
-*/
+/* uneffect:temporal state total: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40)${between ? " + 16" : ""} */
 interface Runtime { total: number; audited: number; first: boolean; second: boolean }
-/* uneffect: refinement scalarProductJoin@1 create */
+/* uneffect:refinement refinement scalarProductJoin@1 create */
 export function create(initial: Runtime): Runtime { return { ...initial } }
-/* uneffect: refinement scalarProductJoin@1 observe */
+/* uneffect:refinement refinement scalarProductJoin@1 observe */
 export function observe(runtime: Runtime): Runtime { return { ...runtime } }
-/* uneffect: refinement scalarProductJoin@1 action compose */
+/* uneffect:refinement refinement scalarProductJoin@1 action compose */
 export function compose(runtime: Runtime): void {
   try {
     try {

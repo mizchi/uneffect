@@ -11,67 +11,16 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from
 
 function leaseModel(skewGrace: number): string {
   return `
-    /*
-     * uneffect:
-     * clock realNow: 1
-     * state leaseExpiryA: int
-     * state localDeadlineA: int
-     * state ownerEpoch: int
-     * state residentEpochA: int
-     * state residentEpochB: int
-     * state ownerIsA: bool
-     * init leaseExpiryA = 10
-     * init localDeadlineA = 10
-     * init ownerEpoch = 1
-     * init residentEpochA = 1
-     * init residentEpochB = 0
-     * init ownerIsA = true
-     * action takeoverB: ownerIsA' = false, ownerEpoch' = ownerEpoch + 1
-     * action_when takeoverB: ownerIsA && realNow + 1 >= leaseExpiryA + ${skewGrace}
-     * action publishB: residentEpochB' = ownerEpoch
-     * action_when publishB: !ownerIsA && residentEpochB !== ownerEpoch
-     * temporal singleWriter: !(residentEpochA > 0 && realNow < localDeadlineA && residentEpochB > 0)
-     */
+    /* uneffect:temporal clock realNow: 1 */ /* uneffect:temporal state leaseExpiryA: int */ /* uneffect:temporal state localDeadlineA: int */ /* uneffect:temporal state ownerEpoch: int */ /* uneffect:temporal state residentEpochA: int */ /* uneffect:temporal state residentEpochB: int */ /* uneffect:temporal state ownerIsA: bool */ /* uneffect:temporal init leaseExpiryA = 10 */ /* uneffect:temporal init localDeadlineA = 10 */ /* uneffect:temporal init ownerEpoch = 1 */ /* uneffect:temporal init residentEpochA = 1 */ /* uneffect:temporal init residentEpochB = 0 */ /* uneffect:temporal init ownerIsA = true */ /* uneffect:temporal action takeoverB: ownerIsA' = false, ownerEpoch' = ownerEpoch + 1 */ /* uneffect:temporal action_when takeoverB: ownerIsA && realNow + 1 >= leaseExpiryA + ${skewGrace} */ /* uneffect:temporal action publishB: residentEpochB' = ownerEpoch */ /* uneffect:temporal action_when publishB: !ownerIsA && residentEpochB !== ownerEpoch */ /* uneffect:temporal invariant singleWriter: !(residentEpochA > 0 && realNow < localDeadlineA && residentEpochB > 0) */
   `;
 }
 
 function collectionLeaseModel(skewGrace: number): string {
-  return `/* uneffect:
-    clock realNow: 1
-    state nodes: Set<int>
-    state activeWriters: Set<int>
-    state residentEpochs: Map<int, int>
-    state lease: { owner: int, epoch: int }
-    init nodes = Set(1, 2)
-    init activeWriters = Set(1)
-    init residentEpochs = Map([[1, 1], [2, 0]])
-    init lease = { owner: 1, epoch: 1 }
-    action takeover: lease' = { ...lease, owner: 2, epoch: lease.epoch + 1 }
-    action_when takeover: lease.owner === 1 && realNow + 1 >= 10 + ${skewGrace}
-    action publish: activeWriters' = activeWriters.union(Set(2)), residentEpochs' = residentEpochs.put(2, 2)
-    action_when publish: lease.owner === 2 && !activeWriters.contains(2)
-    temporal writersAreNodes: activeWriters.forall(node => nodes.contains(node))
-    temporal epochsAreNonNegative: residentEpochs.values().forall(epoch => epoch >= 0)
-    temporal singleWriter: !(activeWriters.contains(1) && realNow < 10 && activeWriters.contains(2))
-  */`;
+  return `/* uneffect:temporal clock realNow: 1 */ /* uneffect:temporal state nodes: Set<int> */ /* uneffect:temporal state activeWriters: Set<int> */ /* uneffect:temporal state residentEpochs: Map<int, int> */ /* uneffect:temporal state lease: { owner: int, epoch: int } */ /* uneffect:temporal init nodes = Set(1, 2) */ /* uneffect:temporal init activeWriters = Set(1) */ /* uneffect:temporal init residentEpochs = Map([[1, 1], [2, 0]]) */ /* uneffect:temporal init lease = { owner: 1, epoch: 1 } */ /* uneffect:temporal action takeover: lease' = { ...lease, owner: 2, epoch: lease.epoch + 1 } */ /* uneffect:temporal action_when takeover: lease.owner === 1 && realNow + 1 >= 10 + ${skewGrace} */ /* uneffect:temporal action publish: activeWriters' = activeWriters.union(Set(2)), residentEpochs' = residentEpochs.put(2, 2) */ /* uneffect:temporal action_when publish: lease.owner === 2 && !activeWriters.contains(2) */ /* uneffect:temporal invariant writersAreNodes: activeWriters.forall(node => nodes.contains(node)) */ /* uneffect:temporal invariant epochsAreNonNegative: residentEpochs.values().forall(epoch => epoch >= 0) */ /* uneffect:temporal invariant singleWriter: !(activeWriters.contains(1) && realNow < 10 && activeWriters.contains(2)) */`;
 }
 
 function capabilityRequestModel(enforceAuthority: boolean): string {
-  return `/* uneffect:
-    state authority: { owners: Map<int, int>, allowedResources: Set<int>, allowedOwners: Set<int> }
-    state auditArmed: bool
-    init authority = { owners: Map([[1, 10]]), allowedResources: Set(1, 2), allowedOwners: Set(10, 20) }
-    init auditArmed = false
-    action requestWrite: authority' = { ...authority, owners: authority.owners.put(2, 20) }
-    ${enforceAuthority ? "action_when requestWrite: authority.allowedResources.contains(2) && authority.allowedOwners.contains(20)" : ""}
-    action armAudit: auditArmed' = true
-    action observeEscalation: auditArmed' = auditArmed
-    action_when observeEscalation: auditArmed && authority.owners.keys().contains(2) && !authority.allowedResources.contains(2)
-    action observeOwnerEscalation: auditArmed' = auditArmed
-    action_when observeOwnerEscalation: auditArmed && authority.owners.values().contains(20) && !authority.allowedOwners.contains(20)
-    temporal requestWithinAuthority: authority.owners.keys().forall(resource => authority.allowedResources.contains(resource))
-    temporal ownerWithinAuthority: authority.owners.values().forall(owner => authority.allowedOwners.contains(owner))
-  */`;
+  return `/* uneffect:temporal state authority: { owners: Map<int, int>, allowedResources: Set<int>, allowedOwners: Set<int> } */ /* uneffect:temporal state auditArmed: bool */ /* uneffect:temporal init authority = { owners: Map([[1, 10]]), allowedResources: Set(1, 2), allowedOwners: Set(10, 20) } */ /* uneffect:temporal init auditArmed = false */ /* uneffect:temporal action requestWrite: authority' = { ...authority, owners: authority.owners.put(2, 20) } */ /* uneffect:temporal ${enforceAuthority ? "action_when requestWrite: authority.allowedResources.contains(2) && authority.allowedOwners.contains(20)" : ""} */ /* uneffect:temporal action armAudit: auditArmed' = true */ /* uneffect:temporal action observeEscalation: auditArmed' = auditArmed */ /* uneffect:temporal action_when observeEscalation: auditArmed && authority.owners.keys().contains(2) && !authority.allowedResources.contains(2) */ /* uneffect:temporal action observeOwnerEscalation: auditArmed' = auditArmed */ /* uneffect:temporal action_when observeOwnerEscalation: auditArmed && authority.owners.values().contains(20) && !authority.allowedOwners.contains(20) */ /* uneffect:temporal invariant requestWithinAuthority: authority.owners.keys().forall(resource => authority.allowedResources.contains(resource)) */ /* uneffect:temporal invariant ownerWithinAuthority: authority.owners.values().forall(owner => authority.allowedOwners.contains(owner)) */`;
 }
 
 function runCollectionLease(skewGrace: number) {
@@ -99,53 +48,7 @@ function checkLeaseModel(skewGrace: number) {
 }
 
 function leaseLifecycleModel(fencedCommit: boolean): string {
-  return `/* uneffect:
-    clock realNow: 1
-    state leaseExpiry: int
-    state ownerEpoch: int
-    state workerAlive: bool
-    state renewalInFlight: bool
-    state renewalEpoch: int
-    state selfFenced: bool
-    state resourceHeld: bool
-    state writeInFlight: bool
-    state writeEpoch: int
-    state badCommit: bool
-    init leaseExpiry = 2
-    init ownerEpoch = 1
-    init workerAlive = true
-    init renewalInFlight = false
-    init renewalEpoch = 0
-    init selfFenced = false
-    init resourceHeld = true
-    init writeInFlight = false
-    init writeEpoch = 0
-    init badCommit = false
-    action startRenewal: renewalInFlight' = true, renewalEpoch' = ownerEpoch
-    action_when startRenewal: workerAlive && !selfFenced && !renewalInFlight
-    action completeRenewal: renewalInFlight' = false, leaseExpiry' = realNow + 2
-    action_when completeRenewal: renewalInFlight && workerAlive && !selfFenced && renewalEpoch === ownerEpoch
-    action renewalCasFailure: renewalInFlight' = false, selfFenced' = true
-    action_when renewalCasFailure: renewalInFlight
-    action startWrite: writeInFlight' = true, writeEpoch' = ownerEpoch
-    action_when startWrite: workerAlive && !selfFenced && !writeInFlight
-    action takeover: ownerEpoch' = ownerEpoch + 1
-    action_when takeover: realNow >= leaseExpiry
-    action normalizeInvalidEpoch: ownerEpoch' = 0
-    action_when normalizeInvalidEpoch: ownerEpoch < 0
-    action observeZeroEpoch: badCommit' = true
-    action_when observeZeroEpoch: ownerEpoch === 0
-    action completeWrite: writeInFlight' = false, badCommit' = writeEpoch !== ownerEpoch
-    action_when completeWrite: writeInFlight${fencedCommit ? " && writeEpoch === ownerEpoch" : ""}
-    action crash: workerAlive' = false
-    action_when crash: workerAlive
-    action gc: resourceHeld' = false
-    action_when gc: !workerAlive && resourceHeld
-    temporal noStaleCommit: !badCommit
-    temporal ownerEpochPositive: ownerEpoch > 0
-    temporal casFailureFences: !selfFenced || !renewalInFlight
-    temporal gcDoesNotInventResources: resourceHeld || !workerAlive
-  */`;
+  return `/* uneffect:temporal clock realNow: 1 */ /* uneffect:temporal state leaseExpiry: int */ /* uneffect:temporal state ownerEpoch: int */ /* uneffect:temporal state workerAlive: bool */ /* uneffect:temporal state renewalInFlight: bool */ /* uneffect:temporal state renewalEpoch: int */ /* uneffect:temporal state selfFenced: bool */ /* uneffect:temporal state resourceHeld: bool */ /* uneffect:temporal state writeInFlight: bool */ /* uneffect:temporal state writeEpoch: int */ /* uneffect:temporal state badCommit: bool */ /* uneffect:temporal init leaseExpiry = 2 */ /* uneffect:temporal init ownerEpoch = 1 */ /* uneffect:temporal init workerAlive = true */ /* uneffect:temporal init renewalInFlight = false */ /* uneffect:temporal init renewalEpoch = 0 */ /* uneffect:temporal init selfFenced = false */ /* uneffect:temporal init resourceHeld = true */ /* uneffect:temporal init writeInFlight = false */ /* uneffect:temporal init writeEpoch = 0 */ /* uneffect:temporal init badCommit = false */ /* uneffect:temporal action startRenewal: renewalInFlight' = true, renewalEpoch' = ownerEpoch */ /* uneffect:temporal action_when startRenewal: workerAlive && !selfFenced && !renewalInFlight */ /* uneffect:temporal action completeRenewal: renewalInFlight' = false, leaseExpiry' = realNow + 2 */ /* uneffect:temporal action_when completeRenewal: renewalInFlight && workerAlive && !selfFenced && renewalEpoch === ownerEpoch */ /* uneffect:temporal action renewalCasFailure: renewalInFlight' = false, selfFenced' = true */ /* uneffect:temporal action_when renewalCasFailure: renewalInFlight */ /* uneffect:temporal action startWrite: writeInFlight' = true, writeEpoch' = ownerEpoch */ /* uneffect:temporal action_when startWrite: workerAlive && !selfFenced && !writeInFlight */ /* uneffect:temporal action takeover: ownerEpoch' = ownerEpoch + 1 */ /* uneffect:temporal action_when takeover: realNow >= leaseExpiry */ /* uneffect:temporal action normalizeInvalidEpoch: ownerEpoch' = 0 */ /* uneffect:temporal action_when normalizeInvalidEpoch: ownerEpoch < 0 */ /* uneffect:temporal action observeZeroEpoch: badCommit' = true */ /* uneffect:temporal action_when observeZeroEpoch: ownerEpoch === 0 */ /* uneffect:temporal action completeWrite: writeInFlight' = false, badCommit' = writeEpoch !== ownerEpoch */ /* uneffect:temporal action_when completeWrite: writeInFlight${fencedCommit ? " && writeEpoch === ownerEpoch" : ""} */ /* uneffect:temporal action crash: workerAlive' = false */ /* uneffect:temporal action_when crash: workerAlive */ /* uneffect:temporal action gc: resourceHeld' = false */ /* uneffect:temporal action_when gc: !workerAlive && resourceHeld */ /* uneffect:temporal invariant noStaleCommit: !badCommit */ /* uneffect:temporal invariant ownerEpochPositive: ownerEpoch > 0 */ /* uneffect:temporal invariant casFailureFences: !selfFenced || !renewalInFlight */ /* uneffect:temporal invariant gcDoesNotInventResources: resourceHeld || !workerAlive */`;
 }
 
 function runLeaseLifecycle(fencedCommit: boolean) {
@@ -191,14 +94,7 @@ describe("Node Lease clock-skew model", () => {
       z3: { preference: "wasm" },
     })).resolves.toMatchObject({ status: "counterexample", depth: 1 });
 
-    const dynamic = parseSpec("dynamic-record-grant.ts", `/* uneffect:
-      state candidate: { owner: string, epoch: int, valid: bool }
-      state grants: Set<{ owner: string, epoch: int, valid: bool }>
-      init candidate = { owner: "node-a", epoch: 1, valid: true }
-      init grants = Set(candidate)
-      action retain: grants' = grants
-      temporal validGrantHasEpoch: grants.forall(grant => !grant.valid || grant.epoch > 0)
-    */`).temporal;
+    const dynamic = parseSpec("dynamic-record-grant.ts", `/* uneffect:temporal state candidate: { owner: string, epoch: int, valid: bool } */ /* uneffect:temporal state grants: Set<{ owner: string, epoch: int, valid: bool }> */ /* uneffect:temporal init candidate = { owner: "node-a", epoch: 1, valid: true } */ /* uneffect:temporal init grants = Set(candidate) */ /* uneffect:temporal action retain: grants' = grants */ /* uneffect:temporal invariant validGrantHasEpoch: grants.forall(grant => !grant.valid || grant.epoch > 0) */`).temporal;
     await expect(findTemporalCounterexampleWithZ3(dynamic, "validGrantHasEpoch", { maxSteps: 1 }))
       .resolves.toEqual({ status: "unknown", depth: 0 });
 
@@ -275,12 +171,7 @@ describe("Node Lease clock-skew model", () => {
       },
     })).resolves.toMatchObject({ status: "replayed", matchedSteps: 1 });
 
-    const unsupportedControlCharacter = parseSpec("string-control.ts", `/* uneffect:
-      state id: string
-      init id = "\\n"
-      action retain: id' = id
-      temporal stable: id === "\\n"
-    */`).temporal;
+    const unsupportedControlCharacter = parseSpec("string-control.ts", `/* uneffect:temporal state id: string */ /* uneffect:temporal init id = "\\n" */ /* uneffect:temporal action retain: id' = id */ /* uneffect:temporal invariant stable: id === "\\n" */`).temporal;
     await expect(findTemporalCounterexampleWithZ3(unsupportedControlCharacter, "stable", { maxSteps: 1 }))
       .resolves.toEqual({ status: "unknown", depth: 0 });
   });
@@ -398,20 +289,7 @@ describe("Node Lease clock-skew model", () => {
   }, 60_000);
 
   it("rules out worker-resource starvation only under the declared weak fairness", async () => {
-    const model = (fair: boolean) => parseSpec("lease-gc-liveness.ts", `/* uneffect:
-      state workerAlive: bool
-      state resourceHeld: bool
-      init workerAlive = true
-      init resourceHeld = true
-      action idle: resourceHeld' = resourceHeld
-      action crash: workerAlive' = false
-      action_when crash: workerAlive
-      action gc: resourceHeld' = false
-      action_when gc: !workerAlive && resourceHeld
-      ${fair ? "action_fair crash: weak" : ""}
-      ${fair ? "action_fair gc: weak" : ""}
-      temporal_eventually resourceReleased: !resourceHeld
-    */`).temporal;
+    const model = (fair: boolean) => parseSpec("lease-gc-liveness.ts", `/* uneffect:temporal state workerAlive: bool */ /* uneffect:temporal state resourceHeld: bool */ /* uneffect:temporal init workerAlive = true */ /* uneffect:temporal init resourceHeld = true */ /* uneffect:temporal action idle: resourceHeld' = resourceHeld */ /* uneffect:temporal action crash: workerAlive' = false */ /* uneffect:temporal action_when crash: workerAlive */ /* uneffect:temporal action gc: resourceHeld' = false */ /* uneffect:temporal action_when gc: !workerAlive && resourceHeld */ /* uneffect:temporal ${fair ? "action_fair crash: weak" : ""} */ /* uneffect:temporal ${fair ? "action_fair gc: weak" : ""} */ /* uneffect:temporal eventually resourceReleased: !resourceHeld */`).temporal;
     const unfair = await lintTemporalReachabilityWithZ3(model(false), { maxSteps: 4 });
     expect(unfair).toContainEqual(expect.objectContaining({
       code: "reachable-liveness-cycle", name: "resourceReleased",

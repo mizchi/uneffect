@@ -46,11 +46,11 @@ describe("React lifecycle Quint projection", () => {
     const path = join(directory, "action-error.qnt");
     const analysis = analyzeReactSemantics("checkout.tsx", `
       import { useActionState } from "react"
-      /* uneffect: react component */ function Checkout() {
+      /* uneffect:react-component */ function Checkout() {
         useActionState(() => { throw new Error("failed") }, 0)
         return null
       }
-      /* uneffect: react component */ function CheckoutError() { return null }
+      /* uneffect:react-component */ function CheckoutError() { return null }
     `);
     const action = analysis.components.find(({ name }) => name === "Checkout")!;
     const fallback = analysis.components.find(({ name }) => name === "CheckoutError")!;
@@ -217,7 +217,7 @@ describe("React lifecycle Quint projection", () => {
   test("preserves setup/cleanup order and exposes an early-cleanup counterexample", () => {
     const analysis = analyzeReactSemantics("panel.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Panel() {
         useEffect(() => { console.log("setup"); return () => console.log("cleanup") }, [])
         return null
@@ -250,7 +250,7 @@ describe("React lifecycle Quint projection", () => {
   test("rejects commit effects produced only by a discarded concurrent render", () => {
     const analysis = analyzeReactSemantics("search-results.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function SearchResults() {
         useEffect(() => { console.log("commit") }, [])
         return null
@@ -283,7 +283,7 @@ describe("React lifecycle Quint projection", () => {
   test("rejects dependency setup owned by an uncommitted generation", () => {
     const analysis = analyzeReactSemantics("room.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Room({ id }: { id: string }) {
         useEffect(() => { console.log("connect", id); return () => console.log("disconnect", id) }, [id])
         return null
@@ -315,7 +315,7 @@ describe("React lifecycle Quint projection", () => {
   test("rejects a Suspense retry commit before its suspension resolves", () => {
     const analysis = analyzeReactSemantics("profile.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Profile() { useEffect(() => { console.log("visible") }, []); return null }
     `);
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspense-"));
@@ -344,7 +344,7 @@ describe("React lifecycle Quint projection", () => {
   test("rejects a repeated Suspense attempt before the prior suspension resolves", () => {
     const analysis = analyzeReactSemantics("repeated-profile.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Profile() { useEffect(() => { console.log("visible") }, []); return null }
     `);
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-repeated-suspense-"));
@@ -373,7 +373,7 @@ describe("React lifecycle Quint projection", () => {
   test("rejects primary Effect setup before matching fallback cleanup", () => {
     const analyze = (name: string) => analyzeReactSemantics(`${name}.tsx`, `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function ${name}() { useEffect(() => { console.log("setup"); return () => console.log("cleanup") }, []); return null }
     `).components[0]!;
     const primary = analyze("Profile");
@@ -407,8 +407,8 @@ describe("React lifecycle Quint projection", () => {
   test("runs the source-extracted Suspense boundary projection", () => {
     const analysis = analyzeReactSemantics("extracted-boundary.tsx", `
       import { Suspense, useEffect } from "react"
-      /* uneffect: react component */ function Primary() { useEffect(() => () => console.log("hide"), []); return null }
-      /* uneffect: react component */ function Fallback() { useEffect(() => () => console.log("hide"), []); return null }
+      /* uneffect:react-component */ function Primary() { useEffect(() => () => console.log("hide"), []); return null }
+      /* uneffect:react-component */ function Fallback() { useEffect(() => () => console.log("hide"), []); return null }
       function App() { return <Suspense fallback={<Fallback />}><Primary /></Suspense> }
     `);
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-extracted-fallback-"));
@@ -429,9 +429,9 @@ describe("React lifecycle Quint projection", () => {
   test("keeps a leaf suspension at its nearest nested Suspense boundary", () => {
     const analysis = analyzeReactSemantics("nested-boundary.tsx", `
       import { Suspense } from "react"
-      /* uneffect: react component */ function Primary() { return null }
-      /* uneffect: react component */ function InnerFallback() { return null }
-      /* uneffect: react component */ function OuterFallback() { return null }
+      /* uneffect:react-component */ function Primary() { return null }
+      /* uneffect:react-component */ function InnerFallback() { return null }
+      /* uneffect:react-component */ function OuterFallback() { return null }
       function App() { return <Suspense fallback={<OuterFallback />}><Suspense fallback={<InnerFallback />}><Primary /></Suspense></Suspense> }
     `);
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-nested-boundary-"));
@@ -461,10 +461,10 @@ describe("React lifecycle Quint projection", () => {
     const sourceText = `
       import { Suspense, use } from "react"
       const innerPromise = Promise.resolve("inner")
-      /* uneffect: react component */ function OuterLeaf() { return null }
-      /* uneffect: react component */ function InnerLeaf() { use(innerPromise); return null }
-      /* uneffect: react component */ function OuterFallback() { return null }
-      /* uneffect: react component */ function InnerFallback() { return null }
+      /* uneffect:react-component */ function OuterLeaf() { return null }
+      /* uneffect:react-component */ function InnerLeaf() { use(innerPromise); return null }
+      /* uneffect:react-component */ function OuterFallback() { return null }
+      /* uneffect:react-component */ function InnerFallback() { return null }
       function App() { return <Suspense fallback={<OuterFallback />}><><OuterLeaf /><Suspense fallback={<InnerFallback />}><InnerLeaf /></Suspense></></Suspense> }
     `;
     const sourceAnalysis = analyzeReactSemantics("suspense-tree.tsx", sourceText);

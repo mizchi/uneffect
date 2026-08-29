@@ -2,18 +2,12 @@
 
 Uneffect annotations are ordinary block comments. They do not change TypeScript parsing, emitted JavaScript, or JSDoc tag semantics.
 
-Once a block contains the explicit `uneffect:` marker, its following non-empty lines are owned by the Uneffect grammar. Unknown directive names, missing payloads, and empty effect-union members are errors rather than ignored text. Ordinary JSDoc outside such a block is untouched. Parsed directives and capability members retain exact UTF-16 source spans in TypeScript. The Rust/Corsa boundary uses file IDs and UTF-8 byte spans; adapters must convert positions explicitly rather than mixing the two coordinate systems.
+Every block starts with an explicit `uneffect:<dialect>` header. The dialect selects the grammar before any payload is parsed; Uneffect never guesses whether an expression is a contract or a transition-system property. Unknown dialects, directives from another dialect, missing payloads, and empty effect-union members are errors. Ordinary JSDoc is untouched. Parsed directives and capability members retain exact UTF-16 source spans in TypeScript. The Rust/Corsa boundary uses file IDs and UTF-8 byte spans; adapters must convert positions explicitly rather than mixing the two coordinate systems.
 
 ```ts
 import type { Nat } from "@mizchi/uneffect"
 
-/*
- * uneffect:
- * effect Console | Mutate<typeof state>
- * requires amount >= 0
- * ensures result >= amount
- * assert amount: Nat
- */
+/* uneffect:capability effect Console | Mutate<typeof state> */ /* uneffect:contract requires amount >= 0 */ /* uneffect:contract ensures result >= amount */ /* uneffect:contract assert amount: Nat */
 function deposit(state: Account, amount: Nat): Nat {
   state.balance += amount
   console.log(amount)
@@ -24,7 +18,7 @@ function deposit(state: Account, amount: Nat): Nat {
 Executable module initialization has a separate file-header upper bound:
 
 ```ts
-/* uneffect: module_effect Console | FsRead */
+/* uneffect:capability module_effect Console | FsRead */
 await start()
 ```
 
@@ -37,13 +31,15 @@ non-proof-grade.
 
 ## Marker
 
-Only comments containing the exact `uneffect:` marker are interpreted. Earlier design spellings such as `@effect`, bare `effect`, and `with` are not accepted.
+Only comments containing an explicit `uneffect:<dialect>` header are interpreted. The canonical spelling has no space after the colon, which keeps one-line annotations compact. Whitespace is accepted for tolerant parsing, but formatters and documentation emit the compact form. Earlier design spellings such as `@effect`, bare `effect`, and `with` are not accepted.
 
 The canonical form uses `/* ... */`, not `/** ... */`. An accidental JSDoc block can be scanned because `uneffect:` is plain description text rather than a JSDoc tag, but tools should format new annotations as non-JSDoc comments.
 
 ```ebnf
-annotation = "/*", annotation_body, "*/" ;
-annotation_body = "uneffect:", { directive } ;
+annotation = "/*", "uneffect:", dialect, [ inline_directive ], { directive }, "*/" ;
+dialect = "capability" | "contract" | "temporal" | "temporal-summary"
+        | "async" | "refinement" | "runtime" | "trust"
+        | "react-component" | "react-hook" | "react-resource" ;
 
 directive = effect_decl
           | effect_parameter_decl
@@ -56,7 +52,9 @@ directive = effect_decl
           | refinement_decl
           | abstraction_decl ;
 
-Function-summary temporal contracts add `temporal_requires`, `temporal_ensures`, `temporal_modifies`, `temporal_throws`, `temporal_rejects`, `temporal_suspends true`, and `temporal_cancellable true`. Once suspension introduced a concrete progress question, the grammar also gained `temporal_eventually name: predicate`, `temporal_response name: trigger => response`, `temporal_repeatedly name: predicate`, `temporal_stabilizes name: predicate`, and per-summary `temporal_fair weak|strong`. These lower to Quint `eventually`, `leadsTo`, `always(eventually(...))`, `eventually(always(...))`, and weak/strong action fairness; they are still TypeScript-style source expressions rather than embedded Quint.
+`temporal-summary` uses the local names `requires`, `ensures`, `modifies`, `throws`, `rejects`, `suspends`, `cancellable`, and `fair`. A standalone `temporal` block uses `invariant`, `eventually`, `response`, `repeatedly`, and `stabilizes`. These lower through Uneffect's neutral IR to Quint; they are TypeScript-style source expressions, not embedded Quint.
+
+The same word may intentionally have dialect-specific meaning. `contract invariant` is a Hoare-style loop invariant, while `temporal invariant name: predicate` is a named transition-system safety property. A directive from the wrong dialect fails closed with a dialect-specific diagnostic.
 
 Standalone transition systems additionally support `action_when name:
 predicate`, `clock name: positiveInteger`, and `action_fair name: weak|strong`.
@@ -106,7 +104,7 @@ widen to their container.
 A return refinement describes a value more precisely for Uneffect analysis without changing runtime behavior:
 
 ```ts
-/* uneffect: returns Path<"$TEMP"> */
+/* uneffect:runtime returns Path<"$TEMP"> */
 declare function tmpdir(): string
 ```
 
@@ -118,16 +116,16 @@ Exported implementation functions can be bound to an abstract temporal model
 without wrapping their runtime calls:
 
 ```ts
-/* uneffect: refinement lease@1 create */
+/* uneffect:refinement refinement lease@1 create */
 export function createLease(initial: LeaseState): LeaseRuntime { /* ... */ }
 
-/* uneffect: refinement lease@1 observe */
+/* uneffect:refinement refinement lease@1 observe */
 export function observeLease(runtime: LeaseRuntime): LeaseState { /* ... */ }
 
-/* uneffect: refinement lease@1 action takeoverB */
+/* uneffect:refinement refinement lease@1 action takeoverB */
 export function takeover(runtime: LeaseRuntime): void { /* ... */ }
 
-/* uneffect: refinement lease@1 invariant singleWriter */
+/* uneffect:refinement refinement lease@1 invariant singleWriter */
 export function singleWriter(runtime: LeaseRuntime): boolean { /* ... */ }
 ```
 
@@ -142,7 +140,7 @@ TypeScript checking remains responsible for the concrete state/runtime types.
 An adapter may opt into a proof-relevant ambient runtime identity:
 
 ```ts
-/* uneffect: runtime lease@1 = globalThis */
+/* uneffect:runtime runtime lease@1 = globalThis */
 ```
 
 This states that the adapter's runtime parameter denotes the ECMAScript global
@@ -159,7 +157,7 @@ Node's ambient `global` requires both the `@types/node` major and an explicit
 realm label:
 
 ```ts
-/* uneffect: runtime lease@1 = node:global@24#main */
+/* uneffect:runtime runtime lease@1 = node:global@24#main */
 ```
 
 Both sides must carry the exact same identity. The argument must resolve through
@@ -173,10 +171,7 @@ An implementation may use a different top-level field name from the temporal
 model by declaring an explicit, version-matched abstraction relation:
 
 ```ts
-/* uneffect:
-  state subscribers: Set<int>
-  abstraction routingState@1 subscribers = Set(routing.activeSubscriberIds)
-*/
+/* uneffect:temporal state subscribers: Set<int> */ /* uneffect:refinement abstraction routingState@1 subscribers = Set(routing.activeSubscriberIds) */
 ```
 
 The left side is a temporal state field. A bare right side is an identity
@@ -456,14 +451,14 @@ These are compile-time brands, not automatic runtime checks.
 An `assert` directive can instrument selected boundaries with Valibot:
 
 ```ts
-/* uneffect: assert amount: Nat */
+/* uneffect:contract assert amount: Nat */
 function deposit(amount: Nat) {}
 ```
 
 The instrumenter emits a `valibot` import and `parse` call. A safe subset of explicit Valibot expressions is supported:
 
 ```ts
-/* uneffect: assert name: v.pipe(v.string(), v.nonEmpty()) */
+/* uneffect:contract assert name: v.pipe(v.string(), v.nonEmpty()) */
 ```
 
 Arbitrary callbacks and executable expressions are rejected. Instrumentation changes runtime behavior and the thrown-error surface, so its build-profile setting must be included in proof artifacts.
@@ -471,11 +466,11 @@ Arbitrary callbacks and executable expressions are rejected. Instrumentation cha
 ## Logical contracts
 
 ```ts
-/* uneffect: requires n >= 0 */
-/* uneffect: ensures result == n */
+/* uneffect:contract requires n >= 0 */
+/* uneffect:contract ensures result == n */
 function count(n: number) {
   let i = 0
-  /* uneffect: invariant i >= 0 && i <= n */
+  /* uneffect:contract invariant i >= 0 && i <= n */
   while (i < n) i = i + 1
   return i
 }
@@ -548,7 +543,7 @@ unknown evidence.
 Lexically disposed resources have a separate retention contract:
 
 ```ts
-/* uneffect: retains_resource 0 */
+/* uneffect:async retains_resource 0 */
 declare function register(resource: Resource): void
 ```
 

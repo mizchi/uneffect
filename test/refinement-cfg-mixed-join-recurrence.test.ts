@@ -7,21 +7,11 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state pending: int
-  state processed: int
-  state sampled: bool
-  state mode: int
-  init pending = 0
-  init processed = 0
-  init sampled = false
-  init mode = 0
-  action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? (sampled ? 2 * pending : pending) : (mode === 1 ? (sampled ? 3 * pending : 2 * pending) : (sampled ? 4 * pending : 3 * pending))) : 0)
-*/
+const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? (sampled ? 2 * pending : pending) : (mode === 1 ? (sampled ? 3 * pending : 2 * pending) : (sampled ? 4 * pending : 3 * pending))) : 0) */
 interface Runtime { pending: number; processed: number; sampled: boolean; mode: number }
-/* uneffect: refinement mixedDrain@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect: refinement mixedDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect: refinement mixedDrain@1 action drain */
+/* uneffect:refinement refinement mixedDrain@1 create */ export function create(initial: Runtime) { return initial }
+/* uneffect:refinement refinement mixedDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+/* uneffect:refinement refinement mixedDrain@1 action drain */
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     if (runtime.sampled) runtime.processed++

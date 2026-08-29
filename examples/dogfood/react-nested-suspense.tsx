@@ -2,7 +2,7 @@ import { Suspense, use, useEffect } from "react";
 
 declare const accountPromise: Promise<{ name: string }>;
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function AccountPanel() {
   const account = use(accountPromise);
   useEffect(() => {
@@ -12,19 +12,19 @@ export function AccountPanel() {
   return <section>{account.name}</section>;
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function AccountSpinner() {
   useEffect(() => () => console.log("account spinner hidden"), []);
   return <p>Loading account…</p>;
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function PageSpinner() {
   useEffect(() => () => console.log("page spinner hidden"), []);
   return <p>Loading page…</p>;
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function AccountNavigation() {
   return <nav>Account navigation</nav>;
 }

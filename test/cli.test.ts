@@ -22,7 +22,7 @@ function capture(): CliStreams & { stdout: string; stderr: string } {
 describe("uneffect command line", () => {
   it("publishes exactly one binary that points at the built entry", () => {
     const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { bin: Record<string, string> };
-    expect(manifest.bin).toEqual({ uneffect: "dist/src/cli.js" });
+    expect(manifest.bin).toEqual({ uneffect:"dist/src/cli.js" });
   });
 
   it("reports the installed package version", async () => {
@@ -71,7 +71,7 @@ describe("uneffect command line", () => {
     const fileName = join(directory, "main.ts"), config = join(directory, "registry.json");
     const nodeMajor = Number.parseInt(process.versions.node.split(".")[0]!, 10);
     try {
-      writeFileSync(fileName, '/* uneffect: module_effect Console */\nimport "node:path"; export const ready = true');
+      writeFileSync(fileName, '/* uneffect:capability module_effect Console */\nimport "node:path"; export const ready = true');
       const registry = (major: number) => JSON.stringify({
         schema: "uneffect-registry/v1", builtinRegistryVersion: 2,
         moduleInitializations: [{
@@ -110,7 +110,7 @@ describe("uneffect command line", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-module-"));
     const fileName = join(directory, "main.ts"), moduleFile = join(directory, "audit.uneffect.json");
     try {
-      writeFileSync(fileName, '/* uneffect: module_effect Acme.Audit.Init */\nimport "node:path"; export const ready = true');
+      writeFileSync(fileName, '/* uneffect:capability module_effect Acme.Audit.Init */\nimport "node:path"; export const ready = true');
       writeFileSync(moduleFile, JSON.stringify({
         schema: "uneffect-module/v1", name: "@acme/audit-semantics", version: "1.0.0", namespace: "Acme.Audit",
         evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed test module",
@@ -142,7 +142,7 @@ describe("uneffect command line", () => {
     try {
       writeFileSync(unknownFile, `export function consume(iterator: Iterator<number>) { iterator.next() }`);
       writeFileSync(inferredFile, `export function identity(value: number) { return value }`);
-      writeFileSync(declaredFile, `/* uneffect: effect Console */ export function report() { console.log("ok") }`);
+      writeFileSync(declaredFile, `/* uneffect:capability effect Console */ export function report() { console.log("ok") }`);
       writeFileSync(emptyFile, `export type Empty = never`);
 
       const gradual = capture();
@@ -174,7 +174,7 @@ describe("uneffect command line", () => {
       expect(verifiedWithBuiltin.stderr).toContain("reviewed Console log semantic overlay");
 
       const pureDeclaredFile = join(directory, "pure-declared.ts");
-      writeFileSync(pureDeclaredFile, `/* uneffect: module_effect none */\n/* uneffect: effect none */ export function identity(value: number) { return value }`);
+      writeFileSync(pureDeclaredFile, `/* uneffect:capability module_effect none */\n/* uneffect:capability effect none */ export function identity(value: number) { return value }`);
       const verifiedPure = capture();
       expect(await runCli(["check", "--assurance", "verified", pureDeclaredFile], verifiedPure)).toBe(exitCode.success);
       expect(verifiedPure.stderr).toContain("assurance verified: passed (verified)");
@@ -310,7 +310,7 @@ describe("uneffect command line", () => {
       expect(JSON.parse(gradual.stdout)).toMatchObject({ outcome: "passed", assurance: null });
 
       const contracted = join(directory, "contracted.ts");
-      writeFileSync(contracted, "/* uneffect: ensures result === x */ export function identity(x: number) { return x }");
+      writeFileSync(contracted, "/* uneffect:contract ensures result === x */ export function identity(x: number) { return x }");
       const proof = capture();
       expect(await runCli(["check", "--json", contracted], proof)).toBe(exitCode.success);
       expect(JSON.parse(proof.stdout)).toMatchObject({
@@ -330,7 +330,7 @@ describe("uneffect command line", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-invalid-effect-set-"));
     const fileName = join(directory, "invalid.ts");
     try {
-      writeFileSync(fileName, `/* uneffect: effect none | Console */ export function invalid() {}`);
+      writeFileSync(fileName, `/* uneffect:capability effect none | Console */ export function invalid() {}`);
       const io = capture();
       expect(await runCli(["check", "--json", fileName], io)).toBe(exitCode.failed);
       expect(io.stderr).toBe("");
@@ -350,14 +350,14 @@ describe("uneffect command line", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-invalid-directive-"));
     const fileName = join(directory, "invalid.ts");
     try {
-      writeFileSync(fileName, `/* uneffect: effects Console */ export function report() { console.log("x") }`);
+      writeFileSync(fileName, `/* uneffect:temporal effects Console */ export function report() { console.log("x") }`);
       const io = capture();
       expect(await runCli(["check", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
       expect(io.stderr).toBe("");
       const report = JSON.parse(io.stdout);
       expect(report.diagnostics).toContainEqual(expect.objectContaining({
         code: "effect/invalid", severity: "error", functionName: "<annotation>",
-        message: expect.stringContaining("unknown Uneffect directive `effects`"),
+        message: expect.stringContaining("`effects` is not valid in an `uneffect:temporal` block"),
       }));
       expect(report.effects).toEqual(expect.arrayContaining([
         expect.objectContaining({ functionName: "report", evidence: "unknown", unknownReasons: expect.arrayContaining([
@@ -474,15 +474,15 @@ describe("uneffect command line", () => {
       });
 
       writeFileSync(join(a, "src", "a.ts"), `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         console.log("module-a")
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function report() { console.log("a") }
       `);
       writeFileSync(join(b, "src", "b.ts"), `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         import { report } from "../../a/src/a.js"
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function relay() { report() }
       `);
       writeFileSync(join(b, "tsconfig.json"), JSON.stringify({
@@ -525,16 +525,16 @@ describe("uneffect command line", () => {
       });
 
       writeFileSync(join(a, "src", "a.ts"), `
-        /* uneffect: effect_parameter iterator extends Console */
+        /* uneffect:capability effect_parameter iterator extends Console */
         export function consume(iterator: Iterator<unknown>) {
           for (;;) { const step = iterator.next(); if (step.done) return }
         }
       `);
       writeFileSync(join(b, "src", "b.ts"), `
         import { consume } from "../../a/src/a.js"
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         function* generate() { console.log("item") }
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function run() { consume(generate()) }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
@@ -550,12 +550,12 @@ describe("uneffect command line", () => {
 
       writeFileSync(join(a, "src", "a.ts"), `
         export const shared = { value: 0 }
-        /* uneffect: effect Mutate<typeof shared.value> */
+        /* uneffect:capability effect Mutate<typeof shared.value> */
         export function setShared() { shared.value = 1 }
       `);
       writeFileSync(join(b, "src", "b.ts"), `
         import { setShared, shared } from "../../a/src/a.js"
-        /* uneffect: effect Mutate<typeof shared.value> */
+        /* uneffect:capability effect Mutate<typeof shared.value> */
         export function update() { setShared() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
@@ -572,13 +572,13 @@ describe("uneffect command line", () => {
       writeFileSync(join(a, "src", "state.ts"), "export const shared = { value: 0 }\n");
       writeFileSync(join(a, "src", "bridge.ts"), "export { shared } from './state.js'\n");
       writeFileSync(join(a, "src", "a.ts"), `
-        /* uneffect: module_effect Mutate<typeof shared.value> */
+        /* uneffect:capability module_effect Mutate<typeof shared.value> */
         import { shared } from "./bridge.js"
         export { shared } from "./bridge.js"
         shared.value = 1
       `);
       writeFileSync(join(b, "src", "b.ts"), `
-        /* uneffect: module_effect Mutate<typeof shared.value> */
+        /* uneffect:capability module_effect Mutate<typeof shared.value> */
         import { shared } from "../../a/src/a.js"
         export const value = shared.value
       `);
@@ -592,13 +592,13 @@ describe("uneffect command line", () => {
       });
 
       writeFileSync(join(a, "src", "a.ts"), `
-        /* uneffect: module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:capability module_effect Mutate<typeof globalThis.appState.value> */
         export {}
         declare global { var appState: { value: number } }
         globalThis.appState.value = 1
       `);
       writeFileSync(join(b, "src", "b.ts"), `
-        /* uneffect: module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:capability module_effect Mutate<typeof globalThis.appState.value> */
         import "../../a/src/a.js"
         export const value = globalThis.appState.value
       `);
@@ -613,9 +613,9 @@ describe("uneffect command line", () => {
 
       writeFileSync(join(a, "src", "a.ts"), `export function report() { console.log("a") }`);
       writeFileSync(join(b, "src", "b.ts"), `
-        /* uneffect: module_effect Console */
+        /* uneffect:capability module_effect Console */
         import { report } from "../../a/src/a.js"
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function relay() { report() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
@@ -630,12 +630,12 @@ describe("uneffect command line", () => {
         .find((item) => item.functionName === "relay")).toMatchObject({ effects: ["Console"], evidence: "unknown" });
 
       writeFileSync(join(a, "src", "a.ts"), `
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         export function report() { console.log("a") }
       `);
       writeFileSync(join(b, "src", "b.ts"), `
         import { report } from "../../a/src/a.js"
-        /* uneffect: effect FsRead<"$CWD/**"> */
+        /* uneffect:capability effect FsRead<"$CWD/**"> */
         export function relay() { report() }
       `);
       const missingParentEffect = capture();
@@ -703,20 +703,20 @@ describe("uneffect command line", () => {
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
       writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
       const model = `state armed: bool\nstate count: int\ninit armed = true\ninit count = 1\naction increment: count' = count + 1\naction_when increment: armed && count > 0`;
-      writeFileSync(join(child, "src", "counter.ts"), `/* uneffect:\n${model}\n*/
+      writeFileSync(join(child, "src", "counter.ts"), `/* uneffect:temporal \n${model}\n */
         export interface Runtime { armed: boolean; count: number }
-        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
-        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect: effect Mutate<typeof runtime.count> */
-        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.count > 0)) return; runtime.count++ }
+        /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:refinement refinement counter@1 action increment */ export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.count > 0)) return; runtime.count++ }
       `);
       writeFileSync(join(parent, "src", "counter.ts"), `import { increment as incrementChild } from "../../child/src/counter.js"
         import type { Runtime } from "../../child/src/counter.js"
-        /* uneffect:\n${model}\n*/
-        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
-        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect: effect Mutate<typeof runtime.count> */
-        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { incrementChild(runtime) }
+        /* uneffect:temporal \n${model}\n */
+        /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:refinement refinement counter@1 action increment */ export function increment(runtime: Runtime) { incrementChild(runtime) }
       `);
       const config = (references: unknown[] = []) => ({
         compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist", strict: true, module: "NodeNext", moduleResolution: "NodeNext", types: [] },
@@ -744,7 +744,7 @@ describe("uneffect command line", () => {
     const sourceFile = join(directory, "src", "value.component");
     const generatedFile = join(directory, "src", "value.ts");
     const manifestFile = join(directory, "transforms.json");
-    const generated = "/* uneffect: effect none */\nexport function value() { return 1 }\n";
+    const generated = "/* uneffect:capability effect none */\nexport function value() { return 1 }\n";
     const source = `<script lang="ts">\n${generated}</script>\n`;
     const start = source.indexOf(generated), end = start + generated.length;
     const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -807,10 +807,10 @@ describe("uneffect command line", () => {
     const fileName = join(directory, "bounded.ts");
     try {
       writeFileSync(fileName, `
-        /* uneffect: effect Console */ function* generate() { console.log("step"); yield 1 }
-        /* uneffect: effect_parameter iterator extends Console */
+        /* uneffect:capability effect Console */ function* generate() { console.log("step"); yield 1 }
+        /* uneffect:capability effect_parameter iterator extends Console */
         export function consume(iterator: IteratorObject<unknown>) { iterator.next() }
-        /* uneffect: effect Console */ export function main() { consume(generate()) }
+        /* uneffect:capability effect Console */ export function main() { consume(generate()) }
       `);
       const io = capture();
       expect(await runCli(["evidence", fileName], io)).toBe(exitCode.success);

@@ -142,23 +142,7 @@ An animation-frame callback returns to a microtask checkpoint before the
 remaining frame callbacks and paint continue.
 
 ```ts
-/*
- * uneffect:
- * clock clock: 1
- * state pending: bool
- * state deadline: int
- * init pending = false
- * init deadline = 0
- * action release: pending' = true, deadline' = clock + 3
- * action_when release: !pending
- * action complete: pending' = false
- * action_when complete: pending && clock <= deadline
- * action_when tick_clock: !pending || clock < deadline
- * action_fair tick_clock: weak
- * temporal deadlineSafe: !pending || clock <= deadline
- * temporal_response requestCompletes: pending => !pending
- * temporal_repeatedly returnsIdle: !pending
-*/
+/* uneffect:temporal clock clock: 1 */ /* uneffect:temporal state pending: bool */ /* uneffect:temporal state deadline: int */ /* uneffect:temporal init pending = false */ /* uneffect:temporal init deadline = 0 */ /* uneffect:temporal action release: pending' = true, deadline' = clock + 3 */ /* uneffect:temporal action_when release: !pending */ /* uneffect:temporal action complete: pending' = false */ /* uneffect:temporal action_when complete: pending && clock <= deadline */ /* uneffect:temporal action_when tick_clock: !pending || clock < deadline */ /* uneffect:temporal action_fair tick_clock: weak */ /* uneffect:temporal invariant deadlineSafe: !pending || clock <= deadline */ /* uneffect:temporal response requestCompletes: pending => !pending */ /* uneffect:temporal repeatedly returnsIdle: !pending */
 ```
 
 `temporal_response requestCompletes: pending => !pending` is a leads-to

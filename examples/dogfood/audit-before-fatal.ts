@@ -1,7 +1,7 @@
 declare function sendAuditEvent(message: string): Promise<void>;
 const MUST_ABORT_INVALID_REQUEST = true as const;
 
-/* uneffect: effect Throw<Error> */
+/* uneffect:capability effect Throw<Error> */
 function fatal(message: string): never {
   throw new Error(message);
 }

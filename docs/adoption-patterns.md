@@ -25,7 +25,7 @@ review.
 An effect declaration is an upper bound. A broad first annotation is valid:
 
 ```ts
-/* uneffect: effect FsRead | Console */
+/* uneffect:capability effect FsRead | Console */
 export function loadAndReport(): void {
   // Existing implementation.
 }
@@ -35,7 +35,7 @@ Once the call graph is classified, replace broad permissions with finite scope
 sets:
 
 ```ts
-/* uneffect: effect FsRead<"$WORKSPACE_ROOT/config/**"> | Console */
+/* uneffect:capability effect FsRead<"$WORKSPACE_ROOT/config/**"> | Console */
 export function loadAndReport(): void {
   // Existing implementation.
 }
@@ -77,8 +77,8 @@ assumptions become security or correctness requirements:
 ```ts
 import type { Nat } from "@mizchi/uneffect"
 
-/* uneffect: requires denominator > 0 */
-/* uneffect: ensures result <= numerator */
+/* uneffect:contract requires denominator > 0 */
+/* uneffect:contract ensures result <= numerator */
 export function quotient(numerator: Nat, denominator: Nat): number {
   return Math.floor(numerator / denominator)
 }
@@ -129,7 +129,7 @@ Refinement bindings connect named model actions and invariants to exported
 TypeScript functions:
 
 ```ts
-/* uneffect: refinement queue@1 action enqueue */
+/* uneffect:refinement refinement queue@1 action enqueue */
 export function enqueue(runtime: Runtime): void {
   runtime.pending += 1
 }

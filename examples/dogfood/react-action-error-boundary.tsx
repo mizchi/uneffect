@@ -8,10 +8,10 @@ declare namespace JSX {
   }
 }
 
-/* uneffect: effect Fetch | Throw<TypeError> */
+/* uneffect:capability effect Fetch | Throw<TypeError> */
 declare function submitOrder(quantity: number): Promise<number>;
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function Checkout() {
   const [quantity, dispatchOrder, pending] = useActionState(async (previous: number, next: number) => {
     if (!Number.isSafeInteger(next) || next <= 0) throw new TypeError("quantity must be a positive integer");
@@ -23,7 +23,7 @@ export function Checkout() {
   </form>;
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function CheckoutError() {
   return <p role="alert">The order could not be completed.</p>;
 }

@@ -171,17 +171,17 @@ The initial operation set is:
 Examples:
 
 ```ts
-/* uneffect: effect Dom<NodeRead, typeof root> */
+/* uneffect:capability effect Dom<NodeRead, typeof root> */
 function find(root: Element) {
   return root.querySelector(".item")
 }
 
-/* uneffect: effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+/* uneffect:capability effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
 function clear(input: HTMLInputElement) {
   input.value = ""
 }
 
-/* uneffect: effect Dom<NodeWrite, typeof root> */
+/* uneffect:capability effect Dom<NodeWrite, typeof root> */
 function mount(root: Element, child: Node) {
   root.appendChild(child)
 }
@@ -289,7 +289,7 @@ The frontend conservatively emits `InvokeUserCode` for declared accessors, `any`
 ## Fetch authority
 
 ```ts
-/* uneffect: effect Fetch<GET | POST, "https://api.example.com/v1/**"> */
+/* uneffect:capability effect Fetch<GET | POST, "https://api.example.com/v1/**"> */
 ```
 
 The first parameter is a finite method set. The second is a set of normalized URL patterns. Literal requests infer exact scopes; analyzable template literals infer restricted glob scopes; fully dynamic URLs become unknown.

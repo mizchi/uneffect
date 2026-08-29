@@ -503,10 +503,7 @@ describe("Uneffect dogfood", () => {
       const escaped = source.replace(
         "  incrementSent(target);",
         "  incrementSent(target);\n  capture(target);",
-      ).replace(
-        "/* uneffect: effect Mutate<typeof target.sent> */\nfunction incrementSent(target: LocalAliasRuntime): void {",
-        "let captured: LocalAliasRuntime | undefined;\nfunction capture(value: LocalAliasRuntime): void { captured = value; }\n\n/* uneffect: effect Mutate<typeof target.sent> */\nfunction incrementSent(target: LocalAliasRuntime): void {",
-      ) + "\nexport function invokeEscapedAlias(runtime: LocalAliasRuntime): void { sendThroughLocalAlias(runtime); }\n";
+      ) + "\ndeclare function capture(value: LocalAliasRuntime): void;\nexport function invokeEscapedAlias(runtime: LocalAliasRuntime): void { sendThroughLocalAlias(runtime); }\n";
       writeFileSync(escapedFile, escaped);
       const escapedProgram = ts.createProgram([escapedFile], compilerOptions);
       const escapedEffects = analyzeProgramEffects(escapedProgram);
@@ -776,8 +773,8 @@ describe("Uneffect dogfood", () => {
     expect(blocks.filter((id) => id.startsWith("nested-handler-join:"))).toHaveLength(2);
 
     const fourth = source.replace(
-      "    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect: refinement telemetryRouting@1 action armAudit */",
-      "    try { throw \"third stage\"; } catch {}\n    try { throw \"fourth stage\"; } catch {}\n    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect: refinement telemetryRouting@1 action armAudit */",
+      "    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action armAudit */",
+      "    try { throw \"third stage\"; } catch {}\n    try { throw \"fourth stage\"; } catch {}\n    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action armAudit */",
     );
     const unsupported = analyzeRefinementActionBodies(fileName, fourth, "telemetryRouting", temporal);
     expect(unsupported.obligations).toContainEqual(expect.objectContaining({
@@ -2124,7 +2121,7 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
     );
-    const missingOverrideReturn = source.replace("    return;\n  }\n  runtime.postProcessed += 1;\n}\n\n/* uneffect: refinement telemetryRouting@1 action buffer */", "    // missing finally return\n  }\n  runtime.postProcessed += 1;\n}\n\n/* uneffect: refinement telemetryRouting@1 action buffer */");
+    const missingOverrideReturn = source.replace("    return;\n  }\n  runtime.postProcessed += 1;\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action buffer */", "    // missing finally return\n  }\n  runtime.postProcessed += 1;\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action buffer */");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingOverrideReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "drop", target: "postProcessed" }),
     );
@@ -2434,12 +2431,12 @@ describe("Uneffect dogfood", () => {
         import { readFile } from "node:fs"
         function flushSuccess() { queueMicrotask(() => console.log("flushed")) }
         function flushFailure() { nextTick(() => console.log("retry")) }
-        /* uneffect: effect Throw<SyntaxError> */
+        /* uneffect:capability effect Throw<SyntaxError> */
         function parseSettings() { throw new SyntaxError("invalid settings") }
         async function loadSettings() { throw new SyntaxError("async settings") }
-        /* uneffect: effect Console */
+        /* uneffect:capability effect Console */
         function* flushSteps() { console.log("prepare flush"); yield "ready" }
-        /* uneffect: effect Throw<TypeError> */
+        /* uneffect:capability effect Throw<TypeError> */
         function* failedFlushSteps() { throw new TypeError("flush unavailable") }
         declare function externalFlushSteps(): Generator<string>
         function buildFlushSteps(preferCache: boolean) {
@@ -2451,7 +2448,7 @@ describe("Uneffect dogfood", () => {
           handlers: { success: flushSuccess, failure: flushFailure } as const,
           select(outcome: "success" | "failure") { return this.handlers[outcome] },
         } as const
-        /* uneffect: effect FsRead<"settings.json"> | Console | Timer | InvokeUserCode */
+        /* uneffect:capability effect FsRead<"settings.json"> | Console | Timer | InvokeUserCode */
         export function scheduleFlush(preferCache: boolean) {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
@@ -2687,7 +2684,7 @@ describe("Uneffect dogfood", () => {
     }));
 
     const brokenHeader = analyzeAsyncSafety(fileName, source.replace(
-      "/* uneffect: consumes_rejection 0 */",
+      "/* uneffect:async consumes_rejection 0 */",
       "/* ownership contract removed */",
     ));
     expect(brokenHeader.diagnostics).toContainEqual(expect.objectContaining({
@@ -2707,7 +2704,7 @@ describe("Uneffect dogfood", () => {
     }));
 
     const brokenGate = analyzeAsyncSafety(fileName, source.replace(
-      "/* uneffect: effect Throw<Error> */",
+      "/* uneffect:capability effect Throw<Error> */",
       "/* throw contract removed */",
     ));
     expect(brokenGate.diagnostics).toContainEqual(expect.objectContaining({
@@ -2732,7 +2729,7 @@ describe("Uneffect dogfood", () => {
     expect(verified.assumptions.violations).toEqual([]);
 
     const ownerless = await verifyUneffectProject({
-      files: { [fileName]: source.replaceAll("/* uneffect: trust_owner telemetry-platform */\n", "") },
+      files: { [fileName]: source.replaceAll("/* uneffect:trust trust_owner telemetry-platform */\n", "") },
       assumptionPolicy: policy,
     });
     expect(ownerless.diagnostics).toEqual(expect.arrayContaining([
@@ -3184,7 +3181,7 @@ describe("Uneffect dogfood", () => {
     expect(analyzeEffects(fileName, source.replace('FsRead<"config.json"> | ', ""))).toContainEqual(expect.objectContaining({
       functionName: "reportConfigChanges", kind: "missing", effect: 'FsRead<"config.json">',
     }));
-    expect(analyzeEffects(fileName, source.replace('/* uneffect: effect FsRead<"config.json"> */\nexport function probe', "export function probe")))
+    expect(analyzeEffects(fileName, source.replace('/* uneffect:capability effect FsRead<"config.json"> */\nexport function probe', "export function probe")))
       .toContainEqual(expect.objectContaining({
         functionName: "probeConfigWatcherLifecycle", kind: "missing", effect: 'FsRead<"config.json">',
       }));

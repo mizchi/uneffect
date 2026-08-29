@@ -2,11 +2,11 @@ interface RemoteAuditConnection {
   readonly endpoint: "audit";
 }
 
-/* uneffect: react acquire RemoteAuditConnection result */
+/* uneffect:react-resource acquire RemoteAuditConnection result */
 declare function connectRemoteAudit(notify?: () => void): RemoteAuditConnection;
-/* uneffect: react release RemoteAuditConnection parameter 0 */
+/* uneffect:react-resource release RemoteAuditConnection parameter 0 */
 declare function disconnectRemoteAudit(connection: RemoteAuditConnection): void;
-/* uneffect: effect RemoteAuditSnapshotRead */
+/* uneffect:capability effect RemoteAuditSnapshotRead */
 declare function readRemoteAuditSnapshot(): number;
 
 export function installRemoteAudit(): () => void {

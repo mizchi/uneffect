@@ -1,4 +1,4 @@
-/* uneffect: effect Timer */
+/* uneffect:capability effect Timer */
 export async function scheduleDashboardWork(signal: AbortSignal): Promise<string[]> {
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(1_000)]);
   const sharedOptions = { signal: deadline } as const;

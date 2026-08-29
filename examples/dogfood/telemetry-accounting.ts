@@ -1,19 +1,4 @@
-/* uneffect:
-  state accepted: int
-  state dropped: int
-  state attempted: int
-  state auditArmed: bool
-  init accepted = 0
-  init dropped = 0
-  init attempted = 0
-  init auditArmed = false
-  action accept: accepted' = accepted + 1, attempted' = attempted + 1
-  action drop: dropped' = dropped + 1, attempted' = attempted + 1
-  action armAudit: auditArmed' = true
-  action observeLostOutcome: auditArmed' = auditArmed
-  action_when observeLostOutcome: auditArmed && accepted + dropped < attempted
-  temporal allAttemptsAccountedFor: accepted + dropped === attempted
-*/
+/* uneffect:temporal state accepted: int */ /* uneffect:temporal state dropped: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal state auditArmed: bool */ /* uneffect:temporal init accepted = 0 */ /* uneffect:temporal init dropped = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init auditArmed = false */ /* uneffect:temporal action accept: accepted' = accepted + 1, attempted' = attempted + 1 */ /* uneffect:temporal action drop: dropped' = dropped + 1, attempted' = attempted + 1 */ /* uneffect:temporal action armAudit: auditArmed' = true */ /* uneffect:temporal action observeLostOutcome: auditArmed' = auditArmed */ /* uneffect:temporal action_when observeLostOutcome: auditArmed && accepted + dropped < attempted */ /* uneffect:temporal invariant allAttemptsAccountedFor: accepted + dropped === attempted */
 
 export class TelemetryAccounting {
   accepted = 0;

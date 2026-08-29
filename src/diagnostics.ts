@@ -57,7 +57,7 @@ export interface ReportedDiagnostic {
 
 /** Next action for every diagnostic code, so a reader never has to guess what to change. */
 const hints: Readonly<Record<string, string>> = {
-  "effect/missing": "declare the effect in the function's /* uneffect: effect ... */ comment, or move the operation into a callee that already declares it",
+  "effect/missing": "declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it",
   "effect/unused": "delete the declared effect, or keep it deliberately as a wider upper bound; unused declarations never fail the CLI",
   "effect/unknown": "fix the effect name; the known constructors are FsRead, FsWrite, Console, Fetch, Dom, Env, Random, Timer, Mutate<region>, and Throw<ErrorType>",
   "effect/invalid": "fix the effect-set syntax; use `none` by itself for an explicit empty set, or a `|`-separated union of Effect terms",
@@ -88,9 +88,9 @@ const hints: Readonly<Record<string, string>> = {
   "react/action-dispatch-outside-action": "dispatch inside startTransition, a useTransition Action, or an action/formAction prop",
   "react/transition-update-after-await": "wrap the state update after await in a new startTransition call",
   "react/conditional-hook": "call Hooks unconditionally at the component top level and move the condition inside the Hook",
-  "react/missing-effect-cleanup": "return cleanup that calls a matching /* uneffect: react release Capability */ boundary",
+  "react/missing-effect-cleanup": "return cleanup that calls a matching /* uneffect:react-resource release Capability */ boundary",
   "react/invalid-react-annotation": "use `react component`, `react hook`, `react acquire Capability [result]`, or `react release Capability [parameter N]`",
-  "react/unknown-hook-summary": "annotate the resolved custom Hook with `/* uneffect: react hook */`, or keep the component outside the checked boundary",
+  "react/unknown-hook-summary": "annotate the resolved custom Hook with `/* uneffect:react-hook */`, or keep the component outside the checked boundary",
   "react/recursive-hook": "remove recursive Hook calls; React Hook order requires a finite, stable call sequence",
   "react/resource-identity-mismatch": "pass the resource returned by this Effect setup, or an immutable local alias of it, to the matching cleanup boundary",
   "react/duplicate-effect-cleanup": "release each acquired resource identity exactly once in the returned cleanup",

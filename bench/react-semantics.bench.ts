@@ -33,7 +33,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
     >{props.label}{catalogVersion}{optimisticLabel}{selectionSnapshot.active && preferences.dense}</button>
   }
   const ItemAlias${index} = ItemView${index}
-  /* uneffect: react component */
+  /* uneffect:react-component */
   export const Item${index} = memo(ItemAlias${index})
 `).join("\n");
 
@@ -43,33 +43,33 @@ const source = `
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; onDoubleClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
-  /* uneffect: react acquire Subscription result */
+  /* uneffect:react-resource acquire Subscription result */
   declare function subscribe(label: string): Subscription
-  /* uneffect: react release Subscription parameter 0 */
+  /* uneffect:react-resource release Subscription parameter 0 */
   declare function unsubscribe(subscription: Subscription): void
-  /* uneffect: effect StyleWrite */
+  /* uneffect:capability effect StyleWrite */
   declare function insertRule(): void
-  /* uneffect: effect StyleWrite */
+  /* uneffect:capability effect StyleWrite */
   declare function removeRule(): void
-  /* uneffect: effect LabelSave */
+  /* uneffect:capability effect LabelSave */
   declare function persistLabel(label: string): Promise<void>
   interface CatalogVersionSubscription { readonly id: string }
-  /* uneffect: react acquire CatalogVersionSubscription result */
+  /* uneffect:react-resource acquire CatalogVersionSubscription result */
   declare function openCatalogVersion(notify: () => void): CatalogVersionSubscription
-  /* uneffect: react release CatalogVersionSubscription parameter 0 */
+  /* uneffect:react-resource release CatalogVersionSubscription parameter 0 */
   declare function closeCatalogVersion(subscription: CatalogVersionSubscription): void
-  /* uneffect: effect CatalogVersionRead */
+  /* uneffect:capability effect CatalogVersionRead */
   declare function readCatalogVersion(): number
   function subscribeCatalogVersion(notify: () => void) {
     const subscription = openCatalogVersion(notify)
     return () => closeCatalogVersion(subscription)
   }
   function getCatalogVersionSnapshot() { return readCatalogVersion() }
-  /* uneffect: react hook */
+  /* uneffect:react-hook */
   function useCatalogVersion() {
     return useSyncExternalStore(subscribeCatalogVersion, getCatalogVersionSnapshot)
   }
-  /* uneffect: react hook */
+  /* uneffect:react-hook */
   function useCatalogSubscription(label: string) {
     const reportConnected = useEffectEvent(() => console.log(label))
     useEffect(() => {
@@ -82,11 +82,11 @@ const source = `
 `;
 const callbackSource = `
   interface ModuleSubscription { readonly id: string }
-  /* uneffect: react acquire ModuleSubscription result */
+  /* uneffect:react-resource acquire ModuleSubscription result */
   declare function subscribeModule(): ModuleSubscription
-  /* uneffect: react release ModuleSubscription parameter 0 */
+  /* uneffect:react-resource release ModuleSubscription parameter 0 */
   declare function unsubscribeModule(subscription: ModuleSubscription): void
-  /* uneffect: effect ModuleSnapshotRead */
+  /* uneffect:capability effect ModuleSnapshotRead */
   declare function readModuleSnapshot(): number
   export function moduleInstall() {
     const subscription = subscribeModule()
@@ -117,26 +117,26 @@ const createCatalogProgram = () => ts.createProgram(["catalog.tsx", "callbacks.t
 const analyzed = analyzeReactSemantics("catalog.tsx", source);
 const nested = analyzeReactSemantics("nested.tsx", `
   import { Suspense } from "react"
-  /* uneffect: react component */ function Primary() { return null }
-  /* uneffect: react component */ function InnerFallback() { return null }
-  /* uneffect: react component */ function OuterFallback() { return null }
+  /* uneffect:react-component */ function Primary() { return null }
+  /* uneffect:react-component */ function InnerFallback() { return null }
+  /* uneffect:react-component */ function OuterFallback() { return null }
   function App() { return <Suspense fallback={<OuterFallback />}><Suspense fallback={<InnerFallback />}><Primary /></Suspense></Suspense> }
 `);
 const suspenseTree = analyzeReactSemantics("tree.tsx", `
   import { Suspense } from "react"
-  /* uneffect: react component */ function OuterLeaf() { return null }
-  /* uneffect: react component */ function InnerLeafA() { return null }
-  /* uneffect: react component */ function InnerLeafB() { return null }
-  /* uneffect: react component */ function InnerFallback() { return null }
-  /* uneffect: react component */ function OuterFallback() { return null }
+  /* uneffect:react-component */ function OuterLeaf() { return null }
+  /* uneffect:react-component */ function InnerLeafA() { return null }
+  /* uneffect:react-component */ function InnerLeafB() { return null }
+  /* uneffect:react-component */ function InnerFallback() { return null }
+  /* uneffect:react-component */ function OuterFallback() { return null }
   function App() { return <Suspense fallback={<OuterFallback />}><><OuterLeaf /><Suspense fallback={<InnerFallback />}><><InnerLeafA /><InnerLeafB /></></Suspense></></Suspense> }
 `);
 const causalSource = `
   import { Suspense, use } from "react"
   const data = Promise.resolve("ready")
-  /* uneffect: react component */ function Data() { use(data); return null }
-  /* uneffect: react component */ function Static() { return null }
-  /* uneffect: react component */ function Fallback() { return null }
+  /* uneffect:react-component */ function Data() { use(data); return null }
+  /* uneffect:react-component */ function Static() { return null }
+  /* uneffect:react-component */ function Fallback() { return null }
   function App() { return <Suspense fallback={<Fallback />}><><Static /><Data /></></Suspense> }
 `;
 const causalOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve, noEmit: true };
@@ -148,11 +148,11 @@ const causalProgram = ts.createProgram(["causal.tsx"], causalOptions, causalHost
 const causalResults = analyzeReactProgram(causalProgram);
 const actionError = analyzeReactSemantics("checkout.tsx", `
   import { useActionState } from "react"
-  /* uneffect: react component */ function Checkout() {
+  /* uneffect:react-component */ function Checkout() {
     useActionState(() => { throw new Error("failed") }, 0)
     return null
   }
-  /* uneffect: react component */ function CheckoutError() { return null }
+  /* uneffect:react-component */ function CheckoutError() { return null }
 `);
 
 describe("React semantic analysis", () => {

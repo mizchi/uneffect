@@ -1,16 +1,4 @@
-/* uneffect:
- * state pending: int
- * state delivered: int
- * state failed: int
- * state audited: int
- * state reject: bool
- * init pending = 0
- * init delivered = 0
- * init failed = 0
- * init audited = 0
- * init reject = false
- * action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0), audited' = audited + (pending > 0 ? pending : 0)
- */
+/* uneffect:temporal state pending: int */ /* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state reject: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init reject = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0), audited' = audited + (pending > 0 ? pending : 0) */
 
 export interface TelemetryDrainState {
   pending: number;
@@ -20,17 +8,17 @@ export interface TelemetryDrainState {
   reject: boolean;
 }
 
-/* uneffect: refinement telemetryFixedPoint@1 create */
+/* uneffect:refinement refinement telemetryFixedPoint@1 create */
 export function createTelemetryDrain(initial: TelemetryDrainState): TelemetryDrainState {
   return initial;
 }
 
-/* uneffect: refinement telemetryFixedPoint@1 observe */
+/* uneffect:refinement refinement telemetryFixedPoint@1 observe */
 export function observeTelemetryDrain(runtime: TelemetryDrainState): TelemetryDrainState {
   return runtime;
 }
 
-/* uneffect: refinement telemetryFixedPoint@1 action drain */
+/* uneffect:refinement refinement telemetryFixedPoint@1 action drain */
 export function drainTelemetry(runtime: TelemetryDrainState): void {
   while (runtime.pending > 0) {
     try {

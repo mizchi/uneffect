@@ -6,17 +6,11 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state pending: int
-  state primary: bool
-  init pending = 0
-  init primary = true
-  action drain: pending' = pending > 0 ? 0 : pending, primary' = pending > 0 ? (pending % 2 === 0 ? primary : !primary) : primary
-*/
+const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state primary: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init primary = true */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, primary' = pending > 0 ? (pending % 2 === 0 ? primary : !primary) : primary */
 interface Runtime { pending: number; primary: boolean }
-/* uneffect: refinement cfgBooleanInvolution@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect: refinement cfgBooleanInvolution@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect: refinement cfgBooleanInvolution@1 action drain */
+/* uneffect:refinement refinement cfgBooleanInvolution@1 create */ export function create(initial: Runtime) { return initial }
+/* uneffect:refinement refinement cfgBooleanInvolution@1 observe */ export function observe(runtime: Runtime) { return runtime }
+/* uneffect:refinement refinement cfgBooleanInvolution@1 action drain */
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.primary = !runtime.primary

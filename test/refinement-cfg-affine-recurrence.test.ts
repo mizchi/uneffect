@@ -5,17 +5,11 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state pending: int
-  state processed: int
-  init pending = 0
-  init processed = 0
-  action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0)
-*/
+const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0) */
 interface Runtime { pending: number; processed: number }
-/* uneffect: refinement cfgDrain@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect: refinement cfgDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect: refinement cfgDrain@1 action drain */
+/* uneffect:refinement refinement cfgDrain@1 create */ export function create(initial: Runtime) { return initial }
+/* uneffect:refinement refinement cfgDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+/* uneffect:refinement refinement cfgDrain@1 action drain */
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.processed++

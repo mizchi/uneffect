@@ -3,21 +3,7 @@ import { describe, expect, it } from "vitest";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state nodes: Set<int>
-  state primary: int
-  state backup: int
-  state leases: Map<int, int>
-  init nodes = Set(1, 2)
-  init primary = 1
-  init backup = 1
-  init leases = Map([[1, 7]])
-  action selectBackup: backup' = 2
-  action retain: primary' = primary, backup' = backup
-  temporal primaryIsNode: nodes.contains(primary)
-  temporal backupIsNode: nodes.contains(backup)
-  temporal selectedLeasesExist: leases.getOrElse(primary, 0) > 0 && leases.getOrElse(backup, 0) > 0
-*/`;
+const fixture = `/* uneffect:temporal state nodes: Set<int> */ /* uneffect:temporal state primary: int */ /* uneffect:temporal state backup: int */ /* uneffect:temporal state leases: Map<int, int> */ /* uneffect:temporal init nodes = Set(1, 2) */ /* uneffect:temporal init primary = 1 */ /* uneffect:temporal init backup = 1 */ /* uneffect:temporal init leases = Map([[1, 7]]) */ /* uneffect:temporal action selectBackup: backup' = 2 */ /* uneffect:temporal action retain: primary' = primary, backup' = backup */ /* uneffect:temporal invariant primaryIsNode: nodes.contains(primary) */ /* uneffect:temporal invariant backupIsNode: nodes.contains(backup) */ /* uneffect:temporal invariant selectedLeasesExist: leases.getOrElse(primary, 0) > 0 && leases.getOrElse(backup, 0) > 0 */`;
 
 describe("proved finite domains for multiple temporal Map keys", () => {
   it("proves every key independently before decoding one counterexample", async () => {
@@ -72,14 +58,14 @@ describe("proved finite domains for multiple temporal Map keys", () => {
 
   it("fails the whole universe closed when any key proof premise is absent", async () => {
     for (const [name, source] of [
-      ["missing-membership", fixture.replace("  temporal backupIsNode: nodes.contains(backup)\n", "")],
+      ["missing-membership", fixture.replace("/* uneffect:temporal invariant backupIsNode: nodes.contains(backup) */ ", "")],
       ["non-inductive-key", fixture.replace("action selectBackup: backup' = 2", "action selectBackup: backup' = 3")],
       ["compound-key", fixture.replace("leases.getOrElse(backup, 0)", "leases.getOrElse(backup + 0, 0)")],
       ["mutable-domain", fixture.replace("action selectBackup: backup' = 2", "action selectBackup: backup' = 2, nodes' = nodes.union(Set(3))")],
       ["ambiguous-backup-domain", fixture
         .replace("state primary: int", "state primary: int\n  state backupNodes: Set<int>")
         .replace("init primary = 1", "init primary = 1\n  init backupNodes = Set(1, 2)")
-        .replace("temporal backupIsNode: nodes.contains(backup)", "temporal backupIsNode: nodes.contains(backup)\n  temporal backupIsOtherNode: backupNodes.contains(backup)")],
+        .replace("invariant backupIsNode: nodes.contains(backup)", "invariant backupIsNode: nodes.contains(backup) */ /* uneffect:temporal invariant backupIsOtherNode: backupNodes.contains(backup)")],
     ] as const) {
       const temporal = parseSpec(`${name}.ts`, source).temporal;
       await expect(findTemporalCounterexampleWithZ3(temporal, "selectedLeasesExist", { maxSteps: 2 }), name)

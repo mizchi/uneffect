@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export default function RemoteProfile() {
   useEffect(() => {
     console.log("remote profile visible");
@@ -9,7 +9,7 @@ export default function RemoteProfile() {
   return <article>Remote profile</article>;
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function RemoteSpinner() {
   useEffect(() => {
     console.log("remote spinner visible");

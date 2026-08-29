@@ -1,16 +1,4 @@
-/* uneffect:
-  state accepted: int
-  state byteBudget: int
-  state auditArmed: bool
-  init accepted = 1
-  init byteBudget = 3
-  init auditArmed = false
-  action acceptBalanced: accepted' = accepted + 1, byteBudget' = byteBudget + 3
-  action armAudit: auditArmed' = true
-  action observeOverCapacity: auditArmed' = auditArmed
-  action_when observeOverCapacity: auditArmed && 3 * accepted > byteBudget
-  temporal withinCapacity: 3 * accepted <= byteBudget
-*/
+/* uneffect:temporal state accepted: int */ /* uneffect:temporal state byteBudget: int */ /* uneffect:temporal state auditArmed: bool */ /* uneffect:temporal init accepted = 1 */ /* uneffect:temporal init byteBudget = 3 */ /* uneffect:temporal init auditArmed = false */ /* uneffect:temporal action acceptBalanced: accepted' = accepted + 1, byteBudget' = byteBudget + 3 */ /* uneffect:temporal action armAudit: auditArmed' = true */ /* uneffect:temporal action observeOverCapacity: auditArmed' = auditArmed */ /* uneffect:temporal action_when observeOverCapacity: auditArmed && 3 * accepted > byteBudget */ /* uneffect:temporal invariant withinCapacity: 3 * accepted <= byteBudget */
 
 export class TelemetryCapacity {
   accepted = 1;

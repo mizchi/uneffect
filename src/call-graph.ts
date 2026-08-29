@@ -1,6 +1,7 @@
 import ts from "typescript";
 import type { Effect } from "./capabilities.js";
 import type { EvidenceStatus } from "./effects.js";
+import { extractAnnotations } from "./annotations.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 
 export type CallableKind = "function" | "method" | "arrow" | "function-expression";
@@ -266,7 +267,7 @@ export function buildProgramCallGraph(
     const leading = declarationSource.text.slice(
       declaration.getFullStart(), declaration.getStart(declarationSource),
     );
-    const refinementActionOwner = /\buneffect\s*:\s*refinement\s+[^\s]+\s+action\s+[^\s*]+/i.test(leading);
+    const refinementActionOwner = extractAnnotations(leading, "refinement").some((value) => /\saction\s/.test(` ${value} `));
     const iteratorParameterIndices = new Map<ts.Symbol, number>();
     type IteratorBindingState = { generators: ts.FunctionLikeDeclaration[]; unknown: boolean; pure: boolean };
     const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration[]>(), unknownGeneratorBindings = new Set<ts.Symbol>(), pureIteratorBindings = new Set<ts.Symbol>();

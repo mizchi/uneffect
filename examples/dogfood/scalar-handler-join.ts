@@ -1,12 +1,4 @@
-/* uneffect:
-  state total: int
-  state first: bool
-  state second: bool
-  init total = 0
-  init first = false
-  init second = false
-  action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4)
-*/
+/* uneffect:temporal state total: int */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init first = false */ /* uneffect:temporal init second = false */ /* uneffect:temporal action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4) */
 
 export interface ScalarHandlerState {
   total: number;
@@ -14,17 +6,17 @@ export interface ScalarHandlerState {
   second: boolean;
 }
 
-/* uneffect: refinement scalarHandlerJoin@1 create */
+/* uneffect:refinement refinement scalarHandlerJoin@1 create */
 export function createScalarHandlerState(initial: ScalarHandlerState): ScalarHandlerState {
   return { ...initial };
 }
 
-/* uneffect: refinement scalarHandlerJoin@1 observe */
+/* uneffect:refinement refinement scalarHandlerJoin@1 observe */
 export function observeScalarHandlerState(runtime: ScalarHandlerState): ScalarHandlerState {
   return { ...runtime };
 }
 
-/* uneffect: refinement scalarHandlerJoin@1 action compose */
+/* uneffect:refinement refinement scalarHandlerJoin@1 action compose */
 export function composeScalarHandlers(runtime: ScalarHandlerState): void {
   try {
     try {

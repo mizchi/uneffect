@@ -160,7 +160,7 @@ the relevant class method, async suspension, dynamic record key, and
 project-reference call shape. It adds only this attempted marker to `set`:
 
 ```ts
-/* uneffect: refinement stateStore@1 action set */
+/* uneffect:refinement refinement stateStore@1 action set */
 async set(key: string, value: unknown): Promise<void> {
   const data = await this.load()
   data[key] = value

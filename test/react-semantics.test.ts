@@ -11,7 +11,7 @@ describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
     const result = analyzeReactSemantics("components.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: unknown } }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Checked() {
         console.log("render")
         return <button />
@@ -37,60 +37,60 @@ describe("React Function Component semantics", () => {
           input: { ref?: unknown }
         }
       }
-      /* uneffect: effect Subscribe */ declare function subscribe(): void
-      /* uneffect: effect Unsubscribe */ declare function unsubscribe(): void
-      /* uneffect: effect CompareAudit */ declare function compareAudit(): void
+      /* uneffect:capability effect Subscribe */ declare function subscribe(): void
+      /* uneffect:capability effect Unsubscribe */ declare function unsubscribe(): void
+      /* uneffect:capability effect CompareAudit */ declare function compareAudit(): void
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const MemoButton = remember((props: { path: string }) => {
         useEffect(() => { subscribe(); return () => unsubscribe() }, [])
         return <button onClick={() => fetch(props.path)} />
       })
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const ForwardedInput = React.memo(legacyRef(function Input(props: { label: string }, ref: unknown) {
         return <input ref={(node) => console.log(props.label, ref, node)} />
       }))
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const ImpureComparator = remember(
         (props: { value: number }) => null,
         (previous, next) => { compareAudit(); Date.now(); return previous.value === next.value },
       )
 
       declare const opaqueComparator: (previous: object, next: object) => boolean
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const OpaqueComparator = remember((props: object) => null, opaqueComparator)
 
       const ReferencedView = (props: { path: string }) => <button onClick={() => fetch(props.path)} />
       const ReferencedAlias = ReferencedView
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const ReferencedMemo = remember(ReferencedAlias)
 
       const ReferencedInputView = (props: { label: string }, ref: unknown) => <input ref={(node) => console.log(props.label, ref, node)} />
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const ReferencedForward = React.memo(legacyRef(ReferencedInputView))
 
       function DeclaredView(props: { path: string }) { return <button onClick={() => fetch(props.path)} /> }
       const DeclaredAlias = DeclaredView
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const DeclaredMemo = remember(DeclaredAlias)
 
       let MutableView = (_props: object) => null
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const MutableMemo = remember(MutableView)
 
       function ReassignedView(_props: object) { return null }
       ReassignedView = (_props: object) => null
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const ReassignedMemo = remember(ReassignedView)
 
       declare function importedComponent(props: object): null
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const OpaqueWrapped = remember(importedComponent)
 
       declare function wrap<T>(value: T): T
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const WrongWrapper = wrap(() => null)
     `);
 
@@ -143,10 +143,10 @@ describe("React Function Component semantics", () => {
         import { forwardRef, memo } from "react"
         function ContentView(_props: object, _ref: unknown) { return null }
         const ContentAlias = ContentView
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export const Content = memo(forwardRef(ContentAlias))
         const SpinnerView = () => null
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export const Spinner = memo(SpinnerView)
       `);
       writeFileSync(appFile, `
@@ -172,11 +172,11 @@ describe("React Function Component semantics", () => {
 
   it("rejects malformed or meaningless React annotations", () => {
     const result = analyzeReactSemantics("invalid.tsx", `
-      /* uneffect: react components */
+      /* uneffect:react-resource */
       function Typo() { return null }
-      /* uneffect: react acquire */
+      /* uneffect:react-resource acquire */
       declare function incomplete(): void
-      /* uneffect: react release Socket trailing */
+      /* uneffect:react-resource release Socket trailing */
       declare function excessive(): void
     `);
     expect(result.diagnostics).toEqual([
@@ -190,7 +190,7 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("phases.tsx", `
       import { useEffect as passive, useLayoutEffect as layout } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       const Panel = () => {
         passive(() => {
           console.log("connect")
@@ -225,11 +225,11 @@ describe("React Function Component semantics", () => {
         useRef,
         useState,
       } from "react"
-      /* uneffect: effect StyleWrite */
+      /* uneffect:capability effect StyleWrite */
       declare function insertRule(): void
-      /* uneffect: effect StyleWrite */
+      /* uneffect:capability effect StyleWrite */
       declare function removeRule(): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Styled() {
         const [, setReady] = useState(false)
         const updateReady = setReady
@@ -277,7 +277,7 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("effect-event.tsx", `
       import { startTransition, useEffect, useEffectEvent as useEvent, useLayoutEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Safe({ roomId }: { roomId: string }) {
         const onConnected = useEvent(() => console.log(roomId))
         const notify = onConnected
@@ -285,7 +285,7 @@ describe("React Function Component semantics", () => {
         useLayoutEffect(() => onConnected(), [])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Invalid() {
         const onConnected = useEvent(() => console.log("connected"))
         onConnected()
@@ -312,13 +312,13 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("external-store.tsx", `
       import { useSyncExternalStore as useStore } from "react"
       interface StoreSubscription { readonly id: string }
-      /* uneffect: effect StoreRead */
+      /* uneffect:capability effect StoreRead */
       declare function readStore(): number
-      /* uneffect: effect ServerStoreRead */
+      /* uneffect:capability effect ServerStoreRead */
       declare function readServerStore(): number
-      /* uneffect: react acquire StoreSubscription result */
+      /* uneffect:react-resource acquire StoreSubscription result */
       declare function openStoreSubscription(notify: () => void): StoreSubscription
-      /* uneffect: react release StoreSubscription parameter 0 */
+      /* uneffect:react-resource release StoreSubscription parameter 0 */
       declare function closeStoreSubscription(value: StoreSubscription): void
       function subscribe(notify: () => void) {
         const value = openStoreSubscription(notify)
@@ -326,23 +326,23 @@ describe("React Function Component semantics", () => {
       }
       function getSnapshot() { return readStore() }
       const getServerSnapshot = () => readServerStore()
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Counter() {
         const count = useStore(subscribe, getSnapshot, getServerSnapshot)
         return count
       }
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useCounterStore() {
         return useStore(subscribe, getSnapshot, getServerSnapshot)
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Composed() { return useCounterStore() }
       declare const unknownSubscribe: (notify: () => void) => () => void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Invalid() {
         return useStore(unknownSubscribe, () => ({ value: 1 }))
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function MissingCleanup() {
         return useStore((_notify) => {}, () => 0)
       }
@@ -381,11 +381,11 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("imperative-handle.tsx", `
       import React, { useImperativeHandle as expose } from "react"
 
-      /* uneffect: effect Audit */ declare function audit(value: string): void
-      /* uneffect: effect Focus */ declare function focusInput(): void
-      /* uneffect: effect Submit */ declare function submitForm(): void
+      /* uneffect:capability effect Audit */ declare function audit(value: string): void
+      /* uneffect:capability effect Focus */ declare function focusInput(): void
+      /* uneffect:capability effect Submit */ declare function submitForm(): void
 
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useEditorHandle(ref: unknown, label: string) {
         const createHandle = () => {
           audit(label)
@@ -397,31 +397,31 @@ describe("React Function Component semantics", () => {
         expose(ref, createHandle, [label])
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Editor(props: { label: string; ref: unknown }) {
         useEditorHandle(props.ref, props.label)
         return null
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Namespaced(props: { ref: unknown }) {
         React.useImperativeHandle(props.ref, () => ({ focus() { focusInput() } }), [])
         return null
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Stale(props: { label: string; ref: unknown }) {
         expose(props.ref, () => ({ label: props.label }), [])
         return null
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Opaque(props: { ref: unknown }, createHandle: () => object) {
         expose(props.ref, createHandle, [])
         return null
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Conditional(props: { enabled: boolean; ref: unknown }) {
         if (props.enabled) expose(props.ref, () => ({}), [])
         return null
@@ -463,10 +463,10 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("react-actions.tsx", `
       import React, { useActionState as actionState, useOptimistic as optimistic } from "react"
       declare namespace JSX { interface IntrinsicElements { form: { action?: unknown }; button: { formAction?: unknown; onClick?: unknown } } }
-      /* uneffect: effect Save */ declare function save(value: string): Promise<void>
-      /* uneffect: effect Audit */ declare function audit(): void
+      /* uneffect:capability effect Save */ declare function save(value: string): Promise<void>
+      /* uneffect:capability effect Audit */ declare function audit(): void
 
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useSave(initial: string) {
         return actionState(async (previous: string, next: string) => {
           await save(next)
@@ -474,7 +474,7 @@ describe("React Function Component semantics", () => {
         }, initial)
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Editor(props: { initial: string; value: string }) {
         useSave(props.initial)
         const [saved, dispatch, pending] = actionState(async (previous: string, next: string) => {
@@ -485,7 +485,7 @@ describe("React Function Component semantics", () => {
         return <form action={dispatch}><button formAction={async () => { await save(props.value) }} /></form>
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Namespaced(props: { value: string }) {
         const [state] = React.useActionState(async (_previous: string, next: string) => {
           await save(next)
@@ -495,7 +495,7 @@ describe("React Function Component semantics", () => {
         return null
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Impure(props: { value: string }) {
         const [actionValue, , pending] = actionState((previous: string) => previous, props.value)
         const [state] = optimistic(props.value, (current: string) => {
@@ -509,21 +509,21 @@ describe("React Function Component semantics", () => {
         return null
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Opaque(props: { value: string }, action: Function, reducer: Function) {
         actionState(action, props.value)
         optimistic(props.value, reducer)
         return <form action={props.value} />
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function InvalidDispatch(props: { value: string }) {
         const [, dispatch] = actionState((previous: string) => previous, props.value)
         const [, update] = optimistic(props.value, (previous: string) => previous)
         return <button onClick={() => { dispatch(props.value); update(props.value) }} />
       }
 
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function TransitionDispatch(props: { value: string }) {
         const [, dispatch] = actionState((previous: string) => previous, props.value)
         const [, update] = optimistic(props.value, (previous: string) => previous)
@@ -578,7 +578,7 @@ describe("React Function Component semantics", () => {
   it("tracks direct Action throws without treating event throws as Error Boundary inputs", () => {
     const result = analyzeReactSemantics("action-error.tsx", `
       import { useActionState } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Checkout() {
         const fail = () => { throw new TypeError("invalid") }
         const [, submit] = useActionState(async (previous: number, value: number) => {
@@ -588,7 +588,7 @@ describe("React Function Component semantics", () => {
         }, 0)
         return <button onClick={() => { throw new RangeError("event") }} formAction={submit} />
       }
-      /* uneffect: react component */ function CheckoutError() { return null }
+      /* uneffect:react-component */ function CheckoutError() { return null }
     `);
     const checkout = result.components.find(({ name }) => name === "Checkout")!;
     expect(checkout.phases).toEqual(expect.arrayContaining([
@@ -609,7 +609,7 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("referenced-events.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
       function moduleSubmit() { fetch("/module-submit") }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Panel() {
         function submit() { fetch("/submit") }
         const handleClick = submit
@@ -629,7 +629,7 @@ describe("React Function Component semantics", () => {
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
       function moduleSubmit() { fetch("/module") }
       moduleSubmit = () => console.log("changed module")
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Panel() {
         function submit() { fetch("/submit") }
         submit = () => console.log("changed")
@@ -647,7 +647,7 @@ describe("React Function Component semantics", () => {
       import React, { startTransition as defer, useTransition } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
       declare const externalAction: () => void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Panel() {
         const [, schedule] = useTransition()
         const refresh = () => fetch("/refresh")
@@ -660,18 +660,18 @@ describe("React Function Component semantics", () => {
         }
         return <button onClick={handleClick} />
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function InvalidRender() {
         React.startTransition(() => fetch("/during-render"))
         return null
       }
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useInvalidTransition() {
         const log = () => console.log("hook-render")
         const logAlias = log
         defer(logAlias)
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function InvalidHookRender() { useInvalidTransition(); return null }
     `);
 
@@ -691,12 +691,12 @@ describe("React Function Component semantics", () => {
     const helpersFile = join(directory, "helpers.ts"), appFile = join(directory, "app.tsx");
     try {
       writeFileSync(helpersFile, `
-        /* uneffect: effect DeepTransition */ declare function auditDeepTransition(): void
+        /* uneffect:capability effect DeepTransition */ declare function auditDeepTransition(): void
         export function auditDeep() { auditDeepTransition() }
       `);
       writeFileSync(callbacksFile, `
         import { auditDeep } from "./helpers.js"
-        /* uneffect: effect RemoteTransition */ declare function auditTransition(): void
+        /* uneffect:capability effect RemoteTransition */ declare function auditTransition(): void
         function fetchRemote() { auditTransition(); auditDeep(); fetch("/remote") }
         export function remoteAction() { fetchRemote() }
         export default function defaultAction() { fetchRemote() }
@@ -709,7 +709,7 @@ describe("React Function Component semantics", () => {
         import defaultAction, * as actions from "./callbacks.js"
         import { remoteAction, unstableAction } from "./barrel.js"
         declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
-        /* uneffect: react component */
+        /* uneffect:react-component */
         function Panel() {
           useEffect(() => { startTransition(remoteAction) }, [])
           return <button onClick={() => {
@@ -742,7 +742,7 @@ describe("React Function Component semantics", () => {
       import React, { startTransition, useState, useTransition } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
       declare function load(): Promise<string>
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Search() {
         const [, setResult] = useState("")
         const [, begin] = useTransition()
@@ -756,7 +756,7 @@ describe("React Function Component semantics", () => {
           })
         }} />
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Namespaced() {
         const [, setValue] = React.useReducer((_state: string, next: string) => next, "")
         return <button onClick={() => React.startTransition(async () => {
@@ -787,8 +787,8 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("transition-suspense.tsx", `
       import { Suspense, use } from "react"
       const data = Promise.resolve("ready")
-      /* uneffect: react component */ function Results() { use(data); return null }
-      /* uneffect: react component */ function Spinner() { return null }
+      /* uneffect:react-component */ function Results() { use(data); return null }
+      /* uneffect:react-component */ function Spinner() { return null }
       function App() { return <Suspense fallback={<Spinner />}><Results /></Suspense> }
     `);
     const quint = generateReactTransitionSuspenseQuintFromAnalysis("search_visibility", result);
@@ -806,8 +806,8 @@ describe("React Function Component semantics", () => {
   it("generates distinct fallback-eligible models for new and urgent Suspense updates", () => {
     const result = analyzeReactSemantics("fallback-eligible.tsx", `
       import { Suspense } from "react"
-      /* uneffect: react component */ function Results() { return null }
-      /* uneffect: react component */ function Spinner() { return null }
+      /* uneffect:react-component */ function Results() { return null }
+      /* uneffect:react-component */ function Spinner() { return null }
       function App() { return <Suspense fallback={<Spinner />}><Results /></Suspense> }
     `);
     const mounted = generateReactSuspenseFallbackQuintFromAnalysis("mounted", result, {
@@ -832,13 +832,13 @@ describe("React Function Component semantics", () => {
       import { useRef as ref } from "react"
       declare namespace JSX { interface IntrinsicElements { section: { ref?: unknown; children?: unknown } } }
       interface Observer { readonly id: string }
-      /* uneffect: effect Console */
-      /* uneffect: react acquire Observer result */
+      /* uneffect:capability effect Console */
+      /* uneffect:react-resource acquire Observer result */
       declare function observe(node: Element | null): Observer
-      /* uneffect: effect Console */
-      /* uneffect: react release Observer parameter 0 */
+      /* uneffect:capability effect Console */
+      /* uneffect:react-resource release Observer parameter 0 */
       declare function disconnect(observer: Observer): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Panel() {
         const host = ref<Element | null>(null)
         const observed = host.current
@@ -870,7 +870,7 @@ describe("React Function Component semantics", () => {
   it("allows only a guarded predictable lazy ref initialization during render", () => {
     const result = analyzeReactSemantics("lazy-ref.tsx", `
       import { useRef } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Cache(props: { key: string }) {
         const cache = useRef<{ key: string } | null>(null)
         const alias = cache
@@ -879,19 +879,19 @@ describe("React Function Component semantics", () => {
         }
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function MissingGuard() {
         const cache = useRef<object | null>(null)
         cache.current = {}
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function UnstableInitializer() {
         const cache = useRef<{ now: number } | null>(null)
         if (cache.current === null) cache.current = { now: Date.now() }
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function ExtraBranch(flag: boolean) {
         const cache = useRef<object | null>(null)
         if (cache.current === null) {
@@ -901,13 +901,13 @@ describe("React Function Component semantics", () => {
         }
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function NonNullInitial() {
         const cache = useRef<object | null>({})
         if (cache.current === null) cache.current = {}
         return null
       }
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useStableCache(key: string) {
         const cache = useRef<{ key: string } | null>(null)
         if (null === cache.current) cache.current = { key }
@@ -928,9 +928,9 @@ describe("React Function Component semantics", () => {
   it("requires callback-ref acquisitions to return matching cleanup", () => {
     const result = analyzeReactSemantics("leaking-ref.tsx", `
       declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
-      /* uneffect: react acquire Observer */
+      /* uneffect:react-resource acquire Observer */
       declare function observe(node: Element | null): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Leaking() {
         return <div ref={(node) => { observe(node) }} />
       }
@@ -945,15 +945,15 @@ describe("React Function Component semantics", () => {
       import { useRef } from "react"
       declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
       declare const alternate: (node: Element | null) => void
-      /* uneffect: react acquire Observer result */
+      /* uneffect:react-resource acquire Observer result */
       declare function observe(node: Element | null): { readonly observer: unique symbol }
-      /* uneffect: react release Observer parameter 0 */
+      /* uneffect:react-resource release Observer parameter 0 */
       declare function disconnect(observer: { readonly observer: unique symbol }): void
       function moduleAttach(node: Element | null) {
         const observer = observe(node)
         return () => disconnect(observer)
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Panel(props: { alternate: boolean }) {
         const objectRef = useRef<Element | null>(null)
         const attach = (node: Element | null) => {
@@ -980,7 +980,7 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("impure.tsx", `
       declare namespace JSX { interface IntrinsicElements { span: unknown } }
       interface Props { label: string }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Badge(props: Props) {
         props.label = String(Date.now() + Math.random())
         return <span>{props.label}</span>
@@ -1000,7 +1000,7 @@ describe("React Function Component semantics", () => {
       declare const ThemeContext: object
       interface Model { value: number }
       interface Props { profile: { name: string }; model: Model }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Editor({ profile, model }: Props) {
         const modelAlias = model
         let rebound = model
@@ -1037,7 +1037,7 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("hook-regions.tsx", `
       import { useContext } from "react"
       declare const ModelContext: object
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useBrokenModel(input: { value: number }) {
         const inputAlias = input
         const context = useContext(ModelContext) as { value: number }
@@ -1055,7 +1055,7 @@ describe("React Function Component semantics", () => {
   it("reports Hooks whose call order depends on control flow", () => {
     const result = analyzeReactSemantics("hooks.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Conditional({ enabled }: { enabled: boolean }) {
         if (enabled) useEffect(() => {}, [])
         return null
@@ -1070,11 +1070,11 @@ describe("React Function Component semantics", () => {
   it("composes an annotated custom Hook into the component phases", () => {
     const result = analyzeReactSemantics("custom-hook.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useAudit() {
         useEffect(() => { console.log("committed") }, [])
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Dashboard({ enabled }: { enabled: boolean }) {
         useAudit()
         if (enabled) useAudit()
@@ -1101,14 +1101,14 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(hooksFile, `
         import { useLayoutEffect } from "react"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useDocumentTitle() {
           useLayoutEffect(() => { document.title = "ready" }, [])
         }
       `);
       writeFileSync(appFile, `
         import { useDocumentTitle as useTitle } from "./hooks.js"
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function App({ active }: { active: boolean }) {
           if (active) useTitle()
           return null
@@ -1139,15 +1139,15 @@ describe("React Function Component semantics", () => {
     const appFile = join(directory, "app.tsx");
     try {
       writeFileSync(helpersFile, `
-        /* uneffect: effect DeepEvent */ declare function auditDeepEvent(): void
+        /* uneffect:capability effect DeepEvent */ declare function auditDeepEvent(): void
         export function auditEvent() { auditDeepEvent() }
       `);
       writeFileSync(callbacksFile, `
         import { auditEvent } from "./helpers.js"
         interface ObserverHandle { readonly observer: unique symbol }
-        /* uneffect: react acquire Observer result */
+        /* uneffect:react-resource acquire Observer result */
         declare function observe(node: Element | null): ObserverHandle
-        /* uneffect: react release Observer parameter 0 */
+        /* uneffect:react-resource release Observer parameter 0 */
         declare function disconnect(observer: ObserverHandle): void
         export function refresh() { auditEvent(); fetch("/refresh") }
         export function unstable() { fetch("/unstable") }
@@ -1162,7 +1162,7 @@ describe("React Function Component semantics", () => {
         import { refresh as handleRefresh } from "./barrel.js"
         import * as callbacks from "./callbacks.js"
         declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; onDoubleClick?: () => void; ref?: unknown } } }
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function App() {
           return <><button onClick={handleRefresh} /><button ref={callbacks.attach} /><button onDoubleClick={callbacks.unstable} /></>
         }
@@ -1195,15 +1195,15 @@ describe("React Function Component semantics", () => {
     const appFile = join(directory, "app.tsx");
     try {
       writeFileSync(helpersFile, `
-        /* uneffect: effect DeepSetup */ declare function auditDeepSetup(): void
+        /* uneffect:capability effect DeepSetup */ declare function auditDeepSetup(): void
         export function auditSetup() { auditDeepSetup() }
       `);
       writeFileSync(callbacksFile, `
         import { auditSetup } from "./helpers.js"
         interface Connection { readonly id: unique symbol }
-        /* uneffect: react acquire Connection result */
+        /* uneffect:react-resource acquire Connection result */
         declare function connect(): Connection
-        /* uneffect: react release Connection parameter 0 */
+        /* uneffect:react-resource release Connection parameter 0 */
         declare function disconnect(connection: Connection): void
         function traceConnection() { console.log("connected") }
         export function installConnection() {
@@ -1226,9 +1226,9 @@ describe("React Function Component semantics", () => {
         import { installConnection, installWrongConnection } from "./barrel.js"
         import * as callbacks from "./callbacks.js"
         function traceConnection() { fetch("/caller-collision") }
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         function useConnection() { useEffect(installConnection, []) }
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function App() {
           useConnection()
           useEffect(installWrongConnection, [])
@@ -1268,13 +1268,13 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(callbacksFile, `
         interface StoreConnection { readonly store: unique symbol }
-        /* uneffect: effect SaveRecord */ declare function saveRecord(): void
-        /* uneffect: effect PrepareHandle */ declare function prepareHandle(): void
-        /* uneffect: effect SnapshotRead */ declare function readSnapshot(): number
-        /* uneffect: effect CompareAudit */ declare function auditCompare(): void
-        /* uneffect: react acquire StoreConnection result */
+        /* uneffect:capability effect SaveRecord */ declare function saveRecord(): void
+        /* uneffect:capability effect PrepareHandle */ declare function prepareHandle(): void
+        /* uneffect:capability effect SnapshotRead */ declare function readSnapshot(): number
+        /* uneffect:capability effect CompareAudit */ declare function auditCompare(): void
+        /* uneffect:react-resource acquire StoreConnection result */
         declare function connectStore(notify: () => void): StoreConnection
-        /* uneffect: react release StoreConnection parameter 0 */
+        /* uneffect:react-resource release StoreConnection parameter 0 */
         declare function disconnectStore(connection: StoreConnection): void
         export function saveAction(previous: number): number {
           saveRecord()
@@ -1299,22 +1299,22 @@ describe("React Function Component semantics", () => {
         import saveAction, { compareProps, createHandle, getSnapshot, noisyOptimistic, subscribeStore } from "./callbacks.js"
         import * as callbackNamespace from "./callbacks.js"
         declare namespace JSX { interface IntrinsicElements { form: { action?: unknown } } }
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         function useImportedResources(ref: unknown) {
           const [saved] = useActionState(saveAction, 0)
           useOptimistic(saved, noisyOptimistic)
           useImperativeHandle(ref, createHandle, [])
           useSyncExternalStore(subscribeStore, getSnapshot)
         }
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function App(props: { ref: unknown }) {
           useImportedResources(props.ref)
           return <form />
         }
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function NamespaceForm() { return <form action={callbackNamespace.saveAction} /> }
         function ComparedView() { return <form /> }
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export const Compared = memo(ComparedView, compareProps)
       `);
       const program = ts.createProgram([callbacksFile, appFile], {
@@ -1355,22 +1355,22 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(namedFile, `
         import { useEffect, useLayoutEffect } from "react"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useAudit() { useEffect(() => console.log("audit"), []) }
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useTitle() { useLayoutEffect(() => { document.title = "ready" }, []) }
       `);
       writeFileSync(barrelFile, `export { useAudit } from "./named.js"`);
       writeFileSync(defaultFile, `
         import { useEffect } from "react"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export default function useRefresh() { useEffect(() => { fetch("/refresh") }, []) }
       `);
       writeFileSync(appFile, `
         import { useAudit as useBarrelAudit } from "./barrel.js"
         import * as namedHooks from "./named.js"
         import useRefresh from "./default.js"
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function App() {
           useBarrelAudit()
           namedHooks.useTitle()
@@ -1399,17 +1399,17 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(innerFile, `
         import { useEffect } from "react"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useInner() { useEffect(() => { console.log("inner"); return () => console.log("cleanup") }, []) }
       `);
       writeFileSync(outerFile, `
         import { useInner } from "./inner.js"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useOuter() { useInner() }
       `);
       writeFileSync(appFile, `
         import { useOuter } from "./outer.js"
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function App() { useOuter(); return null }
       `);
       const program = ts.createProgram([innerFile, outerFile, appFile], {
@@ -1431,11 +1431,11 @@ describe("React Function Component semantics", () => {
 
   it("rejects indirect custom Hook recursion", () => {
     const result = analyzeReactSemantics("recursive-hooks.tsx", `
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useFirst() { useSecond() }
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useSecond() { useThird() }
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useThird() { useFirst() }
     `);
     expect(result.diagnostics).toEqual(expect.arrayContaining([
@@ -1451,12 +1451,12 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(firstFile, `
         import { useSecond } from "./second.js"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useFirst() { useSecond() }
       `);
       writeFileSync(secondFile, `
         import { useFirst } from "./first.js"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useSecond() { useFirst() }
       `);
       const program = ts.createProgram([firstFile, secondFile], {
@@ -1479,7 +1479,7 @@ describe("React Function Component semantics", () => {
   it("checks an annotated custom Hook as a replayable render boundary", () => {
     const result = analyzeReactSemantics("broken-hook.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useBroken(options: { stamp: number; enabled: boolean }) {
         options.stamp = Date.now()
         if (options.enabled) useEffect(() => {}, [])
@@ -1495,9 +1495,9 @@ describe("React Function Component semantics", () => {
   it("fails closed for unresolved and directly recursive custom Hooks", () => {
     const result = analyzeReactSemantics("unknown-hooks.tsx", `
       declare function useOpaque(): void
-      /* uneffect: react hook */
+      /* uneffect:react-hook */
       function useRecursive() { useRecursive() }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function App() { useOpaque(); return null }
     `);
     expect(result.diagnostics).toEqual(expect.arrayContaining([
@@ -1509,7 +1509,7 @@ describe("React Function Component semantics", () => {
   it("recognizes other named React Hooks without treating them as unresolved custom Hooks", () => {
     const result = analyzeReactSemantics("state.tsx", `
       import { useState as state } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Counter({ extra }: { extra: boolean }) {
         state(0)
         if (extra) state(1)
@@ -1524,7 +1524,7 @@ describe("React Function Component semantics", () => {
   it("executes reviewed lazy and memo callbacks in the replayable render phase", () => {
     const result = analyzeReactSemantics("render-hooks.tsx", `
       import { useMemo, useState, useCallback } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Values() {
         useMemo(() => { console.log("memo"); return Date.now() }, [])
         useState(() => Math.random())
@@ -1543,25 +1543,25 @@ describe("React Function Component semantics", () => {
   it("rejects stale Effect and memo closures with missing dependencies", () => {
     const result = analyzeReactSemantics("dependencies.tsx", `
       import { useEffect as effect, useMemo } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Dashboard(props: { service: string; rows: string[] }) {
         const prefix = props.service + ":"
         effect(() => console.log(props.service, prefix), [])
         useMemo(() => props.rows.map((row) => prefix + row), [props.rows])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Shadowing({ row, rows }: { row: string; rows: string[] }) {
         useMemo(() => { console.log(row); return rows.map((row) => row) }, [rows])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function LocalFunction(props: { service: string }) {
         function load() { return props.service }
         effect(() => console.log(load()), [props.service])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function ReferencedClosure(props: { service: string }) {
         const synchronize = () => console.log(props.service)
         const synchronizeAlias = synchronize
@@ -1600,7 +1600,7 @@ describe("React Function Component semantics", () => {
   it("accepts covering dependencies and ignores stable state setters and Effect locals", () => {
     const result = analyzeReactSemantics("safe-dependencies.tsx", `
       import { useEffect, useRef, useState } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Dashboard(props: { service: string }) {
         const [count, setCount] = useState(0)
         const latest = useRef(props.service)
@@ -1612,7 +1612,7 @@ describe("React Function Component semantics", () => {
         }, [props, count])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function LoopShadow({ index, rows }: { index: number; rows: number[] }) {
         useEffect(() => { for (const index of rows) console.log(index) }, [rows])
         return null
@@ -1624,7 +1624,7 @@ describe("React Function Component semantics", () => {
   it("fails closed for opaque and unstable dependency expressions", () => {
     const result = analyzeReactSemantics("opaque-dependencies.tsx", `
       import { useEffect, useMemo } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Dashboard(props: { service: string }, dependencies: unknown[]) {
         let callback = () => console.log(props.service)
         useEffect(callback, [props.service])
@@ -1643,9 +1643,9 @@ describe("React Function Component semantics", () => {
   it("marks effects without cleanup as replay-sensitive when they acquire capabilities", () => {
     const result = analyzeReactSemantics("replay.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react acquire Subscription */
+      /* uneffect:react-resource acquire Subscription */
       declare function subscribe(): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Feed() {
         useEffect(() => { subscribe() }, [])
         return null
@@ -1660,11 +1660,11 @@ describe("React Function Component semantics", () => {
   it("discharges an acquired capability only through a matching cleanup release", () => {
     const safe = analyzeReactSemantics("subscription.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react acquire Subscription */
+      /* uneffect:react-resource acquire Subscription */
       declare function subscribe(): void
-      /* uneffect: react release Subscription */
+      /* uneffect:react-resource release Subscription */
       declare function unsubscribe(): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Feed() {
         useEffect(() => {
           subscribe()
@@ -1681,11 +1681,11 @@ describe("React Function Component semantics", () => {
 
     const mismatched = analyzeReactSemantics("subscription.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react acquire Subscription */
+      /* uneffect:react-resource acquire Subscription */
       declare function subscribe(): void
-      /* uneffect: react release Socket */
+      /* uneffect:react-resource release Socket */
       declare function closeSocket(): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Feed() {
         useEffect(() => {
           subscribe()
@@ -1703,11 +1703,11 @@ describe("React Function Component semantics", () => {
     const safe = analyzeReactSemantics("identity.tsx", `
       import { useEffect } from "react"
       interface Subscription { readonly id: string }
-      /* uneffect: react acquire Subscription result */
+      /* uneffect:react-resource acquire Subscription result */
       declare function subscribe(): Subscription
-      /* uneffect: react release Subscription parameter 0 */
+      /* uneffect:react-resource release Subscription parameter 0 */
       declare function unsubscribe(value: Subscription): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Feed() {
         useEffect(() => {
           const acquired = subscribe()
@@ -1729,12 +1729,12 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("identity.tsx", `
       import { useEffect } from "react"
       interface Subscription { readonly id: string }
-      /* uneffect: react acquire Subscription result */
+      /* uneffect:react-resource acquire Subscription result */
       declare function subscribe(): Subscription
-      /* uneffect: react release Subscription parameter 0 */
+      /* uneffect:react-resource release Subscription parameter 0 */
       declare function unsubscribe(value: Subscription): void
       declare const other: Subscription
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function WrongIdentity() {
         useEffect(() => {
           const acquired = subscribe()
@@ -1742,7 +1742,7 @@ describe("React Function Component semantics", () => {
         }, [])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function DuplicateCleanup() {
         useEffect(() => {
           const acquired = subscribe()
@@ -1750,7 +1750,7 @@ describe("React Function Component semantics", () => {
         }, [])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function LeavesSecondIdentityOpen() {
         useEffect(() => {
           const first = subscribe()
@@ -1759,7 +1759,7 @@ describe("React Function Component semantics", () => {
         }, [])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function ReassignedIdentity() {
         useEffect(() => {
           let acquired = subscribe()
@@ -1768,7 +1768,7 @@ describe("React Function Component semantics", () => {
         }, [])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function ConditionalCleanup(props: { enabled: boolean }) {
         useEffect(() => {
           const acquired = subscribe()
@@ -1776,7 +1776,7 @@ describe("React Function Component semantics", () => {
         }, [props.enabled])
         return null
       }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function ConditionalAcquisition(props: { enabled: boolean }) {
         useEffect(() => {
           if (props.enabled) subscribe()
@@ -1797,11 +1797,11 @@ describe("React Function Component semantics", () => {
 
   it("rejects malformed resource identity lifecycle annotations", () => {
     const result = analyzeReactSemantics("invalid-identity.tsx", `
-      /* uneffect: react acquire Socket parameter 0 */
+      /* uneffect:react-resource acquire Socket parameter 0 */
       declare function open(): object
-      /* uneffect: react release Socket result */
+      /* uneffect:react-resource release Socket result */
       declare function close(value: object): void
-      /* uneffect: react release Socket parameter 1 */
+      /* uneffect:react-resource release Socket parameter 1 */
       declare function closeMissingParameter(value: object): void
     `);
     expect(result.diagnostics).toEqual(expect.arrayContaining([
@@ -1813,9 +1813,9 @@ describe("React Function Component semantics", () => {
   it("exposes production and Strict Mode development replay models", () => {
     const result = analyzeReactSemantics("strict-mode.tsx", `
       import { useEffect, useLayoutEffect } from "react"
-      /* uneffect: effect Console */
+      /* uneffect:capability effect Console */
       declare function observe(): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Panel() {
         useLayoutEffect(() => { observe(); return () => observe() }, [])
         useEffect(() => { observe(); return () => observe() }, [])
@@ -1895,19 +1895,19 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("precise-replay.tsx", `
       import { useEffect, useLayoutEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { main: { ref?: unknown } } }
-      /* uneffect: react acquire Layout result */
+      /* uneffect:react-resource acquire Layout result */
       declare function mountLayout(): object
-      /* uneffect: react release Layout parameter 0 */
+      /* uneffect:react-resource release Layout parameter 0 */
       declare function unmountLayout(value: object): void
-      /* uneffect: react acquire Subscription result */
+      /* uneffect:react-resource acquire Subscription result */
       declare function subscribe(): object
-      /* uneffect: react release Subscription parameter 0 */
+      /* uneffect:react-resource release Subscription parameter 0 */
       declare function unsubscribe(value: object): void
-      /* uneffect: react acquire Host result */
+      /* uneffect:react-resource acquire Host result */
       declare function attach(node: Element | null): object
-      /* uneffect: react release Host parameter 0 */
+      /* uneffect:react-resource release Host parameter 0 */
       declare function detach(value: object): void
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function App() {
         useLayoutEffect(() => { const value = mountLayout(); return () => unmountLayout(value) }, [])
         useEffect(() => { const value = subscribe(); return () => unsubscribe(value) }, [])
@@ -1931,7 +1931,7 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("model.tsx", `
       import { useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function App() {
         useEffect(() => { console.log("setup"); return () => console.log("cleanup") }, [])
         return <div ref={() => { console.log("attach"); return () => console.log("detach") }} />
@@ -1951,7 +1951,7 @@ describe("React Function Component semantics", () => {
   it("models concurrent render interruption without committing discarded work", () => {
     const result = analyzeReactSemantics("interrupted.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function SearchResults() {
         useEffect(() => { console.log("commit"); return () => console.log("cleanup") }, [])
         return null
@@ -1972,7 +1972,7 @@ describe("React Function Component semantics", () => {
   it("associates dependency cleanup and setup with their owning commit generations", () => {
     const result = analyzeReactSemantics("dependency-change.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Room({ roomId }: { roomId: string }) {
         useEffect(() => { console.log("connect", roomId); return () => console.log("disconnect", roomId) }, [roomId])
         return null
@@ -1993,7 +1993,7 @@ describe("React Function Component semantics", () => {
   it("rejects inconsistent externally supplied lifecycle replay IR", () => {
     const result = analyzeReactSemantics("invalid-replay.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function App() { useEffect(() => {}, []); return null }
     `);
     const missingCommit = structuredClone(result.components[0]!);
@@ -2013,7 +2013,7 @@ describe("React Function Component semantics", () => {
   it("models Suspense resolution as a prerequisite for retry commit", () => {
     const result = analyzeReactSemantics("suspense.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Profile() { useEffect(() => { console.log("visible") }, []); return null }
     `);
     const replay = result.components[0]!.replay.suspenseRetry;
@@ -2031,7 +2031,7 @@ describe("React Function Component semantics", () => {
   it("models a retry that suspends again before the final commit", () => {
     const result = analyzeReactSemantics("repeated-suspense.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Profile() { useEffect(() => { console.log("visible") }, []); return null }
     `);
     const replay = result.components[0]!.replay.repeatedSuspenseRetry;
@@ -2049,12 +2049,12 @@ describe("React Function Component semantics", () => {
   it("composes fallback commit and cleanup with primary reveal", () => {
     const primary = analyzeReactSemantics("profile.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Profile() { useEffect(() => { console.log("profile"); return () => console.log("hide profile") }, []); return null }
     `).components[0]!;
     const fallback = analyzeReactSemantics("spinner.tsx", `
       import { useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Spinner() { useEffect(() => { console.log("spinner"); return () => console.log("hide spinner") }, []); return null }
     `).components[0]!;
 
@@ -2071,9 +2071,9 @@ describe("React Function Component semantics", () => {
   it("extracts a direct Suspense primary/fallback edge through a named import alias", () => {
     const result = analyzeReactSemantics("boundary.tsx", `
       import { Suspense as AsyncBoundary, useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Profile() { useEffect(() => { console.log("profile"); return () => console.log("hide") }, []); return null }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Spinner() { useEffect(() => { console.log("spinner"); return () => console.log("hide") }, []); return null }
       function App() { return <AsyncBoundary fallback={<Spinner />}><Profile /></AsyncBoundary> }
     `);
@@ -2089,9 +2089,9 @@ describe("React Function Component semantics", () => {
   it("reports dynamic Suspense child expressions without claiming a boundary", () => {
     const result = analyzeReactSemantics("unsupported-boundary.tsx", `
       import { Suspense } from "react"
-      /* uneffect: react component */ function First() { return null }
-      /* uneffect: react component */ function Second() { return null }
-      /* uneffect: react component */ function Spinner() { return null }
+      /* uneffect:react-component */ function First() { return null }
+      /* uneffect:react-component */ function Second() { return null }
+      /* uneffect:react-component */ function Spinner() { return null }
       declare const showSecond: boolean
       function App() { return <Suspense fallback={<Spinner />}><First />{showSecond && <Second />}</Suspense> }
     `);
@@ -2106,11 +2106,11 @@ describe("React Function Component semantics", () => {
   it("extracts a nested direct Suspense chain and keeps a leaf suspension at the nearest boundary", () => {
     const result = analyzeReactSemantics("nested-boundary.tsx", `
       import { Suspense, useEffect } from "react"
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Profile() { useEffect(() => () => console.log("hide profile"), []); return null }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function InnerSpinner() { useEffect(() => () => console.log("hide inner"), []); return null }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function OuterSpinner() { useEffect(() => () => console.log("hide outer"), []); return null }
       function App() {
         return <Suspense fallback={<OuterSpinner />}>
@@ -2141,11 +2141,11 @@ describe("React Function Component semantics", () => {
   it("flattens Fragment and multiple direct children into a nearest-boundary ownership tree", () => {
     const result = analyzeReactSemantics("suspense-tree.tsx", `
       import React, { Fragment, Suspense } from "react"
-      /* uneffect: react component */ function OuterLeaf() { return null }
-      /* uneffect: react component */ function InnerLeafA() { return null }
-      /* uneffect: react component */ function InnerLeafB() { return null }
-      /* uneffect: react component */ function OuterFallback() { return null }
-      /* uneffect: react component */ function InnerFallback() { return null }
+      /* uneffect:react-component */ function OuterLeaf() { return null }
+      /* uneffect:react-component */ function InnerLeafA() { return null }
+      /* uneffect:react-component */ function InnerLeafB() { return null }
+      /* uneffect:react-component */ function OuterFallback() { return null }
+      /* uneffect:react-component */ function InnerFallback() { return null }
       function App() {
         return <Suspense fallback={<OuterFallback />}><>
           <OuterLeaf />
@@ -2184,10 +2184,10 @@ describe("React Function Component semantics", () => {
         import { Suspense, use as consume } from "react"
         declare const profilePromise: Promise<{ name: string }>
         declare const maybePromise: Promise<string> | { current: string }
-        /* uneffect: react component */ function Profile() { const profile = consume(profilePromise); return <p>{profile.name}</p> }
-        /* uneffect: react component */ function MaybeProfile() { consume(maybePromise); return null }
-        /* uneffect: react component */ function Navigation() { return <nav>Navigation</nav> }
-        /* uneffect: react component */ function Spinner() { return <p>Loading</p> }
+        /* uneffect:react-component */ function Profile() { const profile = consume(profilePromise); return <p>{profile.name}</p> }
+        /* uneffect:react-component */ function MaybeProfile() { consume(maybePromise); return null }
+        /* uneffect:react-component */ function Navigation() { return <nav>Navigation</nav> }
+        /* uneffect:react-component */ function Spinner() { return <p>Loading</p> }
         function App() { return <Suspense fallback={<Spinner />}><><Navigation /><MaybeProfile /><Profile /></></Suspense> }
       `);
       const program = ts.createProgram([appFile], {
@@ -2219,8 +2219,8 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("unknown-use.tsx", `
       import { Suspense, use } from "react"
       declare const input: unknown
-      /* uneffect: react component */ function Primary() { use(input); return null }
-      /* uneffect: react component */ function Fallback() { return null }
+      /* uneffect:react-component */ function Primary() { use(input); return null }
+      /* uneffect:react-component */ function Fallback() { return null }
       function App() { return <Suspense fallback={<Fallback />}><Primary /></Suspense> }
     `);
     expect(result.components.find(({ name }) => name === "Primary")!.suspensions).toEqual([
@@ -2235,16 +2235,16 @@ describe("React Function Component semantics", () => {
     const defaultResult = analyzeReactSemantics("default-use.tsx", `
       import React from "react"
       declare const promise: Promise<string>
-      /* uneffect: react component */ function DefaultUse() { React.use(promise); return null }
+      /* uneffect:react-component */ function DefaultUse() { React.use(promise); return null }
     `);
     const namespaceResult = analyzeReactSemantics("namespace-use.tsx", `
       import * as R from "react"
       declare const promise: Promise<string>
-      /* uneffect: react component */ function NamespaceUse() { R.use(promise); return null }
+      /* uneffect:react-component */ function NamespaceUse() { R.use(promise); return null }
     `);
     const unrelated = analyzeReactSemantics("unrelated-use.tsx", `
       declare const UI: { use(value: unknown): unknown }
-      /* uneffect: react component */ function Unrelated() { UI.use(1); return null }
+      /* uneffect:react-component */ function Unrelated() { UI.use(1); return null }
     `);
     expect(defaultResult.components[0]!.suspensions).toHaveLength(1);
     expect(namespaceResult.components[0]!.suspensions).toHaveLength(1);
@@ -2258,15 +2258,15 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(hookFile, `
         import { use } from "react"
-        /* uneffect: react hook */
+        /* uneffect:react-hook */
         export function useProfile<T>(promise: Promise<T>): T { return use(promise) }
       `);
       writeFileSync(appFile, `
         import { Suspense } from "react"
         import { useProfile } from "./hook.js"
         declare const profilePromise: Promise<{ name: string }>
-        /* uneffect: react component */ function Profile() { const profile = useProfile(profilePromise); return <p>{profile.name}</p> }
-        /* uneffect: react component */ function Spinner() { return null }
+        /* uneffect:react-component */ function Profile() { const profile = useProfile(profilePromise); return <p>{profile.name}</p> }
+        /* uneffect:react-component */ function Spinner() { return null }
         function App() { return <Suspense fallback={<Spinner />}><Profile /></Suspense> }
       `);
       const program = ts.createProgram([hookFile, appFile], {
@@ -2293,9 +2293,9 @@ describe("React Function Component semantics", () => {
       writeFileSync(appFile, `
         import { Suspense } from "react"
         declare const pending: Promise<string>
-        /* uneffect: react component */ function Pending() { throw pending }
-        /* uneffect: react component */ function Broken() { throw new Error("broken") }
-        /* uneffect: react component */ function Spinner() { return null }
+        /* uneffect:react-component */ function Pending() { throw pending }
+        /* uneffect:react-component */ function Broken() { throw new Error("broken") }
+        /* uneffect:react-component */ function Spinner() { return null }
         function App() { return <Suspense fallback={<Spinner />}><><Broken /><Pending /></></Suspense> }
       `);
       const program = ts.createProgram([appFile], {
@@ -2323,7 +2323,7 @@ describe("React Function Component semantics", () => {
   it("keeps a source-only thrown value uncertain", () => {
     const result = analyzeReactSemantics("unknown-throw.tsx", `
       declare const pending: unknown
-      /* uneffect: react component */ function Pending() { throw pending }
+      /* uneffect:react-component */ function Pending() { throw pending }
     `);
     expect(result.components[0]!.suspensions).toEqual([
       expect.objectContaining({ kind: "throw-thenable", certainty: "unknown", expression: "pending" }),
@@ -2337,13 +2337,13 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(hookFile, `
         declare const pending: Promise<string>
-        /* uneffect: react hook */ export function useLegacyResource() { throw pending }
+        /* uneffect:react-hook */ export function useLegacyResource() { throw pending }
       `);
       writeFileSync(appFile, `
         import { Suspense } from "react"
         import { useLegacyResource } from "./hook.js"
-        /* uneffect: react component */ function Profile() { useLegacyResource(); return null }
-        /* uneffect: react component */ function Spinner() { return null }
+        /* uneffect:react-component */ function Profile() { useLegacyResource(); return null }
+        /* uneffect:react-component */ function Spinner() { return null }
         function App() { return <Suspense fallback={<Spinner />}><Profile /></Suspense> }
       `);
       const program = ts.createProgram([appFile, hookFile], {
@@ -2365,8 +2365,8 @@ describe("React Function Component semantics", () => {
   it("does not recognize an unrelated namespace property named Suspense", () => {
     const result = analyzeReactSemantics("unrelated-suspense.tsx", `
       declare const UI: { Suspense: unknown }
-      /* uneffect: react component */ function Primary() { return null }
-      /* uneffect: react component */ function Fallback() { return null }
+      /* uneffect:react-component */ function Primary() { return null }
+      /* uneffect:react-component */ function Fallback() { return null }
       function App() { return <UI.Suspense fallback={<Fallback />}><Primary /></UI.Suspense> }
     `);
     expect(result.suspenseBoundaries).toEqual([]);
@@ -2381,9 +2381,9 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(componentsFile, `
         import { useEffect } from "react"
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export default function Profile() { useEffect(() => () => console.log("hide"), []); return null }
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function Spinner() { useEffect(() => () => console.log("hide"), []); return null }
       `);
       writeFileSync(barrelFile, `export { default as LoadedProfile, Spinner as Busy } from "./components.js"`);
@@ -2416,8 +2416,8 @@ describe("React Function Component semantics", () => {
     const appFile = join(directory, "app.tsx");
     try {
       writeFileSync(componentsFile, `
-        /* uneffect: react component */ export function Profile() { return null }
-        /* uneffect: react component */ export function Spinner() { return null }
+        /* uneffect:react-component */ export function Profile() { return null }
+        /* uneffect:react-component */ export function Spinner() { return null }
       `);
       writeFileSync(appFile, `
         import * as React from "react"
@@ -2450,10 +2450,10 @@ describe("React Function Component semantics", () => {
     const appFile = join(directory, "app.tsx");
     try {
       writeFileSync(componentsFile, `
-        /* uneffect: react component */ export function Profile() { return null }
-        /* uneffect: react component */ export function Navigation() { return null }
-        /* uneffect: react component */ export function InnerSpinner() { return null }
-        /* uneffect: react component */ export function OuterSpinner() { return null }
+        /* uneffect:react-component */ export function Profile() { return null }
+        /* uneffect:react-component */ export function Navigation() { return null }
+        /* uneffect:react-component */ export function InnerSpinner() { return null }
+        /* uneffect:react-component */ export function OuterSpinner() { return null }
       `);
       writeFileSync(appFile, `
         import { Suspense } from "react"
@@ -2493,7 +2493,7 @@ describe("React Function Component semantics", () => {
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
     const result = analyzeReactSemantics("render-effects.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
-      /* uneffect: react component */
+      /* uneffect:react-component */
       function Page() {
         document.title = "rendering"
         fetch("/render")
@@ -2515,7 +2515,7 @@ describe("React Function Component semantics", () => {
     const fileName = join(directory, "page.tsx");
     try {
       writeFileSync(fileName, `
-        /* uneffect: react component */
+        /* uneffect:react-component */
         export function Page() { console.log("render"); return null }
       `);
       const result = await checkFiles([fileName]);

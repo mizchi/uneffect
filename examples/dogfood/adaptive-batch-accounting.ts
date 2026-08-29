@@ -1,20 +1,4 @@
-/* uneffect:
- * state billedUnits: int
- * state auditedUnits: int
- * state billingMode: int
- * state suppressed: bool
- * state failed: bool
- * state cancelled: bool
- * state deferFailedBilling: bool
- * init billedUnits = 0
- * init auditedUnits = 0
- * init billingMode = 0
- * init suppressed = false
- * init failed = false
- * init cancelled = false
- * init deferFailedBilling = false
- * action record: billedUnits' = suppressed || cancelled || (failed && deferFailedBilling) ? billedUnits : billedUnits + (failed ? 5 : (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5)))), auditedUnits' = suppressed ? auditedUnits : auditedUnits + (cancelled ? 2 : (failed ? 5 : (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5)))))
- */
+/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state billingMode: int */ /* uneffect:temporal state suppressed: bool */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state cancelled: bool */ /* uneffect:temporal state deferFailedBilling: bool */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init billingMode = 0 */ /* uneffect:temporal init suppressed = false */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init cancelled = false */ /* uneffect:temporal init deferFailedBilling = false */ /* uneffect:temporal action record: billedUnits' = suppressed || cancelled || (failed && deferFailedBilling) ? billedUnits : billedUnits + (failed ? 5 : (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5)))), auditedUnits' = suppressed ? auditedUnits : auditedUnits + (cancelled ? 2 : (failed ? 5 : (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5))))) */
 
 export interface AdaptiveBatchAccounting {
   billedUnits: number;
@@ -26,17 +10,17 @@ export interface AdaptiveBatchAccounting {
   deferFailedBilling: boolean;
 }
 
-/* uneffect: refinement adaptiveBatchAccounting@1 create */
+/* uneffect:refinement refinement adaptiveBatchAccounting@1 create */
 export function createAdaptiveBatchAccounting(initial: AdaptiveBatchAccounting): AdaptiveBatchAccounting {
   return initial;
 }
 
-/* uneffect: refinement adaptiveBatchAccounting@1 observe */
+/* uneffect:refinement refinement adaptiveBatchAccounting@1 observe */
 export function observeAdaptiveBatchAccounting(runtime: AdaptiveBatchAccounting): AdaptiveBatchAccounting {
   return runtime;
 }
 
-/* uneffect: refinement adaptiveBatchAccounting@1 action record */
+/* uneffect:refinement refinement adaptiveBatchAccounting@1 action record */
 export function recordAdaptiveBatch(runtime: AdaptiveBatchAccounting): void {
   // Billing starts at one unit, priority doubles the base charge, and a retry
   // adds three units. The mutable local mirrors common instrumentation code

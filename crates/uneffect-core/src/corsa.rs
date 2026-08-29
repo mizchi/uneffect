@@ -560,6 +560,7 @@ fn effect_payloads(text: &str) -> Vec<&str> {
         } else {
             continue;
         };
+        let tail = tail.strip_prefix("capability ").unwrap_or(tail);
         if let Some(value) = tail.strip_prefix("effect ") {
             values.push(value.trim());
         }

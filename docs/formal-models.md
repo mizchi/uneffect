@@ -95,12 +95,7 @@ This model is implemented by the TypeScript ownership trace and Rust neutral eve
 The first synchronous composition slice treats each annotated function as an abstract transition contract:
 
 ```ts
-/*
- * uneffect:
- * temporal_requires phase === 0
- * temporal_ensures phase' = 1
- * temporal_modifies phase
- */
+/* uneffect:temporal-summary requires phase === 0 */ /* uneffect:temporal-summary ensures phase' = 1 */ /* uneffect:temporal-summary modifies phase */
 function open() {}
 ```
 

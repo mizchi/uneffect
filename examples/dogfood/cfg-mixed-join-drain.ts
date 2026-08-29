@@ -1,14 +1,4 @@
-/* uneffect:
-  state pending: int
-  state processed: int
-  state sampled: bool
-  state mode: int
-  init pending = 0
-  init processed = 0
-  init sampled = false
-  init mode = 0
-  action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? (sampled ? 2 * pending : pending) : (mode === 1 ? (sampled ? 3 * pending : 2 * pending) : (sampled ? 4 * pending : 3 * pending))) : 0)
-*/
+/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? (sampled ? 2 * pending : pending) : (mode === 1 ? (sampled ? 3 * pending : 2 * pending) : (sampled ? 4 * pending : 3 * pending))) : 0) */
 
 export interface MixedJoinDrainRuntime {
   pending: number;
@@ -17,17 +7,17 @@ export interface MixedJoinDrainRuntime {
   mode: number;
 }
 
-/* uneffect: refinement cfgMixedJoinDrain@1 create */
+/* uneffect:refinement refinement cfgMixedJoinDrain@1 create */
 export function createCfgMixedJoinDrain(initial: MixedJoinDrainRuntime): MixedJoinDrainRuntime {
   return initial;
 }
 
-/* uneffect: refinement cfgMixedJoinDrain@1 observe */
+/* uneffect:refinement refinement cfgMixedJoinDrain@1 observe */
 export function observeCfgMixedJoinDrain(runtime: MixedJoinDrainRuntime): MixedJoinDrainRuntime {
   return runtime;
 }
 
-/* uneffect: refinement cfgMixedJoinDrain@1 action drain */
+/* uneffect:refinement refinement cfgMixedJoinDrain@1 action drain */
 export function drainCfgMixedJoin(runtime: MixedJoinDrainRuntime): void {
   while (runtime.pending > 0) {
     if (runtime.sampled) runtime.processed++;

@@ -2,21 +2,11 @@ import { describe, expect, it } from "vitest";
 import { analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state pending: int
-  state delivered: int
-  state failed: int
-  state reject: bool
-  init pending = 0
-  init delivered = 0
-  init failed = 0
-  init reject = false
-  action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0)
-*/
+const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state reject: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init reject = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0) */
 interface Runtime { pending: number; delivered: number; failed: number; reject: boolean }
-/* uneffect: refinement cfgHandlerDrain@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect: refinement cfgHandlerDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect: refinement cfgHandlerDrain@1 action drain */
+/* uneffect:refinement refinement cfgHandlerDrain@1 create */ export function create(initial: Runtime) { return initial }
+/* uneffect:refinement refinement cfgHandlerDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+/* uneffect:refinement refinement cfgHandlerDrain@1 action drain */
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     try {

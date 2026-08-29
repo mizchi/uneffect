@@ -12,35 +12,35 @@ Specifications live in ordinary block comments. They do not change TypeScript
 syntax or emitted JavaScript.
 
 ```ts
-/* uneffect: effect Console */
+/* uneffect:capability effect Console */
 export function log(value: number): void {
   console.log(value)
 }
 
-/* uneffect: requires n >= 0 */
-/* uneffect: ensures result === n */
+/* uneffect:contract requires n >= 0 */
+/* uneffect:contract ensures result === n */
 export function count(n: number): number {
   let value = 0
-  /* uneffect: invariant value >= 0 && value <= n */
+  /* uneffect:contract invariant value >= 0 && value <= n */
   while (value < n) value = value + 1
   return value
 }
 ```
 
 An effect declaration such as
-`/* uneffect: effect Console | Fetch */` is an upper bound. Missing transitive
+`/* uneffect:capability effect Console | Fetch */` is an upper bound. Missing transitive
 effects are errors; declared but unused effects are warnings. A function may
 use fewer effects than its declaration. No `yield`, wrapper function, or
 runtime handler is required.
 
-Use `/* uneffect: effect none */` for an explicit empty upper bound. This is
+Use `/* uneffect:capability effect none */` for an explicit empty upper bound. This is
 different from an unannotated function whose currently inferred inventory is
 empty: `none` is checked and can produce `verified` Effect evidence, while the
 unannotated inventory remains `inferred`. `none` is reserved and cannot be
 combined with another Effect or used as a user-defined Effect name.
 
 Executable file initialization uses a separate header bound such as
-`/* uneffect: module_effect Console | FsRead */`. Its `<module>` evidence is a
+`/* uneffect:capability module_effect Console | FsRead */`. Its `<module>` evidence is a
 may-effect set; exact ESM and top-level-await ordering are not yet proved.
 
 A `Mutate` region names the member path a write touches, so `state.calls = 1`
@@ -50,7 +50,7 @@ property does not.
 
 ## Status
 
-0.1 is an experimental release, not a verifier for all of JavaScript. It has
+0.2 is an experimental release, not a verifier for all of JavaScript. It has
 executable coverage for selected fragments of:
 
 - capability effects, including Deno-shaped filesystem, network, environment,
@@ -151,7 +151,7 @@ wrappers with additional work that try to inherit a guard, collection-valued upd
 abstraction transforms, and non-exact declarations remain explicit non-proofs.
 An adapter can explicitly bind its runtime parameter to the current Realm's
 builtin global object with
-`/* uneffect: runtime counter@1 = globalThis */`. Both producer and consumer
+`/* uneffect:runtime runtime counter@1 = globalThis */`. Both producer and consumer
 must declare the same adapter/version identity, and the call must resolve to the
 builtin `globalThis` symbol. The link records `ecmascript:realm.globalThis`;
 shadowed names, `window`, Node `global`, Worker/iframe values, properties below
@@ -231,20 +231,19 @@ common failure modes.
 
 ## Annotation model
 
-Only block comments containing the exact `uneffect:` marker are interpreted.
+Only block comments containing an explicit `uneffect:<dialect>` header are interpreted.
 Normal JSDoc is untouched, and the canonical annotation form is `/* ... */`
 rather than `/** ... */`.
+
+The dialect is semantic rather than backend-specific: `capability` tracks authority,
+`contract` creates Hoare-style obligations, and `temporal` describes transition
+systems that can be lowered to Quint. React boundaries use the unambiguous
+`react-component`, `react-hook`, and `react-resource` dialects.
 
 ```ts
 import type { Nat } from "@mizchi/uneffect"
 
-/*
- * uneffect:
- * effect Console | Mutate<typeof state>
- * requires amount >= 0
- * ensures result >= amount
- * assert amount: Nat
- */
+/* uneffect:capability effect Console | Mutate<typeof state> */ /* uneffect:contract requires amount >= 0 */ /* uneffect:contract ensures result >= amount */ /* uneffect:contract assert amount: Nat */
 function deposit(state: Account, amount: Nat): Nat {
   state.balance += amount
   console.log(amount)
@@ -258,7 +257,7 @@ semantics through TypeChecker symbol identity; user code does not need wrapper
 functions.
 
 ```ts
-/* uneffect: effect none */
+/* uneffect:capability effect none */
 export function increment(value: number): number {
   return value + 1
 }

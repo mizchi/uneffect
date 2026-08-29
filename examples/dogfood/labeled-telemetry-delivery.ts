@@ -1,16 +1,4 @@
-/* uneffect:
- * state delivered: int
- * state finalized: int
- * state audited: int
- * state charged: int
- * state skip: bool
- * init delivered = 0
- * init finalized = 0
- * init audited = 0
- * init charged = 0
- * init skip = false
- * action deliver: delivered' = skip ? delivered : delivered + 1, finalized' = finalized + 1, audited' = audited + 1, charged' = skip ? charged + 3 : charged + 5
- */
+/* uneffect:temporal state delivered: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state charged: int */ /* uneffect:temporal state skip: bool */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init charged = 0 */ /* uneffect:temporal init skip = false */ /* uneffect:temporal action deliver: delivered' = skip ? delivered : delivered + 1, finalized' = finalized + 1, audited' = audited + 1, charged' = skip ? charged + 3 : charged + 5 */
 
 export interface DeliveryAccounting {
   delivered: number;
@@ -20,17 +8,17 @@ export interface DeliveryAccounting {
   skip: boolean;
 }
 
-/* uneffect: refinement labeledDelivery@1 create */
+/* uneffect:refinement refinement labeledDelivery@1 create */
 export function createDelivery(initial: DeliveryAccounting): DeliveryAccounting {
   return initial;
 }
 
-/* uneffect: refinement labeledDelivery@1 observe */
+/* uneffect:refinement refinement labeledDelivery@1 observe */
 export function observeDelivery(runtime: DeliveryAccounting): DeliveryAccounting {
   return runtime;
 }
 
-/* uneffect: refinement labeledDelivery@1 action deliver */
+/* uneffect:refinement refinement labeledDelivery@1 action deliver */
 export function deliver(runtime: DeliveryAccounting): void {
   let units = 1;
   attempt: {

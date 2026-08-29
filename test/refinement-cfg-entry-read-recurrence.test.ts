@@ -6,19 +6,11 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state pending: int
-  state batch: int
-  state sent: int
-  init pending = 0
-  init batch = 0
-  init sent = 0
-  action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending - 1) / 2 : 0)
-*/
+const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state batch: int */ /* uneffect:temporal state sent: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init batch = 0 */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending - 1) / 2 : 0) */
 interface Runtime { pending: number; batch: number; sent: number }
-/* uneffect: refinement cfgEntryReadFlush@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect: refinement cfgEntryReadFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect: refinement cfgEntryReadFlush@1 action flush */
+/* uneffect:refinement refinement cfgEntryReadFlush@1 create */ export function create(initial: Runtime) { return initial }
+/* uneffect:refinement refinement cfgEntryReadFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }
+/* uneffect:refinement refinement cfgEntryReadFlush@1 action flush */
 export function flush(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.sent += runtime.batch

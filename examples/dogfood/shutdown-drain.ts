@@ -3,7 +3,7 @@
  * and remain drained. The wait action represents an event-loop turn that does
  * not complete work; weak fairness on completion excludes infinite starvation.
  *
- * uneffect:
+ * uneffect:temporal
  * state shuttingDown: bool
  * state pending: int
  * init shuttingDown = false
@@ -17,8 +17,8 @@
  * action_when wait: shuttingDown && pending > 0
  * action stopped: shuttingDown' = shuttingDown, pending' = pending
  * action_when stopped: shuttingDown && pending === 0
- * temporal pendingNonnegative: pending >= 0
- * temporal_stabilizes remainsDrained: !shuttingDown || pending === 0
+ * invariant pendingNonnegative: pending >= 0
+ * stabilizes remainsDrained: !shuttingDown || pending === 0
  */
 
 export {};

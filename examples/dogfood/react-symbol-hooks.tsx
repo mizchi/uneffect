@@ -5,9 +5,9 @@ interface RemoteViewport {
   readonly node: Element | null;
 }
 
-/* uneffect: react acquire RemoteViewport result */
+/* uneffect:react-resource acquire RemoteViewport result */
 declare function attachRemoteViewport(node: Element | null): RemoteViewport;
-/* uneffect: react release RemoteViewport parameter 0 */
+/* uneffect:react-resource release RemoteViewport parameter 0 */
 declare function detachRemoteViewport(viewport: RemoteViewport): void;
 
 export function refreshRemoteTelemetry(): void {
@@ -19,14 +19,14 @@ export function attachRemoteTelemetry(node: Element | null): () => void {
   return () => detachRemoteViewport(viewport);
 }
 
-/* uneffect: react hook */
+/* uneffect:react-hook */
 export function useDocumentTitle(title: string): void {
   useLayoutEffect(() => {
     document.title = title;
   }, [title]);
 }
 
-/* uneffect: react hook */
+/* uneffect:react-hook */
 export default function useRefreshAudit(endpoint: string): void {
   useEffect(installRemoteAudit, []);
   useSyncExternalStore(subscribeRemoteAudit, getRemoteAuditSnapshot);

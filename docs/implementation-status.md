@@ -12,7 +12,7 @@ same property is proved for arbitrary TypeScript.
 
 ## Annotation and contract surface
 
-- Existing TypeScript remains valid: Uneffect reads only `/* uneffect: ... */`
+- Existing TypeScript remains valid: Uneffect reads only `/* uneffect:temporal ... */`
   block comments and reports malformed or unsupported directives.
 - The typed annotation AST separates capability effects, Hoare-style
   preconditions/postconditions/invariants, and temporal specifications.
@@ -687,7 +687,7 @@ same property is proved for arbitrary TypeScript.
 
 ## React function components
 
-- `/* uneffect: react component */` opts function declarations and
+- `/* uneffect:react-component */` opts function declarations and
   variable-bound function expressions/arrows into a TSX-specific semantic
   check without changing runtime output.
 - A comment on a wrapper variable may cross direct named/default/namespace
@@ -785,7 +785,7 @@ same property is proved for arbitrary TypeScript.
   separate externally invoked capabilities. Dependency omissions, conditional
   calls, and opaque factories fail closed. Object spread, prototype/member
   factories, and cross-component ref-call flow remain unsupported.
-- `/* uneffect: react hook */` adds the same replayable boundary to custom
+- `/* uneffect:react-hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase
   summaries into components through a Program-level fixed point. The complete

@@ -1,14 +1,4 @@
-/* uneffect:
- * state billedUnits: int
- * state auditedUnits: int
- * state deliveryFailed: bool
- * state retryImmediately: bool
- * init billedUnits = 0
- * init auditedUnits = 0
- * init deliveryFailed = false
- * init retryImmediately = false
- * action recordBatch: billedUnits' = deliveryFailed ? (retryImmediately ? billedUnits + 7 : billedUnits) : billedUnits + (retryImmediately ? 5 : 7), auditedUnits' = auditedUnits + (deliveryFailed ? (retryImmediately ? 11 : 4) : (retryImmediately ? 8 : 9))
- */
+/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state retryImmediately: bool */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init retryImmediately = false */ /* uneffect:temporal action recordBatch: billedUnits' = deliveryFailed ? (retryImmediately ? billedUnits + 7 : billedUnits) : billedUnits + (retryImmediately ? 5 : 7), auditedUnits' = auditedUnits + (deliveryFailed ? (retryImmediately ? 11 : 4) : (retryImmediately ? 8 : 9)) */
 
 export interface FinallyRetryAccounting {
   billedUnits: number;
@@ -17,17 +7,17 @@ export interface FinallyRetryAccounting {
   retryImmediately: boolean;
 }
 
-/* uneffect: refinement finallyRetryAccounting@1 create */
+/* uneffect:refinement refinement finallyRetryAccounting@1 create */
 export function createFinallyRetryAccounting(initial: FinallyRetryAccounting): FinallyRetryAccounting {
   return initial;
 }
 
-/* uneffect: refinement finallyRetryAccounting@1 observe */
+/* uneffect:refinement refinement finallyRetryAccounting@1 observe */
 export function observeFinallyRetryAccounting(runtime: FinallyRetryAccounting): FinallyRetryAccounting {
   return runtime;
 }
 
-/* uneffect: refinement finallyRetryAccounting@1 action recordBatch */
+/* uneffect:refinement refinement finallyRetryAccounting@1 action recordBatch */
 export function recordConfiguredRetries(runtime: FinallyRetryAccounting): void {
   let units = 1;
   for (let attempt = 0; attempt < 2; attempt++) {

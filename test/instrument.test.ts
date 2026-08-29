@@ -9,7 +9,7 @@ describe("runtime assertion instrumenter", () => {
   it("injects a named numeric assertion into a function", () => {
     const source = `
       import type { Nat } from "@mizchi/uneffect";
-      /* uneffect: assert value: Nat */
+      /* uneffect:contract assert value: Nat */
       function double(value: Nat) { return value * 2 }
     `;
     const result = instrumentRuntimeAssertions("input.ts", source);
@@ -20,7 +20,7 @@ describe("runtime assertion instrumenter", () => {
 
   it("embeds an explicit Valibot schema expression", () => {
     const source = `
-      /* uneffect: assert name: v.pipe(v.string(), v.nonEmpty()) */
+      /* uneffect:contract assert name: v.pipe(v.string(), v.nonEmpty()) */
       function greet(name: string) { return name }
     `;
     const result = instrumentRuntimeAssertions("input.ts", source);
@@ -30,7 +30,7 @@ describe("runtime assertion instrumenter", () => {
 
   it("rejects assertions for unknown parameters", () => {
     const result = instrumentRuntimeAssertions("input.ts", `
-      /* uneffect: assert missing: Nat */
+      /* uneffect:contract assert missing: Nat */
       function f(value: number) { return value }
     `);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unknown-parameter", parameter: "missing" }));
@@ -42,9 +42,9 @@ describe("runtime assertion instrumenter", () => {
     const arguments_ = names.join(", ");
     const source = `
       declare function task(): Promise<void>
-      /* uneffect: consumes_rejection_when 13: ${guard} */
+      /* uneffect:async consumes_rejection_when 13: ${guard} */
       declare function consume(${parameters}, value: Promise<void>): void
-      /* uneffect: requires ${guard} */
+      /* uneffect:contract requires ${guard} */
       async function run(${parameters}) {
         const pending = task()
         consume(${arguments_}, pending)
@@ -75,9 +75,9 @@ describe("runtime assertion instrumenter", () => {
     const evidencePath = join(directory, "ownership.json");
     const source = (last: string) => `
       declare function task(): Promise<void>
-      /* uneffect: consumes_rejection_when 13: b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && ${last} */
+      /* uneffect:async consumes_rejection_when 13: b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && ${last} */
       declare function consume(b0: boolean, b1: boolean, b2: boolean, b3: boolean, b4: boolean, b5: boolean, b6: boolean, b7: boolean, b8: boolean, b9: boolean, b10: boolean, b11: boolean, b12: boolean, value: Promise<void>): void
-      /* uneffect: requires b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && b12 */
+      /* uneffect:contract requires b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && b12 */
       async function run(b0: boolean, b1: boolean, b2: boolean, b3: boolean, b4: boolean, b5: boolean, b6: boolean, b7: boolean, b8: boolean, b9: boolean, b10: boolean, b11: boolean, b12: boolean) {
         consume(b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, task())
       }

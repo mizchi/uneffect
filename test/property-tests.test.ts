@@ -18,8 +18,8 @@ describe("property-test generation", () => {
     `;
     const metrics = `
       import { isMetricName } from "./validators.js"
-      /* uneffect: requires isMetricName(name) */
-      /* uneffect: ensures result === name */
+      /* uneffect:contract requires isMetricName(name) */
+      /* uneffect:contract ensures result === name */
       export function metricKey(name: string): string { return name }
     `;
     const generated = generateUneffectPropertyTests({
@@ -55,8 +55,8 @@ describe("property-test generation", () => {
       const validators = `export function isMetricName(value: string): boolean { return /^[a-z]+$/.test(value) }`;
       const metrics = `
         import { isMetricName } from "./validators.js"
-        /* uneffect: requires isMetricName(name) */
-        /* uneffect: ensures result === name */
+        /* uneffect:contract requires isMetricName(name) */
+        /* uneffect:contract ensures result === name */
         export function metricKey(name: string): string { return name }
       `;
       const generated = generateUneffectPropertyTests({
@@ -83,15 +83,15 @@ describe("property-test generation", () => {
       "barrel.ts": `export { accepted } from "./validators.js"`,
       "consumer.ts": `
         import { accepted } from "./barrel.js"
-        /* uneffect: requires accepted(value) */
-        /* uneffect: ensures result === value */
+        /* uneffect:contract requires accepted(value) */
+        /* uneffect:contract ensures result === value */
         export function identity(value: string): string { return value }
       `,
       "shadow.ts": `
         import { accepted as importedAccepted } from "./validators.js"
         function accepted(value: string): boolean { return importedAccepted(value) }
-        /* uneffect: requires accepted(value) */
-        /* uneffect: ensures result === value */
+        /* uneffect:contract requires accepted(value) */
+        /* uneffect:contract ensures result === value */
         export function identity(value: string): string { return value }
       `,
     };
@@ -116,27 +116,27 @@ describe("property-test generation", () => {
         `,
         "namespace.ts": `
           import * as validators from "./validators.js"
-          /* uneffect: requires validators.accepted(value) */
-          /* uneffect: ensures result === value */
+          /* uneffect:contract requires validators.accepted(value) */
+          /* uneffect:contract ensures result === value */
           export function namespaceIdentity(value: string): string { return value }
         `,
         "default.ts": `
           import accepted from "./validators.js"
-          /* uneffect: requires accepted(value) */
-          /* uneffect: ensures result === value */
+          /* uneffect:contract requires accepted(value) */
+          /* uneffect:contract ensures result === value */
           export function defaultIdentity(value: string): string { return value }
         `,
         "type-only.ts": `
           import type { accepted } from "./validators.js"
-          /* uneffect: requires accepted(value) */
-          /* uneffect: ensures result === value */
+          /* uneffect:contract requires accepted(value) */
+          /* uneffect:contract ensures result === value */
           export function typeIdentity(value: string): string { return value }
         `,
         "dynamic.ts": `
           import { accepted } from "./validators.js"
           const selected = accepted
-          /* uneffect: requires selected(value) */
-          /* uneffect: ensures result === value */
+          /* uneffect:contract requires selected(value) */
+          /* uneffect:contract ensures result === value */
           export function dynamicIdentity(value: string): string { return value }
         `,
       },
@@ -157,8 +157,8 @@ describe("property-test generation", () => {
       export function isMetricName(value: string): boolean {
         return /^[a-z][a-z0-9_.]{0,31}$/.test(value)
       }
-      /* uneffect: requires isMetricName(name) */
-      /* uneffect: ensures result !== "requests.total" */
+      /* uneffect:contract requires isMetricName(name) */
+      /* uneffect:contract ensures result !== "requests.total" */
       export function metricKey(name: string): string { return name }
     `;
     const specialization = {
@@ -200,8 +200,8 @@ describe("property-test generation", () => {
         export function isMetricName(value: string): boolean {
           return /^[a-z][a-z0-9_.]{0,31}$/.test(value)
         }
-        /* uneffect: requires isMetricName(name) */
-        /* uneffect: ensures result === name */
+        /* uneffect:contract requires isMetricName(name) */
+        /* uneffect:contract ensures result === name */
         export function metricKey(name: string): string { return name }
       `;
       const fileName = join(directory, "metrics.ts"), generatedName = join(directory, "metrics.uneffect.test.ts");
@@ -227,11 +227,11 @@ describe("property-test generation", () => {
     const source = `
       function localPredicate(value: string): boolean { return value.length > 0 }
       export function pairPredicate(value: string, suffix: string): boolean { return value.endsWith(suffix) }
-      /* uneffect: requires localPredicate(name) */
-      /* uneffect: ensures result === name */
+      /* uneffect:contract requires localPredicate(name) */
+      /* uneffect:contract ensures result === name */
       export function local(name: string): string { return name }
-      /* uneffect: requires pairPredicate(name, "x") */
-      /* uneffect: ensures result === name */
+      /* uneffect:contract requires pairPredicate(name, "x") */
+      /* uneffect:contract ensures result === name */
       export function pair(name: string): string { return name }
     `;
     const result = generateUneffectPropertyTests({
@@ -248,8 +248,8 @@ describe("property-test generation", () => {
     const empty = generateUneffectPropertyTests({
       files: { "empty.ts": `
         export function accepted(value: string): boolean { return value.length > 0 }
-        /* uneffect: requires accepted(value) */
-        /* uneffect: ensures result === value */
+        /* uneffect:contract requires accepted(value) */
+        /* uneffect:contract ensures result === value */
         export function identity(value: string): string { return value }
       ` },
       predicateSpecializations: {
@@ -260,7 +260,7 @@ describe("property-test generation", () => {
   });
 
   it("rejects unsupported parameter boundaries without pretending to generate coverage", () => {
-    const result = generateUneffectPropertyTests({ files: { "value.ts": `/* uneffect: ensures result === value */ function identity(value: string) { return value }` } });
+    const result = generateUneffectPropertyTests({ files: { "value.ts": `/* uneffect:contract ensures result === value */ function identity(value: string) { return value }` } });
     expect(result.generatedFiles).toEqual({});
     expect(result.diagnostics[0]?.message).toContain("currently supports");
   });
@@ -281,7 +281,7 @@ describe("property-test generation", () => {
   it("derives bounded typed-array and literal-union domains from TypeScript syntax", () => {
     const result = generateUneffectPropertyTests({ files: { "packet.ts": `
       import type { BoundedUint8Array } from "@mizchi/uneffect"
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract ensures result >= 0 */
       export function score(bytes: BoundedUint8Array<4>, mode: "fast" | "safe"): number {
         return bytes.length + mode.length
       }
@@ -312,7 +312,7 @@ describe("property-test generation", () => {
     try {
       const source = `
         type BoundedUint8Array<N extends number> = Uint8Array
-        /* uneffect: ensures result >= 0 */
+        /* uneffect:contract ensures result >= 0 */
         export function score(bytes: BoundedUint8Array<4>, mode: "fast" | "safe"): number {
           return bytes.length + mode.length
         }
@@ -331,7 +331,7 @@ describe("property-test generation", () => {
     const artifactDirectory = join(directory, "counterexamples");
     try {
       const source = `
-        /* uneffect: ensures result <= 0 */
+        /* uneffect:contract ensures result <= 0 */
         export function positive(value: Int): number { return Math.abs(value) }
       `;
       const fileName = join(directory, "positive.ts"), generatedName = join(directory, "positive.uneffect.test.ts");
@@ -364,8 +364,8 @@ describe("property-test generation", () => {
   it("derives executable boundary candidates from conjunctive numeric refinements", () => {
     const result = generateUneffectPropertyTests({ files: { "range.ts": `
       type Int = number
-      /* uneffect: requires value >= 10 && value < 20 */
-      /* uneffect: ensures result >= 10 */
+      /* uneffect:contract requires value >= 10 && value < 20 */
+      /* uneffect:contract ensures result >= 10 */
       export function clamp(value: Int): Int { return value }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[10, 11, 18, 19]]);
@@ -375,8 +375,8 @@ describe("property-test generation", () => {
   it("derives candidates from disjoint refinement branches", () => {
     const result = generateUneffectPropertyTests({ files: { "disjoint.ts": `
       type Int = number
-      /* uneffect: requires (value >= 10 && value < 12) || (value >= 20 && value < 22) */
-      /* uneffect: ensures result >= 10 */
+      /* uneffect:contract requires (value >= 10 && value < 12) || (value >= 20 && value < 22) */
+      /* uneffect:contract ensures result >= 10 */
       export function choose(value: Int): Int { return value }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[10, 11, 20, 21]]);
@@ -385,8 +385,8 @@ describe("property-test generation", () => {
   it("normalizes single-variable affine refinement boundaries", () => {
     const result = generateUneffectPropertyTests({ files: { "affine.ts": `
       type Int = number
-      /* uneffect: requires value + 2 < 10 && 20 <= 3 + value */
-      /* uneffect: ensures result >= 17 */
+      /* uneffect:contract requires value + 2 < 10 && 20 <= 3 + value */
+      /* uneffect:contract ensures result >= 17 */
       export function affine(value: Int): Int { return value }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[6, 7, 17, 18]]);
@@ -395,8 +395,8 @@ describe("property-test generation", () => {
   it("derives aligned boundary candidates from a positive modulo refinement", () => {
     const result = generateUneffectPropertyTests({ files: { "shard.ts": `
       type Nat = number
-      /* uneffect: requires shard >= 0 && shard < 1024 && shard % 16 === 0 */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires shard >= 0 && shard < 1024 && shard % 16 === 0 */
+      /* uneffect:contract ensures result >= 0 */
       export function alignedShard(shard: Nat): Nat { return shard }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[0, 16, 1008]]);
@@ -406,8 +406,8 @@ describe("property-test generation", () => {
   it("keeps range and modulo constraints local to each disjunctive branch", () => {
     const result = generateUneffectPropertyTests({ files: { "tenant-shard.ts": `
       type Nat = number
-      /* uneffect: requires (shard >= 0 && shard < 32 && shard % 16 === 0) || (shard >= 100 && shard < 132 && shard % 16 === 4) */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires (shard >= 0 && shard < 32 && shard % 16 === 0) || (shard >= 100 && shard < 132 && shard % 16 === 4) */
+      /* uneffect:contract ensures result >= 0 */
       export function tenantShard(shard: Nat): Nat { return shard }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[0, 16, 100, 116]]);
@@ -417,8 +417,8 @@ describe("property-test generation", () => {
     const alternatives = Array.from({ length: 6 }, () => "(value === 0 || value === 1)").join(" && ");
     const result = generateUneffectPropertyTests({ files: { "bounded-dnf.ts": `
       type Int = number
-      /* uneffect: requires ${alternatives} */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires ${alternatives} */
+      /* uneffect:contract ensures result >= 0 */
       export function bounded(value: Int): Int { return value }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[0, 1]]);
@@ -427,8 +427,8 @@ describe("property-test generation", () => {
   it("combines compatible non-coprime modulo refinements", () => {
     const result = generateUneffectPropertyTests({ files: { "partition.ts": `
       type Nat = number
-      /* uneffect: requires partition >= 0 && partition < 50 && partition % 4 === 1 && partition % 6 === 3 */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires partition >= 0 && partition < 50 && partition % 4 === 1 && partition % 6 === 3 */
+      /* uneffect:contract ensures result >= 0 */
       export function routed(partition: Nat): Nat { return partition }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[9, 21, 45]]);
@@ -437,8 +437,8 @@ describe("property-test generation", () => {
   it("does not invent a congruence class for incompatible modulo refinements", () => {
     const result = generateUneffectPropertyTests({ files: { "impossible-partition.ts": `
       type Nat = number
-      /* uneffect: requires partition >= 0 && partition < 50 && partition % 4 === 0 && partition % 6 === 3 */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires partition >= 0 && partition < 50 && partition % 4 === 0 && partition % 6 === 3 */
+      /* uneffect:contract ensures result >= 0 */
       export function impossible(partition: Nat): Nat { return partition }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[0, 1, 48, 49]]);
@@ -447,24 +447,24 @@ describe("property-test generation", () => {
   it("derives negative JavaScript remainder boundaries only in a negative range", () => {
     const result = generateUneffectPropertyTests({ files: { "signed-partition.ts": `
       type Int = number
-      /* uneffect: requires partition >= -50 && partition < 0 && partition % 6 === -3 */
-      /* uneffect: ensures result < 0 */
+      /* uneffect:contract requires partition >= -50 && partition < 0 && partition % 6 === -3 */
+      /* uneffect:contract ensures result < 0 */
       export function signed(partition: Int): Int { return partition }
     ` } });
     expect(result.boundaries[0]?.generatorHints).toEqual([[-45, -9, -3]]);
 
     const unknownSign = generateUneffectPropertyTests({ files: { "unknown-sign.ts": `
       type Int = number
-      /* uneffect: requires partition % 6 === -3 */
-      /* uneffect: ensures result !== 0 */
+      /* uneffect:contract requires partition % 6 === -3 */
+      /* uneffect:contract ensures result !== 0 */
       export function unknown(partition: Int): Int { return partition }
     ` } });
     expect(unknownSign.boundaries[0]?.generatorHints).toEqual([[]]);
 
     const wrongSign = generateUneffectPropertyTests({ files: { "wrong-sign.ts": `
       type Int = number
-      /* uneffect: requires partition >= -50 && partition < 0 && partition % 6 === 3 */
-      /* uneffect: ensures result < 0 */
+      /* uneffect:contract requires partition >= -50 && partition < 0 && partition % 6 === 3 */
+      /* uneffect:contract ensures result < 0 */
       export function wrong(partition: Int): Int { return partition }
     ` } });
     expect(wrongSign.boundaries[0]?.generatorHints).toEqual([[-50, -49, -2, -1]]);
@@ -473,8 +473,8 @@ describe("property-test generation", () => {
   it("derives correlated tuples from affine parameter equalities", () => {
     const result = generateUneffectPropertyTests({ files: { "dependent.ts": `
       type Int = number
-      /* uneffect: requires x >= 10 && x < 12 && y === x + 1 */
-      /* uneffect: ensures result === y */
+      /* uneffect:contract requires x >= 10 && x < 12 && y === x + 1 */
+      /* uneffect:contract ensures result === y */
       export function dependent(x: Int, y: Int): Int { return y }
     ` } });
     expect(result.boundaries[0]?.generatorTuples).toEqual([[10, 11], [11, 12]]);
@@ -484,8 +484,8 @@ describe("property-test generation", () => {
   it("composes a chain of affine parameter equalities", () => {
     const result = generateUneffectPropertyTests({ files: { "chain.ts": `
       type Int = number
-      /* uneffect: requires x >= 10 && x < 12 && y === x + 1 && z === y + 2 */
-      /* uneffect: ensures result === z */
+      /* uneffect:contract requires x >= 10 && x < 12 && y === x + 1 && z === y + 2 */
+      /* uneffect:contract ensures result === z */
       export function chain(x: Int, y: Int, z: Int): Int { return z }
     ` } });
     expect(result.boundaries[0]?.generatorTuples).toEqual([[10, 11, 13], [11, 12, 14]]);
@@ -494,8 +494,8 @@ describe("property-test generation", () => {
   it("derives valid correlated tuples for a nonlinear refinement with Z3", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "circle.ts": `
       type Int = number
-      /* uneffect: requires x >= 0 && y >= 0 && x * x + y * y === 25 */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires x >= 0 && y >= 0 && x * x + y * y === 25 */
+      /* uneffect:contract ensures result >= 0 */
       export function radius(x: Int, y: Int): Int { return x + y }
     ` }, solverCases: 8 });
     const tuples = result.boundaries[0]?.generatorTuples ?? [];
@@ -509,8 +509,8 @@ describe("property-test generation", () => {
   it("synthesizes a minimum-size constraint-preserving shrink tuple first", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "factor.ts": `
       type Nat = number
-      /* uneffect: requires x >= 1 && y >= 1 && x * y === 36 */
-      /* uneffect: ensures result === 36 */
+      /* uneffect:contract requires x >= 1 && y >= 1 && x * y === 36 */
+      /* uneffect:contract ensures result === 36 */
       export function factor(x: Nat, y: Nat): Nat { return x * y }
     ` }, solverCases: 1 });
     expect(result.boundaries[0]?.generatorTuples).toEqual([[6, 6]]);
@@ -521,8 +521,8 @@ describe("property-test generation", () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "packet.ts": `
       type U8 = number
       type BoundedUint8Array<N extends number> = Uint8Array
-      /* uneffect: requires bytes.length === 2 && bytes[0] + bytes[1] === 300 */
-      /* uneffect: ensures result === 300 */
+      /* uneffect:contract requires bytes.length === 2 && bytes[0] + bytes[1] === 300 */
+      /* uneffect:contract ensures result === 300 */
       export function checksum(bytes: BoundedUint8Array<2>): number { return bytes[0]! + bytes[1]! }
     ` }, solverCases: 6 });
     const tuples = result.boundaries[0]?.generatorTuples ?? [];
@@ -547,8 +547,8 @@ describe("property-test generation", () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "lookup.ts": `
       type U8 = number
       type BoundedUint8Array<N extends number> = Uint8Array
-      /* uneffect: requires bytes.length === 2 && index < bytes.length && bytes[index] === 255 */
-      /* uneffect: ensures result === 255 */
+      /* uneffect:contract requires bytes.length === 2 && index < bytes.length && bytes[index] === 255 */
+      /* uneffect:contract ensures result === 255 */
       export function lookup(bytes: BoundedUint8Array<2>, index: U8): number { return bytes[index]! }
     ` }, solverCases: 6 });
     const tuples = result.boundaries[0]?.generatorTuples ?? [];
@@ -561,8 +561,8 @@ describe("property-test generation", () => {
   it("derives solver-backed closed-record inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "pixel.ts": `
       type U8 = number
-      /* uneffect: requires pixel.red + pixel.green === 300 */
-      /* uneffect: ensures result === 300 */
+      /* uneffect:contract requires pixel.red + pixel.green === 300 */
+      /* uneffect:contract ensures result === 300 */
       export function intensity(pixel: { red: U8; green: U8 }): number { return pixel.red + pixel.green }
     ` }, solverCases: 6 });
     const tuples = result.boundaries[0]?.generatorTuples ?? [];
@@ -587,8 +587,8 @@ describe("property-test generation", () => {
   it("derives and shrinks solver-backed nested-record inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "nested-pixel.ts": `
       type U8 = number
-      /* uneffect: requires pixel.color.red + pixel.color.green === 300 && pixel.alpha === 255 */
-      /* uneffect: ensures result === 555 */
+      /* uneffect:contract requires pixel.color.red + pixel.color.green === 300 && pixel.alpha === 255 */
+      /* uneffect:contract ensures result === 555 */
       export function intensity(pixel: { color: { red: U8; green: U8 }; alpha: U8 }): number {
         return pixel.color.red + pixel.color.green + pixel.alpha
       }
@@ -622,8 +622,8 @@ describe("property-test generation", () => {
   it("distinguishes absent optional fields from present zero values", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "optional.ts": `
       type U8 = number
-      /* uneffect: requires config.limit === undefined || config.limit >= 10 */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires config.limit === undefined || config.limit >= 10 */
+      /* uneffect:contract ensures result >= 0 */
       export function limit(config: { limit?: U8 }): number { return config.limit ?? 0 }
     ` }, solverCases: 8 });
     expect(result.boundaries[0]?.generators).toEqual([
@@ -639,8 +639,8 @@ describe("property-test generation", () => {
   it("uses one shared presence bit for an optional object-valued field", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "optional-object.ts": `
       type U8 = number
-      /* uneffect: requires config.range === undefined || config.range.min + config.range.max === 300 */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires config.range === undefined || config.range.min + config.range.max === 300 */
+      /* uneffect:contract ensures result >= 0 */
       export function width(config: { range?: { min: U8; max: U8 } }): number {
         return config.range === undefined ? 0 : config.range.max - config.range.min
       }
@@ -662,8 +662,8 @@ describe("property-test generation", () => {
   it("separates parent and child presence for nested optional fields", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "nested-optional.ts": `
       type U8 = number
-      /* uneffect: requires config.range === undefined || (config.range.max === 0 && (config.range.min === undefined || config.range.min >= 10)) */
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract requires config.range === undefined || (config.range.max === 0 && (config.range.min === undefined || config.range.min >= 10)) */
+      /* uneffect:contract ensures result >= 0 */
       export function minimum(config: { range?: { min?: U8; max: U8 } }): number {
         return config.range?.min ?? 0
       }
@@ -688,7 +688,7 @@ describe("property-test generation", () => {
     const source = `
       type U8 = number
       type BoundedSet<T, N extends number> = Set<T>
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract ensures result >= 0 */
       export function total(values: BoundedSet<U8, 3>): number {
         return [...values].reduce((sum, value) => sum + value, 0)
       }
@@ -713,8 +713,8 @@ describe("property-test generation", () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "set-refined.ts": `
       type U8 = number
       type BoundedSet<T, N extends number> = Set<T>
-      /* uneffect: requires values.size === 2 && values.has(10) && !values.has(0) */
-      /* uneffect: ensures result === true */
+      /* uneffect:contract requires values.size === 2 && values.has(10) && !values.has(0) */
+      /* uneffect:contract ensures result === true */
       export function containsTen(values: BoundedSet<U8, 3>): boolean { return values.has(10) }
     ` }, solverCases: 6 });
     const tuples = result.boundaries[0]?.generatorTuples ?? [];
@@ -728,7 +728,7 @@ describe("property-test generation", () => {
     const source = `
       type U8 = number
       type BoundedMap<K, V, N extends number> = Map<K, V>
-      /* uneffect: ensures result >= 0 */
+      /* uneffect:contract ensures result >= 0 */
       export function total(values: BoundedMap<U8, U8, 3>): number {
         return [...values.values()].reduce((sum, value) => sum + value, 0)
       }
@@ -753,8 +753,8 @@ describe("property-test generation", () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "map-refined.ts": `
       type U8 = number
       type BoundedMap<K, V, N extends number> = Map<K, V>
-      /* uneffect: requires values.size === 2 && values.get(1) === 10 && values.has(2) */
-      /* uneffect: ensures result === 10 */
+      /* uneffect:contract requires values.size === 2 && values.get(1) === 10 && values.has(2) */
+      /* uneffect:contract ensures result === 10 */
       export function lookup(values: BoundedMap<U8, U8, 3>): number { return values.get(1)! }
     ` }, solverCases: 6 });
     const tuples = result.boundaries[0]?.generatorTuples ?? [];
@@ -772,8 +772,8 @@ describe("property-test generation", () => {
   it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
       type Int = number
-      /* uneffect: requires x > 0 && x < 0 */
-      /* uneffect: ensures result === x */
+      /* uneffect:contract requires x > 0 && x < 0 */
+      /* uneffect:contract ensures result === x */
       export function impossible(x: Int): Int { return x }
     ` } });
     expect(result.boundaries[0]?.generatorTuples).toEqual([]);
@@ -784,8 +784,8 @@ describe("property-test generation", () => {
 
   it("enumerates satisfying numeric literal-union members with Z3", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "numeric-union.ts": `
-      /* uneffect: requires value * value >= 16 */
-      /* uneffect: ensures result >= 4 */
+      /* uneffect:contract requires value * value >= 16 */
+      /* uneffect:contract ensures result >= 4 */
       export function magnitude(value: 1 | 4 | 9): number { return value }
     ` } });
     expect(result.solverDiagnostics).toEqual([]);
@@ -794,8 +794,8 @@ describe("property-test generation", () => {
 
   it("enumerates satisfying boolean literal-union members with the Bool sort", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "boolean-union.ts": `
-      /* uneffect: requires enabled === true */
-      /* uneffect: ensures result === 1 */
+      /* uneffect:contract requires enabled === true */
+      /* uneffect:contract ensures result === 1 */
       export function feature(enabled: false | true): number { return enabled ? 1 : 0 }
     ` } });
     expect(result.solverDiagnostics).toEqual([]);
@@ -804,8 +804,8 @@ describe("property-test generation", () => {
 
   it("enumerates satisfying string literal-union members with the String sort", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "string-union.ts": `
-      /* uneffect: requires mode !== "off" */
-      /* uneffect: ensures result >= 1 */
+      /* uneffect:contract requires mode !== "off" */
+      /* uneffect:contract ensures result >= 1 */
       export function modeWeight(mode: "off" | "safe" | "fast"): number { return mode.length }
     ` } });
     expect(result.solverDiagnostics).toEqual([]);
@@ -815,8 +815,8 @@ describe("property-test generation", () => {
   it("uses JavaScript truncation and signed-remainder semantics in Z3 generation", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "signed-arithmetic.ts": `
       type Int = number
-      /* uneffect: requires value === -7 && value / 3 === -2 && value % 3 === -1 */
-      /* uneffect: ensures result === -7 */
+      /* uneffect:contract requires value === -7 && value / 3 === -2 && value % 3 === -1 */
+      /* uneffect:contract ensures result === -7 */
       export function signed(value: Int): Int { return value }
     ` } });
     expect(result.solverDiagnostics).toEqual([]);
@@ -826,8 +826,8 @@ describe("property-test generation", () => {
   it("does not invent integer division models for a zero divisor", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "zero-divisor.ts": `
       type Int = number
-      /* uneffect: requires divisor === 0 && value / divisor === 0 */
-      /* uneffect: ensures result === value */
+      /* uneffect:contract requires divisor === 0 && value / divisor === 0 */
+      /* uneffect:contract ensures result === value */
       export function divide(value: Int, divisor: Int): Int { return value }
     ` } });
     expect(result.boundaries[0]?.generatorTuples).toEqual([]);

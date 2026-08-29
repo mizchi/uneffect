@@ -1,14 +1,14 @@
-/* uneffect: effect Console */
+/* uneffect:capability effect Console */
 function report(value: number) {
   console.log(value);
 }
 
-/* uneffect: requires n >= 0 */
-/* uneffect: ensures result == n */
-/* uneffect: effect Console */
+/* uneffect:contract requires n >= 0 */
+/* uneffect:contract ensures result == n */
+/* uneffect:capability effect Console */
 function count(n: number) {
   let i = 0;
-  /* uneffect: invariant i >= 0 && i <= n */
+  /* uneffect:contract invariant i >= 0 && i <= n */
   while (i < n) {
     i = i + 1;
   }

@@ -1,42 +1,6 @@
 import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
 
-/* uneffect:
-  state delivered: int
-  state dropped: int
-  state buffered: int
-  state attempted: int
-  state postProcessed: int
-  state recovered: int
-  state finalized: int
-  state auditArmed: bool
-  init delivered = 0
-  init dropped = 0
-  init buffered = 0
-  init attempted = 0
-  init postProcessed = 0
-  init recovered = 0
-  init finalized = 0
-  init auditArmed = false
-  action deliver: delivered' = delivered + 1, attempted' = attempted + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
-  action drop: dropped' = dropped + 1, attempted' = attempted + 1
-  action buffer: buffered' = buffered + 1, attempted' = attempted + 1
-  action reject: delivered' = auditArmed ? delivered : delivered + 1, dropped' = auditArmed ? dropped + 1 : dropped, attempted' = attempted + 1, auditArmed' = true
-  action nestedReject: postProcessed' = (auditArmed ? attempted > 0 : false) ? postProcessed + 1 : postProcessed
-  action returnOrReject: postProcessed' = !auditArmed ? (auditArmed ? postProcessed + 1 : postProcessed) + 2 : auditArmed ? postProcessed + 1 : postProcessed, recovered' = auditArmed ? recovered : recovered + 1
-  action recoverOrStop: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
-  action recoverOrRethrow: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
-  action finalizeRecovery: recovered' = recovered + 1, postProcessed' = (auditArmed ? postProcessed + 1 : attempted < 0 ? postProcessed : postProcessed + 1), finalized' = (auditArmed || attempted < 0) ? finalized : finalized + 1
-  action routeRecovery: recovered' = attempted === 0 ? recovered + 1 : attempted === 1 ? recovered + 2 : recovered + 3, dropped' = attempted === 1 ? dropped + 1 : dropped, attempted' = attempted === 1 ? attempted + 1 : attempted, finalized' = finalized + 1, postProcessed' = attempted === 0 ? postProcessed : postProcessed + 1
-  action stagedReject: recovered' = auditArmed ? recovered : recovered + 1, finalized' = (auditArmed ? true : attempted < 0) ? finalized + 1 : finalized, postProcessed' = auditArmed ? postProcessed : attempted < 0 ? postProcessed : postProcessed + 1
-  action scanConfigured: recovered' = auditArmed ? recovered : (auditArmed ? recovered : recovered + 1) + 2, finalized' = auditArmed || !auditArmed && auditArmed ? finalized + 1 : finalized
-  action nestedRecovery: recovered' = auditArmed ? recovered : recovered + 1, finalized' = auditArmed && attempted < 0 ? (auditArmed ? finalized + 1 : finalized) + 1 : auditArmed ? finalized + 1 : finalized, postProcessed' = auditArmed && attempted < 0 ? postProcessed : postProcessed + 1
-  action stagedNestedRecovery: recovered' = attempted < 0 ? (auditArmed ? recovered : recovered + 1) + 2 : auditArmed ? recovered : recovered + 1, finalized' = attempted < 0 && auditArmed ? (attempted < 0 && auditArmed ? auditArmed ? finalized + 1 : finalized : (auditArmed ? finalized + 1 : finalized) + 1) + 1 : (auditArmed ? finalized + 1 : finalized) + 1, postProcessed' = attempted < 0 ? postProcessed : postProcessed + 1
-  action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
-  action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
-  action observeLostOutcome: auditArmed' = auditArmed
-  action_when observeLostOutcome: auditArmed && delivered + dropped + buffered < attempted
-  temporal allAttemptsHaveOneOutcome: delivered + dropped + buffered === attempted
-*/
+/* uneffect:temporal state delivered: int */ /* uneffect:temporal state dropped: int */ /* uneffect:temporal state buffered: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal state postProcessed: int */ /* uneffect:temporal state recovered: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state auditArmed: bool */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init dropped = 0 */ /* uneffect:temporal init buffered = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init postProcessed = 0 */ /* uneffect:temporal init recovered = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init auditArmed = false */ /* uneffect:temporal action deliver: delivered' = delivered + 1, attempted' = attempted + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1 */ /* uneffect:temporal action drop: dropped' = dropped + 1, attempted' = attempted + 1 */ /* uneffect:temporal action buffer: buffered' = buffered + 1, attempted' = attempted + 1 */ /* uneffect:temporal action reject: delivered' = auditArmed ? delivered : delivered + 1, dropped' = auditArmed ? dropped + 1 : dropped, attempted' = attempted + 1, auditArmed' = true */ /* uneffect:temporal action nestedReject: postProcessed' = (auditArmed ? attempted > 0 : false) ? postProcessed + 1 : postProcessed */ /* uneffect:temporal action returnOrReject: postProcessed' = !auditArmed ? (auditArmed ? postProcessed + 1 : postProcessed) + 2 : auditArmed ? postProcessed + 1 : postProcessed, recovered' = auditArmed ? recovered : recovered + 1 */ /* uneffect:temporal action recoverOrStop: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1 */ /* uneffect:temporal action recoverOrRethrow: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1 */ /* uneffect:temporal action finalizeRecovery: recovered' = recovered + 1, postProcessed' = (auditArmed ? postProcessed + 1 : attempted < 0 ? postProcessed : postProcessed + 1), finalized' = (auditArmed || attempted < 0) ? finalized : finalized + 1 */ /* uneffect:temporal action routeRecovery: recovered' = attempted === 0 ? recovered + 1 : attempted === 1 ? recovered + 2 : recovered + 3, dropped' = attempted === 1 ? dropped + 1 : dropped, attempted' = attempted === 1 ? attempted + 1 : attempted, finalized' = finalized + 1, postProcessed' = attempted === 0 ? postProcessed : postProcessed + 1 */ /* uneffect:temporal action stagedReject: recovered' = auditArmed ? recovered : recovered + 1, finalized' = (auditArmed ? true : attempted < 0) ? finalized + 1 : finalized, postProcessed' = auditArmed ? postProcessed : attempted < 0 ? postProcessed : postProcessed + 1 */ /* uneffect:temporal action scanConfigured: recovered' = auditArmed ? recovered : (auditArmed ? recovered : recovered + 1) + 2, finalized' = auditArmed || !auditArmed && auditArmed ? finalized + 1 : finalized */ /* uneffect:temporal action nestedRecovery: recovered' = auditArmed ? recovered : recovered + 1, finalized' = auditArmed && attempted < 0 ? (auditArmed ? finalized + 1 : finalized) + 1 : auditArmed ? finalized + 1 : finalized, postProcessed' = auditArmed && attempted < 0 ? postProcessed : postProcessed + 1 */ /* uneffect:temporal action stagedNestedRecovery: recovered' = attempted < 0 ? (auditArmed ? recovered : recovered + 1) + 2 : auditArmed ? recovered : recovered + 1, finalized' = attempted < 0 && auditArmed ? (attempted < 0 && auditArmed ? auditArmed ? finalized + 1 : finalized : (auditArmed ? finalized + 1 : finalized) + 1) + 1 : (auditArmed ? finalized + 1 : finalized) + 1, postProcessed' = attempted < 0 ? postProcessed : postProcessed + 1 */ /* uneffect:temporal action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true */ /* uneffect:temporal action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1 */ /* uneffect:temporal action observeLostOutcome: auditArmed' = auditArmed */ /* uneffect:temporal action_when observeLostOutcome: auditArmed && delivered + dropped + buffered < attempted */ /* uneffect:temporal invariant allAttemptsHaveOneOutcome: delivered + dropped + buffered === attempted */
 
 export type TelemetryOutcome = "delivered" | "dropped" | "buffered";
 
@@ -51,9 +15,9 @@ export interface TelemetryRoutingState {
   auditArmed: boolean;
 }
 
-/* uneffect: trust dispatch-sealing application owns the complete class graph */
-/* uneffect: trust_owner telemetry-platform */
-/* uneffect: trust_expires 2027-08-31 */
+/* uneffect:trust trust dispatch-sealing application owns the complete class graph */
+/* uneffect:trust trust_owner telemetry-platform */
+/* uneffect:trust trust_expires 2027-08-31 */
 export class TelemetryRoutingAccounting {
   delivered = 0;
   dropped = 0;
@@ -74,7 +38,7 @@ function hydrateTelemetryRouting(initial: TelemetryRoutingState): TelemetryRouti
   return Object.assign(new TelemetryRoutingAccounting(), initial);
 }
 
-/* uneffect: refinement telemetryRouting@1 create */
+/* uneffect:refinement refinement telemetryRouting@1 create */
 export function createTelemetryRouting(initial: TelemetryRoutingState): TelemetryRoutingAccounting {
   return hydrateTelemetryRouting(initial);
 }
@@ -84,12 +48,12 @@ function snapshotTelemetryRouting(runtime: TelemetryRoutingAccounting): Telemetr
   return { delivered, dropped, buffered, attempted, postProcessed, recovered, finalized, auditArmed };
 }
 
-/* uneffect: refinement telemetryRouting@1 observe */
+/* uneffect:refinement refinement telemetryRouting@1 observe */
 export function observeTelemetryRouting(runtime: TelemetryRoutingAccounting): TelemetryRoutingState {
   return snapshotTelemetryRouting(runtime);
 }
 
-/* uneffect: refinement telemetryRouting@1 action deliver */
+/* uneffect:refinement refinement telemetryRouting@1 action deliver */
 export function deliverTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     runtime.delivered += 1;
@@ -100,7 +64,7 @@ export function deliverTelemetry(runtime: TelemetryRoutingAccounting): void {
   runtime.postProcessed += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action drop */
+/* uneffect:refinement refinement telemetryRouting@1 action drop */
 export function dropTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     runtime.dropped += 1;
@@ -111,13 +75,13 @@ export function dropTelemetry(runtime: TelemetryRoutingAccounting): void {
   runtime.postProcessed += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action buffer */
+/* uneffect:refinement refinement telemetryRouting@1 action buffer */
 export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void {
   const accounting = runtime;
   accounting.record("buffered");
 }
 
-/* uneffect: refinement telemetryRouting@1 action reject */
+/* uneffect:refinement refinement telemetryRouting@1 action reject */
 export function rejectTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     runtime.attempted += 1;
@@ -130,7 +94,7 @@ export function rejectTelemetry(runtime: TelemetryRoutingAccounting): void {
   }
 }
 
-/* uneffect: refinement telemetryRouting@1 action nestedReject */
+/* uneffect:refinement refinement telemetryRouting@1 action nestedReject */
 export function nestedRejectTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     if (runtime.auditArmed) {
@@ -141,7 +105,7 @@ export function nestedRejectTelemetry(runtime: TelemetryRoutingAccounting): void
   }
 }
 
-/* uneffect: refinement telemetryRouting@1 action returnOrReject */
+/* uneffect:refinement refinement telemetryRouting@1 action returnOrReject */
 export function returnOrRejectTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     if (runtime.auditArmed) {
@@ -157,7 +121,7 @@ export function returnOrRejectTelemetry(runtime: TelemetryRoutingAccounting): vo
   runtime.recovered += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action recoverOrStop */
+/* uneffect:refinement refinement telemetryRouting@1 action recoverOrStop */
 export function recoverOrStopTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     throw "telemetry recovery required";
@@ -170,7 +134,7 @@ export function recoverOrStopTelemetry(runtime: TelemetryRoutingAccounting): voi
   runtime.postProcessed += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action recoverOrRethrow */
+/* uneffect:refinement refinement telemetryRouting@1 action recoverOrRethrow */
 export function recoverOrRethrowTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     throw "telemetry recovery required";
@@ -183,7 +147,7 @@ export function recoverOrRethrowTelemetry(runtime: TelemetryRoutingAccounting): 
   runtime.postProcessed += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action finalizeRecovery */
+/* uneffect:refinement refinement telemetryRouting@1 action finalizeRecovery */
 export function finalizeTelemetryRecovery(runtime: TelemetryRoutingAccounting): void {
   try {
     runtime.recovered += 1;
@@ -198,7 +162,7 @@ export function finalizeTelemetryRecovery(runtime: TelemetryRoutingAccounting): 
   runtime.finalized += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action routeRecovery */
+/* uneffect:refinement refinement telemetryRouting@1 action routeRecovery */
 export function routeTelemetryRecovery(runtime: TelemetryRoutingAccounting): number | void {
   try {
     switch (runtime.attempted) {
@@ -221,7 +185,7 @@ export function routeTelemetryRecovery(runtime: TelemetryRoutingAccounting): num
   runtime.postProcessed += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action stagedReject */
+/* uneffect:refinement refinement telemetryRouting@1 action stagedReject */
 export function stagedRejectTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     if (runtime.auditArmed) throw "telemetry already armed";
@@ -233,7 +197,7 @@ export function stagedRejectTelemetry(runtime: TelemetryRoutingAccounting): void
   }
 }
 
-/* uneffect: refinement telemetryRouting@1 action scanConfigured */
+/* uneffect:refinement refinement telemetryRouting@1 action scanConfigured */
 export function scanConfiguredTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     for (const units of [1, 2] as const) {
@@ -245,7 +209,7 @@ export function scanConfiguredTelemetry(runtime: TelemetryRoutingAccounting): vo
   }
 }
 
-/* uneffect: refinement telemetryRouting@1 action nestedRecovery */
+/* uneffect:refinement refinement telemetryRouting@1 action nestedRecovery */
 export function nestedTelemetryRecovery(runtime: TelemetryRoutingAccounting): void {
   try {
     try {
@@ -261,7 +225,7 @@ export function nestedTelemetryRecovery(runtime: TelemetryRoutingAccounting): vo
   }
 }
 
-/* uneffect: refinement telemetryRouting@1 action stagedNestedRecovery */
+/* uneffect:refinement refinement telemetryRouting@1 action stagedNestedRecovery */
 export function stagedNestedTelemetryRecovery(runtime: TelemetryRoutingAccounting): void {
   try {
     try {
@@ -283,13 +247,13 @@ export function stagedNestedTelemetryRecovery(runtime: TelemetryRoutingAccountin
   }
 }
 
-/* uneffect: refinement telemetryRouting@1 action armAudit */
+/* uneffect:refinement refinement telemetryRouting@1 action armAudit */
 export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void {
   if (runtime.attempted <= 0) return;
   runtime.auditArmed = true;
 }
 
-/* uneffect: refinement telemetryRouting@1 action nestedPostProcess */
+/* uneffect:refinement refinement telemetryRouting@1 action nestedPostProcess */
 export function nestedPostProcessTelemetry(runtime: TelemetryRoutingAccounting): void {
   if (runtime.attempted > 0) {
     if (runtime.auditArmed) return;
@@ -297,14 +261,14 @@ export function nestedPostProcessTelemetry(runtime: TelemetryRoutingAccounting):
   runtime.postProcessed += 1;
 }
 
-/* uneffect: refinement telemetryRouting@1 action observeLostOutcome */
+/* uneffect:refinement refinement telemetryRouting@1 action observeLostOutcome */
 export function observeLostTelemetryOutcome(runtime: TelemetryRoutingAccounting): void {
   if (!(runtime.delivered + runtime.dropped + runtime.buffered < runtime.attempted && runtime.auditArmed)) return;
 }
 
 const telemetryOutcomeInvariant = hasExactlyOneOutcome;
 
-/* uneffect: refinement telemetryRouting@1 invariant allAttemptsHaveOneOutcome */
+/* uneffect:refinement refinement telemetryRouting@1 invariant allAttemptsHaveOneOutcome */
 export function allTelemetryAttemptsHaveOneOutcome(runtime: TelemetryRoutingAccounting): boolean {
   return telemetryOutcomeInvariant(runtime);
 }

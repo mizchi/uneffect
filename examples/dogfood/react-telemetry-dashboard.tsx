@@ -29,28 +29,28 @@ export interface TelemetryDashboardHandle {
   refresh(): void;
 }
 
-/* uneffect: react acquire TelemetrySubscription result */
+/* uneffect:react-resource acquire TelemetrySubscription result */
 declare function subscribeToTelemetry(service: string): TelemetrySubscription;
-/* uneffect: react release TelemetrySubscription parameter 0 */
+/* uneffect:react-resource release TelemetrySubscription parameter 0 */
 declare function unsubscribeFromTelemetry(subscription: TelemetrySubscription): void;
-/* uneffect: react acquire TelemetryViewport result */
+/* uneffect:react-resource acquire TelemetryViewport result */
 declare function attachTelemetryViewport(node: Element | null): TelemetryViewport;
-/* uneffect: react release TelemetryViewport parameter 0 */
+/* uneffect:react-resource release TelemetryViewport parameter 0 */
 declare function detachTelemetryViewport(viewport: TelemetryViewport): void;
-/* uneffect: react acquire TelemetryStatusSubscription result */
+/* uneffect:react-resource acquire TelemetryStatusSubscription result */
 declare function openTelemetryStatus(notify: () => void): TelemetryStatusSubscription;
-/* uneffect: react release TelemetryStatusSubscription parameter 0 */
+/* uneffect:react-resource release TelemetryStatusSubscription parameter 0 */
 declare function closeTelemetryStatus(subscription: TelemetryStatusSubscription): void;
-/* uneffect: effect TelemetryStatusRead */
+/* uneffect:capability effect TelemetryStatusRead */
 declare function readTelemetryStatus(): boolean;
-/* uneffect: effect StyleWrite */
+/* uneffect:capability effect StyleWrite */
 declare function insertTelemetryStyles(): void;
-/* uneffect: effect StyleWrite */
+/* uneffect:capability effect StyleWrite */
 declare function removeTelemetryStyles(): void;
-/* uneffect: effect TelemetryFilterSave */
+/* uneffect:capability effect TelemetryFilterSave */
 declare function saveTelemetryFilter(service: string): Promise<void>;
 
-/* uneffect: react hook */
+/* uneffect:react-hook */
 function useTelemetryStyles(): void {
   useInsertionEffect(() => {
     insertTelemetryStyles();
@@ -67,12 +67,12 @@ function getTelemetryStatusSnapshot(): boolean {
   return readTelemetryStatus();
 }
 
-/* uneffect: react hook */
+/* uneffect:react-hook */
 function useTelemetryOnlineStatus(): boolean {
   return useSyncExternalStore(subscribeToTelemetryStatus, getTelemetryStatusSnapshot);
 }
 
-/* uneffect: react hook */
+/* uneffect:react-hook */
 function useTelemetrySubscription(service: string): void {
   const reportConnected = useEffectEvent(() => console.log("telemetry connected", service));
   const connect = () => {
@@ -126,5 +126,5 @@ function TelemetryDashboardView(props: { service: string; rows: TelemetryRow[]; 
   </output></form>;
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export const TelemetryDashboard = memo(TelemetryDashboardView);

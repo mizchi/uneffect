@@ -7,7 +7,7 @@ declare namespace JSX {
   }
 }
 
-/* uneffect: react component */
+/* uneffect:react-component */
 export function SymbolResolvedDashboard(props: { title: string; endpoint: string }) {
   useTitleFromBarrel(props.title);
   symbolHooks.useDocumentTitle(props.title);

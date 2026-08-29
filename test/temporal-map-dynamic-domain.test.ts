@@ -3,18 +3,7 @@ import { describe, expect, it } from "vitest";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:
-  state nodes: Set<int>
-  state selected: int
-  state leases: Map<int, int>
-  init nodes = Set(1, 2)
-  init selected = 1
-  init leases = Map([[1, 7]])
-  action selectMissing: selected' = 2
-  action observe: selected' = selected
-  temporal selectedIsNode: nodes.contains(selected)
-  temporal selectedHasLease: leases.getOrElse(selected, 0) > 0
-*/`;
+const fixture = `/* uneffect:temporal state nodes: Set<int> */ /* uneffect:temporal state selected: int */ /* uneffect:temporal state leases: Map<int, int> */ /* uneffect:temporal init nodes = Set(1, 2) */ /* uneffect:temporal init selected = 1 */ /* uneffect:temporal init leases = Map([[1, 7]]) */ /* uneffect:temporal action selectMissing: selected' = 2 */ /* uneffect:temporal action observe: selected' = selected */ /* uneffect:temporal invariant selectedIsNode: nodes.contains(selected) */ /* uneffect:temporal invariant selectedHasLease: leases.getOrElse(selected, 0) > 0 */`;
 
 describe("proved finite domains for dynamic temporal Map keys", () => {
   it("extracts a JSON-safe counterexample after independently proving membership", async () => {
@@ -57,7 +46,7 @@ describe("proved finite domains for dynamic temporal Map keys", () => {
 
   it("fails closed when any finite-domain proof premise is absent", async () => {
     for (const [name, source] of [
-      ["missing-property", fixture.replace("  temporal selectedIsNode: nodes.contains(selected)\n", "")],
+      ["missing-property", fixture.replace("/* uneffect:temporal invariant selectedIsNode: nodes.contains(selected) */ ", "")],
       ["mutated-domain", fixture.replace("action selectMissing: selected' = 2", "action selectMissing: selected' = 2, nodes' = nodes.union(Set(3))")],
       ["non-inductive", fixture.replace("action selectMissing: selected' = 2", "action selectMissing: selected' = 3")],
       ["compound-key", fixture.replace("leases.getOrElse(selected, 0)", "leases.getOrElse(selected + 0, 0)")],
@@ -74,8 +63,8 @@ describe("proved finite domains for dynamic temporal Map keys", () => {
         "init selected = 1",
         "init selected = 1\n  init otherNodes = Set(1, 2)",
       ).replace(
-        "temporal selectedIsNode: nodes.contains(selected)",
-        "temporal selectedIsNode: nodes.contains(selected)\n  temporal selectedIsOtherNode: otherNodes.contains(selected)",
+        "invariant selectedIsNode: nodes.contains(selected)",
+        "invariant selectedIsNode: nodes.contains(selected) */ /* uneffect:temporal invariant selectedIsOtherNode: otherNodes.contains(selected)",
       )],
     ] as const) {
       const temporal = parseSpec(`${name}.ts`, source).temporal;
@@ -91,17 +80,7 @@ describe("proved finite domains for dynamic temporal Map keys", () => {
   });
 
   it("supports the same proved fragment for boolean Map keys", async () => {
-    const temporal = parseSpec("dynamic-bool-map-domain.ts", `/* uneffect:
-      state flags: Set<bool>
-      state selected: bool
-      state values: Map<bool, int>
-      init flags = Set(false, true)
-      init selected = false
-      init values = Map([[false, 1]])
-      action selectMissing: selected' = true
-      temporal selectedIsFlag: flags.contains(selected)
-      temporal selectedHasValue: values.getOrElse(selected, 0) > 0
-    */`).temporal;
+    const temporal = parseSpec("dynamic-bool-map-domain.ts", `/* uneffect:temporal state flags: Set<bool> */ /* uneffect:temporal state selected: bool */ /* uneffect:temporal state values: Map<bool, int> */ /* uneffect:temporal init flags = Set(false, true) */ /* uneffect:temporal init selected = false */ /* uneffect:temporal init values = Map([[false, 1]]) */ /* uneffect:temporal action selectMissing: selected' = true */ /* uneffect:temporal invariant selectedIsFlag: flags.contains(selected) */ /* uneffect:temporal invariant selectedHasValue: values.getOrElse(selected, 0) > 0 */`).temporal;
     await expect(findTemporalCounterexampleWithZ3(temporal, "selectedHasValue", { maxSteps: 1 }))
       .resolves.toMatchObject({
         status: "counterexample",

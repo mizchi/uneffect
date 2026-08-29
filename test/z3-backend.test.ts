@@ -210,8 +210,8 @@ describe("Z3 backend selection", () => {
   it("does not bypass an explicitly unavailable backend during property model generation", async () => {
     const generated = await generateUneffectPropertyTestsWithZ3({ files: { "factor.ts": `
       type Int = number
-      /* uneffect: requires x >= 0 && y >= 0 && x * y === 4 */
-      /* uneffect: ensures result === 4 */
+      /* uneffect:contract requires x >= 0 && y >= 0 && x * y === 4 */
+      /* uneffect:contract ensures result === 4 */
       export function factor(x: Int, y: Int): Int { return x * y }
     ` }, solverCases: 2, z3: { preference: "native", nativeExecutable: "uneffect-missing-property-z3" } });
     expect(generated.solverDiagnostics).toContainEqual(expect.objectContaining({ functionName: "factor", status: "unknown", message: expect.stringContaining("unavailable") }));

@@ -4,8 +4,8 @@ import { verifyContractObligations, verifyContracts } from "../src/contracts.js"
 describe("Hoare contract checker", () => {
   it("proves a valid postcondition", async () => {
     const source = `
-      /* uneffect: requires x >= 0 */
-      /* uneffect: ensures result > x */
+      /* uneffect:contract requires x >= 0 */
+      /* uneffect:contract ensures result > x */
       function inc(x: number) { return x + 1 }
     `;
     expect(await verifyContracts("ok.ts", source)).toEqual([]);
@@ -13,8 +13,8 @@ describe("Hoare contract checker", () => {
 
   it("finds a counterexample", async () => {
     const source = `
-      /* uneffect: requires x >= 0 */
-      /* uneffect: ensures result > x */
+      /* uneffect:contract requires x >= 0 */
+      /* uneffect:contract ensures result > x */
       function same(x: number) { return x }
     `;
     const [failure] = await verifyContracts("bad.ts", source);
@@ -31,11 +31,11 @@ describe("Hoare contract checker", () => {
 
   it("checks loop invariant initialization and preservation", async () => {
     const source = `
-      /* uneffect: requires n >= 0 */
-      /* uneffect: ensures result == n */
+      /* uneffect:contract requires n >= 0 */
+      /* uneffect:contract ensures result == n */
       function count(n: number) {
         let i = 0
-        /* uneffect: invariant i >= 0 && i <= n */
+        /* uneffect:contract invariant i >= 0 && i <= n */
         while (i < n) { i = i + 1 }
         return i
       }
@@ -45,7 +45,7 @@ describe("Hoare contract checker", () => {
 
   it("treats unsupported syntax as a non-proof", async () => {
     const [failure] = await verifyContracts("unsupported.ts", `
-      /* uneffect: ensures result > 0 */
+      /* uneffect:contract ensures result > 0 */
       function value() { for (;;) break; return 1 }
     `);
     expect(failure).toMatchObject({ functionName: "value", clause: "unsupported" });
@@ -54,7 +54,7 @@ describe("Hoare contract checker", () => {
 
   it("returns machine-readable evidence for successful obligations", async () => {
     const result = await verifyContractObligations("proof.ts", `
-      /* uneffect: ensures result === x */
+      /* uneffect:contract ensures result === x */
       function identity(x: Int): Int { return x }
     `);
     expect(result.diagnostics).toEqual([]);
@@ -65,7 +65,7 @@ describe("Hoare contract checker", () => {
 
   it("does not silently assume that an unmodeled call is pure", async () => {
     const [failure] = await verifyContracts("call.ts", `
-      /* uneffect: ensures result === x */
+      /* uneffect:contract ensures result === x */
       function wrapped(x: Int): Int { touch(); return x }
     `);
     expect(failure).toMatchObject({ clause: "unsupported", message: expect.stringContaining("verified function summary") });
@@ -74,14 +74,14 @@ describe("Hoare contract checker", () => {
   it("lowers only imported Effect pipe with inline unary expression callbacks", async () => {
     expect(await verifyContracts("effect-pipe.ts", `
       import { pipe as flow } from "effect/Function"
-      /* uneffect: requires x >= 0 */
-      /* uneffect: ensures result === x + 2 */
+      /* uneffect:contract requires x >= 0 */
+      /* uneffect:contract ensures result === x + 2 */
       function addTwo(x: number) { return flow(x, value => value + 1, value => value + 1) }
     `)).toEqual([]);
 
     const [spoofed] = await verifyContracts("spoofed-pipe.ts", `
       function pipe(value: number, stage: (value: number) => number) { return stage(value) }
-      /* uneffect: ensures result === x + 1 */
+      /* uneffect:contract ensures result === x + 1 */
       function addOne(x: number) { return pipe(x, value => value + 1) }
     `);
     expect(spoofed).toMatchObject({ clause: "unsupported", message: expect.stringContaining("unsupported invariant expression") });
