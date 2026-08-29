@@ -125,7 +125,7 @@ There are three useful planning numbers:
   #18 seeds, including #57's Workhub `main().catch(handler)` family, are complete.
   Another widening requires fresh application evidence or a reusable result
   from #25/#26.
-- **One focused product line: 6–17 engineer-weeks after Phase 1.** Node Lease
+- **One focused product line: 6–19 engineer-weeks after Phase 1.** Node Lease
   prioritizes #2 and #5 (6–12 weeks), consuming the completed #23 CFG. Numeric/SHA-256
   prioritizes #26 and #4/#6 (10–19 weeks). These alternatives
   should not be added together unless both products are required.
