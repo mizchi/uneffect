@@ -3,6 +3,11 @@
 This guide adds Uneffect to a small existing TypeScript project without changing
 its runtime architecture.
 
+Uneffect is an alpha package. Before making a check release-blocking, read the
+[stability and safe-adoption guide](./stability.md): pin tool versions, select a
+consumer-project boundary, reject relevant `unknown` results, retain the JSON
+evidence, and keep runtime validation at untrusted inputs.
+
 ## 1. Install
 
 Uneffect requires Node.js 24 or newer. TypeScript is a peer dependency. For an

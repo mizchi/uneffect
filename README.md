@@ -69,6 +69,8 @@ independently checkable proof certificates.
 
 See [Implementation status](./docs/implementation-status.md) and the
 [feature matrix](./docs/feature-matrix.md) before relying on a specific proof.
+There is no SemVer-stable API yet. The [stability and safe-adoption guide](./docs/stability.md)
+separates tested supported fragments from experimental and unsupported surfaces.
 
 ### Safe usage line
 
