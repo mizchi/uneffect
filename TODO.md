@@ -95,6 +95,10 @@ engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
 work in #9, remains in the historical ledger and `docs/implementation-status.md`.
+Completed operational follow-up
+[#49](https://github.com/mizchi/uneffect/issues/49) replaces the checker-backed
+dogfood's fixed 20-second CI limit with one tested finite local/CI policy after
+an observed false-negative timeout and a successful unchanged rerun.
 General CFG values and escaping-alias fixed points remain outside #9 and are
 owned by #25 and #24. The completed #26 seed proves only one direct local alias.
 

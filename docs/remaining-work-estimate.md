@@ -77,6 +77,12 @@ local suite, and remote CI passed.
 handler topology and immutable Boolean activation. Its 1–2 engineer-week
 estimate was contained in the parent range and was not added to the total.
 
+#49 is a completed operational reliability slice created from remote run
+33227180964. Its fixed 20-second checker test limit overrode the wider isolated
+CI allowance; the unchanged failed-job rerun passed. The named 20-second
+local/60-second CI policy then passed remote run 33228295670 on its first
+attempt. It does not change the research-backlog estimate.
+
 There are three useful planning numbers:
 
 - **Deferred Phase 1 breadth: 2–4 engineer-weeks.** #20 and both bounded #18
@@ -156,6 +162,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.29 multiple proved Map key domains | #44 (child of #5) | Completed | completed in the current delivery | Prove every primary/backup selector independently and reject the whole observation universe when one key proof fails. |
 | P2.30 jointly inductive Map key domains | #45 (child of #5) | Completed | completed in the current delivery | Prove one failover membership conjunction while retaining explicit joint assumptions and whole-universe failure. |
 | P3.3 solver-heavy CI stability | #46 | Completed | completed in the current delivery | Three checked shards, timing artifacts, calibrated timeout, and a real hard-deadline control without weakened obligations. |
+| P3.4 checker dogfood timeout policy | #49 | Completed | under 1 engineer-week actual | Replace one observed fixed-timeout false negative with a named finite local/CI policy and a first-attempt green remote run. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27

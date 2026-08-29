@@ -151,6 +151,7 @@ describe("TODO hierarchy consistency", () => {
     expect(activeIndex).not.toContain("issues/45)");
     expect(activeIndex).not.toContain("issues/46)");
     expect(activeIndex).not.toContain("issues/47)");
+    expect(activeIndex).not.toContain("issues/49)");
     expect(activeIndex).not.toContain("issues/27)");
     expect(activeIndex).not.toContain("issues/28)");
     expect(activeIndex).not.toContain("issues/29)");

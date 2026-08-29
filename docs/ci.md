@@ -99,6 +99,19 @@ runner or child process is interrupted. A green rerun remains operational
 evidence and does not erase an earlier timeout or justify weakening a proof
 obligation.
 
+Checker-backed dogfood has a separate named finite policy. Local execution is
+bounded at 20 seconds; CI execution is bounded at 60 seconds, exactly matching
+the isolated-test allowance. This replaced a call-site literal that overrode
+the CI allowance and produced a false negative in run
+[`33227180964`](https://github.com/mizchi/uneffect/actions/runs/33227180964).
+The unchanged failed-job rerun passed, so the incident is runner-timing evidence
+rather than a semantic failure. The policy and its dogfood call site are both
+unit tested. Run
+[`33228295670`](https://github.com/mizchi/uneffect/actions/runs/33228295670)
+then passed all seven jobs on its first attempt; the dogfood shard completed in
+7 minutes 15 seconds. The 60-second value bounds each isolated test, not the
+whole shard, and is not proof that all future checker inputs fit that budget.
+
 Quint-bearing files use a separate file-granularity boundary. If a live Vitest
 process reports that its child `pnpm exec quint` process failed with
 `ETIMEDOUT`, the runner repeats that file at most twice in fresh processes.
