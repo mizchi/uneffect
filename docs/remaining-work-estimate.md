@@ -21,6 +21,10 @@ ECMAScript/host semantic research, and TypeChecker/Corsa integration are the
 main uncertainty multipliers. An `XL` Issue is an epic-sized tracking boundary,
 not a suitable single implementation branch.
 
+The issue-specific ranges below refine the deliberately coarse effort labels.
+Those refined ranges are now also recorded in each open Issue body; the phase
+totals are calculated from them, not by mechanically adding label bounds.
+
 ## Phase estimates
 
 | Phase | Issues | Remaining effort | Confidence |
@@ -326,6 +330,22 @@ be added to the owning Issue and reflected here before implementation begins.
 4. **Proof consumers and broad framework semantics:** keep #13 and the unbounded
    portions of #16/#10 behind evidence and analysis foundations. Do not present
    their current bounded models as general language semantics.
+
+## Next bounded-slice decision
+
+No implementation Issue is currently active. The next investment should start
+with exactly one skipped acceptance test and an adjacent negative control:
+
+| Product direction | Parent | Proposed first child | Estimate | Explicitly excluded |
+| --- | --- | --- | ---: | --- |
+| Temporal/Node Lease | #5 | One realistic currently-unknown TLC/value/trace shape through generation, decoding, and replay | 1–2 weeks | Synthetic catalogue expansion and general quantified collections |
+| Generated tests | #4 | One versioned explicit user-predicate specialization with constructive samples and precondition-preserving shrink | under 1 week | Recursive and higher-order predicate inference |
+| Numeric/SHA-256 | #6 | One non-escaping interprocedural typed-array alias with bounds and element-range evidence | 1–2 weeks | Resizable/shared buffers and complete SHA-256 composition |
+
+These are alternatives, not additive commitments. After the Red test identifies
+the actual analyzer boundary, create a child Issue, give it an independent
+estimate, and activate only that child. Until then the parent epics remain
+`status:queued`.
 
 ## Near-term capacity view
 

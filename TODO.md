@@ -201,6 +201,20 @@ empty rather than treating a research topic as an executable task.
 The immediate queue is intentionally empty until a real unsupported fixture
 creates the next Red acceptance test.
 
+The remaining work is therefore organized as three candidate Red tests, not as
+three simultaneously active implementation branches:
+
+| Candidate | Parent | First bounded Red | Slice estimate | Why it is bounded |
+| --- | --- | --- | ---: | --- |
+| Temporal/Node Lease | #5 | Import and replay one value or trace shape emitted by a realistic lease model but currently reported `unknown` | 1–2 weeks | The fixture chooses the value universe before any backend is widened. |
+| Property testing | #4 | Register one explicit user predicate, construct valid values, and shrink a counterexample without violating its precondition | under 1 week | Recursion and higher-order predicates stay outside the first specialization. |
+| Numeric/SHA-256 | #6 | Preserve bounds and element range through one non-escaping interprocedural typed-array alias | 1–2 weeks | Resize, sharing, and full SHA-256 composition remain separate children. |
+
+Choose exactly one candidate by first landing its skipped acceptance test and
+negative control, then create a child Issue with its own estimate and mark only
+that child `status:active`. The table is a decision queue and does not claim
+that any of these unsupported shapes already works.
+
 The current planning cut is intentionally narrower than the complete research
 backlog:
 
