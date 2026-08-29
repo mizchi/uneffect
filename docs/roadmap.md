@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 48–100 engineer-weeks; this is implementation volume, not a calendar
+estimate is 47–99 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -184,7 +184,7 @@ explicit conservative boundaries rather than untracked support.
    Completed child [#45](https://github.com/mizchi/uneffect/issues/45) admits one
    failover family where the complete membership conjunction, rather than each
    property alone, is inductive. Joint assumptions remain explicit evidence.
-   Active bounded child [#58](https://github.com/mizchi/uneffect/issues/58)
+   Completed bounded child [#58](https://github.com/mizchi/uneffect/issues/58)
    preserves production-shaped string node identities through the same finite
    collection, solver, trace, and replay path without admitting string
    arithmetic or unbounded generation.

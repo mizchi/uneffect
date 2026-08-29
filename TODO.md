@@ -75,11 +75,11 @@ Bounded child [#48](https://github.com/mizchi/uneffect/issues/48) is complete an
 composes that finite rule with one source-bound catch/finally handler topology
 and immutable Boolean failure selector.
 
-There are 13 open implementation Issues while bounded child #58 is active
-after completing children #56 and #57,
+There are 12 open implementation Issues after completing bounded child #58
+and children #56 and #57,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-12 parent/epic Issues remain plus active bounded child #58: one proof-boundary
+12 parent/epic Issues remain and no bounded child is active: one proof-boundary
 parent in Phase 1, five specification-expressiveness parents in
 Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
@@ -91,7 +91,7 @@ completed bounded children
 follow-up [#46](https://github.com/mizchi/uneffect/issues/46) owns the landed
 solver-heavy CI timing and sharding handoff. Completed child #47 remains inside
 parent #25's estimate, so the 11 non-overlapping epic
-estimates total 48–100
+estimates total 47–99
 engineer-weeks, while the deferred Phase 1 breadth is 1–3
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
@@ -171,16 +171,17 @@ P2.29 completed #44's per-key proof composition slice for primary/backup Map
 selectors.
 P2.30 completed #45's joint-induction slice for failover selectors whose
 membership preservation depends on another selector's membership property.
-The 48–100 week figure is the additive whole-backlog inventory, not the estimate
+P2.31 completed #58's production-shaped string identity slice through finite
+Set/Map, Quint, native/WASM Z3, TLC trace import, and replay.
+The 47–99 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
 
-Bounded child [#58](https://github.com/mizchi/uneffect/issues/58) is active. Its
-skipped acceptance test started from production-shaped string Node Lease IDs;
-the current worktree carries the fragment through Quint, Z3, TLC trace import,
-and replay, but it is not completed until every local/remote gate and the
-documented handoff pass. Completed bounded child
+No bounded child is active. Completed bounded child
+[#58](https://github.com/mizchi/uneffect/issues/58) preserves
+production-shaped string Node Lease IDs through Quint, native/WASM Z3, TLC
+trace import, and replay; remote CI run 33243601308 is green. Completed bounded child
 [#57](https://github.com/mizchi/uneffect/issues/57) proves the exact Workhub
 top-level `main().catch(handler)` launch/attachment family and fixes nested
 function `await` being misclassified as TLA. The current Workhub function-level
@@ -191,9 +192,8 @@ unsupported model as a skipped acceptance test, then create an independently
 estimated child Issue. Until that Red exists, the queue intentionally remains
 empty rather than treating a research topic as an executable task.
 
-| Order | Issue | Exit condition for handoff |
-| --- | --- | --- |
-| 1 | [#58](https://github.com/mizchi/uneffect/issues/58) | String identities retain exact values through typed temporal AST, finite Set/Map, Quint, native/WASM Z3, TLC import, and replay; arithmetic/order remain rejected; benchmark/docs/full local and remote CI pass. |
+The immediate queue is intentionally empty until a real unsupported fixture
+creates the next Red acceptance test.
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -202,8 +202,8 @@ backlog:
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the bounded #18 seeds through #57 | Completed; broader #18 is 1–3 weeks if justified by new evidence | Local evidence survives one supported project boundary, one exact async module dependency, and one exact top-level Promise launch/handler attachment. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#50/#51/#52/#53/#54/#55/#56 | 12–28 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
-| Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 6–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 12 Issues / 11 non-overlapping epics | 48–100 engineer-weeks | Completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45 narrow parent #5. |
+| Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 5–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
+| Entire open research backlog | 12 Issues / 11 non-overlapping epics | 47–99 engineer-weeks | Completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45/#58 narrow parent #5. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -230,8 +230,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57 handoffs:
-twelve queued parent/epic Issues and active bounded child #58. Every open Issue has exactly one
+As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57/#58 handoffs:
+twelve queued parent/epic Issues and no active bounded child. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -242,7 +242,6 @@ label.
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 only for quantified/correlated invariants; basic finite collections are independent | Wider collection correlation and remaining TLC values/traces |
-| Active | 2 | [#58](https://github.com/mizchi/uneffect/issues/58) | Temporal string identities | Parent #5 finite collection/TLC path | Exact string values through finite Set/Map, Quint, Z3, TLC trace import, and replay |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
