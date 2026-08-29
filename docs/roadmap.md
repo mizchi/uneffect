@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 48–98 engineer-weeks; this is implementation volume, not a calendar
+estimate is 48–97 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -220,7 +220,7 @@ explicit gaps. Completed bounded child
 beneath one enclosing `if` branch with exact condition identity and polarity;
 nested/loop/catch controls and chains remain explicit gaps. Completed child
 [#53](https://github.com/mizchi/uneffect/issues/53) adds only unconditional
-direct Promise-call returns, with one optional `as Promise<T>` wrapper. Active child
+direct Promise-call returns, with one optional `as Promise<T>` wrapper. Completed child
 [#54](https://github.com/mizchi/uneffect/issues/54) adds exact named async-fs
 `access`/`readdir` reads and `appendFile`/`mkdir` writes. The completed
 [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
