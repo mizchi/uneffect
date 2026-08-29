@@ -27,9 +27,9 @@ not a suitable single implementation branch.
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
-| 3 — Production integration | #24, #8 (including active child #56), #10, #7, #16 | 21–41 engineer-weeks | Low |
+| 3 — Production integration | #24, #8, #10, #7, #16 | 23–48 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 13 open Issues / 11 non-overlapping epics | **48–96 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **50–103 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -112,9 +112,12 @@ narrows #8's remaining range from 1–3 to 1–2 engineer-weeks.
 actual and covers only direct awaited calls in one catch-protected try block.
 This narrows #8's remaining range from 1–2 engineer-weeks to about 1 week.
 
-#56 is the active bounded child of #8. Its less-than-one-week estimate covers
-one exact Workhub function-local awaited dynamic fs import and is contained in
-#8's remaining approximately one engineer-week.
+#56 is a completed bounded child of #8. It landed in less than one engineer-week
+actual and covers one exact Workhub function-local awaited dynamic fs import.
+The closure audit found no remaining function-level Workhub corpus mismatch,
+but it did not prove the broader rejection-binding, resource, callback-timing,
+or dynamic-import domains in #8. The epic therefore returns to its `effort:L`
+3–8 engineer-week range instead of being falsely reported as nearly complete.
 
 There are three useful planning numbers:
 
@@ -126,7 +129,7 @@ There are three useful planning numbers:
   prioritizes #2 and #5 (7–14 weeks), consuming the completed #23 CFG. Numeric/SHA-256
   prioritizes #26 and #4/#6 (10–19 weeks). These alternatives
   should not be added together unless both products are required.
-- **All currently requested work: 48–96 engineer-weeks.** This includes
+- **All currently requested work: 50–103 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -146,7 +149,7 @@ commitment to implement every row:
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-48–96 week total remains additive and intentionally ignores speculative
+50–103 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -202,7 +205,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P3.8 direct Promise-return records | #53 (child of #8) | Completed | under 1 engineer-week actual | Plain and singly asserted unconditional Promise call returns pass while conditional/non-call/nested-wrapper cases remain explicit gaps; CI run 33234808219 is green. |
 | P3.9 Workhub directory/append fs atoms | #54 (child of #8) | Completed | under 1 engineer-week actual | Exact `access`/`readdir` reads and `appendFile`/`mkdir` writes pass while other import/operation forms remain explicit gaps; CI run 33236206431 is green. |
 | P3.10 direct caught-await ownership | #55 (child of #8) | Completed | under 1 engineer-week actual | Direct protected try/catch ownership passes while nested/catch/finally shapes and binding ownership remain explicit gaps; CI run 33237679216 is green. |
-| P3.11 Workhub dynamic fs import | #56 (child of #8) | Active | under 1 engineer-week | Align TypeScript and Corsa facts for one exact awaited immutable destructuring import while general dynamic module semantics remain explicit gaps. |
+| P3.11 Workhub dynamic fs import | #56 (child of #8) | Completed | under 1 engineer-week actual | TypeScript and Corsa agree on one exact awaited immutable destructuring import while general dynamic module semantics remain explicit gaps; CI run 33240242470 is green. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27
@@ -285,7 +288,7 @@ be added to the owning Issue and reflected here before implementation begins.
 | 5 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
 | 6 | #6 typed arrays/SHA-256 | XL | 6–12 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #25/#24 dependencies |
 | 7 | #24 aliases/dynamic refinement | XL | 6–12 weeks | Continue beyond completed child #26 | Region identity, higher-order flow, and closed-world dispatch |
-| 8 | #8 native Corsa parity | M | about 1 week including active #56 | Complete the exact Workhub dynamic fs-import cut, then audit epic closure | Corsa API maturity and source/type identity mapping |
+| 8 | #8 native Corsa parity | L | 3–8 weeks | Wait for new application evidence or select one explicitly justified neutral-IR domain | Corsa API maturity, rejection/resource ownership, callback timing, and source/type identity mapping |
 | 9 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
 | 10 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
 | 11 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
@@ -298,7 +301,7 @@ be added to the owning Issue and reflected here before implementation begins.
    no positive candidate, so do not generalize speculatively.
 2. **General analysis foundation:** #23 and the bounded #26/#27/#28/#29/#30/
    #31/#32/#33/#34/#35/#36/#37 slices are complete. Completing parent
-   #25/#24/#8 is 10–21 weeks. Keep these
+   #25/#24/#8 is 12–28 weeks. Keep these
    figures separate when deciding whether the first reusable boundary is enough
    to begin product dogfood.
 3. **Specification breadth (remaining Phase 2):** select #2/#5 for temporal and
@@ -370,18 +373,18 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Current implementable result:** complete #56's exact function-local awaited
-  dynamic fs import without widening into general module resolution, namespace
-  bindings, renamed bindings, mutable aliases, or module initialization.
+- **Current implementable result:** #56 completed the exact function-local
+  awaited dynamic fs import. The current Workhub function-level corpus is
+  exhausted; no #8 child is active, and broader parity remains unproved.
 - **Next foundation checkpoint:** #26, #27, #28, #29, #30, #31, #32, #33,
   #34, #35, #36, #37, and #38 are complete; completing parent #25/#24/#8 remains
-  10–21 engineer-weeks.
+  12–28 engineer-weeks.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not
   both required for an initial useful release.
 - **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
   evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 13 Issues / 11 non-overlapping epics and 48–96
+- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 50–103
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

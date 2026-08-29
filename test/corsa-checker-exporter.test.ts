@@ -331,6 +331,29 @@ describe("corsa-bind checker fact exporter", () => {
     }
   });
 
+  it("retains parity for the remaining Workhub awaited catch-chain shape", async () => {
+    const files = { "fixture.ts": `
+      export async function responseBody(response: Response): Promise<string> {
+        return await response.text().catch(() => "")
+      }
+    ` };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations).toEqual([
+      expect.objectContaining({
+        source: 'response.text().catch(() => "")',
+        observation: "await",
+        catchesRejection: false,
+      }),
+    ]);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared, JSON.stringify(compared.schemaDrift, null, 2)).toMatchObject({
+      equivalent: true,
+      semanticEquivalent: true,
+      checkerMetadataEquivalent: true,
+      schemaDrift: [],
+    });
+  });
+
   it("preserves opposite polarity for one direct if/else await", async () => {
     const files = { "fixture.ts": `
       export async function choose(enabled: boolean, left: Response, right: Response): Promise<string> {

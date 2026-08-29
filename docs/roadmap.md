@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 48–96 engineer-weeks; this is implementation volume, not a calendar
+estimate is 50–103 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -225,7 +225,7 @@ direct Promise-call returns, with one optional `as Promise<T>` wrapper. Complete
 `access`/`readdir` reads and `appendFile`/`mkdir` writes. Completed bounded child
 [#55](https://github.com/mizchi/uneffect/issues/55) adds direct await rejection
 ownership for one catch-protected try block; nested handler regions,
-catch/finally awaits, chains, and binding ownership remain outside it. Active
+catch/finally awaits, chains, and binding ownership remain outside it. Completed
 bounded child [#56](https://github.com/mizchi/uneffect/issues/56) aligns one
 exact Workhub function-local `const { readFile } = await import("node:fs/promises")`
 binding across the TypeScript and Corsa frontends without claiming general

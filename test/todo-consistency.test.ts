@@ -109,13 +109,12 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 6],
       ["Queued", 3, 24],
       ["Queued", 3, 8],
-      ["Active", 3, 56],
       ["Queued", 3, 10],
       ["Queued", 3, 7],
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toEqual([["Active", 3, 56]]);
+    expect(rows.filter(([status]) => status === "Active")).toEqual([]);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -128,13 +127,7 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([
-      [
-        1,
-        56,
-        "Exact Workhub dynamic fs import reaches reference/Corsa parity; unsupported binding controls, tampering, benchmark, docs, full checks, and remote CI pass.",
-      ],
-    ]);
+    expect(rows).toEqual([]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }
