@@ -8,6 +8,7 @@ import type { CorsaCheckerFactFile } from "./corsa-checker-exporter.js";
 import { isAuthenticatedCorsaCheckerFacts } from "./corsa-fact-provenance.js";
 import { createProjectByteCoordinates, projectFunctionDisplayName } from "./project-coordinates.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import type { BuiltinOperation } from "./builtin-contracts.js";
 
 export interface CompareUneffectFrontendsOptions {
   files: Record<string, string>;
@@ -42,6 +43,8 @@ export interface FrontendSchemaDrift { frontend: "corsa"; message: string }
 export interface CompareUneffectFrontendsResult {
   equivalent: boolean;
   semanticEquivalent: boolean;
+  /** Exact parity for checker-backed overload/effect facts, independent of unsupported IR domains. */
+  checkerMetadataEquivalent: boolean;
   provenance: FrontendFactProvenance;
   schemaDrift: FrontendSchemaDrift[];
   typescriptIr: NormalizedFrontendIr;
@@ -49,7 +52,13 @@ export interface CompareUneffectFrontendsResult {
 }
 
 function programOf(files: Record<string, string>): ts.Program {
-  const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true };
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2024,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    types: ["node"],
+    noEmit: true,
+  };
   const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
   const originalFileExists = host.fileExists.bind(host), originalReadFile = host.readFile.bind(host);
   host.fileExists = (name) => projectFileName(files, name) !== undefined || originalFileExists(name);
@@ -68,6 +77,17 @@ function projectFileName(files: Readonly<Record<string, string>>, candidate: str
   if (Object.hasOwn(files, candidate)) return candidate;
   const absolute = resolve(candidate);
   return Object.keys(files).find((fileName) => resolve(fileName) === absolute);
+}
+
+function referenceBuiltinEffectNames(operation: BuiltinOperation | undefined): string[] {
+  if (!operation) return [];
+  if (operation.kind === "effect") return [operation.effect];
+  if (operation.kind === "fetch") return ["Fetch"];
+  if (operation.kind === "fs") return [
+    ...(operation.read ? ["FsRead"] : []),
+    ...(operation.write ? ["FsWrite"] : []),
+  ];
+  return [];
 }
 
 function corsaInput(program: ts.Program, files: Record<string, string>, schemaVersion: number) {
@@ -100,25 +120,28 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
       if (child !== callable.body && ts.isFunctionLike(child)) return;
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
-        if (resolvedBuiltin?.operation?.kind === "effect") {
+        const inferredBuiltinEffects = resolvedBuiltin ? referenceBuiltinEffectNames(resolvedBuiltin.operation) : [];
+        if (resolvedBuiltin && inferredBuiltinEffects.length > 0) {
           const lookup = ts.isPropertyAccessExpression(child.expression) ? child.expression.name : child.expression;
           let builtinSymbol = checker.getSymbolAtLocation(lookup);
           if (builtinSymbol && (builtinSymbol.flags & ts.SymbolFlags.Alias)) builtinSymbol = checker.getAliasedSymbol(builtinSymbol);
           const declaration = builtinSymbol?.declarations?.[0];
-          (symbols.find((symbol) => symbol.id === caller) as any).inferredEffects.push({
-            effect: resolvedBuiltin.operation.effect,
-            builtin: resolvedBuiltin.symbol,
-            symbolIdentity: declaration ? `${declaration.getSourceFile().fileName}:${declaration.getStart()}` : "typescript-symbol",
-            declaration: declaration ? {
-              fileName: declaration.getSourceFile().fileName,
-              start: declaration.getStart(),
-              end: declaration.getEnd(),
-            } : { fileName: "typescript-library", start: 0, end: 0 },
-            span: {
-              start: coordinates.offset(sourceName, child.getStart(source)),
-              end: coordinates.offset(sourceName, child.getEnd()),
-            },
-          });
+          for (const effect of inferredBuiltinEffects) {
+            (symbols.find((symbol) => symbol.id === caller) as any).inferredEffects.push({
+              effect,
+              builtin: resolvedBuiltin.symbol,
+              symbolIdentity: declaration ? `${declaration.getSourceFile().fileName}:${declaration.getStart()}` : "typescript-symbol",
+              declaration: declaration ? {
+                fileName: declaration.getSourceFile().fileName,
+                start: declaration.getStart(),
+                end: declaration.getEnd(),
+              } : { fileName: "typescript-library", start: 0, end: 0 },
+              span: {
+                start: coordinates.offset(sourceName, child.getStart(source)),
+                end: coordinates.offset(sourceName, child.getEnd()),
+              },
+            });
+          }
         }
         const lookup = ts.isPropertyAccessExpression(child.expression) ? child.expression.name : child.expression;
         let symbol = checker.getSymbolAtLocation(lookup);
@@ -201,7 +224,9 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   functions.sort((left, right) => left.name.localeCompare(right.name));
   const referenceInput = corsaInput(program, options.files, options.corsaSchemaVersion ?? 8);
   const input = options.corsaFacts ?? referenceInput;
-  if (options.corsaFacts) coverageFailures.push(...checkerMetadataParityFailures(referenceInput, input));
+  const metadataFailures = options.corsaFacts ? checkerMetadataParityFailures(referenceInput, input) : [];
+  coverageFailures.push(...metadataFailures);
+  const checkerMetadataEquivalent = metadataFailures.length === 0;
   const provenance: FrontendFactProvenance = {
     ...input.provenance,
     compilerRevision: input.compilerRevision,
@@ -249,7 +274,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
     input: JSON.stringify(input), encoding: "utf8", timeout: options.corsaTimeoutMs ?? 120_000,
   });
-  if (execution.error || execution.status !== 0) return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [...coverageFailures, { frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
+  if (execution.error || execution.status !== 0) return { equivalent: false, semanticEquivalent: false, checkerMetadataEquivalent, provenance, schemaDrift: [...coverageFailures, { frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {
     const corsaIr = JSON.parse(execution.stdout) as NormalizedFrontendIr;
     corsaIr.functions.sort((left, right) => left.name.localeCompare(right.name));
@@ -260,9 +285,9 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
         ? "corsa-checker provenance was not authenticated by the in-process exporter"
         : "actual corsa-bind checker facts are unavailable; comparison used TypeScript reference-adapter records",
     }];
-    return { equivalent: semanticEquivalent && provenance.satisfiesRequirement && coverageFailures.length === 0, semanticEquivalent, provenance, schemaDrift: [...coverageFailures, ...provenanceFailure], typescriptIr, corsaIr };
+    return { equivalent: semanticEquivalent && provenance.satisfiesRequirement && coverageFailures.length === 0, semanticEquivalent, checkerMetadataEquivalent, provenance, schemaDrift: [...coverageFailures, ...provenanceFailure], typescriptIr, corsaIr };
   } catch (error) {
-    return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [...coverageFailures, { frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
+    return { equivalent: false, semanticEquivalent: false, checkerMetadataEquivalent, provenance, schemaDrift: [...coverageFailures, { frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
   }
 }
 
@@ -318,7 +343,7 @@ function checkerMetadataParityFailures(reference: any, actual: any): FrontendSch
     const observedEffects = (observed.inferredEffects ?? []).map(evidenceKey).sort();
     if (JSON.stringify(expectedEffects) !== JSON.stringify(observedEffects)) failures.push({
       frontend: "corsa",
-      message: `checker-backed inferred-effect evidence differs for ${expected.name}`,
+      message: `checker-backed inferred-effect evidence differs for ${expected.name}: expected ${JSON.stringify(expectedEffects)}, observed ${JSON.stringify(observedEffects)}`,
     });
   }
   const callKey = (call: any, names: Map<any, any>): string =>

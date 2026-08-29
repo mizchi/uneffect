@@ -110,6 +110,7 @@ export const corsaCheckerFactRule = createRule({
     const calls: PendingCall[] = [];
     const functionStack: Array<PendingFunction | null> = [];
     const bindingFunctions = new WeakMap<object, PendingFunction>();
+    const importedBuiltinBindings = new Map<string, ImportedCheckerBuiltinBinding>();
 
     const enterBindingFunction = (node: any): void => {
       functionStack.push(bindingFunctions.get(node) ?? null);
@@ -119,6 +120,26 @@ export const corsaCheckerFactRule = createRule({
     };
 
     return {
+      ImportDeclaration(node: any) {
+        if (node.source?.type !== "Literal" || typeof node.source.value !== "string") return;
+        for (const specifier of node.specifiers ?? []) {
+          if (specifier.type !== "ImportSpecifier" || specifier.local?.type !== "Identifier") continue;
+          const importedName = specifier.imported?.name ?? specifier.imported?.value;
+          if (typeof importedName !== "string") continue;
+          const contract = checkerImportedBuiltinContracts.get(`${node.source.value}\0${importedName}`);
+          const symbol = contract ? checker.getSymbolAtLocation(specifier.local as Node) : undefined;
+          if (!contract || !symbol) continue;
+          importedBuiltinBindings.set(symbol.id, {
+            contract,
+            symbolIdentity: symbol.id,
+            declaration: {
+              fileName: context.filename,
+              start: byteOffset(text, specifier.range[0]),
+              end: byteOffset(text, specifier.range[1]),
+            },
+          });
+        }
+      },
       FunctionDeclaration(node: any) {
         if (!node.id || !node.body) {
           functionStack.push(null);
@@ -220,7 +241,9 @@ export const corsaCheckerFactRule = createRule({
         const type = checker.getTypeAtLocation(target as Node);
         const callee = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
         if (!callee) return;
-        const inferred = directSymbol ? checkerBuiltinEffect(checker, node, directSymbol, text, rootFiles) : undefined;
+        const inferred = directSymbol ? checkerBuiltinEffect(
+          checker, node, directSymbol, callee, text, rootFiles, importedBuiltinBindings.get(directSymbol.id),
+        ) : undefined;
         if (inferred && !caller.inferredEffects.some((item) => item.effect === inferred.effect
           && item.symbolIdentity === inferred.symbolIdentity && item.start === inferred.start)) {
           caller.inferredEffects.push(inferred);
@@ -280,7 +303,7 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
       sourcePaths.set(resolve(sourcePath), fileName);
     }
     writeFileSync(tsconfigPath, JSON.stringify({
-      compilerOptions: { module: "esnext", target: "es2022", strict: true },
+      compilerOptions: { module: "esnext", target: "es2022", strict: true, types: ["node"] },
       include: ["**/*.ts", "**/*.tsx"],
     }));
     const moduleUrl = pathToFileURL(fileURLToPath(import.meta.url)).href;
@@ -344,7 +367,12 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
         effect: effect.effect,
         builtin: effect.builtin,
         symbolIdentity: effect.symbolIdentity,
-        declaration: effect.declaration,
+        declaration: {
+          ...effect.declaration,
+          fileName: sourcePaths.has(resolve(effect.declaration.fileName))
+            ? sourceNameOf(effect.declaration.fileName)
+            : effect.declaration.fileName,
+        },
         span: {
           start: coordinates.base(item.fileName) + effect.start,
           end: coordinates.base(item.fileName) + effect.end,
@@ -412,38 +440,83 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
   }
 }
 
-const checkerBuiltinContracts = new Map([
+interface CheckerBuiltinIdentity {
+  readonly module: string;
+  readonly export: string;
+  readonly effect: string;
+}
+
+interface CheckerBuiltinContract extends CheckerBuiltinIdentity {
+  readonly declaration: RegExp;
+}
+
+interface ImportedCheckerBuiltinBinding {
+  readonly contract: CheckerBuiltinIdentity;
+  readonly symbolIdentity: string;
+  readonly declaration: { readonly fileName: string; readonly start: number; readonly end: number };
+}
+
+const checkerImportedBuiltinContracts = new Map<string, CheckerBuiltinIdentity>([
+  ["node:fs/promises\0readFile", { module: "node:fs/promises", export: "readFile", effect: "FsRead" }],
+  ["node:fs/promises\0writeFile", { module: "node:fs/promises", export: "writeFile", effect: "FsWrite" }],
+]);
+
+const checkerIdentifierBuiltinContracts = new Map<string, CheckerBuiltinContract>([
+  ["fetch", { module: "global", export: "fetch", effect: "Fetch", declaration: /[\\/]lib[\\/]lib\.(?:dom|webworker)\.d\.ts$/ }],
+]);
+
+const checkerMemberBuiltinContracts = new Map<string, CheckerBuiltinContract>([
   ["console\0console.log", { module: "global", export: "console.log", effect: "Console", declaration: /[\\/]lib[\\/]lib\.dom\.d\.ts$/ }],
 ]);
 
 function checkerBuiltinEffect(
   checker: CorsaTypeCheckerShape,
   call: any,
-  callee: CorsaSymbol,
+  directCallee: CorsaSymbol,
+  resolvedCallee: CorsaSymbol,
   sourceText: string,
   rootFiles: ReadonlySet<string>,
+  importedBinding?: ImportedCheckerBuiltinBinding,
 ): PendingInferredEffect | undefined {
-  if (call.callee?.type !== "MemberExpression" || call.callee.computed
-    || call.callee.object?.type !== "Identifier" || call.callee.property?.type !== "Identifier") return undefined;
-  const receiver = checker.getSymbolAtLocation(call.callee.object as Node);
-  const key = `${receiver?.name ?? ""}\0${receiver?.name ?? ""}.${callee.name}`;
-  const contract = checkerBuiltinContracts.get(key);
-  if (!contract || !receiver) return undefined;
-  const declarations = callee.declarations
+  let contract: CheckerBuiltinIdentity | CheckerBuiltinContract | undefined;
+  let receiver: CorsaSymbol | undefined;
+  if (call.callee?.type === "Identifier") {
+    contract = importedBinding?.contract ?? checkerIdentifierBuiltinContracts.get(directCallee.name)
+      ?? checkerIdentifierBuiltinContracts.get(resolvedCallee.name);
+  } else if (call.callee?.type === "MemberExpression" && !call.callee.computed
+    && call.callee.object?.type === "Identifier" && call.callee.property?.type === "Identifier") {
+    receiver = checker.getSymbolAtLocation(call.callee.object as Node);
+    const key = `${receiver?.name ?? ""}\0${receiver?.name ?? ""}.${directCallee.name}`;
+    contract = checkerMemberBuiltinContracts.get(key);
+  }
+  if (!contract) return undefined;
+  const declarations = resolvedCallee.declarations
     .map((handle) => checker.getNode(handle))
     .filter((node): node is NonNullable<ReturnType<CorsaTypeCheckerShape["getNode"]>> => node !== undefined);
-  const receiverDeclarations = receiver.declarations
+  const directDeclarations = directCallee.declarations
     .map((handle) => checker.getNode(handle))
     .filter((node): node is NonNullable<ReturnType<CorsaTypeCheckerShape["getNode"]>> => node !== undefined);
+  const declarationPattern = importedBinding ? undefined : (contract as CheckerBuiltinContract).declaration;
   const isBuiltinDeclaration = (node: { fileName: string }): boolean =>
-    contract.declaration.test(node.fileName) && !rootFiles.has(node.fileName.toLowerCase());
-  const declaration = declarations.find(isBuiltinDeclaration);
-  if (!declaration || !receiverDeclarations.some(isBuiltinDeclaration)) return undefined;
+    Boolean(declarationPattern?.test(node.fileName)) && !rootFiles.has(node.fileName.toLowerCase());
+  const checkerDeclaration = declarations.find(isBuiltinDeclaration)
+    ?? directDeclarations.find(isBuiltinDeclaration);
+  if (!importedBinding && !checkerDeclaration) return undefined;
+  if (receiver) {
+    const receiverDeclarations = receiver.declarations
+      .map((handle) => checker.getNode(handle))
+      .filter((node): node is NonNullable<ReturnType<CorsaTypeCheckerShape["getNode"]>> => node !== undefined);
+    if (!receiverDeclarations.some(isBuiltinDeclaration)) return undefined;
+  }
   return {
     effect: contract.effect,
     builtin: { module: contract.module, export: contract.export },
-    symbolIdentity: callee.id,
-    declaration: { fileName: declaration.fileName, start: declaration.pos, end: declaration.end },
+    symbolIdentity: importedBinding?.symbolIdentity ?? resolvedCallee.id,
+    declaration: importedBinding?.declaration ?? {
+      fileName: checkerDeclaration!.fileName,
+      start: checkerDeclaration!.pos,
+      end: checkerDeclaration!.end,
+    },
     start: byteOffset(sourceText, call.range[0]),
     end: byteOffset(sourceText, call.range[1]),
   };

@@ -2134,14 +2134,18 @@ signals cover one four-step bound and one catch predecessor. They exclude
 async I/O, changing failure outcomes, multiple handlers or multipliers, and
 general path-dependent exponentiation.
 
-Corsa checker inferred-effect handoff (2026-08-28, Apple Silicon, one sample):
+Corsa checker inferred-effect handoff (2026-08-29, Apple Silicon, one sample
+per case):
 
 - `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`
-- one dogfood fixture exported and normalized: 791.81 ms
+- inferred `Console` fixture exported and normalized: 651.21 ms
+- Workhub-shaped `FsRead`/`Fetch`/`FsWrite` fixture exported and normalized:
+  641.77 ms
 
 This is an end-to-end latency observation, not a throughput claim: it includes
 temporary project creation, `corsa-oxlint` plus `tsgo`, a TypeScript reference
 Program/effect comparison, and the Rust normalizer subprocess. Vitest reported
-one timed sample (`rme` 0%), so the number is useful for guarding
+one timed sample per case (`rme` 0%), so the numbers are useful for guarding
 order-of-magnitude regressions only; it does not establish a stable
-distribution.
+distribution. The Workhub-shaped case establishes checker metadata parity only;
+its Promise observation projection intentionally remains unequal.

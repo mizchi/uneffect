@@ -35,8 +35,11 @@ call edges, source-ordered call events, Promise ownership records, resource
 scopes, disposal order, and nested resource failure payloads. UTF-16 offsets
 are converted to UTF-8 byte spans before crossing the schema. Frontend-specific
 evidence provenance is carried through this semantic projection. The result
-separates `semanticEquivalent` from overall `equivalent` and reports its
-producer. With `requireCorsaCheckerFacts: true`, reference facts fail closed
+separates `checkerMetadataEquivalent`, `semanticEquivalent`, and overall
+`equivalent`, and reports its producer. The metadata flag compares exact
+checker-backed overload/effect atoms independently of neutral-IR domains that
+the Corsa exporter has not implemented. It must not be read as full frontend
+parity. With `requireCorsaCheckerFacts: true`, reference facts fail closed
 even when Rust normalization is semantically equal. The mapper records are
 currently produced by the TypeScript reference adapter, not by a linked
 typescript-go/Corsa build. The reference adapter proves that aliases of
@@ -86,11 +89,22 @@ declaration file identity, and compiler revision. A local object named
 remains effect-free. The TypeScript reference adapter independently emits the
 same effect/builtin/span tuple; metadata drift fails parity even when the
 normalized effect set would otherwise match.
+The next application-backed builtin slice recognizes named `readFile` and
+`writeFile` imports only from the exact `node:fs/promises` module and recognizes
+global `fetch` only through a standard DOM/Worker declaration. It emits
+`FsRead`, `FsWrite`, and `Fetch` with ordered operation spans and builtin keys.
+For the Node imports, the current Corsa API does not expose an aliased target
+declaration node, so evidence binds the checker symbol to the exact source
+import specifier and module/export pair; it does not claim identity with the
+underlying `@types/node` declaration. Same-spelled local declarations and
+local-module imports remain effect-free. Tampering with the module/export atom
+sets `checkerMetadataEquivalent` to false.
 Calls outside the exported project symbol set are not emitted. Traversal stops
 at unsupported nested function and callback boundaries, so their work is not
 misreported as an immediate call by the outer function; comparison with a
 reference edge then fails rather than claiming parity. Other Console methods
-and builtin families, Promise/resource records, computed or polymorphically
+and filesystem/fetch forms outside that exact slice, path/URL/method scope
+inference, Promise/resource records, computed or polymorphically
 dispatched methods, nested callbacks, method/generic overload edge cases, and
 callback timing are not
 checker-exported yet. An explicitly
@@ -104,7 +118,7 @@ exporter. A cloned, deserialized, or hand-written object carrying the same
 provenance strings is rejected as unauthenticated. Persisted checker facts do
 not yet have a signed evidence format and cannot satisfy this gate.
 
-Schema v7 has one `fileId`, so both adapters use a deterministic virtual-project
+Schema v8 has one `fileId`, so both adapters use a deterministic virtual-project
 coordinate instead of mixing file-local offsets: source files are ordered by
 file name, encoded as UTF-8, and separated by one byte. Every symbol, trivia,
 call, Promise, and resource offset is projected into that coordinate. This

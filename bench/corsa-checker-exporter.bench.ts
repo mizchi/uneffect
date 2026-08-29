@@ -6,6 +6,8 @@ import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 const fileName = "examples/dogfood/corsa-inferred-effect.ts";
 const files = { [fileName]: readFileSync(fileName, "utf8") };
+const workhubFileName = "examples/dogfood/corsa-workhub-builtins.ts";
+const workhubFiles = { [workhubFileName]: readFileSync(workhubFileName, "utf8") };
 const corsaExecutable = resolve("node_modules/.bin/tsgo");
 
 describe("checker-backed Corsa inferred-effect handoff", () => {
@@ -18,6 +20,21 @@ describe("checker-backed Corsa inferred-effect handoff", () => {
     });
     if (!comparison.equivalent) {
       throw new Error(`Corsa inferred-effect parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
+    }
+  }, { time: 500, iterations: 1 });
+
+  bench("export and normalize Workhub-shaped fs/fetch facts", async () => {
+    const facts = await exportCorsaCheckerFacts({ files: workhubFiles, corsaExecutable });
+    const comparison = await compareUneffectFrontends({
+      files: workhubFiles,
+      corsaFacts: facts,
+      requireCorsaCheckerFacts: true,
+    });
+    if (!comparison.checkerMetadataEquivalent) {
+      throw new Error(`Corsa checker metadata parity failed: ${JSON.stringify(comparison.schemaDrift)}`);
+    }
+    if (comparison.semanticEquivalent) {
+      throw new Error("Workhub-shaped async fixture unexpectedly claimed full Promise-record parity");
     }
   }, { time: 500, iterations: 1 });
 });

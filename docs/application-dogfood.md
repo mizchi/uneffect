@@ -624,6 +624,25 @@ order, and operation spans. This establishes one builtin and one direct-call
 family only, not general Console coverage, arbitrary globals, nested callbacks,
 dynamic dispatch, Content Mapper semantics, or persisted fact authentication.
 
+The active checker-builtin slice adds
+`corsa-workhub-builtins.ts`, derived from Workhub revision
+`089c385082644d30f4fceef88e41236b624a6b29`. The observed source families are
+named `node:fs/promises` imports in `packages/core/src/config.ts` and
+`packages/core/src/state.ts`, plus global GET/PUT `fetch` calls in
+`packages/oss-portfolio/src/index.ts`. The checked-in corpus emits one
+`FsRead`, two ordered `Fetch`, and one `FsWrite` atom through the real checker.
+Same-spelled local declarations and local-module imports are negative controls,
+and builtin-key tampering fails checker metadata parity.
+
+This result deliberately does not claim full frontend parity for the async
+function: TypeScript reference facts contain five Promise observations while
+the Corsa exporter currently emits none, so `semanticEquivalent` and overall
+`equivalent` remain false even though `checkerMetadataEquivalent` is true.
+Path/URL/method scopes, StateStore completion/refinement, alias identity, and
+filesystem ordering remain outside this slice. The Workhub checkout had
+unrelated local changes during the read-only survey; only the named revision
+and observed committed source shapes are evidence here.
+
 P2.31 adds `cfg-bounded-retry-backoff.ts`, a realistic retry loop that doubles
 one delay while decrementing a retry counter. The function's inline Uneffect
 contract states `0 <= retries <= 8`; analysis records that exact source span,

@@ -887,7 +887,13 @@ same property is proved for arbitrary TypeScript.
   coordinates. It also exports one checker-inferred `Console` fact for the
   standard `console.log` identity, including builtin key, operation span,
   checker symbol, declaration, and compiler provenance; the same-spelled local
-  object is a negative control. Broader
+  object is a negative control. The application-backed follow-up also exports
+  named exact-module `node:fs/promises` reads/writes and standard global fetch
+  as `FsRead`, `FsWrite`, and `Fetch`, with ordered spans, import-binding or
+  library-declaration evidence, same-spelled local/local-module controls, and
+  builtin-key tamper detection. Its checker metadata reaches parity, while the
+  async corpus honestly retains unequal Promise records because Corsa does not
+  export them yet. Broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test

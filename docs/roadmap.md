@@ -206,7 +206,12 @@ explicit conservative boundaries rather than untracked support.
 5. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
    extends the tested symbol-resolved lifecycle fragment through dynamic
     component/Hook flow, server boundaries, and broader concurrent scheduling.
-The completed [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
+The active bounded child
+[#50](https://github.com/mizchi/uneffect/issues/50) extends #8 with the
+Workhub-observed named `node:fs/promises` read/write and global `fetch` corpus.
+It is limited to checker-backed effect identity, spans, parity, and negative
+controls; path/URL scopes, async completion, and alias ordering remain outside
+that slice. The completed [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
 splits the long integration gate, retains timing artifacts, calibrates one
 measured timeout, and preserves every existing fail-closed obligation.
 [DOM property getter/setter effects](https://github.com/mizchi/uneffect/issues/14)
