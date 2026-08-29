@@ -3,7 +3,7 @@
 This guide adds Uneffect to a small existing TypeScript project without changing
 its runtime architecture.
 
-Uneffect 0.1 is experimental. Before making a check release-blocking, read the
+Uneffect 0.2.1 is experimental. Before making a check release-blocking, read the
 [stability and safe-adoption guide](./stability.md): pin tool versions, select a
 consumer-project boundary, reject relevant `unknown` results, retain the JSON
 evidence, and keep runtime validation at untrusted inputs.

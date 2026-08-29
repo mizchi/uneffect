@@ -1,6 +1,6 @@
 # Stability and safe adoption
 
-Uneffect 0.1 is an experimental release. Public JavaScript APIs, CLI options,
+Uneffect 0.2.1 is an experimental release. Public JavaScript APIs, CLI options,
 comment grammar, and semantic behavior may change before 1.0. Versioned artifact
 schemas retain their own compatibility boundary. This page distinguishes a
 tested fragment that can be used conservatively today from experimental models
@@ -58,6 +58,14 @@ Within that workflow, these bounded capabilities have a supported fragment:
 
 These are still experimental pre-1.0 APIs. Pinning is required, and a future release may
 change syntax or report fields outside an explicitly versioned schema.
+
+## Public API boundary
+
+The supported import paths and compatibility policy are defined in [Public API
+and compatibility](./public-api.md). In particular, use
+`generateTemporalModel` or `spec temporal` for temporal work. The
+`@mizchi/uneffect/experimental` subpath intentionally has no compatibility
+guarantee.
 
 ## Experimental surfaces
 

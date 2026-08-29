@@ -74,7 +74,7 @@ export interface EvidenceArtifactEligibility {
 }
 
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
-export const uneffectVersion = "0.2.0";
+export const uneffectVersion = "0.2.1";
 export function builtinContractDigest(registry: BuiltinContractRegistry = builtinContractRegistry): string {
   return digest(JSON.stringify(registry));
 }

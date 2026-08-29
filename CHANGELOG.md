@@ -2,6 +2,35 @@
 
 All notable changes to Uneffect are documented in this file.
 
+## 0.2.1 - 2026-08-30
+
+### Added
+
+- Added the stable `generateTemporalModel` facade for Web and Node temporal
+  projection, including explicit projection metadata and exclusions.
+- Co-verify a selected root's `using` and `await using` lifecycle through the
+  temporal project pipeline.
+- Added a bounded resource/host product that requires straight-line
+  `await using` disposal to resume during a microtask checkpoint.
+
+### Public API
+
+- The recommended public temporal entry is `generateTemporalModel` from
+  `@mizchi/uneffect` or `uneffect spec temporal` from the CLI.
+- Backend-specific async, Promise, event-loop, and resource Quint generators
+  are available from `@mizchi/uneffect/experimental`. They are not covered by
+  compatibility guarantees.
+- This placement finalizes the intended 0.2 public surface. Code importing a
+  low-level generator from the 0.2.0 package root must migrate to the
+  `experimental` subpath or, preferably, the stable facade.
+
+### Safety boundary
+
+Promise ownership is not yet part of the combined temporal projection.
+Conditional or looped resource acquisition and arbitrary callback/resource
+interleavings remain explicit exclusions. A verified bounded projection is not
+a proof of the complete JavaScript event loop.
+
 ## 0.2.0 - 2026-08-29
 
 ### Changed

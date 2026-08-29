@@ -6,6 +6,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 
 - [Quickstart](./quickstart.md): install, run the first check, add a scoped capability, instrument assertions, and generate a temporal model.
 - [Stability and safe adoption](./stability.md): alpha API status, supported fragments, experimental surfaces, and unsafe interpretations.
+- [Public API and compatibility](./public-api.md): stable entrypoints, experimental subpaths, temporal result contract, and pre-1.0 compatibility policy.
 - [Adoption patterns](./adoption-patterns.md): incremental rollout, boundary selection, CI ratcheting, escape hatches, and monorepo guidance.
 - [Application dogfood](./application-dogfood.md): compatibility findings and regression guards from unmodified external TypeScript applications.
 - [Implementation status](./implementation-status.md): the tested feature surface and explicit non-claims.

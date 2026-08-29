@@ -117,6 +117,7 @@ proof. `assumed` depends on its trust ledger, and `unknown` establishes nothing.
 
 Before relying on a result, read:
 
+- [Public API and compatibility](./docs/public-api.md)
 - [Assurance boundaries](./docs/assurance-boundaries.md)
 - [Stability and safe adoption](./docs/stability.md)
 - [Feature matrix](./docs/feature-matrix.md)
@@ -173,6 +174,7 @@ just check
 ## Documentation and roadmap
 
 - [Documentation index](./docs/README.md)
+- [Public API and compatibility](./docs/public-api.md)
 - [Adoption patterns guide](./docs/adoption-patterns.md)
 - [Native integration](./docs/native-integration.md)
 - [Roadmap and known gaps](./docs/roadmap.md)

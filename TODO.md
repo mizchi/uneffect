@@ -90,6 +90,37 @@ still reports `resource-host-scheduling`; the supported product reports
 `resource-host-callback-interleavings` because arbitrary callbacks are not yet
 interleaved into that product.
 
+### Deferred design track: a mature Uneffect specification DSL
+
+- [ ] Evaluate extracting the current temporal/contract expression language ([#64](https://github.com/mizchi/uneffect/issues/64))
+  into a mature, versioned Uneffect DSL rather than growing backend-shaped
+  syntax inside annotations.
+  - [ ] Read Quint's npm-distributed TypeScript implementation as a design ([#64](https://github.com/mizchi/uneffect/issues/64))
+    reference for lexer/parser structure, typed IR, module resolution,
+    diagnostics, evaluator boundaries, and source mapping. Record exact
+    upstream version, file provenance, and license before adapting any code.
+  - [ ] Define the Uneffect DSL independently of Quint syntax. Preserve the ([#64](https://github.com/mizchi/uneffect/issues/64))
+    TypeScript-oriented surface, zero-runtime comment embedding, gradual
+    adoption, and optional runtime-assertion lowering.
+  - [ ] Version a backend-neutral AST and module interface shared by capability ([#64](https://github.com/mizchi/uneffect/issues/64))
+    effects, Hoare contracts/invariants, and temporal specifications without
+    collapsing their distinct semantics.
+  - [ ] Specify name resolution, user-defined modules, types, finite ([#64](https://github.com/mizchi/uneffect/issues/64))
+    collections, functions, source spans, error recovery, and unsupported
+    constructs before exposing a general plugin API.
+  - [ ] Keep Quint as one generated verification backend. Do not pass arbitrary ([#64](https://github.com/mizchi/uneffect/issues/64))
+    Uneffect annotation text directly to Quint or make generated Quint text the
+    public API.
+  - [ ] Add parser/typechecker conformance fixtures, formatter round trips, ([#64](https://github.com/mizchi/uneffect/issues/64))
+    positive executions, deliberately broken counterexample models, and
+    differential tests against the current annotation parser before migration.
+  - [ ] Define an incremental migration path in which ([#64](https://github.com/mizchi/uneffect/issues/64))
+    `generateTemporalModel` and versioned evidence remain stable while the DSL
+    frontend and Quint lowering can be replaced independently.
+  - [ ] Establish promotion criteria: deterministic diagnostics, explicit ([#64](https://github.com/mizchi/uneffect/issues/64))
+    coverage/exclusions, bounded resource limits, package-level composition,
+    editor tooling hooks, and dogfood on at least two realistic applications.
+
 There are 14 open implementation Issues after completing bounded children #60 and #61 and
 bounded children #58
 and #59 and children #56 and #57,

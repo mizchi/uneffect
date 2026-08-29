@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/uneffect",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Gradual effect, contract, async-safety, and temporal checking for existing TypeScript through comments.",
   "keywords": [
     "typescript",

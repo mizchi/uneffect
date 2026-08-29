@@ -187,7 +187,7 @@ Function-typed parameters are effect parameters. Direct invocation is inline; kn
 
 ## Published surfaces
 
-The contract layers — CLI surface, evidence schema, builtin registry, Corsa JSON schema, optimizer obligations, and Rust crate — are versioned at `0.2.0`, which is what an evidence artifact records as `uneffectVersion`. The npm package and Rust crate use the same release version. `just package-check` executes npm and Cargo package dry-runs. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
+The contract layers — CLI surface, evidence schema, builtin registry, Corsa JSON schema, optimizer obligations, and Rust crate — are versioned at `0.2.1`, which is what an evidence artifact records as `uneffectVersion`. The npm package and Rust crate use the same release version. `just package-check` executes npm and Cargo package dry-runs. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
 
 ## CI tiers
 
