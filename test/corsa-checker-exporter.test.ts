@@ -107,25 +107,97 @@ describe("corsa-bind checker fact exporter", () => {
     }));
   });
 
-  it("keeps conditional awaits as an explicit Promise observation parity gap", async () => {
-    const files = {
-      "fixture.ts": `
-        export async function load(enabled: boolean, url: string): Promise<void> {
-          if (enabled) await fetch(url)
-        }
-      `,
-    };
+  it("exports a Workhub-shaped direct await under one if branch", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-conditional-await.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
     const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
-    expect(facts.promiseObservations).toEqual([]);
+    expect(facts.promiseObservations).toEqual([
+      expect.objectContaining({
+        source: "response.text()",
+        observation: "await",
+        conditional: true,
+        controlConditions: [expect.objectContaining({ expected: true })],
+        controlPaths: [[expect.objectContaining({ expected: true })]],
+      }),
+    ]);
 
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
-    expect(compared).toMatchObject({ equivalent: false, semanticEquivalent: false, checkerMetadataEquivalent: false });
-    expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
-      message: expect.stringContaining("checker-backed Promise observation evidence differs"),
-    }));
-    expect(compared.typescriptIr.promiseObservations).toEqual([
-      expect.objectContaining({ owner: "load", source: "fetch(url)", conditional: true }),
+    expect(compared, JSON.stringify(compared.schemaDrift, null, 2)).toMatchObject({
+      equivalent: true,
+      semanticEquivalent: true,
+      checkerMetadataEquivalent: true,
+      schemaDrift: [],
+    });
+  });
+
+  it("preserves opposite polarity for one direct if/else await", async () => {
+    const files = { "fixture.ts": `
+      export async function choose(enabled: boolean, left: Response, right: Response): Promise<string> {
+        if (enabled) return await left.text()
+        else return await right.text()
+      }
+    ` };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    expect(facts.promiseObservations.map((item) => ({ source: item.source, conditions: item.controlConditions }))).toEqual([
+      { source: "left.text()", conditions: [expect.objectContaining({ expected: true })] },
+      { source: "right.text()", conditions: [expect.objectContaining({ expected: false })] },
     ]);
+    expect(facts.promiseObservations[0]?.controlConditions[0]?.id)
+      .toBe(facts.promiseObservations[1]?.controlConditions[0]?.id);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.equivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
+  });
+
+  it("keeps nested and loop conditional awaits outside the single-if fragment", async () => {
+    for (const source of [
+      `export async function nested(a: boolean, b: boolean, response: Response) { if (a) { if (b) await response.text() } }`,
+      `export async function loop(enabled: boolean, response: Response) { while (enabled) await response.text() }`,
+    ]) {
+      const facts = await exportCorsaCheckerFacts({ files: { "fixture.ts": source }, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+      expect(facts.promiseObservations).toEqual([]);
+      const compared = await compareUneffectFrontends({
+        files: { "fixture.ts": source }, corsaFacts: facts, requireCorsaCheckerFacts: true,
+      });
+      expect(compared).toMatchObject({ equivalent: false, checkerMetadataEquivalent: false });
+      expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+        message: expect.stringContaining("checker-backed Promise observation evidence differs"),
+      }));
+    }
+  });
+
+  it("rejects tampered single-if condition identity, polarity, and path evidence", async () => {
+    const fileName = "examples/dogfood/corsa-workhub-conditional-await.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const mutations = [
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.controlConditions[0]!.id += ":forged"; },
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.controlConditions[0]!.expected = false; },
+      (tampered: typeof facts) => { tampered.promiseObservations[0]!.controlPaths = [[]]; },
+    ];
+    for (const mutate of mutations) {
+      const tampered = structuredClone(facts);
+      mutate(tampered);
+      const compared = await compareUneffectFrontends({ files, corsaFacts: tampered, requireCorsaCheckerFacts: true });
+      expect(compared).toMatchObject({ equivalent: false, checkerMetadataEquivalent: false });
+      expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+        message: expect.stringContaining("checker-backed Promise observation evidence differs"),
+      }));
+    }
+  });
+
+  it("keeps same-named cross-file conditions owner-scoped while spans remain project-wide", async () => {
+    const files = {
+      "a.ts": `export async function load(enabled: boolean, response: Response) { if (enabled) await response.text() }`,
+      "b.ts": `export async function load(enabled: boolean, response: Response) { if (enabled) await response.text() }`,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.equivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
+    expect(facts.promiseObservations.map((item) => item.controlConditions[0]?.id)).toEqual([
+      "load@if:67",
+      "load@if:67",
+    ]);
+    expect(facts.promiseObservations[1]!.span.start).toBeGreaterThan(Buffer.byteLength(files["a.ts"]));
   });
 
   it("does not attribute a nested callback await to its outer function", async () => {

@@ -649,6 +649,17 @@ resource records are not implied. The Workhub checkout had
 unrelated local changes during the read-only survey; only the named revision
 and observed committed source shapes are evidence here.
 
+The next corpus, `corsa-workhub-conditional-await.ts`, is derived from
+Workhub's `packages/x-monitor/src/x-client.ts` at the same named revision. It
+preserves the error-response `if (!response.ok)` control shape while isolating
+the direct `await response.text()` atom from the adjacent `.catch(...)` chain,
+which remains a separate unsupported Promise family. Corsa now emits the
+owner-local file-offset `if` identity, true branch polarity, and singleton
+control path. A synthetic else arm proves the opposite polarity; nested and
+loop controls remain absent and therefore fail parity rather than being
+flattened. Condition ID, polarity, and path tampering also fail checker metadata
+parity.
+
 P2.31 adds `cfg-bounded-retry-backoff.ts`, a realistic retry loop that doubles
 one delay while decrementing a retry counter. The function's inline Uneffect
 contract states `0 <= retries <= 8`; analysis records that exact source span,

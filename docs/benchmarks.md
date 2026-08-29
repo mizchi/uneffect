@@ -2138,9 +2138,11 @@ Corsa checker inferred-effect handoff (2026-08-29, Apple Silicon, one sample
 per case):
 
 - `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`
-- inferred `Console` fixture exported and normalized: 653.34 ms
+- inferred `Console` fixture exported and normalized: 634.42 ms
 - Workhub-shaped `FsRead`/`Fetch`/`FsWrite` fixture exported and normalized:
-  641.90 ms
+  634.56 ms
+- Workhub-shaped single-`if` conditional-await fixture exported and normalized:
+  635.37 ms
 
 This is an end-to-end latency observation, not a throughput claim: it includes
 temporary project creation, `corsa-oxlint` plus `tsgo`, a TypeScript reference
@@ -2149,4 +2151,5 @@ one timed sample per case (`rme` 0%), so the numbers are useful for guarding
 order-of-magnitude regressions only; it does not establish a stable
 distribution. The Workhub-shaped case includes five direct/unconditional
 Promise observations and establishes full parity only for that exact fragment;
-conditional and other Promise observation families remain outside it.
+the single-enclosing-`if` case adds one owner-qualified condition and polarity;
+nested, loop, catch, and other Promise observation families remain outside it.

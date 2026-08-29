@@ -34,10 +34,15 @@ export interface CorsaCheckerPromiseObservationFact {
   source: string;
   observation: "await";
   catchesRejection: false;
-  conditional: false;
-  controlConditions: [];
-  controlPaths: [[]];
+  conditional: boolean;
+  controlConditions: CorsaCheckerControlCondition[];
+  controlPaths: CorsaCheckerControlCondition[][];
   span: { start: number; end: number };
+}
+
+export interface CorsaCheckerControlCondition {
+  id: string;
+  expected: boolean;
 }
 
 export interface CorsaCheckerInferredEffectFact {
@@ -94,6 +99,7 @@ interface PendingPromiseObservation {
   source: string;
   start: number;
   end: number;
+  control: { ifStart: number; expected: boolean } | null;
 }
 
 interface RawCorsaCheckerFacts {
@@ -261,12 +267,19 @@ export const corsaCheckerFactRule = createRule({
         const type = checker.getTypeAtLocation(target as Node);
         const callee = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
         if (!callee) return;
-        if (node.parent?.type === "AwaitExpression" && !hasConditionalAwaitOwner(node.parent, caller.node)) {
+        const awaitControl = node.parent?.type === "AwaitExpression"
+          ? classifyDirectAwaitControl(node.parent, caller.node)
+          : { supported: false as const };
+        if (awaitControl.supported) {
           promiseObservations.push({
             ownerSymbolId: caller.symbolId,
             source: text.slice(node.range[0], node.range[1]),
             start: byteOffset(text, node.range[0]),
             end: byteOffset(text, node.range[1]),
+            control: awaitControl.control === null ? null : {
+              ifStart: byteOffset(text, awaitControl.control.node.range[0]),
+              expected: awaitControl.control.expected,
+            },
           });
         }
         const inferred = directSymbol ? checkerBuiltinEffect(
@@ -449,19 +462,28 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
     });
     const promiseObservations: CorsaCheckerPromiseObservationFact[] = rawFiles.flatMap((raw) => {
       const fileName = sourceNameOf(raw.fileName);
-      return raw.promiseObservations.map((item): CorsaCheckerPromiseObservationFact => ({
-        owner: ids.get(item.ownerSymbolId)!,
-        source: item.source,
-        observation: "await",
-        catchesRejection: false,
-        conditional: false,
-        controlConditions: [],
-        controlPaths: [[]],
-        span: {
-          start: coordinates.base(fileName) + item.start,
-          end: coordinates.base(fileName) + item.end,
-        },
-      }));
+      return raw.promiseObservations.map((item): CorsaCheckerPromiseObservationFact => {
+        const owner = ids.get(item.ownerSymbolId)!;
+        const ownerName = raw.functions.find((fn) => fn.symbolId === item.ownerSymbolId)?.name;
+        if (!ownerName) throw new Error(`missing Corsa Promise observation owner ${owner}`);
+        const condition = item.control === null ? null : {
+          id: `${ownerName}@if:${item.control.ifStart}`,
+          expected: item.control.expected,
+        };
+        return {
+          owner,
+          source: item.source,
+          observation: "await",
+          catchesRejection: false,
+          conditional: condition !== null,
+          controlConditions: condition === null ? [] : [condition],
+          controlPaths: condition === null ? [[]] : [[condition]],
+          span: {
+            start: coordinates.base(fileName) + item.start,
+            end: coordinates.base(fileName) + item.end,
+          },
+        };
+      });
     });
     const facts: CorsaCheckerFactFile = {
       schemaVersion: 8,
@@ -580,15 +602,28 @@ function byteOffset(text: string, utf16Offset: number): number {
   return Buffer.byteLength(text.slice(0, utf16Offset));
 }
 
-function hasConditionalAwaitOwner(awaitNode: any, ownerNode: any): boolean {
+function classifyDirectAwaitControl(awaitNode: any, ownerNode: any): {
+  supported: true;
+  control: { node: any; expected: boolean } | null;
+} | { supported: false } {
+  let control: { node: any; expected: boolean } | null = null;
+  let child = awaitNode;
   for (let current = awaitNode.parent; current && current !== ownerNode; current = current.parent) {
-    if (current.type === "IfStatement" || current.type === "ConditionalExpression"
-      || current.type === "LogicalExpression" || current.type === "SwitchCase"
-      || current.type === "ForStatement" || current.type === "ForInStatement"
-      || current.type === "ForOfStatement" || current.type === "WhileStatement"
-      || current.type === "DoWhileStatement" || current.type === "CatchClause") return true;
+    if (current.type === "IfStatement") {
+      if (control !== null) return { supported: false };
+      if (current.consequent === child) control = { node: current, expected: true };
+      else if (current.alternate === child) control = { node: current, expected: false };
+      else return { supported: false };
+    } else if (current.type === "ConditionalExpression" || current.type === "LogicalExpression"
+      || current.type === "SwitchCase" || current.type === "ForStatement"
+      || current.type === "ForInStatement" || current.type === "ForOfStatement"
+      || current.type === "WhileStatement" || current.type === "DoWhileStatement"
+      || current.type === "CatchClause") {
+      return { supported: false };
+    }
+    child = current;
   }
-  return false;
+  return { supported: true, control };
 }
 
 function leadingUneffectTrivia(text: string, before: number): { text: string; start: number; end: number } | null {

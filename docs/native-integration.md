@@ -100,12 +100,15 @@ underlying `@types/node` declaration. Same-spelled local declarations and
 local-module imports remain effect-free. Tampering with the module/export atom
 sets `checkerMetadataEquivalent` to false.
 The completed direct-await slice additionally emits source-ordered Promise records
-when a resolved call is the direct operand of an unconditional `await` in the
-exported owner. Each record binds the numeric owner, exact source text, UTF-8
-call span, `observation: "await"`, and an explicit unconditional control path.
-The Workhub-shaped corpus reaches full semantic parity for this exact family.
-An await under conditional/loop/catch ownership is deliberately omitted, which
-makes checker Promise evidence differ instead of flattening path semantics.
+when a resolved call is the direct operand of an `await` in the exported owner.
+Each record binds the numeric owner, exact source text, UTF-8 call span, and
+`observation: "await"`. Unconditional calls have an explicit empty control
+path. The active application-backed extension admits exactly one enclosing
+`if` then/else branch and binds its owner-local file-offset condition ID
+and branch polarity into one singleton control path. The Workhub-shaped corpora
+reach full semantic parity for these exact families. Nested conditionals and
+awaits under loop/catch ownership remain omitted, which makes checker Promise
+evidence differ instead of flattening path semantics.
 Nested function and callback awaits are not attributed to the outer owner, and
 source/span/owner tampering fails metadata parity.
 Calls outside the exported project symbol set are not emitted. Traversal stops

@@ -215,7 +215,10 @@ that slice. Completed child
 [#51](https://github.com/mizchi/uneffect/issues/51) exports only direct,
 unconditional `await` observations from the same corpus; conditional awaits,
 rejection ownership, callbacks, loops, and other Promise records remain
-explicit gaps. The completed
+explicit gaps. Active bounded child
+[#52](https://github.com/mizchi/uneffect/issues/52) adds only direct awaits
+beneath one enclosing `if` branch with exact condition identity and polarity;
+nested/loop/catch controls and chains remain explicit gaps. The completed
 [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
 splits the long integration gate, retains timing artifacts, calibrates one
 measured timeout, and preserves every existing fail-closed obligation.

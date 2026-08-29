@@ -894,7 +894,9 @@ same property is proved for arbitrary TypeScript.
   builtin-key tamper detection. The completed direct-await follow-up exports five
   source-ordered unconditional Promise observations with exact owner/source/span
   evidence, making the Workhub-shaped corpus fully equivalent for that bounded
-  fragment. Conditional await evidence still differs explicitly, nested
+  fragment. The application-backed single-`if` follow-up also exports one exact
+  owner-local condition ID, then/else polarity, and singleton control path.
+  Nested/loop/catch conditional await evidence still differs explicitly, nested
   callback awaits stay outside the outer owner, and metadata tampering fails.
   Broader
   neutral-IR export remains incomplete.
