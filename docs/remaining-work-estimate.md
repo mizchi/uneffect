@@ -27,9 +27,9 @@ not a suitable single implementation branch.
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 19–39 engineer-weeks | Low–medium |
-| 3 — Production integration | #24, #8, #10, #7, #16, #46 | 25–49 engineer-weeks | Low |
+| 3 — Production integration | #24, #8, #10, #7, #16 | 24–47 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 13 open Issues / 12 non-overlapping epics | **52–104 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues / 11 non-overlapping epics | **51–102 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -37,7 +37,7 @@ independently, but dependencies and the policy of keeping only one active
 bounded implementation Issue limit useful parallelism.
 
 #37 was a bounded child of #25 and is complete. Its effort was included in the
-#25 epic range and was never added again to the 52–104 engineer-week total. The
+#25 epic range and was never added again to the 51–102 engineer-week total. The
 same rule applies to future child Issues split from an existing epic.
 
 #38 was a bounded child of #25 and is complete. Its effort was included in the
@@ -64,9 +64,9 @@ included inside the unchanged #5 epic range and is not added again to the total.
 #45 is a completed bounded child of #5. Its 1–2 engineer-week slice is included
 inside the unchanged #5 epic range rather than added to the total.
 
-#46 is a separate 1–2 engineer-week operational slice. It was created from an
-observed remote-run timeout and long integration wall time, so it is added to
-Phase 3 rather than hidden inside a proof-feature epic.
+#46 is a completed operational slice. It was created from an observed remote-run
+timeout and long integration wall time and closed after two independent green
+remote runs retained all three timing artifacts.
 
 There are three useful planning numbers:
 
@@ -78,7 +78,7 @@ There are three useful planning numbers:
   prioritizes #2 and #5 (7–14 weeks), consuming the completed #23 CFG. Numeric/SHA-256
   prioritizes #26 and #4/#6 (10–19 weeks). These alternatives
   should not be added together unless both products are required.
-- **All currently requested work: 52–104 engineer-weeks.** This includes
+- **All currently requested work: 51–102 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -98,7 +98,7 @@ commitment to implement every row:
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-52–104 week total remains additive and intentionally ignores speculative
+51–102 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -146,7 +146,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.28 proved dynamic Map key domain | #43 (child of #5) | Completed | completed in the current delivery | Decode a state-derived lookup key only after independently proving membership in an immutable literal finite Set. |
 | P2.29 multiple proved Map key domains | #44 (child of #5) | Completed | completed in the current delivery | Prove every primary/backup selector independently and reject the whole observation universe when one key proof fails. |
 | P2.30 jointly inductive Map key domains | #45 (child of #5) | Completed | completed in the current delivery | Prove one failover membership conjunction while retaining explicit joint assumptions and whole-universe failure. |
-| P3.3 solver-heavy CI stability | #46 | Active | 1–2 engineer-weeks | Measure and split the integration gate, calibrate timeouts, and retain every proof obligation. |
+| P3.3 solver-heavy CI stability | #46 | Completed | completed in the current delivery | Three checked shards, timing artifacts, calibrated timeout, and a real hard-deadline control without weakened obligations. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27
@@ -233,8 +233,7 @@ be added to the owning Issue and reflected here before implementation begins.
 | 9 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
 | 10 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
 | 11 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
-| 12 | #46 solver-heavy CI stability | M | 1–2 weeks | Timing artifact plus split deterministic gates | Remote variance, solver startup, and cache races |
-| 13 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
+| 12 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
 
 ## Recommended delivery checkpoints
 
@@ -314,8 +313,9 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** complete #46 by measuring and splitting the
-  solver-heavy integration gate without dropping proof obligations.
+- **Next implementable result:** select one bounded child from #25, #2, or #5
+  only after an application-backed Red case identifies the next reusable proof
+  boundary.
 - **Next foundation checkpoint:** #26, #27, #28, #29, #30, #31, #32, #33,
   #34, #35, #36, #37, and #38 are complete; completing parent #25/#24/#8 remains
   13–27 engineer-weeks.
@@ -324,7 +324,7 @@ closed bounded epic.
   both required for an initial useful release.
 - **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
   evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 13 Issues / 12 non-overlapping epics and 52–104
+- **Entire open backlog:** 12 Issues / 11 non-overlapping epics and 51–102
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

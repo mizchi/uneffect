@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 52–104 engineer-weeks; this is implementation volume, not a calendar
+estimate is 51–102 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -198,9 +198,9 @@ explicit conservative boundaries rather than untracked support.
 5. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
    extends the tested symbol-resolved lifecycle fragment through dynamic
     component/Hook flow, server boundaries, and broader concurrent scheduling.
-6. [Solver-heavy integration CI stability](https://github.com/mizchi/uneffect/issues/46)
-   measures and splits the long integration gate, calibrates timeouts from
-   remote-run evidence, and preserves every existing fail-closed obligation.
+The completed [solver-heavy integration CI handoff](https://github.com/mizchi/uneffect/issues/46)
+splits the long integration gate, retains timing artifacts, calibrates one
+measured timeout, and preserves every existing fail-closed obligation.
 [DOM property getter/setter effects](https://github.com/mizchi/uneffect/issues/14)
 is complete for the reviewed overlay. Unreviewed Web IDL members and dynamic
 DOM keys remain explicit conservative boundaries in `feature-matrix.md`, not

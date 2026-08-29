@@ -69,18 +69,20 @@ one source-bound Boolean involution recurrence by parity. The next bounded
 child [#41](https://github.com/mizchi/uneffect/issues/41) is also complete and
 proves the complementary entry-read ordering for one triangular affine recurrence.
 
-There are 13 open implementation Issues after closing #23, #26, #27, #28, and
-#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45: one
+There are 12 open implementation Issues after closing #23, #26, #27, #28, and
+#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46:
+12 open implementation Issues remain: one
 proof-boundary Issue in Phase 1, five specification-expressiveness Issues in
-Phase 2, six production-integration Issues in Phase 3, and one proof-consumer
+Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
 [#45](https://github.com/mizchi/uneffect/issues/45) belongs to #5 and follows
 completed bounded children
 [#42](https://github.com/mizchi/uneffect/issues/42),
 [#43](https://github.com/mizchi/uneffect/issues/43), and
-[#44](https://github.com/mizchi/uneffect/issues/44). New operational follow-up
-[#46](https://github.com/mizchi/uneffect/issues/46) owns solver-heavy CI timing
-and sharding, so the 12 non-overlapping epic estimates total 52–104
+[#44](https://github.com/mizchi/uneffect/issues/44). Completed operational
+follow-up [#46](https://github.com/mizchi/uneffect/issues/46) owns the landed
+solver-heavy CI timing and sharding handoff, so the 11 non-overlapping epic
+estimates total 51–102
 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
@@ -140,18 +142,17 @@ P2.29 completed #44's per-key proof composition slice for primary/backup Map
 selectors.
 P2.30 completed #45's joint-induction slice for failover selectors whose
 membership preservation depends on another selector's membership property.
-The 52–104 week figure is the additive whole-backlog inventory, not the estimate
+The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
 
-The active bounded operational slice is
-[#46](https://github.com/mizchi/uneffect/issues/46), created from observed
-remote-CI timing evidence after #45 completed.
+There is no active implementation Issue. Select and create one bounded child
+from the phase-ordered index only after identifying its application-backed Red
+case and unsupported negative control.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#46](https://github.com/mizchi/uneffect/issues/46) | Split and calibrate solver-heavy CI without skipping or weakening any proof obligation. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -161,7 +162,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41 | 13–27 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 52–104 engineer-weeks | Completed children #42/#43/#44/#45 are included within parent #5; #46 separately owns CI timing stability, while broad host/React semantics, evidence research, and proof-gated optimization remain. |
+| Entire open research backlog | 12 Issues / 11 non-overlapping epics | 51–102 engineer-weeks | Completed children #42/#43/#44/#45 are included within parent #5 and completed #46 owns the CI timing handoff; broad host/React semantics, evidence research, and proof-gated optimization remain. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -188,8 +189,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45 handoffs:
-one next operational slice and twelve queued epics. Every open Issue has exactly one
+As of 2026-08-29 there are 12 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46 handoffs:
+twelve queued epics. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -207,7 +208,6 @@ label.
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
 | Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
 | Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #9, #10, #24 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
-| Active | 3 | [#46](https://github.com/mizchi/uneffect/issues/46) | Solver-heavy CI stability | Existing integration gate and retained evidence | Measure, split, and calibrate the gate without weakening proof obligations |
 | Queued | 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #7, #8, completed #23, #24; #25 for general joins | Evidence-gated transformations; general optimization remains unimplemented |
 
 Each active child Issue is widened one Red/Green acceptance slice at a time. Each slice
@@ -273,7 +273,9 @@ for primary/backup selectors closed
 state remains parent #5. Joint membership preservation for the bounded failover
 family closed
 [#45](https://github.com/mizchi/uneffect/issues/45); general value lattices
-remain parent #25, and solver-heavy CI timing is tracked separately in #46.
+remain parent #25. Three-shard integration coverage, versioned timing artifacts,
+measured timeout calibration, and a real hard-deadline control closed
+[#46](https://github.com/mizchi/uneffect/issues/46).
 
 - [x] Emit `uneffect-refinement-action-analysis/v1` for one direct ranking-loop
   normal/typed-throw catch join, enforce a named CFG reachability worklist

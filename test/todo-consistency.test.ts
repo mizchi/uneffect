@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 46];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -87,7 +87,7 @@ describe("TODO hierarchy consistency", () => {
     for (const issue of [25, 37, 38, 39, 40, 41, 2, 5, 42, 43, 4, 6]) {
       expect(phase(2), `Phase 2 is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
-    for (const issue of [24, 8, 10, 7, 16, 46]) {
+    for (const issue of [24, 8, 10, 7, 16]) {
       expect(phase(3), `Phase 3 is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
     expect(phase(4)).toContain("issues/13");
@@ -112,10 +112,9 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 10],
       ["Queued", 3, 7],
       ["Queued", 3, 16],
-      ["Active", 3, 46],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
+    expect(rows.filter(([status]) => status === "Active")).toHaveLength(0);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -128,9 +127,7 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([
-      [1, 46, "Split and calibrate solver-heavy CI without skipping or weakening any proof obligation."],
-    ]);
+    expect(rows).toEqual([]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }
@@ -152,6 +149,7 @@ describe("TODO hierarchy consistency", () => {
     expect(activeIndex).not.toContain("issues/43)");
     expect(activeIndex).not.toContain("issues/44)");
     expect(activeIndex).not.toContain("issues/45)");
+    expect(activeIndex).not.toContain("issues/46)");
     expect(activeIndex).not.toContain("issues/27)");
     expect(activeIndex).not.toContain("issues/28)");
     expect(activeIndex).not.toContain("issues/29)");
@@ -185,5 +183,6 @@ describe("TODO hierarchy consistency", () => {
     expect(todo).toContain("[#43](https://github.com/mizchi/uneffect/issues/43)");
     expect(todo).toContain("closed\n[#44](https://github.com/mizchi/uneffect/issues/44)");
     expect(todo).toContain("closed\n[#45](https://github.com/mizchi/uneffect/issues/45)");
+    expect(todo).toContain("closed\n[#46](https://github.com/mizchi/uneffect/issues/46)");
   });
 });
