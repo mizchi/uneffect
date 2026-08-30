@@ -41,8 +41,8 @@
       "import": "./dist/src/experimental.js"
     },
     "./spec": {
-      "types": "./dist/src/temporal-dsl.d.ts",
-      "import": "./dist/src/temporal-dsl.js"
+      "types": "./dist/src/spec.d.ts",
+      "import": "./dist/src/spec.js"
     },
     "./schemas/*": "./schemas/*",
     "./package.json": "./package.json"

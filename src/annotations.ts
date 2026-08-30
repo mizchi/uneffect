@@ -1,5 +1,6 @@
 export type UneffectDirective =
   | "effect" | "effect_parameter" | "module_effect" | "effect_schema"
+  | "capability_from"
   | "requires" | "ensures" | "invariant" | "decreases" | "assert" | "validate" | "returns"
   | "trust" | "trust_owner" | "trust_expires" | "refinement" | "abstraction" | "runtime" | "react"
   | "state" | "clock" | "init" | "action" | "action_when" | "action_fair" | "temporal"
@@ -20,7 +21,7 @@ interface PayloadLine { cleaned: string; start: number }
 interface PayloadBlock { dialect: string; dialectSpan: SourceSpan; lines: PayloadLine[] }
 
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
-  capability: new Set(["effect", "effect_parameter", "module_effect", "effect_schema"]),
+  capability: new Set(["effect", "effect_parameter", "module_effect", "effect_schema", "from"]),
   contract: new Set(["requires", "ensures", "invariant", "decreases", "assert", "validate", "returns"]),
   temporal: new Set(["state", "clock", "init", "action", "action_when", "action_fair", "invariant", "eventually", "repeatedly", "stabilizes", "response", "fair", "from"]),
   "temporal-summary": new Set(["requires", "ensures", "modifies", "throws", "rejects", "suspends", "cancellable", "eventually", "repeatedly", "stabilizes", "response", "fair"]),
@@ -30,6 +31,7 @@ const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   "react-resource": new Set(["acquire", "release"]),
 };
 const aliases: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  capability: { from: "capability_from" },
   temporal: { invariant: "temporal", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair", from: "temporal_from" },
   "temporal-summary": { requires: "temporal_requires", ensures: "temporal_ensures", modifies: "temporal_modifies", throws: "temporal_throws", rejects: "temporal_rejects", suspends: "temporal_suspends", cancellable: "temporal_cancellable", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair" },
 };

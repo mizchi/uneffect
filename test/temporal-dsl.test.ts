@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { generateQuint } from "../src/spec-backends.js";
-import { bool, defineTemporal, int, parseTemporalDsl, resolveTemporalDslLink } from "../src/temporal-dsl.js";
+import { bool, defineTemporal, int, parseTemporalDsl, resolveTemporalDslLink, validateTemporalDslHelperIdentities } from "../src/temporal-dsl.js";
 import { generateTemporalModel } from "../src/temporal-model.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 
@@ -116,4 +117,22 @@ describe("TypeScript temporal DSL", () => {
     }));
     expect(result.temporal?.properties).toContainEqual(expect.objectContaining({ name: "nonnegative", result: "verified" }));
   }, 40_000);
+
+  it("rejects a same-spelled helper that does not have Uneffect symbol identity", () => {
+    const files: Record<string, string> = {
+      "/spec.uneffect.ts": `import { defineTemporal, int } from "@mizchi/uneffect/spec"; export default defineTemporal({ state: { n: int() }, init: { n: 0 }, actions: { inc: ({ n }: any) => ({ n: n + 1 }) } });`,
+      "/fake.ts": `export const defineTemporal = (value: unknown) => value; export const int = () => ({ kind: "int" });`,
+    };
+    const options: ts.CompilerOptions = { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext };
+    const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+    host.fileExists = (name) => files[name] !== undefined || ts.sys.fileExists(name);
+    host.readFile = (name) => files[name] ?? ts.sys.readFile(name);
+    host.getSourceFile = (name, languageVersion, onError, fresh) => files[name] === undefined
+      ? original(name, languageVersion, onError, fresh)
+      : ts.createSourceFile(name, files[name], languageVersion, true, ts.ScriptKind.TS);
+    host.resolveModuleNames = (names) => names.map(() => ({ resolvedFileName: "/fake.ts", extension: ts.Extension.Ts, isExternalLibraryImport: true }));
+    const program = ts.createProgram({ rootNames: Object.keys(files), options, host });
+    expect(() => validateTemporalDslHelperIdentities(program, "/spec.uneffect.ts"))
+      .toThrow(/does not resolve .* TypeChecker symbol identity/);
+  });
 });

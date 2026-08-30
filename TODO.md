@@ -107,8 +107,14 @@ interleaved into that product.
     - [x] Connect an implementation with
       `/* uneffect:temporal from "./model.uneffect.ts#default" */`, resolve it
       in project verification, and verify linked safety invariants.
-    - [ ] Resolve DSL helpers through TypeChecker symbol identity. ([#64](https://github.com/mizchi/uneffect/issues/64))
+    - [x] Resolve DSL helpers through TypeChecker symbol identity during project
+      verification; retain the text-only parser as a lower-assurance standalone frontend.
     - [ ] Add typed Set/Map/record descriptors and package-level spec imports. ([#64](https://github.com/mizchi/uneffect/issues/64))
+    - [x] Add the first `defineCapability` fragment with Console, scoped Fetch,
+      FsRead/FsWrite, and Throw descriptors; connect named exports through
+      `uneffect:capability from` to the existing effect analyzer.
+    - [ ] Cover remaining builtin and user-defined Effect schemas and validate ([#64](https://github.com/mizchi/uneffect/issues/64))
+      capability helpers through TypeChecker symbol identity.
   - [ ] Version a backend-neutral AST and module interface shared by capability ([#64](https://github.com/mizchi/uneffect/issues/64))
     effects, Hoare contracts/invariants, and temporal specifications without
     collapsing their distinct semantics.

@@ -11,6 +11,7 @@ import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedA
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { generateTemporalModel } from "./temporal-model.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
+import { materializeCapabilityDslLinks } from "./capability-dsl.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import {
@@ -175,7 +176,7 @@ function inMemoryProgram(
   const moduleDirectory = dirname(fileURLToPath(import.meta.url));
   const selfPackageEntry = [join(moduleDirectory, "index.ts"), join(moduleDirectory, "index.d.ts")]
     .find((candidate) => ts.sys.fileExists(candidate));
-  const selfSpecEntry = [join(moduleDirectory, "temporal-dsl.ts"), join(moduleDirectory, "temporal-dsl.d.ts")]
+  const selfSpecEntry = [join(moduleDirectory, "spec.ts"), join(moduleDirectory, "spec.d.ts")]
     .find((candidate) => ts.sys.fileExists(candidate));
   const virtualDirectories = new Set(Object.keys(files).flatMap((fileName) => {
     const directories: string[] = [];
@@ -239,6 +240,10 @@ async function verifyUneffectProjectFiles(
   const temporalProperties: ProjectTemporalProperty[] = [];
   const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
+  const effectFiles = materializeCapabilityDslLinks(options.files);
+  const effectProgram = Object.entries(effectFiles).some(([name, source]) => source !== options.files[name])
+    ? inMemoryProgram(effectFiles, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences)
+    : program;
   const typescriptDiagnostics = Object.keys(options.files).flatMap((fileName) => {
     const source = program.getSourceFile(fileName);
     return source ? [
@@ -254,7 +259,7 @@ async function verifyUneffectProjectFiles(
   if (typescriptDiagnostics.some((item) => item.kind === "options" && item.severity === "error")) {
     for (const fileName of Object.keys(options.files)) invalidSources.add(fileName);
   }
-  const effects = analyzeProgramEffects(program, {
+  const effects = analyzeProgramEffects(effectProgram, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
     externalFunctionEffects: compilerContext?.externalFunctionEffects,
     externalModuleEffects: compilerContext?.externalModuleEffects,
@@ -290,7 +295,7 @@ async function verifyUneffectProjectFiles(
   typedArrays.obligations = Object.values(typedArrays.files).flatMap((result) => result.obligations);
   typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
   diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
-  const assumptions = collectAssumptionLedger(program, options.files, typedArrays, options.assumptionPolicy, options.builtinRegistry);
+  const assumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry);
   diagnostics.push(...assumptions.diagnostics);
   for (const [fileName, source] of Object.entries(options.files)) {
     const verification = await verifyContractObligations(fileName, source, options.z3);
@@ -305,7 +310,7 @@ async function verifyUneffectProjectFiles(
       compilerOptions: { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.ESNext },
     }).outputText;
     if (options.temporalRuntime === "web" || options.temporalRuntime === "node") {
-      const linkedTemporal = resolveTemporalDslLink(fileName, source, options.files);
+      const linkedTemporal = resolveTemporalDslLink(fileName, source, options.files, program);
       const model = generateTemporalModel({
         fileName,
         source,

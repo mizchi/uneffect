@@ -4,6 +4,7 @@ export const ciTestTiers = {
     "test/assurance.test.ts",
     "test/builtin-contracts.test.ts",
     "test/call-graph.test.ts",
+    "test/capability-dsl.test.ts",
     "test/capabilities.test.ts",
     "test/ci-tiers.test.ts",
     "test/cli.test.ts",

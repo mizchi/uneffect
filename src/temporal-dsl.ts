@@ -36,10 +36,38 @@ export interface TemporalDslLink {
   spec: TemporalSpec;
 }
 
+function unalias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
+  return symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+}
+
+/** Verify that DSL calls resolve to Uneffect's declarations, not same-spelled user code. */
+export function validateTemporalDslHelperIdentities(program: ts.Program, fileName: string): void {
+  const source = program.getSourceFile(fileName);
+  if (!source) throw new Error(`${fileName}: temporal specification is not part of the TypeScript Program`);
+  const checker = program.getTypeChecker();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== "@mizchi/uneffect/spec") continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      const exported = element.propertyName?.text ?? element.name.text;
+      if (!["defineTemporal", "int", "bool", "text"].includes(exported)) continue;
+      const symbol = checker.getSymbolAtLocation(element.name);
+      const target = symbol && unalias(checker, symbol);
+      const declarations = target?.declarations ?? [];
+      const valid = target?.name === exported && declarations.some((declaration) =>
+        /(?:^|\/)temporal-dsl\.(?:d\.)?ts$/.test(declaration.getSourceFile().fileName.replaceAll("\\", "/")));
+      if (!valid) throw new Error(`${fileName}: ${element.name.text} does not resolve to @mizchi/uneffect/spec#${exported} by TypeChecker symbol identity`);
+    }
+  }
+}
+
 export function resolveTemporalDslLink(
   implementationFile: string,
   implementationSource: string,
   files: Readonly<Record<string, string>>,
+  program?: ts.Program,
 ): TemporalDslLink | undefined {
   const declarations = extractAnnotations(implementationSource, "temporal_from");
   if (declarations.length === 0) return undefined;
@@ -56,6 +84,7 @@ export function resolveTemporalDslLink(
   const specificationFile = posix.normalize(posix.join(posix.dirname(implementationFile), requestedFile));
   const specificationSource = files[specificationFile];
   if (specificationSource === undefined) throw new Error(`${implementationFile}: temporal specification ${specificationFile} does not exist in the selected project`);
+  if (program) validateTemporalDslHelperIdentities(program, specificationFile);
   return { implementationFile, specificationFile, exportName: "default", spec: parseTemporalDsl(specificationFile, specificationSource) };
 }
 
