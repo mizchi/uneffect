@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { capabilityPermits, parseEffectExpression, type CapabilityEffect, type Effect } from "../src/capabilities.js";
 import { projectDenoPermissions, resolveTargetTemp } from "../src/deno-permissions.js";
 
-const effects = (source: string): Effect[] => source.split(" + ").map(parseEffectExpression);
+const effects = (source: string): Effect[] => source.split(" + ").map((value) => parseEffectExpression(value));
 
 describe("Deno permission projection", () => {
   it("projects common capability sets and keeps deny policy separate", () => {

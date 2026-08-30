@@ -171,7 +171,7 @@ function set(input: string, domain?: AtomDomain): CapabilitySet {
   };
 }
 
-export function parseEffectExpression(input: string): Effect {
+export function parseEffectExpression(input: string, localSchemas?: ReadonlyMap<string, EffectSchema>): Effect {
   const text = input.trim();
   if (text === "none") throw new Error("`none` denotes an empty effect set, not an effect");
   const mutate = /^Mutate<\s*typeof\s+(.+)>$/.exec(text);
@@ -181,7 +181,7 @@ export function parseEffectExpression(input: string): Effect {
   const parameterized = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)<([\s\S]+)>$/.exec(text);
   if (parameterized) {
     const name = parameterized[1]!, inputs = splitTopLevel(parameterized[2]!, ",");
-    const schema = effectSchema(name);
+    const schema = localSchemas?.get(name) ?? effectSchema(name);
     const arguments_ = inputs.map((value, index) => set(value, schema?.arguments[index]));
     if (name === "Fetch" && arguments_[0]?.kind === "finite") arguments_[0].atoms = arguments_[0].atoms.map((item) => item.kind === "token" && item.value.startsWith("Fetch.") ? { ...item, value: item.value.slice("Fetch.".length) } : item);
     return {
@@ -190,19 +190,19 @@ export function parseEffectExpression(input: string): Effect {
     };
   }
   if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(text)) throw new Error(`invalid effect: ${text}`);
-  const schema = effectSchema(text);
+  const schema = localSchemas?.get(text) ?? effectSchema(text);
   return { kind: "capability", name: text, arguments: schema?.arguments.map(() => ({ kind: "all" })) ?? [] };
 }
 
 /** Parse an effect upper-bound set. `none` is the reserved spelling of the empty set. */
-export function parseEffectSet(input: string): Effect[] {
+export function parseEffectSet(input: string, localSchemas?: ReadonlyMap<string, EffectSchema>): Effect[] {
   const terms = splitTopLevel(input, "|");
   const none = terms.filter((term) => term === "none");
   if (none.length > 0) {
     if (terms.length !== 1) throw new Error("`none` must be the only member of an effect set");
     return [];
   }
-  return terms.map(parseEffectExpression);
+  return terms.map((term) => parseEffectExpression(term, localSchemas));
 }
 
 export function formatEffect(effect: Effect): string {

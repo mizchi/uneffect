@@ -218,7 +218,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const callable of topLevelCallables(source)) {
     const sourceName = projectFileName(options.files, source.fileName)!;
     const leading = source.text.slice(callable.declaration.getFullStart(), callable.declaration.getStart(source));
-    const effects = extractAnnotations(leading, "effect").flatMap(parseEffectSet).map(formatEffect).sort();
+    const effects = extractAnnotations(leading, "effect").flatMap((value) => parseEffectSet(value)).map(formatEffect).sort();
     functions.push({ name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));

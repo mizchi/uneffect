@@ -187,7 +187,7 @@ export { generateTemporalModel } from "./temporal-model.js";
 export type { GenerateTemporalModelOptions, TemporalModelProjection, TemporalModelResult, TemporalRuntime } from "./temporal-model.js";
 export { parseTemporalDsl, resolveTemporalDslLink, validateTemporalDslHelperIdentities } from "./temporal-dsl.js";
 export type { TemporalDslLink } from "./temporal-dsl.js";
-export { materializeCapabilityDslLinks, parseCapabilityDsl } from "./capability-dsl.js";
+export { materializeCapabilityDslLinks, parseCapabilityDsl, parseCapabilityDslWithSchemas, prepareCapabilityDslLinks, validateCapabilityDslHelperIdentities } from "./capability-dsl.js";
 export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";

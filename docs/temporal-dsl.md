@@ -100,6 +100,39 @@ annotation. Original source and emitted JavaScript remain unchanged, while the
 normal missing-effect and unused-effect diagnostics continue to apply.
 
 The initial fragment supports `Console`, `Fetch`, `FsRead`, `FsWrite`, and
-`Throw`. Dynamic descriptors and computed scopes fail closed. User-defined
-effects, remaining builtins, package composition, and TypeChecker identity
-checks for capability helpers remain future work.
+`Throw`. Any registered builtin schema is also available through `Builtin`:
+
+```ts
+Builtin("Net", { arguments: [["api.example.com:443"]] })
+Builtin("Dom", { arguments: [["AttributeWrite"], ["root"]] })
+Builtin("CookieRead")
+```
+
+The argument-set count and atom domains come from the existing versioned
+`EffectSchema`; URL, path, host, environment, system, token, and region values
+therefore retain their normal capability-lattice semantics. `"All"` may replace
+one argument set. Project verification checks capability helper identity with
+the TypeChecker.
+
+User-defined schemas remain local to one verification invocation:
+
+```ts
+const Audit = defineEffectSchema({
+  name: "Audit",
+  arguments: ["literal", "url"],
+});
+
+export const WriteAudit = defineCapability({
+  effects: [
+    Custom(Audit, {
+      arguments: [["metric.write"], ["https://audit.example.com/**"]],
+    }),
+  ],
+});
+```
+
+Supported atom domains are `token`, `literal`, `url`, `path`, `host`, `env`,
+`sys`, and `region`. The parser passes these schemas explicitly to the effect
+checker and never mutates the process-global registry. Conflicting local schema
+definitions fail closed. Dynamic descriptors and computed scopes still fail
+closed. Cross-package schema evidence and composition remain future work.

@@ -11,7 +11,7 @@ import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedA
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { generateTemporalModel } from "./temporal-model.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
-import { materializeCapabilityDslLinks } from "./capability-dsl.js";
+import { prepareCapabilityDslLinks } from "./capability-dsl.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import {
@@ -240,7 +240,8 @@ async function verifyUneffectProjectFiles(
   const temporalProperties: ProjectTemporalProperty[] = [];
   const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
-  const effectFiles = materializeCapabilityDslLinks(options.files);
+  const preparedEffects = prepareCapabilityDslLinks(options.files, program);
+  const effectFiles = preparedEffects.files;
   const effectProgram = Object.entries(effectFiles).some(([name, source]) => source !== options.files[name])
     ? inMemoryProgram(effectFiles, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences)
     : program;
@@ -263,6 +264,7 @@ async function verifyUneffectProjectFiles(
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
     externalFunctionEffects: compilerContext?.externalFunctionEffects,
     externalModuleEffects: compilerContext?.externalModuleEffects,
+    effectSchemas: preparedEffects.schemas,
   });
   diagnostics.push(...effects.diagnostics);
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];

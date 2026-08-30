@@ -113,8 +113,14 @@ interleaved into that product.
     - [x] Add the first `defineCapability` fragment with Console, scoped Fetch,
       FsRead/FsWrite, and Throw descriptors; connect named exports through
       `uneffect:capability from` to the existing effect analyzer.
-    - [ ] Cover remaining builtin and user-defined Effect schemas and validate ([#64](https://github.com/mizchi/uneffect/issues/64))
-      capability helpers through TypeChecker symbol identity.
+    - [x] Cover all registered builtin Effect schemas through the schema-driven
+      `Builtin` descriptor and validate capability helpers through TypeChecker
+      symbol identity during project verification.
+    - [x] Add declarative project-local user-defined Effect schemas without
+      process-global registry mutation and pass their atom domains explicitly
+      into the existing effect analyzer.
+    - [ ] Compose user-defined Effect schema evidence across packages, including ([#64](https://github.com/mizchi/uneffect/issues/64))
+      provenance, version compatibility, and conflicting-schema diagnostics.
   - [ ] Version a backend-neutral AST and module interface shared by capability ([#64](https://github.com/mizchi/uneffect/issues/64))
     effects, Hoare contracts/invariants, and temporal specifications without
     collapsing their distinct semantics.
