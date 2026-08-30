@@ -172,8 +172,16 @@ introducing another domain-local control-flow or alias model.
    - [x] Project exact neutral inline/microtask lanes and reviewed timer/event
      APIs to distinct Web and Node queue names; ambiguous Node EventTarget and
      other unreviewed host tasks retain an explicit unknown reason.
-   - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Lower neutral lanes into the existing Web and Node queue-state models,
-     including cancellation, external completion, and unsupported host-specific
+   - [x] Link neutral transitions to the executable Web/Node Quint queue-state
+     generators, TypeChecker-derived compatible timer cancellation, and Node
+     poll/close external completion. Definite cancellation suppresses its
+     bounded-progress obligation.
+   - [x] Emit explicit bounded-host-progress fairness assumptions for exact,
+     non-synchronous, non-cancelled transitions instead of silently treating
+     scheduler progress as proved.
+   - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Encode neutral fairness obligations into executable Quint temporal
+     constraints, compose cancellation races and external completion with
+     resources/Promise settlement, and retain unsupported host-specific
      ordering as explicit unknown transitions.
 5. [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Consume persisted package contract/effect summaries at call sites with
    exact package, export, declaration, compiler, and source provenance. Unknown

@@ -13,6 +13,7 @@ import {
   lowerPromiseChainTransitions,
   lowerResourceDisposalTransitions,
   lowerHostNeutralTransitions,
+  generateHostTransitionModel,
 } from "../src/host-neutral-transitions.js";
 
 describe("host-neutral async transitions", () => {
@@ -76,6 +77,59 @@ describe("host-neutral async transitions", () => {
     expect(lowerHostNeutralTransitions(neutral, "node").map(({ queue, evidence }) => [queue, evidence])).toEqual([
       ["v8-microtask", "exact"], ["timers", "exact"], ["unknown", "unknown"],
     ]);
+  });
+
+  it("links cancellation and bounded fairness to the executable Web state model", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-neutral-web-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function main() {
+          const handle = setTimeout(() => console.log("later"), 10)
+          clearTimeout(handle)
+          queueMicrotask(() => console.log("microtask"))
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const model = generateHostTransitionModel(program, program.getSourceFile(fileName)!, {
+        profile: "web", moduleName: "neutral_web", fairnessBound: 3,
+      });
+      expect(model.cancellations).toContainEqual(expect.objectContaining({ definite: true, compatible: true, evidence: "exact" }));
+      expect(model.fairness).toEqual(expect.arrayContaining([
+        expect.objectContaining({ maximumSkips: 3, evidence: "assumed", assumption: "bounded-host-progress" }),
+      ]));
+      expect(model.quint).toContain("module neutral_web");
+      expect(model.quint).toContain("callback_0_pending' = false");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("links external poll completion to the executable Node state model", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-neutral-node-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        import { readFile } from "node:fs"
+        export function main() {
+          readFile("settings.json", () => console.log("loaded"))
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
+      });
+      const model = generateHostTransitionModel(program, program.getSourceFile(fileName)!, {
+        profile: "node", moduleName: "neutral_node", fairnessBound: 2,
+      });
+      expect(model.externalCompletions).toContainEqual(expect.objectContaining({ queue: "poll", evidence: "exact" }));
+      expect(model.quint).toContain("module neutral_node");
+      expect(model.quint).toContain("action complete_poll_0");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("connects TypeScript callback and Promise analyses before host lowering", () => {

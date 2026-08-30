@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { analyzeAsyncSafetyInProgram, type AsyncSafetyDiagnostic, type AsyncSafetyOptions, type ResourceDisposal } from "./async-safety.js";
+import { analyzeAsyncPatternsInProgram, generateNodeEventLoopQuint, generateWebEventLoopQuint, type AsyncPatternModel, type TimerPattern } from "./async-patterns.js";
 import { analyzeCallableSummaries, type CallbackCardinality, type CallableSummary, type CallableSummaryDiagnostic } from "./callable-summary.js";
 import type { PromiseChainModel, PromiseExecutorSettlement } from "./promise-chains.js";
 
@@ -49,6 +50,48 @@ export interface HostScheduledTransition {
   readonly queue: WebHostQueue | NodeHostQueue;
   readonly evidence: "exact" | "unknown";
   readonly reason?: string;
+}
+
+export interface HostCancellationLink {
+  readonly timerIndex?: number;
+  readonly targetTransitionId?: string;
+  readonly handle: string;
+  readonly definite: boolean;
+  readonly compatible: boolean;
+  readonly evidence: "exact" | "unknown";
+  readonly span: { start: number; end: number };
+}
+
+export interface HostExternalCompletionLink {
+  readonly timerIndex: number;
+  readonly targetTransitionId: string;
+  readonly queue: TimerPattern["queue"];
+  readonly evidence: "exact";
+}
+
+export interface HostFairnessObligation {
+  readonly transitionId: string;
+  readonly maximumSkips: number;
+  readonly assumption: "bounded-host-progress";
+  readonly evidence: "assumed";
+}
+
+export interface GenerateHostTransitionModelOptions {
+  readonly profile: HostProfile;
+  readonly moduleName: string;
+  readonly fairnessBound?: number;
+  readonly nodeTopLevelMode?: "commonjs" | "esm";
+}
+
+export interface HostTransitionModel {
+  readonly schema: "uneffect-host-transition-model/v1";
+  readonly profile: HostProfile;
+  readonly transitionAnalysis: HostNeutralTransitionAnalysis;
+  readonly scheduled: readonly HostScheduledTransition[];
+  readonly cancellations: readonly HostCancellationLink[];
+  readonly externalCompletions: readonly HostExternalCompletionLink[];
+  readonly fairness: readonly HostFairnessObligation[];
+  readonly quint: string;
 }
 
 export interface HostNeutralTransitionAnalysis {
@@ -131,6 +174,31 @@ export function lowerResourceDisposalTransitions(
   }));
 }
 
+function asyncPatternApi(timer: TimerPattern): string {
+  if (timer.queue === "timer" && timer.handleFamily === "timeout") return "setTimeout";
+  if (timer.queue === "microtask") return "queueMicrotask";
+  if (timer.queue === "animation-frame") return "requestAnimationFrame";
+  if (timer.queue === "next-tick") return "process.nextTick";
+  if (timer.queue === "check") return "setImmediate";
+  return `host.${timer.queue}`;
+}
+
+export function lowerAsyncPatternTransitions(fileName: string, model: AsyncPatternModel): InvokeCallbackTransition[] {
+  return model.timers.map((timer, index) => ({
+    kind: "invoke-callback",
+    id: transitionId(fileName, timer.owner, `async-pattern-${timer.queue}`, index, timer.span.start),
+    fileName,
+    owner: timer.owner,
+    callback: timer.callback,
+    api: asyncPatternApi(timer),
+    cardinality: timer.repeats ? "0..n" : "0..1",
+    lane: timer.queue === "microtask" || timer.queue === "next-tick" ? "microtask"
+      : timer.externallyReady || timer.queue === "poll" || timer.queue === "close" ? "external" : "host-task",
+    completion: "host-report-throw",
+    span: timer.span,
+  }));
+}
+
 export function composeHostNeutralTransitions(
   ...groups: readonly (readonly HostNeutralTransition[])[]
 ): HostNeutralTransition[] {
@@ -196,5 +264,64 @@ export function analyzeHostNeutralTransitions(
     transitions,
     evidence: diagnostics.length > 0 || summaries.some((summary) => summary.evidence === "unknown") ? "unknown" : "inferred",
     diagnostics,
+  };
+}
+
+export function generateHostTransitionModel(
+  program: ts.Program,
+  source: ts.SourceFile,
+  options: GenerateHostTransitionModelOptions,
+): HostTransitionModel {
+  if (options.fairnessBound !== undefined && (!Number.isSafeInteger(options.fairnessBound) || options.fairnessBound < 0)) {
+    throw new Error("fairnessBound must be a non-negative safe integer");
+  }
+  const transitionAnalysis = analyzeHostNeutralTransitions(program, source);
+  const asyncSafety = analyzeAsyncSafetyInProgram(program, source);
+  const patterns = analyzeAsyncPatternsInProgram(program, source);
+  const patternTransitions = lowerAsyncPatternTransitions(source.fileName, patterns);
+  const patternSpans = new Set(patternTransitions.map((transition) => `${transition.span.start}:${transition.span.end}`));
+  const transitions = composeHostNeutralTransitions(
+    patternTransitions,
+    transitionAnalysis.transitions.filter((transition) => transition.kind !== "invoke-callback"
+      || !patternSpans.has(`${transition.span.start}:${transition.span.end}`)),
+  );
+  const scheduled = lowerHostNeutralTransitions(transitions, options.profile);
+  const cancellations = patterns.cancellations.map((cancellation): HostCancellationLink => {
+    const target = cancellation.timer === undefined ? undefined : patternTransitions[cancellation.timer];
+    const exact = target !== undefined && cancellation.compatible === true;
+    return {
+      timerIndex: cancellation.timer,
+      targetTransitionId: target?.id,
+      handle: cancellation.handle,
+      definite: cancellation.definite,
+      compatible: cancellation.compatible === true,
+      evidence: exact ? "exact" : "unknown",
+      span: cancellation.span,
+    };
+  });
+  const externalCompletions = patterns.timers.flatMap((timer, timerIndex): HostExternalCompletionLink[] =>
+    timer.externallyReady || timer.queue === "poll" || timer.queue === "close"
+      ? [{ timerIndex, targetTransitionId: patternTransitions[timerIndex]!.id, queue: timer.queue, evidence: "exact" }]
+      : [],
+  );
+  const definitelyCancelled = new Set(cancellations.flatMap((cancellation) =>
+    cancellation.definite && cancellation.targetTransitionId ? [cancellation.targetTransitionId] : []));
+  const fairness = options.fairnessBound === undefined ? [] : scheduled.flatMap((item): HostFairnessObligation[] =>
+    item.evidence === "exact" && item.queue !== "synchronous" && !definitelyCancelled.has(item.transition.id)
+      ? [{ transitionId: item.transition.id, maximumSkips: options.fairnessBound!, assumption: "bounded-host-progress", evidence: "assumed" }]
+      : [],
+  );
+  const quint = options.profile === "web"
+    ? generateWebEventLoopQuint(options.moduleName, patterns, {}, asyncSafety.promiseChains)
+    : generateNodeEventLoopQuint(options.moduleName, patterns, { topLevelMode: options.nodeTopLevelMode ?? "commonjs" }, asyncSafety.promiseChains);
+  return {
+    schema: "uneffect-host-transition-model/v1",
+    profile: options.profile,
+    transitionAnalysis: { ...transitionAnalysis, transitions },
+    scheduled,
+    cancellations,
+    externalCompletions,
+    fairness,
+    quint,
   };
 }

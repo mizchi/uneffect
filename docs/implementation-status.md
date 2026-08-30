@@ -70,9 +70,15 @@ same property is proved for arbitrary TypeScript.
   A bounded host projection maps inline and microtask work plus reviewed timers
   and Web EventTarget delivery to separate Web/Node queue vocabulary. Ambiguous
   Node EventTarget delivery and other unreviewed host tasks remain `unknown`.
-  This is not yet connected to the executable queue-state models; cancellation,
-  external completion, fairness, and unsupported interleavings remain the next
-  experimental step.
+- `generateHostTransitionModel` now joins that projection to the existing
+  executable Web/Node Quint event-loop generators. It preserves exact compatible
+  timer cancellation links and Node poll/close external-completion links.
+  Optional `fairnessBound` emits per-transition `bounded-host-progress`
+  assumptions and excludes definitely cancelled work. These fairness entries
+  are explicitly `assumed`, not verified: executable Quint fairness constraints,
+  cancellation races, and the combined resource/Promise/external product remain
+  open. The generated host Quint still checks the previously supported queue
+  order, cancellation, and external-completion safety properties.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
