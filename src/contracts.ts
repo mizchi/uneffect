@@ -1,7 +1,7 @@
 import ts from "typescript";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";
-import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type InvariantObligation } from "./invariant-ir.js";
+import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type InvariantObligation } from "./invariant-ir.js";
 import { executeZ3, type Z3Execution, type Z3ExecutionOptions } from "./z3.js";
 
 export interface VerificationArtifact {
@@ -15,6 +15,8 @@ export interface VerificationArtifact {
   solver?: Pick<Z3Execution, "backend" | "version" | "attempts">;
   /** The obligation this artifact discharges, so evidence can be reported without re-lowering. */
   obligation?: { functionName: string; clause: ContractDiagnostic["clause"]; source: string };
+  /** Versioned path evidence identifying the source completion point proved by this artifact. */
+  controlFlow?: ContractControlFlowEvidence;
 }
 
 export interface ContractDiagnostic {
@@ -58,11 +60,11 @@ function unsupportedOwner(source: ts.SourceFile, cause: unknown): { functionName
 }
 
 /** Verify every lowered obligation. Unsupported syntax and solver unknown are explicit non-proofs. */
-export async function verifyContractObligations(fileName: string, text: string, z3?: Z3ExecutionOptions): Promise<ContractVerificationResult> {
+export async function verifyContractObligations(fileName: string, text: string, z3?: Z3ExecutionOptions, program?: ts.Program): Promise<ContractVerificationResult> {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   let obligations: InvariantObligation[];
   try {
-    obligations = lowerInvariantProgram(fileName, text);
+    obligations = lowerInvariantProgram(fileName, text, program);
   } catch (cause) {
     const owner = unsupportedOwner(source, cause);
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -83,7 +85,7 @@ export async function verifyContractObligations(fileName: string, text: string, 
     const execution = await executeZ3(generateObligationSmt(obligation, false), { ...z3, produceModel: true });
     const status = execution.status;
     const solver = { backend: execution.backend, version: execution.version, attempts: execution.attempts };
-    const base = { obligationId: obligation.id, source: { fileName, span: obligation.span }, obligation: { functionName: obligation.functionName, clause: clauseOf(obligation), source: obligation.source }, solver };
+    const base = { obligationId: obligation.id, source: { fileName, span: obligation.span }, obligation: { functionName: obligation.functionName, clause: clauseOf(obligation), source: obligation.source }, solver, controlFlow: obligation.controlFlow };
     if (status === "unsat") {
       artifacts.push({ ...base, status: "verified", evidence: "verified" });
     } else if (status === "sat") {

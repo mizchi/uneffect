@@ -2,6 +2,33 @@ import { describe, expect, it } from "vitest";
 import { generateObligationSmt, lowerInvariantProgram, proveBooleanImplication } from "../src/invariant-ir.js";
 
 describe("shared invariant obligation IR", () => {
+  it("preserves each early-return path as versioned control-flow evidence", () => {
+    const obligations = lowerInvariantProgram("absolute.ts", `
+      /* uneffect:contract ensures result >= 0 */
+      function absolute(value: Int): Int {
+        if (value < 0) return -value
+        return value
+      }
+    `);
+
+    expect(obligations).toHaveLength(2);
+    expect(obligations.map(({ controlFlow }) => controlFlow)).toEqual([
+      expect.objectContaining({
+        schema: "uneffect-contract-control-flow/v1",
+        completion: "return",
+        blockId: expect.stringMatching(/^cfg_/),
+        pathConditions: [expect.objectContaining({ kind: "binary", operator: "lt" })],
+      }),
+      expect.objectContaining({
+        schema: "uneffect-contract-control-flow/v1",
+        completion: "return",
+        blockId: expect.stringMatching(/^cfg_/),
+        pathConditions: [expect.objectContaining({ kind: "unary", operator: "not" })],
+      }),
+    ]);
+    expect(new Set(obligations.map(({ controlFlow }) => controlFlow.blockId)).size).toBe(2);
+  });
+
   const source = `
     /* uneffect:contract requires n >= 0 */
     /* uneffect:contract ensures result >= n */

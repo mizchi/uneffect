@@ -326,7 +326,7 @@ async function verifyUneffectProjectFiles(
     : undefined;
   for (const [fileName, source] of Object.entries(options.files)) {
     const contractSource = contractFiles[fileName] ?? source;
-    const verification = await verifyContractObligations(fileName, contractSource, options.z3);
+    const verification = await verifyContractObligations(fileName, contractSource, options.z3, program);
     obligations.push(...verification.artifacts.map((artifact) => invalidSources.has(fileName)
       ? { ...artifact, status: "unknown" as const, evidence: "unknown" as const, backend: "z3" as const, result: "unknown" as const, message: "TypeScript errors prevent proof-grade contract evidence for this source" }
       : { ...artifact, backend: "z3" as const, result: artifact.status }));

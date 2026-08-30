@@ -1527,6 +1527,29 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Compare observable recovered output and an explicit common authority manifest.
     - [x] Model Effect TS `tryPromise` failure ownership by package symbol identity and compare the actual `catchAll` recovery path rather than a normalized Effect outcome.
 
+## Path-sensitive contract integration
+
+- [x] Preserve each supported return/loop completion as
+  `uneffect-contract-control-flow/v1` evidence with a source-stable basic-block
+  identity and the exact path assumptions supplied to Z3.
+- [ ] Import sound TypeChecker narrowing facts into the contract logic IR; each ([#25](https://github.com/mizchi/uneffect/issues/25))
+  admitted narrowing form needs a same-spelled/shadowed negative control.
+  - [x] Admit one-to-sixteen-member safe-integer literal unions, including
+    imported type aliases, and bind the evidence to TypeScript version, compiler
+    options, and every non-declaration Program source digest. Programs with
+    TypeScript errors and plain `number` aliases contribute no finite-range fact.
+  - [x] Admit TypeChecker-validated `typeof value === "number"` guards for
+    `number | string` and nullish equality guards for `number | null | undefined`;
+    bind each guard to the exact parameter symbol and comparison source span.
+  - [ ] Extend narrowing to discriminated unions and assertion-function facts without trusting user-defined lookalikes. ([#25](https://github.com/mizchi/uneffect/issues/25))
+- [ ] Route `return`, synchronous `throw`, and declared `Throw<E>` through one ([#25](https://github.com/mizchi/uneffect/issues/25))
+  exception-aware contract exit model without treating Promise rejection as a
+  synchronous throw.
+- [ ] Make effect `discharge` path-sensitive over that shared exit model and ([#25](https://github.com/mizchi/uneffect/issues/25))
+  retain rejected/unknown paths in the evidence ledger.
+- [ ] Dogfood the combined model on an application adapter containing narrowing, ([#25](https://github.com/mizchi/uneffect/issues/25))
+  early returns, caught throws, capability boundaries, and Promise ownership.
+
 ## Current validation commands
 
 ```sh

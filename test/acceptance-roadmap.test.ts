@@ -3503,6 +3503,35 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.emittedFiles["src/numeric.js"]).toContain("valibot");
   }, 30_000);
 
+  it("binds imported finite numeric aliases to TypeChecker-backed contract evidence", async () => {
+    const verifyProject = futureApi("verifyUneffectProject");
+    const result = await verifyProject({ files: files({
+      "src/digits.ts": `export type Digit = 0 | 1 | 2`,
+      "src/numeric.ts": `
+        import type { Digit } from "./digits.js"
+        /* uneffect:contract ensures result >= 0 && result <= 2 */
+        export function preserveDigit(value: Digit): number { return value }
+        /* uneffect:contract ensures result >= 0 */
+        export function magnitude(value: number | undefined): number {
+          if (value === undefined) return 0
+          if (value < 0) return -value
+          return value
+        }
+      `,
+    }) }) as { obligations: Array<{ result: string; controlFlow?: { narrowing?: { facts: string[]; programDigest: string } } }> };
+
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      result: "verified",
+      controlFlow: expect.objectContaining({
+        narrowing: expect.objectContaining({ facts: ["value ∈ {0, 1, 2}"], programDigest: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+      }),
+    }));
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      result: "verified",
+      controlFlow: expect.objectContaining({ narrowing: expect.objectContaining({ facts: ["value: number | undefined via nullish guard"] }) }),
+    }));
+  }, 30_000);
+
   it("composes temporal function contracts with the Web event loop instead of passing inline Quint through", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const result = await verifyProject({ files: files({

@@ -62,7 +62,26 @@ same property is proved for arbitrary TypeScript.
   Z3 and reviewable Quint models for temporal checking and simulation.
 - The supported Hoare fragment checks integer and machine-number expressions,
   assignments, selected control flow, preconditions, postconditions, and loop
-  invariants. Runtime assertion generation is optional.
+  invariants. Each supported return, loop entry, and loop back-edge emits
+  versioned `uneffect-contract-control-flow/v1` evidence. Its source-stable
+  block identity and exact solver path assumptions make branch-local proof and
+  counterexample results reviewable. This is the checker's restricted neutral
+  CFG, not a claim that TypeScript's private compiler CFG has been exported.
+  When verification receives the exact checked `ts.Program`, a parameter whose
+  TypeChecker type is a union of one to sixteen safe-integer literals contributes
+  its finite-set assumption. This works through imported type aliases. The
+  evidence records the TypeScript version and a digest over compiler options and
+  all non-declaration Program sources. A source mismatch or any TypeScript error
+  disables these facts; a plain `number` alias never receives a finite range.
+  The same Program-backed layer accepts direct equality guards for
+  `number | undefined`, `number | null`, and `number | null | undefined`, plus
+  direct `typeof value === "number"`/`!==` guards for `number | string`. Guard
+  evidence is tied to the exact parameter symbol and comparison source span;
+  shadowed values and locally redefined `undefined` do not match. A Boolean
+  discriminator is explicit in SMT rather than pretending the inactive union
+  member has an integer value. Discriminated object unions and assertion
+  functions remain unsupported.
+  Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint
   generation, and normalized counterexample traces for the documented subset.

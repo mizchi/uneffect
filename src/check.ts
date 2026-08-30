@@ -101,7 +101,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   for (const fileName of fileNames) {
     const text = await readFile(fileName, "utf8");
     sources.set(fileName, text);
-    const contracts = await verifyContractObligations(fileName, text);
+    const contracts = await verifyContractObligations(fileName, text, undefined, program);
     diagnostics.push(...contracts.diagnostics);
     artifacts.push(...contracts.artifacts);
     const sourceFile = program.getSourceFile(fileName);

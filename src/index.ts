@@ -148,6 +148,7 @@ export type { AdoptionFixtureName, AdoptionReport, EffectFailureOwnership, Effec
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";
 export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafetyResult, TypedArraySafetyResult, TypedArraySafetyStatistics } from "./typed-array-safety.js";
 export { generateObligationSmt, InvariantLoweringError, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
+export type { ContractControlFlowEvidence } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationBinding, ObligationVariable } from "./invariant-ir.js";
 export { checkFiles, createCheckHost, createCheckProgram } from "./check.js";
 export { environmentSummary, formatEnvironmentReport, readPackageManifest, runEnvironmentChecks } from "./environment.js";

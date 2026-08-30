@@ -16,6 +16,20 @@ export type LogicExpression =
 export interface ObligationVariable { name: string; sort: LogicSort; domain: NumericDomain }
 /** How a source-level name (`result`, a local, a loop snapshot) is defined over the obligation variables. */
 export interface ObligationBinding { name: string; expression: LogicExpression }
+export interface ContractControlFlowEvidence {
+  schema: "uneffect-contract-control-flow/v1";
+  /** Stable identity of the source completion point shared by clauses proved at that point. */
+  blockId: string;
+  completion: "return" | "loop-entry" | "loop-back-edge" | "synthetic";
+  /** Conditions assumed by the solver on the path reaching this completion point. */
+  pathConditions: LogicExpression[];
+  narrowing?: {
+    source: "typescript-typechecker";
+    typescriptVersion: string;
+    programDigest: string;
+    facts: string[];
+  };
+}
 export interface InvariantObligation {
   id: string;
   kind: "postcondition" | "loop-init" | "loop-preserve";
@@ -29,6 +43,7 @@ export interface InvariantObligation {
   bindings: ObligationBinding[];
   /** Readable aliases for generated variables, e.g. `count_i_loop_84` displayed as `i@loop`. */
   displayNames: Record<string, string>;
+  controlFlow: ContractControlFlowEvidence;
 }
 
 /** A lowering rejection that stays locatable and actionable instead of collapsing to a bare message. */
@@ -47,6 +62,86 @@ export class InvariantLoweringError extends Error {
 
 type Environment = Map<string, LogicExpression>;
 interface PathState { env: Environment; assumptions: LogicExpression[] }
+type SemanticGuardKind = "defined" | "typeof-number";
+interface SemanticGuardFact { kind: SemanticGuardKind; variable: string; label: string; nullish?: "undefined" | "null" | "nullish"; spans: string[] }
+interface ParameterTypeFact { domain: NumericDomain; assumption?: LogicExpression; label?: string; guards?: SemanticGuardFact[]; programDigest: string }
+
+function finiteUnion(values: LogicExpression[]): LogicExpression | undefined {
+  return values.reduce<LogicExpression | undefined>((left, right) => left === undefined ? right : { kind: "binary", operator: "or", left, right }, undefined);
+}
+
+/** Extract only TypeChecker facts that map exactly into the current scalar logic IR. */
+function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: string, text: string): Map<string, ParameterTypeFact> {
+  const facts = new Map<string, ParameterTypeFact>();
+  if (!program) return facts;
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return facts;
+  const errors = [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)]
+    .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) return facts;
+  const programDigest = createHash("sha256").update(JSON.stringify({
+    compilerOptions: program.getCompilerOptions(),
+    sources: program.getSourceFiles().filter((item) => !item.isDeclarationFile)
+      .map((item) => [item.fileName, createHash("sha256").update(item.text).digest("hex")]).sort(([left], [right]) => left!.localeCompare(right!)),
+  })).digest("hex");
+  const checker = program.getTypeChecker();
+  for (const node of source.statements) {
+    if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
+    for (const parameter of node.parameters) {
+      if (!ts.isIdentifier(parameter.name)) continue;
+      const parameterName = parameter.name.text;
+      const type = checker.getTypeAtLocation(parameter.name);
+      const key = `${node.getStart(source)}:${parameterName}`;
+      const members = type.isUnion() ? type.types : [type];
+      const numeric = members.map((member) => member.isNumberLiteral() ? member.value : undefined);
+      if (numeric.every((value): value is number => value !== undefined && Number.isSafeInteger(value)) && numeric.length > 0 && numeric.length <= 16) {
+        const choices = numeric.map((value): LogicExpression => ({ kind: "binary", operator: "eq", left: variable(parameterName), right: { kind: "integer", value: String(value) } }));
+        facts.set(key, { domain: "int", assumption: finiteUnion(choices), label: `${parameterName} ∈ {${numeric.join(", ")}}`, programDigest });
+      } else if ((type.flags & ts.TypeFlags.NumberLike) !== 0) {
+        facts.set(key, { domain: "int", programDigest });
+      } else if ((type.flags & ts.TypeFlags.BooleanLike) !== 0) {
+        facts.set(key, { domain: "bool", programDigest });
+      } else {
+        const numberMembers = members.filter((member) => (member.flags & ts.TypeFlags.NumberLike) !== 0);
+        const undefinedMembers = members.filter((member) => (member.flags & ts.TypeFlags.Undefined) !== 0);
+        const nullMembers = members.filter((member) => (member.flags & ts.TypeFlags.Null) !== 0);
+        const stringMembers = members.filter((member) => (member.flags & ts.TypeFlags.StringLike) !== 0);
+        if (numberMembers.length > 0 && undefinedMembers.length + nullMembers.length > 0 && numberMembers.length + undefinedMembers.length + nullMembers.length === members.length) {
+          const nullish = undefinedMembers.length > 0 && nullMembers.length > 0 ? "nullish" : undefinedMembers.length > 0 ? "undefined" : "null";
+          const suffix = nullish === "nullish" ? "number | null | undefined" : `number | ${nullish}`;
+          facts.set(key, { domain: "int", programDigest, guards: [{ kind: "defined", variable: `${parameterName}_uneffect_defined`, label: `${parameterName}: ${suffix} via nullish guard`, nullish, spans: [] }] });
+        } else if (numberMembers.length > 0 && stringMembers.length > 0 && numberMembers.length + stringMembers.length === members.length) {
+          facts.set(key, { domain: "int", programDigest, guards: [{ kind: "typeof-number", variable: `${parameterName}_uneffect_is_number`, label: `${parameterName}: number | string via typeof number guard`, spans: [] }] });
+        }
+      }
+      const fact = facts.get(key);
+      if (!fact?.guards) continue;
+      const parameterSymbol = checker.getSymbolAtLocation(parameter.name);
+      const sameParameter = (candidate: ts.Expression): candidate is ts.Identifier => ts.isIdentifier(candidate) && checker.getSymbolAtLocation(candidate) === parameterSymbol;
+      const visitGuards = (current: ts.Node): void => {
+        if (ts.isBinaryExpression(current)) {
+          const span = `${current.getStart(source)}:${current.getEnd()}`;
+          for (const guard of fact.guards!) {
+            if (guard.kind === "typeof-number") {
+              const matches = (left: ts.Expression, right: ts.Expression): boolean => ts.isTypeOfExpression(left) && sameParameter(left.expression) && ts.isStringLiteral(right) && right.text === "number";
+              if (matches(current.left, current.right) || matches(current.right, current.left)) guard.spans.push(span);
+            } else {
+              const matches = (left: ts.Expression, right: ts.Expression): boolean => {
+                if (!sameParameter(left)) return false;
+                if (right.kind === ts.SyntaxKind.NullKeyword) return true;
+                return ts.isIdentifier(right) && (checker.getTypeAtLocation(right).flags & ts.TypeFlags.Undefined) !== 0;
+              };
+              if (matches(current.left, current.right) || matches(current.right, current.left)) guard.spans.push(span);
+            }
+          }
+        }
+        ts.forEachChild(current, visitGuards);
+      };
+      visitGuards(node.body);
+    }
+  }
+  return facts;
+}
 
 function parseTsExpression(text: string): ts.Expression {
   const source = ts.createSourceFile("logic.ts", `const value = (${text})`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -56,15 +151,45 @@ function parseTsExpression(text: string): ts.Expression {
   return expression;
 }
 
-function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set()): LogicExpression {
-  if (ts.isParenthesizedExpression(node)) return logic(node.expression, pipeBindings);
+function semanticGuardExpression(node: ts.Expression, guards: ReadonlyMap<string, readonly SemanticGuardFact[]>): LogicExpression | undefined {
+  if (!ts.isBinaryExpression(node)) return undefined;
+  const equality = node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
+  const inequality = node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  if (!equality && !inequality) return undefined;
+  const span = `${node.getStart()}:${node.getEnd()}`;
+  const guarded = (name: string, kind: SemanticGuardKind, positive: boolean, nullish?: "undefined" | "null", strict = false): LogicExpression | undefined => {
+    const fact = guards.get(name)?.find((item) => item.kind === kind);
+    if (!fact || !fact.spans.includes(span) || strict && nullish !== undefined && fact.nullish !== nullish) return undefined;
+    const value = variable(fact.variable);
+    return positive ? value : negate(value);
+  };
+  const nullishKind = (value: ts.Expression): "undefined" | "null" | undefined =>
+    ts.isIdentifier(value) && value.text === "undefined" ? "undefined" : value.kind === ts.SyntaxKind.NullKeyword ? "null" : undefined;
+  const identifierNullish = (left: ts.Expression, right: ts.Expression): LogicExpression | undefined => {
+    const kind = nullishKind(right);
+    if (!ts.isIdentifier(left) || !kind) return undefined;
+    const strict = node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken || node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+    return guarded(left.text, "defined", inequality, kind, strict);
+  };
+  const directNullish = identifierNullish(node.left, node.right) ?? identifierNullish(node.right, node.left);
+  if (directNullish) return directNullish;
+  const typeofNumber = (left: ts.Expression, right: ts.Expression): LogicExpression | undefined =>
+    ts.isTypeOfExpression(left) && ts.isIdentifier(left.expression) && ts.isStringLiteral(right) && right.text === "number"
+      ? guarded(left.expression.text, "typeof-number", equality) : undefined;
+  return typeofNumber(node.left, node.right) ?? typeofNumber(node.right, node.left);
+}
+
+function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(), semanticGuards: ReadonlyMap<string, readonly SemanticGuardFact[]> = new Map()): LogicExpression {
+  if (ts.isParenthesizedExpression(node)) return logic(node.expression, pipeBindings, semanticGuards);
+  const guard = semanticGuardExpression(node, semanticGuards);
+  if (guard) return guard;
   if (ts.isIdentifier(node)) return { kind: "variable", name: node.text };
   if (ts.isNumericLiteral(node)) return node.text.includes(".") ? { kind: "real", value: node.text } : { kind: "integer", value: node.text };
   if (node.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
   if (node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
   if (ts.isPrefixUnaryExpression(node)) {
-    if (node.operator === ts.SyntaxKind.ExclamationToken) return { kind: "unary", operator: "not", operand: logic(node.operand, pipeBindings) };
-    if (node.operator === ts.SyntaxKind.MinusToken) return { kind: "unary", operator: "negate", operand: logic(node.operand, pipeBindings) };
+    if (node.operator === ts.SyntaxKind.ExclamationToken) return { kind: "unary", operator: "not", operand: logic(node.operand, pipeBindings, semanticGuards) };
+    if (node.operator === ts.SyntaxKind.MinusToken) return { kind: "unary", operator: "negate", operand: logic(node.operand, pipeBindings, semanticGuards) };
   }
   if (ts.isBinaryExpression(node)) {
     const operators = new Map<ts.SyntaxKind, string>([
@@ -76,16 +201,16 @@ function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(
       [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
     ]);
     const operator = operators.get(node.operatorToken.kind);
-    if (operator) return { kind: "binary", operator, left: logic(node.left, pipeBindings), right: logic(node.right, pipeBindings) };
+    if (operator) return { kind: "binary", operator, left: logic(node.left, pipeBindings, semanticGuards), right: logic(node.right, pipeBindings, semanticGuards) };
   }
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && pipeBindings.has(node.expression.text) && node.arguments.length >= 2) {
-    let value = logic(node.arguments[0]!, pipeBindings);
+    let value = logic(node.arguments[0]!, pipeBindings, semanticGuards);
     for (const stage of node.arguments.slice(1)) {
       if ((!ts.isArrowFunction(stage) && !ts.isFunctionExpression(stage)) || stage.parameters.length !== 1
         || !ts.isIdentifier(stage.parameters[0]!.name) || ts.isBlock(stage.body)) {
         throw new Error("verified effect/Function pipe requires inline unary expression callbacks");
       }
-      value = substitute(logic(stage.body, pipeBindings), new Map([[stage.parameters[0]!.name.text, value]]));
+      value = substitute(logic(stage.body, pipeBindings, semanticGuards), new Map([[stage.parameters[0]!.name.text, value]]));
     }
     return value;
   }
@@ -137,18 +262,23 @@ function substitute(expression: LogicExpression, env: Environment): LogicExpress
 function negate(expression: LogicExpression): LogicExpression { return { kind: "unary", operator: "not", operand: expression }; }
 function variable(name: string): LogicExpression { return { kind: "variable", name }; }
 
-function domain(type: ts.TypeNode | undefined): NumericDomain {
+function domain(type: ts.TypeNode | undefined, checkerFact?: ParameterTypeFact): NumericDomain {
   const name = type?.getText() ?? "number";
   if (name === "boolean") return "bool";
   if (name === "Nat") return "nat";
   if (name === "Float") return "float";
   if (name === "number" || name === "Int") return "int";
+  if (checkerFact) return checkerFact.domain;
   throw new Error(`unsupported contract parameter type: ${name}`);
 }
 function sort(value: NumericDomain): LogicSort { return value === "bool" ? "Bool" : value === "float" ? "Real" : "Int"; }
 
 function stableId(value: Omit<InvariantObligation, "id">): string {
   return `inv_${createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 20)}`;
+}
+
+function controlFlowBlockId(fileName: string, functionName: string, span: { start: number; end: number }, completion: ContractControlFlowEvidence["completion"]): string {
+  return `cfg_${createHash("sha256").update(JSON.stringify({ fileName, functionName, span, completion })).digest("hex").slice(0, 20)}`;
 }
 
 function makeObligation(value: Omit<InvariantObligation, "id">): InvariantObligation { return { id: stableId(value), ...value }; }
@@ -172,8 +302,9 @@ function locatedLowering(cause: unknown, functionName: string, span: { start: nu
   return new InvariantLoweringError(message, { functionName, span, hint: loweringHint(message) });
 }
 
-export function lowerInvariantProgram(fileName: string, text: string): InvariantObligation[] {
+export function lowerInvariantProgram(fileName: string, text: string, program?: ts.Program): InvariantObligation[] {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const checkerFacts = typeCheckerParameterFacts(program, fileName, text);
   const pipeBindings = new Set(source.statements.flatMap((statement): string[] => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
       || statement.moduleSpecifier.text !== "effect/Function" || !statement.importClause?.namedBindings
@@ -199,16 +330,30 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
     const variables: ObligationVariable[] = [];
     const env: Environment = new Map();
     const baseAssumptions = [...requires];
+    const narrowingLabels: string[] = [];
+    const semanticGuards = new Map<string, readonly SemanticGuardFact[]>();
+    let checkerProgramDigest: string | undefined;
     for (const parameter of node.parameters) {
       if (!ts.isIdentifier(parameter.name)) throw new InvariantLoweringError(`destructured contract parameters are unsupported: ${parameter.name.getText(source)}`, { functionName: node.name.text, span: { start: parameter.getStart(source), end: parameter.getEnd() }, hint: loweringHint("destructured contract parameters") });
       let parameterDomain: NumericDomain;
+      const checkerFact = checkerFacts.get(`${node.getStart(source)}:${parameter.name.text}`);
       try {
-        parameterDomain = domain(parameter.type);
+        parameterDomain = domain(parameter.type, checkerFact);
       } catch (cause) {
         throw locatedLowering(cause, node.name.text, header);
       }
       variables.push({ name: parameter.name.text, domain: parameterDomain, sort: sort(parameterDomain) });
       env.set(parameter.name.text, variable(parameter.name.text));
+      if (checkerFact) checkerProgramDigest = checkerFact.programDigest;
+      if (checkerFact?.assumption) baseAssumptions.push(checkerFact.assumption);
+      if (checkerFact?.label) narrowingLabels.push(checkerFact.label);
+      if (checkerFact?.guards?.length) {
+        semanticGuards.set(parameter.name.text, checkerFact.guards);
+        for (const guard of checkerFact.guards) {
+          variables.push({ name: guard.variable, domain: "bool", sort: "Bool" });
+          narrowingLabels.push(guard.label);
+        }
+      }
       if (parameterDomain === "nat") baseAssumptions.push({ kind: "binary", operator: "gte", left: variable(parameter.name.text), right: { kind: "integer", value: "0" } });
     }
     const fn = node.name.text;
@@ -217,7 +362,16 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
       .filter(([name, expression]) => !(expression.kind === "variable" && expression.name === name))
       .map(([name, expression]) => ({ name, expression }));
     const add = (kind: InvariantObligation["kind"], target: ts.Node, assumptions: LogicExpression[], goal: LogicExpression, clause: string, bound: Environment): void => {
-      const value: Omit<InvariantObligation, "id"> = { kind, fileName, functionName: fn, span: { start: target.getStart(source), end: target.getEnd() }, variables: [...variables], assumptions, goal, source: clause, bindings: visibleBindings(bound), displayNames: { ...displayNames } };
+      const span = { start: target.getStart(source), end: target.getEnd() };
+      const completion: ContractControlFlowEvidence["completion"] = kind === "postcondition" ? "return" : kind === "loop-init" ? "loop-entry" : "loop-back-edge";
+      const controlFlow: ContractControlFlowEvidence = {
+        schema: "uneffect-contract-control-flow/v1",
+        blockId: controlFlowBlockId(fileName, fn, span, completion),
+        completion,
+        pathConditions: [...assumptions],
+        ...(narrowingLabels.length === 0 ? {} : { narrowing: { source: "typescript-typechecker", typescriptVersion: ts.version, programDigest: checkerProgramDigest!, facts: [...narrowingLabels] } }),
+      };
+      const value: Omit<InvariantObligation, "id"> = { kind, fileName, functionName: fn, span, variables: [...variables], assumptions, goal, source: clause, bindings: visibleBindings(bound), displayNames: { ...displayNames }, controlFlow };
       obligations.push(makeObligation(value));
     };
     const execute = (statements: readonly ts.Statement[], initial: PathState[]): PathState[] => {
@@ -237,14 +391,14 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
       if (ts.isVariableStatement(statement)) {
         for (const path of paths) for (const declaration of statement.declarationList.declarations) {
           if (!ts.isIdentifier(declaration.name) || !declaration.initializer) throw new Error(`only initialized identifier variables are supported: ${declaration.getText(source)}`);
-          path.env.set(declaration.name.text, substitute(logic(declaration.initializer, pipeBindings), path.env));
+          path.env.set(declaration.name.text, substitute(logic(declaration.initializer, pipeBindings, semanticGuards), path.env));
         }
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression) && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(statement.expression.left)) {
-        for (const path of paths) path.env.set(statement.expression.left.text, substitute(logic(statement.expression.right, pipeBindings), path.env));
+        for (const path of paths) path.env.set(statement.expression.left.text, substitute(logic(statement.expression.right, pipeBindings, semanticGuards), path.env));
       } else if (ts.isIfStatement(statement)) {
         const forked: PathState[] = [];
         for (const path of paths) {
-          const condition = substitute(logic(statement.expression, pipeBindings), path.env);
+          const condition = substitute(logic(statement.expression, pipeBindings, semanticGuards), path.env);
           const thenStatements = ts.isBlock(statement.thenStatement) ? statement.thenStatement.statements : [statement.thenStatement];
           forked.push(...execute(thenStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, condition] }]));
           const elseStatements = statement.elseStatement ? (ts.isBlock(statement.elseStatement) ? statement.elseStatement.statements : [statement.elseStatement]) : [];
@@ -265,7 +419,7 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
             if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
             loopEnv.set(name, variable(fresh));
           }
-          const inv = substitute(invariant, loopEnv), condition = substitute(logic(statement.expression, pipeBindings), loopEnv);
+          const inv = substitute(invariant, loopEnv), condition = substitute(logic(statement.expression, pipeBindings, semanticGuards), loopEnv);
           const bodyStatements = ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement];
           const bodyPaths = execute(bodyStatements, [{ env: new Map(loopEnv), assumptions: [inv, condition] }]);
           for (const bodyPath of bodyPaths) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource, bodyPath.env);
@@ -275,7 +429,7 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
       } else if (ts.isReturnStatement(statement) && statement.expression) {
         for (const path of paths) {
           const resultEnv = new Map(path.env);
-          resultEnv.set("result", substitute(logic(statement.expression, pipeBindings), path.env));
+          resultEnv.set("result", substitute(logic(statement.expression, pipeBindings, semanticGuards), path.env));
           for (const ensure of ensures) add("postcondition", statement, path.assumptions, substitute(ensure.expression, resultEnv), ensure.source, resultEnv);
         }
         paths = [];
@@ -324,6 +478,8 @@ export function obligationFromSpec(spec: InvariantSpec): InvariantObligation {
   assumptions.push({ kind: "binary", operator: "eq", left: variable("result"), right: parseLogicExpression(spec.result) });
   const goals = spec.ensures.map(parseLogicExpression);
   const goal = goals.reduce((left, right): LogicExpression => ({ kind: "binary", operator: "and", left, right }));
-  const value = { kind: "postcondition" as const, fileName: spec.fileName ?? "<spec>", functionName: spec.functionName, span: spec.span ?? { start: 0, end: 0 }, variables, assumptions, goal, source: spec.ensures.join(" && "), bindings: [{ name: "result", expression: parseLogicExpression(spec.result) }], displayNames: {} };
+  const fileName = spec.fileName ?? "<spec>";
+  const span = spec.span ?? { start: 0, end: 0 };
+  const value = { kind: "postcondition" as const, fileName, functionName: spec.functionName, span, variables, assumptions, goal, source: spec.ensures.join(" && "), bindings: [{ name: "result", expression: parseLogicExpression(spec.result) }], displayNames: {}, controlFlow: { schema: "uneffect-contract-control-flow/v1" as const, blockId: controlFlowBlockId(fileName, spec.functionName, span, "synthetic"), completion: "synthetic" as const, pathConditions: [...assumptions] } };
   return makeObligation(value);
 }
