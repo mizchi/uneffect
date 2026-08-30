@@ -133,6 +133,8 @@ export { reconcileContractArtifacts, verifyContractObligations, verifyContracts 
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
 export { attachContractEffectBoundaries } from "./contracts.js";
 export type { ContractRelationalCallEvidence } from "./invariant-ir.js";
+export { createContractSummaryBundle, validateContractSummaryBundle } from "./contract-summary.js";
+export type { ContractSummaryBundleV1, ContractSummaryExportV1, CreateContractSummaryBundleOptions, ValidateContractSummaryBundleOptions } from "./contract-summary.js";
 export { assessCheckAssurance, formatAssuranceAssessment } from "./assurance.js";
 export type { AssuranceAssessment, AssuranceBlocker, AssuranceCoverage, AssuranceProfile, AssuranceStatus } from "./assurance.js";
 export { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "./property-tests.js";

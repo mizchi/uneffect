@@ -1574,10 +1574,14 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project
   verification. Stale declaration evidence downgrades the caller to `unknown`.
+- [x] Define `uneffect-contract-summary/v1` producer bundles for fully verified
+  direct named exports, including exact package/version, compiler-options,
+  producer source, declaration, TypeChecker signature, clauses, and artifact
+  IDs; validate every digest and reject counterexample/trusted dependencies.
 - [ ] Generalize exception-aware contracts to inferred/unannotated Promise-producing calls, ([#25](https://github.com/mizchi/uneffect/issues/25))
   assignment/property/destructured awaited values, opaque/non-scalar catch
-  payloads, persisted package summary exchange with export/config identity, and
-  interprocedural scalar/heap state.
+  payloads, `.d.ts`/export-map/tarball consumer linkage for persisted package
+  summaries, publisher authenticity, and interprocedural scalar/heap state.
 
 ## Current validation commands
 

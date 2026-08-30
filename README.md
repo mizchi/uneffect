@@ -141,6 +141,7 @@ Detailed references:
 - [Effect system](./docs/effect-system.md)
 - [Deno-compatible permissions](./docs/deno-permissions.md)
 - [Async safety](./docs/async-safety.md)
+- [Persisted contract summaries](./docs/contract-summaries.md)
 - [Formal models](./docs/formal-models.md)
 - [React semantics](./docs/react-semantics.md)
 - [Trusted Types](./docs/trusted-types.md)

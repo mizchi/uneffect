@@ -119,7 +119,12 @@ same property is proved for arbitrary TypeScript.
   TypeScript version; stale or incompatible evidence downgrades the caller to
   `unknown`. Project verification applies this pass after solving every file.
   Persisted package summaries, compiler-option identity, and exported-symbol
-  provenance are not implemented.
+  provenance are not consumed at call sites yet. The standalone
+  `uneffect-contract-summary/v1` producer/validator now emits package/version,
+  TypeScript/compiler-options, source/declaration/signature digests, clauses,
+  and supporting artifact IDs only for fully verified direct named exports.
+  It validates integrity against the producer Program. `.d.ts`, export-map,
+  tarball, bundled-runtime, and publisher-authenticity linkage remain open.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint
