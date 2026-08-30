@@ -188,8 +188,12 @@ export type { GenerateTemporalModelOptions, TemporalModelProjection, TemporalMod
 export { parseTemporalDsl, resolveTemporalDslLink, validateTemporalDslHelperIdentities } from "./temporal-dsl.js";
 export type { TemporalDslLink } from "./temporal-dsl.js";
 export { materializeCapabilityDslLinks, parseCapabilityDsl, parseCapabilityDslWithSchemas, prepareCapabilityDslLinks, validateCapabilityDslHelperIdentities } from "./capability-dsl.js";
-export { materializeContractDslLinks, parseContractDsl, validateContractDslLink } from "./contract-dsl.js";
-export { instrumentContractPredicates } from "./contract-runtime.js";
+export { materializeContractDslLinks, prepareContractDslLinks, parseContractDsl, validateContractDslLink } from "./contract-dsl.js";
+export type { ContractClauseProvenance, PreparedContractDslLinks } from "./contract-dsl.js";
+export { instrumentContractPredicates, isContractRuntimeError } from "./contract-runtime.js";
+export type { ContractRuntimeError, ContractRuntimeFailureMetadata, InstrumentContractPredicateOptions } from "./contract-runtime.js";
+export { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow } from "./typescript-control-flow.js";
+export type { TypeScriptControlFlowAnalysis, TypeScriptFunctionControlFlow, TypeScriptFunctionEndpoint } from "./typescript-control-flow.js";
 export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";

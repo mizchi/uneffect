@@ -130,15 +130,53 @@ interleaved into that product.
       Valibot assertion dogfood through `runtimeAssertions: "fallback"`.
     - [x] Lower the pure scalar `requires`/`ensures` fragment and `Nat`/`Float`
       results to optional runtime checks without evaluating arbitrary
-      specification code. The first runtime fragment deliberately accepts only
-      synchronous functions with value-returning exits.
-    - [x] Instrument multiple value returns across synchronous branches while
+      specification code.
+    - [x] Instrument multiple value returns across branches while
       excluding nested function exits and avoiding generated-name collisions.
-    - [x] Fail closed when the supported return/throw/block/if-else control-flow
-      fragment may fall through without checking a postcondition.
-    - [ ] Extend contract runtime lowering to richer CFG exits, async fulfillment, ([#64](https://github.com/mizchi/uneffect/issues/64))
-      and source-mapped diagnostics without weakening the current fail-closed
-      expression whitelist.
+    - [x] Fail closed when the supported return/throw/block/if-else, exhaustive
+      switch, try/catch/finally, or obvious non-breaking infinite-loop fragment
+      may fall through without checking a postcondition.
+    - [x] Check async fulfillment values with a Promise reaction, preserve
+      rejection behavior across surrounding synchronous try/catch, and test
+      postcondition failures as distinct rejections.
+    - [x] Separate a structured CFG exit summary and compose switch fallthrough,
+      targeted labeled/unlabeled break/continue, loops, and try/finally override.
+    - [x] Attach stable file, exact local directive line/column/span, contract
+      kind, and expression fields to generated runtime failures.
+    - [x] Use TypeChecker-resolved direct `never` calls and Boolean literal types
+      for the first semantic reachability refinement; same-named `void` calls
+      remain fallthrough.
+    - [x] Bridge TypeScript's public `noImplicitReturns` semantic diagnostics to
+      the neutral CFG, bind evidence to source digest/compiler version/options,
+      and refine exhaustive literal-union switches. Function-local semantic
+      errors downgrade the endpoint to `unknown`.
+    - [x] Observe internal TypeScript `flowNode` availability/count for pinned
+      parity reporting only; do not use undocumented graph APIs as proof evidence.
+    - [x] Instrument Generator and AsyncGenerator final return values without
+      treating yielded values as contract results.
+    - [ ] Extend semantic reachability beyond direct expression-statement calls ([#64](https://github.com/mizchi/uneffect/issues/64))
+      and literal Boolean conditions.
+    - [x] Preserve the originating `.uneffect.ts` file, line, column, expression,
+      and AST span across linked-contract materialization and runtime lowering.
+    - [x] Reuse one compatible project TypeScript `Program` for runtime CFG
+      evidence and extend the analysis bridge from top-level declarations to
+      identifier-named methods and directly immutable variable-bound block
+      functions by declaration-node identity. Incompatible compiler options
+      and mutable bindings fail closed.
+    - [x] Extend runtime contract rewriting itself to identifier-named methods
+      and directly immutable variable-bound block functions; reject mutable
+      bindings.
+    - [x] Cover getter results, setter preconditions, literal computed names,
+      expression-bodied arrows, top-level immutable callable alias chains, and
+      lexically nested direct declarations. Reject setter postconditions,
+      dynamic computed names, and mutable alias chains.
+    - [x] Extend callable aliases through nested lexical scopes,
+      TypeChecker-resolved imports/re-exports, and direct properties of builtin
+      `Object.freeze` static object literals. Relocate project contracts to the
+      source callable instead of generating identity- or `this`-changing wrappers.
+    - [ ] Extend stable callable containers beyond direct builtin-frozen object ([#64](https://github.com/mizchi/uneffect/issues/64))
+      literals while retaining mutation, getter, proxy, and dispatch-sealing
+      negative controls.
   - [ ] Version a backend-neutral AST and module interface shared by capability ([#64](https://github.com/mizchi/uneffect/issues/64))
     effects, Hoare contracts/invariants, and temporal specifications without
     collapsing their distinct semantics.

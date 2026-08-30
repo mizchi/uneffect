@@ -465,13 +465,24 @@ Arbitrary callbacks and executable expressions are rejected. Instrumentation cha
 
 Linked `defineContract` specifications use the same opt-in profile. Uneffect
 can lower arithmetic/comparison/Boolean `requires` and `ensures` expressions,
-plus `Nat` and finite `Float` result validation, for synchronous functions with
-value-returning exits. Multiple branch returns are checked independently and
-nested function exits are not attributed to the outer function. It does not
-import or execute the specification module. Function calls, property access,
-async fulfillment, bare returns, and fallthrough in the supported
-return/throw/block/if-else fragment are rejected rather than silently omitted.
-Richer CFG exit analysis remains outside the runtime claim.
+plus `Nat` and finite `Float` result validation. Multiple branch returns are
+checked independently and nested function exits are not attributed to the outer
+function. Async return expressions are checked through a Promise reaction;
+original rejections propagate, including across a surrounding synchronous
+try/catch, while a failed postcondition becomes a separate rejection. Adding
+that reaction can change microtask timing, so exact schedule identity is not
+claimed.
+Uneffect does not import or execute the specification module. Function calls
+and property access in predicates, bare returns, and fallthrough in the
+supported structured CFG are rejected rather than silently omitted. The CFG
+summary composes switch fallthrough, try/finally override, loops, labels, and
+targeted break/continue. TypeChecker-resolved direct `never` calls and Boolean
+literal condition types provide a bounded semantic reachability refinement;
+same-named `void` calls are not trusted. Generator and AsyncGenerator contracts
+check only their final return. Generated failures carry an `uneffect` metadata
+object with the source file, exact local directive line/column/span, contract
+kind, and expression. Cross-file provenance back to the originating linked
+`.uneffect.ts` clause remains future work.
 
 ## Logical contracts
 

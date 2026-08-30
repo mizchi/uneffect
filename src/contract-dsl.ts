@@ -24,6 +24,18 @@ export interface ParsedContractDsl {
   requires: string[];
   ensures: string[];
 }
+export interface ContractClauseProvenance {
+  kind: "requires" | "ensures";
+  expression: string;
+  fileName: string;
+  line: number;
+  column: number;
+  span: { start: number; end: number };
+}
+export interface PreparedContractDslLinks {
+  files: Record<string, string>;
+  provenance: Record<string, ContractClauseProvenance[]>;
+}
 
 function name(source: ts.SourceFile, node: ts.BindingName | ts.PropertyName): string {
   if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
@@ -93,6 +105,37 @@ export function parseContractDsl(fileName: string, text: string, exportName: str
   };
 }
 
+function contractClauseProvenance(fileName: string, text: string, exportName: string): ContractClauseProvenance[] {
+  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let root: ts.ObjectLiteralExpression | undefined;
+  for (const statement of source.statements) if (ts.isVariableStatement(statement) && statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+    for (const declaration of statement.declarationList.declarations) if (ts.isIdentifier(declaration.name) && declaration.name.text === exportName
+      && declaration.initializer && ts.isCallExpression(declaration.initializer) && declaration.initializer.arguments[0]
+      && ts.isObjectLiteralExpression(declaration.initializer.arguments[0])) root = declaration.initializer.arguments[0];
+  }
+  if (!root) return [];
+  const result: ContractClauseProvenance[] = [];
+  for (const property of root.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const propertyName = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+    if (propertyName !== "requires" && propertyName !== "ensures") continue;
+    const values = ts.isArrayLiteralExpression(property.initializer) ? property.initializer.elements : [property.initializer];
+    for (const value of values) {
+      if ((!ts.isArrowFunction(value) && !ts.isFunctionExpression(value)) || ts.isBlock(value.body)) continue;
+      const start = value.body.getStart(source), position = source.getLineAndCharacterOfPosition(start);
+      result.push({
+        kind: propertyName,
+        expression: value.body.getText(source),
+        fileName,
+        line: position.line + 1,
+        column: position.character + 1,
+        span: { start, end: value.body.getEnd() },
+      });
+    }
+  }
+  return result;
+}
+
 function typeDomain(checker: ts.TypeChecker, type: ts.Type): NumericDomain | undefined {
   const named = type.aliasSymbol?.name ?? type.getSymbol()?.name;
   if (named === "Nat") return "nat";
@@ -145,8 +188,9 @@ export function validateContractDslLink(program: ts.Program, implementationFile:
   }
 }
 
-export function materializeContractDslLinks(files: Readonly<Record<string, string>>, program?: ts.Program): Record<string, string> {
+export function prepareContractDslLinks(files: Readonly<Record<string, string>>, program?: ts.Program): PreparedContractDslLinks {
   const output = { ...files }, annotationPrefix = ["uneffect", "contract"].join(":");
+  const provenance: Record<string, ContractClauseProvenance[]> = {};
   for (const [fileName, source] of Object.entries(files)) {
     const links = extractAnnotations(source, "contract_from");
     if (links.length === 0) continue;
@@ -158,6 +202,7 @@ export function materializeContractDslLinks(files: Readonly<Record<string, strin
     const specificationFile = posix.normalize(posix.join(posix.dirname(fileName), requested)), specification = files[specificationFile];
     if (specification === undefined) throw new Error(`${fileName}: contract specification ${specificationFile} does not exist in the selected project`);
     const contract = parseContractDsl(specificationFile, specification, exportName);
+    provenance[fileName] = contractClauseProvenance(specificationFile, specification, exportName);
     if (program) validateContractDslLink(program, fileName, specificationFile, contract);
     const body = [
       ...contract.parameters.filter((item) => item.domain === "nat" || item.domain === "float").map((item) => `assert ${item.name}: ${item.domain === "nat" ? "Nat" : "Float"}`),
@@ -167,5 +212,9 @@ export function materializeContractDslLinks(files: Readonly<Record<string, strin
     ].join("\n * ");
     output[fileName] = source.replace(/(\/\*\s*uneffect\s*:\s*contract\s+)from\s+(?:"[^"]+"|'[^']+')\s*(\*\/)/, `/* ${annotationPrefix}\n * ${body}\n */`);
   }
-  return output;
+  return { files: output, provenance };
+}
+
+export function materializeContractDslLinks(files: Readonly<Record<string, string>>, program?: ts.Program): Record<string, string> {
+  return prepareContractDslLinks(files, program).files;
 }

@@ -168,11 +168,32 @@ TypeChecker signature. A linked `nat()` or `float()` parameter additionally
 lowers to the existing Valibot `Nat`/`Float` assertion when
 `runtimeAssertions: "fallback"` is enabled. In that profile, pure scalar
 preconditions and postconditions are also emitted as checks, and `nat()` or
-`float()` results receive matching Valibot validation. This initial runtime
-fragment requires a synchronous function whose discovered exits return values.
-Multiple branch returns are instrumented independently, while returns belonging
-to nested functions are excluded. Calls, property access, async functions, bare
-returns, and other unsupported expressions fail closed with diagnostics.
-The supported return/throw/block/if-else fragment must also be shown unable to
-fall through; richer CFG exit analysis remains outside this runtime claim. The
-`.uneffect.ts` module is parsed but never evaluated.
+`float()` results receive matching Valibot validation. Multiple branch returns
+are instrumented independently, while returns belonging to nested functions are
+excluded. In an async function, Uneffect returns a Promise reaction that checks
+the fulfilled value. This avoids making a returned rejection catchable by a
+surrounding synchronous try/catch; an original rejection propagates without
+being reported as a postcondition failure. Calls and property access in
+predicates, bare returns, and other unsupported expressions fail closed with
+diagnostics.
+
+The structured exit analysis composes return/throw/block/if-else, switch entry
+and fallthrough paths, try/catch/finally override, finite and literal-infinite
+loops, labels, and targeted break/continue. It remains conservative about
+implicit exceptions. TypeChecker-resolved direct calls returning `never` and
+conditions with literal `true`/`false` types refine fallthrough; names alone are
+never trusted. Generator and AsyncGenerator postconditions apply to the final
+return value, not yielded values. Broader semantic reachability remains outside
+this runtime claim. TypeScript's public `noImplicitReturns` diagnostics can
+additionally refine a structurally open endpoint, including an exhaustive
+literal-union switch. Evidence is bound to compiler version, source digest, and
+options; any other function-local semantic error makes the result unknown.
+Internal `flowNode` data is observed for parity only and never authorizes a
+check. A generated failure is a `RangeError` carrying an
+`uneffect` object with `fileName`, exact local directive `line`, `column`,
+`span`, `kind`, and `expression`. A linked contract currently reports the
+materialized implementation-side directive span rather than the originating
+`.uneffect.ts` span. Generated async checks necessarily add a Promise reaction
+and can affect microtask timing; exact schedule identity is therefore not a
+realizable runtime-validation guarantee. The `.uneffect.ts` module is parsed
+but never evaluated.

@@ -2214,3 +2214,22 @@ An earlier standard-library-loading implementation measured 229.45 ms mean and
 was rejected before landing. The retained benchmark does not execute generated
 tests and does not cover barrels, namespace/default imports, recursive
 predicates, or full consumer-project type checking.
+
+The initial TypeScript CFG bridge benchmark constructs a cold strict Program
+for one file containing eight exhaustive literal-union switches. A selected
+Vitest 4.1.11 run on 2026-08-30 measured 160.44 ms mean over 10 samples
+(6.2328 operations per second, 13.16% RME; 105.13–216.68 ms). It includes
+standard-library loading, semantic diagnostics, TypeChecker refinements,
+source hashing, neutral-CFG comparison, and internal-hook observation. This is
+too expensive to repeat independently for every contract in a large project;
+project-Program reuse remains required before enabling the bridge broadly by
+default. The benchmark is a cold latency guard, not a throughput claim.
+
+After adding Program-backed analysis, the same 2026-08-30 fixture measured
+145.05 ms mean for cold construction (10 samples, 7.45% RME) and 0.2402 ms
+mean for reanalysis through one already checked Program (2,090 samples, 7.31%
+RME). The selected Vitest comparison reports the reused path as 603.93x
+faster. This warm number includes diagnostic lookup, per-declaration artifact
+construction, hashing, neutral-CFG comparison, and observation metadata; it
+does not include initial project Program construction. Project runtime fallback
+now builds one transformed Program and shares it across files.

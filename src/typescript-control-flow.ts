@@ -1,0 +1,268 @@
+import ts from "typescript";
+import { createHash } from "node:crypto";
+import { functionMayFallThrough, type ContractControlFlowOptions } from "./contract-control-flow.js";
+
+export type TypeScriptFunctionEndpoint = "reachable" | "unreachable" | "unknown";
+
+export interface TypeScriptFunctionControlFlow {
+  name: string;
+  kind: "function" | "method" | "getter" | "setter" | "arrow" | "function-expression";
+  span: { start: number; end: number };
+  endpoint: TypeScriptFunctionEndpoint;
+  neutralEndpoint: "reachable" | "unreachable";
+  parity: "agree" | "typescript-refines" | "unknown";
+  evidence: "public-diagnostics";
+  diagnosticCodes: Array<number | "uneffect-mutable-binding" | "uneffect-incompatible-compiler-options" | "uneffect-dynamic-computed-name">;
+  internalFlowApi: "observed" | "unavailable";
+  internalFlowNodeCount: number;
+  aliases: string[];
+}
+
+export interface TypeScriptControlFlowAnalysis {
+  schema: "uneffect-typescript-control-flow/v1";
+  typescriptVersion: string;
+  sourceDigest: string;
+  compilerOptions: { strict: boolean; noImplicitReturns: boolean; allowUnreachableCode: boolean };
+  configurationCompatible: boolean;
+  programReused: boolean;
+  functions: TypeScriptFunctionControlFlow[];
+}
+
+export interface TypeScriptControlFlowBridge {
+  analysis: TypeScriptControlFlowAnalysis;
+  options: ContractControlFlowOptions;
+  endpointOf(node: ts.FunctionLikeDeclaration): TypeScriptFunctionEndpoint;
+  resolveStableCallable(expression: ts.Expression): SupportedFunction | undefined;
+}
+
+const fallthroughDiagnosticCodes = new Set([2366, 7030]);
+
+function createProgram(fileName: string, source: ts.SourceFile): ts.Program {
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    strict: true,
+    noImplicitReturns: true,
+    allowUnreachableCode: true,
+    skipLibCheck: true,
+    noEmit: true,
+  };
+  const host = ts.createCompilerHost(options), defaultGetSourceFile = host.getSourceFile.bind(host);
+  const resolvedFileName = ts.sys.resolvePath(fileName);
+  host.getSourceFile = (requested, languageVersion, onError, shouldCreateNewSourceFile) =>
+    ts.sys.resolvePath(requested) === resolvedFileName ? source : defaultGetSourceFile(requested, languageVersion, onError, shouldCreateNewSourceFile);
+  return ts.createProgram({ rootNames: [fileName], options, host });
+}
+
+type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.SetAccessorDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+
+function ownValueReturns(node: SupportedFunction): number {
+  let count = 0;
+  const visit = (current: ts.Node): void => {
+    if (current !== node && ts.isFunctionLike(current)) return;
+    if (ts.isReturnStatement(current) && current.expression) count += 1;
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return count;
+}
+
+function internalFlowObservation(node: ts.FunctionDeclaration): { status: "observed" | "unavailable"; count: number } {
+  let count = 0;
+  const canHaveFlowNode = (ts as unknown as { canHaveFlowNode?: (node: ts.Node) => boolean }).canHaveFlowNode;
+  if (!canHaveFlowNode) return { status: "unavailable", count };
+  const visit = (current: ts.Node): void => {
+    if (canHaveFlowNode(current) && (current as ts.Node & { flowNode?: unknown }).flowNode !== undefined) count += 1;
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return { status: "observed", count };
+}
+
+function resolveStableCallableWithChecker(checker: ts.TypeChecker, expression: ts.Expression, seen = new Set<ts.Symbol>()): SupportedFunction | undefined {
+  const symbolLocation = ts.isPropertyAccessExpression(expression) ? expression.name : ts.isElementAccessExpression(expression) ? expression.argumentExpression : expression;
+  let symbol = checker.getSymbolAtLocation(symbolLocation);
+  if (!symbol) return undefined;
+  if (symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  if (seen.has(symbol)) return undefined;
+  const nextSeen = new Set([...seen, symbol]);
+  for (const declaration of symbol.declarations ?? []) {
+    if (ts.isFunctionDeclaration(declaration) && declaration.body) return declaration;
+    if (ts.isVariableDeclaration(declaration)) {
+      const declarationList = declaration.parent;
+      if (!ts.isVariableDeclarationList(declarationList) || (declarationList.flags & ts.NodeFlags.Const) === 0 || !declaration.initializer) continue;
+      if (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)) return declaration.initializer;
+      if (ts.isIdentifier(declaration.initializer) || ts.isPropertyAccessExpression(declaration.initializer) || ts.isElementAccessExpression(declaration.initializer)) {
+        const resolved = resolveStableCallableWithChecker(checker, declaration.initializer, nextSeen);
+        if (resolved) return resolved;
+      }
+    }
+    if (ts.isPropertyAssignment(declaration)) {
+      const object = declaration.parent, call = object.parent;
+      if (!ts.isObjectLiteralExpression(object) || !ts.isCallExpression(call) || call.arguments[0] !== object
+        || !ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "freeze") continue;
+      const freezeSymbol = checker.getSymbolAtLocation(call.expression.name);
+      const builtinFreeze = freezeSymbol?.declarations?.some((item) => /(?:^|\/)lib\..*\.d\.ts$/.test(item.getSourceFile().fileName.replaceAll("\\", "/")));
+      const owner = call.parent;
+      if (!builtinFreeze || !ts.isVariableDeclaration(owner) || !ts.isVariableDeclarationList(owner.parent) || (owner.parent.flags & ts.NodeFlags.Const) === 0) continue;
+      const initializer = declaration.initializer;
+      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) return initializer;
+      if (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer)) {
+        const resolved = resolveStableCallableWithChecker(checker, initializer, nextSeen);
+        if (resolved) return resolved;
+      }
+    }
+    if (ts.isShorthandPropertyAssignment(declaration)) {
+      const resolved = resolveStableCallableWithChecker(checker, declaration.name, nextSeen);
+      if (resolved) return resolved;
+    }
+  }
+  return undefined;
+}
+
+function staticPropertyName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name) || ts.isPrivateIdentifier(name)) return name.text;
+  if (!ts.isComputedPropertyName(name)) return undefined;
+  const expression = name.expression;
+  return ts.isStringLiteral(expression) || ts.isNumericLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression) ? expression.text : undefined;
+}
+
+function supportedFunctions(source: ts.SourceFile): Array<{ node: SupportedFunction; name: string; kind: TypeScriptFunctionControlFlow["kind"]; immutable: boolean; stableName: boolean }> {
+  const result: Array<{ node: SupportedFunction; name: string; kind: TypeScriptFunctionControlFlow["kind"]; immutable: boolean; stableName: boolean }> = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) && node.body) result.push({ node, name: node.name?.text ?? "<anonymous>", kind: "function", immutable: true, stableName: true });
+    else if (ts.isMethodDeclaration(node) && node.body) {
+      const owner = ts.isClassLike(node.parent) && node.parent.name ? `${node.parent.name.text}.` : "";
+      const name = staticPropertyName(node.name);
+      result.push({ node, name: `${owner}${name ?? "<computed>"}`, kind: "method", immutable: true, stableName: name !== undefined });
+    } else if ((ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)) && node.body) {
+      const owner = ts.isClassLike(node.parent) && node.parent.name ? `${node.parent.name.text}.` : "";
+      const name = staticPropertyName(node.name);
+      result.push({ node, name: `${owner}${name ?? "<computed>"}`, kind: ts.isGetAccessorDeclaration(node) ? "getter" : "setter", immutable: true, stableName: name !== undefined });
+    } else if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+      const declarationList = node.parent.parent;
+      const immutable = ts.isVariableDeclarationList(declarationList) && (declarationList.flags & ts.NodeFlags.Const) !== 0;
+      result.push({ node, name: node.parent.name.text, kind: ts.isArrowFunction(node) ? "arrow" : "function-expression", immutable, stableName: true });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  const direct = new Map(result.filter((item) => item.kind === "arrow" || item.kind === "function-expression").map((item) => [item.name, item]));
+  const aliases = new Map<string, { target: string; immutable: boolean }>();
+  for (const statement of source.statements) if (ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1) {
+    const declaration = statement.declarationList.declarations[0]!;
+    if (ts.isIdentifier(declaration.name) && declaration.initializer && ts.isIdentifier(declaration.initializer)) aliases.set(declaration.name.text, {
+      target: declaration.initializer.text,
+      immutable: (statement.declarationList.flags & ts.NodeFlags.Const) !== 0,
+    });
+  }
+  const resolve = (name: string, seen = new Set<string>()): typeof result[number] | undefined => {
+    if (seen.has(name)) return undefined;
+    const target = direct.get(name);
+    if (target) return target;
+    const alias = aliases.get(name);
+    if (!alias?.immutable) return undefined;
+    return resolve(alias.target, new Set([...seen, name]));
+  };
+  for (const name of aliases.keys()) {
+    const target = resolve(name);
+    if (target) (target as typeof target & { aliases?: string[] }).aliases = [...((target as typeof target & { aliases?: string[] }).aliases ?? []), name];
+  }
+  return result;
+}
+
+function analyzeWithProgram(program: ts.Program, sources: readonly ts.SourceFile[], programReused: boolean): { analysis: TypeScriptControlFlowAnalysis; byNode: Map<ts.FunctionLikeDeclaration, TypeScriptFunctionControlFlow> } {
+  const byNode = new Map<ts.FunctionLikeDeclaration, TypeScriptFunctionControlFlow>();
+  const checker = program.getTypeChecker();
+  const programOptions = program.getCompilerOptions();
+  const configurationCompatible = programOptions.noImplicitReturns === true;
+  for (const source of sources) {
+    const diagnostics = program.getSemanticDiagnostics(source);
+    for (const candidate of supportedFunctions(source)) {
+    const { node } = candidate;
+    const contained = diagnostics.filter((diagnostic) => diagnostic.start !== undefined && diagnostic.start >= node.getFullStart() && diagnostic.start < node.end);
+    const diagnosticCodes: TypeScriptFunctionControlFlow["diagnosticCodes"] = [...new Set(contained.map((diagnostic) => diagnostic.code))].sort((left, right) => Number(left) - Number(right));
+    if (!candidate.immutable) diagnosticCodes.push("uneffect-mutable-binding");
+    if (!candidate.stableName) diagnosticCodes.push("uneffect-dynamic-computed-name");
+    if (!configurationCompatible) diagnosticCodes.push("uneffect-incompatible-compiler-options");
+    const endpoint: TypeScriptFunctionEndpoint = !configurationCompatible || !candidate.immutable || !candidate.stableName ? "unknown" : diagnosticCodes.some((code) => typeof code === "number" && fallthroughDiagnosticCodes.has(code))
+      ? "reachable"
+      : contained.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error)
+        ? "unknown"
+        : ts.isArrowFunction(node) && !ts.isBlock(node.body) || ownValueReturns(node) > 0 ? "unreachable" : "unknown";
+    const neutralEndpoint = ts.isArrowFunction(node) && !ts.isBlock(node.body) ? "unreachable" : functionMayFallThrough(node.body as ts.Block) ? "reachable" : "unreachable";
+    const internalFlow = internalFlowObservation(node as ts.FunctionDeclaration);
+    byNode.set(node, {
+      name: candidate.name,
+      kind: candidate.kind,
+      span: { start: node.getStart(source), end: node.end },
+      endpoint,
+      neutralEndpoint,
+      parity: endpoint === "unknown" ? "unknown" : endpoint === neutralEndpoint ? "agree" : "typescript-refines",
+      evidence: "public-diagnostics",
+      diagnosticCodes,
+      internalFlowApi: internalFlow.status,
+      internalFlowNodeCount: internalFlow.count,
+      aliases: [...((candidate as typeof candidate & { aliases?: string[] }).aliases ?? [])],
+    });
+    }
+  }
+  for (const source of sources) {
+    const visitAlias = (current: ts.Node): void => {
+      if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name) && current.initializer
+        && (ts.isIdentifier(current.initializer) || ts.isPropertyAccessExpression(current.initializer) || ts.isElementAccessExpression(current.initializer))) {
+        const target = resolveStableCallableWithChecker(checker, current.initializer), summary = target && byNode.get(target);
+        if (summary && !summary.aliases.includes(current.name.text)) summary.aliases.push(current.name.text);
+      }
+      ts.forEachChild(current, visitAlias);
+    };
+    visitAlias(source);
+  }
+  const sourceText = sources.map((source) => `${source.fileName}\0${source.text}`).sort().join("\0");
+  return { analysis: {
+      schema: "uneffect-typescript-control-flow/v1",
+      typescriptVersion: ts.version,
+      sourceDigest: createHash("sha256").update(sourceText).digest("hex"),
+      compilerOptions: {
+        strict: programOptions.strict === true,
+        noImplicitReturns: programOptions.noImplicitReturns === true,
+        allowUnreachableCode: programOptions.allowUnreachableCode === true,
+      },
+      configurationCompatible,
+      programReused,
+      functions: [...byNode.values()],
+    }, byNode };
+}
+
+export function analyzeTypeScriptProgramControlFlow(program: ts.Program, sources: readonly ts.SourceFile[] = program.getSourceFiles().filter((source) => !source.isDeclarationFile)): TypeScriptControlFlowAnalysis {
+  return analyzeWithProgram(program, sources, true).analysis;
+}
+
+export function createTypeScriptControlFlowBridge(fileName: string, source: ts.SourceFile, existingProgram?: ts.Program): TypeScriptControlFlowBridge {
+  const program = existingProgram ?? createProgram(fileName, source), checker = program.getTypeChecker();
+  const programSource = existingProgram?.getSourceFile(source.fileName) ?? source;
+  const { analysis, byNode } = analyzeWithProgram(program, [programSource], existingProgram !== undefined);
+  const resolveStableCallable = (expression: ts.Expression): SupportedFunction | undefined => resolveStableCallableWithChecker(checker, expression);
+  return {
+    analysis,
+    options: {
+      isNeverCall: (call) => {
+        const signature = checker.getResolvedSignature(call);
+        return signature !== undefined && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0;
+      },
+      constantBoolean: (expression) => {
+        const type = checker.getTypeAtLocation(expression);
+        if ((type.flags & ts.TypeFlags.BooleanLiteral) === 0) return undefined;
+        return checker.typeToString(type) === "true";
+      },
+    },
+    endpointOf: (node) => byNode.get(node)?.endpoint ?? "unknown",
+    resolveStableCallable,
+  };
+}
+
+export function analyzeTypeScriptControlFlow(fileName: string, text: string): TypeScriptControlFlowAnalysis {
+  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  return createTypeScriptControlFlowBridge(fileName, source).analysis;
+}

@@ -74,6 +74,49 @@ npx uneffect spec temporal src/main.ts main --runtime web > main.qnt
 Project verification uses the same facade when `temporalRuntime` is `web` or
 `node`.
 
+## Contract runtime failures
+
+When `runtimeAssertions: "fallback"` is enabled, generated contract checks throw
+a `RangeError` with structured `uneffect` metadata. Catch boundaries can narrow
+it without depending on the message text:
+
+```ts
+import { isContractRuntimeError } from "@mizchi/uneffect"
+
+try {
+  await operation()
+} catch (error) {
+  if (isContractRuntimeError(error)) {
+    console.error(error.uneffect.fileName, error.uneffect.line,
+      error.uneffect.kind, error.uneffect.expression)
+  }
+}
+```
+
+`ContractRuntimeError` and `ContractRuntimeFailureMetadata` are exported types.
+Metadata includes the directive's one-based `line` and `column` plus its
+zero-based `{ start, end }` source span. For a linked `.uneffect.ts` contract,
+these coordinates and `fileName` identify the original predicate body in the
+specification AST, carried through materialization as sidecar provenance.
+Instrumented code does not import Uneffect at runtime; the type guard is
+optional consumer code.
+
+`analyzeTypeScriptControlFlow(fileName, source)` exposes the versioned
+`uneffect-typescript-control-flow/v1` artifact used by runtime-contract exit
+analysis. It binds the TypeScript version, source digest, compiler options,
+function diagnostics, neutral-CFG comparison, and internal-hook observation.
+See [TypeScript control-flow bridge](./typescript-control-flow.md). An
+`unreachable` endpoint is endpoint evidence, not a Hoare proof.
+
+`analyzeTypeScriptProgramControlFlow(program, sources?)` reuses an existing
+project snapshot and additionally covers static-named methods/accessors and
+directly `const`-bound functions. The Program must enable `noImplicitReturns`;
+otherwise its endpoints fail closed as `unknown`. Mutable function bindings
+are also `unknown`. Stable callable aliases compose through nested scopes,
+imports/re-exports, and direct properties of builtin-frozen static object
+literals. Runtime project lowering moves an alias contract to the resolved
+source callable rather than wrapping it.
+
 ## Async and resource API placement
 
 `/* uneffect:async ... */`, async diagnostics, and the high-level analyzers are
