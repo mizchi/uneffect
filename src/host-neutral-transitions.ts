@@ -40,7 +40,15 @@ export interface DisposeResourceTransition extends HostNeutralTransitionBase {
   readonly exits: ResourceDisposal["exits"];
 }
 
-export type HostNeutralTransition = InvokeCallbackTransition | SettlePromiseTransition | DisposeResourceTransition;
+export interface AbortSignalTransition extends HostNeutralTransitionBase {
+  readonly kind: "abort-signal";
+  readonly controller: string;
+  readonly reason: string;
+  readonly conditional: boolean;
+  readonly completion: "normal";
+}
+
+export type HostNeutralTransition = InvokeCallbackTransition | SettlePromiseTransition | DisposeResourceTransition | AbortSignalTransition;
 export type HostProfile = "web" | "node";
 export type WebHostQueue = "synchronous" | "microtask" | "timer-task" | "event-task" | "external" | "unknown";
 export type NodeHostQueue = "synchronous" | "next-tick" | "v8-microtask" | "timers" | "poll" | "check" | "close" | "external" | "unknown";
@@ -80,6 +88,7 @@ export interface GenerateHostTransitionModelOptions {
   readonly profile: HostProfile;
   readonly moduleName: string;
   readonly fairnessBound?: number;
+  readonly fairness?: "weak" | "strong";
   readonly nodeTopLevelMode?: "commonjs" | "esm";
 }
 
@@ -91,7 +100,41 @@ export interface HostTransitionModel {
   readonly cancellations: readonly HostCancellationLink[];
   readonly externalCompletions: readonly HostExternalCompletionLink[];
   readonly fairness: readonly HostFairnessObligation[];
+  readonly fairnessProperties: readonly string[];
   readonly quint: string;
+}
+
+export interface AbortControllerSummary {
+  readonly index: number;
+  readonly owner: string;
+  readonly binding: string;
+  readonly span: { start: number; end: number };
+  readonly evidence: "exact";
+}
+
+export interface AbortSignalEvent {
+  readonly controllerIndex: number;
+  readonly controller: string;
+  readonly owner: string;
+  readonly reason: string;
+  readonly conditional: boolean;
+  readonly synchronous: boolean;
+  readonly span: { start: number; end: number };
+  readonly evidence: "exact";
+}
+
+export interface AbortCompositionControllerLink {
+  readonly controllerIndex: number;
+  readonly controller: string;
+  readonly composition: number;
+  readonly source: number;
+  readonly evidence: "exact";
+}
+
+export interface AbortSignalAnalysis {
+  readonly controllers: readonly AbortControllerSummary[];
+  readonly events: readonly AbortSignalEvent[];
+  readonly compositionLinks: readonly AbortCompositionControllerLink[];
 }
 
 export interface HostNeutralTransitionAnalysis {
@@ -100,10 +143,99 @@ export interface HostNeutralTransitionAnalysis {
   readonly transitions: readonly HostNeutralTransition[];
   readonly evidence: "inferred" | "unknown";
   readonly diagnostics: readonly (CallableSummaryDiagnostic | AsyncSafetyDiagnostic)[];
+  readonly abortSignals: AbortSignalAnalysis;
 }
 
 function transitionId(fileName: string, owner: string, kind: string, index: number, start: number): string {
   return `${fileName}:${owner}:${kind}:${index}:${start}`;
+}
+
+function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
+  const symbol = checker.getSymbolAtLocation(node);
+  return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+}
+
+function lexicalOwner(node: ts.Node): string {
+  for (let current: ts.Node | undefined = node; current; current = current.parent) {
+    if (ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current) || ts.isFunctionExpression(current)) {
+      if (current.name) return current.name.getText(current.getSourceFile());
+    }
+    if (ts.isArrowFunction(current) && ts.isVariableDeclaration(current.parent) && ts.isIdentifier(current.parent.name)) return current.parent.name.text;
+  }
+  return "<module>";
+}
+
+function conditionalExecution(node: ts.Node): boolean {
+  for (let current: ts.Node | undefined = node.parent; current && !ts.isFunctionLike(current) && !ts.isSourceFile(current); current = current.parent) {
+    if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
+      || ts.isIterationStatement(current, false) || ts.isTryStatement(current) || ts.isCatchClause(current)) return true;
+  }
+  return false;
+}
+
+function synchronousFunctionExecution(node: ts.Node): boolean {
+  for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+    if (ts.isFunctionLike(current)) return !(ts.canHaveModifiers(current)
+      && ts.getModifiers(current)?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword));
+  }
+  return true;
+}
+
+export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.SourceFile): AbortSignalAnalysis {
+  const checker = program.getTypeChecker();
+  const controllers: AbortControllerSummary[] = [];
+  const controllerSymbols = new Map<ts.Symbol, AbortControllerSummary>();
+  const collectControllers = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isNewExpression(node.initializer)) {
+      const constructor = resolvedSymbol(checker, node.initializer.expression);
+      const builtin = constructor?.name === "AbortController" && constructor.declarations?.some((declaration) =>
+        program.isSourceFileDefaultLibrary(declaration.getSourceFile()));
+      const binding = resolvedSymbol(checker, node.name);
+      if (builtin && binding) {
+        const summary: AbortControllerSummary = {
+          index: controllers.length,
+          owner: lexicalOwner(node),
+          binding: node.name.text,
+          span: { start: node.getStart(source), end: node.getEnd() },
+          evidence: "exact",
+        };
+        controllers.push(summary);
+        controllerSymbols.set(binding, summary);
+      }
+    }
+    ts.forEachChild(node, collectControllers);
+  };
+  collectControllers(source);
+  const events: AbortSignalEvent[] = [];
+  const collectEvents = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "abort" && ts.isIdentifier(node.expression.expression)) {
+      const receiver = resolvedSymbol(checker, node.expression.expression);
+      const controller = receiver ? controllerSymbols.get(receiver) : undefined;
+      const method = resolvedSymbol(checker, node.expression.name);
+      const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())
+        && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "AbortController");
+      if (controller && builtin) events.push({
+        controllerIndex: controller.index,
+        controller: controller.binding,
+        owner: lexicalOwner(node),
+        reason: node.arguments[0]?.getText(source) ?? "AbortError",
+        conditional: conditionalExecution(node),
+        synchronous: synchronousFunctionExecution(node),
+        span: { start: node.getStart(source), end: node.getEnd() },
+        evidence: "exact",
+      });
+    }
+    ts.forEachChild(node, collectEvents);
+  };
+  collectEvents(source);
+  const patterns = analyzeAsyncPatternsInProgram(program, source);
+  const compositionLinks = patterns.abortCompositions.flatMap((composition, compositionIndex) =>
+    composition.sources.flatMap((sourceText, sourceIndex): AbortCompositionControllerLink[] => {
+      const controller = controllers.find((item) => sourceText === `${item.binding}.signal`);
+      return controller ? [{ controllerIndex: controller.index, controller: controller.binding, composition: compositionIndex, source: sourceIndex, evidence: "exact" }] : [];
+    }));
+  return { controllers, events, compositionLinks };
 }
 
 export function lowerCallableSummaryTransitions(summary: CallableSummary): HostNeutralTransition[] {
@@ -199,6 +331,59 @@ export function lowerAsyncPatternTransitions(fileName: string, model: AsyncPatte
   }));
 }
 
+function runActionNames(timer: TimerPattern, index: number, profile: HostProfile): string[] {
+  const base = profile === "node"
+    ? timer.queue === "next-tick" ? `drain_next_tick_${index}`
+      : timer.queue === "microtask" ? `drain_microtask_${index}`
+      : timer.queue === "check" ? `run_check_${index}`
+      : timer.queue === "poll" ? `run_poll_${index}`
+      : timer.queue === "close" ? `run_close_${index}` : `run_timer_${index}`
+    : timer.queue === "microtask" ? `drain_microtask_${index}`
+      : timer.queue === "animation-frame" ? `run_animation_frame_${index}`
+      : timer.kind === "scheduler-post-task" ? `run_scheduler_task_${index}`
+      : timer.kind === "scheduler-yield" ? `run_scheduler_yield_${index}`
+      : timer.kind === "abort-timeout" ? `run_abort_timeout_task_${index}` : `run_timer_task_${index}`;
+  return timer.callbackAlternatives?.length
+    ? timer.callbackAlternatives.map((_, alternative) => `${base}_alt_${alternative}`)
+    : [base];
+}
+
+function attachExecutableFairness(
+  quint: string,
+  patterns: AsyncPatternModel,
+  profile: HostProfile,
+  kind: "weak" | "strong" | undefined,
+  definitelyCancelled: ReadonlySet<string>,
+  patternTransitions: readonly InvokeCallbackTransition[],
+): { quint: string; properties: string[] } {
+  if (!kind) return { quint, properties: [] };
+  const variableNames = [...quint.matchAll(/^\s*var\s+([A-Za-z_][A-Za-z0-9_]*):/gmu)].map((match) => match[1]!);
+  if (variableNames.length === 0) throw new Error("generated host model exposes no state variables for fairness");
+  const declarations: string[] = ["", `  val hostFairnessVars = (${variableNames.join(", ")})`];
+  const properties: string[] = [];
+  patterns.timers.forEach((timer, index) => {
+    const transition = patternTransitions[index]!;
+    if (definitelyCancelled.has(transition.id)) return;
+    const actions = runActionNames(timer, index, profile);
+    const property = `fair_host_${index}`;
+    if (actions.length === 1) declarations.push(`  temporal ${property} = ${actions[0]}.${kind}Fair(hostFairnessVars)`);
+    else {
+      const aggregate = `fair_host_action_${index}`;
+      declarations.push(`  action ${aggregate} = any {`, ...actions.map((action) => `    ${action},`), "  }");
+      declarations.push(`  temporal ${property} = ${aggregate}.${kind}Fair(hostFairnessVars)`);
+    }
+    properties.push(property);
+    if (timer.externallyReady || timer.queue === "poll" || timer.queue === "close") {
+      const externalProperty = `fair_external_${index}`;
+      declarations.push(`  temporal ${externalProperty} = complete_${timer.queue}_${index}.${kind}Fair(hostFairnessVars)`);
+      properties.push(externalProperty);
+    }
+  });
+  const close = quint.lastIndexOf("}");
+  if (close < 0) throw new Error("generated host model has no module terminator");
+  return { quint: `${quint.slice(0, close).trimEnd()}\n${declarations.join("\n")}\n}\n`, properties };
+}
+
 export function composeHostNeutralTransitions(
   ...groups: readonly (readonly HostNeutralTransition[])[]
 ): HostNeutralTransition[] {
@@ -232,6 +417,21 @@ export function lowerHostNeutralTransitions(
   return transitions.map((transition) => ({ transition, profile, ...hostQueue(transition, profile) }));
 }
 
+export function lowerAbortSignalTransitions(fileName: string, analysis: AbortSignalAnalysis): AbortSignalTransition[] {
+  return analysis.events.map((event, index) => ({
+    kind: "abort-signal",
+    id: transitionId(fileName, event.owner, `abort-${event.controller}`, index, event.span.start),
+    fileName,
+    owner: event.owner,
+    controller: event.controller,
+    reason: event.reason,
+    conditional: event.conditional,
+    lane: "inline",
+    completion: "normal",
+    span: event.span,
+  }));
+}
+
 /** Connects callable, Promise, and resource analyses before a host scheduler is selected. */
 export function analyzeHostNeutralTransitions(
   program: ts.Program,
@@ -240,11 +440,13 @@ export function analyzeHostNeutralTransitions(
 ): HostNeutralTransitionAnalysis {
   const callables = analyzeCallableSummaries(program);
   const async = analyzeAsyncSafetyInProgram(program, source, options);
+  const abortSignals = analyzeAbortSignalsInProgram(program, source);
   const summaries = callables.summaries.filter((summary) => summary.fileName === source.fileName);
   const combined = composeHostNeutralTransitions(
     ...summaries.map(lowerCallableSummaryTransitions),
     lowerPromiseChainTransitions(source.fileName, async.promiseChains),
     lowerResourceDisposalTransitions(source.fileName, async.disposals),
+    lowerAbortSignalTransitions(source.fileName, abortSignals),
   );
   const seenInvocations = new Set<string>();
   const transitions = combined.filter((transition) => {
@@ -264,6 +466,7 @@ export function analyzeHostNeutralTransitions(
     transitions,
     evidence: diagnostics.length > 0 || summaries.some((summary) => summary.evidence === "unknown") ? "unknown" : "inferred",
     diagnostics,
+    abortSignals,
   };
 }
 
@@ -278,6 +481,15 @@ export function generateHostTransitionModel(
   const transitionAnalysis = analyzeHostNeutralTransitions(program, source);
   const asyncSafety = analyzeAsyncSafetyInProgram(program, source);
   const patterns = analyzeAsyncPatternsInProgram(program, source);
+  for (const link of transitionAnalysis.abortSignals.compositionLinks) {
+    const event = transitionAnalysis.abortSignals.events.find((candidate) =>
+      candidate.controllerIndex === link.controllerIndex && candidate.synchronous && !candidate.conditional);
+    const composition = patterns.abortCompositions[link.composition];
+    if (!event || !composition || composition.initiallyAbortedSource !== undefined) continue;
+    composition.initiallyAbortedSource = link.source;
+    composition.sourceReasons[link.source] = event.reason;
+    for (const timer of patterns.timers) if (timer.abortComposition === link.composition) timer.initiallyCancelled = true;
+  }
   const patternTransitions = lowerAsyncPatternTransitions(source.fileName, patterns);
   const patternSpans = new Set(patternTransitions.map((transition) => `${transition.span.start}:${transition.span.end}`));
   const transitions = composeHostNeutralTransitions(
@@ -311,9 +523,12 @@ export function generateHostTransitionModel(
       ? [{ transitionId: item.transition.id, maximumSkips: options.fairnessBound!, assumption: "bounded-host-progress", evidence: "assumed" }]
       : [],
   );
-  const quint = options.profile === "web"
+  const hostQuint = options.profile === "web"
     ? generateWebEventLoopQuint(options.moduleName, patterns, {}, asyncSafety.promiseChains)
     : generateNodeEventLoopQuint(options.moduleName, patterns, { topLevelMode: options.nodeTopLevelMode ?? "commonjs" }, asyncSafety.promiseChains);
+  const executableFairness = attachExecutableFairness(
+    hostQuint, patterns, options.profile, options.fairness, definitelyCancelled, patternTransitions,
+  );
   return {
     schema: "uneffect-host-transition-model/v1",
     profile: options.profile,
@@ -322,6 +537,7 @@ export function generateHostTransitionModel(
     cancellations,
     externalCompletions,
     fairness,
-    quint,
+    fairnessProperties: executableFairness.properties,
+    quint: executableFairness.quint,
   };
 }

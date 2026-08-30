@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -9,6 +10,7 @@ import type { PromiseChainModel } from "../src/promise-chains.js";
 import {
   composeHostNeutralTransitions,
   analyzeHostNeutralTransitions,
+  analyzeAbortSignalsInProgram,
   lowerCallableSummaryTransitions,
   lowerPromiseChainTransitions,
   lowerResourceDisposalTransitions,
@@ -94,7 +96,7 @@ describe("host-neutral async transitions", () => {
         target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
       });
       const model = generateHostTransitionModel(program, program.getSourceFile(fileName)!, {
-        profile: "web", moduleName: "neutral_web", fairnessBound: 3,
+        profile: "web", moduleName: "neutral_web", fairnessBound: 3, fairness: "weak",
       });
       expect(model.cancellations).toContainEqual(expect.objectContaining({ definite: true, compatible: true, evidence: "exact" }));
       expect(model.fairness).toEqual(expect.arrayContaining([
@@ -102,6 +104,11 @@ describe("host-neutral async transitions", () => {
       ]));
       expect(model.quint).toContain("module neutral_web");
       expect(model.quint).toContain("callback_0_pending' = false");
+      expect(model.quint).toContain("temporal fair_host_1 = drain_microtask_1.weakFair(hostFairnessVars)");
+      expect(model.fairnessProperties).toEqual(["fair_host_1"]);
+      const quintFile = join(directory, "neutral-web.qnt");
+      writeFileSync(quintFile, model.quint);
+      expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -122,11 +129,99 @@ describe("host-neutral async transitions", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
       });
       const model = generateHostTransitionModel(program, program.getSourceFile(fileName)!, {
-        profile: "node", moduleName: "neutral_node", fairnessBound: 2,
+        profile: "node", moduleName: "neutral_node", fairnessBound: 2, fairness: "strong",
       });
       expect(model.externalCompletions).toContainEqual(expect.objectContaining({ queue: "poll", evidence: "exact" }));
       expect(model.quint).toContain("module neutral_node");
       expect(model.quint).toContain("action complete_poll_0");
+      expect(model.quint).toContain("run_poll_0.strongFair(hostFairnessVars)");
+      expect(model.quint).toContain("complete_poll_0.strongFair(hostFairnessVars)");
+      const quintFile = join(directory, "neutral-node.qnt");
+      writeFileSync(quintFile, model.quint);
+      expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["web", "node"] as const)("keeps conditional cancellation as a %s execution race", (profile) => {
+    const directory = mkdtempSync(join(tmpdir(), `uneffect-neutral-cancel-${profile}-`));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function main(cancel: boolean) {
+          const handle = setTimeout(() => console.log("later"), 1)
+          if (cancel) clearTimeout(handle)
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+      });
+      const model = generateHostTransitionModel(program, program.getSourceFile(fileName)!, {
+        profile, moduleName: `cancel_${profile}`, fairness: "weak",
+      });
+      expect(model.cancellations).toContainEqual(expect.objectContaining({ definite: false, compatible: true, evidence: "exact" }));
+      expect(model.quint).toContain("action cancel_timer_0");
+      expect(model.quint).toContain(profile === "web" ? "run_timer_task_0.weakFair" : "run_timer_0.weakFair");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("tracks TypeChecker-identified AbortController aborts and AbortSignal.any sources", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-neutral-abort-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function main(cancel: boolean) {
+          const controller = new AbortController()
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10)])
+          if (cancel) controller.abort(new Error("cancelled"))
+          return signal
+        }
+        class FakeAbortController { signal = {}; abort(_reason?: unknown) {} }
+        const fake = new FakeAbortController()
+        fake.abort("ignored")
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const aborts = analyzeAbortSignalsInProgram(program, program.getSourceFile(fileName)!);
+      expect(aborts.controllers).toHaveLength(1);
+      expect(aborts.events).toEqual([
+        expect.objectContaining({ controller: "controller", reason: 'new Error("cancelled")', conditional: true, evidence: "exact" }),
+      ]);
+      expect(aborts.compositionLinks).toEqual([
+        expect.objectContaining({ controller: "controller", composition: 0, source: 0, evidence: "exact" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("feeds a definite synchronous controller abort into Web scheduler state", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-neutral-abort-host-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function main() {
+          const controller = new AbortController()
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10)])
+          scheduler.postTask(() => console.log("never"), { signal, priority: "background" })
+          controller.abort("stop")
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const model = generateHostTransitionModel(program, program.getSourceFile(fileName)!, {
+        profile: "web", moduleName: "abort_host",
+      });
+      expect(model.transitionAnalysis.transitions).toContainEqual(expect.objectContaining({
+        kind: "abort-signal", controller: "controller", reason: '"stop"', lane: "inline",
+      }));
+      expect(model.quint).toContain("abort_0_aborted' = true");
+      expect(model.quint).toContain("callback_1_pending' = false");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

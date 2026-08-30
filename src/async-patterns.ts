@@ -2151,6 +2151,11 @@ export function generateNodeEventLoopQuint(
     const requirement = summary.requires.map((item) => `(${generateQuintExpression(item)})`).join(" and ");
     return [`(not(callback_${index}_pending) or ${clock} < callback_${index}_due or (${requirement}))`];
   });
+  for (const index of new Set(model.cancellations.flatMap((cancellation) =>
+    !cancellation.definite && cancellation.compatible && cancellation.timer !== undefined && supported.includes(cancellation.timer)
+      ? [cancellation.timer] : []))) {
+    action(`cancel_timer_${index}`, [`callback_${index}_pending`], new Map([[`callback_${index}_pending`, "false"]]));
+  }
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   temporalComposition?.properties.forEach((property) => lines.push("", `  val ${safe(property.name)} = ${generateQuintExpression(property.expressionAst)}`));
   lines.push("", `  val nodeEventLoopSafe = not(wrong_checkpoint_order) and not(wrong_phase) and not(callback_precondition_broken)${callbackPreconditions.map((term) => ` and ${term}`).join("")}`, "}", "");
@@ -2384,6 +2389,11 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     const requirement = summary.requires.map((item) => `(${generateQuintExpression(item)})`).join(" and ");
     return [`(not(callback_${index}_pending) or ${clock} < callback_${index}_due or (${requirement}))`];
   });
+  for (const index of new Set(model.cancellations.flatMap((cancellation) =>
+    !cancellation.definite && cancellation.compatible && cancellation.timer !== undefined
+      ? [cancellation.timer] : []))) {
+    action(`cancel_timer_${index}`, [`callback_${index}_pending`], new Map([[`callback_${index}_pending`, "false"]]));
+  }
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   temporalComposition?.properties.forEach((property) => lines.push("", `  val ${safe(property.name)} = ${generateQuintExpression(property.expressionAst)}`));
   lines.push("", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken) and not(scheduler_priority_broken) and not(scheduler_abort_broken) and not(abort_source_broken) and not(callback_precondition_broken)${[...oneShotSignals, ...abortReasons, ...callbackPreconditions].map((term) => ` and ${term}`).join("")}`, "}", "");

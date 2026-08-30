@@ -179,10 +179,24 @@ introducing another domain-local control-flow or alias model.
    - [x] Emit explicit bounded-host-progress fairness assumptions for exact,
      non-synchronous, non-cancelled transitions instead of silently treating
      scheduler progress as proved.
-   - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Encode neutral fairness obligations into executable Quint temporal
-     constraints, compose cancellation races and external completion with
-     resources/Promise settlement, and retain unsupported host-specific
-     ordering as explicit unknown transitions.
+   - [x] Encode opt-in weak/strong fairness as executable Quint temporal
+     constraints over the generated Web/Node state tuple, including external
+     poll/close completion and finite callback alternatives; Quint typechecks
+     both host projections.
+   - [x] Preserve compatible conditional `clearTimeout` as a nondeterministic
+     cancellation-versus-execution race in both Web and Node queue-state
+     models; do not impose fairness on the optional cancellation branch.
+   - [x] Extract TypeChecker-identified local `AbortController` construction and
+     `abort(reason)` calls into neutral inline abort transitions, reject
+     same-spelled user classes, and link `controller.signal` sources in static
+     `AbortSignal.any` compositions.
+   - [x] Feed definite unconditional aborts in synchronous owners into Web
+     scheduler initial state, preserving the abort reason and preventing an
+     already-cancelled `scheduler.postTask` callback from becoming pending.
+   - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
+     resources/Promise settlement; connect conditional/async/controller aliases,
+     direct controller signals, fetch and general abortable APIs; and retain
+     unsupported host-specific ordering as explicit unknown transitions.
 5. [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Consume persisted package contract/effect summaries at call sites with
    exact package, export, declaration, compiler, and source provenance. Unknown
    or stale summaries must block assurance; publisher/build authenticity stays

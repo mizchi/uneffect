@@ -75,10 +75,30 @@ same property is proved for arbitrary TypeScript.
   timer cancellation links and Node poll/close external-completion links.
   Optional `fairnessBound` emits per-transition `bounded-host-progress`
   assumptions and excludes definitely cancelled work. These fairness entries
-  are explicitly `assumed`, not verified: executable Quint fairness constraints,
-  cancellation races, and the combined resource/Promise/external product remain
-  open. The generated host Quint still checks the previously supported queue
-  order, cancellation, and external-completion safety properties.
+  are explicitly `assumed`, not verified. Separately, `fairness: "weak"` or
+  `"strong"` emits executable Quint temporal fairness constraints over the
+  complete generated host-state tuple. It covers callback execution and Node
+  poll/close external completion, combines finite callback alternatives into
+  one fair action, and omits definitely cancelled work. Generated Web and Node
+  fairness models are Quint-typechecked in CI. Fairness remains an explicit
+  environment assumption used for liveness, not a JavaScript safety theorem;
+  compatible conditional `clearTimeout` is now an explicit nondeterministic
+  cancellation-versus-execution action in both host models, while definite
+  cancellation disables initial pending work. Cancellation branches themselves
+  are not made fair. The combined resource/Promise/external product remains
+  open. Queue order, cancellation, and external-completion safety retain their
+  existing checked properties.
+- Abort control is also represented in the neutral layer. Local builtin
+  `AbortController` construction and identity-checked `abort(reason)` calls
+  produce source-attributed inline transitions; same-spelled user classes are
+  ignored. Static `AbortSignal.any` entries of the form `controller.signal` are
+  linked to their controller and retain source position/reason. A definite,
+  unconditional abort in the same synchronous owner updates the initial Web
+  abort-composition state and disables an already-cancelled scheduler task.
+  Conditional abort remains the existing nondeterministic composition source.
+  Async owners, controller aliases/escape, direct controller signals without
+  `AbortSignal.any`, fetch and general abortable API cancellation are not yet
+  claimed.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
