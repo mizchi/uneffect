@@ -13,6 +13,7 @@ import { generateTemporalModel } from "./temporal-model.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
 import { prepareCapabilityDslLinks } from "./capability-dsl.js";
 import { materializeContractDslLinks } from "./contract-dsl.js";
+import { instrumentContractPredicates } from "./contract-runtime.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import {
@@ -308,7 +309,9 @@ async function verifyUneffectProjectFiles(
       ? { ...artifact, status: "unknown" as const, evidence: "unknown" as const, backend: "z3" as const, result: "unknown" as const, message: "TypeScript errors prevent proof-grade contract evidence for this source" }
       : { ...artifact, backend: "z3" as const, result: artifact.status }));
     diagnostics.push(...verification.diagnostics);
-    const instrumented = options.runtimeAssertions === "fallback" ? instrumentRuntimeAssertions(fileName, contractSource) : { code: source, diagnostics: [] };
+    const parameterInstrumented = options.runtimeAssertions === "fallback" ? instrumentRuntimeAssertions(fileName, contractSource) : { code: source, diagnostics: [] };
+    const predicateInstrumented = options.runtimeAssertions === "fallback" ? instrumentContractPredicates(fileName, parameterInstrumented.code) : parameterInstrumented;
+    const instrumented = { code: predicateInstrumented.code, diagnostics: [...parameterInstrumented.diagnostics, ...predicateInstrumented.diagnostics] };
     diagnostics.push(...instrumented.diagnostics);
     emittedFiles[javascriptPath(fileName)] = ts.transpileModule(instrumented.code, {
       fileName,

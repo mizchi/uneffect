@@ -463,6 +463,16 @@ The instrumenter emits a `valibot` import and `parse` call. A safe subset of exp
 
 Arbitrary callbacks and executable expressions are rejected. Instrumentation changes runtime behavior and the thrown-error surface, so its build-profile setting must be included in proof artifacts.
 
+Linked `defineContract` specifications use the same opt-in profile. Uneffect
+can lower arithmetic/comparison/Boolean `requires` and `ensures` expressions,
+plus `Nat` and finite `Float` result validation, for synchronous functions with
+value-returning exits. Multiple branch returns are checked independently and
+nested function exits are not attributed to the outer function. It does not
+import or execute the specification module. Function calls, property access,
+async fulfillment, bare returns, and fallthrough in the supported
+return/throw/block/if-else fragment are rejected rather than silently omitted.
+Richer CFG exit analysis remains outside the runtime claim.
+
 ## Logical contracts
 
 ```ts

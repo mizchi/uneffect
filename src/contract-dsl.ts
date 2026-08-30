@@ -161,6 +161,7 @@ export function materializeContractDslLinks(files: Readonly<Record<string, strin
     if (program) validateContractDslLink(program, fileName, specificationFile, contract);
     const body = [
       ...contract.parameters.filter((item) => item.domain === "nat" || item.domain === "float").map((item) => `assert ${item.name}: ${item.domain === "nat" ? "Nat" : "Float"}`),
+      ...(contract.resultDomain === "nat" || contract.resultDomain === "float" ? [`returns ${contract.resultDomain === "nat" ? "Nat" : "Float"}`] : []),
       ...contract.requires.map((value) => `requires ${value}`),
       ...contract.ensures.map((value) => `ensures ${value}`),
     ].join("\n * ");

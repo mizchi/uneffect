@@ -128,8 +128,17 @@ interleaved into that product.
       TypeChecker identity.
     - [x] Add multiple clauses, Nat/Float parameter refinements, and linked
       Valibot assertion dogfood through `runtimeAssertions: "fallback"`.
-    - [ ] Lower supported requires/ensures predicates and refined results to ([#64](https://github.com/mizchi/uneffect/issues/64))
-      optional runtime checks without evaluating arbitrary specification code.
+    - [x] Lower the pure scalar `requires`/`ensures` fragment and `Nat`/`Float`
+      results to optional runtime checks without evaluating arbitrary
+      specification code. The first runtime fragment deliberately accepts only
+      synchronous functions with value-returning exits.
+    - [x] Instrument multiple value returns across synchronous branches while
+      excluding nested function exits and avoiding generated-name collisions.
+    - [x] Fail closed when the supported return/throw/block/if-else control-flow
+      fragment may fall through without checking a postcondition.
+    - [ ] Extend contract runtime lowering to richer CFG exits, async fulfillment, ([#64](https://github.com/mizchi/uneffect/issues/64))
+      and source-mapped diagnostics without weakening the current fail-closed
+      expression whitelist.
   - [ ] Version a backend-neutral AST and module interface shared by capability ([#64](https://github.com/mizchi/uneffect/issues/64))
     effects, Hoare contracts/invariants, and temporal specifications without
     collapsing their distinct semantics.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseContractDsl } from "../src/contract-dsl.js";
+import { instrumentContractPredicates } from "../src/contract-runtime.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 
 const specification = `
@@ -29,6 +30,92 @@ describe("TypeScript contract DSL", () => {
     } });
     expect(result.obligations).toContainEqual(expect.objectContaining({ obligation: expect.objectContaining({ functionName: "increment" }), result: "verified" }));
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("lowers the safe predicate fragment to optional runtime assertions", async () => {
+    const result = await verifyUneffectProject({
+      files: {
+        "src/counter.ts": `/* uneffect:contract from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
+        "src/counter.uneffect.ts": specification,
+      },
+      runtimeAssertions: "fallback",
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.emittedFiles["src/counter.js"]).toContain("Uneffect precondition failed: value >= 0");
+    expect(result.emittedFiles["src/counter.js"]).toContain("Uneffect postcondition failed: result === value + 1");
+  });
+
+  it("does not execute unsupported calls embedded in contract comments", () => {
+    const result = instrumentContractPredicates("unsafe.ts", `
+      /* uneffect:contract
+       * requires validate(value)
+       */
+      function unsafe(value: number): number { return value }
+    `);
+    expect(result.code).not.toContain("if (!(validate(value)))");
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported-function", parameter: "<contract>" }));
+  });
+
+  it("instruments every value return in a synchronous branching function", () => {
+    const result = instrumentContractPredicates("branch.ts", `
+      /* uneffect:contract
+       * ensures result >= 0
+       */
+      function absolute(value: number): number {
+        if (value < 0) return -value;
+        return value;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.code.match(/Uneffect postcondition failed/g)).toHaveLength(2);
+    expect(result.code).toContain("const __uneffect_contract_result_0 = (-value)");
+    expect(result.code).toContain("const __uneffect_contract_result_1 = (value)");
+  });
+
+  it("does not treat returns in nested functions as outer contract exits", () => {
+    const result = instrumentContractPredicates("nested.ts", `
+      /* uneffect:contract
+       * ensures result >= 0
+       */
+      function outer(value: number): number {
+        const inner = () => { return -1 };
+        return value;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.code.match(/Uneffect postcondition failed/g)).toHaveLength(1);
+    expect(result.code).toContain("return -1");
+  });
+
+  it("chooses generated result names that do not shadow user bindings", () => {
+    const result = instrumentContractPredicates("collision.ts", `
+      /* uneffect:contract
+       * ensures result >= 0
+       */
+      function collision(value: number): number {
+        const __uneffect_contract_result_0 = value;
+        return __uneffect_contract_result_0;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.code).toContain("const __uneffect_contract_result_1 = (__uneffect_contract_result_0)");
+  });
+
+  it("fails closed when a postcondition function may fall through", () => {
+    const result = instrumentContractPredicates("fallthrough.ts", `
+      /* uneffect:contract
+       * ensures result >= 0
+       */
+      function incomplete(value: number): number {
+        if (value >= 0) return value;
+      }
+    `);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      kind: "unsupported-function",
+      parameter: "result",
+      message: expect.stringContaining("fall through"),
+    }));
+    expect(result.code).not.toContain("Uneffect postcondition failed");
   });
 
   it("keeps a broken implementation as a counterexample", async () => {
@@ -70,5 +157,6 @@ describe("TypeScript contract DSL", () => {
     expect(result.obligations).toContainEqual(expect.objectContaining({ result: "verified" }));
     expect(result.emittedFiles["src/double.js"]).toContain("safeInteger()");
     expect(result.emittedFiles["src/double.js"]).toContain("minValue(0)");
+    expect(result.emittedFiles["src/double.js"]).toContain("Uneffect postcondition failed: result === value");
   });
 });

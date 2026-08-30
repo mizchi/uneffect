@@ -166,5 +166,13 @@ Project verification checks helper symbol identity and requires parameter names,
 scalar domains, arity, and result domain to match the implementation's exact
 TypeChecker signature. A linked `nat()` or `float()` parameter additionally
 lowers to the existing Valibot `Nat`/`Float` assertion when
-`runtimeAssertions: "fallback"` is enabled. General predicate-to-runtime
-lowering and refined result validation remain pending.
+`runtimeAssertions: "fallback"` is enabled. In that profile, pure scalar
+preconditions and postconditions are also emitted as checks, and `nat()` or
+`float()` results receive matching Valibot validation. This initial runtime
+fragment requires a synchronous function whose discovered exits return values.
+Multiple branch returns are instrumented independently, while returns belonging
+to nested functions are excluded. Calls, property access, async functions, bare
+returns, and other unsupported expressions fail closed with diagnostics.
+The supported return/throw/block/if-else fragment must also be shown unable to
+fall through; richer CFG exit analysis remains outside this runtime claim. The
+`.uneffect.ts` module is parsed but never evaluated.
