@@ -199,6 +199,33 @@ describe("host-neutral async transitions", () => {
     }
   });
 
+  it("keeps same-spelled block-scoped AbortControllers distinct", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-neutral-abort-shadow-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function main() {
+          { const controller = new AbortController(); const first = AbortSignal.any([controller.signal]); void first }
+          { const controller = new AbortController(); const second = AbortSignal.any([controller.signal]); void second }
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const aborts = analyzeAbortSignalsInProgram(program, program.getSourceFile(fileName)!);
+      expect(aborts.controllers.map((controller) => controller.identity.declarationStart)).toEqual([
+        expect.any(Number), expect.any(Number),
+      ]);
+      expect(aborts.controllers[0]!.identity).not.toEqual(aborts.controllers[1]!.identity);
+      expect(aborts.compositionLinks).toEqual([
+        expect.objectContaining({ controllerIndex: 0, composition: 0, source: 0 }),
+        expect.objectContaining({ controllerIndex: 1, composition: 1, source: 0 }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("feeds a definite synchronous controller abort into Web scheduler state", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-neutral-abort-host-"));
     try {

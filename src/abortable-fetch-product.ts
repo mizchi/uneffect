@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { analyzeAsyncPatternsInProgram } from "./async-patterns.js";
+import { bindingIdentityKey, symbolIdentityKey } from "./binding-identity.js";
 import { analyzeAbortSignalsInProgram } from "./host-neutral-transitions.js";
 
 export interface AbortableFetch {
@@ -6,6 +8,9 @@ export interface AbortableFetch {
   readonly binding: string;
   readonly url: string;
   readonly controller: string;
+  readonly signalKind: "controller-direct" | "controller-alias" | "abort-any";
+  readonly optionsKind: "inline" | "single-use-const-alias";
+  readonly abortComposition?: number;
   readonly abortReason?: string;
   readonly abortConditional?: boolean;
   readonly span: { start: number; end: number };
@@ -40,32 +45,105 @@ function ownerName(node: ts.Node): string {
 export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts.SourceFile): AbortableFetchAnalysis {
   const checker = program.getTypeChecker();
   const aborts = analyzeAbortSignalsInProgram(program, source);
+  const asyncPatterns = analyzeAsyncPatternsInProgram(program, source);
   const fetches: AbortableFetch[] = [], unknown: AbortableFetchUnknown[] = [];
+  const symbolReferenceCount = (target: ts.Symbol): number => {
+    let count = 0;
+    const countReferences = (node: ts.Node): void => {
+      if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === target) count++;
+      ts.forEachChild(node, countReferences);
+    };
+    countReferences(source);
+    return count;
+  };
+  const signalFromObjectLiteral = (object: ts.ObjectLiteralExpression): ts.Expression | undefined => {
+    const property = object.properties.find((candidate) =>
+      (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
+        && candidate.name.getText(source).replaceAll(/["']/gu, "") === "signal");
+    return property && (ts.isPropertyAssignment(property) ? property.initializer
+      : ts.isShorthandPropertyAssignment(property) ? property.name : undefined);
+  };
+  const resolveOptions = (expression: ts.Expression | undefined, owner: string): { signal: ts.Expression; kind: AbortableFetch["optionsKind"] } | undefined => {
+    if (!expression) return undefined;
+    if (ts.isObjectLiteralExpression(expression)) {
+      const signal = signalFromObjectLiteral(expression);
+      return signal ? { signal, kind: "inline" } : undefined;
+    }
+    if (!ts.isIdentifier(expression)) return undefined;
+    const symbol = resolvedSymbol(checker, expression);
+    const declaration = symbol?.valueDeclaration;
+    if (!symbol || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+      || !ts.isObjectLiteralExpression(declaration.initializer)
+      || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+      || ownerName(declaration) !== owner || symbolReferenceCount(symbol) !== 2) return undefined;
+    const signal = signalFromObjectLiteral(declaration.initializer);
+    return signal ? { signal, kind: "single-use-const-alias" } : undefined;
+  };
+  type SignalTarget = { controllerIndex?: number; composition?: number; alias: boolean };
+  const resolveSignal = (expression: ts.Expression, owner: string, seen = new Set<ts.Symbol>()): SignalTarget | undefined => {
+    if (ts.isPropertyAccessExpression(expression) && expression.name.text === "signal" && ts.isIdentifier(expression.expression)) {
+      const receiver = resolvedSymbol(checker, expression.expression);
+      const receiverIdentity = symbolIdentityKey(receiver);
+      const controller = aborts.controllers.find((item) => bindingIdentityKey(item.identity) === receiverIdentity);
+      return controller ? { controllerIndex: controller.index, alias: false } : undefined;
+    }
+    if (ts.isIdentifier(expression)) {
+      const shorthand = ts.isShorthandPropertyAssignment(expression.parent)
+        ? checker.getShorthandAssignmentValueSymbol(expression.parent) : undefined;
+      const symbol = shorthand ?? resolvedSymbol(checker, expression);
+      if (!symbol || seen.has(symbol)) return undefined;
+      seen.add(symbol);
+      const declaration = symbol.valueDeclaration;
+      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent)
+        || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+        || ownerName(declaration) !== owner) return undefined;
+      const target = resolveSignal(declaration.initializer, owner, seen);
+      return target ? { ...target, alias: true } : undefined;
+    }
+    if (ts.isCallExpression(expression)) {
+      const composition = asyncPatterns.abortCompositions.findIndex((item) =>
+        item.owner === owner && item.span.start === expression.getStart(source) && item.span.end === expression.getEnd());
+      return composition >= 0 ? { composition, alias: false } : undefined;
+    }
+    return undefined;
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fetch") {
       const symbol = resolvedSymbol(checker, node.expression);
       const builtin = symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
       if (!builtin) { ts.forEachChild(node, visit); return; }
-      const options = node.arguments[1];
-      const signalProperty = options && ts.isObjectLiteralExpression(options) ? options.properties.find((property): property is ts.PropertyAssignment =>
-        ts.isPropertyAssignment(property) && property.name?.getText(source).replaceAll(/["']/gu, "") === "signal") : undefined;
-      const signal = signalProperty?.initializer;
-      const controllerName = signal && ts.isPropertyAccessExpression(signal) && signal.name.text === "signal"
-        && ts.isIdentifier(signal.expression) ? signal.expression.text : undefined;
-      const controller = controllerName ? aborts.controllers.find((item) => item.binding === controllerName && item.owner === ownerName(node)) : undefined;
+      const owner = ownerName(node);
+      const options = resolveOptions(node.arguments[1], owner);
+      const target = options ? resolveSignal(options.signal, owner) : undefined;
+      const controller = target?.controllerIndex === undefined ? undefined : aborts.controllers[target.controllerIndex];
+      const composition = target?.composition === undefined ? undefined : asyncPatterns.abortCompositions[target.composition];
       const binding = ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
         && ts.isVariableDeclarationList(node.parent.parent) && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0
         ? node.parent.name.text : undefined;
-      if (!controller || !binding) unknown.push({
+      if ((!controller && !composition) || !binding) unknown.push({
         expression: node.getText(source),
-        reason: !binding ? "abortable fetch result requires an immutable local binding" : "fetch signal is not a direct local builtin AbortController.signal",
+        reason: !binding ? "abortable fetch result requires an immutable local binding"
+          : !options ? "fetch RequestInit must be an inline object or a single-use const object-literal alias"
+          : "fetch signal is not a statically resolved local builtin AbortController signal or AbortSignal.any composition",
         span: { start: node.getStart(source), end: node.getEnd() },
       });
       else {
-        const event = aborts.events.find((item) => item.controllerIndex === controller.index);
+        const linkedControllers = composition ? aborts.compositionLinks.filter((item) => item.composition === target!.composition) : [];
+        const event = controller
+          ? aborts.events.find((item) => item.controllerIndex === controller.index)
+          : aborts.events.find((item) => linkedControllers.some((link) => link.controllerIndex === item.controllerIndex));
+        const initialSource = composition?.initiallyAbortedSource;
+        const initialReason = initialSource === undefined ? undefined : composition?.sourceReasons[initialSource] ?? "AbortError";
         fetches.push({
-          owner: ownerName(node), binding, url: node.arguments[0]?.getText(source) ?? "<missing>", controller: controller.binding,
-          ...(event ? { abortReason: event.reason, abortConditional: event.conditional } : {}),
+          owner, binding, url: node.arguments[0]?.getText(source) ?? "<missing>",
+          controller: controller?.binding ?? "<AbortSignal.any>",
+          signalKind: composition ? "abort-any" : target!.alias ? "controller-alias" : "controller-direct",
+          optionsKind: options!.kind,
+          ...(target?.composition === undefined ? {} : { abortComposition: target.composition }),
+          ...(initialReason ? { abortReason: initialReason, abortConditional: false }
+            : composition ? { abortConditional: true }
+            : event ? { abortReason: event.reason, abortConditional: event.conditional } : {}),
           span: { start: node.getStart(source), end: node.getEnd() }, evidence: "exact",
         });
       }

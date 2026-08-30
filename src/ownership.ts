@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { resolvedSymbol, symbolIdentityKey } from "./binding-identity.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { resolveStableRegion } from "./region-alias.js";
 
@@ -85,9 +86,9 @@ export function collectOwnershipEvents(program: ts.Program, source: ts.SourceFil
       if (ts.isFunctionLike(current)) { scope = current; break; }
     }
     const region = resolveStableRegion(checker, expression, { scope, permittedUse: expression, permittedUses: reviewedUses });
-    return region.status === "resolved" && !region.runtimeDescriptorUnchecked
-      ? { ...event, resource: region.region, regionId: region.regionId }
-      : event;
+    if (region.status === "resolved" && !region.runtimeDescriptorUnchecked) return { ...event, resource: region.region, regionId: region.regionId };
+    const identity = ts.isIdentifier(expression) ? symbolIdentityKey(resolvedSymbol(checker, expression)) : undefined;
+    return identity ? { ...event, regionId: identity } : event;
   }).sort((a, b) => a.span.start - b.span.start || (a.operation === "transfer" ? -1 : 1));
 }
 

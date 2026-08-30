@@ -3,6 +3,25 @@ import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array,
 import type { BoundedArrayBuffer, BoundedDataView, BoundedUint32Array, BoundedUint8Array, FixedArrayBuffer, U32, U8 } from "../src/index.js";
 
 describe("bounded Uint8Array safety", () => {
+  it("fails closed when a legacy numeric scope contains shadowed bindings", async () => {
+    const result = await verifyTypedArraySafety("shadowed-array.ts", `
+      type BoundedUint8Array<N extends number> = Uint8Array
+      function write() {
+        const bytes: BoundedUint8Array<10> = new Uint8Array(10)
+        {
+          const bytes: BoundedUint8Array<1> = new Uint8Array(1)
+          bytes[5] = 0
+        }
+      }
+    `);
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      functionName: "write", kind: "index-bounds", result: "unknown",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining("same-spelled bindings"),
+    }));
+  });
+
   it("provides optional runtime refinements", () => {
     expect(parseU8(255)).toBe(255);
     expect(() => parseU8(256)).toThrow();

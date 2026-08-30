@@ -245,6 +245,26 @@ function collectConstants(source: ts.SourceFile): Map<string, number> {
   return constants;
 }
 
+function hasShadowedBindings(functionNode: ts.FunctionDeclaration): boolean {
+  const names = new Set<string>();
+  let shadowed = false;
+  const addName = (name: ts.BindingName): void => {
+    if (ts.isIdentifier(name)) {
+      if (names.has(name.text)) shadowed = true;
+      names.add(name.text);
+    } else for (const element of name.elements) if (ts.isBindingElement(element)) addName(element.name);
+  };
+  functionNode.parameters.forEach((parameter) => addName(parameter.name));
+  const visit = (node: ts.Node): void => {
+    if (node !== functionNode.body && ts.isFunctionLike(node)) return;
+    if (ts.isVariableDeclaration(node)) addName(node.name);
+    if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) addName(node.name);
+    ts.forEachChild(node, visit);
+  };
+  if (functionNode.body) visit(functionNode.body);
+  return shadowed;
+}
+
 function collectConstantTables(source: ts.SourceFile, constants: ReadonlyMap<string, number>, seed: ReadonlyMap<string, ConstantTable> = new Map()): Map<string, ConstantTable> {
   const tables = new Map<string, ConstantTable>(seed);
   let changed = true;
@@ -424,6 +444,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
   for (const node of source.statements) {
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
     const functionName = node.name.text, leading = source.text.slice(node.getFullStart(), node.getStart(source));
+    const shadowedBindings = hasShadowedBindings(node);
     const functionTrust = typedArrayTrust(leading);
     const tableLengths = new Map([...tables].map(([name, table]) => [`${name}.length`, String(table.length)]));
     const assumptions = [...extractAnnotations(leading, "requires"), ...typeAssumptions(node.parameters, source)]
@@ -636,7 +657,8 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const invalidInteger = candidate.requiresInteger && range?.integer === false;
       const staticallyInside = range && candidate.upper !== undefined && range.minimum >= (candidate.lower ?? 0) && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
       if (!candidate.knownResult && !invalidInteger && !staticallyInside) solverQueries++;
-      const proofResult = candidate.knownResult ?? (invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal, z3));
+      const rawProofResult = candidate.knownResult ?? (invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal, z3));
+      const proofResult = shadowedBindings && rawProofResult === "verified" ? "unknown" : rawProofResult;
       const statement = enclosingStatement(candidate.node, node);
       const statementLeading = statement ? source.text.slice(statement.getFullStart(), statement.getStart(source)) : "";
       const trust = typedArrayTrust(statementLeading, candidate.kind) ?? functionTrust;
@@ -651,7 +673,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
           ...(trust!.expiresOn ? { trustExpiresOn: trust!.expiresOn } : {}),
         } : {}),
       });
-      if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : `${candidate.kind} constraint could not be proved` });
+      if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : shadowedBindings ? `${candidate.kind} constraint could not be proved because this legacy numeric scope contains same-spelled bindings` : `${candidate.kind} constraint could not be proved` });
     }
   }
   return { obligations, diagnostics, statistics: { solverQueries } };

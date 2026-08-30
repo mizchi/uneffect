@@ -48,6 +48,23 @@ describe("Transferable ownership", () => {
     expect(analyzeOwnership(program, program.getSourceFile(fileName)!)).toContainEqual(expect.objectContaining({ resource: "buffer", state: "detached", operation: "read" }));
   });
 
+  it("does not merge same-spelled shadowed ownership bindings", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-shadow-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      function move() {
+        const buffer = new ArrayBuffer(8)
+        structuredClone({}, { transfer: [buffer] })
+        {
+          const buffer = new ArrayBuffer(4)
+          return buffer.byteLength
+        }
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    expect(analyzeOwnership(program, program.getSourceFile(fileName)!)).toEqual([]);
+  });
+
   it("recognizes builtin DataView construction by symbol identity", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-dataview-"));
     const fileName = join(directory, "input.ts");

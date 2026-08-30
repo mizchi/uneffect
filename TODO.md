@@ -198,6 +198,13 @@ introducing another domain-local control-flow or alias model.
      binding. External fulfillment, normal rejection, conditional abort, abort
      reason, and first-settlement-wins share one Quint state; lookalike fetch and
      dynamic options remain outside the exact fragment.
+   - [x] Resolve non-reassigned local signal aliases and static local
+     `AbortSignal.any` compositions at builtin fetch sites. Preserve a static
+     pre-aborted source in initial state and keep dynamic/mutable aliases
+     fail-closed.
+   - [x] Accept a single-use local `const` object-literal RequestInit alias;
+     reject reused, mutated, dynamic, and escaping options as unknown rather
+     than treating `const` as deep immutability.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain
@@ -211,6 +218,25 @@ introducing another domain-local control-flow or alias model.
    stable method receivers and `this`, iterator-based `for...of`, then reviewed
    coercions. Property access that may invoke a getter remains effectful or
    unknown until descriptor evidence exists.
+   - [x] Introduce name-independent Program binding identities and migrate
+     AbortController composition, timer handles, TaskController handles, and
+     locally bound abort signals. Add a block-shadowing negative control.
+   - [ ] Migrate remaining typed-array, ownership, runtime-contract, and React
+     scope-local textual maps to symbol/declaration identities; add shared
+     rename, shadowing, import-alias, and lookalike metamorphic suites.
+     - [x] Use declaration identity as the ownership fallback and keep
+       same-spelled transferred/read buffers separate.
+     - [x] Fail closed in the legacy source-only numeric lowering when one
+       function contains same-spelled bindings; do not emit `verified` from a
+       potentially colliding textual environment.
+     - [x] Audit runtime-contract/control-flow alias maps: they are restricted
+       to a single module declaration scope, while nontrivial aliases are
+       resolved by the existing TypeChecker bridge.
+     - [x] Fail closed for React direct-body event/effect-event callback names
+       shadowed by another lexical declaration, rather than merging callbacks
+       by spelling.
+     - [ ] Replace the numeric and React fail-closed gates with per-expression
+       symbol keys for full shadowing support rather than conservative unknowns.
 7. [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Add explicit JavaScript numeric domains instead of widening Z3 Real:
    safe integers and U32 first, then finite IEEE-754 facts (`NaN`, infinity,
    negative zero, and `Math.fround`). Keep unsupported coercion and rounding

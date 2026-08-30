@@ -843,6 +843,21 @@ function inlineCallback(call: ts.CallExpression, index: number | undefined): ts.
 type LocalEventCallback = (ts.FunctionDeclaration & { body: ts.Block }) | ts.ArrowFunction | ts.FunctionExpression;
 type CallbackImportsBySource = ReadonlyMap<string, ReadonlyMap<string, LocalEventCallback>>;
 
+function multiplyDeclaredBindingNames(root: ts.Node): ReadonlySet<string> {
+  const counts = new Map<string, number>();
+  const add = (name: ts.BindingName): void => {
+    if (ts.isIdentifier(name)) counts.set(name.text, (counts.get(name.text) ?? 0) + 1);
+    else for (const element of name.elements) if (ts.isBindingElement(element)) add(element.name);
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) || ts.isParameter(node)) add(node.name);
+    else if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) add(node.name);
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
+}
+
 function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, LocalEventCallback> {
   if (!ts.isBlock(component.body)) return new Map();
   const callbacks = new Map<string, LocalEventCallback>();
@@ -869,9 +884,10 @@ function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, Loca
     ts.forEachChild(node, visitWrites);
   };
   visitWrites(component.body);
+  const shadowed = multiplyDeclaredBindingNames(component.body);
   const resolved = new Map<string, LocalEventCallback>();
   const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
-    if (reassigned.has(name) || seen.has(name)) return undefined;
+    if (reassigned.has(name) || shadowed.has(name) || seen.has(name)) return undefined;
     const callback = callbacks.get(name);
     if (callback) return callback;
     const alias = aliases.get(name);
@@ -937,9 +953,10 @@ function sourceConstComponentCallbacks(source: ts.SourceFile): ReadonlyMap<strin
     ts.forEachChild(node, visitWrites);
   };
   visitWrites(source);
+  const shadowed = multiplyDeclaredBindingNames(source);
   const resolved = new Map<string, LocalEventCallback>();
   const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
-    if (seen.has(name) || reassigned.has(name)) return undefined;
+    if (seen.has(name) || reassigned.has(name) || shadowed.has(name)) return undefined;
     const callback = callbacks.get(name);
     if (callback) return callback;
     const alias = aliases.get(name);
@@ -1110,9 +1127,10 @@ function localEffectEventCallbacks(
       } else if (ts.isIdentifier(initializer)) aliases.set(declaration.name.text, initializer.text);
     }
   }
+  const shadowed = multiplyDeclaredBindingNames(boundary.body);
   const resolved = new Map<string, ts.ArrowFunction | ts.FunctionExpression>();
   const resolve = (name: string, seen = new Set<string>()): ts.ArrowFunction | ts.FunctionExpression | undefined => {
-    if (seen.has(name)) return undefined;
+    if (seen.has(name) || shadowed.has(name)) return undefined;
     const callback = callbacks.get(name);
     if (callback) return callback;
     const alias = aliases.get(name);

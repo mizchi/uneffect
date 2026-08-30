@@ -99,13 +99,32 @@ same property is proved for arbitrary TypeScript.
   Async owners, controller aliases/escape, direct controller signals without
   `AbortSignal.any`, fetch and general abortable API cancellation are not yet
   claimed.
+- Program-backed local binding identity is based on the TypeScript symbol's
+  declaration source and offset, not its spelling. AbortController composition,
+  timer handles, TaskController handles, and locally bound abort signals use
+  this identity, including block-shadowing negative controls. Names remain only
+  presentation data. Ownership now falls back to declaration identity when a
+  stable region cannot be established. The older source-only numeric lowering
+  fails closed (never `verified`) for functions containing same-spelled
+  bindings, pending full per-expression symbol migration. Runtime-contract
+  alias maps are restricted to one module-level declaration scope and use the
+  TypeChecker control-flow bridge whenever aliases need resolution. React's
+  remaining direct-body callback maps reject a tracked name if another lexical
+  declaration shadows it; this prevents a textual collision from producing a
+  verified callback summary, but full React symbol-key migration remains
+  experimental.
 - The first bounded async product recognizes TypeChecker-identified builtin
-  `fetch` with a direct local `AbortController.signal` and immutable Promise
+  `fetch` with a direct local `AbortController.signal`, a non-reassigned local
+  signal alias, or a statically extracted local `AbortSignal.any` composition,
+  plus an immutable Promise binding. Request options may be inline or a local
+  `const` object literal whose only non-declaration use is the fetch call;
   binding. Its Quint state distinguishes pending, fulfilled, rejected, and
   aborted outcomes; every terminal transition is guarded by pending state, so
   settlement is first-wins. Conditional abort competes with external completion,
   while a definite synchronous abort initializes the request as aborted.
-  Dynamic options, signal aliases, `AbortSignal.any` at fetch sites, retries,
+  A statically pre-aborted `AbortSignal.any` initializes the request as aborted;
+  other sources compete with external completion. Mutable, reused, dynamic, or
+  escaping options/signal aliases, dynamic `AbortSignal.any` source arrays, retries,
   response-body streams, and resource-disposal composition remain open.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.

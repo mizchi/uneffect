@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
 import { analyzeAsyncSafetyInProgram, type AsyncSafetyDiagnostic, type AsyncSafetyOptions, type ResourceDisposal } from "./async-safety.js";
 import { analyzeAsyncPatternsInProgram, generateNodeEventLoopQuint, generateWebEventLoopQuint, type AsyncPatternModel, type TimerPattern } from "./async-patterns.js";
 import { analyzeCallableSummaries, type CallbackCardinality, type CallableSummary, type CallableSummaryDiagnostic } from "./callable-summary.js";
@@ -108,6 +109,7 @@ export interface AbortControllerSummary {
   readonly index: number;
   readonly owner: string;
   readonly binding: string;
+  readonly identity: BindingIdentity;
   readonly span: { start: number; end: number };
   readonly evidence: "exact";
 }
@@ -192,10 +194,13 @@ export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.Sou
         program.isSourceFileDefaultLibrary(declaration.getSourceFile()));
       const binding = resolvedSymbol(checker, node.name);
       if (builtin && binding) {
+        const identity = bindingIdentity(binding);
+        if (!identity) { ts.forEachChild(node, collectControllers); return; }
         const summary: AbortControllerSummary = {
           index: controllers.length,
           owner: lexicalOwner(node),
           binding: node.name.text,
+          identity,
           span: { start: node.getStart(source), end: node.getEnd() },
           evidence: "exact",
         };
@@ -230,11 +235,23 @@ export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.Sou
   };
   collectEvents(source);
   const patterns = analyzeAsyncPatternsInProgram(program, source);
-  const compositionLinks = patterns.abortCompositions.flatMap((composition, compositionIndex) =>
-    composition.sources.flatMap((sourceText, sourceIndex): AbortCompositionControllerLink[] => {
-      const controller = controllers.find((item) => sourceText === `${item.binding}.signal`);
+  const compositionCalls = new Map<string, ts.CallExpression>();
+  const collectCompositionCalls = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) compositionCalls.set(`${node.getStart(source)}:${node.getEnd()}`, node);
+    ts.forEachChild(node, collectCompositionCalls);
+  };
+  collectCompositionCalls(source);
+  const compositionLinks = patterns.abortCompositions.flatMap((composition, compositionIndex) => {
+    const call = compositionCalls.get(`${composition.span.start}:${composition.span.end}`);
+    const sources = call?.arguments[0];
+    if (!sources || !ts.isArrayLiteralExpression(sources)) return [];
+    return sources.elements.flatMap((element, sourceIndex): AbortCompositionControllerLink[] => {
+      if (!ts.isPropertyAccessExpression(element) || element.name.text !== "signal" || !ts.isIdentifier(element.expression)) return [];
+      const symbol = resolvedSymbol(checker, element.expression);
+      const controller = symbol ? controllerSymbols.get(symbol) : undefined;
       return controller ? [{ controllerIndex: controller.index, controller: controller.binding, composition: compositionIndex, source: sourceIndex, evidence: "exact" }] : [];
-    }));
+    });
+  });
   return { controllers, events, compositionLinks };
 }
 

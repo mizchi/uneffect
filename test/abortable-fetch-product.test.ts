@@ -41,4 +41,91 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("resolves stable signal aliases and AbortSignal.any compositions", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-any-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function directAlias(cancel: boolean) {
+          const controller = new AbortController()
+          const signal = controller.signal
+          const request = fetch("https://api.example.com/alias", { signal })
+          if (cancel) controller.abort("alias-stop")
+          return request
+        }
+        export function composed(controller: AbortController) {
+          const local = new AbortController()
+          const signal = AbortSignal.any([controller.signal, local.signal, AbortSignal.timeout(25)])
+          const request = fetch("https://api.example.com/any", { signal })
+          return request
+        }
+        export function preAborted() {
+          const signal = AbortSignal.any([AbortSignal.abort("already"), AbortSignal.timeout(25)])
+          const request = fetch("https://api.example.com/pre-aborted", { signal })
+          return request
+        }
+        class LocalAbortSignal { static any(signals: AbortSignal[]) { return signals[0] } }
+        export function lookalike(controller: AbortController) {
+          const signal = LocalAbortSignal.any([controller.signal])
+          const request = fetch("https://api.example.com/local", { signal })
+          return request
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "directAlias", binding: "request", controller: "controller", signalKind: "controller-alias" }),
+        expect.objectContaining({ owner: "composed", binding: "request", signalKind: "abort-any", abortComposition: 0 }),
+        expect.objectContaining({ owner: "preAborted", binding: "request", signalKind: "abort-any", abortComposition: 1, abortReason: '"already"', abortConditional: false }),
+      ]);
+      expect(analysis.unknown).toEqual([
+        expect.objectContaining({ expression: expect.stringContaining("api.example.com/local"), reason: expect.stringContaining("statically resolved") }),
+      ]);
+      const quint = generateAbortableFetchProductQuint("abortable_fetch_any", analysis);
+      expect(quint).toContain("action abort_1");
+      expect(quint).toContain("fetch_2_state' = 3");
+      const quintFile = join(directory, "model.qnt");
+      writeFileSync(quintFile, quint);
+      expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a single-use const RequestInit alias and rejects mutated options", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-options-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function exact() {
+          const controller = new AbortController()
+          const init = { signal: controller.signal }
+          const request = fetch("https://api.example.com/exact", init)
+          return request
+        }
+        export function mutated(other: AbortSignal) {
+          const controller = new AbortController()
+          const init = { signal: controller.signal }
+          init.signal = other
+          const request = fetch("https://api.example.com/mutated", init)
+          return request
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "exact", binding: "request", controller: "controller", optionsKind: "single-use-const-alias" }),
+      ]);
+      expect(analysis.unknown).toEqual([
+        expect.objectContaining({ expression: expect.stringContaining("api.example.com/mutated"), reason: expect.stringContaining("RequestInit") }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

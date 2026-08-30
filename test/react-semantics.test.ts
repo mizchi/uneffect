@@ -642,6 +642,21 @@ describe("React Function Component semantics", () => {
     ]));
   });
 
+  it("fails closed instead of merging a shadowed JSX handler binding", () => {
+    const result = analyzeReactSemantics("shadowed-event.tsx", `
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      /* uneffect:react-component */
+      function Panel() {
+        function submit() { fetch("/submit") }
+        { const submit = () => console.log("shadow"); void submit }
+        return <button onClick={submit} />
+      }
+    `);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      kind: "unknown-event-handler", phase: "event", operation: "submit",
+    }));
+  });
+
   it("executes React transition action callbacks in their enclosing phase", () => {
     const result = analyzeReactSemantics("transitions.tsx", `
       import React, { startTransition as defer, useTransition } from "react"

@@ -3,6 +3,7 @@ export const ciTestTiers = {
     "test/abortable-fetch-product.test.ts",
     "test/annotations.test.ts",
     "test/assurance.test.ts",
+    "test/binding-identity.test.ts",
     "test/builtin-contracts.test.ts",
     "test/call-graph.test.ts",
     "test/callable-summary.test.ts",
