@@ -221,9 +221,11 @@ introducing another domain-local control-flow or alias model.
    - [x] Introduce name-independent Program binding identities and migrate
      AbortController composition, timer handles, TaskController handles, and
      locally bound abort signals. Add a block-shadowing negative control.
-   - [ ] Migrate remaining typed-array, ownership, runtime-contract, and React
-     scope-local textual maps to symbol/declaration identities; add shared
-     rename, shadowing, import-alias, and lookalike metamorphic suites.
+   - [x] Eliminate unsafe binding-name identity from typed-array, ownership,
+     runtime-contract, and React analysis: use symbol/declaration identities in
+     Program-backed paths, constrain genuinely single-scope maps, and fail
+     closed in source-only paths. Add shared rename and shadowing coverage;
+     import-alias and lookalike controls remain in their domain suites.
      - [x] Use declaration identity as the ownership fallback and keep
        same-spelled transferred/read buffers separate.
      - [x] Fail closed in the legacy source-only numeric lowering when one
