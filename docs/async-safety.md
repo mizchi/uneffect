@@ -26,6 +26,56 @@ task() // floating-promise
 `catch`. A synchronous `try/catch` around a non-awaited Promise call does not
 catch its rejection and therefore does not discharge the diagnostic.
 
+Hoare contract lowering uses the same distinction for its bounded CFG. The
+standard `Promise.reject(reason)` is recognized by TypeChecker symbol identity.
+Other TypeChecker-resolved Promise-returning calls can declare their boundary:
+
+```ts
+/* uneffect:temporal-summary rejects NetworkError */
+/* uneffect:temporal-summary throws ConfigurationError */
+declare function request(): Promise<Response>
+```
+
+An awaited call then has separate fulfilled, `Reject<NetworkError>`, and
+synchronous `Throw<ConfigurationError>` paths. These declarations are trusted
+callee summaries, not verification of the callee body. Unannotated Promise
+calls remain outside the Hoare lowering subset even though this async ownership
+checker can still determine whether their rejection is observed.
+
+A scalar fulfilled value can additionally use a contract relation:
+
+```ts
+/* uneffect:contract ensures result >= minimum */
+/* uneffect:temporal-summary rejects NetworkError */
+declare function requestCount(minimum: number): Promise<number>
+
+/* uneffect:contract ensures result >= 0 */
+async function load(): Promise<number> {
+  return await requestCount(0)
+}
+```
+
+The current slice supports direct `const value = await call()` and
+`return await call()`. It records the callee clause and both source spans as a
+trusted relational call. Every callee `requires` clause becomes an independent
+call-site obligation. The caller's exact branch conditions and function
+preconditions must imply it; otherwise Z3 returns a source-mapped
+counterexample. It is never inserted as an unchecked assumption.
+
+After solving a file, Uneffect reconciles local implementations to a fixed
+point. An acyclic call edge becomes `verified` only when every obligation for
+the callee and every transitive relational dependency is verified. A local
+callee counterexample or unknown result downgrades dependent caller artifacts
+to `unknown`. External declarations and circular proof chains stay `trusted`;
+the solver cannot bootstrap a proof from the cycle itself.
+
+Project verification runs the same reconciliation across every source file in
+its checked TypeScript Program. Each v1 relation is bound to the exact
+declaration file, span, SHA-256 digest, and TypeScript version. Replaying an
+artifact against changed source or another compiler version produces `unknown`,
+not a verified edge. Persisted npm-package summaries and `.d.ts`-to-source
+provenance remain outside this slice.
+
 ```ts
 try {
   await task().then(transform) // rejection enters catch

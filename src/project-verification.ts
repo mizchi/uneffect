@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { attachContractEffectBoundaries, verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
+import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
@@ -241,6 +241,7 @@ async function verifyUneffectProjectFiles(
   compilerContext?: ProjectVerificationCompilerContext,
 ): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
+  const pendingContractObligations: ProjectVerificationObligation[] = [];
   const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
@@ -328,7 +329,7 @@ async function verifyUneffectProjectFiles(
     const contractSource = contractFiles[fileName] ?? source;
     const verification = await verifyContractObligations(fileName, contractSource, options.z3, program);
     const effectBoundArtifacts = attachContractEffectBoundaries(verification.artifacts, effects.summaries);
-    obligations.push(...effectBoundArtifacts.map((artifact) => invalidSources.has(fileName)
+    pendingContractObligations.push(...effectBoundArtifacts.map((artifact) => invalidSources.has(fileName)
       ? { ...artifact, status: "unknown" as const, evidence: "unknown" as const, backend: "z3" as const, result: "unknown" as const, message: "TypeScript errors prevent proof-grade contract evidence for this source" }
       : { ...artifact, backend: "z3" as const, result: artifact.status }));
     diagnostics.push(...verification.diagnostics);
@@ -363,6 +364,9 @@ async function verifyUneffectProjectFiles(
       }
     }
   }
+  const reconciledContracts = reconcileContractArtifacts(new Map(Object.entries(contractFiles)), pendingContractObligations);
+  obligations.push(...reconciledContracts.artifacts.map((artifact) => ({ ...artifact, backend: "z3" as const, result: artifact.status })));
+  diagnostics.push(...reconciledContracts.diagnostics);
   const temporal = options.temporalRuntime === "web" || options.temporalRuntime === "node"
     ? { sourceLanguage: "uneffect-ts" as const, backend: "quint" as const, models: temporalModels, properties: temporalProperties }
     : undefined;

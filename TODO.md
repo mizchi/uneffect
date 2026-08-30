@@ -1550,9 +1550,34 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   retain rejected/unknown paths in the evidence ledger.
 - [x] Dogfood the combined model on an application adapter containing narrowing,
   early returns, caught throws, capability boundaries, and Promise ownership.
-- [ ] Extend the exception-aware contract CFG through `finally`, catch bindings, ([#25](https://github.com/mizchi/uneffect/issues/25))
-  async rejection, non-`never` call summaries with relational postconditions,
-  and interprocedural scalar state.
+- [x] Extend the bounded exception-aware contract CFG through supported
+  `finally` completion override, scalar catch-payload binding, and a direct
+  TypeChecker-identified builtin `await Promise.reject(value)` rejection edge.
+  Rejection remains distinct from synchronous `Throw<E>` and therefore is not
+  required in the synchronous Effect boundary.
+- [x] Connect TypeChecker-resolved Promise-returning calls carrying a trusted
+  `temporal-summary rejects E` declaration to may-reject contract paths, while
+  preserving declared `temporal-summary throws E` as separate synchronous
+  edges and rejecting annotations attached to non-Promise return types.
+- [x] Compose scalar fulfilled values from a trusted callee
+  `contract ensures` summary through one direct `const value = await call()` or
+  `return await call()`; record the declaration/call spans and clauses as
+  `relationalCalls`.
+- [x] Emit one source-mapped `call-precondition` obligation per callee
+  `contract requires` clause and prove it from the exact caller path conditions;
+  a failed implication is a counterexample rather than an assumed precondition.
+- [x] Reconcile same-file relational calls with local callee artifacts to a
+  fixed point: promote acyclic fully verified chains from `trusted` to
+  `verified`, propagate a failing/unknown callee back to callers as `unknown`,
+  and retain external declarations and circular proof chains as `trusted`.
+- [x] Generalize the reconciler across source files in one checked TypeScript
+  Program, bind each relation to declaration file/span/SHA-256 and exact
+  TypeScript version, expose the reconciler publicly, and run it from project
+  verification. Stale declaration evidence downgrades the caller to `unknown`.
+- [ ] Generalize exception-aware contracts to inferred/unannotated Promise-producing calls, ([#25](https://github.com/mizchi/uneffect/issues/25))
+  assignment/property/destructured awaited values, opaque/non-scalar catch
+  payloads, persisted package summary exchange with export/config identity, and
+  interprocedural scalar/heap state.
 
 ## Current validation commands
 

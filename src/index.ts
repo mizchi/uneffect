@@ -129,9 +129,10 @@ export { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnersh
 export type { CachedVerifiedOwnershipBuildResult, OwnershipAssertionInsertion, OwnershipInstrumentResult, VerifiedOwnershipBuildResult } from "./instrument.js";
 export { ownershipEvidenceKey, readOwnershipEvidenceCache, writeOwnershipEvidenceCache } from "./ownership-evidence-cache.js";
 export type { OwnershipEvidenceCache, OwnershipEvidenceCacheEntry } from "./ownership-evidence-cache.js";
-export { verifyContractObligations, verifyContracts } from "./contracts.js";
+export { reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
 export { attachContractEffectBoundaries } from "./contracts.js";
+export type { ContractRelationalCallEvidence } from "./invariant-ir.js";
 export { assessCheckAssurance, formatAssuranceAssessment } from "./assurance.js";
 export type { AssuranceAssessment, AssuranceBlocker, AssuranceCoverage, AssuranceProfile, AssuranceStatus } from "./assurance.js";
 export { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "./property-tests.js";

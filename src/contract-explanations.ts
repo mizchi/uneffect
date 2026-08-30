@@ -151,13 +151,14 @@ function referencedNames(expression: LogicExpression, into: Set<string>): Set<st
 }
 
 function clauseLabel(obligation: InvariantObligation): string {
-  return obligation.kind === "postcondition" ? "ensures" : "invariant";
+  return obligation.kind === "postcondition" ? "ensures" : obligation.kind === "call-precondition" ? "requires" : "invariant";
 }
 
 /** Restate an obligation as the property the reader must believe, not as a solver verdict. */
 export function describeObligation(obligation: InvariantObligation): string {
   const clause = `\`${clauseLabel(obligation)} ${obligation.source}\``;
   if (obligation.kind === "postcondition") return `${clause} can fail on this return`;
+  if (obligation.kind === "call-precondition") return `${clause} can fail at this call`;
   if (obligation.kind === "loop-init") return `${clause} is not established before the loop runs`;
   return `${clause} is not preserved by one iteration of the loop body`;
 }
@@ -165,6 +166,7 @@ export function describeObligation(obligation: InvariantObligation): string {
 /** The proof rule the failed obligation comes from, stated in words. */
 export function obligationRule(obligation: InvariantObligation): string {
   if (obligation.kind === "postcondition") return "every input allowed by requires must leave this return with ensures true";
+  if (obligation.kind === "call-precondition") return "every path reaching the call must imply the callee requires clause";
   if (obligation.kind === "loop-init") return "the invariant must already hold the first time the loop is reached";
   return "an iteration that starts with the invariant and the loop guard true must end with the invariant true";
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { attachContractEffectBoundaries, verifyContractObligations, verifyContracts } from "../src/contracts.js";
+import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "../src/contracts.js";
+import { verifyUneffectProject } from "../src/project-verification.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022 };
@@ -11,6 +12,17 @@ function programFor(fileName: string, source: string): ts.Program {
   host.readFile = (requested) => requested === fileName ? source : ts.sys.readFile(requested);
   host.fileExists = (requested) => requested === fileName || ts.sys.fileExists(requested);
   return ts.createProgram([fileName], options, host);
+}
+
+function programForFiles(files: Readonly<Record<string, string>>): ts.Program {
+  const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler };
+  const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+  host.getSourceFile = (requested, languageVersion, onError, shouldCreate) => files[requested] !== undefined
+    ? ts.createSourceFile(requested, files[requested]!, languageVersion, true, ts.ScriptKind.TS)
+    : original(requested, languageVersion, onError, shouldCreate);
+  host.readFile = (requested) => files[requested] ?? ts.sys.readFile(requested);
+  host.fileExists = (requested) => files[requested] !== undefined || ts.sys.fileExists(requested);
+  return ts.createProgram(Object.keys(files), options, host);
 }
 
 describe("Hoare contract checker", () => {
@@ -306,7 +318,441 @@ describe("Hoare contract checker", () => {
       }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
-    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ kind: "promise-rejection", effect: "Reject<RangeError>" })],
+      }) }),
+    }));
+  });
+
+  it("runs finally on return and lets an abrupt finalizer override it", async () => {
+    const fileName = "/finally-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result === value */
+      /* uneffect:capability effect Throw<RangeError> */
+      function guardedIdentity(value: Int): Int {
+        try { return value }
+        finally { if (value < 0) throw new RangeError("negative") }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0]).toMatchObject({ status: "verified" });
+    expect(result.artifacts[0]?.controlFlow?.pathConditions).toContainEqual(expect.objectContaining({ kind: "unary", operator: "not" }));
+    expect(result.artifacts[0]?.controlFlow?.exceptionFlow?.escapes).toContainEqual(expect.objectContaining({ effect: "Throw<RangeError>" }));
+  });
+
+  it("binds a scalar thrown payload in catch", async () => {
+    const fileName = "/catch-binding-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= 0 */
+      function magnitude(value: Int): Int {
+        try {
+          if (value < 0) throw -value
+          return value
+        } catch (error) {
+          return error as number
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ effect: "Throw<unknown>", payload: expect.objectContaining({ kind: "unary", operator: "negate" }) })],
+      }) }),
+    }));
+  });
+
+  it("routes an awaited builtin Promise rejection through catch without creating Throw<E>", async () => {
+    const fileName = "/await-rejection-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= 0 */
+      async function normalize(value: Int): Promise<Int> {
+        try {
+          if (value < 0) await Promise.reject(new RangeError("negative"))
+          return value
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ kind: "promise-rejection", effect: "Reject<RangeError>" })],
+      }) }),
+    }));
+  });
+
+  it("binds a scalar builtin Promise rejection reason in catch", async () => {
+    const fileName = "/await-rejection-binding-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= 0 */
+      async function magnitude(value: Int): Promise<Int> {
+        try {
+          if (value < 0) await Promise.reject(-value)
+          return value
+        } catch (reason) {
+          return reason as number
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ kind: "promise-rejection", effect: "Reject<number>", payload: expect.objectContaining({ kind: "unary", operator: "negate" }) })],
+      }) }),
+    }));
+  });
+
+  it("keeps an uncaught Promise rejection out of the synchronous Effect boundary", async () => {
+    const fileName = "/uncaught-rejection-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= 0 */
+      async function normalize(value: Int): Promise<Int> {
+        if (value < 0) await Promise.reject(new RangeError("negative"))
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    const [joined] = attachContractEffectBoundaries(result.artifacts, [{
+      functionName: "normalize", fileName, span: { start: 0, end: source.length }, effects: [], evidence: "verified",
+    }]);
+
+    expect(joined).toMatchObject({ status: "verified", evidence: "verified" });
+    expect(joined?.controlFlow?.exceptionFlow?.escapes).toContainEqual(expect.objectContaining({ kind: "promise-rejection", effect: "Reject<RangeError>" }));
+    expect(joined?.controlFlow?.effectBoundary).toMatchObject({ escaping: ["Reject<RangeError>"], blockers: [] });
+  });
+
+  it("rejects a same-spelled local Promise.reject instead of granting builtin semantics", async () => {
+    const fileName = "/spoofed-promise-rejection-contract.ts";
+    const source = `
+      export {}
+      const Promise = { reject(input: unknown) { return globalThis.Promise.reject(input) } }
+      /* uneffect:contract ensures result === value */
+      async function normalize(value: number): Promise<number> {
+        try { await Promise.reject(new RangeError("negative")) }
+        catch { return value }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown", message: expect.stringContaining("rejection or fulfillment summary") });
+  });
+
+  it("routes a TypeChecker-resolved temporal rejection summary through catch", async () => {
+    const fileName = "/declared-rejection-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:temporal-summary rejects RangeError */
+      /* uneffect:temporal-summary throws URIError */
+      declare function readRemote(value: Int): Promise<Int>
+      /* uneffect:contract ensures result === value || result === 0 */
+      async function normalize(value: Int): Promise<Int> {
+        try {
+          if (value >= 0) await readRemote(value)
+          return value
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(4);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ kind: "promise-rejection", effect: "Reject<RangeError>" })],
+      }) }),
+    }));
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ kind: "synchronous-throw", effect: "Throw<URIError>" })],
+      }) }),
+    }));
+  });
+
+  it("does not apply a temporal rejection summary to a non-Promise return", async () => {
+    const fileName = "/invalid-declared-rejection-contract.ts";
+    const source = `
+      /* uneffect:temporal-summary rejects RangeError */
+      declare function readImmediate(): number
+      /* uneffect:contract ensures result === 0 */
+      async function normalize(): Promise<number> {
+        try { await readImmediate() } catch {}
+        return 0
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown", message: expect.stringContaining("rejection or fulfillment summary") });
+  });
+
+  it("composes a trusted scalar fulfillment postcondition with rejection flow", async () => {
+    const fileName = "/awaited-fulfillment-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= value */
+      /* uneffect:temporal-summary rejects RangeError */
+      declare function readRemote(value: Int): Promise<Int>
+      /* uneffect:contract requires value >= 0 */
+      /* uneffect:contract ensures result >= 0 */
+      async function normalize(value: Int): Promise<Int> {
+        try {
+          const loaded = await readRemote(value)
+          return loaded
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({
+        relationalCalls: [expect.objectContaining({ evidence: "trusted", functionName: "readRemote", clauses: ["result >= value"] })],
+      }),
+    }));
+
+    const broken = source.replace("result >= value", "result <= value - 1");
+    const invalid = await verifyContractObligations(fileName, broken, undefined, programFor(fileName, broken));
+    expect(invalid.artifacts).toContainEqual(expect.objectContaining({ status: "counterexample" }));
+  });
+
+  it("composes a scalar fulfillment postcondition through return await", async () => {
+    const fileName = "/return-await-contract.ts";
+    const source = `
+      /* uneffect:contract ensures result === value + 1 */
+      declare function addOne(value: number): Promise<number>
+      /* uneffect:contract ensures result > value */
+      async function increment(value: number): Promise<number> {
+        return await addOne(value)
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0]).toMatchObject({
+      status: "verified",
+      controlFlow: { relationalCalls: [expect.objectContaining({ functionName: "addOne", evidence: "trusted" })] },
+    });
+  });
+
+  it("proves an awaited callee precondition at the call path", async () => {
+    const fileName = "/await-requires-contract.ts";
+    const source = `
+      /* uneffect:contract requires value >= 0 */
+      /* uneffect:contract ensures result >= value */
+      declare function readRemote(value: number): Promise<number>
+      /* uneffect:contract requires value >= 0 */
+      /* uneffect:contract ensures result >= value */
+      async function normalize(value: number): Promise<number> {
+        return await readRemote(value)
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      status: "verified", obligation: expect.objectContaining({ clause: "requires", source: "value >= 0" }),
+      controlFlow: expect.objectContaining({ completion: "call" }),
+    }));
+
+    const unsafe = source.replace("/* uneffect:contract requires value >= 0 */\n      /* uneffect:contract ensures result >= value */\n      async function normalize", "/* uneffect:contract ensures result >= value */\n      async function normalize");
+    const invalid = await verifyContractObligations(fileName, unsafe, undefined, programFor(fileName, unsafe));
+    expect(invalid.artifacts).toContainEqual(expect.objectContaining({
+      status: "counterexample", obligation: expect.objectContaining({ clause: "requires", source: "value >= 0" }),
+    }));
+  });
+
+  it("uses a narrowed call path to prove an awaited callee precondition", async () => {
+    const fileName = "/await-path-requires-contract.ts";
+    const source = `
+      /* uneffect:contract requires value >= 0 */
+      /* uneffect:contract ensures result >= value */
+      declare function readRemote(value: number): Promise<number>
+      /* uneffect:contract ensures result >= 0 */
+      async function normalize(value: number): Promise<number> {
+        if (value >= 0) return await readRemote(value)
+        return 0
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(3);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      status: "verified",
+      obligation: expect.objectContaining({ clause: "requires", source: "value >= 0" }),
+      controlFlow: expect.objectContaining({
+        completion: "call",
+        pathConditions: [expect.objectContaining({ kind: "binary", operator: "gte" })],
+      }),
+    }));
+
+    const broken = source.replace("if (value >= 0)", "if (value < 0)");
+    const invalid = await verifyContractObligations(fileName, broken, undefined, programFor(fileName, broken));
+    expect(invalid.artifacts).toContainEqual(expect.objectContaining({
+      status: "counterexample", obligation: expect.objectContaining({ clause: "requires" }),
+    }));
+  });
+
+  it("promotes a local relational summary only after the callee contract verifies", async () => {
+    const fileName = "/verified-relational-call.ts";
+    const source = `
+      /* uneffect:contract ensures result === value + 1 */
+      async function addOne(value: number): Promise<number> {
+        return value + 1
+      }
+      /* uneffect:contract ensures result > value */
+      async function increment(value: number): Promise<number> {
+        return await addOne(value)
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.find(({ obligation }) => obligation?.functionName === "increment")).toMatchObject({
+      status: "verified",
+      controlFlow: { relationalCalls: [expect.objectContaining({ functionName: "addOne", evidence: "verified" })] },
+    });
+
+    const broken = source.replace("return value + 1", "return value - 1");
+    const invalid = await verifyContractObligations(fileName, broken, undefined, programFor(fileName, broken));
+    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "addOne")).toMatchObject({ status: "counterexample" });
+    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "increment")).toMatchObject({
+      status: "unknown", evidence: "unknown", message: expect.stringContaining("addOne contract is not verified"),
+    });
+  });
+
+  it("reaches a fixed point across a local relational summary chain", async () => {
+    const fileName = "/verified-relational-chain.ts";
+    const source = `
+      /* uneffect:contract ensures result === value + 1 */
+      async function addOne(value: number): Promise<number> { return value + 1 }
+      /* uneffect:contract ensures result === value + 2 */
+      async function addTwo(value: number): Promise<number> { return await addOne(value + 1) }
+      /* uneffect:contract ensures result > value */
+      async function increment(value: number): Promise<number> { return await addTwo(value) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(3);
+    for (const functionName of ["addTwo", "increment"]) {
+      expect(result.artifacts.find(({ obligation }) => obligation?.functionName === functionName)?.controlFlow?.relationalCalls)
+        .toEqual([expect.objectContaining({ evidence: "verified" })]);
+    }
+
+    const broken = source.replace("return value + 1", "return value - 1");
+    const invalid = await verifyContractObligations(fileName, broken, undefined, programFor(fileName, broken));
+    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "addTwo")).toMatchObject({ status: "unknown" });
+    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "increment")).toMatchObject({ status: "unknown" });
+  });
+
+  it("does not promote a circular relational proof", async () => {
+    const fileName = "/circular-relational-contract.ts";
+    const source = `
+      /* uneffect:contract ensures result === value */
+      async function left(value: number): Promise<number> { return await right(value) }
+      /* uneffect:contract ensures result === value */
+      async function right(value: number): Promise<number> { return await left(value) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every((artifact) => artifact.controlFlow?.relationalCalls?.[0]?.evidence === "trusted")).toBe(true);
+  });
+
+  it("reconciles a TypeChecker-resolved relational summary across source files", async () => {
+    const files = {
+      "/producer.ts": `
+        /* uneffect:contract ensures result === value + 1 */
+        export async function addOne(value: number): Promise<number> { return value + 1 }
+      `,
+      "/consumer.ts": `
+        import { addOne } from "./producer"
+        /* uneffect:contract ensures result > value */
+        export async function increment(value: number): Promise<number> { return await addOne(value) }
+      `,
+    };
+    const program = programForFiles(files);
+    const producer = await verifyContractObligations("/producer.ts", files["/producer.ts"], undefined, program);
+    const consumer = await verifyContractObligations("/consumer.ts", files["/consumer.ts"], undefined, program);
+    expect(consumer.artifacts[0]?.controlFlow?.relationalCalls).toEqual([
+      expect.objectContaining({ evidence: "trusted", declarationFileName: "/producer.ts", functionName: "addOne" }),
+    ]);
+
+    const reconciled = reconcileContractArtifacts(new Map(Object.entries(files)), [...producer.artifacts, ...consumer.artifacts]);
+    expect(reconciled.diagnostics).toEqual([]);
+    expect(reconciled.artifacts.find(({ obligation }) => obligation?.functionName === "increment")?.controlFlow?.relationalCalls)
+      .toEqual([expect.objectContaining({ evidence: "verified", declarationFileName: "/producer.ts" })]);
+
+    const staleConsumer = consumer.artifacts.map((artifact) => ({
+      ...artifact,
+      controlFlow: artifact.controlFlow ? {
+        ...artifact.controlFlow,
+        relationalCalls: artifact.controlFlow.relationalCalls?.map((call) => ({ ...call, declarationDigest: "0".repeat(64) })),
+      } : undefined,
+    }));
+    const stale = reconcileContractArtifacts(new Map(Object.entries(files)), [...producer.artifacts, ...staleConsumer]);
+    expect(stale.artifacts.find(({ obligation }) => obligation?.functionName === "increment")).toMatchObject({
+      status: "unknown", message: expect.stringContaining("declaration digest does not match"),
+    });
+
+    const brokenFiles = { ...files, "/producer.ts": files["/producer.ts"].replace("return value + 1", "return value - 1") };
+    const brokenProgram = programForFiles(brokenFiles);
+    const brokenProducer = await verifyContractObligations("/producer.ts", brokenFiles["/producer.ts"], undefined, brokenProgram);
+    const brokenConsumer = await verifyContractObligations("/consumer.ts", brokenFiles["/consumer.ts"], undefined, brokenProgram);
+    const invalid = reconcileContractArtifacts(new Map(Object.entries(brokenFiles)), [...brokenProducer.artifacts, ...brokenConsumer.artifacts]);
+    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "increment")).toMatchObject({ status: "unknown" });
+  });
+
+  it("applies cross-file relational reconciliation in project verification", async () => {
+    const result = await verifyUneffectProject({ files: {
+      "/producer.ts": `
+        /* uneffect:contract ensures result === value + 1 */
+        export async function addOne(value: number): Promise<number> { return value + 1 }
+      `,
+      "/consumer.ts": `
+        import { addOne } from "./producer"
+        /* uneffect:contract ensures result > value */
+        export async function increment(value: number): Promise<number> { return await addOne(value) }
+      `,
+    } });
+
+    expect(result.obligations.find(({ obligation }) => obligation?.functionName === "increment")?.controlFlow?.relationalCalls)
+      .toEqual([expect.objectContaining({ evidence: "verified", declarationFileName: "/producer.ts" })]);
   });
 
   it("does not silently assume that an unmodeled call is pure", async () => {

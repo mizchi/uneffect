@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { createHash } from "node:crypto";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";
 import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type InvariantObligation } from "./invariant-ir.js";
@@ -47,8 +48,10 @@ export function attachContractEffectBoundaries(artifacts: readonly VerificationA
     if (!summary) return artifact;
     const discharged = [...new Set(artifact.controlFlow.exceptionFlow?.discharged.map(({ effect }) => effect) ?? [])].sort();
     const escaping = [...new Set(artifact.controlFlow.exceptionFlow?.escapes.map(({ effect }) => effect) ?? [])].sort();
+    const synchronousEscaping = [...new Set(artifact.controlFlow.exceptionFlow?.escapes
+      .filter(({ kind }) => kind === "synchronous-throw").map(({ effect }) => effect) ?? [])].sort();
     const inferred = summary.effects.map(formatEffect).sort();
-    const blockers = escaping.filter((effect) => !inferred.includes(effect)).map((effect) => `escaping ${effect} is absent from the inferred Effect summary`);
+    const blockers = synchronousEscaping.filter((effect) => !inferred.includes(effect)).map((effect) => `escaping ${effect} is absent from the inferred Effect summary`);
     const joined: VerificationArtifact = { ...artifact, controlFlow: { ...artifact.controlFlow, effectBoundary: {
       schema: "uneffect-contract-effect-boundary/v1",
       evidence: blockers.length > 0 ? "unknown" : summary.evidence,
@@ -72,7 +75,81 @@ function lineAt(source: ts.SourceFile, position: number): number {
 }
 
 function clauseOf(obligation: InvariantObligation): ContractDiagnostic["clause"] {
-  return obligation.kind === "postcondition" ? "ensures" : "invariant";
+  return obligation.kind === "postcondition" ? "ensures" : obligation.kind === "call-precondition" ? "requires" : "invariant";
+}
+
+export function reconcileContractArtifacts(sources: ReadonlyMap<string, string>, input: readonly VerificationArtifact[]): { artifacts: VerificationArtifact[]; diagnostics: ContractDiagnostic[] } {
+  let artifacts = input.map((artifact) => artifact);
+  const sourceFiles = new Map([...sources].map(([fileName, text]) => [fileName, ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)]));
+  const localBodies = new Set([...sourceFiles].flatMap(([fileName, source]) => source.statements.flatMap((statement) =>
+    ts.isFunctionDeclaration(statement) && statement.name && statement.body
+      ? [`${fileName}:${statement.getStart(source)}:${statement.getEnd()}`] : [])));
+  const declarationKey = (fileName: string, span: { start: number; end: number }): string => `${fileName}:${span.start}:${span.end}`;
+  const integrityFailure = (call: NonNullable<ContractControlFlowEvidence["relationalCalls"]>[number]): string | undefined => {
+    const declarationSource = sourceFiles.get(call.declarationFileName);
+    if (!declarationSource) return undefined;
+    if (call.typescriptVersion !== ts.version) return `${call.functionName} relational summary uses TypeScript ${call.typescriptVersion}, expected ${ts.version}`;
+    const digest = createHash("sha256").update(declarationSource.text.slice(call.declarationSpan.start, call.declarationSpan.end)).digest("hex");
+    return digest === call.declarationDigest ? undefined : `${call.functionName} relational summary declaration digest does not match ${call.declarationFileName}`;
+  };
+  const calleeArtifacts = (call: NonNullable<ContractControlFlowEvidence["relationalCalls"]>[number]): VerificationArtifact[] => artifacts.filter((artifact) =>
+    artifact.source.fileName === call.declarationFileName && artifact.obligation?.functionName === call.functionName
+      && artifact.source.span.start >= call.declarationSpan.start && artifact.source.span.end <= call.declarationSpan.end);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    artifacts = artifacts.map((artifact) => {
+      if (artifact.status !== "verified" || artifact.obligation?.clause !== "ensures") return artifact;
+      const invalid = artifact.controlFlow?.relationalCalls?.map((call) => integrityFailure(call)).find((failure) => failure !== undefined);
+      if (invalid) {
+        changed = true;
+        return { ...artifact, status: "unknown", evidence: "unknown", message: `${invalid}; the relational caller proof has stale or incompatible evidence` };
+      }
+      const failed = artifact.controlFlow?.relationalCalls?.find((call) => localBodies.has(declarationKey(call.declarationFileName, call.declarationSpan))
+        && calleeArtifacts(call).some((candidate) => candidate.status !== "verified"));
+      if (!failed) return artifact;
+      changed = true;
+      return { ...artifact, status: "unknown", evidence: "unknown", message: `${failed.functionName} contract is not verified; the relational caller proof is conditional on invalid local evidence` };
+    });
+  }
+
+  changed = true;
+  while (changed) {
+    changed = false;
+    artifacts = artifacts.map((artifact) => {
+      if (artifact.status !== "verified" || artifact.obligation?.clause !== "ensures" || !artifact.controlFlow?.relationalCalls?.some(({ evidence }) => evidence === "trusted")) return artifact;
+      let promoted = false;
+      const relationalCalls = artifact.controlFlow.relationalCalls.map((call) => {
+        if (call.evidence === "verified" || !localBodies.has(declarationKey(call.declarationFileName, call.declarationSpan))) return call;
+        const candidates = calleeArtifacts(call);
+        const ready = candidates.length > 0 && candidates.every((candidate) => candidate.status === "verified"
+          && (candidate.controlFlow?.relationalCalls?.every(({ evidence }) => evidence === "verified") ?? true))
+          && call.clauses.every((clause) => candidates.some((candidate) => candidate.obligation?.clause === "ensures" && candidate.obligation.source === clause));
+        if (!ready) return call;
+        promoted = true;
+        return { ...call, evidence: "verified" as const };
+      });
+      if (!promoted) return artifact;
+      changed = true;
+      return { ...artifact, controlFlow: { ...artifact.controlFlow, relationalCalls } };
+    });
+  }
+
+  const diagnostics: ContractDiagnostic[] = artifacts.flatMap((artifact): ContractDiagnostic[] => {
+    if (artifact.status !== "unknown" || !artifact.message?.includes("relational caller proof")) return [];
+    const source = sourceFiles.get(artifact.source.fileName);
+    return [{
+      fileName: artifact.source.fileName,
+      functionName: artifact.obligation?.functionName ?? "<file>",
+      clause: "unsupported",
+      line: source ? lineAt(source, artifact.source.span.start) : 1,
+      message: artifact.message,
+      notes: [{ label: "because", detail: "a local callee implementation failed one of the obligations required to justify its relational summary" }],
+      obligationId: artifact.obligationId,
+      artifact,
+    }];
+  });
+  return { artifacts, diagnostics };
 }
 
 /** Locate a lowering rejection at the construct that caused it, falling back to the first contracted function. */
@@ -126,7 +203,8 @@ export async function verifyContractObligations(fileName: string, text: string, 
       diagnostics.push({ fileName, functionName: obligation.functionName, clause: "unsupported", line: lineAt(source, obligation.span.start), message: artifact.message!, notes: [{ label: "because", detail: "the solver neither proved nor refuted this obligation, so the contract carries no evidence" }, { label: "hint", detail: "simplify the clause (nonlinear arithmetic and unbounded multiplication are the usual causes) or split it into smaller obligations" }], obligationId: obligation.id, artifact });
     }
   }
-  return { diagnostics, artifacts };
+  const reconciled = reconcileContractArtifacts(new Map([[fileName, text]]), artifacts);
+  return { diagnostics: [...diagnostics, ...reconciled.diagnostics], artifacts: reconciled.artifacts };
 }
 
 export async function verifyContracts(fileName: string, text: string): Promise<ContractDiagnostic[]> {

@@ -89,9 +89,37 @@ same property is proved for arbitrary TypeScript.
   the exact enclosing Program effect summary as
   `uneffect-contract-effect-boundary/v1`. An escaping throw missing from the
   inferred summary downgrades the whole contract artifact to `unknown`.
-  Promise rejection is deliberately not a synchronous throw edge. `finally`,
-  catch-binding values, effectful scalar call summaries, and general exception
-  fixed points are not accepted by this contract fragment.
+  Promise rejection is deliberately not a synchronous throw edge. The same
+  bounded completion model runs supported `finally` blocks on normal, return,
+  throw, and rejection paths; an abrupt finalizer overrides the retained
+  completion. Scalar explicit-throw payloads may bind a catch identifier.
+  A directly awaited, TypeChecker-identified builtin
+  `Promise.reject(value)` produces a distinct `Reject<E>` edge which catch can
+  discharge, without requiring a synchronous `Throw<E>` declaration. A
+  TypeChecker-resolved Promise-returning call may instead use a trusted
+  `temporal-summary rejects E` declaration; it branches into fulfilled and
+  rejected completion, while `temporal-summary throws E` declarations produce
+  separate synchronous edges. Unannotated Promise-producing calls, opaque catch
+  payloads, and general exception fixed points are not accepted. A scalar
+  Promise-returning callee may expose a trusted
+  `contract ensures` relation. One direct `const value = await call()` or
+  `return await call()` introduces a fresh fulfilled value, substitutes scalar
+  arguments into that relation, and records a source-bound `relationalCalls`
+  ledger entry. Each scalar callee `requires` clause becomes a separate
+  source-mapped `call-precondition` obligation. Z3 must prove it from the exact
+  caller path conditions; a failed implication is a counterexample and the
+  precondition is never silently assumed. Property/destructuring targets and
+  arbitrary awaited expressions remain fail-closed. For same-file
+  implementations, a post-solver fixed point promotes relational edges only
+  when every callee obligation and every transitive relational dependency is
+  verified. A failed local callee downgrades callers to `unknown`; declarations
+  without bodies and circular proof chains remain `trusted`. The public
+  reconciler also composes source files in one checked TypeScript Program.
+  Relation evidence carries schema v1, declaration file/span/SHA-256, and exact
+  TypeScript version; stale or incompatible evidence downgrades the caller to
+  `unknown`. Project verification applies this pass after solving every file.
+  Persisted package summaries, compiler-option identity, and exported-symbol
+  provenance are not implemented.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint
