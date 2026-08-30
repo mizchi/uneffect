@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseFixedArrayBuffer, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram } from "../src/index.js";
+import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseFixedArrayBuffer, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/index.js";
 import type { BoundedArrayBuffer, BoundedDataView, BoundedUint32Array, BoundedUint8Array, FixedArrayBuffer, U32, U8 } from "../src/index.js";
 
 describe("bounded Uint8Array safety", () => {
@@ -20,6 +24,31 @@ describe("bounded Uint8Array safety", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       message: expect.stringContaining("same-spelled bindings"),
     }));
+  });
+
+  it("separates shadowed typed-array bindings in the Program-backed frontend", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-typed-array-shadow-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        type BoundedUint8Array<N extends number> = Uint8Array
+        function write() {
+          const bytes: BoundedUint8Array<10> = new Uint8Array(10)
+          {
+            const bytes: BoundedUint8Array<1> = new Uint8Array(1)
+            bytes[5] = 0
+          }
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+      expect(result.obligations).toContainEqual(expect.objectContaining({
+        functionName: "write", kind: "index-bounds", result: "counterexample",
+      }));
+      expect(result.diagnostics.some(({ message }) => message.includes("same-spelled bindings"))).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("provides optional runtime refinements", () => {

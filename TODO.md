@@ -235,8 +235,17 @@ introducing another domain-local control-flow or alias model.
      - [x] Fail closed for React direct-body event/effect-event callback names
        shadowed by another lexical declaration, rather than merging callbacks
        by spelling.
-     - [ ] Replace the numeric and React fail-closed gates with per-expression
-       symbol keys for full shadowing support rather than conservative unknowns.
+     - [x] Carry per-expression symbol/declaration keys through the Program-backed
+       numeric frontend for parameters, locals, typed arrays, buffers, views,
+       and module constants. Keep source-only analysis conservatively unknown
+       on shadowing.
+     - [x] Resolve direct local JSX event handlers by declaration symbol in the
+       Program-backed frontend, while retaining source-only fail-closed behavior.
+     - [x] Extend React symbol keys from JSX handlers to Effect Events, ref
+       callbacks, and annotated custom-Hook callback environments; retain
+       source-only fail-closed behavior.
+     - [x] Add one cross-domain rename-invariance suite covering abortable
+       fetch, typed-array, ownership, and React Program-backed analyses.
 7. [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Add explicit JavaScript numeric domains instead of widening Z3 Real:
    safe integers and U32 first, then finite IEEE-754 facts (`NaN`, infinity,
    negative zero, and `Math.fround`). Keep unsupported coercion and rounding

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { resolvedSymbol, symbolIdentityKey } from "./binding-identity.js";
 import { extractAnnotations } from "./annotations.js";
 
 export type ReactPhase = "render" | "memo-compare" | "optimistic-reducer" | "event" | "action" | "imperative-handle-method" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "imperative-handle" | "ref-callback" | "cleanup";
@@ -817,7 +818,7 @@ function dependencyIssues(
   const effectEvents = localEffectEventCallbacks(boundary, source);
   for (const element of dependencyNode.elements) {
     const expression = unwrapExpression(element);
-    if (ts.isIdentifier(expression) && effectEvents.has(expression.text)) issues.push({
+    if (ts.isIdentifier(expression) && bindingMapHas(effectEvents, expression)) issues.push({
       kind: "effect-event-dependency", node: element, operation: expression.text, dependencies: [expression.text],
       detail: `${expression.text} is an Effect Event and must be omitted from dependency arrays`,
     });
@@ -842,6 +843,22 @@ function inlineCallback(call: ts.CallExpression, index: number | undefined): ts.
 
 type LocalEventCallback = (ts.FunctionDeclaration & { body: ts.Block }) | ts.ArrowFunction | ts.FunctionExpression;
 type CallbackImportsBySource = ReadonlyMap<string, ReadonlyMap<string, LocalEventCallback>>;
+const reactSourceCheckers = new WeakMap<ts.SourceFile, ts.TypeChecker>();
+
+function reactBindingKey(identifier: ts.Identifier): string | undefined {
+  const checker = reactSourceCheckers.get(identifier.getSourceFile());
+  return checker ? symbolIdentityKey(resolvedSymbol(checker, identifier)) : undefined;
+}
+
+function bindingMapHas(map: ReadonlyMap<string, unknown>, identifier: ts.Identifier): boolean {
+  const key = reactBindingKey(identifier);
+  return key ? map.has(key) : map.has(identifier.text);
+}
+
+function bindingMapGet<T>(map: ReadonlyMap<string, T>, identifier: ts.Identifier): T | undefined {
+  const key = reactBindingKey(identifier);
+  return key ? map.get(key) : map.get(identifier.text);
+}
 
 function multiplyDeclaredBindingNames(root: ts.Node): ReadonlySet<string> {
   const counts = new Map<string, number>();
@@ -862,13 +879,18 @@ function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, Loca
   if (!ts.isBlock(component.body)) return new Map();
   const callbacks = new Map<string, LocalEventCallback>();
   const aliases = new Map<string, string>();
+  const declarations = new Map<string, ts.Identifier>();
   const reassigned = new Set<string>();
   for (const statement of component.body.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) callbacks.set(statement.name.text, statement as ts.FunctionDeclaration & { body: ts.Block });
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      callbacks.set(statement.name.text, statement as ts.FunctionDeclaration & { body: ts.Block });
+      declarations.set(statement.name.text, statement.name);
+    }
     if (!ts.isVariableStatement(statement)
       || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
     for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      declarations.set(declaration.name.text, declaration.name);
       if (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)) {
         callbacks.set(declaration.name.text, declaration.initializer);
       } else if (ts.isIdentifier(declaration.initializer)) aliases.set(declaration.name.text, declaration.initializer.text);
@@ -887,7 +909,7 @@ function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, Loca
   const shadowed = multiplyDeclaredBindingNames(component.body);
   const resolved = new Map<string, LocalEventCallback>();
   const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
-    if (reassigned.has(name) || shadowed.has(name) || seen.has(name)) return undefined;
+    if (reassigned.has(name) || (!reactSourceCheckers.has(component.getSourceFile()) && shadowed.has(name)) || seen.has(name)) return undefined;
     const callback = callbacks.get(name);
     if (callback) return callback;
     const alias = aliases.get(name);
@@ -895,7 +917,11 @@ function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, Loca
   };
   for (const name of [...callbacks.keys(), ...aliases.keys()]) {
     const callback = resolve(name);
-    if (callback) resolved.set(name, callback);
+    if (callback) {
+      const key = declarations.get(name) && reactBindingKey(declarations.get(name)!);
+      if (key) resolved.set(key, callback);
+      if (!shadowed.has(name)) resolved.set(name, callback);
+    }
   }
   return resolved;
 }
@@ -977,7 +1003,10 @@ function callbackArgument(
   if (!argument) return undefined;
   const expression = unwrapExpression(argument);
   if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) return expression;
-  if (ts.isIdentifier(expression)) return callbacks.get(expression.text);
+  if (ts.isIdentifier(expression)) {
+    const key = reactBindingKey(expression);
+    return (key ? callbacks.get(key) : undefined) ?? callbacks.get(expression.text);
+  }
   return ts.isPropertyAccessExpression(expression) ? callbacks.get(expression.getText(expression.getSourceFile())) : undefined;
 }
 
@@ -1113,10 +1142,12 @@ function localEffectEventCallbacks(
   const imports = reactImportNames(source);
   const callbacks = new Map<string, ts.ArrowFunction | ts.FunctionExpression>();
   const aliases = new Map<string, string>();
+  const declarations = new Map<string, ts.Identifier>();
   for (const statement of boundary.body.statements) {
     if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
     for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      declarations.set(declaration.name.text, declaration.name);
       const initializer = unwrapExpression(declaration.initializer);
       if (ts.isCallExpression(initializer) && ts.isIdentifier(initializer.expression)
         && imports.get(initializer.expression.text) === "useEffectEvent") {
@@ -1130,7 +1161,7 @@ function localEffectEventCallbacks(
   const shadowed = multiplyDeclaredBindingNames(boundary.body);
   const resolved = new Map<string, ts.ArrowFunction | ts.FunctionExpression>();
   const resolve = (name: string, seen = new Set<string>()): ts.ArrowFunction | ts.FunctionExpression | undefined => {
-    if (seen.has(name) || shadowed.has(name)) return undefined;
+    if (seen.has(name) || (!reactSourceCheckers.has(source) && shadowed.has(name))) return undefined;
     const callback = callbacks.get(name);
     if (callback) return callback;
     const alias = aliases.get(name);
@@ -1138,7 +1169,12 @@ function localEffectEventCallbacks(
   };
   for (const name of [...callbacks.keys(), ...aliases.keys()]) {
     const callback = resolve(name);
-    if (callback) resolved.set(name, callback);
+    if (callback) {
+      const declaration = declarations.get(name);
+      const key = declaration && reactBindingKey(declaration);
+      if (key) resolved.set(key, callback);
+      if (!shadowed.has(name)) resolved.set(name, callback);
+    }
   }
   localEffectEventCallbackCache.set(boundary, resolved);
   return resolved;
@@ -1153,13 +1189,13 @@ function effectEventCallsInPhase(
   const calls: ts.CallExpression[] = [];
   const visit = (candidate: ts.Node): void => {
     if (candidate !== node && ts.isFunctionLike(candidate)) return;
-    if (ts.isCallExpression(candidate) && ts.isIdentifier(candidate.expression) && bindings.has(candidate.expression.text)) {
+    if (ts.isCallExpression(candidate) && ts.isIdentifier(candidate.expression) && bindingMapHas(bindings, candidate.expression)) {
       calls.push(candidate);
     }
     if (ts.isCallExpression(candidate) && immediateCallbacks.has(callName(candidate) ?? "")) {
       const action = candidate.arguments[0];
       const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
-        ? action : action && ts.isIdentifier(action) ? localCallbacks.get(action.text) : undefined;
+        ? action : action && ts.isIdentifier(action) ? bindingMapGet(localCallbacks, action) : undefined;
       if (callback?.body) visit(callback.body);
     }
     ts.forEachChild(candidate, visit);
@@ -1946,7 +1982,7 @@ function analyzeReactSource(
         if (transitionCallbacks.has(callName(node) ?? "")) {
           const action = node.arguments[0];
           const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
-            ? action : action && ts.isIdentifier(action) ? localCallbacks.get(action.text) : undefined;
+            ? action : action && ts.isIdentifier(action) ? bindingMapGet(localCallbacks, action) : undefined;
           if (callback?.body) visit(callback.body);
         }
         if (isReactUseCall(source, node.expression)) {
@@ -2240,7 +2276,7 @@ function analyzeReactSource(
           return;
         }
         const called = callName(node), builtinHook = called ? hooks.has(called) : false, customHook = called ? customHooks.has(called) || externalHooks.has(called) : false;
-        if (ts.isIdentifier(node.expression) && effectEvents.has(node.expression.text)) {
+        if (ts.isIdentifier(node.expression) && bindingMapHas(effectEvents, node.expression)) {
           reportHook(node, {
             kind: "invalid-effect-event-call", phase: "render", operation: node.expression.text,
             message: `${node.expression.text} is an Effect Event and may only be called from an Effect`,
@@ -2500,7 +2536,7 @@ function analyzeReactSource(
             });
             return;
           }
-          if (ts.isIdentifier(expression) && effectEvents.has(expression.text)) {
+          if (ts.isIdentifier(expression) && bindingMapHas(effectEvents, expression)) {
             report(expression, {
               kind: "invalid-effect-event-call", phase: "event", operation,
               message: `${operation} is an Effect Event and cannot be used as a JSX event handler`,
@@ -2543,7 +2579,7 @@ function analyzeReactSource(
           });
           return;
         }
-        if (ts.isIdentifier(node.expression) && effectEvents.has(node.expression.text)) {
+        if (ts.isIdentifier(node.expression) && bindingMapHas(effectEvents, node.expression)) {
           report(node, {
             kind: "invalid-effect-event-call", phase: "render", operation: node.expression.text,
             message: `${node.expression.text} is an Effect Event and may only be called from an Effect`,
@@ -2714,7 +2750,7 @@ function analyzeReactSource(
         if (transitionCallbacks.has(callName(node) ?? "")) {
           const action = node.arguments[0];
           const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
-            ? action : action && ts.isIdentifier(action) ? eventCallbacks.get(action.text) : undefined;
+            ? action : action && ts.isIdentifier(action) ? bindingMapGet(eventCallbacks, action) : undefined;
           if (callback?.body) visitRender(callback.body);
           else if (action) report(action, {
             kind: "unknown-transition-action", phase: "render", operation: action.getText(source),
@@ -4332,6 +4368,7 @@ function resolveProgramSuspensionSources(
 function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanticsResult> {
   const checker = program.getTypeChecker();
   const sources = program.getSourceFiles().filter((candidate) => !candidate.isDeclarationFile);
+  for (const source of sources) reactSourceCheckers.set(source, checker);
   const callbackImportsBySource: CallbackImportsBySource = new Map(
     sources.map((candidate) => [candidate.fileName, importedReactCallbacks(candidate, checker)]),
   );

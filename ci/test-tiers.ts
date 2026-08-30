@@ -4,6 +4,7 @@ export const ciTestTiers = {
     "test/annotations.test.ts",
     "test/assurance.test.ts",
     "test/binding-identity.test.ts",
+    "test/binding-rename-invariance.test.ts",
     "test/builtin-contracts.test.ts",
     "test/call-graph.test.ts",
     "test/callable-summary.test.ts",

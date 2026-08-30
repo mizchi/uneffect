@@ -308,6 +308,67 @@ describe("React Function Component semantics", () => {
       && kind === "invalid-effect-event-call" && phase === "event")).toHaveLength(2);
   });
 
+  it("resolves a shadowed Effect Event by symbol in the Program-backed frontend", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-effect-event-shadow-"));
+    try {
+      const reactTypes = join(directory, "react.d.ts");
+      const fileName = join(directory, "entry.tsx");
+      writeFileSync(reactTypes, `declare module "react" {
+        export function useEffect(callback: () => void, dependencies: unknown[]): void
+        export function useEffectEvent(callback: () => void): () => void
+      }`);
+      writeFileSync(fileName, `
+        import { useEffect, useEffectEvent } from "react"
+        /* uneffect:react-component */
+        function Panel() {
+          const notify = useEffectEvent(() => console.log("outer"))
+          { const notify = () => console.log("shadow"); void notify }
+          useEffect(() => notify(), [])
+          return null
+        }
+      `);
+      const program = ts.createProgram([reactTypes, fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(fileName)!);
+      expect(result.components[0]!.phases).toContainEqual({ phase: "passive-effect", effects: ["Console"] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves a shadowed callback inside a custom Hook by symbol", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-shadow-"));
+    try {
+      const reactTypes = join(directory, "react.d.ts");
+      const fileName = join(directory, "entry.tsx");
+      writeFileSync(reactTypes, `declare module "react" {
+        export function useEffect(callback: () => void, dependencies: unknown[]): void
+      }`);
+      writeFileSync(fileName, `
+        import { useEffect } from "react"
+        /* uneffect:react-hook */ function useTracked() {
+          function run() { fetch("/tracked") }
+          { const run = () => console.log("shadow"); void run }
+          useEffect(() => run(), [])
+        }
+        /* uneffect:react-component */
+        function Panel() { useTracked(); return null }
+      `);
+      const program = ts.createProgram([reactTypes, fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(fileName)!);
+      expect(result.components[0]!.phases).toContainEqual({ phase: "passive-effect", effects: ["Fetch"] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("separates external-store snapshots from subscription lifecycle", () => {
     const result = analyzeReactSemantics("external-store.tsx", `
       import { useSyncExternalStore as useStore } from "react"
@@ -657,6 +718,31 @@ describe("React Function Component semantics", () => {
     }));
   });
 
+  it("resolves a shadowed JSX handler by symbol in the Program-backed frontend", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-handler-shadow-"));
+    try {
+      const fileName = join(directory, "entry.tsx");
+      writeFileSync(fileName, `
+        declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+        /* uneffect:react-component */
+        function Panel() {
+          function submit() { fetch("/submit") }
+          { const submit = () => console.log("shadow"); void submit }
+          return <button onClick={submit} />
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(fileName)!);
+      expect(result.diagnostics.some(({ kind }) => kind === "unknown-event-handler")).toBe(false);
+      expect(result.components[0]!.phases).toContainEqual({ phase: "event", effects: ["Fetch"] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("executes React transition action callbacks in their enclosing phase", () => {
     const result = analyzeReactSemantics("transitions.tsx", `
       import React, { startTransition as defer, useTransition } from "react"
@@ -989,6 +1075,33 @@ describe("React Function Component semantics", () => {
     expect(result.components[0]!.replay.production.effects).toContainEqual(expect.objectContaining({
       phase: "ref-callback", setupEffects: ["Acquire<Observer>"], cleanupEffects: ["Release<Observer>"],
     }));
+  });
+
+  it("resolves a shadowed ref callback by symbol in the Program-backed frontend", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-ref-shadow-"));
+    try {
+      const fileName = join(directory, "entry.tsx");
+      writeFileSync(fileName, `
+        declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
+        /* uneffect:react-resource acquire Observer */
+        declare function observe(node: Element | null): void
+        /* uneffect:react-component */
+        function Panel() {
+          const attach = (node: Element | null) => { observe(node) }
+          { const attach = (_node: Element | null) => {}; void attach }
+          return <div ref={attach} />
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(fileName)!);
+      expect(result.diagnostics.some(({ kind }) => kind === "unknown-ref-callback")).toBe(false);
+      expect(result.components[0]!.phases).toContainEqual({ phase: "ref-callback", effects: ["Acquire<Observer>"] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("rejects non-idempotent render operations and mutation of props", () => {

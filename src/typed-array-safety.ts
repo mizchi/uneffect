@@ -4,6 +4,7 @@ import { extractAnnotations } from "./annotations.js";
 import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
 import { executeZ3, type Z3ExecutionOptions } from "./z3.js";
 import { resolveStableRegion } from "./region-alias.js";
+import { symbolIdentityKey } from "./binding-identity.js";
 
 export interface TypedArrayObligation {
   functionName: string;
@@ -111,6 +112,14 @@ interface TypedArraySemantics {
   integerOperations?: ReadonlyMap<number, "imul" | "clz32" | "fround">;
   /** Declaration start -> inherited DataView type, or null for an unsafe alias. */
   dataViewAliases?: ReadonlyMap<number, string | null>;
+  /** Identifier source start -> declaration identity. */
+  bindingKeys?: ReadonlyMap<number, string>;
+  /** Module constant spelling -> declaration identity. */
+  constantKeys?: ReadonlyMap<string, string>;
+}
+
+function bindingKey(identifier: ts.Identifier, semantics?: TypedArraySemantics): string {
+  return semantics?.bindingKeys?.get(identifier.getStart()) ?? identifier.text;
 }
 
 interface TypedArrayTrust {
@@ -325,11 +334,13 @@ function expressionRange(expression: ts.Expression, parameterTypes: ReadonlyMap<
   if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isNonNullExpression(expression)) return expressionRange(expression.expression, parameterTypes, constants, tables, locals, semantics);
   if (ts.isNumericLiteral(expression)) { const value = Number(expression.text); return { minimum: value, maximum: value, integer: Number.isInteger(value) }; }
   if (ts.isIdentifier(expression)) {
-    const constant = constants.get(expression.text);
+    const key = bindingKey(expression, semantics);
+    const constant = !semantics?.bindingKeys || semantics.constantKeys?.get(expression.text) === key
+      ? constants.get(expression.text) : undefined;
     if (constant !== undefined) return { minimum: constant, maximum: constant, integer: Number.isInteger(constant) };
-    const local = locals.get(expression.text);
+    const local = locals.get(key);
     if (local) return local;
-    const type = parameterTypes.get(expression.text);
+    const type = parameterTypes.get(key);
     return type === "U8" ? { minimum: 0, maximum: 255, integer: true } : type === "U32" ? { minimum: 0, maximum: 0xffff_ffff, integer: true } : type === "Nat" ? { minimum: 0, maximum: Number.POSITIVE_INFINITY, integer: true } : undefined;
   }
   if (ts.isPropertyAccessExpression(expression) && expression.name.text === "length") {
@@ -337,7 +348,7 @@ function expressionRange(expression: ts.Expression, parameterTypes: ReadonlyMap<
     const table = reference ? tables.get(reference) : undefined;
     if (table) return { minimum: table.length, maximum: table.length, integer: true };
     if (!ts.isIdentifier(expression.expression)) return undefined;
-    const maximum = boundedTypeMaximum(parameterTypes.get(expression.expression.text) ?? "", constants);
+    const maximum = boundedTypeMaximum(parameterTypes.get(bindingKey(expression.expression, semantics)) ?? "", constants);
     return maximum === undefined ? undefined : { minimum: 0, maximum, integer: true };
   }
   if (ts.isElementAccessExpression(expression)) {
@@ -449,7 +460,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
     const tableLengths = new Map([...tables].map(([name, table]) => [`${name}.length`, String(table.length)]));
     const assumptions = [...extractAnnotations(leading, "requires"), ...typeAssumptions(node.parameters, source)]
       .map((assumption) => [...tableLengths].reduce((text, [name, length]) => text.replaceAll(name, length), assumption));
-    const bounded = boundedMaximum(node.type, source, constants), parameterTypes = new Map(node.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [[parameter.name.text, parameter.type?.getText(source) ?? ""] as const] : []));
+    const bounded = boundedMaximum(node.type, source, constants), parameterTypes = new Map(node.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [[bindingKey(parameter.name, semantics), parameter.type?.getText(source) ?? ""] as const] : []));
     const boundedView = boundedDataViewReturnMaximum(node.type, source, constants);
     const localRanges = contractParameterRanges(node.parameters, source, assumptions);
     let localChanged = true;
@@ -458,9 +469,9 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const collectLocal = (current: ts.Node): void => {
         if (current !== node.body && ts.isFunctionLike(current)) return;
         if (ts.isVariableDeclaration(current) && ts.isVariableDeclarationList(current.parent)
-          && (current.parent.flags & ts.NodeFlags.Const) && ts.isIdentifier(current.name) && current.initializer && !localRanges.has(current.name.text)) {
+          && (current.parent.flags & ts.NodeFlags.Const) && ts.isIdentifier(current.name) && current.initializer && !localRanges.has(bindingKey(current.name, semantics))) {
           const range = expressionRange(current.initializer, parameterTypes, constants, tables, localRanges, semantics);
-          if (range) { localRanges.set(current.name.text, range); localChanged = true; }
+          if (range) { localRanges.set(bindingKey(current.name, semantics), range); localChanged = true; }
         }
         ts.forEachChild(current, collectLocal);
       };
@@ -482,27 +493,28 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
           if (current.initializer && ts.isNewExpression(current.initializer)
             && current.initializer.expression.getText(source) === "DataView" && current.initializer.arguments?.[0]) {
             const [buffer, offset, length] = current.initializer.arguments;
-            const bufferMaximum = buffer && ts.isIdentifier(buffer) ? fixedArrayBufferBytes(fixedBufferTypes.get(buffer.text) ?? "", constants) : undefined;
+            const bufferMaximum = buffer && ts.isIdentifier(buffer) ? fixedArrayBufferBytes(fixedBufferTypes.get(bindingKey(buffer, semantics)) ?? "", constants) : undefined;
             const offsetConstant = offset ? constantNumber(offset, constants) : 0;
             const lengthConstant = length ? constantNumber(length, constants)
               : bufferMaximum !== undefined && offsetConstant !== undefined ? bufferMaximum - offsetConstant : undefined;
             if (lengthConstant !== undefined && Number.isSafeInteger(lengthConstant) && lengthConstant >= 0) constructedView = `BoundedDataView<${lengthConstant}>`;
           }
           const inherited = semanticAlias === null ? "__uneffect_unknown_dataview_alias__"
-            : semanticAlias ?? constructedView ?? (current.initializer && ts.isIdentifier(current.initializer) ? dataViewTypes.get(current.initializer.text) : undefined);
+            : semanticAlias ?? constructedView ?? (current.initializer && ts.isIdentifier(current.initializer) ? dataViewTypes.get(bindingKey(current.initializer, semantics)) : undefined);
           const type = semanticAlias === null ? inherited
             : explicit && boundedDataViewMaximum(explicit, constants) !== undefined ? explicit : inherited;
-          if (type && !dataViewTypes.has(current.name.text)) { dataViewTypes.set(current.name.text, type); aliasChanged = true; }
-          const inheritedBuffer = current.initializer && ts.isIdentifier(current.initializer) ? fixedBufferTypes.get(current.initializer.text) : undefined;
+          const currentKey = bindingKey(current.name, semantics);
+          if (type && !dataViewTypes.has(currentKey)) { dataViewTypes.set(currentKey, type); aliasChanged = true; }
+          const inheritedBuffer = current.initializer && ts.isIdentifier(current.initializer) ? fixedBufferTypes.get(bindingKey(current.initializer, semantics)) : undefined;
           const bufferType = explicit && fixedArrayBufferBytes(explicit, constants) !== undefined ? explicit : inheritedBuffer;
-          if (bufferType && !fixedBufferTypes.has(current.name.text)) { fixedBufferTypes.set(current.name.text, bufferType); aliasChanged = true; }
+          if (bufferType && !fixedBufferTypes.has(currentKey)) { fixedBufferTypes.set(currentKey, bufferType); aliasChanged = true; }
           let windowType: string | undefined;
           let attemptedWindow = false;
           if (current.initializer && ts.isCallExpression(current.initializer)
             && ts.isPropertyAccessExpression(current.initializer.expression)
             && ["subarray", "slice"].includes(current.initializer.expression.name.text)
             && ts.isIdentifier(current.initializer.expression.expression)) {
-            const receiverType = typedArrayTypes.get(current.initializer.expression.expression.text) ?? "";
+            const receiverType = typedArrayTypes.get(bindingKey(current.initializer.expression.expression, semantics)) ?? "";
             const maximum = boundedTypeMaximum(receiverType, constants);
             attemptedWindow = maximum !== undefined;
             const start = current.initializer.arguments[0] ? constantNumber(current.initializer.arguments[0]!, constants) : 0;
@@ -513,10 +525,10 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
               windowType = `BoundedUint${element === "u8" ? "8" : "32"}Array<${end - start}>`;
             }
           }
-          const inheritedArray = current.initializer && ts.isIdentifier(current.initializer) ? typedArrayTypes.get(current.initializer.text) : undefined;
+          const inheritedArray = current.initializer && ts.isIdentifier(current.initializer) ? typedArrayTypes.get(bindingKey(current.initializer, semantics)) : undefined;
           const arrayType = explicit && typedArrayElement(explicit) !== undefined ? explicit
             : windowType ?? (attemptedWindow ? "__uneffect_unknown_typed_array_window__" : inheritedArray);
-          if (arrayType && !typedArrayTypes.has(current.name.text)) { typedArrayTypes.set(current.name.text, arrayType); aliasChanged = true; }
+          if (arrayType && !typedArrayTypes.has(currentKey)) { typedArrayTypes.set(currentKey, arrayType); aliasChanged = true; }
         }
         ts.forEachChild(current, collectAlias);
       };
@@ -537,11 +549,11 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
         : ts.isNewExpression(current) && current.expression.getText(source) === "DataView" && current.arguments?.[0] ? current : undefined;
       const trackedLocalView = construction && ts.isVariableDeclaration(construction.parent)
         && construction.parent.initializer === construction && ts.isIdentifier(construction.parent.name)
-        && dataViewTypes.has(construction.parent.name.text);
+        && dataViewTypes.has(bindingKey(construction.parent.name, semantics));
       if (construction && (trackedLocalView || returned === construction && boundedView !== undefined)) {
         const argumentsList = construction.arguments!;
         const buffer = argumentsList[0]!;
-        const bufferMaximum = ts.isIdentifier(buffer) ? fixedArrayBufferBytes(fixedBufferTypes.get(buffer.text) ?? "", constants) : undefined;
+        const bufferMaximum = ts.isIdentifier(buffer) ? fixedArrayBufferBytes(fixedBufferTypes.get(bindingKey(buffer, semantics)) ?? "", constants) : undefined;
         const offset = argumentsList[1];
         const length = argumentsList[2];
         const offsetText = offset?.getText(source) ?? "0";
@@ -572,8 +584,8 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
         }
       }
       if (ts.isBinaryExpression(current) && current.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && current.operatorToken.kind <= ts.SyntaxKind.LastAssignment && ts.isElementAccessExpression(current.left)) {
-        const target = current.left.expression.getText(source);
-        const type = typedArrayTypes.get(target) ?? "";
+        const target = current.left.expression;
+        const type = ts.isIdentifier(target) ? typedArrayTypes.get(bindingKey(target, semantics)) ?? "" : "";
         const kind = type === "Uint8Array" || type.startsWith("BoundedUint8Array<") ? "u8-write" : type === "Uint32Array" || type.startsWith("BoundedUint32Array<") ? "u32-write" : undefined;
         if (kind) {
           const value = current.operatorToken.kind === ts.SyntaxKind.EqualsToken ? current.right.getText(source) : current.getText(source);
@@ -583,8 +595,8 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       }
       if (ts.isElementAccessExpression(current) && current.argumentExpression) {
         const reference = tableReferenceName(current.expression);
-        const identifier = ts.isIdentifier(current.expression) ? current.expression.text : undefined;
-        const type = identifier ? typedArrayTypes.get(identifier) ?? "" : "", targetMaximum = boundedTypeMaximum(type, constants);
+        const identifier = ts.isIdentifier(current.expression) ? current.expression : undefined;
+        const type = identifier ? typedArrayTypes.get(bindingKey(identifier, semantics)) ?? "" : "", targetMaximum = boundedTypeMaximum(type, constants);
         if (type === "__uneffect_unknown_typed_array_window__") {
           candidates.push({ kind: "index-bounds", goal: "statically bounded typed-array window", node: current.argumentExpression, knownResult: "unknown" });
         }
@@ -604,7 +616,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression)
         && ts.isIdentifier(current.expression.expression) && current.arguments[0]) {
         const method = DATA_VIEW_METHODS.get(current.expression.name.text);
-        const receiverType = dataViewTypes.get(current.expression.expression.text) ?? "";
+        const receiverType = dataViewTypes.get(bindingKey(current.expression.expression, semantics)) ?? "";
         const maximum = boundedDataViewMaximum(receiverType, constants);
         if (method && receiverType === "__uneffect_unknown_dataview_alias__") {
           candidates.push({ kind: "dataview-bounds", goal: "stable DataView alias", node: current.expression.expression, knownResult: "unknown" });
@@ -625,9 +637,9 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       }
       if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression) && current.expression.name.text === "set"
         && ts.isIdentifier(current.expression.expression) && current.arguments[0]) {
-        const targetType = typedArrayTypes.get(current.expression.expression.text) ?? "", targetMaximum = boundedTypeMaximum(targetType, constants);
+        const targetType = typedArrayTypes.get(bindingKey(current.expression.expression, semantics)) ?? "", targetMaximum = boundedTypeMaximum(targetType, constants);
         if (targetMaximum !== undefined) {
-          const sourceExpression = current.arguments[0]!, sourceType = ts.isIdentifier(sourceExpression) ? typedArrayTypes.get(sourceExpression.text) ?? "" : "";
+          const sourceExpression = current.arguments[0]!, sourceType = ts.isIdentifier(sourceExpression) ? typedArrayTypes.get(bindingKey(sourceExpression, semantics)) ?? "" : "";
           const sourceMaximum = boundedTypeMaximum(sourceType, constants), offset = current.arguments[1];
           const offsetText = offset?.getText(source) ?? "0";
           const sourceLength = sourceMaximum ?? `${sourceExpression.getText(source)}.length`;
@@ -658,7 +670,8 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const staticallyInside = range && candidate.upper !== undefined && range.minimum >= (candidate.lower ?? 0) && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
       if (!candidate.knownResult && !invalidInteger && !staticallyInside) solverQueries++;
       const rawProofResult = candidate.knownResult ?? (invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal, z3));
-      const proofResult = shadowedBindings && rawProofResult === "verified" ? "unknown" : rawProofResult;
+      const unresolvedShadowing = shadowedBindings && !semantics?.bindingKeys;
+      const proofResult = unresolvedShadowing && rawProofResult === "verified" ? "unknown" : rawProofResult;
       const statement = enclosingStatement(candidate.node, node);
       const statementLeading = statement ? source.text.slice(statement.getFullStart(), statement.getStart(source)) : "";
       const trust = typedArrayTrust(statementLeading, candidate.kind) ?? functionTrust;
@@ -673,7 +686,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
           ...(trust!.expiresOn ? { trustExpiresOn: trust!.expiresOn } : {}),
         } : {}),
       });
-      if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : shadowedBindings ? `${candidate.kind} constraint could not be proved because this legacy numeric scope contains same-spelled bindings` : `${candidate.kind} constraint could not be proved` });
+      if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : unresolvedShadowing ? `${candidate.kind} constraint could not be proved because this legacy numeric scope contains same-spelled bindings` : `${candidate.kind} constraint could not be proved` });
     }
   }
   return { obligations, diagnostics, statistics: { solverQueries } };
@@ -756,7 +769,20 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
   };
   const integerCasts = new Map<number, IntegerCast>();
   const integerOperations = new Map<number, "imul" | "clz32" | "fround">();
+  const bindingKeys = new Map<number, string>();
+  const constantKeys = new Map<string, string>();
+  for (const statement of source.statements) if (ts.isVariableStatement(statement)
+    && (statement.declarationList.flags & ts.NodeFlags.Const) !== 0) {
+    for (const declaration of statement.declarationList.declarations) if (ts.isIdentifier(declaration.name)) {
+      const key = symbolIdentityKey(symbolAt(declaration.name));
+      if (key) constantKeys.set(declaration.name.text, key);
+    }
+  }
   const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) {
+      const key = symbolIdentityKey(symbolAt(node));
+      if (key) bindingKeys.set(node.getStart(source), key);
+    }
     if (ts.isCallExpression(node)) {
       const method = resolveCast(node.expression);
       if (method) integerCasts.set(node.getStart(source), method);
@@ -821,7 +847,7 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
     ts.forEachChild(node, collectFunctions);
   };
   collectFunctions(source);
-  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, integerOperations, dataViewAliases }, z3);
+  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, integerOperations, dataViewAliases, bindingKeys, constantKeys }, z3);
 }
 
 function resolveProgramModule(from: string, specifier: string, files: Readonly<Record<string, string>>): string | undefined {
