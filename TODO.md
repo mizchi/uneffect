@@ -205,6 +205,15 @@ introducing another domain-local control-flow or alias model.
    - [x] Accept a single-use local `const` object-literal RequestInit alias;
      reject reused, mutated, dynamic, and escaping options as unknown rather
      than treating `const` as deep immutability.
+   - [x] Join each abortable fetch binding with Promise ownership
+     (`await`/`return`/`catch`/floating) and emit an executable
+     `abortableFetchObserved` Quint property. Response-body resources and retry
+     attempt composition remain separate.
+   - [x] Track the direct `const response = await request` body-consumption
+     fragment for builtin `json/text/arrayBuffer/blob/formData/bytes`; emit
+     `abortableFetchBodiesConsumed`, treating conditional consumption as
+     unknown. Response aliases, streams, clone/tee, piping, and interprocedural
+     ownership remain open.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain

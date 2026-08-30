@@ -128,4 +128,76 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("connects abortable fetch state to Promise ownership", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-ownership-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function returned() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/returned", { signal: controller.signal })
+          return request
+        }
+        export function floating() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/floating", { signal: controller.signal })
+          console.log("forgot", request instanceof Promise)
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "returned", promiseStatus: "observed", promiseObservations: ["return"] }),
+        expect.objectContaining({ owner: "floating", promiseStatus: "floating", promiseObservations: [] }),
+      ]);
+      const quint = generateAbortableFetchProductQuint("abortable_fetch_ownership", analysis);
+      expect(quint).toContain("val abortableFetchObserved = false");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("tracks direct Response body consumption", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-body-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function consumed() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/consumed", { signal: controller.signal })
+          const response = await request
+          return await response.json()
+        }
+        export async function unconsumed() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/unconsumed", { signal: controller.signal })
+          const response = await request
+          return response.status
+        }
+        export async function conditional(flag: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/conditional", { signal: controller.signal })
+          const response = await request
+          if (flag) await response.text()
+          return response.status
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "consumed", responseBinding: "response", responseBodyStatus: "consumed", responseBodyOperation: "json" }),
+        expect.objectContaining({ owner: "unconsumed", responseBinding: "response", responseBodyStatus: "unconsumed" }),
+        expect.objectContaining({ owner: "conditional", responseBinding: "response", responseBodyStatus: "unknown", responseBodyOperation: "text" }),
+      ]);
+      const quint = generateAbortableFetchProductQuint("abortable_fetch_body", analysis);
+      expect(quint).toContain("val abortableFetchBodiesConsumed = false");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

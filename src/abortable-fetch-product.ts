@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { analyzeAsyncPatternsInProgram } from "./async-patterns.js";
+import { analyzeAsyncSafetyInProgram, type PromiseBinding } from "./async-safety.js";
 import { bindingIdentityKey, symbolIdentityKey } from "./binding-identity.js";
 import { analyzeAbortSignalsInProgram } from "./host-neutral-transitions.js";
 
@@ -10,6 +11,11 @@ export interface AbortableFetch {
   readonly controller: string;
   readonly signalKind: "controller-direct" | "controller-alias" | "abort-any";
   readonly optionsKind: "inline" | "single-use-const-alias";
+  readonly promiseStatus: PromiseBinding["status"];
+  readonly promiseObservations: readonly string[];
+  readonly responseBinding?: string;
+  readonly responseBodyStatus: "not-acquired" | "consumed" | "unconsumed" | "unknown";
+  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "json" | "text";
   readonly abortComposition?: number;
   readonly abortReason?: string;
   readonly abortConditional?: boolean;
@@ -46,7 +52,9 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
   const checker = program.getTypeChecker();
   const aborts = analyzeAbortSignalsInProgram(program, source);
   const asyncPatterns = analyzeAsyncPatternsInProgram(program, source);
+  const asyncSafety = analyzeAsyncSafetyInProgram(program, source);
   const fetches: AbortableFetch[] = [], unknown: AbortableFetchUnknown[] = [];
+  const fetchBindingSymbols = new Map<number, ts.Symbol>();
   const symbolReferenceCount = (target: ts.Symbol): number => {
     let count = 0;
     const countReferences = (node: ts.Node): void => {
@@ -135,23 +143,77 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
           : aborts.events.find((item) => linkedControllers.some((link) => link.controllerIndex === item.controllerIndex));
         const initialSource = composition?.initiallyAbortedSource;
         const initialReason = initialSource === undefined ? undefined : composition?.sourceReasons[initialSource] ?? "AbortError";
+        const promise = asyncSafety.promiseBindings.find((item) => item.owner === owner && item.binding === binding);
+        const fetchIndex = fetches.length;
         fetches.push({
           owner, binding, url: node.arguments[0]?.getText(source) ?? "<missing>",
           controller: controller?.binding ?? "<AbortSignal.any>",
           signalKind: composition ? "abort-any" : target!.alias ? "controller-alias" : "controller-direct",
           optionsKind: options!.kind,
+          promiseStatus: promise?.status ?? "floating",
+          promiseObservations: promise?.observations ?? [],
+          responseBodyStatus: "not-acquired",
           ...(target?.composition === undefined ? {} : { abortComposition: target.composition }),
           ...(initialReason ? { abortReason: initialReason, abortConditional: false }
             : composition ? { abortConditional: true }
             : event ? { abortReason: event.reason, abortConditional: event.conditional } : {}),
           span: { start: node.getStart(source), end: node.getEnd() }, evidence: "exact",
         });
+        const bindingSymbol = ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+          ? resolvedSymbol(checker, node.parent.name) : undefined;
+        if (bindingSymbol) fetchBindingSymbols.set(fetchIndex, bindingSymbol);
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return { fileName: source.fileName, fetches, unknown };
+  const bodyMethods = new Set(["arrayBuffer", "blob", "bytes", "formData", "json", "text"] as const);
+  const conditionallyExecuted = (node: ts.Node): boolean => {
+    for (let current: ts.Node | undefined = node.parent; current && !ts.isFunctionLike(current); current = current.parent) {
+      if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
+        || ts.isIterationStatement(current, false) || ts.isTryStatement(current)) return true;
+    }
+    return false;
+  };
+  const enriched = fetches.map((fetch, index): AbortableFetch => {
+    const requestSymbol = fetchBindingSymbols.get(index);
+    if (!requestSymbol) return fetch;
+    let responseDeclaration: ts.VariableDeclaration | undefined;
+    const findResponse = (node: ts.Node): void => {
+      if (responseDeclaration || (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner)) return;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+        && ts.isAwaitExpression(node.initializer) && ts.isIdentifier(node.initializer.expression)
+        && resolvedSymbol(checker, node.initializer.expression) === requestSymbol) responseDeclaration = node;
+      ts.forEachChild(node, findResponse);
+    };
+    findResponse(source);
+    if (!responseDeclaration || !ts.isIdentifier(responseDeclaration.name)) return fetch;
+    const responseSymbol = resolvedSymbol(checker, responseDeclaration.name);
+    let operation: AbortableFetch["responseBodyOperation"] | undefined;
+    let conditional = false;
+    const findConsumption = (node: ts.Node): void => {
+      if (operation || (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner)) return;
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && ts.isIdentifier(node.expression.expression) && resolvedSymbol(checker, node.expression.expression) === responseSymbol
+        && bodyMethods.has(node.expression.name.text as NonNullable<typeof operation>)) {
+        const method = resolvedSymbol(checker, node.expression.name);
+        const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+        if (builtin) {
+          operation = node.expression.name.text as NonNullable<typeof operation>;
+          conditional = conditionallyExecuted(node);
+        }
+      }
+      ts.forEachChild(node, findConsumption);
+    };
+    findConsumption(source);
+    return {
+      ...fetch,
+      responseBinding: responseDeclaration.name.text,
+      responseBodyStatus: operation ? conditional ? "unknown" : "consumed" : "unconsumed",
+      ...(operation ? { responseBodyOperation: operation } : {}),
+    };
+  });
+  return { fileName: source.fileName, fetches: enriched, unknown };
 }
 
 function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/gu, "_"); }
@@ -177,6 +239,8 @@ export function generateAbortableFetchProductQuint(moduleName: string, analysis:
   });
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   const domains = analysis.fetches.map((_, index) => `(fetch_${index}_state >= 0 and fetch_${index}_state <= 3)`).join(" and ") || "true";
-  lines.push("", `  val abortableFetchSafe = ${domains}`, "}", "");
+  const observed = analysis.fetches.every((fetch) => fetch.promiseStatus !== "floating");
+  const bodiesConsumed = analysis.fetches.every((fetch) => fetch.responseBodyStatus === "consumed" || fetch.responseBodyStatus === "not-acquired");
+  lines.push("", `  val abortableFetchSafe = ${domains}`, `  val abortableFetchObserved = ${observed}`, `  val abortableFetchBodiesConsumed = ${bodiesConsumed}`, "}", "");
   return lines.join("\n");
 }

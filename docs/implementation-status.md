@@ -134,7 +134,19 @@ same property is proved for arbitrary TypeScript.
   A statically pre-aborted `AbortSignal.any` initializes the request as aborted;
   other sources compete with external completion. Mutable, reused, dynamic, or
   escaping options/signal aliases, dynamic `AbortSignal.any` source arrays, retries,
-  response-body streams, and resource-disposal composition remain open.
+  response-body streams and resource-disposal composition remain open beyond
+  the direct body-consumption fragment below.
+  The same product now consumes the existing Promise-ownership analysis for
+  each immutable fetch binding. It records await/return/catch observations and
+  emits `abortableFetchObserved = false` when any modeled request remains
+  floating. This connects rejection ownership to the cancellation/settlement
+  model, but does not yet compose retry attempts.
+  For `const response = await request`, direct builtin
+  `json/text/arrayBuffer/blob/formData/bytes` calls are treated as body
+  consumption and projected to `abortableFetchBodiesConsumed`. A missing call
+  is unconsumed; a conditional call is unknown and therefore cannot satisfy the
+  property. Response aliases, `body.getReader()`, clone/tee, piping, and
+  cross-function consumption remain unsupported.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
