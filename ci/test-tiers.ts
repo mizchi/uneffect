@@ -18,6 +18,7 @@ export const ciTestTiers = {
     "test/effects.test.ts",
     "test/frontend-adapter.test.ts",
     "test/frontend-parity.test.ts",
+    "test/host-neutral-transitions.test.ts",
     "test/model-replay.test.ts",
     "test/module-initialization.test.ts",
     "test/modules.test.ts",

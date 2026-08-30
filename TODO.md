@@ -163,6 +163,18 @@ introducing another domain-local control-flow or alias model.
    callback invocation through one host-neutral temporal transition interface.
    Preserve separate Web and Node scheduling profiles and explicit unsupported
    interleavings. ([#63](https://github.com/mizchi/uneffect/issues/63), [#10](https://github.com/mizchi/uneffect/issues/10))
+   - [x] Introduce the versioned `uneffect-host-neutral-transitions/v1`
+     contract with source-stable callback invocation, Promise settlement, and
+     resource-disposal transitions.
+   - [x] Connect callable summaries, Promise-chain analysis, and sync/async
+     `using` disposal analysis through one Program-backed entry point while
+     deduplicating the shared Promise-reaction observation.
+   - [x] Project exact neutral inline/microtask lanes and reviewed timer/event
+     APIs to distinct Web and Node queue names; ambiguous Node EventTarget and
+     other unreviewed host tasks retain an explicit unknown reason.
+   - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Lower neutral lanes into the existing Web and Node queue-state models,
+     including cancellation, external completion, and unsupported host-specific
+     ordering as explicit unknown transitions.
 5. [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Consume persisted package contract/effect summaries at call sites with
    exact package, export, declaration, compiler, and source provenance. Unknown
    or stale summaries must block assurance; publisher/build authenticity stays

@@ -61,6 +61,18 @@ same property is proved for arbitrary TypeScript.
   returned, reentrant, concurrent, escaping, or dynamically selected callbacks;
   those cases remain `unknown`, and the older full effect analyzer still limits
   its own `effect_parameter` validation to iterator consumers.
+- `uneffect-host-neutral-transitions/v1` is the first shared async/temporal
+  contract. It projects callable invocation, first-settlement-wins Promise
+  executors and reactions, and synchronous/asynchronous `using` disposal into
+  source-attributed transitions with `inline`, `microtask`, `host-task`,
+  `external`, or `unknown` lanes. `analyzeHostNeutralTransitions` connects the
+  existing Program analyses and removes duplicate Promise-reaction observations.
+  A bounded host projection maps inline and microtask work plus reviewed timers
+  and Web EventTarget delivery to separate Web/Node queue vocabulary. Ambiguous
+  Node EventTarget delivery and other unreviewed host tasks remain `unknown`.
+  This is not yet connected to the executable queue-state models; cancellation,
+  external completion, fairness, and unsupported interleavings remain the next
+  experimental step.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
