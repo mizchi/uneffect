@@ -37,6 +37,7 @@ export const ciTestTiers = {
   ],
   z3: [
     "test/contracts.test.ts",
+    "test/contract-dsl.test.ts",
     "test/documentation-entrypoints.test.ts",
     "test/instrument.test.ts",
     "test/invariant-ir.test.ts",

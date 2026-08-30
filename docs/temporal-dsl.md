@@ -136,3 +136,35 @@ Supported atom domains are `token`, `literal`, `url`, `path`, `host`, `env`,
 checker and never mutates the process-global registry. Conflicting local schema
 definitions fail closed. Dynamic descriptors and computed scopes still fail
 closed. Cross-package schema evidence and composition remain future work.
+
+## Hoare-style contracts
+
+```ts
+import { defineContract, int } from "@mizchi/uneffect/spec";
+
+export const Increment = defineContract({
+  parameters: { value: int() },
+  returns: int(),
+  requires: ({ value }) => value >= 0,
+  ensures: ({ value, result }) => result === value + 1,
+});
+```
+
+```ts
+/* uneffect:contract from "./counter.uneffect.ts#Increment" */
+export function increment(value: number): number {
+  return value + 1;
+}
+```
+
+Project verification lowers these predicates to the existing contract IR and
+Z3 obligations. A broken implementation produces a source-mapped
+counterexample. The initial fragment supports scalar `int()`, `nat()`,
+`float()`, and `bool()` parameters/results and non-empty arrays of preconditions
+and postconditions.
+Project verification checks helper symbol identity and requires parameter names,
+scalar domains, arity, and result domain to match the implementation's exact
+TypeChecker signature. A linked `nat()` or `float()` parameter additionally
+lowers to the existing Valibot `Nat`/`Float` assertion when
+`runtimeAssertions: "fallback"` is enabled. General predicate-to-runtime
+lowering and refined result validation remain pending.

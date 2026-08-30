@@ -4,7 +4,7 @@ import { extractAnnotations } from "./annotations.js";
 import { parseSpec, type TemporalSpec } from "./spec-ir.js";
 
 declare const temporalDescriptor: unique symbol;
-export interface TemporalType<Value> { readonly [temporalDescriptor]: Value; readonly kind: "int" | "bool" | "string" }
+export interface TemporalType<Value> { readonly [temporalDescriptor]: Value; readonly kind: "int" | "nat" | "float" | "bool" | "string" }
 export const int = (): TemporalType<number> => ({ kind: "int" }) as TemporalType<number>;
 export const bool = (): TemporalType<boolean> => ({ kind: "bool" }) as TemporalType<boolean>;
 export const text = (): TemporalType<string> => ({ kind: "string" }) as TemporalType<string>;

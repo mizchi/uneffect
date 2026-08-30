@@ -12,6 +12,7 @@ import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, 
 import { generateTemporalModel } from "./temporal-model.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
 import { prepareCapabilityDslLinks } from "./capability-dsl.js";
+import { materializeContractDslLinks } from "./contract-dsl.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import {
@@ -242,6 +243,7 @@ async function verifyUneffectProjectFiles(
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
   const preparedEffects = prepareCapabilityDslLinks(options.files, program);
   const effectFiles = preparedEffects.files;
+  const contractFiles = materializeContractDslLinks(options.files, program);
   const effectProgram = Object.entries(effectFiles).some(([name, source]) => source !== options.files[name])
     ? inMemoryProgram(effectFiles, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences)
     : program;
@@ -300,12 +302,13 @@ async function verifyUneffectProjectFiles(
   const assumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry);
   diagnostics.push(...assumptions.diagnostics);
   for (const [fileName, source] of Object.entries(options.files)) {
-    const verification = await verifyContractObligations(fileName, source, options.z3);
+    const contractSource = contractFiles[fileName] ?? source;
+    const verification = await verifyContractObligations(fileName, contractSource, options.z3);
     obligations.push(...verification.artifacts.map((artifact) => invalidSources.has(fileName)
       ? { ...artifact, status: "unknown" as const, evidence: "unknown" as const, backend: "z3" as const, result: "unknown" as const, message: "TypeScript errors prevent proof-grade contract evidence for this source" }
       : { ...artifact, backend: "z3" as const, result: artifact.status }));
     diagnostics.push(...verification.diagnostics);
-    const instrumented = options.runtimeAssertions === "fallback" ? instrumentRuntimeAssertions(fileName, source) : { code: source, diagnostics: [] };
+    const instrumented = options.runtimeAssertions === "fallback" ? instrumentRuntimeAssertions(fileName, contractSource) : { code: source, diagnostics: [] };
     diagnostics.push(...instrumented.diagnostics);
     emittedFiles[javascriptPath(fileName)] = ts.transpileModule(instrumented.code, {
       fileName,

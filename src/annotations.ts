@@ -2,6 +2,7 @@ export type UneffectDirective =
   | "effect" | "effect_parameter" | "module_effect" | "effect_schema"
   | "capability_from"
   | "requires" | "ensures" | "invariant" | "decreases" | "assert" | "validate" | "returns"
+  | "contract_from"
   | "trust" | "trust_owner" | "trust_expires" | "refinement" | "abstraction" | "runtime" | "react"
   | "state" | "clock" | "init" | "action" | "action_when" | "action_fair" | "temporal"
   | "temporal_from"
@@ -22,7 +23,7 @@ interface PayloadBlock { dialect: string; dialectSpan: SourceSpan; lines: Payloa
 
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   capability: new Set(["effect", "effect_parameter", "module_effect", "effect_schema", "from"]),
-  contract: new Set(["requires", "ensures", "invariant", "decreases", "assert", "validate", "returns"]),
+  contract: new Set(["requires", "ensures", "invariant", "decreases", "assert", "validate", "returns", "from"]),
   temporal: new Set(["state", "clock", "init", "action", "action_when", "action_fair", "invariant", "eventually", "repeatedly", "stabilizes", "response", "fair", "from"]),
   "temporal-summary": new Set(["requires", "ensures", "modifies", "throws", "rejects", "suspends", "cancellable", "eventually", "repeatedly", "stabilizes", "response", "fair"]),
   async: new Set(["consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when"]),
@@ -32,6 +33,7 @@ const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
 };
 const aliases: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   capability: { from: "capability_from" },
+  contract: { from: "contract_from" },
   temporal: { invariant: "temporal", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair", from: "temporal_from" },
   "temporal-summary": { requires: "temporal_requires", ensures: "temporal_ensures", modifies: "temporal_modifies", throws: "temporal_throws", rejects: "temporal_rejects", suspends: "temporal_suspends", cancellable: "temporal_cancellable", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair" },
 };

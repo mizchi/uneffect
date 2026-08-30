@@ -11,7 +11,7 @@ read emitted exclusions together with every result.
 | `@mizchi/uneffect` | Public | TypeScript helpers, analyzers, evidence APIs, project verification, and stable high-level model facades. |
 | `@mizchi/uneffect/corsa` | Public integration boundary | Versioned Corsa/tsgo fact export. Pin the package and frontend versions. |
 | `@mizchi/uneffect/experimental` | Experimental | Low-level async, Promise, event-loop, and resource Quint generators. Names, options, and generated text may change without notice. |
-| `@mizchi/uneffect/spec` | Initial public authoring fragment | Type-checked, declarative `*.uneffect.ts` temporal and capability specifications. Uneffect parses these modules but does not execute them. |
+| `@mizchi/uneffect/spec` | Initial public authoring fragment | Type-checked, declarative `*.uneffect.ts` temporal, capability, and Hoare-contract specifications. Uneffect parses these modules but does not execute them. |
 | `@mizchi/uneffect/schemas/*` | Versioned data contract | Published JSON schemas. Compatibility follows the schema identifier, not an unversioned TypeScript implementation detail. |
 | `@mizchi/uneffect/package.json` | Public metadata | Exact package version and package metadata. |
 

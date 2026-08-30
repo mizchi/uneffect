@@ -121,6 +121,15 @@ interleaved into that product.
       into the existing effect analyzer.
     - [ ] Compose user-defined Effect schema evidence across packages, including ([#64](https://github.com/mizchi/uneffect/issues/64))
       provenance, version compatibility, and conflicting-schema diagnostics.
+    - [x] Add the first typed `defineContract` fragment and connect named exports
+      through `uneffect:contract from` to the existing Z3 Hoare-contract verifier.
+    - [x] Match linked scalar contract parameter names/domains and result domains
+      against the exact implementation signature and resolve helpers by
+      TypeChecker identity.
+    - [x] Add multiple clauses, Nat/Float parameter refinements, and linked
+      Valibot assertion dogfood through `runtimeAssertions: "fallback"`.
+    - [ ] Lower supported requires/ensures predicates and refined results to ([#64](https://github.com/mizchi/uneffect/issues/64))
+      optional runtime checks without evaluating arbitrary specification code.
   - [ ] Version a backend-neutral AST and module interface shared by capability ([#64](https://github.com/mizchi/uneffect/issues/64))
     effects, Hoare contracts/invariants, and temporal specifications without
     collapsing their distinct semantics.
