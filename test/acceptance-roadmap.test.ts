@@ -3532,6 +3532,54 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   }, 30_000);
 
+  it("joins contract throw discharge and inferred Effects in one exception-aware CFG artifact", async () => {
+    const verifyProject = futureApi("verifyUneffectProject");
+    const result = await verifyProject({ files: files({
+      "src/magnitude.ts": `
+        /* uneffect:capability effect none */
+        /* uneffect:contract ensures result >= 0 */
+        export function magnitude(value: number | undefined): number {
+          if (value === undefined) return 0
+          try {
+            if (value < 0) throw new RangeError("negative")
+            return value
+          } catch {
+            return 0
+          }
+        }
+        export async function recordMagnitude(value: number | undefined): Promise<number> {
+          return await Promise.resolve(magnitude(value))
+        }
+        /* uneffect:capability effect Throw<RangeError> */
+        /* uneffect:contract ensures result >= 0 */
+        export function strictMagnitude(value: number): number {
+          if (value < 0) throw new RangeError("negative")
+          return value
+        }
+      `,
+    }) }) as { diagnostics: Array<{ code?: string }>; obligations: Array<{ result: string; controlFlow?: { exceptionFlow?: { discharged: Array<{ effect: string }> }; effectBoundary?: { inferred: string[]; discharged: string[] } } }> };
+
+    expect(result.obligations.every(({ result: status }) => status === "verified")).toBe(true);
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({
+        exceptionFlow: expect.objectContaining({ discharged: [expect.objectContaining({ effect: "Throw<RangeError>" })] }),
+        effectBoundary: { schema: "uneffect-contract-effect-boundary/v1", evidence: "verified", inferred: [], discharged: ["Throw<RangeError>"], escaping: [], blockers: [] },
+      }),
+    }));
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      result: "verified",
+      controlFlow: expect.objectContaining({ narrowing: expect.objectContaining({ facts: ["value: number | undefined via nullish guard"] }) }),
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ code: expect.stringMatching(/^floating-/) }));
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      result: "verified",
+      controlFlow: expect.objectContaining({
+        exceptionFlow: expect.objectContaining({ escapes: [expect.objectContaining({ effect: "Throw<RangeError>" })] }),
+        effectBoundary: expect.objectContaining({ evidence: "verified", inferred: ["Throw<RangeError>"], escaping: ["Throw<RangeError>"], blockers: [] }),
+      }),
+    }));
+  }, 30_000);
+
   it("composes temporal function contracts with the Web event loop instead of passing inline Quint through", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const result = await verifyProject({ files: files({

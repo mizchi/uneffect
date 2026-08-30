@@ -131,6 +131,7 @@ export { ownershipEvidenceKey, readOwnershipEvidenceCache, writeOwnershipEvidenc
 export type { OwnershipEvidenceCache, OwnershipEvidenceCacheEntry } from "./ownership-evidence-cache.js";
 export { verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
+export { attachContractEffectBoundaries } from "./contracts.js";
 export { assessCheckAssurance, formatAssuranceAssessment } from "./assurance.js";
 export type { AssuranceAssessment, AssuranceBlocker, AssuranceCoverage, AssuranceProfile, AssuranceStatus } from "./assurance.js";
 export { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "./property-tests.js";

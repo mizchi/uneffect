@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import ts from "typescript";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
-import { verifyContractObligations, type VerificationArtifact } from "./contracts.js";
+import { attachContractEffectBoundaries, verifyContractObligations, type VerificationArtifact } from "./contracts.js";
 import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
@@ -103,7 +103,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     sources.set(fileName, text);
     const contracts = await verifyContractObligations(fileName, text, undefined, program);
     diagnostics.push(...contracts.diagnostics);
-    artifacts.push(...contracts.artifacts);
+    artifacts.push(...attachContractEffectBoundaries(contracts.artifacts, effects.summaries));
     const sourceFile = program.getSourceFile(fileName);
     if (sourceFile) {
       diagnostics.push(...analyzeTrustedScriptSinks(program, sourceFile));

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { InvariantSpec } from "./spec-ir.js";
+import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 
 export type LogicSort = "Int" | "Real" | "Bool";
 export type NumericDomain = "int" | "nat" | "float" | "bool";
@@ -29,6 +30,24 @@ export interface ContractControlFlowEvidence {
     programDigest: string;
     facts: string[];
   };
+  exceptionFlow?: {
+    schema: "uneffect-contract-exception-flow/v1";
+    discharged: ContractThrowEdge[];
+    escapes: ContractThrowEdge[];
+  };
+  effectBoundary?: {
+    schema: "uneffect-contract-effect-boundary/v1";
+    evidence: "verified" | "trusted" | "inferred" | "unknown";
+    inferred: string[];
+    discharged: string[];
+    escaping: string[];
+    blockers: string[];
+  };
+}
+export interface ContractThrowEdge {
+  effect: string;
+  originSpan: { start: number; end: number };
+  handlerSpan?: { start: number; end: number };
 }
 export interface InvariantObligation {
   id: string;
@@ -61,10 +80,17 @@ export class InvariantLoweringError extends Error {
 }
 
 type Environment = Map<string, LogicExpression>;
-interface PathState { env: Environment; assumptions: LogicExpression[] }
+interface PathState {
+  env: Environment;
+  assumptions: LogicExpression[];
+  completion: "normal" | "throw";
+  thrown?: ContractThrowEdge;
+  dischargedThrows: ContractThrowEdge[];
+}
 type SemanticGuardKind = "defined" | "typeof-number";
 interface SemanticGuardFact { kind: SemanticGuardKind; variable: string; label: string; nullish?: "undefined" | "null" | "nullish"; spans: string[] }
 interface ParameterTypeFact { domain: NumericDomain; assumption?: LogicExpression; label?: string; guards?: SemanticGuardFact[]; programDigest: string }
+interface DeclaredThrowCallFact { effects: string[]; definitelyThrows: boolean }
 
 function finiteUnion(values: LogicExpression[]): LogicExpression | undefined {
   return values.reduce<LogicExpression | undefined>((left, right) => left === undefined ? right : { kind: "binary", operator: "or", left, right }, undefined);
@@ -140,6 +166,46 @@ function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: st
       visitGuards(node.body);
     }
   }
+  return facts;
+}
+
+function typeCheckerThrowEffects(program: ts.Program | undefined, fileName: string, text: string): Map<string, string> {
+  const effects = new Map<string, string>();
+  if (!program) return effects;
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return effects;
+  const adapter = new TypeScriptFrontendAdapter(program);
+  const visit = (node: ts.Node): void => {
+    if (ts.isThrowStatement(node)) effects.set(`${node.getStart(source)}:${node.getEnd()}`, `Throw<${adapter.thrownErrorType(node.expression)}>`);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return effects;
+}
+
+function typeCheckerDeclaredThrowCalls(program: ts.Program | undefined, fileName: string, text: string): Map<string, DeclaredThrowCallFact> {
+  const facts = new Map<string, DeclaredThrowCallFact>();
+  if (!program) return facts;
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return facts;
+  const checker = program.getTypeChecker();
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const signature = checker.getResolvedSignature(node), declaration = signature?.declaration;
+      if (signature && declaration) {
+        const declarationSource = declaration.getSourceFile();
+        const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
+        const effects = extractAnnotations(comments, "effect").flatMap((annotation) =>
+          [...annotation.matchAll(/(?:^|\|)\s*Throw<\s*([^>]+?)\s*>/g)].map((match) => `Throw<${match[1]!.trim()}>`));
+        if (effects.length > 0) facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
+          effects: [...new Set(effects)].sort(),
+          definitelyThrows: (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0,
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
   return facts;
 }
 
@@ -305,6 +371,8 @@ function locatedLowering(cause: unknown, functionName: string, span: { start: nu
 export function lowerInvariantProgram(fileName: string, text: string, program?: ts.Program): InvariantObligation[] {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const checkerFacts = typeCheckerParameterFacts(program, fileName, text);
+  const throwEffects = typeCheckerThrowEffects(program, fileName, text);
+  const declaredThrowCalls = typeCheckerDeclaredThrowCalls(program, fileName, text);
   const pipeBindings = new Set(source.statements.flatMap((statement): string[] => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
       || statement.moduleSpecifier.text !== "effect/Function" || !statement.importClause?.namedBindings
@@ -333,6 +401,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
     const narrowingLabels: string[] = [];
     const semanticGuards = new Map<string, readonly SemanticGuardFact[]>();
     let checkerProgramDigest: string | undefined;
+    const functionObligationStart = obligations.length;
     for (const parameter of node.parameters) {
       if (!ts.isIdentifier(parameter.name)) throw new InvariantLoweringError(`destructured contract parameters are unsupported: ${parameter.name.getText(source)}`, { functionName: node.name.text, span: { start: parameter.getStart(source), end: parameter.getEnd() }, hint: loweringHint("destructured contract parameters") });
       let parameterDomain: NumericDomain;
@@ -361,7 +430,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
     const visibleBindings = (bound: Environment): ObligationBinding[] => [...bound]
       .filter(([name, expression]) => !(expression.kind === "variable" && expression.name === name))
       .map(([name, expression]) => ({ name, expression }));
-    const add = (kind: InvariantObligation["kind"], target: ts.Node, assumptions: LogicExpression[], goal: LogicExpression, clause: string, bound: Environment): void => {
+    const add = (kind: InvariantObligation["kind"], target: ts.Node, assumptions: LogicExpression[], goal: LogicExpression, clause: string, bound: Environment, dischargedThrows: ContractThrowEdge[] = []): void => {
       const span = { start: target.getStart(source), end: target.getEnd() };
       const completion: ContractControlFlowEvidence["completion"] = kind === "postcondition" ? "return" : kind === "loop-init" ? "loop-entry" : "loop-back-edge";
       const controlFlow: ContractControlFlowEvidence = {
@@ -370,6 +439,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         completion,
         pathConditions: [...assumptions],
         ...(narrowingLabels.length === 0 ? {} : { narrowing: { source: "typescript-typechecker", typescriptVersion: ts.version, programDigest: checkerProgramDigest!, facts: [...narrowingLabels] } }),
+        exceptionFlow: { schema: "uneffect-contract-exception-flow/v1", discharged: [...dischargedThrows], escapes: [] },
       };
       const value: Omit<InvariantObligation, "id"> = { kind, fileName, functionName: fn, span, variables: [...variables], assumptions, goal, source: clause, bindings: visibleBindings(bound), displayNames: { ...displayNames }, controlFlow };
       obligations.push(makeObligation(value));
@@ -378,7 +448,9 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       let paths = initial;
       for (const statement of statements) {
         try {
-          paths = step(statement, paths);
+          const abrupt = paths.filter((path) => path.completion !== "normal");
+          const normal = paths.filter((path) => path.completion === "normal");
+          paths = [...abrupt, ...step(statement, normal)];
         } catch (cause) {
           throw locatedLowering(cause, fn, { start: statement.getStart(source), end: statement.getEnd() });
         }
@@ -400,9 +472,9 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         for (const path of paths) {
           const condition = substitute(logic(statement.expression, pipeBindings, semanticGuards), path.env);
           const thenStatements = ts.isBlock(statement.thenStatement) ? statement.thenStatement.statements : [statement.thenStatement];
-          forked.push(...execute(thenStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, condition] }]));
+          forked.push(...execute(thenStatements, [{ ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] }]));
           const elseStatements = statement.elseStatement ? (ts.isBlock(statement.elseStatement) ? statement.elseStatement.statements : [statement.elseStatement]) : [];
-          forked.push(...execute(elseStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] }]));
+          forked.push(...execute(elseStatements, [{ ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] }]));
         }
         paths = forked;
       } else if (ts.isWhileStatement(statement)) {
@@ -421,27 +493,52 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
           }
           const inv = substitute(invariant, loopEnv), condition = substitute(logic(statement.expression, pipeBindings, semanticGuards), loopEnv);
           const bodyStatements = ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement];
-          const bodyPaths = execute(bodyStatements, [{ env: new Map(loopEnv), assumptions: [inv, condition] }]);
-          for (const bodyPath of bodyPaths) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource, bodyPath.env);
-          exited.push({ env: loopEnv, assumptions: [inv, negate(condition)] });
+          const bodyPaths = execute(bodyStatements, [{ ...path, env: new Map(loopEnv), assumptions: [inv, condition] }]);
+          for (const bodyPath of bodyPaths.filter((item) => item.completion === "normal")) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource, bodyPath.env);
+          exited.push(...bodyPaths.filter((item) => item.completion === "throw"), { ...path, env: loopEnv, assumptions: [inv, negate(condition)] });
         }
         paths = exited;
+      } else if (ts.isTryStatement(statement)) {
+        if (statement.finallyBlock) throw new Error("contract try/finally is not yet supported by the exception-aware CFG");
+        const tryPaths = execute(statement.tryBlock.statements, paths.map((path) => ({ ...path, env: new Map(path.env) })));
+        const thrown = tryPaths.filter((path) => path.completion === "throw");
+        const completed = tryPaths.filter((path) => path.completion === "normal");
+        if (!statement.catchClause) paths = tryPaths;
+        else {
+          const handlerSpan = { start: statement.catchClause.getStart(source), end: statement.catchClause.getEnd() };
+          const caught = thrown.map((path): PathState => {
+            const edge = { ...path.thrown!, handlerSpan };
+            return { ...path, completion: "normal", thrown: undefined, dischargedThrows: [...path.dischargedThrows, edge] };
+          });
+          paths = [...completed, ...execute(statement.catchClause.block.statements, caught)];
+        }
+      } else if (ts.isThrowStatement(statement)) {
+        const originSpan = { start: statement.getStart(source), end: statement.getEnd() };
+        const effect = throwEffects.get(`${originSpan.start}:${originSpan.end}`) ?? "Throw<unknown>";
+        paths = paths.map((path) => ({ ...path, completion: "throw", thrown: { effect, originSpan } }));
       } else if (ts.isReturnStatement(statement) && statement.expression) {
         for (const path of paths) {
           const resultEnv = new Map(path.env);
           resultEnv.set("result", substitute(logic(statement.expression, pipeBindings, semanticGuards), path.env));
-          for (const ensure of ensures) add("postcondition", statement, path.assumptions, substitute(ensure.expression, resultEnv), ensure.source, resultEnv);
+          for (const ensure of ensures) add("postcondition", statement, path.assumptions, substitute(ensure.expression, resultEnv), ensure.source, resultEnv, path.dischargedThrows);
         }
         paths = [];
       } else if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)) {
-        throw new Error(`call requires a verified function summary: ${statement.expression.expression.getText(source)}`);
+        const call = statement.expression;
+        const fact = declaredThrowCalls.get(`${call.getStart(source)}:${call.getEnd()}`);
+        if (!fact) throw new Error(`call requires a verified function summary: ${call.expression.getText(source)}`);
+        const originSpan = { start: call.getStart(source), end: call.getEnd() };
+        const thrown = paths.flatMap((path) => fact.effects.map((effect): PathState => ({ ...path, env: new Map(path.env), completion: "throw", thrown: { effect, originSpan } })));
+        paths = [...(fact.definitelyThrows ? [] : paths), ...thrown];
       } else if (!ts.isEmptyStatement(statement)) {
         throw new Error(`unsupported invariant statement: ${statement.getText(source)}`);
       }
       return paths;
     };
     try {
-      execute(node.body.statements, [{ env, assumptions: baseAssumptions }]);
+      const exits = execute(node.body.statements, [{ env, assumptions: baseAssumptions, completion: "normal", dischargedThrows: [] }]);
+      const escapes = exits.filter((path) => path.completion === "throw" && path.thrown).map((path) => path.thrown!);
+      for (const obligation of obligations.slice(functionObligationStart)) obligation.controlFlow.exceptionFlow!.escapes = [...escapes];
     } catch (cause) {
       throw locatedLowering(cause, fn, { start: node.getStart(source), end: node.getEnd() });
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { verifyContractObligations, verifyContracts } from "../src/contracts.js";
+import { attachContractEffectBoundaries, verifyContractObligations, verifyContracts } from "../src/contracts.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022 };
@@ -202,6 +202,106 @@ describe("Hoare contract checker", () => {
       /* uneffect:contract ensures result >= 0 */
       function invalid(value: Int | string): Int {
         if (typeof value === "string") return value + 1
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("routes synchronous throw through catch before checking the postcondition", async () => {
+    const fileName = "/caught-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= 0 */
+      function magnitude(value: Int): Int {
+        try {
+          if (value < 0) throw new RangeError("negative")
+          return value
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({
+        exceptionFlow: expect.objectContaining({
+          schema: "uneffect-contract-exception-flow/v1",
+          discharged: [expect.objectContaining({ effect: "Throw<RangeError>", handlerSpan: expect.any(Object) })],
+          escapes: [],
+        }),
+      }),
+    }));
+  });
+
+  it("retains an uncaught synchronous throw as an escaping Effect boundary", async () => {
+    const fileName = "/uncaught-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= 0 */
+      function magnitude(value: Int): Int {
+        if (value < 0) throw new RangeError("negative")
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0]?.controlFlow?.exceptionFlow).toMatchObject({
+      schema: "uneffect-contract-exception-flow/v1",
+      discharged: [],
+      escapes: [expect.objectContaining({ effect: "Throw<RangeError>", originSpan: expect.any(Object) })],
+    });
+    const [joined] = attachContractEffectBoundaries(result.artifacts, [{
+      functionName: "magnitude", fileName, span: { start: 0, end: source.length }, effects: [], evidence: "verified",
+    }]);
+    expect(joined?.controlFlow?.effectBoundary).toMatchObject({
+      evidence: "unknown",
+      escaping: ["Throw<RangeError>"],
+      blockers: ["escaping Throw<RangeError> is absent from the inferred Effect summary"],
+    });
+    expect(joined).toMatchObject({ status: "unknown", evidence: "unknown", message: expect.stringContaining("escaping Throw<RangeError>") });
+  });
+
+  it("routes a TypeChecker-resolved never + Throw declaration through catch", async () => {
+    const fileName = "/declared-throw-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:capability effect Throw<RangeError> */
+      function fail(): never { throw new RangeError("negative") }
+      /* uneffect:contract ensures result >= 0 */
+      function magnitude(value: Int): Int {
+        if (value < 0) {
+          try { fail() } catch { return 0 }
+        }
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ effect: "Throw<RangeError>" })],
+      }) }),
+    }));
+  });
+
+  it("does not treat Promise rejection as a synchronous Throw edge", async () => {
+    const fileName = "/rejection-is-not-throw.ts";
+    const source = `
+      type Int = number
+      /* uneffect:contract ensures result >= 0 */
+      async function invalid(value: Int): Promise<Int> {
+        try { await Promise.reject(new RangeError("negative")) }
+        catch { return 0 }
         return value
       }
     `;

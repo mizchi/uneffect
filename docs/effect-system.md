@@ -106,6 +106,14 @@ The program call graph carries this discharge fact on synchronous direct and
 inline-callback edges, so imported callees behave like local calls. Deferred or
 unknown-timing callbacks do not inherit the surrounding lexical `catch` because
 they may execute after that handler has returned.
+For contracted scalar functions, the bounded Hoare frontend retains this
+decision per return path as `uneffect-contract-exception-flow/v1`. Direct
+throws and direct TypeChecker-resolved `never` callees with an explicit
+`Throw<E>` declaration enter the catch edge; the resulting discharge or escape
+is joined with the enclosing effect summary in
+`uneffect-contract-effect-boundary/v1`. This remains narrower than the general
+effect call graph: contract `finally`, catch payloads, async rejection, and
+relational non-`never` call summaries stay fail-closed.
 Reviewed ECMAScript collection operations such as `map`, `flatMap`, `filter`,
 `forEach`, and `reduce` are synchronous inline-callback edges: callback Effects
 are included in module initialization and function summaries. Pure helpers such

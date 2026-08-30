@@ -81,6 +81,17 @@ same property is proved for arbitrary TypeScript.
   discriminator is explicit in SMT rather than pretending the inactive union
   member has an integer value. Discriminated object unions and assertion
   functions remain unsupported.
+  A bounded exception-aware extension routes direct synchronous `throw` and
+  TypeChecker-resolved direct `never` calls carrying an explicit `Throw<E>`
+  declaration into `try`/`catch`. Each return artifact records the throw edges
+  discharged on that exact path, while uncaught edges remain escaping. Project
+  verification joins this `uneffect-contract-exception-flow/v1` evidence with
+  the exact enclosing Program effect summary as
+  `uneffect-contract-effect-boundary/v1`. An escaping throw missing from the
+  inferred summary downgrades the whole contract artifact to `unknown`.
+  Promise rejection is deliberately not a synchronous throw edge. `finally`,
+  catch-binding values, effectful scalar call summaries, and general exception
+  fixed points are not accepted by this contract fragment.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint

@@ -3,6 +3,8 @@ import type { DiagnosticNote } from "./diagnostics.js";
 import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";
 import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type InvariantObligation } from "./invariant-ir.js";
 import { executeZ3, type Z3Execution, type Z3ExecutionOptions } from "./z3.js";
+import { formatEffect } from "./capabilities.js";
+import type { EffectSummary } from "./effects.js";
 
 export interface VerificationArtifact {
   obligationId: string;
@@ -34,6 +36,29 @@ export interface ContractDiagnostic {
 export interface ContractVerificationResult {
   diagnostics: ContractDiagnostic[];
   artifacts: VerificationArtifact[];
+}
+
+/** Bind a proved contract path to the Program effect summary covering that exact source return. */
+export function attachContractEffectBoundaries(artifacts: readonly VerificationArtifact[], summaries: readonly EffectSummary[]): VerificationArtifact[] {
+  return artifacts.map((artifact) => {
+    if (!artifact.controlFlow) return artifact;
+    const summary = summaries.find((candidate) => candidate.fileName === artifact.source.fileName && candidate.span
+      && candidate.span.start <= artifact.source.span.start && candidate.span.end >= artifact.source.span.end);
+    if (!summary) return artifact;
+    const discharged = [...new Set(artifact.controlFlow.exceptionFlow?.discharged.map(({ effect }) => effect) ?? [])].sort();
+    const escaping = [...new Set(artifact.controlFlow.exceptionFlow?.escapes.map(({ effect }) => effect) ?? [])].sort();
+    const inferred = summary.effects.map(formatEffect).sort();
+    const blockers = escaping.filter((effect) => !inferred.includes(effect)).map((effect) => `escaping ${effect} is absent from the inferred Effect summary`);
+    const joined: VerificationArtifact = { ...artifact, controlFlow: { ...artifact.controlFlow, effectBoundary: {
+      schema: "uneffect-contract-effect-boundary/v1",
+      evidence: blockers.length > 0 ? "unknown" : summary.evidence,
+      inferred,
+      discharged,
+      escaping,
+      blockers,
+    } } };
+    return blockers.length === 0 ? joined : { ...joined, status: "unknown", evidence: "unknown", message: blockers.join("; ") };
+  });
 }
 
 function parseAssignments(model: string): Record<string, string> {

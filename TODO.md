@@ -1542,13 +1542,17 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     `number | string` and nullish equality guards for `number | null | undefined`;
     bind each guard to the exact parameter symbol and comparison source span.
   - [ ] Extend narrowing to discriminated unions and assertion-function facts without trusting user-defined lookalikes. ([#25](https://github.com/mizchi/uneffect/issues/25))
-- [ ] Route `return`, synchronous `throw`, and declared `Throw<E>` through one ([#25](https://github.com/mizchi/uneffect/issues/25))
+- [x] Route `return`, synchronous `throw`, and TypeChecker-resolved direct
+  `never` calls with declared `Throw<E>` through one
   exception-aware contract exit model without treating Promise rejection as a
   synchronous throw.
-- [ ] Make effect `discharge` path-sensitive over that shared exit model and ([#25](https://github.com/mizchi/uneffect/issues/25))
+- [x] Make effect `discharge` path-sensitive over that shared exit model and
   retain rejected/unknown paths in the evidence ledger.
-- [ ] Dogfood the combined model on an application adapter containing narrowing, ([#25](https://github.com/mizchi/uneffect/issues/25))
+- [x] Dogfood the combined model on an application adapter containing narrowing,
   early returns, caught throws, capability boundaries, and Promise ownership.
+- [ ] Extend the exception-aware contract CFG through `finally`, catch bindings, ([#25](https://github.com/mizchi/uneffect/issues/25))
+  async rejection, non-`never` call summaries with relational postconditions,
+  and interprocedural scalar state.
 
 ## Current validation commands
 
