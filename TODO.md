@@ -193,6 +193,11 @@ introducing another domain-local control-flow or alias model.
    - [x] Feed definite unconditional aborts in synchronous owners into Web
      scheduler initial state, preserving the abort reason and preventing an
      already-cancelled `scheduler.postTask` callback from becoming pending.
+   - [x] Add the first executable abortable-operation product for builtin
+     `fetch(url, { signal: controller.signal })` with an immutable local Promise
+     binding. External fulfillment, normal rejection, conditional abort, abort
+     reason, and first-settlement-wins share one Quint state; lookalike fetch and
+     dynamic options remain outside the exact fragment.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain
@@ -210,6 +215,25 @@ introducing another domain-local control-flow or alias model.
    safe integers and U32 first, then finite IEEE-754 facts (`NaN`, infinity,
    negative zero, and `Math.fround`). Keep unsupported coercion and rounding
    behavior unknown. ([#6](https://github.com/mizchi/uneffect/issues/6))
+   - [x] Model TypeChecker-identified `Math.imul` as signed Int32 output and
+     `Math.clz32` as an integer in `0..32` for typed-array/DataView range
+     obligations; same-spelled shadow objects remain unknown.
+   - [x] Treat common Web Crypto and Node crypto randomness APIs as the existing
+     `Random` capability: `getRandomValues`, both `randomUUID` forms,
+     `randomFill`/`randomFillSync`, `randomInt`, and `randomBytes`, including
+     reviewed callback effects and unused-effect diagnostics.
+   - [x] Add a TypeChecker-backed exact-value fragment that distinguishes NaN,
+     positive/negative infinity, negative zero, finite constants, and exact
+     `Math.fround` results. Literal arithmetic is evaluated only when both
+     operands are exact; shadowed builtins and general arithmetic remain unknown.
+   - [x] Propagate builtin `Math.fround` through typed-array range obligations
+     when its input has a proven finite range within Float32 capacity; preserve
+     integer evidence only inside the exactly representable integer range.
+   - [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Add finite IEEE-754 facts for `NaN`, infinities, negative zero,
+     and `Math.fround` to refinement/Hoare obligations, followed by the remaining
+     typed-array element domains and overlap/resize semantics. Exact expression
+     classification is implemented; general propagation is not. RegExp and Date
+     modeling are intentionally deferred.
 8. [ ] [#18](https://github.com/mizchi/uneffect/issues/18) Extend module and Realm composition for common static ESM, bounded
    top-level await, Worker entrypoints, and reviewed external-code boundaries.
    Dynamic import targets, `eval`, proxies, prototype mutation, native addons,

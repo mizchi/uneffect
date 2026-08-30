@@ -1,0 +1,104 @@
+import ts from "typescript";
+import { analyzeAbortSignalsInProgram } from "./host-neutral-transitions.js";
+
+export interface AbortableFetch {
+  readonly owner: string;
+  readonly binding: string;
+  readonly url: string;
+  readonly controller: string;
+  readonly abortReason?: string;
+  readonly abortConditional?: boolean;
+  readonly span: { start: number; end: number };
+  readonly evidence: "exact";
+}
+
+export interface AbortableFetchUnknown {
+  readonly expression: string;
+  readonly reason: string;
+  readonly span: { start: number; end: number };
+}
+
+export interface AbortableFetchAnalysis {
+  readonly fileName: string;
+  readonly fetches: readonly AbortableFetch[];
+  readonly unknown: readonly AbortableFetchUnknown[];
+}
+
+function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
+  const symbol = checker.getSymbolAtLocation(node);
+  return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+}
+
+function ownerName(node: ts.Node): string {
+  for (let current: ts.Node | undefined = node; current; current = current.parent) {
+    if ((ts.isFunctionDeclaration(current) || ts.isMethodDeclaration(current) || ts.isFunctionExpression(current)) && current.name) return current.name.getText();
+    if (ts.isArrowFunction(current) && ts.isVariableDeclaration(current.parent) && ts.isIdentifier(current.parent.name)) return current.parent.name.text;
+  }
+  return "<module>";
+}
+
+export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts.SourceFile): AbortableFetchAnalysis {
+  const checker = program.getTypeChecker();
+  const aborts = analyzeAbortSignalsInProgram(program, source);
+  const fetches: AbortableFetch[] = [], unknown: AbortableFetchUnknown[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fetch") {
+      const symbol = resolvedSymbol(checker, node.expression);
+      const builtin = symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+      if (!builtin) { ts.forEachChild(node, visit); return; }
+      const options = node.arguments[1];
+      const signalProperty = options && ts.isObjectLiteralExpression(options) ? options.properties.find((property): property is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(property) && property.name?.getText(source).replaceAll(/["']/gu, "") === "signal") : undefined;
+      const signal = signalProperty?.initializer;
+      const controllerName = signal && ts.isPropertyAccessExpression(signal) && signal.name.text === "signal"
+        && ts.isIdentifier(signal.expression) ? signal.expression.text : undefined;
+      const controller = controllerName ? aborts.controllers.find((item) => item.binding === controllerName && item.owner === ownerName(node)) : undefined;
+      const binding = ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+        && ts.isVariableDeclarationList(node.parent.parent) && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0
+        ? node.parent.name.text : undefined;
+      if (!controller || !binding) unknown.push({
+        expression: node.getText(source),
+        reason: !binding ? "abortable fetch result requires an immutable local binding" : "fetch signal is not a direct local builtin AbortController.signal",
+        span: { start: node.getStart(source), end: node.getEnd() },
+      });
+      else {
+        const event = aborts.events.find((item) => item.controllerIndex === controller.index);
+        fetches.push({
+          owner: ownerName(node), binding, url: node.arguments[0]?.getText(source) ?? "<missing>", controller: controller.binding,
+          ...(event ? { abortReason: event.reason, abortConditional: event.conditional } : {}),
+          span: { start: node.getStart(source), end: node.getEnd() }, evidence: "exact",
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return { fileName: source.fileName, fetches, unknown };
+}
+
+function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/gu, "_"); }
+
+/** Bounded product: 0=pending, 1=fulfilled, 2=rejected, 3=aborted. */
+export function generateAbortableFetchProductQuint(moduleName: string, analysis: AbortableFetchAnalysis): string {
+  const lines = [`module ${safe(moduleName)} {`];
+  analysis.fetches.forEach((_, index) => lines.push(`  var fetch_${index}_state: int`));
+  lines.push("", "  action init = all {");
+  analysis.fetches.forEach((fetch, index) => lines.push(`    fetch_${index}_state' = ${fetch.abortReason && !fetch.abortConditional ? 3 : 0},`));
+  lines.push("  }");
+  const actions: string[] = [];
+  const action = (name: string, index: number, state: number): void => {
+    actions.push(name);
+    lines.push("", `  action ${name} = all {`, `    fetch_${index}_state == 0,`);
+    analysis.fetches.forEach((_, candidate) => lines.push(`    fetch_${candidate}_state' = ${candidate === index ? state : `fetch_${candidate}_state`},`));
+    lines.push("  }");
+  };
+  analysis.fetches.forEach((fetch, index) => {
+    action(`fulfill_fetch_${index}`, index, 1);
+    action(`reject_fetch_${index}`, index, 2);
+    if (!fetch.abortReason || fetch.abortConditional) action(`abort_${index}`, index, 3);
+  });
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
+  const domains = analysis.fetches.map((_, index) => `(fetch_${index}_state >= 0 and fetch_${index}_state <= 3)`).join(" and ") || "true";
+  lines.push("", `  val abortableFetchSafe = ${domains}`, "}", "");
+  return lines.join("\n");
+}

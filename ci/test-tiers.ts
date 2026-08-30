@@ -1,5 +1,6 @@
 export const ciTestTiers = {
   fast: [
+    "test/abortable-fetch-product.test.ts",
     "test/annotations.test.ts",
     "test/assurance.test.ts",
     "test/builtin-contracts.test.ts",
@@ -23,6 +24,7 @@ export const ciTestTiers = {
     "test/module-initialization.test.ts",
     "test/modules.test.ts",
     "test/numeric-types.test.ts",
+    "test/number-semantics.test.ts",
     "test/project-optimizer.test.ts",
     "test/quicksort.test.ts",
     "test/react-semantics.test.ts",

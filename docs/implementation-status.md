@@ -99,6 +99,14 @@ same property is proved for arbitrary TypeScript.
   Async owners, controller aliases/escape, direct controller signals without
   `AbortSignal.any`, fetch and general abortable API cancellation are not yet
   claimed.
+- The first bounded async product recognizes TypeChecker-identified builtin
+  `fetch` with a direct local `AbortController.signal` and immutable Promise
+  binding. Its Quint state distinguishes pending, fulfilled, rejected, and
+  aborted outcomes; every terminal transition is guarded by pending state, so
+  settlement is first-wins. Conditional abort competes with external completion,
+  while a definite synchronous abort initializes the request as aborted.
+  Dynamic options, signal aliases, `AbortSignal.any` at fetch sites, retries,
+  response-body streams, and resource-disposal composition remain open.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
@@ -110,6 +118,25 @@ same property is proved for arbitrary TypeScript.
   categories (`FsRead`, `FsWrite`, `Net`, `Env`, `Run`, `Sys`, `Ffi`, and
   `Import`). User-defined, qualified, parameterized effects are supported by a
   versioned schema registry.
+- `Random` is a normal capability boundary rather than an implicit purity
+  exception. Reviewed sources include `Math.random`, Web Crypto
+  `getRandomValues`/`randomUUID`, and Node crypto `randomBytes`, `randomFill`,
+  `randomFillSync`, `randomInt`, and `randomUUID`; async callbacks compose their
+  effects through the existing poll model. User-defined lookalikes do not match.
+- The bounded numeric fragment recognizes builtin `Math.imul` as signed Int32
+  output and `Math.clz32` as `0..32`, which is sufficient for corresponding
+  DataView value obligations. This does not yet provide general IEEE-754
+  semantics; NaN, infinities, negative zero, and rounding remain open. RegExp
+  and Date semantics are intentionally deferred.
+- A separate TypeChecker-backed exact IEEE fragment classifies builtin NaN,
+  positive/negative infinity, negative zero, finite literal arithmetic, and
+  exact `Math.fround` results. It rejects shadowed globals and methods. This is
+  expression evidence only: it is not yet propagated through general mutable
+  locals, branches, calls, Hoare obligations, or a Z3 FloatingPoint encoding.
+  The typed-array checker separately propagates builtin `Math.fround` for a
+  statically finite input range within Float32 capacity, retaining integer
+  evidence only up to the exact Float32 integer boundary. Inputs that may be
+  NaN, infinite, or overflow Float32 remain unknown.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - Filesystem scopes support explicit `$WORKSPACE_ROOT`, `$PACKAGE_ROOT`,

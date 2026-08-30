@@ -305,3 +305,7 @@ export { assessProjectVerification } from "./project-assurance.js";
 export type { ProjectAssuranceAssessment, ProjectAssuranceBlocker, ProjectAssuranceCoverage, ProjectAssuranceDomain } from "./project-assurance.js";
 export { executeZ3, parseZ3BackendPreference } from "./z3.js";
 export type { Z3Backend, Z3BackendPreference, Z3Execution, Z3ExecutionOptions, Z3ExecutionResult, Z3FailureKind, Z3ValueRequest } from "./z3.js";
+export { analyzeNumberSemanticsInProgram } from "./number-semantics.js";
+export type { NumberSemanticFact, NumberSemanticsAnalysis, NumberValueClass } from "./number-semantics.js";
+export { analyzeAbortableFetchesInProgram, generateAbortableFetchProductQuint } from "./abortable-fetch-product.js";
+export type { AbortableFetch, AbortableFetchAnalysis, AbortableFetchUnknown } from "./abortable-fetch-product.js";

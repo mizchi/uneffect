@@ -196,6 +196,24 @@ describe("effect checker", () => {
     expect(analyzeEffects("node-random-bytes-effects.ts", source)).toEqual([]);
   });
 
+  it("treats common Web and Node randomness APIs as Random capability boundaries", () => {
+    const source = `
+      import { randomFill, randomFillSync, randomInt, randomUUID as nodeRandomUUID } from "node:crypto";
+      /* uneffect:capability effect Random */
+      function web(bytes: Uint8Array) { crypto.getRandomValues(bytes); return crypto.randomUUID() }
+      /* uneffect:capability effect Random */
+      function nodeSync(bytes: Uint8Array) { randomFillSync(bytes); randomInt(10); return nodeRandomUUID() }
+      /* uneffect:capability effect Random | Console */
+      function nodeAsync(bytes: Uint8Array) {
+        randomFill(bytes, error => console.log(error))
+        randomInt(1, 10, (error, value) => console.log(error, value))
+      }
+      const localCrypto = { getRandomValues<T>(value: T): T { return value } }
+      function lookalike(bytes: Uint8Array) { localCrypto.getRandomValues(bytes) }
+    `;
+    expect(analyzeEffects("random-effects.ts", source)).toEqual([]);
+  });
+
   it("narrows Node HTTP URL and options authorities without matching lookalikes", () => {
     const source = `
       import { request as httpRequest } from "node:http";

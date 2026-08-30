@@ -503,6 +503,30 @@ describe("bounded Uint8Array safety", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "shadowed", kind: "u8-write" }));
   });
 
+  it("models reviewed Math.imul and Math.clz32 integer domains", async () => {
+    const result = await verifyTypedArraySafety("math-int32.ts", `
+      import type { BoundedDataView, U32 } from "@mizchi/uneffect"
+      function multiply(view: BoundedDataView<4>, left: U32, right: U32) {
+        view.setInt32(0, Math.imul(left, right))
+      }
+      function leadingZeros(view: BoundedDataView<1>, value: U32) {
+        view.setUint8(0, Math.clz32(value))
+      }
+      function roundedByte(view: BoundedDataView<1>, value: U8) {
+        view.setUint8(0, Math.fround(value))
+      }
+      function shadowed(view: BoundedDataView<4>, left: U32, right: U32, Math: { imul(a: number, b: number): number }) {
+        view.setInt32(0, Math.imul(left, right))
+      }
+    `);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "multiply", kind: "dataview-value", result: "verified" }),
+      expect.objectContaining({ functionName: "leadingZeros", kind: "u8-write", result: "verified" }),
+      expect.objectContaining({ functionName: "roundedByte", kind: "u8-write", result: "verified" }),
+    ]));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "shadowed", kind: "dataview-value" }));
+  });
+
   it("keeps an explicit proof escape hatch visible as trusted evidence", async () => {
     const result = await verifyTypedArraySafety("trusted.ts", `
       import type { BoundedUint8Array } from "@mizchi/uneffect"

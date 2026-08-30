@@ -436,6 +436,11 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     trusted({ symbol: { module: "node:dns", export: "lookup" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0 } }),
     trusted({ symbol: { module: "node:dns", export: "lookupService" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" } }),
     trusted({ symbol: { module: "node:crypto", export: "randomBytes" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, queue: "poll", effect: "Random" } }),
+    trusted({ symbol: { module: "node:crypto", export: "randomFill" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, callbackMustBeCallable: true, queue: "poll", effect: "Random" } }),
+    trusted({ symbol: { module: "node:crypto", export: "randomInt" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, callbackMustBeCallable: true, queue: "poll", effect: "Random" } }),
+    ...["randomFillSync", "randomUUID"].map((name): BuiltinContract => trusted({
+      symbol: { module: "node:crypto", export: name }, operation: { kind: "effect", effect: "Random" },
+    })),
     ...(["node:net", "node:http", "node:https"] as const).map((module): BuiltinContract => trusted({
       symbol: { module, export: "createServer" },
       operation: {
@@ -503,6 +508,9 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     })),
     trusted({ symbol: { module: "global", export: "Math.random" }, operation: { kind: "effect", effect: "Random" } }),
     trusted({ symbol: { module: "global", export: "crypto.randomUUID" }, operation: { kind: "effect", effect: "Random" } }),
+    ...["getRandomValues", "randomUUID"].map((name): BuiltinContract => trusted({
+      symbol: { module: "lib.dom", export: `Crypto#${name}` }, operation: { kind: "effect", effect: "Random" },
+    })),
     trusted({ symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
     ...["Worker#postMessage", "MessagePort#postMessage"].map((name): BuiltinContract => trusted({ symbol: { module: "lib.dom", export: name }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } })),
     ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#sort", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete"].map((name): BuiltinContract => ({

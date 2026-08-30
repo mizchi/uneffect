@@ -108,6 +108,7 @@ interface NumericRange { minimum: number; maximum: number; integer: boolean }
 interface ConstantTable { length: number; domain: "u8" | "u32"; valid: boolean }
 interface TypedArraySemantics {
   integerCasts: ReadonlyMap<number, "floor" | "ceil" | "round" | "trunc">;
+  integerOperations?: ReadonlyMap<number, "imul" | "clz32" | "fround">;
   /** Declaration start -> inherited DataView type, or null for an unsafe alias. */
   dataViewAliases?: ReadonlyMap<number, string | null>;
 }
@@ -335,6 +336,27 @@ function expressionRange(expression: ts.Expression, parameterTypes: ReadonlyMap<
     if (!input) return undefined;
     const operation = Math[integerCast];
     return { minimum: operation(input.minimum), maximum: operation(input.maximum), integer: true };
+  }
+  const semanticIntegerOperation = ts.isCallExpression(expression) ? semantics?.integerOperations?.get(expression.getStart()) : undefined;
+  const sourceIntegerOperation = ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)
+    && expression.expression.expression.getText() === "Math" && !parameterTypes.has("Math")
+    && ["imul", "clz32", "fround"].includes(expression.expression.name.text)
+    ? expression.expression.name.text as "imul" | "clz32" | "fround" : undefined;
+  const integerOperation = semantics ? semanticIntegerOperation : sourceIntegerOperation;
+  if (ts.isCallExpression(expression) && integerOperation === "imul" && expression.arguments.length === 2) {
+    return { minimum: -0x8000_0000, maximum: 0x7fff_ffff, integer: true };
+  }
+  if (ts.isCallExpression(expression) && integerOperation === "clz32" && expression.arguments.length === 1) {
+    return { minimum: 0, maximum: 32, integer: true };
+  }
+  if (ts.isCallExpression(expression) && integerOperation === "fround" && expression.arguments.length === 1) {
+    const input = expressionRange(expression.arguments[0]!, parameterTypes, constants, tables, locals, semantics);
+    if (!input || !Number.isFinite(input.minimum) || !Number.isFinite(input.maximum)
+      || Math.abs(input.minimum) > 3.4028234663852886e38 || Math.abs(input.maximum) > 3.4028234663852886e38) return undefined;
+    return {
+      minimum: Math.fround(input.minimum), maximum: Math.fround(input.maximum),
+      integer: input.integer && Math.max(Math.abs(input.minimum), Math.abs(input.maximum)) <= 0x1_000000,
+    };
   }
   if (ts.isCallExpression(expression) && ts.isIdentifier(expression.expression) && expression.arguments.length === 1) {
     if (expression.expression.text === "u8") return { minimum: 0, maximum: 255, integer: true };
@@ -711,10 +733,18 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
     return resolved.size === 1 ? [...resolved][0] : undefined;
   };
   const integerCasts = new Map<number, IntegerCast>();
+  const integerOperations = new Map<number, "imul" | "clz32" | "fround">();
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const method = resolveCast(node.expression);
       if (method) integerCasts.set(node.getStart(source), method);
+      if (ts.isPropertyAccessExpression(node.expression)
+        && (node.expression.name.text === "imul" || node.expression.name.text === "clz32" || node.expression.name.text === "fround")) {
+        const symbol = symbolAt(node.expression.name);
+        if (symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile()))) {
+          integerOperations.set(node.getStart(source), node.expression.name.text);
+        }
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -769,7 +799,7 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
     ts.forEachChild(node, collectFunctions);
   };
   collectFunctions(source);
-  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, dataViewAliases }, z3);
+  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, integerOperations, dataViewAliases }, z3);
 }
 
 function resolveProgramModule(from: string, specifier: string, files: Readonly<Record<string, string>>): string | undefined {
