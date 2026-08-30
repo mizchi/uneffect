@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import { resolveStableRegion } from "./region-alias.js";
 
 export type OwnershipState = "available" | "detached" | "transferred" | "locked" | "shared";
 export type OwnershipOperation = "clone" | "transfer" | "read" | "mutate";
@@ -8,12 +9,15 @@ export interface OwnershipEvent {
   resource: string;
   transferState?: Exclude<OwnershipState, "available">;
   span: { start: number; end: number };
+  /** TypeChecker-backed identity shared by immutable aliases of one resource. */
+  regionId?: string;
 }
 export interface OwnershipDiagnostic {
   resource: string;
   operation: OwnershipOperation;
   state: OwnershipState;
   span: { start: number; end: number };
+  regionId?: string;
   message: string;
 }
 
@@ -21,10 +25,11 @@ export function checkOwnership(events: readonly OwnershipEvent[]): OwnershipDiag
   const states = new Map<string, OwnershipState>();
   const diagnostics: OwnershipDiagnostic[] = [];
   for (const event of events) {
-    const state = states.get(event.resource) ?? (event.transferState === "shared" ? "shared" : "available");
+    const identity = event.regionId ?? event.resource;
+    const state = states.get(identity) ?? (event.transferState === "shared" ? "shared" : "available");
     if (event.operation === "transfer") {
       if (state === "shared" || state !== "available") diagnostics.push({ ...event, state, message: state === "shared" ? `${event.resource} is shared and is not Transferable` : `${event.resource} was already ${state}` });
-      else states.set(event.resource, event.transferState ?? "transferred");
+      else states.set(identity, event.transferState ?? "transferred");
     } else if ((event.operation === "read" || event.operation === "mutate") && !["available", "shared"].includes(state)) {
       diagnostics.push({ ...event, state, message: `cannot ${event.operation} ${event.resource} after it became ${state}` });
     }
@@ -44,22 +49,22 @@ function transferList(call: ts.CallExpression, index: number): readonly ts.Expre
 export function collectOwnershipEvents(program: ts.Program, source: ts.SourceFile): OwnershipEvent[] {
   const adapter = new TypeScriptFrontendAdapter(program);
   const checker = program.getTypeChecker();
-  const events: OwnershipEvent[] = [];
+  const events: Array<OwnershipEvent & { expression?: ts.Expression }> = [];
   const transferSpans: Array<{ start: number; end: number }> = [];
   const visit = (node: ts.Node): void => {
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "DataView" && node.arguments?.[0]) {
       const symbol = checker.getSymbolAtLocation(node.expression);
       const builtin = symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
       const buffer = node.arguments[0]!;
-      if (builtin && ts.isIdentifier(buffer)) events.push({ operation: "read", resource: buffer.text, span: { start: buffer.getStart(source), end: buffer.getEnd() } });
+      if (builtin && ts.isIdentifier(buffer)) events.push({ operation: "read", resource: buffer.text, expression: buffer, span: { start: buffer.getStart(source), end: buffer.getEnd() } });
     }
     if (ts.isCallExpression(node)) {
       const operation = adapter.resolveCall(node)?.operation;
       if (operation?.kind === "clone") {
         const value = node.arguments[operation.valueArgument];
-        if (value) events.push({ operation: "clone", resource: value.getText(source), span: { start: value.getStart(source), end: value.getEnd() } });
+        if (value) events.push({ operation: "clone", resource: value.getText(source), expression: value, span: { start: value.getStart(source), end: value.getEnd() } });
         for (const item of transferList(node, operation.transferArgument)) {
-          events.push({ operation: "transfer", resource: item.getText(source), transferState: adapter.ownershipKind(item), span: { start: item.getStart(source), end: item.getEnd() } });
+          events.push({ operation: "transfer", resource: item.getText(source), expression: item, transferState: adapter.ownershipKind(item), span: { start: item.getStart(source), end: item.getEnd() } });
           transferSpans.push({ start: item.getStart(source), end: item.getEnd() });
         }
       }
@@ -67,12 +72,23 @@ export function collectOwnershipEvents(program: ts.Program, source: ts.SourceFil
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && !transferSpans.some((span) => node.expression.getStart(source) >= span.start && node.expression.getEnd() <= span.end)) {
       const parent = node.parent;
       const mutate = ts.isBinaryExpression(parent) && parent.left === node && parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
-      events.push({ operation: mutate ? "mutate" : "read", resource: node.expression.text, span: { start: node.getStart(source), end: node.getEnd() } });
+      events.push({ operation: mutate ? "mutate" : "read", resource: node.expression.text, expression: node.expression, span: { start: node.getStart(source), end: node.getEnd() } });
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return events.sort((a, b) => a.span.start - b.span.start || (a.operation === "transfer" ? -1 : 1));
+  const reviewedUses = events.flatMap((event) => event.expression ? [event.expression] : []);
+  return events.map(({ expression, ...event }): OwnershipEvent => {
+    if (!expression) return event;
+    let scope: ts.Node = source;
+    for (let current: ts.Node | undefined = expression.parent; current; current = current.parent) {
+      if (ts.isFunctionLike(current)) { scope = current; break; }
+    }
+    const region = resolveStableRegion(checker, expression, { scope, permittedUse: expression, permittedUses: reviewedUses });
+    return region.status === "resolved" && !region.runtimeDescriptorUnchecked
+      ? { ...event, resource: region.region, regionId: region.regionId }
+      : event;
+  }).sort((a, b) => a.span.start - b.span.start || (a.operation === "transfer" ? -1 : 1));
 }
 
 export function analyzeOwnership(program: ts.Program, source: ts.SourceFile): OwnershipDiagnostic[] {

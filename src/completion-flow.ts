@@ -10,11 +10,77 @@ export type LoopTransferKind = "break" | "continue";
  */
 export type CompletionTarget =
   | { readonly kind: "nearest-loop" }
+  | { readonly kind: "nearest-breakable" }
   | { readonly kind: "label"; readonly label: string };
 
 export interface TargetedCompletion {
   readonly completion: CompletionKind;
   readonly target?: CompletionTarget;
+}
+
+/** A finite, de-duplicated set of control completions for structural CFGs. */
+export type CompletionSet = readonly TargetedCompletion[];
+
+function completionKey(value: TargetedCompletion): string {
+  if (!isLoopTransfer(value.completion)) return value.completion;
+  if (value.target?.kind === "label") return `${value.completion}:label:${value.target.label}`;
+  return `${value.completion}:${value.target?.kind ?? "unresolved"}`;
+}
+
+export function completionSet(...values: readonly TargetedCompletion[]): CompletionSet {
+  const unique = new Map<string, TargetedCompletion>();
+  for (const value of values) unique.set(completionKey(value), value);
+  return [...unique.values()];
+}
+
+function unionCompletions(...sets: readonly CompletionSet[]): CompletionSet {
+  return completionSet(...sets.flat());
+}
+
+/** Evaluate the successor only for paths that completed normally. */
+export function sequenceCompletions(
+  incoming: CompletionSet,
+  successor: () => CompletionSet,
+): CompletionSet {
+  const abrupt = incoming.filter((value) => value.completion !== "normal");
+  return incoming.some((value) => value.completion === "normal")
+    ? unionCompletions(abrupt, successor())
+    : completionSet(...abrupt);
+}
+
+/** Replace each represented throw path with the catch block's completions. */
+export function catchCompletions(
+  incoming: CompletionSet,
+  handler: () => CompletionSet,
+): CompletionSet {
+  const retained = incoming.filter((value) => value.completion !== "throw");
+  return incoming.some((value) => value.completion === "throw")
+    ? unionCompletions(retained, handler())
+    : completionSet(...retained);
+}
+
+/**
+ * Apply ECMAScript finally completion precedence. A normal finalizer preserves
+ * the incoming completion; every abrupt finalizer path overrides it.
+ */
+export function finallyCompletions(
+  incoming: CompletionSet,
+  finalizer: CompletionSet,
+): CompletionSet {
+  const abrupt = finalizer.filter((value) => value.completion !== "normal");
+  return finalizer.some((value) => value.completion === "normal")
+    ? unionCompletions(incoming, abrupt)
+    : completionSet(...abrupt);
+}
+
+/** Consume transfers owned by one loop, retaining transfers to outer owners. */
+export function consumeLoopCompletions(
+  incoming: CompletionSet,
+  ownerLabel?: string,
+): CompletionSet {
+  const retained = incoming.filter((value) => !isTransferOwnedByLoop(value, ownerLabel));
+  const ownsBreak = incoming.some((value) => value.completion === "break" && isTransferOwnedByLoop(value, ownerLabel));
+  return ownsBreak ? unionCompletions(retained, completionSet({ completion: "normal" })) : completionSet(...retained);
 }
 
 /** Path-oriented form used by concrete TypeScript CFG consumers. */
@@ -49,6 +115,14 @@ export function loopTransferTarget(label?: string): CompletionTarget {
   return label === undefined ? { kind: "nearest-loop" } : { kind: "label", label };
 }
 
+export function breakTransferTarget(label?: string): CompletionTarget {
+  return label === undefined ? { kind: "nearest-breakable" } : { kind: "label", label };
+}
+
+export function continueTransferTarget(label?: string): CompletionTarget {
+  return label === undefined ? { kind: "nearest-loop" } : { kind: "label", label };
+}
+
 export function isLoopTransfer(completion: CompletionKind): completion is LoopTransferKind {
   return completion === "break" || completion === "continue";
 }
@@ -60,7 +134,8 @@ export function isTransferOwnedByLoop(
 ): boolean {
   if (!isLoopTransfer(completion.completion) || !completion.target) return false;
   return completion.target.kind === "nearest-loop"
-    || completion.target.label === ownerLabel;
+    || (completion.completion === "break" && completion.target.kind === "nearest-breakable")
+    || (completion.target.kind === "label" && completion.target.label === ownerLabel);
 }
 
 export function formatTargetedCompletion(completion: TargetedCompletion): string {

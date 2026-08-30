@@ -8,6 +8,7 @@ import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContr
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
+import { resolveRegionIdentity } from "./region-alias.js";
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { generateTemporalModel } from "./temporal-model.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
@@ -236,6 +237,48 @@ interface ProjectVerificationCompilerContext {
   externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;
 }
 
+/** Correlate ownership invalidation with typed-array backing evidence by region identity. */
+export function invalidateTransferredTypedArrayEvidence(
+  program: ts.Program,
+  files: Readonly<Record<string, string>>,
+  typedArrays: TypedArrayProgramSafetyResult,
+  ownershipDiagnostics: readonly ProjectOwnershipDiagnostic[],
+): void {
+  const checker = program.getTypeChecker();
+  for (const ownership of ownershipDiagnostics) {
+    if (ownership.operation !== "read" || !["detached", "transferred", "locked"].includes(ownership.state)) continue;
+    const result = typedArrays.files[ownership.fileName];
+    const source = files[ownership.fileName];
+    if (!result || source === undefined) continue;
+    const sourceFile = program.getSourceFile(ownership.fileName);
+    for (const obligation of result.obligations) {
+      if (obligation.kind !== "dataview-backing-bounds" || obligation.span.end < ownership.span.end) continue;
+      let sameRegion = source.slice(obligation.span.start, obligation.span.end).includes(ownership.resource);
+      if (!sameRegion && ownership.regionId && sourceFile) {
+        let backing: ts.Expression | undefined;
+        const findBacking = (node: ts.Node): void => {
+          if (backing || node.getStart(sourceFile) > obligation.span.start || node.getEnd() < obligation.span.end) return;
+          if (ts.isNewExpression(node) && node.arguments?.[0]
+            && node.getStart(sourceFile) <= obligation.span.start && node.getEnd() >= obligation.span.end) backing = node.arguments[0];
+          ts.forEachChild(node, findBacking);
+        };
+        findBacking(sourceFile);
+        const identity = backing ? resolveRegionIdentity(checker, backing) : undefined;
+        sameRegion = identity?.status === "resolved" && identity.regionId === ownership.regionId;
+      }
+      if (!sameRegion) continue;
+      obligation.result = "counterexample";
+      if (!result.diagnostics.some((item) => item.kind === obligation.kind && item.span.start === obligation.span.start)) result.diagnostics.push({
+        fileName: ownership.fileName,
+        functionName: obligation.functionName,
+        kind: obligation.kind,
+        span: obligation.span,
+        message: `fixed-buffer evidence for ${ownership.resource} was invalidated after it became ${ownership.state}`,
+      });
+    }
+  }
+}
+
 async function verifyUneffectProjectFiles(
   options: VerifyUneffectProjectOptions,
   compilerContext?: ProjectVerificationCompilerContext,
@@ -246,8 +289,8 @@ async function verifyUneffectProjectFiles(
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
-  const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
+  const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
   const preparedEffects = prepareCapabilityDslLinks(options.files, program);
   const effectFiles = preparedEffects.files;
   const preparedContracts = prepareContractDslLinks(options.files, program);
@@ -290,24 +333,7 @@ async function verifyUneffectProjectFiles(
     if (!sourceFile) continue;
     ownershipDiagnostics.push(...analyzeOwnership(program, sourceFile).map((diagnostic) => ({ ...diagnostic, fileName, kind: "ownership" as const })));
   }
-  for (const ownership of ownershipDiagnostics) {
-    if (ownership.operation !== "read" || !["detached", "transferred", "locked"].includes(ownership.state)) continue;
-    const result = typedArrays.files[ownership.fileName];
-    const source = options.files[ownership.fileName];
-    if (!result || source === undefined) continue;
-    for (const obligation of result.obligations) {
-      if (obligation.kind !== "dataview-backing-bounds" || obligation.span.end < ownership.span.end) continue;
-      if (!source.slice(obligation.span.start, obligation.span.end).includes(ownership.resource)) continue;
-      obligation.result = "counterexample";
-      if (!result.diagnostics.some((item) => item.kind === obligation.kind && item.span.start === obligation.span.start)) result.diagnostics.push({
-        fileName: ownership.fileName,
-        functionName: obligation.functionName,
-        kind: obligation.kind,
-        span: obligation.span,
-        message: `fixed-buffer evidence for ${ownership.resource} was invalidated after it became ${ownership.state}`,
-      });
-    }
-  }
+  invalidateTransferredTypedArrayEvidence(program, options.files, typedArrays, ownershipDiagnostics);
   for (const [fileName, result] of Object.entries(typedArrays.files)) if (invalidSources.has(fileName)) {
     for (const obligation of result.obligations) obligation.result = "unknown";
   }

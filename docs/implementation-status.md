@@ -23,8 +23,44 @@ same property is proved for arbitrary TypeScript.
 
 ## Capability effects
 
+- The first shared region resolver follows non-escaping `const` alias chains
+  and static property paths for direct call arguments. Effect-call mutation
+  substitution uses this resolver and fails closed for mutable bindings,
+  computed keys, extra uses/escape, cycles, and property paths whose runtime
+  data descriptor cannot be established. Other region consumers have not yet
+  migrated completely. The Program-backed typed-array checker now uses the
+  same evidence for bounded DataView receiver aliases: repeated reviewed
+  builtin accessor calls are permitted, while passing the alias elsewhere
+  produces an explicit `unknown` bounds obligation. General backing-buffer
+  identity, offsets, overlap, resize, detach, and transfer remain open. The
+  Program-backed refinement action-helper obligation also consumes the shared
+  resolver and now admits immutable alias chains without widening its direct,
+  monomorphic, source-resolved helper or independently checked `Mutate`
+  requirements. Immutable FixedArrayBuffer aliases now retain their size for
+  DataView construction, and ownership transfer/read events carry the same
+  source-stable region ID. Project reconciliation invalidates backing evidence
+  even when the transfer and later DataView construction use different aliases.
+  Overlapping views, resize, conditional detach, and escaping views remain
+  outside this slice. Local DataView construction with literal
+  byte offset/length now emits a separate backing-range obligation and gives
+  immutable aliases a bounded accessor range. Literal in-range Uint8/Uint32
+  `subarray` and `slice` windows similarly propagate their bounded length;
+  dynamic windows become `unknown` on indexed use. Shared-versus-copied
+  backing identity and overlap-sensitive writes are not yet modeled.
 - Effect declarations are checked as upper bounds, propagated through resolved
   call graphs, and diagnosed when declared but unused.
+- The experimental backend-neutral callable-summary API covers direct function,
+  method, arrow, and function-expression bodies plus immutable local callback
+  aliases. It records callback cardinality (`0`, `0..1`, `exactly-1`, `0..n`,
+  or `unknown`), declared effect bounds, may-effects, synchronous throws,
+  direct `Promise.reject` types, mutated regions, and source spans. Reviewed
+  Array callbacks propagate throws inline, Promise reactions convert callback
+  throws to rejection, and timers, microtasks, and event listeners report a
+  deferred host boundary. `instantiateCallableSummary` checks concrete callback
+  effects against the declared bound. This is not yet a proof for imported/open,
+  returned, reentrant, concurrent, escaping, or dynamically selected callbacks;
+  those cases remain `unknown`, and the older full effect analyzer still limits
+  its own `effect_parameter` validation to iterator consumers.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
@@ -58,6 +94,13 @@ same property is proved for arbitrary TypeScript.
 
 ## Contracts and formal backends
 
+- A public, backend-neutral completion algebra now represents normal, return,
+  throw, break, and continue outcomes with typed lexical targets. Sequencing,
+  catch routing, finally override, and loop-transfer consumption are shared by
+  the structural contract CFG; unlabeled `break` is distinguished from
+  `continue` because a switch may own the former. Promise/resource/refinement
+  consumers still retain richer domain-local payload joins and are not yet all
+  lowered through this algebra.
 - A shared typed specification IR generates reviewable SMT-LIB obligations for
   Z3 and reviewable Quint models for temporal checking and simulation.
 - The supported Hoare fragment checks integer and machine-number expressions,

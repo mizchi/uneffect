@@ -17,8 +17,9 @@ import { formatTemporalValueType, generateRuntimeAssertionExpression, parseTempo
 import { checkTemporalExpressionEquivalenceUnderAssumptionsWithZ3, checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
 import type { Z3ExecutionOptions } from "./z3.js";
 import {
+  breakTransferTarget,
+  continueTransferTarget,
   isTransferOwnedByLoop,
-  loopTransferTarget,
   type AbruptCompletion,
   type CompletionSummary,
 } from "./completion-flow.js";
@@ -26,6 +27,7 @@ import {
   parseRefinementRuntimeIdentity,
   type RefinementRuntimeIdentity,
 } from "./runtime-identities.js";
+import { resolveStableRegion } from "./region-alias.js";
 
 export type RefinementBindingRole = "create" | "observe" | "action" | "invariant";
 
@@ -1369,15 +1371,17 @@ function validateRefinementActionBodiesInSource(
     helper: ts.FunctionDeclaration,
   ): Omit<RefinementAliasRegionTrace, "modelName"> | undefined | "unsupported" => {
     if (!checker || !ts.isIdentifier(receiverArgument)) return undefined;
-    const replacement = substitutions.get(receiverArgument.text);
-    if (!replacement || !ts.isIdentifier(replacement) || replacement.text !== receiver) return undefined;
-    const aliasSymbol = checker.getSymbolAtLocation(receiverArgument);
-    const declaration = aliasSymbol?.declarations?.find(ts.isVariableDeclaration);
-    if (!aliasSymbol || !declaration || !ts.isIdentifier(declaration.name)
-      || !declaration.initializer || !ts.isIdentifier(declaration.initializer)
-      || declaration.initializer.text !== receiver
-      || !ts.isVariableDeclarationList(declaration.parent)
-      || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+    void substitutions;
+    let owner: ts.Node | undefined = call;
+    while (owner && !ts.isFunctionLike(owner)) owner = owner.parent;
+    if (!owner) return "unsupported";
+    const resolvedRegion = resolveStableRegion(checker, receiverArgument, {
+      scope: owner, permittedUse: receiverArgument,
+    });
+    if (resolvedRegion.status === "resolved" && resolvedRegion.aliases.length === 0) return undefined;
+    const alias = resolvedRegion.status === "resolved" ? resolvedRegion.aliases[0] : undefined;
+    if (resolvedRegion.status !== "resolved" || resolvedRegion.region !== receiver
+      || resolvedRegion.runtimeDescriptorUnchecked || !alias
       || (checker.getTypeAtLocation(receiverArgument).flags & ts.TypeFlags.Object) === 0) return "unsupported";
     if (!ts.isIdentifier(call.expression) || !helper.name || helper.getSourceFile() !== source
       || helper.typeParameters?.length || helper.parameters.length !== 1
@@ -1393,18 +1397,6 @@ function validateRefinementActionBodiesInSource(
     };
     inspectHelper(helper.body!);
     if (unsupportedHelper) return "unsupported";
-    let owner: ts.Node | undefined = declaration;
-    while (owner && !ts.isFunctionLike(owner)) owner = owner.parent;
-    if (!owner) return "unsupported";
-    let escaped = false;
-    const inspectOwner = (node: ts.Node): void => {
-      if (escaped || node !== owner && ts.isFunctionLike(node)) return;
-      if (ts.isIdentifier(node) && checker.getSymbolAtLocation(node) === aliasSymbol
-        && node !== declaration.name && node !== receiverArgument) { escaped = true; return; }
-      ts.forEachChild(node, inspectOwner);
-    };
-    inspectOwner(owner);
-    if (escaped) return "unsupported";
     const helperSource = helper.getSourceFile();
     const leading = helperSource.text.slice(helper.getFullStart(), helper.getStart(helperSource));
     const parameterName = (helper.parameters[0]!.name as ts.Identifier).text;
@@ -1414,7 +1406,7 @@ function validateRefinementActionBodiesInSource(
     if (!capabilityDeclaration) return "unsupported";
     return {
       aliasName: receiverArgument.text,
-      aliasSpan: { start: declaration.name.getStart(source), end: declaration.name.getEnd() },
+      aliasSpan: alias.span,
       helperName: helper.name!.text,
       helperCallSpan: { start: call.getStart(source), end: call.getEnd() },
       helperDeclarationSpan: { start: helper.getStart(source), end: helper.getEnd() },
@@ -2461,7 +2453,7 @@ function validateRefinementActionBodiesInSource(
         return "throw";
       }
       if (ts.isBreakStatement(statement)) {
-        const target = loopTransferTarget(statement.label?.text);
+        const target = breakTransferTarget(statement.label?.text);
         const ownedBreak = isTransferOwnedByLoop({ completion: "break", target }, ownedBreakLabel);
         const ownedLabeledBreak = statement.label !== undefined && ownedBreak;
         if (statement.label && !ownedBreak) {
@@ -2490,7 +2482,7 @@ function validateRefinementActionBodiesInSource(
         );
       }
       if (ts.isContinueStatement(statement)) {
-        const target = loopTransferTarget(statement.label?.text);
+        const target = continueTransferTarget(statement.label?.text);
         const ownedContinue = isTransferOwnedByLoop({ completion: "continue", target }, ownedContinueLabel);
         if (statement.label && !ownedContinue) {
           if (!activeContinueLabels.has(statement.label.text)) return undefined;

@@ -76,6 +76,21 @@ describe("annotated refinement bindings", () => {
     ] as const;
     const directory = mkdtempSync(join(tmpdir(), "uneffect-local-alias-region-"));
     try {
+      const chainedFile = join(directory, "chained.ts");
+      const chained = source.replace(
+        "  const target = runtime;",
+        "  const root = runtime;\n  const target = root;",
+      );
+      writeFileSync(chainedFile, chained);
+      const chainedProgram = ts.createProgram([chainedFile], compilerOptions);
+      const chainedSpec = parseSpec(chainedFile, chained).temporal;
+      expect(analyzeRefinementActionBodiesInProgram(chainedProgram, chainedFile, "localAlias", chainedSpec).obligations)
+        .toContainEqual(expect.objectContaining({
+          kind: "local-alias-helper",
+          status: "verified",
+          alias: expect.objectContaining({ name: "target", binding: "const" }),
+        }));
+
       for (const [name, changed] of mutations) {
         const changedFile = join(directory, `${name.replaceAll(" ", "-")}.ts`);
         writeFileSync(changedFile, changed);

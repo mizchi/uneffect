@@ -90,6 +90,98 @@ still reports `resource-host-scheduling`; the supported product reports
 `resource-host-callback-interleavings` because arbitrary callbacks are not yet
 interleaved into that product.
 
+The first shared-completion slice for the general CFG track is now complete.
+It defines typed normal/return/throw/break/continue outcomes, separates an
+unlabeled breakable target from the nearest-loop continue target, and shares
+sequence, catch, finally, and loop-consumption rules with the structural
+contract CFG. Rich Promise/resource/refinement payload joins and arbitrary CFG
+fixed points remain owned by [#25](https://github.com/mizchi/uneffect/issues/25)
+and [#24](https://github.com/mizchi/uneffect/issues/24).
+
+## Ordered task list: common safe JavaScript subset
+
+This order prioritizes syntax and runtime behavior that occurs frequently in
+ordinary TypeScript applications, requires little or no runtime support, and
+unblocks more than one Uneffect domain. Each item must fail closed outside its
+documented fragment. Later items must reuse the earlier neutral IR rather than
+introducing another domain-local control-flow or alias model.
+
+1. [x] Establish typed completion algebra for normal, return, throw, break, and
+   continue; share sequencing, catch, finally, and lexical transfer ownership
+   with the structural contract CFG.
+2. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish a common region/alias IR for non-escaping immutable aliases,
+   static property paths, direct monomorphic helper calls, and explicit
+   mutation invalidation. Reject reassignment, computed keys, getters, proxies,
+   escaping values, and unresolved calls. Connect Effect analysis first, then
+   typed-array, contract/refinement, and React consumers. ([#24](https://github.com/mizchi/uneffect/issues/24))
+   - [x] Add the shared immutable-alias resolver and migrate direct Effect-call
+     mutation argument substitution, including explicit unchecked runtime
+     descriptor evidence for property paths.
+   - [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Migrate typed-array buffer/view aliases.
+     - [x] Migrate Program-backed bounded DataView receiver alias chains; allow
+       repeated reviewed builtin accessor calls and report an escaped alias as
+       an `unknown` bounds obligation.
+     - [x] Share source-stable ArrayBuffer region identity across immutable
+       aliases, ownership transfer/read events, and DataView backing evidence;
+       detach/transfer invalidates a differently spelled backing alias.
+     - [x] Model local DataView literal byte offsets/lengths and propagate their
+       bounded accessor range through immutable aliases.
+     - [x] Infer bounded lengths for literal, in-range Uint8/Uint32
+       `subarray`/`slice` windows and aliases; dynamic windows produce an
+       explicit `unknown` index obligation when used.
+     - [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Distinguish shared `subarray` backing from copied
+       `slice`, prove overlap-sensitive writes, and model resizable buffers,
+       conditional detach, and returned/escaping views.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate contract/refinement mutation snapshots.
+     - [x] Migrate the TypeChecker-backed local action-helper alias obligation;
+       admit immutable alias chains while retaining helper, escape, computed
+       access, generic dispatch, and Mutate-correlation negative controls.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
+       interprocedural summaries, and invalidation joins.
+   - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.
+3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
+   aliases. Represent may-effects, synchronous throws, Promise rejections,
+   region reads/writes, and callback invocation cardinality/timing. Start with
+   the common `0..1`, exactly-once, and sequential `0..n` callback families.
+   ([#24](https://github.com/mizchi/uneffect/issues/24))
+   - [x] Add a versioned backend-neutral callable-summary API for direct
+     functions and immutable local callable aliases, including may-effects,
+     synchronous throws, direct Promise rejections, and mutated regions.
+   - [x] Record `0`, `0..1`, exactly-once, and sequential `0..n` callback
+     cardinality for direct calls and reviewed Array callback APIs; mutable
+     aliases, callback escape, multiple unrelated calls, and dynamic dispatch
+     remain explicit `unknown` evidence.
+   - [x] Preserve declared `effect_parameter` bounds in the summary so callers
+     and future package summaries can instantiate effect-polymorphic callbacks.
+   - [x] Distinguish inline throw propagation, Promise-reaction conversion to
+     rejection, and deferred host-reported throws for reviewed Promise, timer,
+     microtask, event-listener, and Array callback boundaries.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
+     reentrant or concurrent callbacks, returned callables, and mixed control
+     paths without degrading all such cases to `unknown`.
+4. [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Lower Promise settlement, resource disposal, timers, microtasks, and
+   callback invocation through one host-neutral temporal transition interface.
+   Preserve separate Web and Node scheduling profiles and explicit unsupported
+   interleavings. ([#63](https://github.com/mizchi/uneffect/issues/63), [#10](https://github.com/mizchi/uneffect/issues/10))
+5. [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Consume persisted package contract/effect summaries at call sites with
+   exact package, export, declaration, compiler, and source provenance. Unknown
+   or stale summaries must block assurance; publisher/build authenticity stays
+   a separate trust claim. ([#7](https://github.com/mizchi/uneffect/issues/7), [#20](https://github.com/mizchi/uneffect/issues/20))
+6. [ ] [#25](https://github.com/mizchi/uneffect/issues/25) Expand common expression semantics in measured frequency order:
+   optional chaining and nullish coalescing, destructuring/default initializers,
+   stable method receivers and `this`, iterator-based `for...of`, then reviewed
+   coercions. Property access that may invoke a getter remains effectful or
+   unknown until descriptor evidence exists.
+7. [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Add explicit JavaScript numeric domains instead of widening Z3 Real:
+   safe integers and U32 first, then finite IEEE-754 facts (`NaN`, infinity,
+   negative zero, and `Math.fround`). Keep unsupported coercion and rounding
+   behavior unknown. ([#6](https://github.com/mizchi/uneffect/issues/6))
+8. [ ] [#18](https://github.com/mizchi/uneffect/issues/18) Extend module and Realm composition for common static ESM, bounded
+   top-level await, Worker entrypoints, and reviewed external-code boundaries.
+   Dynamic import targets, `eval`, proxies, prototype mutation, native addons,
+   and opaque WebAssembly remain explicit high-authority boundaries rather than
+   prerequisites for the safe subset. ([#18](https://github.com/mizchi/uneffect/issues/18), [#10](https://github.com/mizchi/uneffect/issues/10))
+
 ### Deferred design track: a mature Uneffect specification DSL
 
 - [ ] Evaluate extracting the current temporal/contract expression language ([#64](https://github.com/mizchi/uneffect/issues/64))

@@ -117,6 +117,55 @@ describe("bounded Uint8Array safety", () => {
     ]));
   });
 
+  it("tracks local DataView byte offsets and view lengths", async () => {
+    const result = await verifyTypedArraySafety("data-view-offset.ts", `
+      import type { FixedArrayBuffer } from "@mizchi/uneffect"
+      function safe(buffer: FixedArrayBuffer<16>) {
+        const view = new DataView(buffer, 4, 8)
+        const alias = view
+        return alias.getUint32(4, false)
+      }
+      function outsideView(buffer: FixedArrayBuffer<16>) {
+        const view = new DataView(buffer, 4, 8)
+        return view.getUint32(6, false)
+      }
+      function outsideBacking(buffer: FixedArrayBuffer<8>) {
+        const view = new DataView(buffer, 4, 8)
+        return view.getUint8(0)
+      }
+    `);
+
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "safe", kind: "dataview-backing-bounds", result: "verified" }),
+      expect.objectContaining({ functionName: "safe", kind: "dataview-bounds", result: "verified" }),
+      expect.objectContaining({ functionName: "outsideView", kind: "dataview-bounds", result: "counterexample" }),
+      expect.objectContaining({ functionName: "outsideBacking", kind: "dataview-backing-bounds", result: "counterexample" }),
+    ]));
+  });
+
+  it("tracks bounded subarray and slice windows", async () => {
+    const result = await verifyTypedArraySafety("typed-array-windows.ts", `
+      import type { BoundedUint8Array } from "@mizchi/uneffect"
+      function windows(bytes: BoundedUint8Array<16>) {
+        const shared = bytes.subarray(4, 12)
+        const sharedAlias = shared
+        sharedAlias[7] = 255
+        const copied = bytes.slice(4, 12)
+        copied[8] = 0
+      }
+      function dynamic(bytes: BoundedUint8Array<16>, start: number) {
+        const window = bytes.subarray(start)
+        window[0] = 1
+      }
+    `);
+
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "windows", kind: "index-bounds", goal: expect.stringContaining("7 < 8"), result: "verified" }),
+      expect.objectContaining({ functionName: "windows", kind: "index-bounds", goal: expect.stringContaining("8 < 8"), result: "counterexample" }),
+      expect.objectContaining({ functionName: "dynamic", kind: "index-bounds", result: "unknown" }),
+    ]));
+  });
+
   it("derives integer intervals from strict and reversed requires bounds", async () => {
     const result = await verifyTypedArraySafety("data-view-interval.ts", `
       import type { BoundedDataView, Int } from "@mizchi/uneffect"
@@ -157,9 +206,15 @@ describe("bounded Uint8Array safety", () => {
       function resizableUpperBoundOnly(buffer: BoundedArrayBuffer<8>): BoundedDataView<8> {
         return new DataView(buffer, 0, 8)
       }
+      function aliasedBacking(buffer: FixedArrayBuffer<64>): BoundedDataView<8> {
+        const root = buffer
+        const backing = root
+        return new DataView(backing, 8, 8)
+      }
     `);
     expect(result.obligations).toEqual(expect.arrayContaining([
       expect.objectContaining({ functionName: "slice", kind: "dataview-backing-bounds", result: "verified" }),
+      expect.objectContaining({ functionName: "aliasedBacking", kind: "dataview-backing-bounds", result: "verified" }),
       expect.objectContaining({ functionName: "slice", kind: "max-length", result: "verified" }),
     ]));
     expect(result.diagnostics).toEqual(expect.arrayContaining([

@@ -6,10 +6,11 @@ import { logicToSmt, parseLogicExpression, proveBooleanImplication, type LogicEx
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
 import {
+  breakTransferTarget,
+  continueTransferTarget,
   formatTargetedCompletion,
   isLoopTransfer,
   isTransferOwnedByLoop,
-  loopTransferTarget,
   type CompletionKind,
   type CompletionPath,
   type CompletionTarget,
@@ -2017,7 +2018,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         || ts.isForInStatement(current) || ts.isForOfStatement(current))) continue;
       const loop = current;
       const labeled = ts.isLabeledStatement(loop.parent) && loop.parent.statement === loop ? loop.parent : undefined;
-      const owns = target.kind === "nearest-loop" || labeled?.label.text === target.label;
+      const owns = target.kind !== "label" || labeled?.label.text === target.label;
       if (!owns) continue;
       if (!ts.isBlock(loop.statement)) return undefined;
       const tryIndex = loop.statement.statements.indexOf(tryNode);
@@ -2081,8 +2082,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         const execute = (current: ts.Statement, conditions: AsyncControlCondition[], attachedLabel?: string): InternalCompletionPath[] => {
           if (ts.isReturnStatement(current)) return [{ controlConditions: conditions, completion: "return" }];
           if (ts.isThrowStatement(current)) return [{ controlConditions: conditions, completion: "throw" }];
-          if (ts.isBreakStatement(current)) return [{ controlConditions: conditions, completion: "break", target: loopTransferTarget(current.label?.text) }];
-          if (ts.isContinueStatement(current)) return [{ controlConditions: conditions, completion: "continue", target: loopTransferTarget(current.label?.text) }];
+          if (ts.isBreakStatement(current)) return [{ controlConditions: conditions, completion: "break", target: breakTransferTarget(current.label?.text) }];
+          if (ts.isContinueStatement(current)) return [{ controlConditions: conditions, completion: "continue", target: continueTransferTarget(current.label?.text) }];
           if (ts.isLabeledStatement(current)) {
             const paths = execute(current.statement, conditions, current.label.text);
             return paths.map((path) => path.completion === "break" && isTransferOwnedByLoop(path, current.label.text)

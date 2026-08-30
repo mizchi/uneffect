@@ -3,6 +3,7 @@ import type { Effect } from "./capabilities.js";
 import type { EvidenceStatus } from "./effects.js";
 import { extractAnnotations } from "./annotations.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
+import { resolveStableRegion } from "./region-alias.js";
 
 export type CallableKind = "function" | "method" | "arrow" | "function-expression";
 export type InvocationTiming = "inline" | "deferred" | "unknown";
@@ -371,31 +372,13 @@ export function buildProgramCallGraph(
     };
     const canonicalAddressableArgument = (argument: ts.Expression): { text: string; unresolvedAlias: boolean } => {
       if (!ts.isIdentifier(argument)) return { text: argument.getText(), unresolvedAlias: false };
-      const symbol = resolvedSymbol(checker, argument);
-      const binding = symbol?.declarations?.find((candidate): candidate is ts.VariableDeclaration =>
-        ts.isVariableDeclaration(candidate) && ts.isIdentifier(candidate.name));
-      if (!symbol || !binding?.initializer || !ts.isVariableDeclarationList(binding.parent)
-        || (binding.parent.flags & ts.NodeFlags.Const) === 0
-        || (checker.getTypeAtLocation(argument).flags & ts.TypeFlags.Object) === 0) {
+      if ((checker.getTypeAtLocation(argument).flags & ts.TypeFlags.Object) === 0 || !declaration.body) {
         return { text: argument.getText(), unresolvedAlias: false };
       }
-      const initializer = binding.initializer;
-      const addressable = ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer);
-      if (!addressable) return { text: argument.getText(), unresolvedAlias: true };
-      let owner: ts.Node | undefined = binding;
-      while (owner && !ts.isFunctionLike(owner)) owner = owner.parent;
-      if (!owner) return { text: argument.getText(), unresolvedAlias: true };
-      let escaped = false;
-      const inspect = (node: ts.Node): void => {
-        if (escaped || node !== owner && ts.isFunctionLike(node)) return;
-        if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === symbol
-          && node !== binding.name && node !== argument) { escaped = true; return; }
-        ts.forEachChild(node, inspect);
-      };
-      inspect(owner);
-      return escaped
-        ? { text: argument.getText(), unresolvedAlias: true }
-        : { text: initializer.getText(), unresolvedAlias: false };
+      const region = resolveStableRegion(checker, argument, { scope: declaration.body, permittedUse: argument });
+      return region.status === "resolved" && !region.runtimeDescriptorUnchecked
+        ? { text: region.region, unresolvedAlias: false }
+        : { text: argument.getText(), unresolvedAlias: true };
     };
     const visit = (node: ts.Node, catchesThrow: boolean): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;

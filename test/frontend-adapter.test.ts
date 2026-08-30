@@ -649,4 +649,35 @@ describe("TypeChecker symbol adapter", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "mutableAlias", kind: "u8-write" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "mutableProperty", kind: "u8-write" }));
   });
+
+  it("uses shared region evidence for DataView aliases and rejects escape", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dataview-region-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      type Nat = number
+      type BoundedDataView<N extends number> = DataView
+      declare function escape(value: DataView): void
+      function safe(view: BoundedDataView<8>) {
+        const root = view
+        const cursor = root
+        cursor.getUint8(0)
+        cursor.getUint16(1)
+      }
+      function escaped(view: BoundedDataView<8>) {
+        const cursor = view
+        escape(cursor)
+        cursor.getUint8(0)
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts"] });
+    const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+
+    expect(result.obligations.filter((item) => item.functionName === "safe" && item.kind === "dataview-bounds"))
+      .toHaveLength(2);
+    expect(result.obligations.filter((item) => item.functionName === "safe" && item.kind === "dataview-bounds")
+      .every((item) => item.result === "verified")).toBe(true);
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      functionName: "escaped", kind: "dataview-bounds", result: "unknown",
+    }));
+  });
 });

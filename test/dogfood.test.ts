@@ -497,6 +497,19 @@ describe("Uneffect dogfood", () => {
     }));
     expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
 
+    const chainedDirectory = mkdtempSync(join(tmpdir(), "uneffect-chained-alias-effect-"));
+    try {
+      const chainedFile = join(chainedDirectory, "chained.ts");
+      writeFileSync(chainedFile, source.replace(
+        "  const target = runtime;",
+        "  const root = runtime;\n  const target = root;",
+      ));
+      const chainedProgram = ts.createProgram([chainedFile], compilerOptions);
+      expect(analyzeProgramEffects(chainedProgram).diagnostics).toEqual([]);
+    } finally {
+      rmSync(chainedDirectory, { recursive: true, force: true });
+    }
+
     const directory = mkdtempSync(join(tmpdir(), "uneffect-escaped-alias-effect-"));
     try {
       const escapedFile = join(directory, "escaped.ts");
