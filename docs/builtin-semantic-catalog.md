@@ -42,6 +42,12 @@ structured-clone transfer at Worker and MessagePort boundaries. These entries
 preserve queue, cancellation-family, capability, and transfer metadata; they do
 not claim to verify browser implementations.
 
+DOM method definitions are catalog-owned as a separate slice. Node, attribute,
+text, layout, creation, parsing, listener, and dispatch operations retain their
+receiver/argument mutation regions, selector scopes, and possible user-code
+invocation. DOM property reads and writes remain a separate projection because
+their semantics depend on access direction.
+
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
 host implementation was proved. Unsupported callback composition remains
 visible. For example, `toSorted` records its synchronous comparator and fresh

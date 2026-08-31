@@ -1,4 +1,4 @@
-import type { BuiltinContract } from "./builtin-contracts.js";
+import type { BuiltinContract, DomBuiltinOperation, DomOperation } from "./builtin-contracts.js";
 
 export type BuiltinSemanticPlatform = "javascript" | "node" | "dom";
 export interface ReviewedBuiltinSemantic extends Omit<BuiltinContract, "evidence"> {
@@ -28,6 +28,59 @@ function nodeFsDefinitions(module: "node:fs" | "node:fs/promises"): ReviewedBuil
     ...["read", "readSync"].map((name) => reviewed("node", { symbol: { module, export: name }, operation: { kind: "fs", read: true, write: false, mutateArgument: 1, ...callback(name) } })),
     ...["write", "writeSync"].map((name) => reviewed("node", { symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, ...callback(name) } })),
   ];
+}
+
+function domMethodDefinitions(): ReviewedBuiltinSemantic[] {
+  const dom = (
+    operations: DomOperation | readonly [DomOperation, ...DomOperation[]],
+    options: Omit<DomBuiltinOperation, "kind" | "operations"> = {},
+  ): DomBuiltinOperation => ({ kind: "dom", operations: typeof operations === "string" ? [operations] : operations, ...options });
+  const entries: Array<[string, DomBuiltinOperation]> = [
+    ["ParentNode#querySelector", dom("NodeRead", { queryArgument: 0 })],
+    ["ParentNode#querySelectorAll", dom("NodeRead", { queryArgument: 0 })],
+    ["Document#getElementById", dom("NodeRead")],
+    ["Element#getAttribute", dom("AttributeRead")],
+    ...["Element#getAttributeNS", "Element#getAttributeNames", "Element#getAttributeNode", "Element#getAttributeNodeNS", "Element#hasAttribute", "Element#hasAttributeNS", "Element#hasAttributes"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeRead")]),
+    ...["Node#compareDocumentPosition", "Node#contains", "Node#getRootNode", "Node#hasChildNodes", "Node#isEqualNode", "Node#isSameNode"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("NodeRead")]),
+    ["CharacterData#substringData", dom("TextRead")],
+    ["Element#matches", dom("NodeRead", { invokesUserCode: true, queryArgument: 0 })],
+    ["Element#closest", dom("NodeRead", { invokesUserCode: true, queryArgument: 0 })],
+    ["Element#getBoundingClientRect", dom("LayoutRead")],
+    ["Document#createElement", dom("Create")],
+    ["Document#createTextNode", dom("Create")],
+    ["Element#setAttribute", dom("AttributeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ...["Element#removeAttribute", "Element#removeAttributeNS", "Element#setAttributeNS", "Element#toggleAttribute"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", { mutatesReceiver: true, invokesUserCode: true })]),
+    ...["Element#removeAttributeNode", "Element#setAttributeNode", "Element#setAttributeNodeNS"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", { mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true })]),
+    ["Node#appendChild", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true })],
+    ["Node#removeChild", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true })],
+    ["Node#insertBefore", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true })],
+    ["Node#replaceChild", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true })],
+    ["Node#cloneNode", dom(["NodeRead", "Create"])],
+    ["Node#normalize", dom(["NodeWrite", "TextWrite"], { mutatesReceiver: true })],
+    ["ParentNode#replaceChildren", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ["ParentNode#append", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ["ParentNode#prepend", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ["ChildNode#remove", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ...["CharacterData#appendData", "CharacterData#deleteData", "CharacterData#insertData", "CharacterData#replaceData"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("TextWrite", { mutatesReceiver: true })]),
+    ["Element#insertAdjacentHTML", dom(["Parse", "NodeWrite"], { mutatesReceiver: true, invokesUserCode: true })],
+    ["Element#insertAdjacentText", dom(["TextWrite", "NodeWrite"], { mutatesReceiver: true })],
+    ...["NamedNodeMap#getNamedItem", "NamedNodeMap#getNamedItemNS", "NamedNodeMap#item"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeRead")]),
+    ...["NamedNodeMap#removeNamedItem", "NamedNodeMap#removeNamedItemNS"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", { mutatesReceiver: true, invokesUserCode: true })]),
+    ...["NamedNodeMap#setNamedItem", "NamedNodeMap#setNamedItemNS"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", { mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true })]),
+    ["EventTarget#addEventListener", dom("Listen", { mutatesReceiver: true, invokesUserCode: true })],
+    ["EventTarget#removeEventListener", dom("Listen", { mutatesReceiver: true })],
+    ["EventTarget#dispatchEvent", dom("Dispatch", { invokesUserCode: true })],
+    ["DOMParser#parseFromString", dom("Parse")],
+  ];
+  return entries.map(([key, operation]) => reviewed("dom", { symbol: { module: "lib.dom", export: key }, operation }));
 }
 
 export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
@@ -108,6 +161,7 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     reviewed("dom", { symbol: { module: "global", export: "crypto.randomUUID" }, operation: { kind: "effect", effect: "Random" } }),
     ...["getRandomValues", "randomUUID"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Crypto#${name}` }, operation: { kind: "effect", effect: "Random" } })),
     ...["Worker#postMessage", "MessagePort#postMessage"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: name }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } })),
+    ...domMethodDefinitions(),
     ...["getItem", "key"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageRead" } })),
     ...["setItem", "removeItem", "clear"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageWrite" } })),
     reviewed("dom", { symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),

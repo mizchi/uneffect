@@ -46,6 +46,9 @@ server lifecycle, watcher close, next-tick, and check-phase timer definitions
 are also migrated with their queue and scope data.
 The Web host boundary slice now covers fetch, console, timers, animation frames,
 AbortSignal, Scheduler, Web Crypto, and Worker/MessagePort transfer definitions.
+DOM method definitions are also migrated with operation granularity, selector
+scope, mutation regions, and possible user-code invocation preserved. Directional
+DOM property semantics remain the next catalog group.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct

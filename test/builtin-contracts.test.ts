@@ -41,6 +41,11 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Scheduler#postTask" }, operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 } }),
       expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Crypto#getRandomValues" }, operation: { kind: "effect", effect: "Random" } }),
       expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Worker#postMessage" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, operation: { kind: "dom", operations: ["NodeRead"], queryArgument: 0 } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Element#setAttribute" }, operation: { kind: "dom", operations: ["AttributeWrite"], mutatesReceiver: true, invokesUserCode: true } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: { kind: "dom", operations: ["NodeWrite"], mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "EventTarget#dispatchEvent" }, operation: { kind: "dom", operations: ["Dispatch"], invokesUserCode: true } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "DOMParser#parseFromString" }, operation: { kind: "dom", operations: ["Parse"] } }),
     ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,
