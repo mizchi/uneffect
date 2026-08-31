@@ -1,7 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { evaluateResourceProtocol, evaluateResourceProtocolCfg, type ResourceProtocolCfg, type ResourceProtocolModel } from "../src/resource-protocol.js";
+import { evaluateResourceProtocol, evaluateResourceProtocolCfg, instantiateResourceCallableSummary, type ResourceCallableSummary, type ResourceProtocolCfg, type ResourceProtocolModel } from "../src/resource-protocol.js";
 
 describe("resource protocol IR", () => {
+  it("instantiates parameter and return resource boundary summaries", () => {
+    const summary: ResourceCallableSummary = {
+      schema: "uneffect-resource-callable-summary/v1",
+      id: "entry.ts:10",
+      evidence: "verified",
+      operations: [
+        { kind: "borrow", subject: { kind: "parameter", index: 0, name: "input" } },
+        { kind: "consume", subject: { kind: "parameter", index: 1, name: "body" } },
+        { kind: "transfer", subject: { kind: "parameter", index: 2, name: "port" }, target: { kind: "return" } },
+        { kind: "escape", subject: { kind: "parameter", index: 3, name: "callback" } },
+      ],
+    };
+    expect(instantiateResourceCallableSummary(summary, {
+      parameters: new Map([[0, "input#1"], [1, "body#1"], [2, "port#1"], [3, "callback#1"]]),
+      returnResource: "returned#1",
+      at: 42,
+    })).toEqual({
+      status: "exact",
+      transitions: [
+        { kind: "use", resource: "input#1", at: 42, evidence: "exact" },
+        { kind: "consume", resource: "body#1", at: 42, evidence: "exact" },
+        { kind: "transfer", resource: "port#1", target: "returned#1", at: 42, evidence: "exact" },
+        { kind: "escape", resource: "callback#1", at: 42, evidence: "exact" },
+      ],
+      missing: [],
+    });
+  });
+
+  it("fails closed when a resource boundary binding is unavailable", () => {
+    const summary: ResourceCallableSummary = {
+      schema: "uneffect-resource-callable-summary/v1", id: "external:1", evidence: "trusted",
+      operations: [{ kind: "transfer", subject: { kind: "parameter", index: 0, name: "port" }, target: { kind: "return" } }],
+    };
+    expect(instantiateResourceCallableSummary(summary, { parameters: new Map(), at: 7 })).toEqual({
+      status: "unknown", transitions: [], missing: [
+        { operation: 0, reference: { kind: "parameter", index: 0, name: "port" } },
+        { operation: 0, reference: { kind: "return" } },
+      ],
+    });
+  });
+
   it("discharges an acquired resource through a protocol terminal state", () => {
     const model: ResourceProtocolModel = {
       schema: "uneffect-resource-protocol/v1",

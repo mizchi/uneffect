@@ -175,6 +175,13 @@ introducing another domain-local control-flow or alias model.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Define authenticated declarative protocol summaries for builtin,
      package, and plugin operations; executable plugin booleans must not create
      verified evidence.
+     - [x] Define and publicly export the backend-neutral parameter/return
+       `borrow | consume | transfer | escape` summary contract, and instantiate
+       authenticated summaries into shared resource transitions with explicit
+       missing-binding results.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Add TypeChecker-bound frontend extraction and call-site resource identity
+       substitution; comment syntax remains a declared/trusted claim until its
+       implementation is independently verified.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
    aliases. Represent may-effects, synchronous throws, Promise rejections,
    region reads/writes, and callback invocation cardinality/timing. Start with

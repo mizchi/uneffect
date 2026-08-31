@@ -68,6 +68,21 @@ site retains summary, declaration, and call-site provenance. Unknown calls,
 same-named shadow functions, floating rejected Promises, and unauthenticated
 persisted/external summaries do not manufacture this edge.
 
+## Callable resource boundaries
+
+`uneffect-resource-callable-summary/v1` is the backend-neutral function-boundary
+contract. It refers to resources by parameter index or return position and
+supports `borrow`, `consume`, `transfer`, and `escape`. Instantiation substitutes
+the caller's stable resource identities and lowers the operations to the shared
+`use`, `consume`, `transfer`, and `escape` transitions. Verified summaries emit
+exact evidence; reviewed external summaries retain trusted evidence.
+
+Missing argument or return identities produce an explicit `unknown` result and
+a list of unresolved references. The API does not infer the contract from a
+function name or accept an executable plugin predicate as proof. TypeChecker
+extraction, comment syntax, and cross-package authentication remain future
+frontend work.
+
 ## Current lowering
 
 The abortable-fetch analysis currently lowers these reviewed fragments:

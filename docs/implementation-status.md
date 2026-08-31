@@ -185,6 +185,11 @@ same property is proved for arbitrary TypeScript.
   catch/finally. Evidence retains declaration and call provenance. Floating
   rejections, unknown calls, and unauthenticated persisted/external summaries
   do not create such an edge.
+  A separate public `uneffect-resource-callable-summary/v1` contract represents
+  parameter/return `borrow`, `consume`, `transfer`, and `escape` operations.
+  It instantiates caller-provided stable identities into the same resource IR
+  and reports missing bindings as unknown. TypeChecker extraction and external
+  summary authentication are not implemented yet.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

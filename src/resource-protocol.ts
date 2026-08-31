@@ -2,6 +2,7 @@ import { solveBasicBlockFixedPoint, type FixedPointBudget, type FixedPointLattic
 
 export const resourceProtocolSchema = "uneffect-resource-protocol/v1" as const;
 export const resourceProtocolCfgSchema = "uneffect-resource-protocol-cfg/v1" as const;
+export const resourceCallableSummarySchema = "uneffect-resource-callable-summary/v1" as const;
 
 export type ResourceProtocolState =
   | "absent"
@@ -42,6 +43,69 @@ export interface ResourceProtocolModel {
   readonly schema: typeof resourceProtocolSchema;
   readonly resources: readonly ResourceProtocolResource[];
   readonly transitions: readonly ResourceProtocolTransition[];
+}
+
+/** A resource position in a callable contract. Names are diagnostic-only. */
+export type ResourceCallableReference =
+  | { readonly kind: "parameter"; readonly index: number; readonly name?: string }
+  | { readonly kind: "return" };
+
+export interface ResourceCallableOperation {
+  readonly kind: "borrow" | "consume" | "transfer" | "escape";
+  readonly subject: ResourceCallableReference;
+  /** A transfer target, commonly the returned resource identity. */
+  readonly target?: ResourceCallableReference;
+}
+
+/** Backend-neutral ownership contract. Frontends must authenticate its evidence. */
+export interface ResourceCallableSummary {
+  readonly schema: typeof resourceCallableSummarySchema;
+  readonly id: string;
+  readonly evidence: "trusted" | "verified";
+  readonly operations: readonly ResourceCallableOperation[];
+}
+
+export interface ResourceCallableBindings {
+  readonly parameters: ReadonlyMap<number, string>;
+  readonly returnResource?: string;
+  readonly at: number;
+}
+
+export interface ResourceCallableInstantiation {
+  readonly status: "exact" | "trusted" | "unknown";
+  readonly transitions: readonly ResourceProtocolTransition[];
+  readonly missing: readonly { readonly operation: number; readonly reference: ResourceCallableReference }[];
+}
+
+function resolveCallableResource(reference: ResourceCallableReference, bindings: ResourceCallableBindings): string | undefined {
+  return reference.kind === "return" ? bindings.returnResource : bindings.parameters.get(reference.index);
+}
+
+/** Instantiates a callable ownership contract at one source-bound call site. */
+export function instantiateResourceCallableSummary(
+  summary: ResourceCallableSummary,
+  bindings: ResourceCallableBindings,
+): ResourceCallableInstantiation {
+  const transitions: ResourceProtocolTransition[] = [];
+  const missing: { operation: number; reference: ResourceCallableReference }[] = [];
+  const evidence = summary.evidence === "verified" ? "exact" as const : "trusted" as const;
+  summary.operations.forEach((operation, index) => {
+    const resource = resolveCallableResource(operation.subject, bindings);
+    const target = operation.kind === "transfer" && operation.target
+      ? resolveCallableResource(operation.target, bindings) : undefined;
+    if (!resource) missing.push({ operation: index, reference: operation.subject });
+    if (operation.kind === "transfer" && operation.target && !target) missing.push({ operation: index, reference: operation.target });
+    if (!resource || (operation.kind === "transfer" && operation.target && !target)) return;
+    const base = { resource, at: bindings.at, evidence };
+    if (operation.kind === "borrow") transitions.push({ ...base, kind: "use" });
+    else if (operation.kind === "transfer") transitions.push({ ...base, kind: "transfer", ...(target ? { target } : {}) });
+    else transitions.push({ ...base, kind: operation.kind });
+  });
+  return {
+    status: missing.length > 0 ? "unknown" : summary.evidence === "verified" ? "exact" : "trusted",
+    transitions,
+    missing,
+  };
 }
 
 export interface ResourceProtocolDiagnostic {
