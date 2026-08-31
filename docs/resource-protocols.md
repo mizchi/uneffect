@@ -45,9 +45,11 @@ This supports a backend-neutral representation of:
 - normal and exceptional predecessors entering one mandatory `finally` block;
 - bounded fixed-point evaluation for future loop lowering.
 
-The CFG API does not claim to be TypeScript's private compiler CFG. The current
-implementation provides the neutral evaluator; general lowering from arbitrary
-TypeScript branches, handlers, and loops remains separate work.
+The CFG API does not claim to be TypeScript's private compiler CFG. The first
+public-AST lowering handles blocks, sequential statements, `if`/`else`, and
+direct `return`/`throw`. Transition recognition remains in the reviewed
+frontend. Loops, switch, labels, nested declarations, and try/catch/finally are
+rejected by this lowering rather than flattened.
 
 ## Current lowering
 
@@ -58,11 +60,15 @@ The abortable-fetch analysis currently lowers these reviewed fragments:
 - direct and transformed `pipeTo` pipelines;
 - `Response.clone()` body splits;
 - `ReadableStream.tee()` stream splits.
+- direct Response body calls across structured `if`/`else` control flow.
 
 Resource IDs come from TypeChecker symbol/declaration identity where available;
 binding spelling is only retained as a diagnostic label. Clone and tee results
 are checked by the same split-and-terminal-state evaluator rather than custom
 "both branches" Boolean logic.
+For example, different builtin body consumers in both arms of one `if`/`else`
+can now join to `consumed`; a missing arm joins `available` and `consumed` to
+`unknown`.
 
 ## Assurance boundary
 

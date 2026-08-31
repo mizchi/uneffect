@@ -172,6 +172,13 @@ same property is proved for arbitrary TypeScript.
   stream branches. Each branch must be single-use and complete a direct awaited
   builtin `pipeTo`. A missing branch remains unconsumed; conditional/repeated
   branch use or reuse of the original response stream is unknown.
+  These body obligations now lower through the versioned resource-protocol IR.
+  Its first TypeScript public-AST CFG fragment supports blocks, sequencing,
+  `if`/`else`, and direct `return`/`throw`: consuming the body in both arms joins
+  to consumed, while a missing arm joins to unknown. TypeScript loop, switch,
+  label, nested-declaration, and try/catch/finally lowering is still unsupported,
+  even though the backend-neutral evaluator can represent loop fixed points and
+  shared mandatory-finally blocks.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

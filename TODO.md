@@ -153,8 +153,13 @@ introducing another domain-local control-flow or alias model.
      fixed-point engine. Equal branch states remain exact, unequal states join
      to unknown, normal/exceptional predecessors can share mandatory finally,
      and every evaluation has an explicit proof budget.
-   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Lower general TypeScript branches, loops, and try/catch/finally into the
-     resource CFG; preserve abrupt completion kinds and source-bound evidence.
+   - [x] Add the first public-AST resource CFG lowering for blocks, sequential
+     statements, `if`/`else`, and direct `return`/`throw`, using source-bound
+     transition sites. Connect direct Response body calls so complete branches
+     join to consumed while a missing branch becomes unknown.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend TypeScript resource CFG lowering through loops, switch, labels,
+     nested declarations, and try/catch/finally while preserving abrupt
+     completion kinds and source-bound evidence.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Define authenticated declarative protocol summaries for builtin,
      package, and plugin operations; executable plugin booleans must not create
      verified evidence.

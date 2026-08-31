@@ -201,6 +201,44 @@ describe("abortable fetch product", () => {
     }
   });
 
+  it("joins direct Response consumption across both if branches", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-body-branches-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function both(asText: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/body-branches", { signal: controller.signal })
+          const response = await request
+          if (asText) await response.text()
+          else await response.arrayBuffer()
+        }
+        export async function partial(asText: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/body-partial", { signal: controller.signal })
+          const response = await request
+          if (asText) await response.text()
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({
+          owner: "both", responseBodyStatus: "consumed", responseBodyOperation: "control-flow",
+          responseResourceEvaluation: expect.objectContaining({ status: "satisfied" }),
+        }),
+        expect.objectContaining({
+          owner: "partial", responseBodyStatus: "unknown", responseBodyOperation: "text",
+          responseResourceEvaluation: expect.objectContaining({ status: "unknown" }),
+        }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("tracks immutable Response aliases and direct stream readers", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-stream-"));
     try {

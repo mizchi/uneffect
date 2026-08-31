@@ -37,6 +37,7 @@ export const ciTestTiers = {
     "test/region-alias.test.ts",
     "test/registry-config.test.ts",
     "test/resource-protocol.test.ts",
+    "test/resource-protocol-typescript.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
     "test/test-timeouts.test.ts",

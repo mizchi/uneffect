@@ -3,7 +3,8 @@ import { analyzeAsyncPatternsInProgram } from "./async-patterns.js";
 import { analyzeAsyncSafetyInProgram, type PromiseBinding } from "./async-safety.js";
 import { bindingIdentityKey, symbolIdentityKey } from "./binding-identity.js";
 import { analyzeAbortSignalsInProgram } from "./host-neutral-transitions.js";
-import { evaluateResourceProtocol, resourceProtocolSchema, type ResourceProtocolEvaluation, type ResourceProtocolModel } from "./resource-protocol.js";
+import { lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
+import { evaluateResourceProtocol, evaluateResourceProtocolCfg, resourceProtocolSchema, type ResourceProtocolCfg, type ResourceProtocolEvaluation, type ResourceProtocolModel } from "./resource-protocol.js";
 
 export interface AbortableFetch {
   readonly owner: string;
@@ -16,9 +17,10 @@ export interface AbortableFetch {
   readonly promiseObservations: readonly string[];
   readonly responseBinding?: string;
   readonly responseBodyStatus: "not-acquired" | "consumed" | "stream-owned" | "unconsumed" | "unknown";
-  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "clone" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "tee" | "text";
+  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "clone" | "control-flow" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "tee" | "text";
   readonly responseBodyBranches?: readonly ResponseBodyBranch[];
   readonly responseResourceProtocol?: ResourceProtocolModel;
+  readonly responseResourceCfg?: ResourceProtocolCfg;
   readonly responseResourceEvaluation?: ResourceProtocolEvaluation;
   readonly responseStreamDischarge?: "cancel" | "drain" | "pipe-through-to" | "pipe-to" | "release-lock";
   readonly abortComposition?: number;
@@ -412,6 +414,52 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         responseResourceProtocol,
         responseResourceEvaluation,
       };
+    }
+    let ownerFunction: ts.FunctionLikeDeclaration | undefined;
+    for (let current: ts.Node | undefined = responseDeclaration.parent; current; current = current.parent) {
+      if (ts.isFunctionLike(current) && "body" in current && current.body) { ownerFunction = current as ts.FunctionLikeDeclaration; break; }
+    }
+    if (ownerFunction?.body && ts.isBlock(ownerFunction.body)) {
+      const directBodyCalls: Array<{ node: ts.CallExpression; operation: DirectBodyMethod }> = [];
+      const findDirectBodyCalls = (node: ts.Node): void => {
+        if (node !== ownerFunction && ts.isFunctionLike(node)) return;
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+          && ts.isIdentifier(node.expression.expression) && stableRootSymbol(node.expression.expression) === responseSymbol
+          && bodyMethods.has(node.expression.name.text as DirectBodyMethod)) {
+          const method = resolvedSymbol(checker, node.expression.name);
+          const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+          if (builtin) directBodyCalls.push({ node, operation: node.expression.name.text as DirectBodyMethod });
+        }
+        ts.forEachChild(node, findDirectBodyCalls);
+      };
+      findDirectBodyCalls(ownerFunction.body);
+      if (directBodyCalls.length > 0) {
+        const bodyId = symbolIdentityKey(responseSymbol) ?? `${responseDeclaration.getStart(source)}:body`;
+        const responseResourceProtocol: ResourceProtocolModel = {
+          schema: resourceProtocolSchema,
+          resources: [{ id: bodyId, label: `${responseDeclaration.name.text}.body`, kind: "ResponseBody", initialState: "available", requiredTerminalStates: ["consumed"] }],
+          transitions: [],
+        };
+        const sites: ResourceTransitionSite[] = directBodyCalls.map(({ node }) => ({
+          node,
+          transitions: [{ kind: "consume", resource: bodyId, at: node.getStart(source) }],
+        }));
+        const lowered = lowerResourceProtocolCfgInFunction(source, ownerFunction, responseResourceProtocol, sites, {
+          budget: { name: "response-body-cfg", limit: 256 },
+        });
+        if (lowered.status === "exact") {
+          const responseResourceEvaluation = evaluateResourceProtocolCfg(lowered.cfg);
+          return {
+            ...fetch,
+            responseBinding: responseDeclaration.name.text,
+            responseBodyStatus: bodyStatusFromProtocol(responseResourceEvaluation),
+            responseBodyOperation: directBodyCalls.length === 1 ? directBodyCalls[0]!.operation : "control-flow",
+            responseResourceProtocol,
+            responseResourceCfg: lowered.cfg,
+            responseResourceEvaluation,
+          };
+        }
+      }
     }
     let operation: AbortableFetch["responseBodyOperation"] | undefined;
     let conditional = false;
