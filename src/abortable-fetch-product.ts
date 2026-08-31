@@ -3,6 +3,7 @@ import { analyzeAsyncPatternsInProgram } from "./async-patterns.js";
 import { analyzeAsyncSafetyInProgram, type PromiseBinding } from "./async-safety.js";
 import { bindingIdentityKey, symbolIdentityKey } from "./binding-identity.js";
 import { analyzeAbortSignalsInProgram } from "./host-neutral-transitions.js";
+import { evaluateResourceProtocol, resourceProtocolSchema, type ResourceProtocolEvaluation, type ResourceProtocolModel } from "./resource-protocol.js";
 
 export interface AbortableFetch {
   readonly owner: string;
@@ -17,6 +18,8 @@ export interface AbortableFetch {
   readonly responseBodyStatus: "not-acquired" | "consumed" | "stream-owned" | "unconsumed" | "unknown";
   readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "clone" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "tee" | "text";
   readonly responseBodyBranches?: readonly ResponseBodyBranch[];
+  readonly responseResourceProtocol?: ResourceProtocolModel;
+  readonly responseResourceEvaluation?: ResourceProtocolEvaluation;
   readonly responseStreamDischarge?: "cancel" | "drain" | "pipe-through-to" | "pipe-to" | "release-lock";
   readonly abortComposition?: number;
   readonly abortReason?: string;
@@ -58,6 +61,8 @@ function ownerName(node: ts.Node): string {
 
 export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts.SourceFile): AbortableFetchAnalysis {
   const checker = program.getTypeChecker();
+  const bodyStatusFromProtocol = (evaluation: ResourceProtocolEvaluation): AbortableFetch["responseBodyStatus"] =>
+    evaluation.status === "satisfied" ? "consumed" : evaluation.status === "unsatisfied" ? "unconsumed" : "unknown";
   const aborts = analyzeAbortSignalsInProgram(program, source);
   const asyncPatterns = analyzeAsyncPatternsInProgram(program, source);
   const asyncSafety = analyzeAsyncSafetyInProgram(program, source);
@@ -262,14 +267,36 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         analyzeBranch(responseSymbol, responseDeclaration.name.text),
         analyzeBranch(cloneSymbol, cloneDeclaration.name.text),
       ] as const;
-      const responseBodyStatus: AbortableFetch["responseBodyStatus"] = responseBodyBranches.some((branch) => branch.status === "unknown")
-        ? "unknown" : responseBodyBranches.every((branch) => branch.status === "consumed") ? "consumed" : "unconsumed";
+      const rootId = `${symbolIdentityKey(responseSymbol) ?? responseDeclaration.getStart(source)}:before-clone`;
+      const originalId = symbolIdentityKey(responseSymbol) ?? `${responseDeclaration.getStart(source)}:original`;
+      const cloneId = symbolIdentityKey(cloneSymbol) ?? `${cloneDeclaration.getStart(source)}:clone`;
+      const responseResourceProtocol: ResourceProtocolModel = {
+        schema: resourceProtocolSchema,
+        resources: [
+          { id: rootId, label: `${responseDeclaration.name.text}.body`, kind: "ResponseBody", initialState: "absent" },
+          { id: originalId, label: responseBodyBranches[0].binding, kind: "ResponseBody", initialState: "absent", requiredTerminalStates: ["consumed"] },
+          { id: cloneId, label: responseBodyBranches[1].binding, kind: "ResponseBody", initialState: "absent", requiredTerminalStates: ["consumed"] },
+        ],
+        transitions: [
+          { kind: "acquire", resource: rootId, at: 0 },
+          { kind: "split", resource: rootId, targets: [originalId, cloneId], at: 1 },
+          ...responseBodyBranches.flatMap((branch, branchIndex) => branch.status === "unconsumed" ? [] : [{
+            kind: "consume" as const,
+            resource: branchIndex === 0 ? originalId : cloneId,
+            conditional: branch.status === "unknown",
+            at: branchIndex + 2,
+          }]),
+        ],
+      };
+      const responseResourceEvaluation = evaluateResourceProtocol(responseResourceProtocol);
       return {
         ...fetch,
         responseBinding: responseDeclaration.name.text,
-        responseBodyStatus,
+        responseBodyStatus: bodyStatusFromProtocol(responseResourceEvaluation),
         responseBodyOperation: "clone",
         responseBodyBranches,
+        responseResourceProtocol,
+        responseResourceEvaluation,
       };
     }
     const teeCalls: ts.CallExpression[] = [];
@@ -350,15 +377,40 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         ts.forEachChild(node, findSourceReuse);
       };
       findSourceReuse(source);
-      const responseBodyStatus: AbortableFetch["responseBodyStatus"] = sourceReused
-        ? "unknown" : responseBodyBranches.some((branch) => branch.status === "unknown")
-        ? "unknown" : responseBodyBranches.every((branch) => branch.status === "consumed") ? "consumed" : "unconsumed";
+      const rootId = `${symbolIdentityKey(responseSymbol) ?? responseDeclaration.getStart(source)}:before-tee`;
+      const branchIds = elements.map((element, branchIndex) => ts.isBindingElement(element) && ts.isIdentifier(element.name)
+        ? symbolIdentityKey(resolvedSymbol(checker, element.name)) ?? `${teeDeclaration!.getStart(source)}:${branchIndex}`
+        : `${teeDeclaration!.getStart(source)}:${branchIndex}`);
+      const responseResourceProtocol: ResourceProtocolModel = {
+        schema: resourceProtocolSchema,
+        resources: [
+          { id: rootId, label: `${responseDeclaration.name.text}.body`, kind: "ReadableStream", initialState: "absent" },
+          ...responseBodyBranches.map((branch, branchIndex) => ({
+            id: branchIds[branchIndex]!, label: branch.binding, kind: "ReadableStream", initialState: "absent" as const,
+            requiredTerminalStates: ["consumed" as const],
+          })),
+        ],
+        transitions: [
+          { kind: "acquire", resource: rootId, at: 0 },
+          { kind: "split", resource: rootId, targets: branchIds, at: 1 },
+          ...responseBodyBranches.flatMap((branch, branchIndex) => branch.status === "unconsumed" ? [] : [{
+            kind: "consume" as const,
+            resource: branchIds[branchIndex]!,
+            conditional: branch.status === "unknown",
+            at: branchIndex + 2,
+          }]),
+          ...(sourceReused ? [{ kind: "use" as const, resource: rootId, at: 4 }] : []),
+        ],
+      };
+      const responseResourceEvaluation = evaluateResourceProtocol(responseResourceProtocol);
       return {
         ...fetch,
         responseBinding: responseDeclaration.name.text,
-        responseBodyStatus,
+        responseBodyStatus: bodyStatusFromProtocol(responseResourceEvaluation),
         responseBodyOperation: "tee",
         responseBodyBranches,
+        responseResourceProtocol,
+        responseResourceEvaluation,
       };
     }
     let operation: AbortableFetch["responseBodyOperation"] | undefined;
@@ -529,12 +581,38 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         : operation !== "getReader" ? "consumed"
           : readerDischarge === "cancel" || readerDischarge === "drain" ? "consumed"
             : readerDischarge === "release-lock" ? "unconsumed" : "stream-owned";
+    const bodyId = symbolIdentityKey(responseSymbol) ?? `${responseDeclaration.getStart(source)}:body`;
+    const readerId = readerSymbol ? symbolIdentityKey(readerSymbol) ?? `${responseDeclaration.getStart(source)}:reader` : undefined;
+    const responseResourceProtocol: ResourceProtocolModel = operation === "getReader" && readerId ? {
+      schema: resourceProtocolSchema,
+      resources: [
+        { id: bodyId, label: `${responseDeclaration.name.text}.body`, kind: "ReadableStream", initialState: "available" },
+        { id: readerId, label: "reader", kind: "ReadableStreamDefaultReader", initialState: "absent", requiredTerminalStates: ["consumed"] },
+      ],
+      transitions: [
+        { kind: "transfer", resource: bodyId, target: readerId, conditional, at: 0 },
+        ...(readerDischarge === "cancel" || readerDischarge === "drain" ? [{
+          kind: "consume" as const, resource: readerId, conditional: dischargeConditional, at: 1,
+        }] : readerDischarge === "release-lock" ? [{
+          kind: "release" as const, resource: readerId, conditional: dischargeConditional, at: 1,
+        }] : []),
+      ],
+    } : {
+      schema: resourceProtocolSchema,
+      resources: [{
+        id: bodyId, label: `${responseDeclaration.name.text}.body`, kind: "ResponseBody", initialState: "available", requiredTerminalStates: ["consumed"],
+      }],
+      transitions: operation ? [{ kind: "consume", resource: bodyId, conditional, at: 0 }] : [],
+    };
+    const responseResourceEvaluation = evaluateResourceProtocol(responseResourceProtocol);
     return {
       ...fetch,
       responseBinding: responseDeclaration.name.text,
       responseBodyStatus,
       ...(operation ? { responseBodyOperation: operation } : {}),
       ...(responseStreamDischarge ? { responseStreamDischarge } : {}),
+      responseResourceProtocol,
+      responseResourceEvaluation,
     };
   });
   return { fileName: source.fileName, fetches: enriched, unknown };

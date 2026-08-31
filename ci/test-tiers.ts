@@ -36,6 +36,7 @@ export const ciTestTiers = {
     "test/refinement-handler-flow.test.ts",
     "test/region-alias.test.ts",
     "test/registry-config.test.ts",
+    "test/resource-protocol.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
     "test/test-timeouts.test.ts",

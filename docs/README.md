@@ -41,6 +41,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Diagnostics and fixtures](./diagnostics.md): diagnostic format, the `fixtures/` corpus, and the message-quality rubric.
 - [Continuous integration](./ci.md): test-tier coverage, pinned tools, and solver/runtime isolation.
 - [Effect TS comparison](./effect-ts-comparison.md): different goals and a repeatable comparison protocol.
+- [Resource protocol IR](./resource-protocols.md): common consume, transfer, split, escape, and invalidation semantics.
 
 ## Current design decisions
 

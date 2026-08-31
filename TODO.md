@@ -139,6 +139,22 @@ introducing another domain-local control-flow or alias model.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.
+   - [x] Introduce `uneffect-resource-protocol/v1` with stable resource
+     identities, required terminal states, and ordered acquire/use/consume/
+     release/transfer/split/join/escape/invalidate transitions. Conditional
+     transitions join to unknown and invalid transitions emit diagnostics.
+   - [x] Lower reviewed Response body consumption, reader ownership, pipelines,
+     clone, and tee into the shared protocol evaluator while preserving the
+     existing detailed compatibility status.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Lower Transferable ownership, `using`, Promise ownership, typed-array
+     invalidation, and user-defined protocols through the same IR instead of
+     adding domain-local terminal-state logic.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Add a conservative resource-state transfer lattice over the shared CFG
+     fixed-point engine, including branch joins, loops, try/catch/finally, and
+     explicit proof budgets.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Define authenticated declarative protocol summaries for builtin,
+     package, and plugin operations; executable plugin booleans must not create
+     verified evidence.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
    aliases. Represent may-effects, synchronous throws, Promise rejections,
    region reads/writes, and callback invocation cardinality/timing. Start with

@@ -337,8 +337,8 @@ describe("abortable fetch product", () => {
       });
       const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
       expect(analysis.fetches).toEqual([
-        expect.objectContaining({ owner: "piped", responseBodyStatus: "consumed", responseBodyOperation: "pipeTo", responseStreamDischarge: "pipe-to" }),
-        expect.objectContaining({ owner: "floating", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
+        expect.objectContaining({ owner: "piped", responseBodyStatus: "consumed", responseBodyOperation: "pipeTo", responseStreamDischarge: "pipe-to", responseResourceEvaluation: expect.objectContaining({ status: "satisfied" }) }),
+        expect.objectContaining({ owner: "floating", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo", responseResourceEvaluation: expect.objectContaining({ status: "unknown" }) }),
         expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
         expect.objectContaining({ owner: "configured", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
       ]);
@@ -500,6 +500,7 @@ describe("abortable fetch product", () => {
       expect(analysis.fetches).toEqual([
         expect.objectContaining({
           owner: "both", responseBodyStatus: "consumed", responseBodyOperation: "clone",
+          responseResourceEvaluation: expect.objectContaining({ status: "satisfied" }),
           responseBodyBranches: [
             { binding: "response", operation: "text", status: "consumed" },
             { binding: "copy", operation: "arrayBuffer", status: "consumed" },
@@ -507,12 +508,13 @@ describe("abortable fetch product", () => {
         }),
         expect.objectContaining({
           owner: "leaked", responseBodyStatus: "unconsumed", responseBodyOperation: "clone",
+          responseResourceEvaluation: expect.objectContaining({ status: "unsatisfied" }),
           responseBodyBranches: [
             { binding: "response", status: "unconsumed" },
             { binding: "copy", operation: "text", status: "consumed" },
           ],
         }),
-        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "clone" }),
+        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "clone", responseResourceEvaluation: expect.objectContaining({ status: "unknown" }) }),
         expect.objectContaining({ owner: "unbound", responseBodyStatus: "unknown", responseBodyOperation: "clone" }),
         expect.objectContaining({ owner: "multiple", responseBodyStatus: "unknown", responseBodyOperation: "clone" }),
       ]);
@@ -577,6 +579,7 @@ describe("abortable fetch product", () => {
       expect(analysis.fetches).toEqual([
         expect.objectContaining({
           owner: "both", responseBodyStatus: "consumed", responseBodyOperation: "tee",
+          responseResourceEvaluation: expect.objectContaining({ status: "satisfied" }),
           responseBodyBranches: [
             { binding: "left", operation: "pipeTo", status: "consumed" },
             { binding: "right", operation: "pipeTo", status: "consumed" },
@@ -584,13 +587,17 @@ describe("abortable fetch product", () => {
         }),
         expect.objectContaining({
           owner: "leaked", responseBodyStatus: "unconsumed", responseBodyOperation: "tee",
+          responseResourceEvaluation: expect.objectContaining({ status: "unsatisfied" }),
           responseBodyBranches: [
             { binding: "kept", operation: "pipeTo", status: "consumed" },
             { binding: "forgotten", status: "unconsumed" },
           ],
         }),
-        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "tee" }),
-        expect.objectContaining({ owner: "reusedSource", responseBodyStatus: "unknown", responseBodyOperation: "tee" }),
+        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "tee", responseResourceEvaluation: expect.objectContaining({ status: "unknown" }) }),
+        expect.objectContaining({ owner: "reusedSource", responseBodyStatus: "unknown", responseBodyOperation: "tee", responseResourceEvaluation: expect.objectContaining({ status: "unknown" }) }),
+      ]);
+      expect(analysis.fetches[0]!.responseResourceProtocol?.transitions.map((transition) => transition.kind)).toEqual([
+        "acquire", "split", "consume", "consume",
       ]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
