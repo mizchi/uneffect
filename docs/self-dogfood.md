@@ -32,7 +32,7 @@ just dogfood-leaf
 
 The gate uses `--infer` deliberately. Runtime imports load a wider internal
 Program whose unannotated dependencies are still adoption candidates. Inference
-mode continues to enforce every annotation in the seven selected files while not
+mode continues to enforce every annotation in the eight selected files while not
 requiring unrelated dependencies to be annotated in the same change. The
 `no-unknown` profile still rejects unknown summaries in the analyzed Program.
 
@@ -90,11 +90,20 @@ checked instead of merely trusted. The higher-level environment/solver check
 remains an inferred composite boundary for now; its cache mutation and backend
 selection have not yet received a complete explicit contract.
 
+## Seventh boundary: CLI entry values
+
+`src/cli-runner.ts` verifies help construction as `none` and version lookup as
+`FsRead`. The central `runCli` dispatcher is intentionally still inferred: it
+invokes injected stream methods and command implementations, so declaring it as
+plain `Console` would falsely identify arbitrary callbacks as the standard
+terminal. A general callable-parameter effect contract is required before that
+boundary can be stated precisely.
+
 ## Next adoption order
 
-1. `cli-runner.ts`: propagate the reviewed CLI stream and command effects into
-   the command dispatch boundary without treating arbitrary injected streams as
-   the standard terminal.
+1. Add callable-parameter effect summaries for `CliStreams` and `CliCommand.run`,
+   then use them to constrain `runCli` without collapsing callbacks into
+   `Console`.
 2. `doctor-command.ts`: compose environment inspection with CLI rendering while
    preserving the distinction between `FsRead`, `Run`, and `Console`.
 

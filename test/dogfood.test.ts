@@ -2702,6 +2702,29 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("separates CLI help formatting from version manifest access", () => {
+    const fileName = "src/cli-runner.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "formatCliHelp"))
+      .toMatchObject({ evidence: "verified", effects: [] });
+    expect(selected.find((summary) => summary.functionName === "cliVersion"))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect none */\nexport function formatCliHelp",
+      "/* uneffect:capability effect Console */\nexport function formatCliHelp",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "formatCliHelp", effect: "Console", kind: "unused",
+    }));
+  });
+
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
     const program = ts.createProgram([entry], {
