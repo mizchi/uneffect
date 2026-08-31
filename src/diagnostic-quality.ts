@@ -1,3 +1,4 @@
+/* uneffect:capability module_effect none */
 import { reportDiagnostic, type CheckerDiagnostic, type ReportedDiagnostic } from "./diagnostics.js";
 
 /**
@@ -18,6 +19,7 @@ const valueLabels = new Set(["counterexample", "state", "fails", "declared", "in
 const jargon = /\b(unsat|sat)\b|define-fun|smt-lib|\(assert|Z3 returned/iu;
 
 /** True when a note quotes program text, so the reader sees the construct instead of a paraphrase. */
+/* uneffect:capability effect none */
 function quotesSource(detail: string, source: string): boolean {
   return detail.split(/[\s,;]+/u).some((token) =>
     token.length >= 6 && /[.(=]/u.test(token) && !token.includes("uneffect:") && !token.startsWith("/*") && source.includes(token));
@@ -76,6 +78,7 @@ export interface QualityReport {
  */
 export const qualityThreshold = 1;
 
+/* uneffect:capability effect none */
 export function scoreDiagnostic(diagnostic: CheckerDiagnostic, source: string): DiagnosticScore {
   const reported = reportDiagnostic(diagnostic);
   const satisfied: string[] = [], missing: string[] = [];
@@ -83,6 +86,7 @@ export function scoreDiagnostic(diagnostic: CheckerDiagnostic, source: string): 
   return { fileName: reported.fileName, code: reported.code, line: reported.line, message: reported.message, satisfied, missing };
 }
 
+/* uneffect:capability effect none */
 export function evaluateQuality(entries: ReadonlyArray<{ fileName: string; diagnostics: readonly CheckerDiagnostic[]; source: string }>): QualityReport {
   const scores: DiagnosticScore[] = [];
   for (const entry of entries) for (const diagnostic of entry.diagnostics) scores.push({ ...scoreDiagnostic(diagnostic, entry.source), fileName: entry.fileName });
@@ -94,9 +98,11 @@ export function evaluateQuality(entries: ReadonlyArray<{ fileName: string; diagn
   return { scores, satisfied, total, score: total === 0 ? 1 : satisfied / total, regressions };
 }
 
+/* uneffect:capability effect none */
 function round(value: number): string { return (Math.round(value * 1000) / 1000).toFixed(3); }
 
 /** Render the report that is committed next to the fixtures, so message quality moves visibly in review. */
+/* uneffect:capability effect none */
 export function formatQualityReport(report: QualityReport): string {
   const lines = [
     "# Diagnostic quality report",

@@ -221,6 +221,7 @@ A builtin contract expands one API operation into both layers.
 
 ```text
 console.log       => Console + Write(ConsoleSink)
+process.stdout.write / process.stderr.write => Console
 Math.random       => Random + Nondeterministic
 fetch             => Fetch(...) + Read(Network) + Write(Network) + Nondeterministic
 throw new E       => Throw<E> + Throws

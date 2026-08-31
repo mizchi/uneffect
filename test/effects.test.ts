@@ -399,6 +399,20 @@ describe("effect checker", () => {
       .toContainEqual(expect.objectContaining({ functionName: "checked", effect: "Console", kind: "missing" }));
   });
 
+  it("tracks standard process stdout and stderr writes as Console", () => {
+    const source = `
+      /* uneffect:capability effect Console */
+      function output() { process.stdout.write("out"); process.stderr.write("err") }
+      /* uneffect:capability effect none */
+      function invalid() { process.stdout.write("out") }
+    `;
+    const diagnostics = analyzeEffects("process-streams.ts", source);
+    expect(diagnostics.filter((item) => item.functionName === "output")).toEqual([]);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "invalid", effect: "Console", kind: "missing",
+    }));
+  });
+
   it("substitutes mutation regions through calls", () => {
     const source = `
       /* uneffect:capability effect Mutate<typeof value> */

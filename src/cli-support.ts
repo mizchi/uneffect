@@ -1,12 +1,15 @@
+/* uneffect:capability module_effect none */
 import { parseArgs, type ParseArgsConfig } from "node:util";
 
 /** Output sinks, so commands stay testable without spawning a process. */
 export interface CliStreams { out(text: string): void; err(text: string): void }
 
-export const processStreams: CliStreams = {
-  out: (text) => void process.stdout.write(text),
-  err: (text) => void process.stderr.write(text),
-};
+/* uneffect:capability effect Console */
+function writeStdout(text: string): void { void process.stdout.write(text); }
+/* uneffect:capability effect Console */
+function writeStderr(text: string): void { void process.stderr.write(text); }
+
+export const processStreams: CliStreams = { out: writeStdout, err: writeStderr };
 
 /** Exit codes: 0 success, 1 the checked program failed, 2 the command line was wrong. */
 export const exitCode = { success: 0, failed: 1, usage: 2 } as const;
@@ -32,6 +35,7 @@ export interface CliCommand {
 type OptionConfig = NonNullable<ParseArgsConfig["options"]>;
 
 /** Strict parsing: an unknown or malformed option is a usage error, never a silently ignored word. */
+/* uneffect:capability effect Throw<CliUsageError> */
 export function parseCommandArgs(args: readonly string[], options: OptionConfig): { values: Record<string, unknown>; positionals: string[] } {
   try {
     const parsed = parseArgs({ args: [...args], options: { help: { type: "boolean" }, ...options }, allowPositionals: true, strict: true });
@@ -41,11 +45,13 @@ export function parseCommandArgs(args: readonly string[], options: OptionConfig)
   }
 }
 
+/* uneffect:capability effect none */
 export function formatCommandHelp(command: CliCommand): string {
   return [`usage: uneffect ${command.name} ${command.arguments}`, "", command.summary, ...command.details.map((line) => (line ? `  ${line}` : line)), ""].join("\n");
 }
 
 /** One required file argument, the shape most commands take. */
+/* uneffect:capability effect Throw<CliUsageError> */
 export function singleFileArgument(positionals: readonly string[], command: string): string {
   if (positionals.length === 0) throw new CliUsageError(`${command} needs one file`);
   if (positionals.length > 1) throw new CliUsageError(`${command} takes one file, received ${positionals.length}`);

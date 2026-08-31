@@ -331,7 +331,21 @@ function effectsForBuiltinOperation(operation: FsBuiltinOperation, call: ts.Call
   return effects;
 }
 
-function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapter): Effect[] {
+function processStreamEffects(checker: ts.TypeChecker | undefined, call: ts.CallExpression): Effect[] | undefined {
+  if (!checker || !ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "write") return undefined;
+  const receiver = call.expression.expression;
+  if (!ts.isPropertyAccessExpression(receiver) || !ts.isIdentifier(receiver.expression)
+    || receiver.expression.text !== "process" || (receiver.name.text !== "stdout" && receiver.name.text !== "stderr")) return undefined;
+  const stream = checker.getSymbolAtLocation(receiver.name);
+  const standard = stream?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+    && ts.isPropertySignature(declaration) && ts.isInterfaceDeclaration(declaration.parent)
+    && declaration.parent.name.text === "Process");
+  return standard ? [capability("Console")] : undefined;
+}
+
+function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker): Effect[] {
+  const processStream = processStreamEffects(checker, call);
+  if (processStream) return processStream;
   const resolved = adapter?.resolveCall(call);
   const scriptEffects = effectsForStaticScriptInsertion(call, adapter);
   if (scriptEffects.length > 0) return [...(resolved?.operation?.kind === "dom" ? effectsForResolvedDomCall(resolved.operation, call, adapter) : []), ...scriptEffects];
@@ -964,7 +978,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if (ts.isCallExpression(node)) {
         const builtinOperation = adapter.resolveCall(node)?.operation;
-        for (const effect of primitiveEffects(node, adapter)) if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
+        for (const effect of primitiveEffects(node, adapter, checker)) if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
         const callbackIndex = builtinOperation?.kind === "timer" ? builtinOperation.callbackArgument
           : builtinOperation?.kind === "scheduler-post-task" ? builtinOperation.callbackArgument
           : builtinOperation?.kind === "fs" && builtinOperation.callbackArgumentFromEnd
@@ -1224,7 +1238,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand))) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
-        const primitive = primitiveEffects(child, adapter);
+        const primitive = primitiveEffects(child, adapter, checker);
         for (const effect of primitive) if (observableMutation(effect, locals)) observe(effect, child);
         const networkBoundary = networkBoundaryFromEffects(child, resolvedBuiltin, primitive);
         if (networkBoundary) directNetworkBoundaries.get(graphNode.id)!.push(networkBoundary);
@@ -1780,7 +1794,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       }
       if (ts.isCallExpression(node)) {
         if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !resolvedDynamicDependency) markUnknown("unresolved-dynamic-import", "a dynamic import specifier does not resolve to a selected relative source module");
-        const resolvedBuiltin = adapter.resolveCall(node), primitive = primitiveEffects(node, adapter);
+        const resolvedBuiltin = adapter.resolveCall(node), primitive = primitiveEffects(node, adapter, checker);
         for (const effect of primitive) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         const external = externalContractForCall(checker, node, options.externalFunctionEffects);
         if (external) {

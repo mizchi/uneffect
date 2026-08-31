@@ -2623,6 +2623,57 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("enforces pure diagnostic normalization, formatting, and quality scoring", () => {
+    const fileNames = ["src/diagnostics.ts", "src/diagnostic-quality.ts"];
+    const program = ts.createProgram(fileNames, {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selectedNames = new Set([
+      "fromTypeScriptDiagnostic", "reportDiagnostic", "formatDiagnostic", "formatDiagnostics", "formatCheckEvidence",
+      "scoreDiagnostic", "evaluateQuality", "formatQualityReport",
+    ]);
+    const selected = result.summaries.filter((summary) => fileNames.includes(summary.fileName ?? "") && selectedNames.has(summary.functionName));
+    expect(selected).toHaveLength(selectedNames.size);
+    expect(selected.map((summary) => ({ name: summary.functionName, evidence: summary.evidence, effects: summary.effects })))
+      .toEqual(expect.arrayContaining([...selectedNames].map((name) => ({ name, evidence: "verified", effects: [] }))));
+
+    const source = readFileSync("src/diagnostic-quality.ts", "utf8");
+    expect(analyzeEffects("src/diagnostic-quality.ts", source.replace(
+      "/* uneffect:capability effect none */",
+      "/* uneffect:capability effect Console */",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "quotesSource", effect: "Console", kind: "unused",
+    }));
+  });
+
+  it("separates pure CLI helpers from terminal output and usage throws", () => {
+    const fileName = "src/cli-support.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "formatCommandHelp"))
+      .toMatchObject({ evidence: "verified", effects: [] });
+    for (const name of ["writeStdout", "writeStderr"]) expect(selected.find((summary) => summary.functionName === name))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
+    for (const name of ["parseCommandArgs", "singleFileArgument"]) expect(selected.find((summary) => summary.functionName === name))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "CliUsageError" })] });
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect Console */",
+      "/* uneffect:capability effect none */",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "writeStdout", effect: "Console", kind: "missing",
+    }));
+  });
+
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
     const program = ts.createProgram([entry], {

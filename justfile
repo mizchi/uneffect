@@ -124,5 +124,5 @@ dogfood:
 # function and module boundaries. Expand this list only after each file has a
 # load-bearing negative control in test/dogfood.test.ts.
 dogfood-leaf:
-    pnpm tsx src/cli.ts check --assurance no-unknown src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts
-    pnpm vitest run test/dogfood.test.ts -t "explicit pure boundary|pure construction|disposal traversal"
+    pnpm tsx src/cli.ts check --infer --assurance no-unknown src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts src/diagnostics.ts src/diagnostic-quality.ts src/cli-support.ts
+    pnpm vitest run test/dogfood.test.ts -t "explicit pure boundary|pure construction|disposal traversal|pure diagnostic|pure CLI helpers"
