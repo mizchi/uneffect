@@ -15,7 +15,7 @@ export interface AbortableFetch {
   readonly promiseObservations: readonly string[];
   readonly responseBinding?: string;
   readonly responseBodyStatus: "not-acquired" | "consumed" | "stream-owned" | "unconsumed" | "unknown";
-  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "clone" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "text";
+  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "clone" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "tee" | "text";
   readonly responseBodyBranches?: readonly ResponseBodyBranch[];
   readonly responseStreamDischarge?: "cancel" | "drain" | "pipe-through-to" | "pipe-to" | "release-lock";
   readonly abortComposition?: number;
@@ -27,7 +27,7 @@ export interface AbortableFetch {
 
 export interface ResponseBodyBranch {
   readonly binding: string;
-  readonly operation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "json" | "text";
+  readonly operation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "json" | "pipeTo" | "text";
   readonly status: "consumed" | "unconsumed" | "unknown";
 }
 
@@ -175,7 +175,8 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
     ts.forEachChild(node, visit);
   };
   visit(source);
-  const bodyMethods = new Set(["arrayBuffer", "blob", "bytes", "formData", "json", "text"] as const);
+  type DirectBodyMethod = "arrayBuffer" | "blob" | "bytes" | "formData" | "json" | "text";
+  const bodyMethods = new Set<DirectBodyMethod>(["arrayBuffer", "blob", "bytes", "formData", "json", "text"]);
   const unwrapExpression = (expression: ts.Expression): ts.Expression => ts.isParenthesizedExpression(expression)
     || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression)
     ? unwrapExpression(expression.expression) : expression;
@@ -242,11 +243,11 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
           if (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner) return;
           if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
             && ts.isIdentifier(node.expression.expression) && stableRootSymbol(node.expression.expression) === symbol
-            && bodyMethods.has(node.expression.name.text as NonNullable<ResponseBodyBranch["operation"]>)) {
+            && bodyMethods.has(node.expression.name.text as DirectBodyMethod)) {
             const method = resolvedSymbol(checker, node.expression.name);
             const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
             if (builtin) operations.push({
-              operation: node.expression.name.text as NonNullable<ResponseBodyBranch["operation"]>,
+              operation: node.expression.name.text as DirectBodyMethod,
               conditional: conditionallyExecuted(node),
             });
           }
@@ -271,6 +272,95 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         responseBodyBranches,
       };
     }
+    const teeCalls: ts.CallExpression[] = [];
+    let teeDeclaration: ts.VariableDeclaration | undefined;
+    const findTee = (node: ts.Node): void => {
+      if (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner) return;
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "tee") {
+        const receiver = unwrapExpression(node.expression.expression);
+        if (ts.isPropertyAccessExpression(receiver) && receiver.name.text === "body"
+          && ts.isIdentifier(receiver.expression) && stableRootSymbol(receiver.expression) === responseSymbol) {
+          const method = resolvedSymbol(checker, node.expression.name);
+          const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+          if (builtin) {
+            teeCalls.push(node);
+            if (teeCalls.length === 1 && ts.isVariableDeclaration(node.parent) && ts.isArrayBindingPattern(node.parent.name)
+              && node.parent.name.elements.length === 2
+              && node.parent.name.elements.every((element) => ts.isBindingElement(element) && ts.isIdentifier(element.name))
+              && ts.isVariableDeclarationList(node.parent.parent) && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0
+              && !conditionallyExecuted(node)) teeDeclaration = node.parent;
+          }
+        }
+      }
+      ts.forEachChild(node, findTee);
+    };
+    findTee(source);
+    if (teeCalls.length > 0) {
+      if (teeCalls.length !== 1 || !teeDeclaration || !ts.isArrayBindingPattern(teeDeclaration.name)) return {
+        ...fetch,
+        responseBinding: responseDeclaration.name.text,
+        responseBodyStatus: "unknown",
+        responseBodyOperation: "tee",
+      };
+      const analyzeTeeBranch = (element: ts.BindingElement): ResponseBodyBranch => {
+        if (!ts.isIdentifier(element.name)) return { binding: element.name.getText(source), status: "unknown" };
+        const symbol = resolvedSymbol(checker, element.name);
+        const operations: Array<{ conditional: boolean }> = [];
+        const findPipe = (node: ts.Node): void => {
+          if (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner) return;
+          if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+            && node.expression.name.text === "pipeTo" && ts.isIdentifier(node.expression.expression)
+            && stableRootSymbol(node.expression.expression) === symbol) {
+            const method = resolvedSymbol(checker, node.expression.name);
+            const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+            if (builtin) operations.push({
+              conditional: conditionallyExecuted(node) || !ts.isAwaitExpression(node.parent)
+                || node.arguments.length !== 1 || !symbol || symbolReferenceCount(symbol) !== 2,
+            });
+          }
+          ts.forEachChild(node, findPipe);
+        };
+        findPipe(source);
+        if (operations.length === 0) return { binding: element.name.text, status: "unconsumed" };
+        if (operations.length !== 1 || operations[0]!.conditional) return { binding: element.name.text, operation: "pipeTo", status: "unknown" };
+        return { binding: element.name.text, operation: "pipeTo", status: "consumed" };
+      };
+      const elements = teeDeclaration.name.elements;
+      const responseBodyBranches = [
+        analyzeTeeBranch(elements[0] as ts.BindingElement),
+        analyzeTeeBranch(elements[1] as ts.BindingElement),
+      ] as const;
+      let sourceReused = false;
+      const findSourceReuse = (node: ts.Node): void => {
+        if (sourceReused || (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner)) return;
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+          const directBodyCall = ts.isIdentifier(node.expression.expression)
+            && stableRootSymbol(node.expression.expression) === responseSymbol
+            && bodyMethods.has(node.expression.name.text as DirectBodyMethod);
+          const streamReceiver = unwrapExpression(node.expression.expression);
+          const directStreamCall = ts.isPropertyAccessExpression(streamReceiver) && streamReceiver.name.text === "body"
+            && ts.isIdentifier(streamReceiver.expression) && stableRootSymbol(streamReceiver.expression) === responseSymbol
+            && (node.expression.name.text === "getReader" || node.expression.name.text === "pipeTo" || node.expression.name.text === "pipeThrough");
+          if (directBodyCall || directStreamCall) {
+            const method = resolvedSymbol(checker, node.expression.name);
+            sourceReused = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+          }
+        }
+        ts.forEachChild(node, findSourceReuse);
+      };
+      findSourceReuse(source);
+      const responseBodyStatus: AbortableFetch["responseBodyStatus"] = sourceReused
+        ? "unknown" : responseBodyBranches.some((branch) => branch.status === "unknown")
+        ? "unknown" : responseBodyBranches.every((branch) => branch.status === "consumed") ? "consumed" : "unconsumed";
+      return {
+        ...fetch,
+        responseBinding: responseDeclaration.name.text,
+        responseBodyStatus,
+        responseBodyOperation: "tee",
+        responseBodyBranches,
+      };
+    }
     let operation: AbortableFetch["responseBodyOperation"] | undefined;
     let conditional = false;
     let readerSymbol: ts.Symbol | undefined;
@@ -278,11 +368,11 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
       if (operation || (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner)) return;
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
         && ts.isIdentifier(node.expression.expression) && stableRootSymbol(node.expression.expression) === responseSymbol
-        && bodyMethods.has(node.expression.name.text as NonNullable<typeof operation>)) {
+        && bodyMethods.has(node.expression.name.text as DirectBodyMethod)) {
         const method = resolvedSymbol(checker, node.expression.name);
         const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
         if (builtin) {
-          operation = node.expression.name.text as NonNullable<typeof operation>;
+          operation = node.expression.name.text as DirectBodyMethod;
           conditional = conditionallyExecuted(node);
         }
       }

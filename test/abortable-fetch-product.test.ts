@@ -520,4 +520,80 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("requires both branches of one builtin body tee to be piped", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-tee-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function both(
+          firstSink: WritableStream<Uint8Array>,
+          secondSink: WritableStream<Uint8Array>,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/tee-both", { signal: controller.signal })
+          const response = await request
+          const [left, right] = response.body!.tee()
+          await left.pipeTo(firstSink)
+          await right.pipeTo(secondSink)
+        }
+        export async function leaked(sink: WritableStream<Uint8Array>) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/tee-leaked", { signal: controller.signal })
+          const response = await request
+          const [kept, forgotten] = response.body!.tee()
+          await kept.pipeTo(sink)
+          console.log(forgotten.locked)
+        }
+        export async function conditional(
+          firstSink: WritableStream<Uint8Array>,
+          secondSink: WritableStream<Uint8Array>,
+          enabled: boolean,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/tee-conditional", { signal: controller.signal })
+          const response = await request
+          const [left, right] = response.body!.tee()
+          if (enabled) await left.pipeTo(firstSink)
+          await right.pipeTo(secondSink)
+        }
+        export async function reusedSource(
+          firstSink: WritableStream<Uint8Array>,
+          secondSink: WritableStream<Uint8Array>,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/tee-reused-source", { signal: controller.signal })
+          const response = await request
+          const [left, right] = response.body!.tee()
+          await response.text()
+          await left.pipeTo(firstSink)
+          await right.pipeTo(secondSink)
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({
+          owner: "both", responseBodyStatus: "consumed", responseBodyOperation: "tee",
+          responseBodyBranches: [
+            { binding: "left", operation: "pipeTo", status: "consumed" },
+            { binding: "right", operation: "pipeTo", status: "consumed" },
+          ],
+        }),
+        expect.objectContaining({
+          owner: "leaked", responseBodyStatus: "unconsumed", responseBodyOperation: "tee",
+          responseBodyBranches: [
+            { binding: "kept", operation: "pipeTo", status: "consumed" },
+            { binding: "forgotten", status: "unconsumed" },
+          ],
+        }),
+        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "tee" }),
+        expect.objectContaining({ owner: "reusedSource", responseBodyStatus: "unknown", responseBodyOperation: "tee" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

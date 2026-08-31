@@ -148,8 +148,8 @@ same property is proved for arbitrary TypeScript.
   property. Immutable Response aliases are resolved by symbol. Direct
   `body.getReader()` creates `stream-owned` state rather than pretending the
   body was consumed; builtin reader `cancel()` discharges it, while
-  `releaseLock()` returns an unconsumed body. Tee, general pipelines, mutable
-  aliases, and cross-function consumption remain unsupported. One
+  `releaseLock()` returns an unconsumed body. General pipelines, mutable aliases,
+  and cross-function consumption remain unsupported. One
   canonical drain loop is recognized: `while (true)` containing
   `const { done } = await reader.read()` and only `if (done) break` exits. That
   exact loop discharges as `drain`; an additional break, continue, return, or
@@ -167,6 +167,11 @@ same property is proved for arbitrary TypeScript.
   and copy have exactly one unconditional builtin body-consumption operation.
   Missing consumption remains unconsumed; conditional or repeated consumption,
   unbound clones, and multiple clones are unknown.
+  One unconditional builtin
+  `const [left, right] = response.body!.tee()` similarly creates two explicit
+  stream branches. Each branch must be single-use and complete a direct awaited
+  builtin `pipeTo`. A missing branch remains unconsumed; conditional/repeated
+  branch use or reuse of the original response stream is unknown.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

@@ -212,8 +212,8 @@ introducing another domain-local control-flow or alias model.
    - [x] Track the direct `const response = await request` body-consumption
      fragment for builtin `json/text/arrayBuffer/blob/formData/bytes`; emit
      `abortableFetchBodiesConsumed`, treating conditional consumption as
-     unknown. Tee, general stream pipelines, and interprocedural ownership
-     remain open.
+     unknown. General stream pipelines and interprocedural ownership remain
+     open.
    - [x] Resolve immutable Response aliases and model direct
      `body.getReader()` as stream ownership. Treat builtin reader `cancel()` as
      discharge and `releaseLock()` as ownership release without consumption;
@@ -236,6 +236,11 @@ introducing another domain-local control-flow or alias model.
      original/copy body obligations and require both branches to be consumed.
      Preserve per-branch status in analysis output; unbound, conditional,
      multiple, or multiply-consumed clones stay unknown.
+   - [x] Split one unconditional builtin
+     `const [left, right] = response.body!.tee()` into two stream obligations.
+     Require each single-use branch to complete one direct awaited builtin
+     `pipeTo`; missing branches remain unconsumed, while conditional/repeated
+     branch use or reuse of the original source becomes unknown.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain
