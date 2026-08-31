@@ -265,8 +265,8 @@ same property is proved for arbitrary TypeScript.
   to host-neutral disposal transitions with resource identity and lane checks.
   Its result remains `exact-under-precondition`; dangling, duplicate,
   mismatched, and unlinked release edges are unknown. The common product emits
-  the bounded acquire/release Quint model; the old resource/host entry point is
-  a compatibility facade. Conditional/failed acquisition, disposal failure,
+  the bounded acquire/release Quint model; the old resource/host entry point has
+  been removed. Conditional/failed acquisition, disposal failure,
   other transition kinds, fairness, and arbitrary callbacks are not composed.
 - Explicit package resource-callable artifacts bind trusted summaries to exact
   module/export, runtime version, declaration bytes, artifact digest, review

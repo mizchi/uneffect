@@ -183,8 +183,8 @@ introducing another domain-local control-flow or alias model.
        lanes. Dangling, duplicate, mismatched, or unlinked releases are unknown.
      - [x] Generate the executable acquire/release Quint product from the
        backend-neutral resource temporal product. The previous using/host API
-       is now a compatibility facade over the common generator, with positive
-       and deliberately broken microtask-order models.
+       has been removed. Positive and deliberately broken microtask-order
+       models exercise the common backend.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend that product with conditional/failed acquisition, disposal
        failure and suppression, other resource transitions, arbitrary callback
        interleavings, cancellation, and explicitly selected fairness assumptions.

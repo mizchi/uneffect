@@ -3,7 +3,6 @@ import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQ
 import { analyzeAsyncSafety, generateResourceSafetyQuint, type AsyncSafetyResult } from "./async-safety.js";
 import { analyzePromiseChains } from "./promise-chains.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
-import { resourceHostTemporalSupport } from "./resource-host-temporal.js";
 import { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.js";
 import { createResourceDisposalTemporalProduct, generateResourceTemporalProductQuint } from "./resource-temporal-product.js";
 import { generateQuint } from "./spec-backends.js";
@@ -96,8 +95,9 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
       properties: ["resourceSafe"],
       quint: generateResourceSafetyQuint(resourceModule, resourceResult),
     });
-    const hostSupport = resourceHostTemporalSupport(resources);
-    if (hostSupport.supported) {
+    const supportsResourceTemporalProduct = resources.some((resource) => resource.asynchronous)
+      && resources.every((resource) => !resource.conditional && resource.controlPaths.every((path) => path.length === 0));
+    if (supportsResourceTemporalProduct) {
       const lifecycle = lowerResourceDisposalsToProtocol(resourceResult.resources, resourceResult.disposals, resourceOwner);
       const product = createResourceDisposalTemporalProduct(options.fileName, lifecycle, resourceResult.disposals);
       if (product.status === "ready") {

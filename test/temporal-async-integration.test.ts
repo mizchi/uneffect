@@ -146,17 +146,9 @@ describe("unified async temporal model", () => {
       }
     `;
     const analysis = analyzeAsyncSafety("broken-using.ts", usingSource);
-    const quint = experimental.generateResourceHostTemporalQuint("broken_resource_host", analysis, "main", {
-      resumeOutsideMicrotask: true,
-    });
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-host-"));
     const path = join(directory, "model.qnt");
     try {
-      writeFileSync(path, quint);
-      const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--main=broken_resource_host", "--invariant=resourceHostSafe", "--max-steps=8", "--max-samples=100", "--seed=0x756e6566"], { encoding: "utf8" });
-      expect(result.status).not.toBe(0);
-      expect(`${result.stdout}${result.stderr}`).toMatch(/violation|counterexample/iu);
-
       const lifecycle = lowerResourceDisposalsToProtocol(analysis.resources, analysis.disposals, "main");
       const product = createResourceDisposalTemporalProduct(analysis.fileName, lifecycle, analysis.disposals);
       if (product.status !== "ready") throw new Error(product.reasons.join("; "));

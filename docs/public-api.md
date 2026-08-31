@@ -126,7 +126,7 @@ a fourth independent formal-specification domain.
 Direct backend generators such as `generateAsyncPatternsQuint`,
 `generatePromiseChainsQuint`, `generateWebEventLoopQuint`,
 `generateNodeEventLoopQuint`, `generateResourceSafetyQuint`,
-`generateUnifiedAsyncQuint`, and `generateResourceHostTemporalQuint` are
+`generateUnifiedAsyncQuint`, and `generateResourceTemporalProductQuint` are
 experimental. Import them only from:
 
 ```ts

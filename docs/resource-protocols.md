@@ -178,8 +178,8 @@ without a host completion link.
 Results are always labeled `exact-under-precondition` and retain
 `all-listed-resources-acquired`; a plain `satisfied` result is not an
 unconditional whole-function proof. The same product now emits the bounded
-acquire/release Quint model, and the former using/host generator is only a
-compatibility facade over it. Positive execution and a deliberately invalid
+acquire/release Quint model. The former dedicated using/host generator has been
+removed. Positive execution and a deliberately invalid
 resume outside the microtask checkpoint are both checked. Conditional or failed
 acquisition, disposal rejection/suppression, transitions other than acquire and
 release, fairness, cancellation, and arbitrary callback interleavings remain
