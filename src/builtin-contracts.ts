@@ -329,41 +329,6 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: "TypeScript 6.0.3 transform synchronously invokes each array-literal TransformerFactory and its returned Transformer",
       trustOwner: "@mizchi/uneffect",
     }),
-    trusted({ symbol: { module: "node:fs", export: "FSWatcher#close" }, operation: { kind: "timer-clear", handleReceiver: true, family: "watcher" } }),
-    trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close", closesReceiverFamily: "server" } }),
-    trusted({
-      symbol: { module: "node:net", export: "Server#listen" },
-      operation: {
-        kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-        callbackMustBeCallable: true, queue: "next-tick", effect: "Net",
-        effectScopeArgument: 0, effectScopeKind: "net-connect",
-      },
-    }),
-    ...["connect", "createConnection"].map((name): BuiltinContract => trusted({
-      symbol: { module: "node:net", export: name },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },
-    })),
-    trusted({
-      symbol: { module: "node:net", export: "Socket#connect" },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },
-    }),
-    trusted({ symbol: { module: "node:dns", export: "lookup" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0 } }),
-    trusted({ symbol: { module: "node:dns", export: "lookupService" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" } }),
-    ...(["node:net", "node:http", "node:https"] as const).map((module): BuiltinContract => trusted({
-      symbol: { module, export: "createServer" },
-      operation: {
-        kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 1,
-        callbackMustBeCallable: true, queue: "poll", repeats: true, resultHandleFamily: "server",
-      },
-    })),
-    ...(["node:http", "node:https"] as const).flatMap((module) => ["request", "get"].map((name): BuiltinContract => trusted({
-      symbol: { module, export: name },
-      operation: {
-        kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-        callbackMustBeCallable: true, queue: "poll", effect: "Net", effectScopeArgument: 0,
-        effectScopeKind: "http-request", effectDefaultPort: module === "node:https" ? 443 : 80,
-      },
-    }))),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
       ...trusted({
@@ -374,15 +339,12 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     trusted({ symbol: { module: "global", export: "setTimeout" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: false, queue: "timer" } }),
     trusted({ symbol: { module: "global", export: "setInterval" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: true, queue: "timer" } }),
     trusted({ symbol: { module: "global", export: "queueMicrotask" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "microtask" } }),
-    trusted({ symbol: { module: "lib.node", export: "Process#nextTick" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "next-tick" } }),
     trusted({ symbol: { module: "global", export: "setImmediate" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "check" } }),
-    trusted({ symbol: { module: "node:timers", export: "setImmediate" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "check" } }),
     trusted({ symbol: { module: "global", export: "requestAnimationFrame" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "animation-frame" } }),
     trusted({ symbol: { module: "global", export: "cancelAnimationFrame" }, operation: { kind: "timer-clear", handleArgument: 0, family: "animation-frame", effect: "Timer" } }),
     trusted({ symbol: { module: "global", export: "clearTimeout" }, operation: { kind: "timer-clear", handleArgument: 0, family: "timeout", effect: "Timer" } }),
     trusted({ symbol: { module: "global", export: "clearInterval" }, operation: { kind: "timer-clear", handleArgument: 0, family: "timeout", effect: "Timer" } }),
     trusted({ symbol: { module: "global", export: "clearImmediate" }, operation: { kind: "timer-clear", handleArgument: 0, family: "immediate", effect: "Timer" } }),
-    trusted({ symbol: { module: "node:timers", export: "clearImmediate" }, operation: { kind: "timer-clear", handleArgument: 0, family: "immediate", effect: "Timer" } }),
     trusted({ symbol: { module: "global", export: "AbortSignal.timeout" }, operation: { kind: "abort-timeout", delayArgument: 0 } }),
     trusted({ symbol: { module: "global", export: "AbortSignal.abort" }, operation: { kind: "abort-static", reasonArgument: 0 } }),
     trusted({ symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),

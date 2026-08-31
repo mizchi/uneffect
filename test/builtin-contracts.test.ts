@@ -29,6 +29,11 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ platform: "node", symbol: { module: "node:crypto", export: "randomUUID" }, operation: { kind: "effect", effect: "Random" } }),
       expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "execFile" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" }) }),
       expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "spawnSync" }, operation: { kind: "scoped-effect", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" } }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:net", export: "Server#listen" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Net", effectScopeKind: "net-connect" }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:https", export: "request" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Net", effectScopeKind: "http-request", effectDefaultPort: 443 }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:dns", export: "lookup" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Net", queue: "poll" }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "lib.node", export: "Process#nextTick" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "next-tick" } }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:timers", export: "setImmediate" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "check" } }),
     ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,

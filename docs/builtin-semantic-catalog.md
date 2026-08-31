@@ -31,6 +31,11 @@ catalog. OS queries retain their scoped `Sys` atoms, `tmpdir()` refines to
 `$TEMP`, callback crypto APIs retain poll-queue completion plus `Random`, and
 child-process APIs distinguish scoped program execution from broad `Run`.
 
+Node network and event-loop definitions retain connect/request host scopes,
+HTTP default ports, DNS poll completion, repeating server callbacks, server
+handle acquisition/close, watcher close, `nextTick`, and the check-phase
+`setImmediate`/`clearImmediate` pair.
+
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
 host implementation was proved. Unsupported callback composition remains
 visible. For example, `toSorted` records its synchronous comparator and fresh

@@ -41,8 +41,9 @@ should extend this model rather than reintroducing duplicate symbol contracts.
 The Node filesystem contract generator has also moved into the catalog,
 preserving read/write path positions, callback scheduling, watcher repetition,
 and read-buffer mutation across callback, synchronous, and Promise variants.
-Node OS, crypto randomness, and child-process execution are also migrated;
-network host/port and server-lifecycle definitions remain the next Node group.
+Node OS, crypto randomness, child-process execution, network, DNS, HTTP(S),
+server lifecycle, watcher close, next-tick, and check-phase timer definitions
+are also migrated with their queue and scope data.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct
