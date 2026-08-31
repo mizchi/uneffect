@@ -38,4 +38,6 @@ export type {
 } from "./promise-chains.js";
 export { generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "./async-safety.js";
 export { generateResourceHostTemporalQuint, resourceHostTemporalSupport } from "./resource-host-temporal.js";
+export { generateResourceTemporalProductQuint } from "./resource-temporal-product.js";
+export type { GenerateResourceTemporalProductQuintOptions } from "./resource-temporal-product.js";
 export type { ResourceHostTemporalOptions, ResourceHostTemporalSupport } from "./resource-host-temporal.js";

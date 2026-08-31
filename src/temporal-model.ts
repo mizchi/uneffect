@@ -3,7 +3,9 @@ import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQ
 import { analyzeAsyncSafety, generateResourceSafetyQuint, type AsyncSafetyResult } from "./async-safety.js";
 import { analyzePromiseChains } from "./promise-chains.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
-import { generateResourceHostTemporalQuint, resourceHostTemporalSupport } from "./resource-host-temporal.js";
+import { resourceHostTemporalSupport } from "./resource-host-temporal.js";
+import { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.js";
+import { createResourceDisposalTemporalProduct, generateResourceTemporalProductQuint } from "./resource-temporal-product.js";
 import { generateQuint } from "./spec-backends.js";
 import type { TemporalDslLink } from "./temporal-dsl.js";
 
@@ -96,14 +98,18 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
     });
     const hostSupport = resourceHostTemporalSupport(resources);
     if (hostSupport.supported) {
-      const resourceHostModule = `${name}_resource_host_${moduleName(resourceOwner)}`;
-      models.push({
-        kind: "resource-host-lifecycle",
-        module: resourceHostModule,
-        owner: resourceOwner,
-        properties: ["resourceHostSafe"],
-        quint: generateResourceHostTemporalQuint(resourceHostModule, resourceResult, resourceOwner),
-      });
+      const lifecycle = lowerResourceDisposalsToProtocol(resourceResult.resources, resourceResult.disposals, resourceOwner);
+      const product = createResourceDisposalTemporalProduct(options.fileName, lifecycle, resourceResult.disposals);
+      if (product.status === "ready") {
+        const resourceHostModule = `${name}_resource_host_${moduleName(resourceOwner)}`;
+        models.push({
+          kind: "resource-host-lifecycle",
+          module: resourceHostModule,
+          owner: resourceOwner,
+          properties: ["resourceHostSafe"],
+          quint: generateResourceTemporalProductQuint(resourceHostModule, product.product, { propertyName: "resourceHostSafe" }),
+        });
+      }
     }
   }
   const hasAsyncResource = resources.some((resource) => resource.asynchronous);

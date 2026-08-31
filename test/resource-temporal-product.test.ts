@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeAsyncSafety } from "../src/async-safety.js";
 import { lowerResourceDisposalsToProtocol } from "../src/resource-disposal-protocol.js";
 import { createResourceDisposalTemporalProduct, evaluateResourceTemporalProduct } from "../src/resource-temporal-product.js";
+import { generateResourceTemporalProductQuint } from "../src/resource-temporal-product.js";
 
 describe("resource temporal product IR", () => {
   it("links sync and awaited disposal to their neutral completion lanes", () => {
@@ -24,6 +25,11 @@ describe("resource temporal product IR", () => {
       status: "satisfied", evidence: "exact-under-precondition",
       preconditions: ["all-listed-resources-acquired"], reasons: [],
     });
+    const quint = generateResourceTemporalProductQuint("resource_product", created.product);
+    expect(quint).toContain("action release_start_2");
+    expect(quint).toContain("action release_resume_2");
+    expect(quint).toContain("action release_inline_3");
+    expect(quint).toContain("val resourceTemporalSafe");
   });
 
   it("fails closed for lane mismatch, dangling, duplicate, and unlinked releases", () => {

@@ -29,6 +29,12 @@ export interface ResourceTemporalProductEvaluation {
   readonly reasons: readonly string[];
 }
 
+export interface GenerateResourceTemporalProductQuintOptions {
+  /** Negative-control hook proving that the microtask invariant is load-bearing. */
+  readonly resumeOutsideMicrotask?: boolean;
+  readonly propertyName?: string;
+}
+
 export type ResourceDisposalTemporalProductResult =
   | { readonly status: "ready"; readonly product: ResourceTemporalProduct }
   | { readonly status: "unknown"; readonly reasons: readonly string[] };
@@ -95,4 +101,81 @@ export function evaluateResourceTemporalProduct(product: ResourceTemporalProduct
     preconditions: product.precondition ? [product.precondition] : [],
     reasons,
   };
+}
+
+function safe(name: string): string {
+  return name.replace(/[^A-Za-z0-9_]/gu, "_");
+}
+
+/** Generates the first executable acquire/release product backend. */
+export function generateResourceTemporalProductQuint(
+  moduleName: string,
+  product: ResourceTemporalProduct,
+  options: GenerateResourceTemporalProductQuintOptions = {},
+): string {
+  const evaluation = evaluateResourceTemporalProduct(product);
+  if (evaluation.status !== "satisfied") throw new Error(`resource temporal product is not executable: ${evaluation.reasons.join("; ") || evaluation.resource.status}`);
+  const unsupported = product.resource.transitions.find((transition) => transition.kind !== "acquire" && transition.kind !== "release");
+  if (unsupported) throw new Error(`resource temporal Quint backend does not support ${unsupported.kind}`);
+  const links = new Map(product.links.map((link) => [link.resourceTransition, link] as const));
+  const propertyName = safe(options.propertyName ?? "resourceTemporalSafe");
+  const resourceIndexes = new Map(product.resource.resources.map((resource, index) => [resource.id, index] as const));
+  if (product.resource.resources.some((resource) => !["absent", "available"].includes(resource.initialState))) {
+    throw new Error("resource temporal Quint backend requires absent/available initial states");
+  }
+  const lines = [
+    `module ${safe(moduleName)} {`,
+    "  var pc: int",
+    "  // 0 = inline/task continuation, 1 = microtask checkpoint",
+    "  var host_phase: int",
+    "  var pending_transition: int",
+    "  var temporal_order_broken: bool",
+    ...product.resource.resources.map((_, index) => `  var resource_${index}: int`),
+    "",
+    "  action init = all {",
+    "    pc' = 0,",
+    "    host_phase' = 0,",
+    "    pending_transition' = -1,",
+    "    temporal_order_broken' = false,",
+    ...product.resource.resources.map((resource, index) => `    resource_${index}' = ${resource.initialState === "available" ? 1 : 0},`),
+    "  }",
+  ];
+  const actions: string[] = [];
+  const emit = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>): void => {
+    actions.push(name);
+    lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`),
+      `    pc' = ${updates.get("pc") ?? "pc"},`,
+      `    host_phase' = ${updates.get("host_phase") ?? "host_phase"},`,
+      `    pending_transition' = ${updates.get("pending_transition") ?? "pending_transition"},`,
+      `    temporal_order_broken' = ${updates.get("temporal_order_broken") ?? "temporal_order_broken"},`,
+      ...product.resource.resources.map((_, index) => `    resource_${index}' = ${updates.get(`resource_${index}`) ?? `resource_${index}`},`),
+      "  }");
+  };
+  product.resource.transitions.forEach((transition, index) => {
+    if (!("resource" in transition)) return;
+    const resource = resourceIndexes.get(transition.resource);
+    if (resource === undefined) throw new Error(`resource temporal transition ${index} references unknown resource ${transition.resource}`);
+    const link = links.get(index);
+    if (transition.kind === "acquire") {
+      emit(`acquire_${index}`, [`pc == ${index}`, `resource_${resource} == 0`, "pending_transition == -1"],
+        new Map([["pc", String(index + 1)], [`resource_${resource}`, "1"]]));
+    } else if (link?.relation === "await-completion") {
+      emit(`release_start_${index}`, [`pc == ${index}`, `resource_${resource} == 1`, "pending_transition == -1"],
+        new Map([["host_phase", "1"], ["pending_transition", String(index)]]));
+      emit(`release_resume_${index}`, [`pc == ${index}`, "host_phase == 1", `pending_transition == ${index}`],
+        new Map([["pc", String(index + 1)], ["pending_transition", "-1"], [`resource_${resource}`, "2"]]));
+      if (options.resumeOutsideMicrotask) emit(`release_resume_outside_microtask_${index}`,
+        [`pc == ${index}`, `pending_transition == ${index}`],
+        new Map([["pc", String(index + 1)], ["host_phase", "0"], ["pending_transition", "-1"],
+          ["temporal_order_broken", "true"], [`resource_${resource}`, "2"]]));
+    } else {
+      emit(`release_inline_${index}`, [`pc == ${index}`, `resource_${resource} == 1`, "pending_transition == -1"],
+        new Map([["pc", String(index + 1)], [`resource_${resource}`, "2"]]));
+    }
+  });
+  lines.push("", "  action step = any {", ...actions.map((action) => `    ${action},`), "  }");
+  const terminal = product.resource.resources.map((resource, index) => resource.requiredTerminalStates?.includes("released")
+    ? `resource_${index} == 2` : "true").join(" and ") || "true";
+  lines.push("", `  val ${propertyName} = not(temporal_order_broken) and (pending_transition == -1 or host_phase == 1) and (pc != ${product.resource.transitions.length} or (${terminal}))`, "}", "");
+  return lines.join("\n");
 }

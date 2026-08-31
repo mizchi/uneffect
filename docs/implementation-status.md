@@ -264,8 +264,10 @@ same property is proved for arbitrary TypeScript.
 - `uneffect-resource-temporal-product/v1` links acquired using-resource releases
   to host-neutral disposal transitions with resource identity and lane checks.
   Its result remains `exact-under-precondition`; dangling, duplicate,
-  mismatched, and unlinked release edges are unknown. Executable Quint still
-  uses the existing bounded dedicated resource/host generator.
+  mismatched, and unlinked release edges are unknown. The common product emits
+  the bounded acquire/release Quint model; the old resource/host entry point is
+  a compatibility facade. Conditional/failed acquisition, disposal failure,
+  other transition kinds, fairness, and arbitrary callbacks are not composed.
 - Explicit package resource-callable artifacts bind trusted summaries to exact
   module/export, runtime version, declaration bytes, artifact digest, review
   owner/reason, and optional expiry. Accepted artifacts are rebound to the

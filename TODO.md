@@ -181,9 +181,13 @@ introducing another domain-local control-flow or alias model.
        `using`/`await using` release transitions to host-neutral disposal IDs,
        requiring matching resource identity and inline/microtask completion
        lanes. Dangling, duplicate, mismatched, or unlinked releases are unknown.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Generate the executable Quint product from the backend-neutral resource
-       temporal product instead of the existing dedicated using/host generator,
-       then add conditional acquisition and arbitrary callback interleavings.
+     - [x] Generate the executable acquire/release Quint product from the
+       backend-neutral resource temporal product. The previous using/host API
+       is now a compatibility facade over the common generator, with positive
+       and deliberately broken microtask-order models.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend that product with conditional/failed acquisition, disposal
+       failure and suppression, other resource transitions, arbitrary callback
+       interleavings, cancellation, and explicitly selected fairness assumptions.
    - [x] Add the backend-neutral resource-state lattice over the shared CFG
      fixed-point engine. Equal branch states remain exact, unequal states join
      to unknown, normal/exceptional predecessors can share mandatory finally,

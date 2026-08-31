@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeAsyncSafety, generateTemporalModel, verifyUneffectProject } from "../src/index.js";
+import { createResourceDisposalTemporalProduct, lowerResourceDisposalsToProtocol } from "../src/index.js";
 import * as stable from "../src/index.js";
 import * as experimental from "../src/experimental.js";
 
@@ -155,6 +156,21 @@ describe("unified async temporal model", () => {
       const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--main=broken_resource_host", "--invariant=resourceHostSafe", "--max-steps=8", "--max-samples=100", "--seed=0x756e6566"], { encoding: "utf8" });
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}${result.stderr}`).toMatch(/violation|counterexample/iu);
+
+      const lifecycle = lowerResourceDisposalsToProtocol(analysis.resources, analysis.disposals, "main");
+      const product = createResourceDisposalTemporalProduct(analysis.fileName, lifecycle, analysis.disposals);
+      if (product.status !== "ready") throw new Error(product.reasons.join("; "));
+      const commonPositiveQuint = experimental.generateResourceTemporalProductQuint("common_resource_host", product.product);
+      writeFileSync(path, commonPositiveQuint);
+      const commonPositive = spawnSync("pnpm", ["exec", "quint", "run", path, "--main=common_resource_host", "--invariant=resourceTemporalSafe", "--max-steps=8", "--max-samples=100", "--seed=0x756e6566"], { encoding: "utf8" });
+      expect(commonPositive.status, `${commonPositive.stdout}${commonPositive.stderr}`).toBe(0);
+      const commonQuint = experimental.generateResourceTemporalProductQuint("broken_common_resource_host", product.product, {
+        resumeOutsideMicrotask: true,
+      });
+      writeFileSync(path, commonQuint);
+      const common = spawnSync("pnpm", ["exec", "quint", "run", path, "--main=broken_common_resource_host", "--invariant=resourceTemporalSafe", "--max-steps=8", "--max-samples=100", "--seed=0x756e6566"], { encoding: "utf8" });
+      expect(common.status).not.toBe(0);
+      expect(`${common.stdout}${common.stderr}`).toMatch(/violation|counterexample/iu);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
