@@ -2540,6 +2540,39 @@ describe("Uneffect dogfood", () => {
       .toEqual([]);
   }, externalCheckerTestTimeoutMs());
 
+  it("enforces an explicit pure boundary on the leaf static evaluator", () => {
+    const fileName = "src/static-evaluation.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+      types: ["node"],
+      noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.summaries.filter((summary) => summary.fileName === fileName)
+      .filter((summary) => ["evaluateStaticPrimitive", "evaluateStaticBoolean", "<module>"].includes(summary.functionName))
+      .map((summary) => ({ name: summary.functionName, evidence: summary.evidence, effects: summary.effects })))
+      .toEqual([
+        { name: "evaluateStaticPrimitive", evidence: "verified", effects: [] },
+        { name: "evaluateStaticBoolean", evidence: "verified", effects: [] },
+        { name: "<module>", evidence: "trusted", effects: [] },
+      ]);
+
+    const broken = analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect none */",
+      "/* uneffect:capability effect Console */",
+    ), { requireAnnotations: false });
+    expect(broken).toContainEqual(expect.objectContaining({
+      functionName: "evaluateStaticPrimitive",
+      effect: "Console",
+      kind: "unused",
+    }));
+  });
+
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
     const program = ts.createProgram([entry], {
