@@ -161,14 +161,17 @@ introducing another domain-local control-flow or alias model.
      switch fallthrough/break, labeled break/continue, opaque nested
      declarations, and try/catch/finally. Mandatory finally preserves normal,
      explicit throw, return, break, and continue continuations.
-   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Add implicit synchronous-throw and Promise-rejection edges from trusted or
+   - [x] Add implicit synchronous-throw and directly awaited Promise-rejection edges from trusted or
      verified callable summaries; arbitrary calls must not enter catch merely
      because they may throw at runtime.
      - [x] Add the domain-independent source-bound exceptional-completion site
        and route authenticated throw successors through active catch/finally
        continuations independently of resource transitions.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Resolve trusted/verified callable `Throw` and awaited `Reject` summaries
+     - [x] Resolve supplied same-Program trusted/verified callable `Throw` and directly awaited `Reject` summaries
        into those sites with declaration and call-site provenance.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Authenticate and compose persisted/external callable summaries before
+       admitting their exceptional edges; floating rejections remain in the
+       Promise-ownership analysis rather than becoming synchronous CFG edges.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Define authenticated declarative protocol summaries for builtin,
      package, and plugin operations; executable plugin booleans must not create
      verified evidence.

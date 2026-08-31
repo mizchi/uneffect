@@ -179,10 +179,12 @@ same property is proved for arbitrary TypeScript.
   routing. Consuming the body in both arms joins to consumed, while a missing arm
   joins to unknown; mandatory finally consumption applies to normal, explicit
   throw, and return paths. Loops prove resource-state convergence but not
-  termination/fairness. Implicit call throws and Promise rejection are not yet
-  automatically discovered exceptional CFG edges. The shared lowering accepts
-  source-bound authenticated `exceptionalCompletion: "throw"` sites and routes
-  them through catch/finally; unknown calls do not create such an edge.
+  termination/fairness. The shared lowering resolves supplied same-Program
+  trusted/verified callable summaries by TypeChecker declaration identity and
+  routes synchronous `Throw` plus directly awaited `Reject` sites through
+  catch/finally. Evidence retains declaration and call provenance. Floating
+  rejections, unknown calls, and unauthenticated persisted/external summaries
+  do not create such an edge.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import type { CallableSummary } from "./callable-summary.js";
 import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourceProtocolCfg, type ResourceProtocolModel, type ResourceProtocolTransition } from "./resource-protocol.js";
 
 export interface ResourceTransitionSite {
@@ -6,6 +7,16 @@ export interface ResourceTransitionSite {
   readonly transitions: readonly ResourceProtocolTransition[];
   /** Authenticated synchronous throw, or an awaited rejection converted to throw. */
   readonly exceptionalCompletion?: "throw";
+  readonly exceptionEvidence?: CallableExceptionalTransitionEvidence;
+}
+
+export interface CallableExceptionalTransitionEvidence {
+  readonly summaryId: string;
+  readonly evidence: "trusted" | "verified";
+  readonly completion: "synchronous-throw" | "awaited-reject";
+  readonly errorTypes: readonly string[];
+  readonly declaration: { readonly fileName: string; readonly start: number; readonly end: number };
+  readonly call: { readonly fileName: string; readonly start: number; readonly end: number };
 }
 
 export type ResourceProtocolTypeScriptLowering =
@@ -14,6 +25,61 @@ export type ResourceProtocolTypeScriptLowering =
 
 export interface ResourceProtocolTypeScriptLoweringOptions {
   readonly budget?: { readonly name: string; readonly limit: number };
+}
+
+function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
+  const symbol = checker.getSymbolAtLocation(node);
+  return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+}
+
+function directlyAwaited(call: ts.CallExpression): boolean {
+  let current: ts.Expression = call;
+  while (ts.isParenthesizedExpression(current.parent) || ts.isAsExpression(current.parent)
+    || ts.isTypeAssertionExpression(current.parent) || ts.isNonNullExpression(current.parent)) current = current.parent;
+  return ts.isAwaitExpression(current.parent) && current.parent.expression === current;
+}
+
+/** Converts only trusted/verified callable summaries into exceptional CFG sites. */
+export function collectCallableExceptionalTransitionSites(
+  program: ts.Program,
+  fn: ts.FunctionLikeDeclaration,
+  summaries: readonly CallableSummary[],
+): readonly ResourceTransitionSite[] {
+  if (!fn.body) return [];
+  const checker = program.getTypeChecker();
+  const byId = new Map(summaries.filter((summary) => summary.evidence === "trusted" || summary.evidence === "verified")
+    .map((summary) => [summary.id, summary] as const));
+  const sites: ResourceTransitionSite[] = [];
+  const visit = (node: ts.Node): void => {
+    if (node !== fn && ts.isFunctionLike(node)) return;
+    if (ts.isCallExpression(node)) {
+      const symbol = resolvedSymbol(checker, node.expression);
+      const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+      if (declaration) {
+        const declarationSource = declaration.getSourceFile();
+        const summary = byId.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`);
+        const completion = summary?.throws.length ? "synchronous-throw"
+          : summary?.rejects.length && directlyAwaited(node) ? "awaited-reject" : undefined;
+        const errorTypes = completion === "synchronous-throw" ? summary?.throws : completion === "awaited-reject" ? summary?.rejects : undefined;
+        if (summary && completion && errorTypes?.length) sites.push({
+          node,
+          transitions: [],
+          exceptionalCompletion: "throw",
+          exceptionEvidence: {
+            summaryId: summary.id,
+            evidence: summary.evidence as "trusted" | "verified",
+            completion,
+            errorTypes,
+            declaration: { fileName: declarationSource.fileName, start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+            call: { fileName: node.getSourceFile().fileName, start: node.getStart(), end: node.getEnd() },
+          },
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(fn.body);
+  return sites;
 }
 
 function nearestStatement(node: ts.Node, boundary: ts.Node): ts.Statement | undefined {

@@ -1,7 +1,11 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { evaluateResourceProtocolCfg, type ResourceProtocolModel } from "../src/resource-protocol.js";
-import { lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "../src/resource-protocol-typescript.js";
+import { analyzeCallableSummaries } from "../src/callable-summary.js";
+import { collectCallableExceptionalTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "../src/resource-protocol-typescript.js";
 
 function fixture(text: string): { source: ts.SourceFile; fn: ts.FunctionDeclaration; sites: ResourceTransitionSite[] } {
   const source = ts.createSourceFile("/entry.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -191,5 +195,84 @@ describe("TypeScript resource protocol CFG lowering", () => {
       status: "unknown",
       diagnostics: [expect.objectContaining({ code: "invalid-transition", state: "consumed" })],
     });
+  });
+
+  it("resolves trusted Throw and awaited Reject summaries by declaration identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-callable-exception-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        function riskySync(): void {}
+        async function riskyAsync(): Promise<void> {}
+        function main() {
+          riskySync()
+        }
+        async function awaited() {
+          await riskyAsync()
+        }
+        function floating() {
+          riskyAsync()
+        }
+        function sameName() {
+          const riskySync = () => {}
+          riskySync()
+        }
+        function caught() {
+          try {
+            riskySync()
+            consume(body)
+          } catch {
+            consume(body)
+            consume(body)
+          }
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).map((fn) => [fn.name!.text, fn]));
+      const summaryIds = new Map(["riskySync", "riskyAsync"].map((name) => {
+        const declaration = functions.get(name)!;
+        return [name, `${fileName}:${declaration.getStart(source)}`] as const;
+      }));
+      const analyzed = analyzeCallableSummaries(program).summaries;
+      const summaries = analyzed.map((summary) => summary.id === summaryIds.get("riskySync")
+        ? { ...summary, evidence: "trusted" as const, throws: ["Error"] }
+        : summary.id === summaryIds.get("riskyAsync") ? { ...summary, evidence: "trusted" as const, rejects: ["Error"] } : summary);
+      const syncSites = collectCallableExceptionalTransitionSites(program, functions.get("main")!, summaries);
+      expect(syncSites).toHaveLength(1);
+      expect(syncSites[0]).toMatchObject({
+        exceptionalCompletion: "throw",
+        exceptionEvidence: { completion: "synchronous-throw", evidence: "trusted", errorTypes: ["Error"] },
+      });
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("awaited")!, summaries)[0]).toMatchObject({
+        exceptionEvidence: { completion: "awaited-reject", errorTypes: ["Error"] },
+      });
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("floating")!, summaries)).toEqual([]);
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("sameName")!, summaries)).toEqual([]);
+      expect(syncSites[0]!.exceptionEvidence?.summaryId).toContain(`${fileName}:`);
+      expect(syncSites[0]!.exceptionEvidence?.call.fileName).toBe(fileName);
+
+      const caught = functions.get("caught")!;
+      const consumeSites: ResourceTransitionSite[] = [];
+      const collectConsumes = (node: ts.Node): void => {
+        if (node !== caught && ts.isFunctionLike(node)) return;
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "consume") {
+          consumeSites.push({ node, transitions: [{ kind: "consume", resource: "body", at: node.getStart(source) }] });
+        }
+        ts.forEachChild(node, collectConsumes);
+      };
+      collectConsumes(caught.body!);
+      const lowered = lowerResourceProtocolCfgInFunction(source, caught, model, [
+        ...consumeSites,
+        ...collectCallableExceptionalTransitionSites(program, caught, summaries),
+      ]);
+      expect(lowered.status).toBe("exact");
+      if (lowered.status === "exact") expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({
+        status: "unknown",
+        diagnostics: [expect.objectContaining({ code: "invalid-transition", state: "consumed" })],
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

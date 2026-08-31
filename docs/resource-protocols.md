@@ -60,9 +60,13 @@ throw/rejection evidence and are not inferred from arbitrary calls.
 
 An authenticated transition site may carry `exceptionalCompletion: "throw"`.
 The lowering adds its exceptional successor to the active catch/finally
-continuation independently of resource transitions. This is the common receiver
-for future trusted/verified callable `Throw` summaries and awaited `Reject`
-summaries; unknown calls do not manufacture this edge.
+continuation independently of resource transitions. Supplied same-Program
+callable summaries with `trusted` or `verified` evidence are resolved by
+TypeChecker declaration identity: `Throw` creates a synchronous exceptional
+edge and a directly awaited `Reject` creates an awaited exceptional edge. Each
+site retains summary, declaration, and call-site provenance. Unknown calls,
+same-named shadow functions, floating rejected Promises, and unauthenticated
+persisted/external summaries do not manufacture this edge.
 
 ## Current lowering
 
@@ -87,9 +91,10 @@ can now join to `consumed`; a missing arm joins `available` and `consumed` to
 
 The evaluators are general, but TypeScript lowering is still a reviewed fragment.
 It does not yet provide a complete JavaScript CFG, heap/region fixed point, or
-interprocedural resource summary. Unsupported aliases, implicit exception and
-rejection sources, dynamic dispatch, getters, proxies, and cross-function
-escapes must remain unknown unless a frontend emits authenticated evidence.
+interprocedural resource summary. Unsupported aliases, non-directly-awaited
+rejections, unauthenticated external summaries, dynamic dispatch, getters,
+proxies, and cross-function escapes must remain unknown unless a frontend emits
+authenticated evidence.
 
 Plugins must eventually contribute versioned declarative protocol summaries
 that are bound to exact symbol/declaration and package provenance. An executable
