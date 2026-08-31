@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { analyzeOwnership, checkOwnership, generateOwnershipQuint, type OwnershipEvent } from "../src/ownership.js";
+import { analyzeOwnership, checkOwnership, checkOwnershipWithResourceProtocol, generateOwnershipQuint, lowerOwnershipEventsToResourceProtocol, type OwnershipEvent } from "../src/ownership.js";
 import { invalidateTransferredTypedArrayEvidence } from "../src/project-verification.js";
 import { verifyTypedArraySafety, type TypedArrayProgramSafetyResult } from "../src/typed-array-safety.js";
 
@@ -17,6 +17,32 @@ function run(events: OwnershipEvent[]) {
 }
 
 describe("Transferable ownership", () => {
+  it("projects the supported ownership trace through the shared resource protocol", () => {
+    const events: OwnershipEvent[] = [
+      { operation: "clone", resource: "value", regionId: "value#1", span: { start: 1, end: 2 } },
+      { operation: "read", resource: "value", regionId: "value#1", span: { start: 3, end: 4 } },
+      { operation: "transfer", resource: "buffer", regionId: "buffer#1", transferState: "detached", span: { start: 5, end: 6 } },
+      { operation: "read", resource: "buffer", regionId: "buffer#1", span: { start: 7, end: 8 } },
+      { operation: "transfer", resource: "port", regionId: "port#1", transferState: "transferred", span: { start: 9, end: 10 } },
+      { operation: "mutate", resource: "port", regionId: "port#1", span: { start: 11, end: 12 } },
+    ];
+    const projection = lowerOwnershipEventsToResourceProtocol(events);
+    expect(projection.unsupported).toEqual([]);
+    expect(projection.model.transitions.map((transition) => [transition.kind, "resource" in transition ? transition.resource : undefined])).toEqual([
+      ["use", "value#1"], ["invalidate", "buffer#1"], ["use", "buffer#1"],
+      ["transfer", "port#1"], ["use", "port#1"],
+    ]);
+    expect(checkOwnershipWithResourceProtocol(events)).toEqual(checkOwnership(events));
+  });
+
+  it("keeps shared-memory transfer outside the migrated exact fragment", () => {
+    const events: OwnershipEvent[] = [
+      { operation: "transfer", resource: "shared", transferState: "shared", span },
+    ];
+    expect(lowerOwnershipEventsToResourceProtocol(events).unsupported)
+      .toEqual([{ event: 0, reason: "shared-memory-transfer" }]);
+  });
+
   it("rejects reads, mutation, and a second transfer after definite transfer", () => {
     const events: OwnershipEvent[] = [
       { operation: "transfer", resource: "buffer", transferState: "detached", span },
@@ -25,6 +51,7 @@ describe("Transferable ownership", () => {
       { operation: "transfer", resource: "buffer", transferState: "detached", span },
     ];
     expect(checkOwnership(events)).toHaveLength(3);
+    expect(checkOwnershipWithResourceProtocol(events)).toEqual(checkOwnership(events));
     const result = run(events);
     expect(result.status).not.toBe(0);
     expect(result.stdout + result.stderr).toMatch(/Invariant.*violated|violation found/i);

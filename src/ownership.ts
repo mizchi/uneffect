@@ -2,6 +2,7 @@ import ts from "typescript";
 import { resolvedSymbol, symbolIdentityKey } from "./binding-identity.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { resolveStableRegion } from "./region-alias.js";
+import { evaluateResourceProtocol, type ResourceProtocolModel, type ResourceProtocolTransition } from "./resource-protocol.js";
 
 export type OwnershipState = "available" | "detached" | "transferred" | "locked" | "shared";
 export type OwnershipOperation = "clone" | "transfer" | "read" | "mutate";
@@ -20,6 +21,68 @@ export interface OwnershipDiagnostic {
   span: { start: number; end: number };
   regionId?: string;
   message: string;
+}
+
+export interface OwnershipResourceProtocolProjection {
+  readonly model: ResourceProtocolModel;
+  readonly unsupported: readonly { readonly event: number; readonly reason: "shared-memory-transfer" }[];
+}
+
+/** Projects the non-shared Transferable fragment into the common resource IR. */
+export function lowerOwnershipEventsToResourceProtocol(events: readonly OwnershipEvent[]): OwnershipResourceProtocolProjection {
+  const identities = new Map<string, OwnershipEvent>();
+  for (const event of events) identities.set(event.regionId ?? event.resource, event);
+  const unsupported: { event: number; reason: "shared-memory-transfer" }[] = [];
+  const transitions: ResourceProtocolTransition[] = [];
+  events.forEach((event, index) => {
+    const resource = event.regionId ?? event.resource;
+    if (event.operation === "clone") return;
+    if (event.operation === "read" || event.operation === "mutate") {
+      transitions.push({ kind: "use", resource, at: index, evidence: "exact" });
+      return;
+    }
+    if (event.transferState === "shared") {
+      unsupported.push({ event: index, reason: "shared-memory-transfer" });
+      return;
+    }
+    transitions.push({ kind: event.transferState === "detached" ? "invalidate" : "transfer",
+      resource, at: index, evidence: "exact" });
+  });
+  return {
+    model: {
+      schema: "uneffect-resource-protocol/v1",
+      resources: [...identities].map(([id, event]) => ({ id, label: event.resource, kind: "Transferable", initialState: "available" as const })),
+      transitions,
+    },
+    unsupported,
+  };
+}
+
+/** Compatibility evaluator used while the legacy ownership checker migrates. */
+export function checkOwnershipWithResourceProtocol(events: readonly OwnershipEvent[]): OwnershipDiagnostic[] {
+  const projection = lowerOwnershipEventsToResourceProtocol(events);
+  const evaluation = evaluateResourceProtocol(projection.model);
+  return evaluation.diagnostics.flatMap((diagnostic): OwnershipDiagnostic[] => {
+    if (diagnostic.code !== "invalid-transition" || diagnostic.at === undefined) return [];
+    const event = events[diagnostic.at];
+    if (!event) return [];
+    const identity = event.regionId ?? event.resource;
+    const priorTransfer = events.slice(0, diagnostic.at).findLast((candidate) =>
+      (candidate.regionId ?? candidate.resource) === identity && candidate.operation === "transfer");
+    const state: OwnershipState = priorTransfer?.transferState
+      ?? (diagnostic.state === "invalidated" ? "detached" : diagnostic.state === "transferred" ? "transferred" : "available");
+    return [{
+      resource: event.resource,
+      operation: event.operation,
+      state,
+      span: event.span,
+      ...(event.regionId ? { regionId: event.regionId } : {}),
+      ...(event.transferState ? { transferState: event.transferState } : {}),
+      message: event.operation === "transfer"
+        ? `${event.resource} was already ${state}`
+        : `cannot ${event.operation} ${event.resource} after it became ${state}`,
+    }];
+  });
 }
 
 export function checkOwnership(events: readonly OwnershipEvent[]): OwnershipDiagnostic[] {
@@ -93,7 +156,10 @@ export function collectOwnershipEvents(program: ts.Program, source: ts.SourceFil
 }
 
 export function analyzeOwnership(program: ts.Program, source: ts.SourceFile): OwnershipDiagnostic[] {
-  return checkOwnership(collectOwnershipEvents(program, source));
+  const events = collectOwnershipEvents(program, source);
+  return lowerOwnershipEventsToResourceProtocol(events).unsupported.length === 0
+    ? checkOwnershipWithResourceProtocol(events)
+    : checkOwnership(events);
 }
 
 export function generateOwnershipQuint(moduleName: string, events: readonly OwnershipEvent[]): string {

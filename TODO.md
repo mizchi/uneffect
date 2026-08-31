@@ -149,6 +149,13 @@ introducing another domain-local control-flow or alias model.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Lower Transferable ownership, `using`, Promise ownership, typed-array
      invalidation, and user-defined protocols through the same IR instead of
      adding domain-local terminal-state logic.
+     - [x] Route non-shared Transferable clone/read/mutate/transfer analysis
+       through the shared resource protocol, with parity tests against the
+       legacy checker. Detached values lower to invalidation; MessagePort-like
+       ownership lowers to transfer.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Model SharedArrayBuffer/Atomics separately; a shared-memory transfer is
+       explicitly outside the exact migration fragment and retains the legacy
+       fallback.
    - [x] Add the backend-neutral resource-state lattice over the shared CFG
      fixed-point engine. Equal branch states remain exact, unequal states join
      to unknown, normal/exceptional predecessors can share mandatory finally,

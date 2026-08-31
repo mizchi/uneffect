@@ -242,7 +242,10 @@ same property is proved for arbitrary TypeScript.
   `HTMLInputElement.value` reads and writes. Other ordinary Web IDL properties
   remain open.
 - Transferable values are modeled as ownership transitions with invalidation
-  and use-after-transfer diagnostics.
+  and use-after-transfer diagnostics. The non-shared clone/read/mutate/transfer
+  fragment now runs through the common resource-protocol evaluator with legacy
+  diagnostic parity tests. Shared-memory transfer remains on the explicitly
+  unsupported compatibility path; Atomics ordering is not modeled.
 
 ## Contracts and formal backends
 

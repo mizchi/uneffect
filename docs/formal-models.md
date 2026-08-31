@@ -145,6 +145,14 @@ reaction-before-settlement and enforce successful `finally` transparency.
 
 The neutral ownership trace uses `Available`, `Detached`, `Transferred`, `Locked`, and `Shared`. `Clone` preserves availability. `Transfer` consumes ordinary Transferables and rejects a second transfer; subsequent read or mutation is an error. `SharedArrayBuffer` remains shared and is never modeled as detached. TypeChecker-resolved overlays instantiate compound `Clone`, `Transfer`, or `SharedMemory` effects for `structuredClone`, `Worker.postMessage`, and `MessagePort.postMessage`.
 
+The supported non-shared TypeScript ownership trace now executes through the
+common resource-protocol evaluator. Clone emits no state change, read/mutate
+emit `use`, detached ArrayBuffer transfer emits `invalidate`, and other
+Transferable ownership emits `transfer`. Compatibility tests compare its
+diagnostics with the legacy checker. Shared-memory transfer remains outside
+this exact fragment and uses the legacy path; this is not an Atomics or memory
+ordering model.
+
 ## Quicksort dogfood boundary
 
 `examples/quicksort.ts` is the first recursive, destructive algorithm used as a
