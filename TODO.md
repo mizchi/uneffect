@@ -212,8 +212,8 @@ introducing another domain-local control-flow or alias model.
    - [x] Track the direct `const response = await request` body-consumption
      fragment for builtin `json/text/arrayBuffer/blob/formData/bytes`; emit
      `abortableFetchBodiesConsumed`, treating conditional consumption as
-     unknown. Response aliases, streams, clone/tee, piping, and interprocedural
-     ownership remain open.
+     unknown. Clone/tee, general stream pipelines, and interprocedural ownership
+     remain open.
    - [x] Resolve immutable Response aliases and model direct
      `body.getReader()` as stream ownership. Treat builtin reader `cancel()` as
      discharge and `releaseLock()` as ownership release without consumption;
@@ -223,8 +223,11 @@ introducing another domain-local control-flow or alias model.
      builtin read result. Treat early break/continue/return/throw as unknown.
    - [x] Recognize direct unconditional `await response.body!.pipeTo(sink)` by
      builtin symbol identity as a `pipe-to` discharge. Keep floating or
-     conditional pipes unknown; `pipeThrough`, options, and pipeline aliases
-     remain unsupported.
+     conditional pipes unknown; options and pipeline aliases remain unsupported.
+   - [x] Recognize the direct unconditional builtin chain
+     `await response.body!.pipeThrough(transform).pipeTo(sink)` as a
+     `pipe-through-to` discharge. Reject floating chains and either method's
+     options; longer chains and intermediate aliases remain unsupported.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain

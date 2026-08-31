@@ -15,8 +15,8 @@ export interface AbortableFetch {
   readonly promiseObservations: readonly string[];
   readonly responseBinding?: string;
   readonly responseBodyStatus: "not-acquired" | "consumed" | "stream-owned" | "unconsumed" | "unknown";
-  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "getReader" | "json" | "pipeTo" | "text";
-  readonly responseStreamDischarge?: "cancel" | "drain" | "pipe-to" | "release-lock";
+  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "text";
+  readonly responseStreamDischarge?: "cancel" | "drain" | "pipe-through-to" | "pipe-to" | "release-lock";
   readonly abortComposition?: number;
   readonly abortReason?: string;
   readonly abortConditional?: boolean;
@@ -241,7 +241,26 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
         if (builtin) {
           operation = "pipeTo";
-          conditional = conditionallyExecuted(node) || !ts.isAwaitExpression(node.parent);
+          conditional = conditionallyExecuted(node) || !ts.isAwaitExpression(node.parent) || node.arguments.length !== 1;
+        }
+      }
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "pipeTo" && ts.isCallExpression(node.expression.expression)) {
+        const pipeThrough = node.expression.expression;
+        const pipeThroughAccess = pipeThrough.expression;
+        if (ts.isPropertyAccessExpression(pipeThroughAccess) && pipeThroughAccess.name.text === "pipeThrough") {
+          const sourceReceiver = unwrapExpression(pipeThroughAccess.expression);
+          const pipeToMethod = resolvedSymbol(checker, node.expression.name);
+          const pipeThroughMethod = resolvedSymbol(checker, pipeThroughAccess.name);
+          const builtinPipeTo = pipeToMethod?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+          const builtinPipeThrough = pipeThroughMethod?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+          if (builtinPipeTo && builtinPipeThrough && ts.isPropertyAccessExpression(sourceReceiver)
+            && sourceReceiver.name.text === "body" && ts.isIdentifier(sourceReceiver.expression)
+            && stableRootSymbol(sourceReceiver.expression) === responseSymbol) {
+            operation = "pipeThroughTo";
+            conditional = conditionallyExecuted(node) || !ts.isAwaitExpression(node.parent)
+              || node.arguments.length !== 1 || pipeThrough.arguments.length !== 1;
+          }
         }
       }
       ts.forEachChild(node, findConsumption);
@@ -315,8 +334,9 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         else if (sawReaderLoop) dischargeConditional = true;
       }
     }
-    const responseStreamDischarge: AbortableFetch["responseStreamDischarge"] | undefined = operation === "pipeTo" && !conditional
-      ? "pipe-to" : readerDischarge;
+    const responseStreamDischarge: AbortableFetch["responseStreamDischarge"] | undefined = conditional ? readerDischarge
+      : operation === "pipeTo" ? "pipe-to"
+        : operation === "pipeThroughTo" ? "pipe-through-to" : readerDischarge;
     const responseBodyStatus: AbortableFetch["responseBodyStatus"] = !operation ? "unconsumed"
       : conditional || dischargeConditional ? "unknown"
         : operation !== "getReader" ? "consumed"

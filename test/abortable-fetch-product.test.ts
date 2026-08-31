@@ -325,6 +325,12 @@ describe("abortable fetch product", () => {
           const response = await request
           if (enabled) await response.body!.pipeTo(sink)
         }
+        export async function configured(sink: WritableStream<Uint8Array>) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/configured-pipe", { signal: controller.signal })
+          const response = await request
+          await response.body!.pipeTo(sink, { preventClose: true })
+        }
       `);
       const program = ts.createProgram([fileName], {
         target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
@@ -334,6 +340,44 @@ describe("abortable fetch product", () => {
         expect.objectContaining({ owner: "piped", responseBodyStatus: "consumed", responseBodyOperation: "pipeTo", responseStreamDischarge: "pipe-to" }),
         expect.objectContaining({ owner: "floating", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
         expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
+        expect.objectContaining({ owner: "configured", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes one direct awaited builtin pipeThrough-to-pipeTo chain", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-pipe-through-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function transformed(
+          transform: TransformStream<Uint8Array, Uint8Array>,
+          sink: WritableStream<Uint8Array>,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/transformed", { signal: controller.signal })
+          const response = await request
+          await response.body!.pipeThrough(transform).pipeTo(sink)
+        }
+        export async function floating(
+          transform: TransformStream<Uint8Array, Uint8Array>,
+          sink: WritableStream<Uint8Array>,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/floating-transform", { signal: controller.signal })
+          const response = await request
+          response.body!.pipeThrough(transform).pipeTo(sink)
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "transformed", responseBodyStatus: "consumed", responseBodyOperation: "pipeThroughTo", responseStreamDischarge: "pipe-through-to" }),
+        expect.objectContaining({ owner: "floating", responseBodyStatus: "unknown", responseBodyOperation: "pipeThroughTo" }),
       ]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
