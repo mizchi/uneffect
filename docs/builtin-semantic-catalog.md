@@ -61,3 +61,7 @@ Each expansion must preserve exact TypeChecker symbol identity, reject duplicate
 `(module, export)` definitions, record trust provenance, retain separate JS,
 Node, and DOM ownership, and include a negative test showing that the semantic
 field affects analysis.
+
+The next architecture step replaces API-family-specific operation kinds with
+composable generic primitives. The staged migration, deletion conditions, and
+protocol boundary are defined in `generic-builtin-semantics.md`.

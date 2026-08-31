@@ -50,6 +50,12 @@ DOM method definitions are also migrated with operation granularity, selector
 scope, mutation regions, and possible user-code invocation preserved. Directional
 DOM property semantics, including Cookie and Storage permission properties, are
 now migrated with access-direction and mutation-region metadata preserved.
+The next catalog cycle is organized in `docs/generic-builtin-semantics.md`.
+It introduces a versioned generic primitive schema and shared interpreter, then
+migrates mutation, scoped capabilities, callbacks, ownership/resources,
+directional properties, and stateful protocols in that dependency order. Each
+stage deletes its legacy fields and analyzer branches before the next stage;
+registry/plugin exposure and full dogfood are the final acceptance boundary.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct

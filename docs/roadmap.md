@@ -218,7 +218,10 @@ explicit conservative boundaries rather than untracked support.
    moves inferred facts and ordered events off the TypeScript reference adapter.
    Its first checker-backed inferred-`Console` and ordered-local-call slice
    [#27](https://github.com/mizchi/uneffect/issues/27) is complete; broader
-   builtin and neutral-IR coverage remains open.
+   builtin and neutral-IR coverage remains open. The generic builtin migration
+   plan defines the shared primitive schema and interpreter needed to avoid
+   duplicating API-family branches across the reference and native frontends;
+   see `generic-builtin-semantics.md`.
 3. [Complete Node and Web event-loop ownership](https://github.com/mizchi/uneffect/issues/10)
    fills host phases, dynamic cancellation, and polymorphic callback gaps.
 4. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)

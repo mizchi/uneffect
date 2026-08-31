@@ -16,6 +16,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Effect system](./effect-system.md): algebra, evidence, regions, temporal IR, and optimizer boundary.
 - [Gradual annotations](./gradual-annotations.md): comment marker, grammar, attachment, contracts, and optional Valibot assertions.
 - [Builtin semantic contracts](./builtin-contracts.md): scoped Fetch authority, DOM operations, Worker messaging, transfer ownership, and extensible overlays.
+- [Generic builtin semantics](./generic-builtin-semantics.md): composable semantic primitives, shared interpreter stages, and legacy-operation deletion gates.
 - [Module initialization order](./module-initialization-order.md): source-mapped ESM dependency, top-level-await, rejection, and throw ordering evidence.
 - [Semantics modules](./semantics-modules.md): declarative, namespaced effect extensions and their trusted evidence boundary.
 - [Trusted Types](./trusted-types.md): provenance checks for the experimental W3C `TrustedScript` sink fragment.
