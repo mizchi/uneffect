@@ -261,52 +261,6 @@ export function resolveModuleInitializationContract(
   return findModuleInitializationContract(registry, moduleName, environment);
 }
 
-const fsReadNames = [
-  "access", "accessSync", "exists", "existsSync", "readFile", "readFileSync", "readdir", "readdirSync",
-  "readlink", "readlinkSync", "realpath", "realpathSync", "stat", "statSync", "lstat", "lstatSync",
-  "open", "openSync", "watch", "watchFile", "createReadStream",
-] as const;
-const fsWriteNames = [
-  "appendFile", "appendFileSync", "chmod", "chmodSync", "chown", "chownSync", "link", "linkSync",
-  "mkdir", "mkdirSync", "rename", "renameSync", "rm", "rmSync", "rmdir", "rmdirSync", "symlink",
-  "symlinkSync", "truncate", "truncateSync", "unlink", "unlinkSync", "utimes", "utimesSync", "writeFile",
-  "writeFileSync", "createWriteStream",
-] as const;
-
-function fsBuiltinContracts(module: string): BuiltinContract[] {
-  const contracts: BuiltinContract[] = [];
-  const completionCallbacks = new Set([
-    "access", "exists", "readFile", "readdir", "readlink", "realpath", "stat", "lstat", "open",
-    "appendFile", "chmod", "chown", "link", "mkdir", "rename", "rm", "rmdir", "symlink", "truncate", "unlink", "utimes", "writeFile",
-    "copyFile", "cp", "read", "write",
-  ]);
-  const callbackOperation = (name: string): Pick<FsBuiltinOperation, "callbackArgumentFromEnd" | "callbackMinimumArguments" | "callbackMustBeCallable" | "callbackQueue" | "callbackRepeats"> => {
-    if (module !== "node:fs") return {};
-    if (name === "watch" || name === "watchFile") return {
-      callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-      callbackMustBeCallable: true, callbackQueue: "poll", callbackRepeats: true,
-    };
-    return completionCallbacks.has(name) ? { callbackArgumentFromEnd: 1, callbackQueue: "poll" } : {};
-  };
-  for (const name of fsReadNames) contracts.push(trusted({
-    symbol: { module, export: name },
-    operation: { kind: "fs", read: true, write: name === "open" || name === "openSync", readPathArgument: 0, writePathArgument: 0, ...callbackOperation(name) },
-  }));
-  for (const name of fsWriteNames) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, writePathArgument: 0, ...callbackOperation(name) },
-  }));
-  for (const name of ["copyFile", "copyFileSync", "cp", "cpSync"]) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1, ...callbackOperation(name) },
-  }));
-  for (const name of ["read", "readSync"]) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: false, mutateArgument: 1, ...callbackOperation(name) },
-  }));
-  for (const name of ["write", "writeSync"]) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, ...callbackOperation(name) },
-  }));
-  return contracts;
-}
-
 /**
  * Semantic overlays are applied after TypeChecker symbol resolution. They do
  * not modify or wrap the runtime builtin.
@@ -395,8 +349,6 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       symbol: { module: "node:os", export: name },
       operation: { kind: "effect", effect },
     })),
-    ...fsBuiltinContracts("node:fs"),
-    ...fsBuiltinContracts("node:fs/promises"),
     trusted({ symbol: { module: "node:fs", export: "FSWatcher#close" }, operation: { kind: "timer-clear", handleReceiver: true, family: "watcher" } }),
     trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close", closesReceiverFamily: "server" } }),
     trusted({

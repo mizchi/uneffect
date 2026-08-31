@@ -13,6 +13,23 @@ export interface BuiltinSemanticCatalog {
 const reviewed = (platform: BuiltinSemanticPlatform, definition: Omit<ReviewedBuiltinSemantic, "platform" | "stability">): ReviewedBuiltinSemantic =>
   ({ ...definition, platform, stability: "reviewed" });
 
+const fsReadNames = ["access", "accessSync", "exists", "existsSync", "readFile", "readFileSync", "readdir", "readdirSync", "readlink", "readlinkSync", "realpath", "realpathSync", "stat", "statSync", "lstat", "lstatSync", "open", "openSync", "watch", "watchFile", "createReadStream"] as const;
+const fsWriteNames = ["appendFile", "appendFileSync", "chmod", "chmodSync", "chown", "chownSync", "link", "linkSync", "mkdir", "mkdirSync", "rename", "renameSync", "rm", "rmSync", "rmdir", "rmdirSync", "symlink", "symlinkSync", "truncate", "truncateSync", "unlink", "unlinkSync", "utimes", "utimesSync", "writeFile", "writeFileSync", "createWriteStream"] as const;
+
+function nodeFsDefinitions(module: "node:fs" | "node:fs/promises"): ReviewedBuiltinSemantic[] {
+  const callbacks = new Set(["access", "exists", "readFile", "readdir", "readlink", "realpath", "stat", "lstat", "open", "appendFile", "chmod", "chown", "link", "mkdir", "rename", "rm", "rmdir", "symlink", "truncate", "unlink", "utimes", "writeFile", "copyFile", "cp", "read", "write"]);
+  const callback = (name: string) => module !== "node:fs" ? {} : name === "watch" || name === "watchFile"
+    ? { callbackArgumentFromEnd: 1 as const, callbackMinimumArguments: 2, callbackMustBeCallable: true, callbackQueue: "poll" as const, callbackRepeats: true }
+    : callbacks.has(name) ? { callbackArgumentFromEnd: 1 as const, callbackQueue: "poll" as const } : {};
+  return [
+    ...fsReadNames.map((name) => reviewed("node", { symbol: { module, export: name }, operation: { kind: "fs", read: true, write: name === "open" || name === "openSync", readPathArgument: 0, writePathArgument: 0, ...callback(name) } })),
+    ...fsWriteNames.map((name) => reviewed("node", { symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, writePathArgument: 0, ...callback(name) } })),
+    ...["copyFile", "copyFileSync", "cp", "cpSync"].map((name) => reviewed("node", { symbol: { module, export: name }, operation: { kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1, ...callback(name) } })),
+    ...["read", "readSync"].map((name) => reviewed("node", { symbol: { module, export: name }, operation: { kind: "fs", read: true, write: false, mutateArgument: 1, ...callback(name) } })),
+    ...["write", "writeSync"].map((name) => reviewed("node", { symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, ...callback(name) } })),
+  ];
+}
+
 export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
   schema: "uneffect-builtin-semantics/v1",
   definitions: [
@@ -47,6 +64,8 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     reviewed("node", { symbol: { module: "node:module", export: "createRequire" }, trustReason: "Node createRequire constructs a resolver without loading a target", trustOwner: "@mizchi/uneffect" }),
     reviewed("node", { symbol: { module: "node:path", export: "join" }, trustReason: "Node path.join is a deterministic lexical path operation", trustOwner: "@mizchi/uneffect" }),
     reviewed("node", { symbol: { module: "lib.node", export: "Process#cwd" }, trustReason: "Node process.cwd reads launch configuration without a Deno-style permission", trustOwner: "@mizchi/uneffect" }),
+    ...nodeFsDefinitions("node:fs"),
+    ...nodeFsDefinitions("node:fs/promises"),
     ...["getItem", "key"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageRead" } })),
     ...["setItem", "removeItem", "clear"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageWrite" } })),
     reviewed("dom", { symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),

@@ -20,6 +20,12 @@ neither comparator timing nor destructive receiver behavior is discarded.
 Future result, throw, resource, and argument-mutation projections should follow
 this pattern instead of creating duplicate symbol contracts.
 
+The Node catalog owns both `node:fs` callback/synchronous APIs and
+`node:fs/promises`. Each definition records independent read/write authority,
+source and destination path arguments, poll-queue callback completion, repeated
+watch callbacks, and buffer mutation for descriptor-based reads. Compound APIs
+such as `copyFile` therefore retain both `FsRead` and `FsWrite`.
+
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
 host implementation was proved. Unsupported callback composition remains
 visible. For example, `toSorted` records its synchronous comparator and fresh

@@ -19,6 +19,10 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "PromiseConstructor#all" }, operation: { kind: "promise-combinator", combinator: "all", iterableArgument: 0 } }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "Math.random" }, operation: { kind: "effect", effect: "Random" } }),
       expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "readFile" }, operation: expect.objectContaining({ kind: "fs", read: true, write: false, readPathArgument: 0 }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs/promises", export: "writeFile" }, operation: expect.objectContaining({ kind: "fs", read: false, write: true, writePathArgument: 0 }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "copyFileSync" }, operation: expect.objectContaining({ kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1 }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "read" }, operation: expect.objectContaining({ kind: "fs", read: true, write: false, mutateArgument: 1 }) }),
     ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,
