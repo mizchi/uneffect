@@ -1,3 +1,5 @@
+import { builtinSemanticCatalog, materializeBuiltinSemanticDefinitions } from "./builtin-semantic-catalog.js";
+
 export interface BuiltinSymbolKey {
   module: string;
   export: string;
@@ -356,34 +358,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: `ECMAScript ${owner}.${name} has no callback or host authority`,
       trustOwner: "@mizchi/uneffect",
     }))),
-    ...(["Array", "ReadonlyArray"] as const).map((owner) => trusted({
-      symbol: { module: "lib.es", export: `${owner}#toSorted` },
-      operation: { kind: "inline-callback", callbackArguments: [0] },
-      result: { kind: "fresh" },
-      trustReason: `ECMAScript ${owner}.toSorted returns a newly allocated Array and invokes its optional comparator synchronously`,
-      trustOwner: "@mizchi/uneffect",
-    })),
-    ...(["keys", "entries"] as const).map((name) => trusted({
-      symbol: { module: "lib.es", export: `ObjectConstructor#${name}` },
-      result: { kind: "fresh" },
-      trustReason: `ECMAScript Object.${name} returns a newly allocated Array`,
-      trustOwner: "@mizchi/uneffect",
-    })),
-    trusted({
-      symbol: { module: "node:module", export: "createRequire" },
-      trustReason: "Node createRequire constructs a resolver without loading a target module",
-      trustOwner: "@mizchi/uneffect",
-    }),
-    trusted({
-      symbol: { module: "node:path", export: "join" },
-      trustReason: "Node path.join is a deterministic lexical path operation",
-      trustOwner: "@mizchi/uneffect",
-    }),
-    trusted({
-      symbol: { module: "lib.node", export: "Process#cwd" },
-      trustReason: "Node process.cwd reads launch configuration and requires no Deno-style runtime permission",
-      trustOwner: "@mizchi/uneffect",
-    }),
+    ...materializeBuiltinSemanticDefinitions(builtinSemanticCatalog.definitions),
     trusted({
       symbol: { module: "typescript", export: "Program#emit" },
       runtime: { kind: "package", version: "6.0.3" },
@@ -490,12 +465,6 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       symbol: { module: "node:child_process", export: name }, operation: { kind: "scoped-effect", effect: "Run" },
     })),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
-    ...["getItem", "key"].map((name): BuiltinContract => trusted({
-      symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageRead" },
-    })),
-    ...["setItem", "removeItem", "clear"].map((name): BuiltinContract => trusted({
-      symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageWrite" },
-    })),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
       ...trusted({
         symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" },

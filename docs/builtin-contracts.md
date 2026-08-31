@@ -1,5 +1,9 @@
 # Builtin semantic contracts
 
+The declarative JS, Node.js, and DOM definition format is described in
+[Builtin semantic catalog](./builtin-semantic-catalog.md). It compiles into the
+contracts documented below.
+
 Uneffect annotates existing platform APIs without requiring application wrappers. A semantic overlay maps TypeChecker-resolved builtin symbols and overloads to effect templates.
 
 The prototype exposes a `FrontendSymbolAdapter` boundary and a TypeScript implementation. The implementation indexes registry exports through the TypeChecker and compares resolved `ts.Symbol` identities, so renamed imports and namespace access resolve to the same stable `{ module, export }` key while a shadowing local function does not. `node:os.tmpdir()` call sites now receive `Path<"$TEMP">` result refinements through this path. Corsa should provide the same `ResolvedCallSite` contract from its symbol/context mapper rather than reproducing TypeScript source spelling rules.

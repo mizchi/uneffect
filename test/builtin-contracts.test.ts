@@ -4,8 +4,19 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { builtinSemanticCatalog, compileBuiltinSemanticCatalog } from "../src/builtin-semantic-catalog.js";
 
 describe("builtin semantic overlays", () => {
+  it("compiles versioned JavaScript, Node, and DOM semantic definitions", () => {
+    expect(builtinSemanticCatalog.schema).toBe("uneffect-builtin-semantics/v1");
+    expect(new Set(builtinSemanticCatalog.definitions.map((item) => item.platform))).toEqual(new Set(["javascript", "node", "dom"]));
+    const contracts = compileBuiltinSemanticCatalog(builtinSemanticCatalog);
+    expect(contracts).toHaveLength(builtinSemanticCatalog.definitions.length);
+    expect(contracts.every((item) => item.evidence === "trusted")).toBe(true);
+    expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
+      builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,
+    ] })).toThrow("duplicate builtin semantic definition");
+  });
   it("binds reviewed module initialization to the observed runtime version", () => {
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.22.1" }))
       .toMatchObject({ module: "effect", runtime: { kind: "package", version: "3.22.1" } });

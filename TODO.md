@@ -27,6 +27,14 @@ Remaining volume and estimate assumptions are maintained in
 
 ## Current implementation snapshot
 
+The first `uneffect-builtin-semantics/v1` catalog slice is complete. It
+separates reviewed JavaScript, Node.js, and DOM definitions from registry
+assembly, rejects duplicate symbol identities, and compiles them into the
+existing trusted TypeChecker-backed contracts. Array/Object copying semantics,
+Node module/path/process helpers, and DOM Storage permissions are the initial
+migrated groups; remaining handwritten builtins migrate incrementally with
+negative semantic tests.
+
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct
 calls, guarded wrappers, at most two write-screened sole-call helpers, exact
