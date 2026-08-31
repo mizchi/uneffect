@@ -26,6 +26,11 @@ source and destination path arguments, poll-queue callback completion, repeated
 watch callbacks, and buffer mutation for descriptor-based reads. Compound APIs
 such as `copyFile` therefore retain both `FsRead` and `FsWrite`.
 
+Node OS, crypto-randomness, and child-process definitions also live in the
+catalog. OS queries retain their scoped `Sys` atoms, `tmpdir()` refines to
+`$TEMP`, callback crypto APIs retain poll-queue completion plus `Random`, and
+child-process APIs distinguish scoped program execution from broad `Run`.
+
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
 host implementation was proved. Unsupported callback composition remains
 visible. For example, `toSorted` records its synchronous comparator and fresh

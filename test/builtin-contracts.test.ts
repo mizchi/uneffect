@@ -23,6 +23,12 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ platform: "node", symbol: { module: "node:fs/promises", export: "writeFile" }, operation: expect.objectContaining({ kind: "fs", read: false, write: true, writePathArgument: 0 }) }),
       expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "copyFileSync" }, operation: expect.objectContaining({ kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1 }) }),
       expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "read" }, operation: expect.objectContaining({ kind: "fs", read: true, write: false, mutateArgument: 1 }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:os", export: "tmpdir" }, result: { kind: "path", pattern: "$TEMP" } }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:os", export: "cpus" }, operation: { kind: "effect", effect: "Sys<cpus>" } }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:crypto", export: "randomBytes" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Random", queue: "poll" }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:crypto", export: "randomUUID" }, operation: { kind: "effect", effect: "Random" } }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "execFile" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "spawnSync" }, operation: { kind: "scoped-effect", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" } }),
     ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,

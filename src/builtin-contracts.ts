@@ -329,26 +329,6 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: "TypeScript 6.0.3 transform synchronously invokes each array-literal TransformerFactory and its returned Transformer",
       trustOwner: "@mizchi/uneffect",
     }),
-    trusted({
-      symbol: { module: "node:os", export: "tmpdir" },
-      result: { kind: "path", pattern: "$TEMP" },
-    }),
-    ...([
-      ["hostname", "Sys<hostname>"],
-      ["release", "Sys<osRelease>"],
-      ["uptime", "Sys<osUptime>"],
-      ["loadavg", "Sys<loadavg>"],
-      ["networkInterfaces", "Sys<networkInterfaces>"],
-      ["totalmem", "Sys<systemMemoryInfo>"],
-      ["freemem", "Sys<systemMemoryInfo>"],
-      ["cpus", "Sys<cpus>"],
-      ["availableParallelism", "Sys<cpus>"],
-      ["homedir", "Sys<homedir>"],
-      ["userInfo", "Sys<username | uid | gid | homedir>"],
-    ] as const).map(([name, effect]): BuiltinContract => trusted({
-      symbol: { module: "node:os", export: name },
-      operation: { kind: "effect", effect },
-    })),
     trusted({ symbol: { module: "node:fs", export: "FSWatcher#close" }, operation: { kind: "timer-clear", handleReceiver: true, family: "watcher" } }),
     trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close", closesReceiverFamily: "server" } }),
     trusted({
@@ -369,12 +349,6 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     }),
     trusted({ symbol: { module: "node:dns", export: "lookup" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0 } }),
     trusted({ symbol: { module: "node:dns", export: "lookupService" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" } }),
-    trusted({ symbol: { module: "node:crypto", export: "randomBytes" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, queue: "poll", effect: "Random" } }),
-    trusted({ symbol: { module: "node:crypto", export: "randomFill" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, callbackMustBeCallable: true, queue: "poll", effect: "Random" } }),
-    trusted({ symbol: { module: "node:crypto", export: "randomInt" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, callbackMustBeCallable: true, queue: "poll", effect: "Random" } }),
-    ...["randomFillSync", "randomUUID"].map((name): BuiltinContract => trusted({
-      symbol: { module: "node:crypto", export: name }, operation: { kind: "effect", effect: "Random" },
-    })),
     ...(["node:net", "node:http", "node:https"] as const).map((module): BuiltinContract => trusted({
       symbol: { module, export: "createServer" },
       operation: {
@@ -390,22 +364,6 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
         effectScopeKind: "http-request", effectDefaultPort: module === "node:https" ? 443 : 80,
       },
     }))),
-    trusted({ symbol: { module: "node:child_process", export: "exec" }, operation: {
-      kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-      callbackMustBeCallable: true, queue: "poll", effect: "Run",
-    } }),
-    trusted({ symbol: { module: "node:child_process", export: "execFile" }, operation: {
-      kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-      callbackMustBeCallable: true, queue: "poll", effect: "Run", effectScopeArgument: 0,
-      effectScopeKind: "run-program",
-    } }),
-    ...["execFileSync", "spawn", "spawnSync"].map((name): BuiltinContract => trusted({
-      symbol: { module: "node:child_process", export: name },
-      operation: { kind: "scoped-effect", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" },
-    })),
-    ...["execSync", "fork"].map((name): BuiltinContract => trusted({
-      symbol: { module: "node:child_process", export: name }, operation: { kind: "scoped-effect", effect: "Run" },
-    })),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
       ...trusted({
