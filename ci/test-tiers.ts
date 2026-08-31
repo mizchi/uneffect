@@ -2,6 +2,7 @@ export const ciTestTiers = {
   fast: [
     "test/abortable-fetch-product.test.ts",
     "test/annotations.test.ts",
+    "test/async-iterator-cleanup.test.ts",
     "test/assurance.test.ts",
     "test/binding-identity.test.ts",
     "test/binding-rename-invariance.test.ts",

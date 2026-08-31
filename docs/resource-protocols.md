@@ -148,6 +148,23 @@ analysis. Immutable aliases are currently separate compatibility records, not
 one proven underlying Promise identity. It therefore does not yet replace the
 alias/control-flow analysis or prove that an arbitrary thenable is handled.
 
+## Async iterator cleanup
+
+The reviewed `for await...of` fragment produces one resource scenario per
+observed completion. Normal exhaustion consumes the iterator. Explicit break,
+function return, and uncaught explicit throw release it through
+AsyncIteratorClose. Nested loops and labeled outer breaks retain lexical target
+ownership, and nested callable exits are excluded.
+
+The close metadata is deliberately precise about its uncertainty: property
+lookup for optional `return` is inline and may invoke user code; when present,
+its result is awaited and can reject on a microtask continuation. Generic async
+iterables therefore do not claim that `return` always exists. Abrupt completion
+crossing `finally` is rejected as unknown because the finalizer may override it.
+Coverage is `reviewed-explicit-completions`, not a complete implicit-exception
+model. Manual iterator calls, generator `yield*` close propagation, proxies,
+and implicit call/getter throws remain unsupported.
+
 ## Current lowering
 
 The abortable-fetch analysis currently lowers these reviewed fragments:

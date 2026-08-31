@@ -169,6 +169,14 @@ introducing another domain-local control-flow or alias model.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Replace binding-level Promise resources with TypeChecker-backed underlying
        Promise identity so immutable aliases compose as one resource rather than
        parallel compatibility records.
+     - [x] Project explicit `for await...of` exhaustion and abrupt
+       break/return/uncaught-throw scenarios into consumed/released resource
+       models. Preserve optional `return` lookup, user-code property access,
+       awaited-result rejection, nested/labeled loop ownership, and reject
+       finally-crossing completion as unknown.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose implicit throw edges, full finally completion overriding, manual
+       `.next()`/`.return()`, `yield*` delegation close, and generator consumer
+       escape into the shared iterator resource model.
    - [x] Add the backend-neutral resource-state lattice over the shared CFG
      fixed-point engine. Equal branch states remain exact, unequal states join
      to unknown, normal/exceptional predecessors can share mandatory finally,

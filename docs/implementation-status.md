@@ -256,6 +256,11 @@ same property is proved for arbitrary TypeScript.
   transfer reaches transferred. Alias bindings are not yet unified by one
   underlying Promise identity, so the existing async analysis remains the
   source of truth for control-flow classification.
+- Explicit `for await...of` exhaustion and abrupt break/return/uncaught-throw
+  paths project to consumed/released iterator resource scenarios. Optional
+  `return` lookup and awaited rejection metadata are retained. Finally-crossing
+  completion and implicit exceptions remain unknown; this is not yet general
+  AsyncIteratorClose or generator-delegation verification.
 - Explicit package resource-callable artifacts bind trusted summaries to exact
   module/export, runtime version, declaration bytes, artifact digest, review
   owner/reason, and optional expiry. Accepted artifacts are rebound to the

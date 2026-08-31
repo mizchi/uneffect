@@ -264,6 +264,8 @@ export { lowerPromiseOwnershipToResourceProtocol } from "./promise-ownership-pro
 export type { PromiseOwnershipProtocolProjection } from "./promise-ownership-protocol.js";
 export { authenticateResourceCallableContractArtifact, createResourceCallableContractArtifact, resourceCallableArtifactAssumption, resourceCallableArtifactSchema } from "./resource-callable-artifact.js";
 export type { ResourceCallableArtifactAuthentication, ResourceCallableArtifactEnvironment, ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
+export { analyzeAsyncIteratorCleanup } from "./async-iterator-cleanup.js";
+export type { AsyncIteratorCleanup, AsyncIteratorCleanupScenario, AsyncIteratorExit } from "./async-iterator-cleanup.js";
 export { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "./resource-callable-typescript.js";
 export type { ResourceCallableDiagnostic, ResourceCallableSiteAnalysis, ResourceCallableSummaryAnalysis } from "./resource-callable-typescript.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";
