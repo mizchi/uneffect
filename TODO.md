@@ -163,6 +163,12 @@ introducing another domain-local control-flow or alias model.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend the resource-state lattice to retain `absent | available`
        disjunctions, then connect initializer failure and per-scope conditional
        acquisition without the all-acquired precondition.
+     - [x] Project binding-level Promise rejection ownership into the shared
+       resource IR: floating remains available, observed consumes, and explicit
+       ownership transfer transitions to transferred.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Replace binding-level Promise resources with TypeChecker-backed underlying
+       Promise identity so immutable aliases compose as one resource rather than
+       parallel compatibility records.
    - [x] Add the backend-neutral resource-state lattice over the shared CFG
      fixed-point engine. Equal branch states remain exact, unequal states join
      to unknown, normal/exceptional predecessors can share mandatory finally,

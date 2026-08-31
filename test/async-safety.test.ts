@@ -16,6 +16,7 @@ async function solve(program: string): Promise<string> {
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { lowerResourceDisposalsToProtocol } from "../src/resource-disposal-protocol.js";
 import { evaluateResourceProtocol } from "../src/resource-protocol.js";
+import { lowerPromiseOwnershipToResourceProtocol } from "../src/promise-ownership-protocol.js";
 
 function run(program: string, maxSteps = 12) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-"));
@@ -73,6 +74,15 @@ describe("async error and explicit resource safety", () => {
       { owner: "conditionallyWrapped", binding: "pending", status: "floating" },
       { owner: "stored", binding: "pending", status: "transferred" },
     ]);
+    const projection = lowerPromiseOwnershipToResourceProtocol(result.promiseBindings);
+    const evaluation = evaluateResourceProtocol(projection.model);
+    expect(evaluation.status).toBe("unsatisfied");
+    for (const [id, binding] of projection.resources) {
+      expect(evaluation.states.get(id)).toBe(binding.status === "floating" ? "available"
+        : binding.status === "observed" ? "consumed" : "transferred");
+    }
+    expect([...projection.resources.values()].filter(({ status }) => status === "floating").map(({ owner }) => owner))
+      .toEqual(["bad", "borrowed", "conditionallyWrapped"]);
     expect(result.diagnostics.filter((item) => item.kind === "floating-promise")).toEqual([
       expect.objectContaining({ functionName: "bad", message: expect.stringContaining("pending") }),
       expect.objectContaining({ functionName: "borrowed", message: expect.stringContaining("pending") }),

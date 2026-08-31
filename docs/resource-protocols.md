@@ -121,6 +121,19 @@ skipping disposal of unacquired resources. The existing Quint resource model
 remains the stronger check for acquisition failure, async suspension,
 `SuppressedError`, and reverse-order counterexamples.
 
+## Promise rejection ownership
+
+Promise bindings can be projected into the same terminal-state vocabulary.
+A newly tracked rejection responsibility starts `available`; a binding observed
+by supported `await`/handler forms becomes `consumed`, an explicit consumer or
+escape becomes `transferred`, and a floating binding remains `available`, so it
+fails the required `consumed | transferred` terminal set.
+
+This first projection intentionally mirrors the existing binding-level async
+analysis. Immutable aliases are currently separate compatibility records, not
+one proven underlying Promise identity. It therefore does not yet replace the
+alias/control-flow analysis or prove that an arbitrary thenable is handled.
+
 ## Current lowering
 
 The abortable-fetch analysis currently lowers these reviewed fragments:

@@ -251,6 +251,11 @@ same property is proved for arbitrary TypeScript.
   precondition. Reverse order and disposal completion metadata are preserved.
   Conditional/failed acquisition is still checked by the dedicated Quint model
   because the shared lattice does not yet retain `absent | available`.
+- Binding-level Promise rejection ownership projects to the same resource IR:
+  floating remains available, observation consumes, and explicit ownership
+  transfer reaches transferred. Alias bindings are not yet unified by one
+  underlying Promise identity, so the existing async analysis remains the
+  source of truth for control-flow classification.
 
 ## Contracts and formal backends
 

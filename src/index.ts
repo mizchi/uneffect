@@ -260,6 +260,8 @@ export { evaluateResourceProtocol, evaluateResourceProtocolCfg, instantiateResou
 export type { ResourceCallableBindings, ResourceCallableInstantiation, ResourceCallableOperation, ResourceCallableReference, ResourceCallableSummary, ResourceProtocolBlock, ResourceProtocolCfg, ResourceProtocolCfgEvaluation, ResourceProtocolDiagnostic, ResourceProtocolEvaluation, ResourceProtocolModel, ResourceProtocolResource, ResourceProtocolState, ResourceProtocolTransition, ResourceTerminalState } from "./resource-protocol.js";
 export { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.js";
 export type { ResourceDisposalCompletion, ResourceDisposalProtocolProjection } from "./resource-disposal-protocol.js";
+export { lowerPromiseOwnershipToResourceProtocol } from "./promise-ownership-protocol.js";
+export type { PromiseOwnershipProtocolProjection } from "./promise-ownership-protocol.js";
 export { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "./resource-callable-typescript.js";
 export type { ResourceCallableDiagnostic, ResourceCallableSiteAnalysis, ResourceCallableSummaryAnalysis } from "./resource-callable-typescript.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";
