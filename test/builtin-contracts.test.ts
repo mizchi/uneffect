@@ -46,6 +46,11 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: { kind: "dom", operations: ["NodeWrite"], mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true } }),
       expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "EventTarget#dispatchEvent" }, operation: { kind: "dom", operations: ["Dispatch"], invokesUserCode: true } }),
       expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "DOMParser#parseFromString" }, operation: { kind: "dom", operations: ["Parse"] } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Node#textContent" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite", "NodeWrite"], mutatesReceiverOnWrite: true }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Element#innerHTML" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "HTMLScriptElement#src" }, operation: { kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"], mutatesReceiverOnWrite: true } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Document#cookie" }, operation: { kind: "effect-property", readEffect: "CookieRead", writeEffect: "CookieWrite" } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Storage#length" }, operation: { kind: "effect-property", readEffect: "LocalStorageRead" } }),
     ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,

@@ -46,7 +46,10 @@ DOM method definitions are catalog-owned as a separate slice. Node, attribute,
 text, layout, creation, parsing, listener, and dispatch operations retain their
 receiver/argument mutation regions, selector scopes, and possible user-code
 invocation. DOM property reads and writes remain a separate projection because
-their semantics depend on access direction.
+their semantics depend on access direction. The directional property slice is
+also catalog-owned: tree/text/markup/layout/script properties retain distinct
+read and write operations, mutation regions, and possible user-code invocation.
+Cookie and Storage properties retain separate read/write capability effects.
 
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
 host implementation was proved. Unsupported callback composition remains

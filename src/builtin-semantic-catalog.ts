@@ -1,4 +1,4 @@
-import type { BuiltinContract, DomBuiltinOperation, DomOperation } from "./builtin-contracts.js";
+import type { BuiltinContract, DomBuiltinOperation, DomOperation, DomPropertyBuiltinOperation } from "./builtin-contracts.js";
 
 export type BuiltinSemanticPlatform = "javascript" | "node" | "dom";
 export interface ReviewedBuiltinSemantic extends Omit<BuiltinContract, "evidence"> {
@@ -83,6 +83,46 @@ function domMethodDefinitions(): ReviewedBuiltinSemantic[] {
   return entries.map(([key, operation]) => reviewed("dom", { symbol: { module: "lib.dom", export: key }, operation }));
 }
 
+function domPropertyDefinitions(): ReviewedBuiltinSemantic[] {
+  const readOnly = (operation: DomOperation): DomPropertyBuiltinOperation => ({
+    kind: "dom-property", readOperations: [operation], writeOperations: [],
+  });
+  const entries: Array<[string, DomPropertyBuiltinOperation]> = [
+    ["Element#attributes", { kind: "dom-property", readOperations: ["AttributeRead"], writeOperations: [], resultRegion: "receiver" }],
+    ...[
+      "Node#parentNode", "Node#parentElement", "Node#childNodes", "Node#firstChild", "Node#lastChild",
+      "Node#nextSibling", "Node#previousSibling", "Node#ownerDocument", "Node#isConnected",
+      "ParentNode#children", "ParentNode#firstElementChild", "ParentNode#lastElementChild",
+      "ParentNode#childElementCount", "NonDocumentTypeChildNode#nextElementSibling",
+      "NonDocumentTypeChildNode#previousElementSibling",
+    ].map((key): [string, DomPropertyBuiltinOperation] => [key, readOnly("NodeRead")]),
+    ["Node#textContent", {
+      kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite", "NodeWrite"],
+      mutatesReceiverOnWrite: true, invokesUserCodeOnWrite: true,
+    }],
+    ["Node#nodeValue", { kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"], mutatesReceiverOnWrite: true }],
+    ["CharacterData#data", { kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"], mutatesReceiverOnWrite: true }],
+    ...["Element#innerHTML", "ShadowRoot#innerHTML"].map((key): [string, DomPropertyBuiltinOperation] => [key, {
+      kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"],
+      mutatesReceiverOnWrite: true, invokesUserCodeOnWrite: true,
+    }]),
+    ["Element#outerHTML", {
+      kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"],
+      writeRegion: "parentNode", mutatesReceiverOnWrite: true, mutatesWriteRegionOnWrite: true, invokesUserCodeOnWrite: true,
+    }],
+    ...[
+      "Element#clientHeight", "Element#clientLeft", "Element#clientTop", "Element#clientWidth",
+      "Element#scrollHeight", "Element#scrollWidth", "HTMLElement#offsetHeight", "HTMLElement#offsetWidth",
+    ].map((key): [string, DomPropertyBuiltinOperation] => [key, readOnly("LayoutRead")]),
+    ["HTMLInputElement#value", { kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"], mutatesReceiverOnWrite: true }],
+    ...["src", "integrity", "crossOrigin", "type", "async", "defer", "referrerPolicy", "nonce"]
+      .map((name): [string, DomPropertyBuiltinOperation] => [`HTMLScriptElement#${name}`, {
+        kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"], mutatesReceiverOnWrite: true,
+      }]),
+  ];
+  return entries.map(([key, operation]) => reviewed("dom", { symbol: { module: "lib.dom", export: key }, operation }));
+}
+
 export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
   schema: "uneffect-builtin-semantics/v1",
   definitions: [
@@ -162,6 +202,9 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     ...["getRandomValues", "randomUUID"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Crypto#${name}` }, operation: { kind: "effect", effect: "Random" } })),
     ...["Worker#postMessage", "MessagePort#postMessage"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: name }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } })),
     ...domMethodDefinitions(),
+    ...domPropertyDefinitions(),
+    reviewed("dom", { symbol: { module: "lib.dom", export: "Document#cookie" }, operation: { kind: "effect-property", readEffect: "CookieRead", writeEffect: "CookieWrite" } }),
+    reviewed("dom", { symbol: { module: "lib.dom", export: "Storage#length" }, operation: { kind: "effect-property", readEffect: "LocalStorageRead" } }),
     ...["getItem", "key"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageRead" } })),
     ...["setItem", "removeItem", "clear"].map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: `Storage#${name}` }, operation: { kind: "effect", effect: "LocalStorageWrite" } })),
     reviewed("dom", { symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),

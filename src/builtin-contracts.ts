@@ -1,3 +1,5 @@
+import { dirname, join } from "node:path";
+import ts from "typescript";
 import { builtinSemanticCatalog, materializeBuiltinSemanticDefinitions } from "./builtin-semantic-catalog.js";
 
 export interface BuiltinSymbolKey {
@@ -332,74 +334,5 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete"].map((name): BuiltinContract => ({
       ...trusted({ symbol: { module: "lib.es", export: name }, operation: { kind: "mutation" } }),
     })),
-    ...domPropertyBuiltinContracts(),
-    trusted({ symbol: { module: "lib.dom", export: "Document#cookie" }, operation: {
-      kind: "effect-property", readEffect: "CookieRead", writeEffect: "CookieWrite",
-    } }),
-    trusted({ symbol: { module: "lib.dom", export: "Storage#length" }, operation: {
-      kind: "effect-property", readEffect: "LocalStorageRead",
-    } }),
   ],
 };
-
-function domPropertyBuiltinContracts(): BuiltinContract[] {
-  const readOnly = (operation: DomOperation): DomPropertyBuiltinOperation => ({
-    kind: "dom-property", readOperations: [operation], writeOperations: [],
-  });
-  const entries: Array<[string, DomPropertyBuiltinOperation]> = [
-    ["Element#attributes", {
-      kind: "dom-property", readOperations: ["AttributeRead"], writeOperations: [], resultRegion: "receiver",
-    }],
-    ...[
-      "Node#parentNode", "Node#parentElement", "Node#childNodes", "Node#firstChild", "Node#lastChild",
-      "Node#nextSibling", "Node#previousSibling", "Node#ownerDocument", "Node#isConnected",
-      "ParentNode#children", "ParentNode#firstElementChild", "ParentNode#lastElementChild",
-      "ParentNode#childElementCount", "NonDocumentTypeChildNode#nextElementSibling",
-      "NonDocumentTypeChildNode#previousElementSibling",
-    ].map((key): [string, DomPropertyBuiltinOperation] => [key, readOnly("NodeRead")]),
-    ["Node#textContent", {
-      kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite", "NodeWrite"],
-      mutatesReceiverOnWrite: true, invokesUserCodeOnWrite: true,
-    }],
-    ["Node#nodeValue", {
-      kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"],
-      mutatesReceiverOnWrite: true,
-    }],
-    ["CharacterData#data", {
-      kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"],
-      mutatesReceiverOnWrite: true,
-    }],
-    ...["Element#innerHTML", "ShadowRoot#innerHTML"].map((key): [string, DomPropertyBuiltinOperation] => [key, {
-      kind: "dom-property",
-      readOperations: ["NodeRead", "AttributeRead", "TextRead"],
-      writeOperations: ["Parse", "NodeWrite"],
-      mutatesReceiverOnWrite: true,
-      invokesUserCodeOnWrite: true,
-    }]),
-    ["Element#outerHTML", {
-      kind: "dom-property",
-      readOperations: ["NodeRead", "AttributeRead", "TextRead"],
-      writeOperations: ["Parse", "NodeWrite"],
-      writeRegion: "parentNode",
-      mutatesReceiverOnWrite: true,
-      mutatesWriteRegionOnWrite: true,
-      invokesUserCodeOnWrite: true,
-    }],
-    ...[
-      "Element#clientHeight", "Element#clientLeft", "Element#clientTop", "Element#clientWidth",
-      "Element#scrollHeight", "Element#scrollWidth", "HTMLElement#offsetHeight", "HTMLElement#offsetWidth",
-    ].map((key): [string, DomPropertyBuiltinOperation] => [key, readOnly("LayoutRead")]),
-    ["HTMLInputElement#value", {
-      kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"],
-      mutatesReceiverOnWrite: true,
-    }],
-    ...["src", "integrity", "crossOrigin", "type", "async", "defer", "referrerPolicy", "nonce"]
-      .map((name): [string, DomPropertyBuiltinOperation] => [`HTMLScriptElement#${name}`, {
-        kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"],
-        mutatesReceiverOnWrite: true,
-      }]),
-  ];
-  return entries.map(([key, operation]) => trusted({ symbol: { module: "lib.dom", export: key }, operation }));
-}
-import { dirname, join } from "node:path";
-import ts from "typescript";

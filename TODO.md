@@ -48,7 +48,8 @@ The Web host boundary slice now covers fetch, console, timers, animation frames,
 AbortSignal, Scheduler, Web Crypto, and Worker/MessagePort transfer definitions.
 DOM method definitions are also migrated with operation granularity, selector
 scope, mutation regions, and possible user-code invocation preserved. Directional
-DOM property semantics remain the next catalog group.
+DOM property semantics, including Cookie and Storage permission properties, are
+now migrated with access-direction and mutation-region metadata preserved.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct
