@@ -40,6 +40,7 @@ export const ciTestTiers = {
     "test/resource-callable-artifact.test.ts",
     "test/resource-protocol-typescript.test.ts",
     "test/resource-protocol.test.ts",
+    "test/resource-temporal-product.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
     "test/test-timeouts.test.ts",

@@ -266,6 +266,8 @@ export { authenticateResourceCallableContractArtifact, createResourceCallableCon
 export type { ResourceCallableArtifactAuthentication, ResourceCallableArtifactEnvironment, ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
 export { analyzeAsyncIteratorCleanup } from "./async-iterator-cleanup.js";
 export type { AsyncIteratorCleanup, AsyncIteratorCleanupScenario, AsyncIteratorExit } from "./async-iterator-cleanup.js";
+export { createResourceDisposalTemporalProduct, evaluateResourceTemporalProduct, resourceTemporalProductSchema } from "./resource-temporal-product.js";
+export type { ResourceDisposalTemporalProductResult, ResourceTemporalLink, ResourceTemporalProduct, ResourceTemporalProductEvaluation } from "./resource-temporal-product.js";
 export { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "./resource-callable-typescript.js";
 export type { ResourceCallableDiagnostic, ResourceCallableSiteAnalysis, ResourceCallableSummaryAnalysis } from "./resource-callable-typescript.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";

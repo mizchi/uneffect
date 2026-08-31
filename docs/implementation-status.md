@@ -261,6 +261,11 @@ same property is proved for arbitrary TypeScript.
   `return` lookup and awaited rejection metadata are retained. Finally-crossing
   completion and implicit exceptions remain unknown; this is not yet general
   AsyncIteratorClose or generator-delegation verification.
+- `uneffect-resource-temporal-product/v1` links acquired using-resource releases
+  to host-neutral disposal transitions with resource identity and lane checks.
+  Its result remains `exact-under-precondition`; dangling, duplicate,
+  mismatched, and unlinked release edges are unknown. Executable Quint still
+  uses the existing bounded dedicated resource/host generator.
 - Explicit package resource-callable artifacts bind trusted summaries to exact
   module/export, runtime version, declaration bytes, artifact digest, review
   owner/reason, and optional expiry. Accepted artifacts are rebound to the
