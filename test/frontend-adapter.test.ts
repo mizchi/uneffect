@@ -263,6 +263,38 @@ describe("TypeChecker symbol adapter", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("uses a versioned external fresh-result annotation", () => {
+    const directory = mkdtempSync(join(process.cwd(), ".uneffect-fresh-result-"));
+    const packageRoot = join(directory, "node_modules", "reviewed-values");
+    const fileName = join(directory, "input.ts");
+    try {
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(join(packageRoot, "package.json"), JSON.stringify({
+        name: "reviewed-values", version: "1.0.0", types: "index.d.ts",
+      }));
+      writeFileSync(join(packageRoot, "index.d.ts"), "export declare function keys(value: object): string[]");
+      writeFileSync(fileName, `
+        import { keys } from "reviewed-values"
+        /* uneffect:capability effect none */
+        export function sorted(value: object) { return keys(value).sort() }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const registry = (version: string) => extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
+        symbol: { module: "reviewed-values", export: "keys" },
+        runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
+        result: { kind: "fresh" as const },
+        trustReason: "reviewed allocation contract", trustOwner: "test",
+      }] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("1.0.0") }).summaries.find((item) => item.functionName === "sorted"))
+        .toMatchObject({ evidence: "verified", effects: [] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("1.0.1") }).summaries.find((item) => item.functionName === "sorted"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("applies tmpdir refinement through aliased and namespace symbol identity only", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-symbols-"));
     const fileName = join(directory, "input.ts");

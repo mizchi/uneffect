@@ -5,6 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
 import { analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
+import { formatEffect } from "../src/capabilities.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
 import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
@@ -2570,6 +2571,32 @@ describe("Uneffect dogfood", () => {
       functionName: "evaluateStaticPrimitive",
       effect: "Console",
       kind: "unused",
+    }));
+  });
+
+  it("enforces pure construction while retaining throws on coordinate lookup methods", () => {
+    const fileName = "src/project-coordinates.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "createProjectByteCoordinates"))
+      .toMatchObject({ evidence: "verified", effects: [] });
+    expect(selected.find((summary) => summary.functionName === "projectFunctionDisplayName"))
+      .toMatchObject({ evidence: "verified", effects: [] });
+    expect(selected.filter((summary) => summary.functionName === "base" || summary.functionName === "offset")
+      .map((summary) => ({ name: summary.functionName, effects: summary.effects.map((effect) => formatEffect(effect)) })))
+      .toEqual([{ name: "base", effects: ["Throw<Error>"] }, { name: "offset", effects: ["Throw<Error>"] }]);
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect none */",
+      "/* uneffect:capability effect Console */",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "createProjectByteCoordinates", effect: "Console", kind: "unused",
     }));
   });
 

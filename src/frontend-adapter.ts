@@ -1,12 +1,12 @@
 import ts from "typescript";
 import { createHash } from "node:crypto";
-import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinOperation, type BuiltinSymbolKey, type PathResultRefinement } from "./builtin-contracts.js";
+import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinOperation, type BuiltinResultRefinement, type BuiltinSymbolKey } from "./builtin-contracts.js";
 import type { SourceSpan } from "./annotations.js";
 
 export interface ResolvedCallSite {
   symbol: BuiltinSymbolKey;
   span: SourceSpan;
-  result?: PathResultRefinement;
+  result?: BuiltinResultRefinement;
   operation?: BuiltinOperation;
   callableResult?: BuiltinContract["callableResult"];
   capturedCallbacks?: readonly ts.Expression[];

@@ -367,6 +367,14 @@ describe("effect checker", () => {
     expect(analyzeEffects("locals.ts", source)).toEqual([]);
   });
 
+  it("does not leak mutation of a reviewed fresh builtin result", () => {
+    const source = `
+      /* uneffect:capability effect none */
+      function sortedKeys(value: object) { return Object.keys(value).sort() }
+    `;
+    expect(analyzeEffects("fresh-result.ts", source)).toEqual([]);
+  });
+
   it("supports inference-only adoption without weakening annotated boundaries", () => {
     expect(analyzeEffects("infer.ts", `function inferred() { console.log("x") }`, { requireAnnotations: false })).toEqual([]);
     expect(analyzeEffects("infer.ts", `/* uneffect:capability effect Timer */ function checked() { console.log("x") }`, { requireAnnotations: false }))

@@ -50,6 +50,36 @@ The option may be repeated. Module identities and effect names must not conflict
 
 The programmatic API is `loadUneffectModules()` or `installUneffectModules()`.
 
+## Annotating external package APIs
+
+Use a semantics module when the library cannot or should not contain Uneffect
+comments. A contract is attached to the TypeChecker-resolved package export,
+not to the local variable spelling. Package contracts require an exact runtime
+version; an upgrade without a matching reviewed contract becomes `unknown`.
+
+An API returning a newly allocated, caller-owned object can declare a fresh
+result. This allows later in-place operations on that result without claiming a
+mutation of library or caller state:
+
+```json
+{
+  "symbol": { "module": "reviewed-values", "export": "keys" },
+  "runtime": { "kind": "package", "version": "1.0.0" },
+  "evidence": "trusted",
+  "trustOwner": "platform-runtime",
+  "trustReason": "reviewed implementation always allocates a new Array",
+  "result": { "kind": "fresh" }
+}
+```
+
+`fresh` is an aliasing/ownership claim only. It does not imply that calling the
+API is pure; declare `operation` separately when the call performs a capability
+effect. It also does not prove the external implementation. The result remains
+conditional on the reviewed manifest, exact package version, TypeChecker symbol
+resolution, and module-initialization assumptions. Do not use `fresh` for a
+cache, singleton, pooled object, input alias, view into input memory, or an
+object that the library retains and mutates later.
+
 ## Current boundary
 
 Version 1 intentionally supports only data understood and validated by Uneffect core:
@@ -67,4 +97,3 @@ The intended later tiers are:
 1. declarative modules (implemented here);
 2. proof-producing modules that emit core-validated obligations and source mappings;
 3. isolated executable adapters whose output remains `trusted` unless checked by a supported verifier.
-

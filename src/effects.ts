@@ -381,7 +381,11 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
     return iterable && staticallySafeArray(iterable) ? [] : [capability("InvokeUserCode")];
   }
   if (resolved?.operation?.kind === "effect") return [capability(resolved.operation.effect)];
-  if (resolved?.operation?.kind === "mutation" && ts.isPropertyAccessExpression(call.expression)) return [mutateEffect(call.expression.expression)];
+  if (resolved?.operation?.kind === "mutation" && ts.isPropertyAccessExpression(call.expression)) {
+    const receiver = call.expression.expression;
+    if (ts.isCallExpression(receiver) && adapter.resolveCall(receiver)?.result?.kind === "fresh") return [];
+    return [mutateEffect(receiver)];
+  }
   if (resolved?.operation?.kind === "clone") {
     const value = call.arguments[resolved.operation.valueArgument];
     const effects: Effect[] = value ? [capability(`Clone<typeof ${value.getText()}>`)] : [];

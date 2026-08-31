@@ -8,6 +8,10 @@ export interface PathResultRefinement {
   pattern: string;
 }
 
+/** The reviewed call returns a newly owned object with no aliases in caller-visible state. */
+export interface FreshResultRefinement { kind: "fresh" }
+export type BuiltinResultRefinement = PathResultRefinement | FreshResultRefinement;
+
 export interface FsBuiltinOperation {
   kind: "fs";
   read: boolean;
@@ -95,7 +99,7 @@ export interface BuiltinContract {
   trustReason?: string;
   trustOwner?: string;
   trustExpiresOn?: string;
-  result?: PathResultRefinement;
+  result?: BuiltinResultRefinement;
   operation?: BuiltinOperation;
   callableResult?: CallableResultContract;
 }
@@ -352,6 +356,12 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: `ECMAScript ${owner}.${name} has no callback or host authority`,
       trustOwner: "@mizchi/uneffect",
     }))),
+    trusted({
+      symbol: { module: "lib.es", export: "ObjectConstructor#keys" },
+      result: { kind: "fresh" },
+      trustReason: "ECMAScript Object.keys returns a newly allocated Array",
+      trustOwner: "@mizchi/uneffect",
+    }),
     trusted({
       symbol: { module: "node:module", export: "createRequire" },
       trustReason: "Node createRequire constructs a resolver without loading a target module",

@@ -44,6 +44,7 @@ describe("versioned caller-owned registry configuration", () => {
         evidence: "trusted",
         trustReason: "reviewed reporter factory",
         trustOwner: "observability-platform",
+        result: { kind: "fresh" },
         callableResult: {
           operation: { kind: "effect", effect: "Console" },
           capturedCallbackArguments: [0],
@@ -59,6 +60,7 @@ describe("versioned caller-owned registry configuration", () => {
     });
     expect(registry.moduleInitializations).toContain(builtinContractRegistry.moduleInitializations[0]);
     expect(registry.contracts[1]).toMatchObject({
+      result: { kind: "fresh" },
       callableResult: { operation: { kind: "effect", effect: "Console" }, capturedCallbackArguments: [0] },
     });
   });

@@ -30,16 +30,23 @@ Run the gate with:
 just dogfood-leaf
 ```
 
+## Second boundary: byte coordinates
+
+`src/project-coordinates.ts` now declares pure construction and display-name
+formatting. Its returned `base` and `offset` methods separately declare
+`Throw<Error>` for unknown files. The initial run exposed
+`Mutate<typeof Object.keys(files)>`: mutation of the freshly returned keys array
+was incorrectly treated as observable state. The general fix adds a reviewed
+`fresh` result contract and marks `Object.keys` accordingly. A negative control
+keeps the pure factory annotation load-bearing.
+
 ## Next adoption order
 
 1. `diagnostics.ts` and `diagnostic-quality.ts`: mostly value transformations;
    first separate formatting from any output sink.
-2. `project-coordinates.ts`: explicitly retain `Throw<Error>` for unknown file
-   names. Its current inferred `Mutate<typeof Object.keys(files)>` is a likely
-   fresh-temporary escape false positive and should be fixed before annotation.
-3. `disposal-symbols.ts`: distinguish mutation of an internally created
+2. `disposal-symbols.ts`: distinguish mutation of an internally created
    traversal `Set` from a caller-provided mutable region before claiming purity.
-4. `cli-support.ts`: split pure argument/help formatting from `process.stdout`
+3. `cli-support.ts`: split pure argument/help formatting from `process.stdout`
    and `process.stderr`, then declare the terminal capability at the sink.
 
 Only add a file to `dogfood-leaf` after its positive evidence and a deliberately

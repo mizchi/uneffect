@@ -110,6 +110,13 @@ mismatched version leaves the call unresolved and records no builtin
 assumption. Omitting `operation` explicitly reviews a zero-authority call; it
 does not prove arbitrary functions in that package pure.
 
+A contract may declare `result: { kind: "fresh" }` when every call returns a
+new caller-owned object with no pre-existing aliases. In-place mutation of that
+direct result is then local rather than a `Mutate` capability. This is separate
+from the call's `operation`: a fresh-returning API may still perform effects.
+The claim is trusted and exact-version-bound for packages. It is invalid for
+caches, pools, input aliases, retained objects, and views over existing memory.
+
 A reviewed factory may declare `callableResult`. Its `operation` describes the
 authority of calling the returned function, and `capturedCallbackArguments`
 lists factory arguments synchronously invoked by that returned function. The

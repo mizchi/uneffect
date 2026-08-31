@@ -164,8 +164,8 @@ function builtin(value: unknown, path: string): BuiltinContract {
     }),
   } : undefined;
   const result = input.result === undefined ? undefined : record(input.result, `${path}.result`);
-  if (result) keys(result, ["kind", "pattern"], `${path}.result`);
-  if (result && result.kind !== "path") fail(`${path}.result.kind`, "expected path");
+  if (result) keys(result, result.kind === "path" ? ["kind", "pattern"] : ["kind"], `${path}.result`);
+  if (result && result.kind !== "path" && result.kind !== "fresh") fail(`${path}.result.kind`, "expected path or fresh");
   return {
     symbol: { module, export: string(symbol.export, `${path}.symbol.export`) },
     ...(runtimeValue === undefined ? {} : { runtime: runtimeValue }),
@@ -173,7 +173,8 @@ function builtin(value: unknown, path: string): BuiltinContract {
     trustReason: string(input.trustReason, `${path}.trustReason`),
     trustOwner: string(input.trustOwner, `${path}.trustOwner`),
     ...(expiration(input.trustExpiresOn, `${path}.trustExpiresOn`) ? { trustExpiresOn: input.trustExpiresOn as string } : {}),
-    ...(result ? { result: { kind: "path", pattern: string(result.pattern, `${path}.result.pattern`) } } : {}),
+    ...(result?.kind === "path" ? { result: { kind: "path" as const, pattern: string(result.pattern, `${path}.result.pattern`) } }
+      : result?.kind === "fresh" ? { result: { kind: "fresh" as const } } : {}),
     ...(operationValue === undefined ? {} : { operation: operationValue }),
     ...(callableResultValue === undefined ? {} : { callableResult: callableResultValue }),
   };
