@@ -101,8 +101,22 @@ and immutable import aliases remain identity-based and a same-named shadow does
 not inherit the contract. Arguments and a direct `const result = boundary(...)`
 return are substituted into transition sites. Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions
-produce diagnostics or remain outside the fragment. Imported/package summary
-authentication is not implemented.
+produce diagnostics or remain outside the fragment. Package summaries require
+the explicit authenticated artifact path described below.
+
+Explicitly supplied package contracts can now use
+`uneffect-resource-callable-artifact/v1`. Authentication requires the exact
+module/export, package version or Node major, full declaration-file SHA-256,
+artifact payload SHA-256, and non-empty trust owner/reason. Invalid or expired
+review dates block the artifact. Accepted summaries are rebound to the actual
+TypeChecker declaration identity, enabling the same call-site lowering used for
+local declarations. External artifacts are always `trusted`; a payload that
+self-asserts `verified` is rejected. Automatic package/config discovery is not
+implemented yet. `resourceCallableArtifactAssumption` converts every accepted
+artifact into the shared `resource-callable` assumption-ledger domain, retaining
+dependency version, owner, reason, expiry, and source scope. Until registry
+loading is implemented, callers must explicitly append that entry to their
+ledger.
 
 ## Explicit Resource Management
 

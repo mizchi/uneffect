@@ -256,6 +256,13 @@ same property is proved for arbitrary TypeScript.
   transfer reaches transferred. Alias bindings are not yet unified by one
   underlying Promise identity, so the existing async analysis remains the
   source of truth for control-flow classification.
+- Explicit package resource-callable artifacts bind trusted summaries to exact
+  module/export, runtime version, declaration bytes, artifact digest, review
+  owner/reason, and optional expiry. Accepted artifacts are rebound to the
+  actual TypeChecker declaration identity. External artifacts cannot claim
+  verified evidence. Accepted artifacts have an explicit conversion into the
+  shared `resource-callable` assumption-ledger domain; registry/config
+  auto-discovery and automatic ledger collection remain unimplemented.
 
 ## Contracts and formal backends
 

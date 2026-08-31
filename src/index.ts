@@ -262,6 +262,8 @@ export { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.j
 export type { ResourceDisposalCompletion, ResourceDisposalProtocolProjection } from "./resource-disposal-protocol.js";
 export { lowerPromiseOwnershipToResourceProtocol } from "./promise-ownership-protocol.js";
 export type { PromiseOwnershipProtocolProjection } from "./promise-ownership-protocol.js";
+export { authenticateResourceCallableContractArtifact, createResourceCallableContractArtifact, resourceCallableArtifactAssumption, resourceCallableArtifactSchema } from "./resource-callable-artifact.js";
+export type { ResourceCallableArtifactAuthentication, ResourceCallableArtifactEnvironment, ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
 export { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "./resource-callable-typescript.js";
 export type { ResourceCallableDiagnostic, ResourceCallableSiteAnalysis, ResourceCallableSummaryAnalysis } from "./resource-callable-typescript.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";

@@ -204,8 +204,12 @@ introducing another domain-local control-flow or alias model.
        return bindings. `uneffect:resource` comments remain trusted declarations,
        malformed/unbound references are diagnostics, and same-named shadows do
        not inherit a contract.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Authenticate imported/package summaries and extend stable return/argument
-       identity beyond the direct supported fragment.
+     - [x] Authenticate explicitly supplied package summaries against exact
+       module/export, runtime version, declaration bytes, artifact digest, and
+       trust owner/reason/expiry, then rebind accepted summaries to the actual
+       TypeChecker declaration identity without upgrading them to verified.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Add config/registry discovery for package resource artifacts and extend
+       stable return/argument identity beyond the direct supported fragment.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
    aliases. Represent may-effects, synchronous throws, Promise rejections,
    region reads/writes, and callback invocation cardinality/timing. Start with

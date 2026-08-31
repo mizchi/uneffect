@@ -6,7 +6,7 @@ import { collectBuiltinCallRefinements } from "./frontend-adapter.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 
-export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-summary" | "dispatch-sealing";
+export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-summary" | "dispatch-sealing" | "resource-callable";
 
 export interface AssumptionScope {
   fileName: string;
