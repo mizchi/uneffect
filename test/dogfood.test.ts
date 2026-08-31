@@ -2600,6 +2600,29 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("keeps disposal traversal mutation internal to its fresh default Set", () => {
+    const fileName = "src/disposal-symbols.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "standardProtocolExpression"))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "seen" })] });
+    expect(selected.find((summary) => summary.functionName === "resolveDisposalProtocol"))
+      .toMatchObject({ evidence: "verified", effects: [] });
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect Mutate<typeof seen> */",
+      "/* uneffect:capability effect none */",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "standardProtocolExpression", effect: "Mutate<typeof seen>", kind: "missing",
+    }));
+  });
+
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
     const program = ts.createProgram([entry], {

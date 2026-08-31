@@ -117,6 +117,12 @@ from the call's `operation`: a fresh-returning API may still perform effects.
 The claim is trusted and exact-version-bound for packages. It is invalid for
 caches, pools, input aliases, retained objects, and views over existing memory.
 
+Fresh default parameters use a related implementation-owned rule. An omitted
+array/object literal or TypeChecker-resolved standard `Array`, `Map`, `Set`,
+`WeakMap`, or `WeakSet` is local to that invocation, so parameter-rooted
+Mutation is not propagated to the caller. Passing an explicit argument
+preserves the Mutation; a same-spelled user constructor is not trusted.
+
 A reviewed factory may declare `callableResult`. Its `operation` describes the
 authority of calling the returned function, and `capturedCallbackArguments`
 lists factory arguments synchronously invoked by that returned function. The

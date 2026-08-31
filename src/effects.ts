@@ -111,6 +111,7 @@ interface FunctionInfo {
   name: string;
   node: ts.FunctionDeclaration;
   parameters: string[];
+  freshDefaultParameters: Set<number>;
   declared: Effect[];
   declaredPresent: boolean;
   declarationProblems: EffectDeclarationProblem[];
@@ -295,6 +296,20 @@ function observableMutation(effect: Effect, locals: ReadonlySet<string>): boolea
   if (effect.kind !== "mutate") return true;
   const root = /^[A-Za-z_$][\w$]*/.exec(effect.region)?.[0];
   return root !== undefined && !locals.has(root);
+}
+
+function freshDefaultParameter(expression: ts.Expression, checker: ts.TypeChecker): boolean {
+  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) {
+    return freshDefaultParameter(expression.expression, checker);
+  }
+  if (ts.isArrayLiteralExpression(expression) || ts.isObjectLiteralExpression(expression)) return true;
+  if (!ts.isNewExpression(expression) || !ts.isIdentifier(expression.expression)
+    || !["Array", "Map", "Set", "WeakMap", "WeakSet"].includes(expression.expression.text)) return false;
+  const symbol = checker.getSymbolAtLocation(expression.expression);
+  const target = symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+  return target?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+    && declaration.getSourceFile().fileName.includes("lib.es")) ?? false;
 }
 
 function capability(name: string): Effect { return parseEffectExpression(name); }
@@ -616,14 +631,15 @@ function networkBoundaryFromEffects(
   };
 }
 
-function substitute(effect: Effect, callee: FunctionInfo, edge: CallEdge): Effect {
+function substitute(effect: Effect, callee: FunctionInfo, edge: CallEdge): Effect | undefined {
   if (effect.kind !== "mutate") return effect;
   const region = effect.region;
   for (let index = 0; index < callee.parameters.length; index++) {
     const parameter = callee.parameters[index]!;
     if (region === parameter || region.startsWith(`${parameter}.`) || region.startsWith(`${parameter}[`)) {
       const argument = edge.arguments[index];
-      return argument ? { kind: "mutate", region: `${argument}${region.slice(parameter.length)}` } : effect;
+      if (argument) return { kind: "mutate", region: `${argument}${region.slice(parameter.length)}` };
+      return callee.freshDefaultParameters.has(index) ? undefined : effect;
     }
   }
   return effect;
@@ -826,6 +842,8 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       name: node.name.text,
       node,
       parameters: node.parameters.map((p) => ts.isIdentifier(p.name) ? p.name.text : p.name.getText()),
+      freshDefaultParameters: new Set(node.parameters.flatMap((parameter, index) =>
+        parameter.initializer && checker && freshDefaultParameter(parameter.initializer, checker) ? [index] : [])),
       declared: declared.effects,
       declaredPresent: declared.present,
       declarationProblems: declared.problems,
@@ -990,6 +1008,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
         if (rawEffect.kind === "throw" && isAsyncFunction(info.node)) continue;
         if (edge.dischargesThrow && rawEffect.kind === "throw") continue;
         const effect = substitute(rawEffect, callee, edge), own = inferred.get(info.name)!;
+        if (effect === undefined) continue;
         if (!own.some((item) => formatEffect(item) === formatEffect(effect))) { own.push(effect); changed = true; }
       }
     }
@@ -1097,6 +1116,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const promiseModels = new Map<ts.SourceFile, PromiseChainModel>();
   const implicitDisposalEdges: CallGraphEdge[] = [];
   const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), declaredPresent = new Set<string>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
+  const freshDefaultParameters = new Map<string, Set<number>>();
   const iteratorEffectBounds = new Map<string, Map<number, { name: string; effects: Effect[] }>>();
   const effectDeclarationProblems: Array<EffectDeclarationProblem & { id: string; fileName: string }> = [];
   const effectParameterProblems: Array<{ id: string; payload: string; start: number; message: string }> = [];
@@ -1111,6 +1131,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (isAsyncFunction(node)) asyncOwners.add(graphNode.id);
     const locals = localBindings(node);
     localsById.set(graphNode.id, locals);
+    freshDefaultParameters.set(graphNode.id, new Set(node.parameters.flatMap((parameter, index) =>
+      parameter.initializer && freshDefaultParameter(parameter.initializer, checker) ? [index] : [])));
     const source = node.getSourceFile(), effects: Effect[] = [];
     const witness = new Map<string, EffectWitness>();
     witnesses.set(graphNode.id, witness);
@@ -1279,10 +1301,15 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         const effect = raw.kind === "mutate" ? (() => {
           for (let index = 0; index < calleeParams.length; index++) {
             const parameter = calleeParams[index]!;
-            if (raw.region === parameter || raw.region.startsWith(`${parameter}.`) || raw.region.startsWith(`${parameter}[`)) return edge.arguments[index] ? { kind: "mutate" as const, region: `${edge.arguments[index]}${raw.region.slice(parameter.length)}` } : raw;
+            if (raw.region === parameter || raw.region.startsWith(`${parameter}.`) || raw.region.startsWith(`${parameter}[`)) {
+              if (edge.arguments[index]) return { kind: "mutate" as const, region: `${edge.arguments[index]}${raw.region.slice(parameter.length)}` };
+              if (freshDefaultParameters.get(edge.callee)?.has(index)) return undefined;
+              return raw;
+            }
           }
           return raw;
         })() : raw;
+        if (effect === undefined) continue;
         if (!observableMutation(effect, localsById.get(edge.caller) ?? new Set())) continue;
         const own = inferred.get(edge.caller)!, key = formatEffect(effect);
         if (!own.some((item) => formatEffect(item) === key)) {

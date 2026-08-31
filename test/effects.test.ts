@@ -375,6 +375,24 @@ describe("effect checker", () => {
     expect(analyzeEffects("fresh-result.ts", source)).toEqual([]);
   });
 
+  it("localizes mutation of a fresh default parameter but preserves an explicit alias", () => {
+    const source = `
+      function walk(value: string, seen = new Set<string>()) {
+        seen.add(value)
+        if (value.length > 1) walk(value.slice(1), seen)
+      }
+      /* uneffect:capability effect none */
+      function local() { walk("abc") }
+      /* uneffect:capability effect none */
+      function aliased(seen: Set<string>) { walk("abc", seen) }
+    `;
+    const diagnostics = analyzeEffects("fresh-default.ts", source, { requireAnnotations: false });
+    expect(diagnostics.filter((item) => item.functionName === "local")).toEqual([]);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "aliased", effect: "Mutate<typeof seen>", kind: "missing",
+    }));
+  });
+
   it("supports inference-only adoption without weakening annotated boundaries", () => {
     expect(analyzeEffects("infer.ts", `function inferred() { console.log("x") }`, { requireAnnotations: false })).toEqual([]);
     expect(analyzeEffects("infer.ts", `/* uneffect:capability effect Timer */ function checked() { console.log("x") }`, { requireAnnotations: false }))

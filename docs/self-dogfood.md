@@ -40,13 +40,21 @@ was incorrectly treated as observable state. The general fix adds a reviewed
 `fresh` result contract and marks `Object.keys` accordingly. A negative control
 keeps the pure factory annotation load-bearing.
 
+## Third boundary: disposal symbol traversal
+
+`src/disposal-symbols.ts` keeps `Mutate<typeof seen>` on its recursive helper,
+but the exported resolver is verified with `effect none`: its omitted `seen`
+argument is the helper's fresh standard-library `new Set()` default. Call
+composition recognizes array/object literals and TypeChecker-resolved standard
+collection constructors as fresh defaults. Supplying an explicit Set still
+propagates its Mutation to the caller, and the broken helper annotation is a
+load-bearing negative control.
+
 ## Next adoption order
 
 1. `diagnostics.ts` and `diagnostic-quality.ts`: mostly value transformations;
    first separate formatting from any output sink.
-2. `disposal-symbols.ts`: distinguish mutation of an internally created
-   traversal `Set` from a caller-provided mutable region before claiming purity.
-3. `cli-support.ts`: split pure argument/help formatting from `process.stdout`
+2. `cli-support.ts`: split pure argument/help formatting from `process.stdout`
    and `process.stderr`, then declare the terminal capability at the sink.
 
 Only add a file to `dogfood-leaf` after its positive evidence and a deliberately
