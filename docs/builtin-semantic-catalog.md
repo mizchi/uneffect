@@ -13,12 +13,12 @@ platforms: Array/Object copying behavior, Node module/path/process helpers, and
 DOM Storage reads and writes. Existing handwritten definitions migrate in
 bounded groups with positive, negative, and symbol-shadowing tests.
 
-The JavaScript catalog also owns non-mutating Array callback/copy helpers,
-Promise combinators, `Math.random`, and `structuredClone`. `Array#sort` remains
-handwritten for now: it simultaneously invokes a comparator and mutates its
-receiver, while the v1 contract currently stores only one `operation`.
-Migrating it requires ordered/multiple semantic projections rather than
-discarding either fact.
+The JavaScript catalog also owns Array callback/copy helpers, Promise
+combinators, `Math.random`, and `structuredClone`. Semantic axes are orthogonal:
+`Array#sort` has an inline-callback operation plus `receiverMutation: true`, so
+neither comparator timing nor destructive receiver behavior is discarded.
+Future result, throw, resource, and argument-mutation projections should follow
+this pattern instead of creating duplicate symbol contracts.
 
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
 host implementation was proved. Unsupported callback composition remains

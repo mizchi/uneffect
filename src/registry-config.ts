@@ -139,7 +139,7 @@ function moduleInitialization(value: unknown, path: string): ModuleInitializatio
 
 function builtin(value: unknown, path: string): BuiltinContract {
   const input = record(value, path);
-  keys(input, ["symbol", "runtime", "evidence", "trustReason", "trustOwner", "trustExpiresOn", "result", "operation", "callableResult"], path);
+  keys(input, ["symbol", "runtime", "evidence", "trustReason", "trustOwner", "trustExpiresOn", "result", "receiverMutation", "operation", "callableResult"], path);
   const symbol = record(input.symbol, `${path}.symbol`);
   keys(symbol, ["module", "export"], `${path}.symbol`);
   const module = string(symbol.module, `${path}.symbol.module`);
@@ -166,6 +166,7 @@ function builtin(value: unknown, path: string): BuiltinContract {
   const result = input.result === undefined ? undefined : record(input.result, `${path}.result`);
   if (result) keys(result, result.kind === "path" ? ["kind", "pattern"] : ["kind"], `${path}.result`);
   if (result && result.kind !== "path" && result.kind !== "fresh") fail(`${path}.result.kind`, "expected path or fresh");
+  if (input.receiverMutation !== undefined && typeof input.receiverMutation !== "boolean") fail(`${path}.receiverMutation`, "expected a boolean");
   return {
     symbol: { module, export: string(symbol.export, `${path}.symbol.export`) },
     ...(runtimeValue === undefined ? {} : { runtime: runtimeValue }),
@@ -176,6 +177,7 @@ function builtin(value: unknown, path: string): BuiltinContract {
     ...(result?.kind === "path" ? { result: { kind: "path" as const, pattern: string(result.pattern, `${path}.result.pattern`) } }
       : result?.kind === "fresh" ? { result: { kind: "fresh" as const } } : {}),
     ...(operationValue === undefined ? {} : { operation: operationValue }),
+    ...(input.receiverMutation === undefined ? {} : { receiverMutation: input.receiverMutation as boolean }),
     ...(callableResultValue === undefined ? {} : { callableResult: callableResultValue }),
   };
 }

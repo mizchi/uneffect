@@ -434,6 +434,11 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
   if (resolved?.operation?.kind === "dom" && ts.isPropertyAccessExpression(call.expression)) {
     return effectsForResolvedDomCall(resolved.operation, call, adapter);
   }
+  if (resolved?.receiverMutation && ts.isPropertyAccessExpression(call.expression)) {
+    const receiver = call.expression.expression;
+    if (ts.isCallExpression(receiver) && adapter.resolveCall(receiver)?.result?.kind === "fresh") return [];
+    return [mutateEffect(receiver)];
+  }
   return [];
 }
 

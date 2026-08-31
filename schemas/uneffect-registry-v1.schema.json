@@ -147,6 +147,7 @@
         "trustOwner": { "$ref": "#/$defs/nonEmptyString" },
         "trustExpiresOn": { "type": "string", "format": "date" },
         "result": { "oneOf": [{ "$ref": "#/$defs/pathResult" }, { "$ref": "#/$defs/freshResult" }] },
+        "receiverMutation": { "type": "boolean" },
         "operation": { "$ref": "#/$defs/operation" },
         "callableResult": { "$ref": "#/$defs/callableResult" }
       }

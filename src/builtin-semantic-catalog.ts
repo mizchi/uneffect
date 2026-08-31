@@ -27,9 +27,14 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     }))),
     ...(["Array", "ReadonlyArray"] as const).map((owner) => reviewed("javascript", {
       symbol: { module: "lib.es", export: `${owner}#toSorted` },
-      operation: { kind: "inline-callback", callbackArguments: [0] }, result: { kind: "fresh" },
+      operation: { kind: "inline-callback", callbackArguments: [0], optionalCallbackArguments: [0] }, result: { kind: "fresh" },
       trustReason: `ECMAScript ${owner}.toSorted returns a fresh Array and invokes its optional comparator synchronously`, trustOwner: "@mizchi/uneffect",
     })),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "Array#sort" },
+      operation: { kind: "inline-callback", callbackArguments: [0], optionalCallbackArguments: [0] }, receiverMutation: true,
+      trustReason: "ECMAScript Array.sort mutates its receiver and invokes its optional comparator synchronously", trustOwner: "@mizchi/uneffect",
+    }),
     ...(["keys", "entries"] as const).map((name) => reviewed("javascript", {
       symbol: { module: "lib.es", export: `ObjectConstructor#${name}` }, result: { kind: "fresh" },
       trustReason: `ECMAScript Object.${name} returns a newly allocated Array`, trustOwner: "@mizchi/uneffect",

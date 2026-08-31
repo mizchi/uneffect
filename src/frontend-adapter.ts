@@ -8,6 +8,7 @@ export interface ResolvedCallSite {
   span: SourceSpan;
   result?: BuiltinResultRefinement;
   operation?: BuiltinOperation;
+  receiverMutation?: boolean;
   callableResult?: BuiltinContract["callableResult"];
   capturedCallbacks?: readonly ts.Expression[];
   queryRefinement?: { kind: "css-selector"; selector: string };
@@ -238,6 +239,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       span: { start: call.getStart(), end: call.getEnd() },
       result: contract.result,
       operation: contract.operation,
+      receiverMutation: contract.receiverMutation,
       callableResult: contract.callableResult,
       queryRefinement: contract.operation?.kind === "dom" && contract.operation.queryArgument !== undefined
         && call.arguments[contract.operation.queryArgument] !== undefined

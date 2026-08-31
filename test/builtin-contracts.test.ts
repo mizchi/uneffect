@@ -15,6 +15,7 @@ describe("builtin semantic overlays", () => {
     expect(contracts.every((item) => item.evidence === "trusted")).toBe(true);
     expect(builtinSemanticCatalog.definitions).toEqual(expect.arrayContaining([
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#sort" }, operation: expect.objectContaining({ kind: "inline-callback", callbackArguments: [0] }), receiverMutation: true }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "PromiseConstructor#all" }, operation: { kind: "promise-combinator", combinator: "all", iterableArgument: 0 } }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "Math.random" }, operation: { kind: "effect", effect: "Random" } }),
       expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
@@ -154,7 +155,7 @@ describe("builtin semantic overlays", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#map" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#flatMap" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
-      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toSorted" }, operation: { kind: "inline-callback", callbackArguments: [0] }, result: { kind: "fresh" } }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toSorted" }, operation: expect.objectContaining({ kind: "inline-callback", callbackArguments: [0] }), result: { kind: "fresh" } }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#slice" } }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#join" } }),
       expect.objectContaining({ symbol: { module: "node:module", export: "createRequire" } }),

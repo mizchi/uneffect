@@ -102,6 +102,8 @@ export interface BuiltinContract {
   trustOwner?: string;
   trustExpiresOn?: string;
   result?: BuiltinResultRefinement;
+  /** Orthogonal projection: the call mutates its receiver in addition to its primary operation. */
+  receiverMutation?: boolean;
   operation?: BuiltinOperation;
   callableResult?: CallableResultContract;
 }
@@ -346,10 +348,6 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: `Valibot 1.4.2 ${name} constructs schema metadata without executing validation`,
       trustOwner: "@mizchi/uneffect",
     })),
-    ...(["Array", "ReadonlyArray"] as const).map((owner): BuiltinContract => trusted({
-      symbol: { module: "lib.es", export: `${owner}#sort` }, operation: { kind: "inline-callback", callbackArguments: [0] },
-      trustReason: `ECMAScript ${owner}.sort invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
-    })),
     ...materializeBuiltinSemanticDefinitions(builtinSemanticCatalog.definitions),
     trusted({
       symbol: { module: "typescript", export: "Program#emit" },
@@ -485,7 +483,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       symbol: { module: "lib.dom", export: `Crypto#${name}` }, operation: { kind: "effect", effect: "Random" },
     })),
     ...["Worker#postMessage", "MessagePort#postMessage"].map((name): BuiltinContract => trusted({ symbol: { module: "lib.dom", export: name }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } })),
-    ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#sort", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete"].map((name): BuiltinContract => ({
+    ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete"].map((name): BuiltinContract => ({
       ...trusted({ symbol: { module: "lib.es", export: name }, operation: { kind: "mutation" } }),
     })),
     ...domBuiltinContracts(),
