@@ -58,6 +58,12 @@ with their enclosing owner and require separate analysis. Handler edges include
 explicit `throw`; implicit exceptions and Promise rejection require separate
 throw/rejection evidence and are not inferred from arbitrary calls.
 
+An authenticated transition site may carry `exceptionalCompletion: "throw"`.
+The lowering adds its exceptional successor to the active catch/finally
+continuation independently of resource transitions. This is the common receiver
+for future trusted/verified callable `Throw` summaries and awaited `Reject`
+summaries; unknown calls do not manufacture this edge.
+
 ## Current lowering
 
 The abortable-fetch analysis currently lowers these reviewed fragments:
@@ -80,10 +86,10 @@ can now join to `consumed`; a missing arm joins `available` and `consumed` to
 ## Assurance boundary
 
 The evaluators are general, but TypeScript lowering is still a reviewed fragment.
-It does not yet provide a general JavaScript CFG, heap/region fixed point, or
-interprocedural resource summary. Unsupported aliases, loops, exception paths,
-dynamic dispatch, getters, proxies, and cross-function escapes must remain
-unknown unless a frontend emits authenticated evidence.
+It does not yet provide a complete JavaScript CFG, heap/region fixed point, or
+interprocedural resource summary. Unsupported aliases, implicit exception and
+rejection sources, dynamic dispatch, getters, proxies, and cross-function
+escapes must remain unknown unless a frontend emits authenticated evidence.
 
 Plugins must eventually contribute versioned declarative protocol summaries
 that are bound to exact symbol/declaration and package provenance. An executable

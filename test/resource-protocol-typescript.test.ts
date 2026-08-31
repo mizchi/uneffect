@@ -12,6 +12,9 @@ function fixture(text: string): { source: ts.SourceFile; fn: ts.FunctionDeclarat
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "consume") {
       sites.push({ node, transitions: [{ kind: "consume", resource: "body", at: node.getStart(source) }] });
     }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "risky") {
+      sites.push({ node, transitions: [], exceptionalCompletion: "throw" });
+    }
     ts.forEachChild(node, visit);
   };
   visit(fn);
@@ -167,5 +170,26 @@ describe("TypeScript resource protocol CFG lowering", () => {
     expect(lowered.status).toBe("exact");
     if (lowered.status !== "exact") return;
     expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({ status: "satisfied" });
+  });
+
+  it("routes an authenticated call throw into catch", () => {
+    const { source, fn, sites } = fixture(`
+      function main() {
+        try {
+          risky()
+          consume(body)
+        } catch {
+          consume(body)
+          consume(body)
+        }
+      }
+    `);
+    const lowered = lowerResourceProtocolCfgInFunction(source, fn, model, sites);
+    expect(lowered.status).toBe("exact");
+    if (lowered.status !== "exact") return;
+    expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({
+      status: "unknown",
+      diagnostics: [expect.objectContaining({ code: "invalid-transition", state: "consumed" })],
+    });
   });
 });

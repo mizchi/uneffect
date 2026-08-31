@@ -4,6 +4,8 @@ import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourcePro
 export interface ResourceTransitionSite {
   readonly node: ts.Node;
   readonly transitions: readonly ResourceProtocolTransition[];
+  /** Authenticated synchronous throw, or an awaited rejection converted to throw. */
+  readonly exceptionalCompletion?: "throw";
 }
 
 export type ResourceProtocolTypeScriptLowering =
@@ -48,12 +50,15 @@ export function lowerResourceProtocolCfgInFunction(
   const used = new Set<ResourceTransitionSite>();
   let serial = 0;
   const id = (kind: string, node?: ts.Node): string => `${kind}_${node?.getStart(source) ?? "synthetic"}_${serial++}`;
-  const transitionsFor = (statement: ts.Statement): readonly ResourceProtocolTransition[] => {
+  const sitesFor = (statement: ts.Statement): readonly ResourceTransitionSite[] => {
     const selected = sites.filter((site) => siteStatements.get(site) === statement)
       .sort((left, right) => left.node.getStart(source) - right.node.getStart(source));
     for (const site of selected) used.add(site);
-    return selected.flatMap((site) => site.transitions);
+    return selected;
   };
+  const transitionsFor = (statement: ts.Statement): readonly ResourceProtocolTransition[] => sitesFor(statement).flatMap((site) => site.transitions);
+  const successorsFor = (statement: ts.Statement, normal: readonly string[], context: Context): readonly string[] =>
+    sitesFor(statement).some((site) => site.exceptionalCompletion === "throw") ? [...normal, context.throwTarget] : normal;
   const exit = id("exit");
   blocks.set(exit, { id: exit, transitions: [], successors: [] });
   let unsupported: ts.Statement | undefined;
@@ -73,7 +78,7 @@ export function lowerResourceProtocolCfgInFunction(
     const bodyEntry = lowerStatement(statement.statement, header, loopContext);
     const staticallyInfinite = ts.isWhileStatement(statement) && statement.expression.kind === ts.SyntaxKind.TrueKeyword
       || ts.isForStatement(statement) && !statement.condition;
-    blocks.set(header, { id: header, transitions: transitionsFor(statement), successors: [bodyEntry, ...(staticallyInfinite ? [] : [continuation])] });
+    blocks.set(header, { id: header, transitions: transitionsFor(statement), successors: successorsFor(statement, [bodyEntry, ...(staticallyInfinite ? [] : [continuation])], context) });
     return ts.isDoStatement(statement) ? bodyEntry : header;
   };
   const lowerStatement = (statement: ts.Statement, continuation: string, context: Context): string => {
@@ -82,12 +87,13 @@ export function lowerResourceProtocolCfgInFunction(
       const whenTrue = lowerStatement(statement.thenStatement, continuation, context);
       const whenFalse = statement.elseStatement ? lowerStatement(statement.elseStatement, continuation, context) : continuation;
       const blockId = id("if", statement);
-      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [whenTrue, whenFalse] });
+      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: successorsFor(statement, [whenTrue, whenFalse], context) });
       return blockId;
     }
     if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
       const blockId = id(ts.isReturnStatement(statement) ? "return" : "throw", statement);
-      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [ts.isReturnStatement(statement) ? context.returnTarget : context.throwTarget] });
+      const target = ts.isReturnStatement(statement) ? context.returnTarget : context.throwTarget;
+      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: ts.isReturnStatement(statement) ? successorsFor(statement, [target], context) : [target] });
       return blockId;
     }
     if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) {
@@ -116,7 +122,7 @@ export function lowerResourceProtocolCfgInFunction(
       }
       const hasDefault = statement.caseBlock.clauses.some(ts.isDefaultClause);
       const blockId = id("switch", statement);
-      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [...entries, ...(hasDefault ? [] : [continuation])] });
+      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: successorsFor(statement, [...entries, ...(hasDefault ? [] : [continuation])], context) });
       return blockId;
     }
     if (ts.isTryStatement(statement)) {
@@ -142,7 +148,7 @@ export function lowerResourceProtocolCfgInFunction(
       return blockId;
     }
     const blockId = id("statement", statement);
-    blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [continuation] });
+    blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: successorsFor(statement, [continuation], context) });
     return blockId;
   };
 
