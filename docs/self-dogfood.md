@@ -32,7 +32,7 @@ just dogfood-leaf
 
 The gate uses `--infer` deliberately. Runtime imports load a wider internal
 Program whose unannotated dependencies are still adoption candidates. Inference
-mode continues to enforce every annotation in the six selected files while not
+mode continues to enforce every annotation in the seven selected files while not
 requiring unrelated dependencies to be annotated in the same change. The
 `no-unknown` profile still rejects unknown summaries in the analyzed Program.
 
@@ -75,13 +75,28 @@ usage failure. `writeStdout` and `writeStderr` declare `Console`;
 are now recognized as `Console` only through TypeChecker-resolved `Process`
 properties, with a negative boundary test.
 
+## Sixth boundary: environment inspection
+
+`src/environment.ts` separates pure version parsing, status aggregation, and
+report formatting from host access. Package manifest reads and package
+resolution declare `FsRead`; subprocess version probes declare `Run`. The
+negative control keeps the pure version parser honest.
+
+This adoption found a real coverage gap in `resolvePackage`: loading
+`package.json` through a dynamically created CommonJS `require` was invisible
+to effect inference. The implementation now resolves the manifest path and
+reads it explicitly with `readFileSync`, so the declared filesystem boundary is
+checked instead of merely trusted. The higher-level environment/solver check
+remains an inferred composite boundary for now; its cache mutation and backend
+selection have not yet received a complete explicit contract.
+
 ## Next adoption order
 
-1. `environment.ts`: separate environment and tool probing from pure report
-   formatting, then constrain its process/environment boundaries.
-2. `cli-runner.ts`: propagate the reviewed CLI stream and command effects into
+1. `cli-runner.ts`: propagate the reviewed CLI stream and command effects into
    the command dispatch boundary without treating arbitrary injected streams as
    the standard terminal.
+2. `doctor-command.ts`: compose environment inspection with CLI rendering while
+   preserving the distinction between `FsRead`, `Run`, and `Console`.
 
 Only add a file to `dogfood-leaf` after its positive evidence and a deliberately
 broken variant are both tested. Later tiers should group effects by boundary:

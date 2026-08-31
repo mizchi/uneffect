@@ -1,4 +1,6 @@
+/* uneffect:capability module_effect none */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
@@ -28,6 +30,7 @@ export interface PackageManifest {
 const require_ = createRequire(import.meta.url);
 
 /** Read this package's own manifest, from either the source tree or the published `dist/src`. */
+/* uneffect:capability effect FsRead */
 export async function readPackageManifest(): Promise<PackageManifest> {
   for (const candidate of ["../package.json", "../../package.json"]) {
     try {
@@ -52,11 +55,13 @@ const projectRequire = createRequire(join(process.cwd(), "package.json"));
  * Resolve a package from the project being checked first, then from this installation.
  * A peer dependency belongs to the project, and only the project's copy is the one a run uses.
  */
+/* uneffect:capability effect FsRead */
 function resolvePackage(request: string): { version?: string; path?: string } {
   for (const resolver of [projectRequire, require_]) {
     try {
       const manifestPath = resolver.resolve(`${request}/package.json`);
-      return { path: displayPath(dirname(manifestPath)), version: (resolver(manifestPath) as { version?: string }).version };
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: string };
+      return { path: displayPath(dirname(manifestPath)), version: manifest.version };
     } catch {
       continue;
     }
@@ -65,6 +70,7 @@ function resolvePackage(request: string): { version?: string; path?: string } {
 }
 
 /** First meaningful line of a `--version` banner, past launcher noise such as `Picked up JAVA_TOOL_OPTIONS`. */
+/* uneffect:capability effect Run */
 function commandVersion(command: string, args: readonly string[]): string | undefined {
   try {
     const execution = spawnSync(command, [...args], { encoding: "utf8", timeout: 10_000 });
@@ -79,11 +85,13 @@ function commandVersion(command: string, args: readonly string[]): string | unde
   }
 }
 
+/* uneffect:capability effect none */
 function minimumMajor(range: string | undefined): number | undefined {
   const match = range ? /(\d+)/u.exec(range) : null;
   return match ? Number(match[1]) : undefined;
 }
 
+/* uneffect:capability effect none */
 function nodeCheck(manifest: PackageManifest): EnvironmentCheck {
   const required = manifest.engines?.node, minimum = minimumMajor(required);
   const major = Number(process.versions.node.split(".")[0]);
@@ -156,6 +164,7 @@ function quintCheck(manifest: PackageManifest): EnvironmentCheck {
   };
 }
 
+/* uneffect:capability effect Run */
 function javaCheck(): EnvironmentCheck {
   const version = commandVersion("java", ["-version"]);
   return {
@@ -181,6 +190,7 @@ export async function runEnvironmentChecks(options: EnvironmentCheckOptions = {}
   return checks;
 }
 
+/* uneffect:capability effect none */
 export function environmentSummary(checks: readonly EnvironmentCheck[]): { errors: number; warnings: number } {
   return {
     errors: checks.filter((check) => check.status === "error").length,
@@ -191,6 +201,7 @@ export function environmentSummary(checks: readonly EnvironmentCheck[]): { error
 const label: Readonly<Record<EnvironmentStatus, string>> = { ok: "ok", warning: "warn", error: "missing" };
 
 /** Render the report: one aligned line per check, then the reason and remedy for anything unmet. */
+/* uneffect:capability effect none */
 export function formatEnvironmentReport(checks: readonly EnvironmentCheck[]): string {
   const statusWidth = Math.max(...checks.map((check) => label[check.status].length));
   const nameWidth = Math.max(...checks.map((check) => check.name.length));
