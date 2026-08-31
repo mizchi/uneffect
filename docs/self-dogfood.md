@@ -32,7 +32,7 @@ just dogfood-leaf
 
 The gate uses `--infer` deliberately. Runtime imports load a wider internal
 Program whose unannotated dependencies are still adoption candidates. Inference
-mode continues to enforce every annotation in the ten selected files while not
+mode continues to enforce every annotation in the eleven selected files while not
 requiring unrelated dependencies to be annotated in the same change. The
 `no-unknown` profile still rejects unknown summaries in the analyzed Program.
 
@@ -115,6 +115,16 @@ cache loading as `FsRead`, and its temporary-file plus atomic-rename persistence
 path as `FsWrite`. The write contract intentionally does not include `FsRead`:
 directory creation, file creation, and rename mutate filesystem state but do not
 consume file contents through the modeled Node APIs.
+
+## Tenth boundary: model replay persistence
+
+`src/model-replay.ts` verifies counterexample loading as `FsRead` plus its
+validation/clone effects. Atomic persistence is `FsWrite | Random` because its
+exclusive temporary filename contains `randomUUID()`, and also retains the
+validation and rethrow effects. `Throw<unknown>` and `Throw<Error>` are both
+listed: the current throw lattice treats them as distinct tracked alternatives,
+not as TypeScript-style assignability where `unknown` is automatically an
+upper bound.
 
 ## Next adoption order
 

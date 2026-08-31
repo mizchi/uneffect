@@ -2777,6 +2777,39 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("classifies model trace loading and randomized atomic persistence", () => {
+    const fileName = "src/model-replay.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "readModelCounterexample"))
+      .toMatchObject({ evidence: "verified", effects: expect.arrayContaining([
+        expect.objectContaining({ kind: "capability", name: "FsRead" }),
+        expect.objectContaining({ kind: "throw", errorType: "Error" }),
+        expect.objectContaining({ kind: "capability", name: "Clone" }),
+      ]) });
+    expect(selected.find((summary) => summary.functionName === "writeModelCounterexample"))
+      .toMatchObject({
+        evidence: "verified",
+        effects: expect.arrayContaining([
+          expect.objectContaining({ kind: "capability", name: "FsWrite" }),
+          expect.objectContaining({ kind: "capability", name: "Random" }),
+        ]),
+      });
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect FsWrite | Random | Throw<unknown> | Throw<Error> | Clone<All> */",
+      "/* uneffect:capability effect FsWrite | Throw<unknown> | Throw<Error> | Clone<All> */",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "writeModelCounterexample", effect: "Random", kind: "missing",
+    }));
+  });
+
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
     const program = ts.createProgram([entry], {
