@@ -145,8 +145,11 @@ same property is proved for arbitrary TypeScript.
   `json/text/arrayBuffer/blob/formData/bytes` calls are treated as body
   consumption and projected to `abortableFetchBodiesConsumed`. A missing call
   is unconsumed; a conditional call is unknown and therefore cannot satisfy the
-  property. Response aliases, `body.getReader()`, clone/tee, piping, and
-  cross-function consumption remain unsupported.
+  property. Immutable Response aliases are resolved by symbol. Direct
+  `body.getReader()` creates `stream-owned` state rather than pretending the
+  body was consumed; builtin reader `cancel()` discharges it, while
+  `releaseLock()` returns an unconsumed body. Reader draining, clone/tee,
+  piping, mutable aliases, and cross-function consumption remain unsupported.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

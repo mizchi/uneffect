@@ -214,6 +214,10 @@ introducing another domain-local control-flow or alias model.
      `abortableFetchBodiesConsumed`, treating conditional consumption as
      unknown. Response aliases, streams, clone/tee, piping, and interprocedural
      ownership remain open.
+   - [x] Resolve immutable Response aliases and model direct
+     `body.getReader()` as stream ownership. Treat builtin reader `cancel()` as
+     discharge and `releaseLock()` as ownership release without consumption;
+     do not equate reader acquisition with consuming the body.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain

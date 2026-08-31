@@ -14,8 +14,9 @@ export interface AbortableFetch {
   readonly promiseStatus: PromiseBinding["status"];
   readonly promiseObservations: readonly string[];
   readonly responseBinding?: string;
-  readonly responseBodyStatus: "not-acquired" | "consumed" | "unconsumed" | "unknown";
-  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "json" | "text";
+  readonly responseBodyStatus: "not-acquired" | "consumed" | "stream-owned" | "unconsumed" | "unknown";
+  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "getReader" | "json" | "text";
+  readonly responseStreamDischarge?: "cancel" | "release-lock";
   readonly abortComposition?: number;
   readonly abortReason?: string;
   readonly abortConditional?: boolean;
@@ -168,6 +169,18 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
   };
   visit(source);
   const bodyMethods = new Set(["arrayBuffer", "blob", "bytes", "formData", "json", "text"] as const);
+  const unwrapExpression = (expression: ts.Expression): ts.Expression => ts.isParenthesizedExpression(expression)
+    || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression)
+    ? unwrapExpression(expression.expression) : expression;
+  const stableRootSymbol = (identifier: ts.Identifier, seen = new Set<ts.Symbol>()): ts.Symbol | undefined => {
+    const symbol = resolvedSymbol(checker, identifier);
+    if (!symbol || seen.has(symbol)) return symbol;
+    const declaration = symbol.valueDeclaration;
+    if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+      || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+      || !ts.isIdentifier(declaration.initializer)) return symbol;
+    return stableRootSymbol(declaration.initializer, new Set(seen).add(symbol));
+  };
   const conditionallyExecuted = (node: ts.Node): boolean => {
     for (let current: ts.Node | undefined = node.parent; current && !ts.isFunctionLike(current); current = current.parent) {
       if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
@@ -191,10 +204,11 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
     const responseSymbol = resolvedSymbol(checker, responseDeclaration.name);
     let operation: AbortableFetch["responseBodyOperation"] | undefined;
     let conditional = false;
+    let readerSymbol: ts.Symbol | undefined;
     const findConsumption = (node: ts.Node): void => {
       if (operation || (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner)) return;
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-        && ts.isIdentifier(node.expression.expression) && resolvedSymbol(checker, node.expression.expression) === responseSymbol
+        && ts.isIdentifier(node.expression.expression) && stableRootSymbol(node.expression.expression) === responseSymbol
         && bodyMethods.has(node.expression.name.text as NonNullable<typeof operation>)) {
         const method = resolvedSymbol(checker, node.expression.name);
         const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
@@ -203,14 +217,55 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
           conditional = conditionallyExecuted(node);
         }
       }
+      const readerReceiver = ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        ? unwrapExpression(node.expression.expression) : undefined;
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "getReader" && readerReceiver && ts.isPropertyAccessExpression(readerReceiver)
+        && readerReceiver.name.text === "body" && ts.isIdentifier(readerReceiver.expression)
+        && stableRootSymbol(readerReceiver.expression) === responseSymbol) {
+        const method = resolvedSymbol(checker, node.expression.name);
+        const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+        if (builtin) {
+          operation = "getReader";
+          conditional = conditionallyExecuted(node);
+          if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+            readerSymbol = resolvedSymbol(checker, node.parent.name);
+          }
+        }
+      }
       ts.forEachChild(node, findConsumption);
     };
     findConsumption(source);
+    let responseStreamDischarge: AbortableFetch["responseStreamDischarge"] | undefined;
+    let dischargeConditional = false;
+    if (readerSymbol) {
+      const findDischarge = (node: ts.Node): void => {
+        if (responseStreamDischarge === "cancel" || (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner)) return;
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+          && ts.isIdentifier(node.expression.expression) && stableRootSymbol(node.expression.expression) === readerSymbol
+          && (node.expression.name.text === "cancel" || node.expression.name.text === "releaseLock")) {
+          const method = resolvedSymbol(checker, node.expression.name);
+          const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+          if (builtin) {
+            responseStreamDischarge = node.expression.name.text === "cancel" ? "cancel" : "release-lock";
+            dischargeConditional = conditionallyExecuted(node);
+          }
+        }
+        ts.forEachChild(node, findDischarge);
+      };
+      findDischarge(source);
+    }
+    const responseBodyStatus: AbortableFetch["responseBodyStatus"] = !operation ? "unconsumed"
+      : conditional || dischargeConditional ? "unknown"
+        : operation !== "getReader" ? "consumed"
+          : responseStreamDischarge === "cancel" ? "consumed"
+            : responseStreamDischarge === "release-lock" ? "unconsumed" : "stream-owned";
     return {
       ...fetch,
       responseBinding: responseDeclaration.name.text,
-      responseBodyStatus: operation ? conditional ? "unknown" : "consumed" : "unconsumed",
+      responseBodyStatus,
       ...(operation ? { responseBodyOperation: operation } : {}),
+      ...(responseStreamDischarge ? { responseStreamDischarge } : {}),
     };
   });
   return { fileName: source.fileName, fetches: enriched, unknown };

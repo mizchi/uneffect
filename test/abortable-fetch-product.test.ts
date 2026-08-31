@@ -200,4 +200,53 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("tracks immutable Response aliases and direct stream readers", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-stream-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function aliased() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/alias-body", { signal: controller.signal })
+          const response = await request
+          const payload = response
+          return await payload.text()
+        }
+        export async function streamed() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/stream", { signal: controller.signal })
+          const response = await request
+          const reader = response.body?.getReader()
+          return reader
+        }
+        export async function cancelled() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/cancel-stream", { signal: controller.signal })
+          const response = await request
+          const reader = response.body!.getReader()
+          await reader.cancel("unused")
+        }
+        export async function released() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/release-stream", { signal: controller.signal })
+          const response = await request
+          const reader = response.body!.getReader()
+          reader.releaseLock()
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "aliased", responseBodyStatus: "consumed", responseBodyOperation: "text" }),
+        expect.objectContaining({ owner: "streamed", responseBodyStatus: "stream-owned", responseBodyOperation: "getReader" }),
+        expect.objectContaining({ owner: "cancelled", responseBodyStatus: "consumed", responseBodyOperation: "getReader", responseStreamDischarge: "cancel" }),
+        expect.objectContaining({ owner: "released", responseBodyStatus: "unconsumed", responseBodyOperation: "getReader", responseStreamDischarge: "release-lock" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
