@@ -258,6 +258,8 @@ export { analyzeOwnership, checkOwnership, checkOwnershipWithResourceProtocol, c
 export type { OwnershipDiagnostic, OwnershipEvent, OwnershipOperation, OwnershipResourceProtocolProjection, OwnershipState } from "./ownership.js";
 export { evaluateResourceProtocol, evaluateResourceProtocolCfg, instantiateResourceCallableSummary, resourceCallableSummarySchema, resourceProtocolCfgSchema, resourceProtocolSchema } from "./resource-protocol.js";
 export type { ResourceCallableBindings, ResourceCallableInstantiation, ResourceCallableOperation, ResourceCallableReference, ResourceCallableSummary, ResourceProtocolBlock, ResourceProtocolCfg, ResourceProtocolCfgEvaluation, ResourceProtocolDiagnostic, ResourceProtocolEvaluation, ResourceProtocolModel, ResourceProtocolResource, ResourceProtocolState, ResourceProtocolTransition, ResourceTerminalState } from "./resource-protocol.js";
+export { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.js";
+export type { ResourceDisposalCompletion, ResourceDisposalProtocolProjection } from "./resource-disposal-protocol.js";
 export { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "./resource-callable-typescript.js";
 export type { ResourceCallableDiagnostic, ResourceCallableSiteAnalysis, ResourceCallableSummaryAnalysis } from "./resource-callable-typescript.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";

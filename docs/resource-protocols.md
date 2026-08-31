@@ -104,6 +104,23 @@ missing return bindings, dynamic calls, and unsupported resource expressions
 produce diagnostics or remain outside the fragment. Imported/package summary
 authentication is not implemented.
 
+## Explicit Resource Management
+
+The first `using`/`await using` projection lowers a successfully acquired
+owner's disposal suffix into the common resource lifecycle: every binding is
+acquired, then released in the reverse order supplied by the TypeScript async
+safety analysis. The projection separately retains whether disposal runs inline
+or in a microtask, whether failure throws or rejects, whether it is caught, and
+which completion exits trigger cleanup.
+
+Its evidence status is deliberately `exact-under-precondition`, with
+`all-listed-resources-acquired` as that precondition. Conditional acquisition
+returns `unknown`. The current single-state join cannot preserve the
+`absent | available` disjunction needed to represent initializer failure while
+skipping disposal of unacquired resources. The existing Quint resource model
+remains the stronger check for acquisition failure, async suspension,
+`SuppressedError`, and reverse-order counterexamples.
+
 ## Current lowering
 
 The abortable-fetch analysis currently lowers these reviewed fragments:

@@ -14,6 +14,8 @@ async function solve(program: string): Promise<string> {
   return String(await solver.check());
 }
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async-safety.js";
+import { lowerResourceDisposalsToProtocol } from "../src/resource-disposal-protocol.js";
+import { evaluateResourceProtocol } from "../src/resource-protocol.js";
 
 function run(program: string, maxSteps = 12) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-"));
@@ -1020,6 +1022,17 @@ describe("async error and explicit resource safety", () => {
     ]);
     expect(result.diagnostics).toEqual([]);
 
+    const projection = lowerResourceDisposalsToProtocol(result.resources, result.disposals, "work");
+    expect(projection.status).toBe("exact-under-precondition");
+    if (projection.status === "exact-under-precondition") {
+      expect(projection.precondition).toBe("all-listed-resources-acquired");
+      expect(projection.disposalOrder.map((id) => id.split(":").at(-1))).toEqual(["second", "first"]);
+      expect(projection.completions.map(({ resource, lane, failure }) => [resource.split(":").at(-1), lane, failure])).toEqual([
+        ["second", "microtask", "reject"], ["first", "inline", "throw"],
+      ]);
+      expect(evaluateResourceProtocol(projection.model)).toMatchObject({ status: "satisfied" });
+    }
+
     const positive = run(generateResourceSafetyQuint("resources", result));
     expect(positive.status, positive.stdout + positive.stderr).toBe(0);
     expect(generateResourceSafetyQuint("resources", result)).toContain("dispose_start_1");
@@ -1031,6 +1044,18 @@ describe("async error and explicit resource safety", () => {
     expect(nonAwaited.status).not.toBe(0);
     expect(nonAwaited.stdout + nonAwaited.stderr).toMatch(/violation|counterexample/i);
   }, 20_000);
+
+  it("does not claim an exact disposal projection for conditional acquisition", () => {
+    const result = analyzeAsyncSafety("conditional-using.ts", `
+      interface Resource { [Symbol.dispose](): void }
+      declare function open(): Resource
+      function work(enabled: boolean) {
+        if (enabled) { using resource = open() }
+      }
+    `);
+    expect(lowerResourceDisposalsToProtocol(result.resources, result.disposals, "work"))
+      .toEqual({ status: "unknown", owner: "work", reasons: ["conditional-acquisition"] });
+  });
 
   it("rejects resources without the required disposal protocol", () => {
     const result = analyzeAsyncSafety("invalid-using.ts", `

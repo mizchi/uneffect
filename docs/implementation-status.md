@@ -246,6 +246,11 @@ same property is proved for arbitrary TypeScript.
   fragment now runs through the common resource-protocol evaluator with legacy
   diagnostic parity tests. Shared-memory transfer remains on the explicitly
   unsupported compatibility path; Atomics ordering is not modeled.
+- Unconditional `using`/`await using` disposal suffixes can be projected into
+  the shared resource lifecycle under an explicit all-resources-acquired
+  precondition. Reverse order and disposal completion metadata are preserved.
+  Conditional/failed acquisition is still checked by the dedicated Quint model
+  because the shared lattice does not yet retain `absent | available`.
 
 ## Contracts and formal backends
 
