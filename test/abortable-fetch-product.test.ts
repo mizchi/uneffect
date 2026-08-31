@@ -301,4 +301,42 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("recognizes awaited builtin pipeTo without accepting floating or conditional pipes", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-pipe-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function piped(sink: WritableStream<Uint8Array>) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/piped", { signal: controller.signal })
+          const response = await request
+          await response.body!.pipeTo(sink)
+        }
+        export async function floating(sink: WritableStream<Uint8Array>) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/floating-pipe", { signal: controller.signal })
+          const response = await request
+          response.body!.pipeTo(sink)
+        }
+        export async function conditional(sink: WritableStream<Uint8Array>, enabled: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/conditional-pipe", { signal: controller.signal })
+          const response = await request
+          if (enabled) await response.body!.pipeTo(sink)
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "piped", responseBodyStatus: "consumed", responseBodyOperation: "pipeTo", responseStreamDischarge: "pipe-to" }),
+        expect.objectContaining({ owner: "floating", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
+        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "pipeTo" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

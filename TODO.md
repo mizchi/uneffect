@@ -221,6 +221,10 @@ introducing another domain-local control-flow or alias model.
    - [x] Recognize one canonical `reader.read()` EOF drain loop and discharge
      only when every loop break is the direct `if (done) break` from the same
      builtin read result. Treat early break/continue/return/throw as unknown.
+   - [x] Recognize direct unconditional `await response.body!.pipeTo(sink)` by
+     builtin symbol identity as a `pipe-to` discharge. Keep floating or
+     conditional pipes unknown; `pipeThrough`, options, and pipeline aliases
+     remain unsupported.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain
