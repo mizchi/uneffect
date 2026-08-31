@@ -256,8 +256,8 @@ export { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements, TypeScript
 export type { DeclarationDriftDiagnostic, FrontendSymbolAdapter, ResolvedCallSite } from "./frontend-adapter.js";
 export { analyzeOwnership, checkOwnership, collectOwnershipEvents, generateOwnershipQuint } from "./ownership.js";
 export type { OwnershipDiagnostic, OwnershipEvent, OwnershipOperation, OwnershipState } from "./ownership.js";
-export { evaluateResourceProtocol, resourceProtocolSchema } from "./resource-protocol.js";
-export type { ResourceProtocolDiagnostic, ResourceProtocolEvaluation, ResourceProtocolModel, ResourceProtocolResource, ResourceProtocolState, ResourceProtocolTransition, ResourceTerminalState } from "./resource-protocol.js";
+export { evaluateResourceProtocol, evaluateResourceProtocolCfg, resourceProtocolCfgSchema, resourceProtocolSchema } from "./resource-protocol.js";
+export type { ResourceProtocolBlock, ResourceProtocolCfg, ResourceProtocolCfgEvaluation, ResourceProtocolDiagnostic, ResourceProtocolEvaluation, ResourceProtocolModel, ResourceProtocolResource, ResourceProtocolState, ResourceProtocolTransition, ResourceTerminalState } from "./resource-protocol.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";
 export { collectAssumptionLedger, evaluateAssumptionPolicy } from "./assumptions.js";
 export type { AssumptionDomain, AssumptionEntry, AssumptionLedger, AssumptionPolicy, AssumptionPolicyDiagnostic, AssumptionScope, AssumptionViolation } from "./assumptions.js";

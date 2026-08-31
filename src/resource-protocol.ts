@@ -1,4 +1,7 @@
+import { solveBasicBlockFixedPoint, type FixedPointBudget, type FixedPointLattice } from "./refinement-flow.js";
+
 export const resourceProtocolSchema = "uneffect-resource-protocol/v1" as const;
+export const resourceProtocolCfgSchema = "uneffect-resource-protocol-cfg/v1" as const;
 
 export type ResourceProtocolState =
   | "absent"
@@ -42,12 +45,32 @@ export interface ResourceProtocolModel {
 }
 
 export interface ResourceProtocolDiagnostic {
-  readonly code: "duplicate-resource" | "invalid-transition" | "unknown-resource";
+  readonly code: "cfg-unknown" | "duplicate-resource" | "invalid-transition" | "unknown-resource";
   readonly resource: string;
   readonly state: ResourceProtocolState;
   readonly transition?: ResourceProtocolTransition["kind"];
   readonly at?: number;
   readonly message: string;
+}
+
+export interface ResourceProtocolBlock {
+  readonly id: string;
+  readonly transitions: readonly ResourceProtocolTransition[];
+  readonly successors: readonly string[];
+}
+
+export interface ResourceProtocolCfg {
+  readonly schema: typeof resourceProtocolCfgSchema;
+  readonly model: ResourceProtocolModel;
+  readonly entry: string;
+  readonly exits: readonly string[];
+  readonly blocks: readonly ResourceProtocolBlock[];
+  readonly budget: FixedPointBudget;
+}
+
+export interface ResourceProtocolCfgEvaluation extends ResourceProtocolEvaluation {
+  readonly cfgSchema: typeof resourceProtocolCfgSchema;
+  readonly iterations: number;
 }
 
 export interface ResourceProtocolEvaluation {
@@ -64,7 +87,10 @@ function transitionResources(transition: ResourceProtocolTransition): readonly s
   return [transition.resource];
 }
 
-export function evaluateResourceProtocol(model: ResourceProtocolModel): ResourceProtocolEvaluation {
+export function evaluateResourceProtocol(
+  model: ResourceProtocolModel,
+  initialStates?: ReadonlyMap<string, ResourceProtocolState>,
+): ResourceProtocolEvaluation {
   const resources = new Map<string, ResourceProtocolResource>();
   const states = new Map<string, ResourceProtocolState>();
   const diagnostics: ResourceProtocolDiagnostic[] = [];
@@ -75,7 +101,7 @@ export function evaluateResourceProtocol(model: ResourceProtocolModel): Resource
       continue;
     }
     resources.set(resource.id, resource);
-    states.set(resource.id, resource.initialState);
+    states.set(resource.id, initialStates?.get(resource.id) ?? resource.initialState);
   }
 
   const invalid = (transition: ResourceProtocolTransition, resource: string, state: ResourceProtocolState, message: string): void => {
@@ -145,13 +171,126 @@ export function evaluateResourceProtocol(model: ResourceProtocolModel): Resource
     }
   }
 
-  const required = model.resources.filter((resource) => resource.requiredTerminalStates?.length);
-  const unresolved = required.some((resource) => states.get(resource.id) === "unknown");
-  const unsatisfied = required.some((resource) => !resource.requiredTerminalStates!.includes(states.get(resource.id) as ResourceTerminalState));
   return {
     schema: resourceProtocolSchema,
-    status: diagnostics.length > 0 || unresolved ? "unknown" : unsatisfied ? "unsatisfied" : "satisfied",
+    status: terminalStatus(model.resources, states, diagnostics),
     states,
     diagnostics,
+  };
+}
+
+interface ResourceFlowState {
+  readonly reachable: boolean;
+  readonly states: ReadonlyMap<string, ResourceProtocolState>;
+  readonly diagnostics: readonly ResourceProtocolDiagnostic[];
+}
+
+function diagnosticKey(diagnostic: ResourceProtocolDiagnostic): string {
+  return `${diagnostic.code}:${diagnostic.resource}:${diagnostic.state}:${diagnostic.transition ?? ""}:${diagnostic.at ?? ""}:${diagnostic.message}`;
+}
+
+function mergeDiagnostics(
+  left: readonly ResourceProtocolDiagnostic[],
+  right: readonly ResourceProtocolDiagnostic[],
+): readonly ResourceProtocolDiagnostic[] {
+  const merged = new Map<string, ResourceProtocolDiagnostic>();
+  for (const diagnostic of [...left, ...right]) merged.set(diagnosticKey(diagnostic), diagnostic);
+  return [...merged.values()];
+}
+
+function terminalStatus(
+  resources: readonly ResourceProtocolResource[],
+  states: ReadonlyMap<string, ResourceProtocolState>,
+  diagnostics: readonly ResourceProtocolDiagnostic[],
+): ResourceProtocolEvaluation["status"] {
+  const required = resources.filter((resource) => resource.requiredTerminalStates?.length);
+  const unresolved = required.some((resource) => states.get(resource.id) === "unknown");
+  const unsatisfied = required.some((resource) => !resource.requiredTerminalStates!.includes(states.get(resource.id) as ResourceTerminalState));
+  return diagnostics.length > 0 || unresolved ? "unknown" : unsatisfied ? "unsatisfied" : "satisfied";
+}
+
+export function evaluateResourceProtocolCfg(cfg: ResourceProtocolCfg): ResourceProtocolCfgEvaluation {
+  const resourceIds = cfg.model.resources.map((resource) => resource.id);
+  const bottom = (): ResourceFlowState => ({ reachable: false, states: new Map(), diagnostics: [] });
+  const joinStates = (left: ResourceFlowState, right: ResourceFlowState): ResourceFlowState => {
+    if (!left.reachable) return right;
+    if (!right.reachable) return left;
+    const states = new Map<string, ResourceProtocolState>();
+    for (const id of resourceIds) {
+      const leftState = left.states.get(id) ?? "unknown";
+      const rightState = right.states.get(id) ?? "unknown";
+      states.set(id, leftState === rightState ? leftState : "unknown");
+    }
+    return { reachable: true, states, diagnostics: mergeDiagnostics(left.diagnostics, right.diagnostics) };
+  };
+  const equivalent = (left: ResourceFlowState, right: ResourceFlowState): boolean => {
+    if (left.reachable !== right.reachable || left.diagnostics.length !== right.diagnostics.length) return false;
+    if (left.diagnostics.some((diagnostic) => !right.diagnostics.some((candidate) => diagnosticKey(candidate) === diagnosticKey(diagnostic)))) return false;
+    return resourceIds.every((id) => left.states.get(id) === right.states.get(id));
+  };
+  const lattice: FixedPointLattice<ResourceFlowState> = {
+    bottom,
+    equivalent,
+    join: (left, right) => ({ status: "joined", value: joinStates(left, right) }),
+  };
+  const applyBlock = (input: ResourceFlowState, block: ResourceProtocolBlock): ResourceFlowState => {
+    if (!input.reachable) return input;
+    const evaluation = evaluateResourceProtocol({ ...cfg.model, transitions: block.transitions }, input.states);
+    return {
+      reachable: true,
+      states: evaluation.states,
+      diagnostics: mergeDiagnostics(input.diagnostics, evaluation.diagnostics),
+    };
+  };
+  const initialStates = new Map(cfg.model.resources.map((resource) => [resource.id, resource.initialState]));
+  const result = solveBasicBlockFixedPoint<ResourceFlowState>({
+    entry: cfg.entry,
+    initial: { reachable: true, states: initialStates, diagnostics: [] },
+    budget: cfg.budget,
+    lattice,
+    blocks: cfg.blocks.map((block) => ({
+      id: block.id,
+      transfer: (input) => {
+        const output = applyBlock(input, block);
+        return block.successors.map((to) => ({ to, value: output }));
+      },
+    })),
+  });
+  if (result.status === "unknown") {
+    const diagnostic: ResourceProtocolDiagnostic = {
+      code: "cfg-unknown", resource: "<cfg>", state: "unknown",
+      message: `${result.reason}: ${result.detail}`,
+    };
+    return {
+      schema: resourceProtocolSchema,
+      cfgSchema: resourceProtocolCfgSchema,
+      status: "unknown",
+      states: new Map(resourceIds.map((id) => [id, "unknown" as const])),
+      diagnostics: [diagnostic],
+      iterations: result.iterations,
+    };
+  }
+  let terminal = bottom();
+  for (const exit of cfg.exits) {
+    const block = cfg.blocks.find((candidate) => candidate.id === exit);
+    const entryState = result.states.get(exit);
+    if (block && entryState) terminal = joinStates(terminal, applyBlock(entryState, block));
+  }
+  if (!terminal.reachable) {
+    const diagnostic: ResourceProtocolDiagnostic = {
+      code: "cfg-unknown", resource: "<cfg>", state: "unknown", message: "no configured CFG exit is reachable",
+    };
+    return {
+      schema: resourceProtocolSchema, cfgSchema: resourceProtocolCfgSchema, status: "unknown",
+      states: new Map(resourceIds.map((id) => [id, "unknown" as const])), diagnostics: [diagnostic], iterations: result.iterations,
+    };
+  }
+  return {
+    schema: resourceProtocolSchema,
+    cfgSchema: resourceProtocolCfgSchema,
+    status: terminalStatus(cfg.model.resources, terminal.states, terminal.diagnostics),
+    states: terminal.states,
+    diagnostics: terminal.diagnostics,
+    iterations: result.iterations,
   };
 }

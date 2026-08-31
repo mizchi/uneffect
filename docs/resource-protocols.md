@@ -30,6 +30,25 @@ the states differ, the result is `unknown`. An invalid transition also emits a
 diagnostic and makes the affected obligation unknown. Missing required terminal
 states are `unsatisfied`, not silently accepted.
 
+## Control-flow evaluation
+
+`uneffect-resource-protocol-cfg/v1` places transition lists in named basic
+blocks with explicit successors, entry, exits, and a proof budget. It reuses the
+shared monotone fixed-point engine. Each block transfers the complete resource
+state map. At a control-flow join, equal states remain exact and unequal states
+become `unknown`.
+
+This supports a backend-neutral representation of:
+
+- both arms consuming or releasing the same resource;
+- partial consumption in only one arm, which becomes unknown;
+- normal and exceptional predecessors entering one mandatory `finally` block;
+- bounded fixed-point evaluation for future loop lowering.
+
+The CFG API does not claim to be TypeScript's private compiler CFG. The current
+implementation provides the neutral evaluator; general lowering from arbitrary
+TypeScript branches, handlers, and loops remains separate work.
+
 ## Current lowering
 
 The abortable-fetch analysis currently lowers these reviewed fragments:
@@ -47,7 +66,7 @@ are checked by the same split-and-terminal-state evaluator rather than custom
 
 ## Assurance boundary
 
-The evaluator is general, but TypeScript lowering is still a reviewed fragment.
+The evaluators are general, but TypeScript lowering is still a reviewed fragment.
 It does not yet provide a general JavaScript CFG, heap/region fixed point, or
 interprocedural resource summary. Unsupported aliases, loops, exception paths,
 dynamic dispatch, getters, proxies, and cross-function escapes must remain

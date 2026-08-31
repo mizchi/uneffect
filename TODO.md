@@ -149,9 +149,12 @@ introducing another domain-local control-flow or alias model.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Lower Transferable ownership, `using`, Promise ownership, typed-array
      invalidation, and user-defined protocols through the same IR instead of
      adding domain-local terminal-state logic.
-   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Add a conservative resource-state transfer lattice over the shared CFG
-     fixed-point engine, including branch joins, loops, try/catch/finally, and
-     explicit proof budgets.
+   - [x] Add the backend-neutral resource-state lattice over the shared CFG
+     fixed-point engine. Equal branch states remain exact, unequal states join
+     to unknown, normal/exceptional predecessors can share mandatory finally,
+     and every evaluation has an explicit proof budget.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Lower general TypeScript branches, loops, and try/catch/finally into the
+     resource CFG; preserve abrupt completion kinds and source-bound evidence.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Define authenticated declarative protocol summaries for builtin,
      package, and plugin operations; executable plugin booleans must not create
      verified evidence.
