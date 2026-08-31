@@ -32,7 +32,7 @@ just dogfood-leaf
 
 The gate uses `--infer` deliberately. Runtime imports load a wider internal
 Program whose unannotated dependencies are still adoption candidates. Inference
-mode continues to enforce every annotation in the eight selected files while not
+mode continues to enforce every annotation in the nine selected files while not
 requiring unrelated dependencies to be annotated in the same change. The
 `no-unknown` profile still rejects unknown summaries in the analyzed Program.
 
@@ -98,6 +98,15 @@ invokes injected stream methods and command implementations, so declaring it as
 plain `Console` would falsely identify arbitrary callbacks as the standard
 terminal. A general callable-parameter effect contract is required before that
 boundary can be stated precisely.
+
+## Eighth boundary: fixture filesystem access
+
+`src/fixtures.ts` verifies recursive fixture discovery and report reads as
+`FsRead`, report persistence as `FsWrite`, and first-line summary extraction as
+`none`. `listFixtures` uses an explicit sequential loop: its previous local
+`Promise.all` callback conservatively introduced `InvokeUserCode`, obscuring the
+filesystem-only contract. This is a local simplification, not a claim that
+arbitrary `Promise.all` callbacks are pure.
 
 ## Next adoption order
 

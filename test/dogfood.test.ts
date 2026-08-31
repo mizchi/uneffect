@@ -2723,6 +2723,33 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "formatCliHelp", effect: "Console", kind: "unused",
     }));
+  }, 30_000);
+
+  it("classifies fixture discovery and report persistence as filesystem capabilities", () => {
+    const fileName = "src/fixtures.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "summaryOf"))
+      .toMatchObject({ evidence: "verified", effects: [] });
+    for (const name of ["sourceFiles", "listFixtures", "readFixtureReport"]) {
+      expect(selected.find((summary) => summary.functionName === name))
+        .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
+    }
+    expect(selected.find((summary) => summary.functionName === "writeFixtureReport"))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsWrite" })] });
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect none */\nfunction summaryOf",
+      "/* uneffect:capability effect FsWrite */\nfunction summaryOf",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "summaryOf", effect: "FsWrite", kind: "unused",
+    }));
   });
 
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
