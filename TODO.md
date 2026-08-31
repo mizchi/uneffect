@@ -157,9 +157,13 @@ introducing another domain-local control-flow or alias model.
      statements, `if`/`else`, and direct `return`/`throw`, using source-bound
      transition sites. Connect direct Response body calls so complete branches
      join to consumed while a missing branch becomes unknown.
-   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend TypeScript resource CFG lowering through loops, switch, labels,
-     nested declarations, and try/catch/finally while preserving abrupt
-     completion kinds and source-bound evidence.
+   - [x] Extend TypeScript resource CFG lowering through loop back-edges,
+     switch fallthrough/break, labeled break/continue, opaque nested
+     declarations, and try/catch/finally. Mandatory finally preserves normal,
+     explicit throw, return, break, and continue continuations.
+   - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Add implicit synchronous-throw and Promise-rejection edges from trusted or
+     verified callable summaries; arbitrary calls must not enter catch merely
+     because they may throw at runtime.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Define authenticated declarative protocol summaries for builtin,
      package, and plugin operations; executable plugin booleans must not create
      verified evidence.

@@ -57,38 +57,96 @@ export function lowerResourceProtocolCfgInFunction(
   const exit = id("exit");
   blocks.set(exit, { id: exit, transitions: [], successors: [] });
   let unsupported: ts.Statement | undefined;
+  interface Context { returnTarget: string; throwTarget: string; breakTarget?: string; continueTarget?: string; labels: ReadonlyMap<string, { breakTarget: string; continueTarget?: string }> }
+  const rootContext: Context = { returnTarget: exit, throwTarget: exit, labels: new Map() };
 
-  const lowerSequence = (statements: readonly ts.Statement[], continuation: string): string => {
+  const lowerSequence = (statements: readonly ts.Statement[], continuation: string, context: Context): string => {
     let next = continuation;
-    for (let index = statements.length - 1; index >= 0; index--) next = lowerStatement(statements[index]!, next);
+    for (let index = statements.length - 1; index >= 0; index--) next = lowerStatement(statements[index]!, next, context);
     return next;
   };
-  const lowerStatement = (statement: ts.Statement, continuation: string): string => {
-    if (ts.isBlock(statement)) return lowerSequence(statement.statements, continuation);
+  const lowerLoop = (statement: ts.IterationStatement, continuation: string, context: Context, label?: string): string => {
+    const header = id("loop", statement);
+    const labels = new Map(context.labels);
+    if (label) labels.set(label, { breakTarget: continuation, continueTarget: header });
+    const loopContext: Context = { ...context, breakTarget: continuation, continueTarget: header, labels };
+    const bodyEntry = lowerStatement(statement.statement, header, loopContext);
+    const staticallyInfinite = ts.isWhileStatement(statement) && statement.expression.kind === ts.SyntaxKind.TrueKeyword
+      || ts.isForStatement(statement) && !statement.condition;
+    blocks.set(header, { id: header, transitions: transitionsFor(statement), successors: [bodyEntry, ...(staticallyInfinite ? [] : [continuation])] });
+    return ts.isDoStatement(statement) ? bodyEntry : header;
+  };
+  const lowerStatement = (statement: ts.Statement, continuation: string, context: Context): string => {
+    if (ts.isBlock(statement)) return lowerSequence(statement.statements, continuation, context);
     if (ts.isIfStatement(statement)) {
-      const whenTrue = lowerStatement(statement.thenStatement, continuation);
-      const whenFalse = statement.elseStatement ? lowerStatement(statement.elseStatement, continuation) : continuation;
+      const whenTrue = lowerStatement(statement.thenStatement, continuation, context);
+      const whenFalse = statement.elseStatement ? lowerStatement(statement.elseStatement, continuation, context) : continuation;
       const blockId = id("if", statement);
       blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [whenTrue, whenFalse] });
       return blockId;
     }
     if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
       const blockId = id(ts.isReturnStatement(statement) ? "return" : "throw", statement);
-      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [exit] });
+      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [ts.isReturnStatement(statement) ? context.returnTarget : context.throwTarget] });
       return blockId;
     }
-    if (ts.isIterationStatement(statement, false) || ts.isTryStatement(statement) || ts.isSwitchStatement(statement)
-      || ts.isLabeledStatement(statement) || ts.isBreakStatement(statement) || ts.isContinueStatement(statement)
-      || ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) {
-      unsupported ??= statement;
-      return continuation;
+    if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) {
+      const labeled = statement.label ? context.labels.get(statement.label.text) : undefined;
+      const target = ts.isBreakStatement(statement) ? labeled?.breakTarget ?? context.breakTarget : labeled?.continueTarget ?? context.continueTarget;
+      if (!target) { unsupported ??= statement; return continuation; }
+      const blockId = id(ts.isBreakStatement(statement) ? "break" : "continue", statement);
+      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [target] });
+      return blockId;
+    }
+    if (ts.isIterationStatement(statement, false)) return lowerLoop(statement, continuation, context);
+    if (ts.isLabeledStatement(statement)) {
+      if (ts.isIterationStatement(statement.statement, false)) return lowerLoop(statement.statement, continuation, context, statement.label.text);
+      const labels = new Map(context.labels).set(statement.label.text, { breakTarget: continuation });
+      return lowerStatement(statement.statement, continuation, { ...context, labels });
+    }
+    if (ts.isSwitchStatement(statement)) {
+      const switchContext: Context = { ...context, breakTarget: continuation };
+      let fallthrough = continuation;
+      const entries: string[] = [];
+      for (let index = statement.caseBlock.clauses.length - 1; index >= 0; index--) {
+        const clause = statement.caseBlock.clauses[index]!;
+        const entry = lowerSequence(clause.statements, fallthrough, switchContext);
+        entries.unshift(entry);
+        fallthrough = entry;
+      }
+      const hasDefault = statement.caseBlock.clauses.some(ts.isDefaultClause);
+      const blockId = id("switch", statement);
+      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [...entries, ...(hasDefault ? [] : [continuation])] });
+      return blockId;
+    }
+    if (ts.isTryStatement(statement)) {
+      const finallyBlock = statement.finallyBlock;
+      const throughFinally = (target: string): string => finallyBlock ? lowerStatement(finallyBlock, target, context) : target;
+      const normalTarget = throughFinally(continuation);
+      const returnTarget = throughFinally(context.returnTarget);
+      const throwTarget = throughFinally(context.throwTarget);
+      const breakTarget = context.breakTarget ? throughFinally(context.breakTarget) : undefined;
+      const continueTarget = context.continueTarget ? throughFinally(context.continueTarget) : undefined;
+      const labels = new Map([...context.labels].map(([name, targets]) => [name, {
+        breakTarget: throughFinally(targets.breakTarget),
+        ...(targets.continueTarget ? { continueTarget: throughFinally(targets.continueTarget) } : {}),
+      }]));
+      const catchContext: Context = { ...context, returnTarget, throwTarget, breakTarget, continueTarget, labels };
+      const catchEntry = statement.catchClause ? lowerStatement(statement.catchClause.block, normalTarget, catchContext) : throwTarget;
+      const tryContext: Context = { ...context, returnTarget, throwTarget: catchEntry, breakTarget, continueTarget, labels };
+      return lowerStatement(statement.tryBlock, normalTarget, tryContext);
+    }
+    if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) {
+      const blockId = id("declaration", statement);
+      blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [continuation] });
+      return blockId;
     }
     const blockId = id("statement", statement);
     blocks.set(blockId, { id: blockId, transitions: transitionsFor(statement), successors: [continuation] });
     return blockId;
   };
 
-  const entry = lowerSequence(body.statements, exit);
+  const entry = lowerSequence(body.statements, exit, rootContext);
   if (unsupported) return { status: "unknown", reason: "unsupported-control-flow", node: unsupported.getText(source) };
   const unplaced = sites.find((site) => !used.has(site));
   if (unplaced) return { status: "unknown", reason: "unplaced-transition", node: unplaced.node.getText(source) };

@@ -173,12 +173,14 @@ same property is proved for arbitrary TypeScript.
   builtin `pipeTo`. A missing branch remains unconsumed; conditional/repeated
   branch use or reuse of the original response stream is unknown.
   These body obligations now lower through the versioned resource-protocol IR.
-  Its first TypeScript public-AST CFG fragment supports blocks, sequencing,
-  `if`/`else`, and direct `return`/`throw`: consuming the body in both arms joins
-  to consumed, while a missing arm joins to unknown. TypeScript loop, switch,
-  label, nested-declaration, and try/catch/finally lowering is still unsupported,
-  even though the backend-neutral evaluator can represent loop fixed points and
-  shared mandatory-finally blocks.
+  Its TypeScript public-AST CFG fragment supports blocks, sequencing, `if`/`else`,
+  direct `return`/`throw`, loop back-edges, switch fallthrough/break, labeled
+  break/continue, opaque nested declarations, and try/catch/finally completion
+  routing. Consuming the body in both arms joins to consumed, while a missing arm
+  joins to unknown; mandatory finally consumption applies to normal, explicit
+  throw, and return paths. Loops prove resource-state convergence but not
+  termination/fairness. Implicit call throws and Promise rejection are not yet
+  exceptional CFG edges.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

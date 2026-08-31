@@ -45,11 +45,18 @@ This supports a backend-neutral representation of:
 - normal and exceptional predecessors entering one mandatory `finally` block;
 - bounded fixed-point evaluation for future loop lowering.
 
-The CFG API does not claim to be TypeScript's private compiler CFG. The first
-public-AST lowering handles blocks, sequential statements, `if`/`else`, and
-direct `return`/`throw`. Transition recognition remains in the reviewed
-frontend. Loops, switch, labels, nested declarations, and try/catch/finally are
-rejected by this lowering rather than flattened.
+The CFG API does not claim to be TypeScript's private compiler CFG. The
+public-AST lowering handles blocks, sequential statements, `if`/`else`, direct
+`return`/`throw`, loops, switch fallthrough and break, labeled break/continue,
+opaque nested declarations, and try/catch/finally. Transition recognition
+remains in the reviewed frontend.
+
+Loops are nondeterministic zero-or-more resource-state paths; this proves
+neither termination nor fairness. Switch selection is conservatively branched
+across clauses while preserving fallthrough. Nested declarations do not execute
+with their enclosing owner and require separate analysis. Handler edges include
+explicit `throw`; implicit exceptions and Promise rejection require separate
+throw/rejection evidence and are not inferred from arbitrary calls.
 
 ## Current lowering
 

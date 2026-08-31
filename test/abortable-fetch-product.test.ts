@@ -239,6 +239,36 @@ describe("abortable fetch product", () => {
     }
   });
 
+  it("routes direct Response consumption through mandatory finally", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-body-finally-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function finalized(fail: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/body-finally", { signal: controller.signal })
+          const response = await request
+          try {
+            if (fail) throw new Error("stop")
+          } catch {
+            console.log("recovered")
+          } finally {
+            await response.text()
+          }
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "finalized", responseBodyStatus: "consumed", responseResourceEvaluation: expect.objectContaining({ status: "satisfied" }) }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("tracks immutable Response aliases and direct stream readers", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-stream-"));
     try {
