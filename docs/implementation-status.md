@@ -149,7 +149,11 @@ same property is proved for arbitrary TypeScript.
   `body.getReader()` creates `stream-owned` state rather than pretending the
   body was consumed; builtin reader `cancel()` discharges it, while
   `releaseLock()` returns an unconsumed body. Reader draining, clone/tee,
-  piping, mutable aliases, and cross-function consumption remain unsupported.
+  piping, mutable aliases, and cross-function consumption remain unsupported,
+  except for one canonical drain loop: `while (true)` containing
+  `const { done } = await reader.read()` and only `if (done) break` exits. That
+  exact loop discharges as `drain`; an additional break, continue, return, or
+  throw makes the body unknown.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

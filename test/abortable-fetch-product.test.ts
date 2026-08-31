@@ -249,4 +249,56 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("recognizes one canonical reader drain loop without accepting early exit", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-drain-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function drained() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/drained", { signal: controller.signal })
+          const response = await request
+          const reader = response.body!.getReader()
+          while (true) {
+            const { done } = await reader.read()
+            if (done) break
+          }
+        }
+        export async function earlyExit(stop: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/early", { signal: controller.signal })
+          const response = await request
+          const reader = response.body!.getReader()
+          while (true) {
+            const { done } = await reader.read()
+            if (stop) break
+            if (done) break
+          }
+        }
+        export async function skippedRead(skip: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/skipped", { signal: controller.signal })
+          const response = await request
+          const reader = response.body!.getReader()
+          while (true) {
+            if (skip) continue
+            const { done } = await reader.read()
+            if (done) break
+          }
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "drained", responseBodyStatus: "consumed", responseStreamDischarge: "drain" }),
+        expect.objectContaining({ owner: "earlyExit", responseBodyStatus: "unknown" }),
+        expect.objectContaining({ owner: "skippedRead", responseBodyStatus: "unknown" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

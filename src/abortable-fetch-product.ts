@@ -16,7 +16,7 @@ export interface AbortableFetch {
   readonly responseBinding?: string;
   readonly responseBodyStatus: "not-acquired" | "consumed" | "stream-owned" | "unconsumed" | "unknown";
   readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "getReader" | "json" | "text";
-  readonly responseStreamDischarge?: "cancel" | "release-lock";
+  readonly responseStreamDischarge?: "cancel" | "drain" | "release-lock";
   readonly abortComposition?: number;
   readonly abortReason?: string;
   readonly abortConditional?: boolean;
@@ -254,11 +254,60 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         ts.forEachChild(node, findDischarge);
       };
       findDischarge(source);
+      if (!responseStreamDischarge) {
+        let sawReaderLoop = false;
+        let drained = false;
+        const findDrainLoop = (node: ts.Node): void => {
+          if (drained || (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner)) return;
+          if (ts.isWhileStatement(node) && node.expression.kind === ts.SyntaxKind.TrueKeyword && ts.isBlock(node.statement)) {
+            let doneSymbol: ts.Symbol | undefined;
+            const findRead = (child: ts.Node): void => {
+              if (child !== node.statement && (ts.isFunctionLike(child) || ts.isIterationStatement(child, false))) return;
+              if (ts.isVariableDeclaration(child) && ts.isObjectBindingPattern(child.name) && child.initializer
+                && ts.isAwaitExpression(child.initializer) && ts.isCallExpression(child.initializer.expression)
+                && ts.isPropertyAccessExpression(child.initializer.expression.expression)
+                && child.initializer.expression.expression.name.text === "read"
+                && ts.isIdentifier(child.initializer.expression.expression.expression)
+                && stableRootSymbol(child.initializer.expression.expression.expression) === readerSymbol) {
+                const method = resolvedSymbol(checker, child.initializer.expression.expression.name);
+                const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+                const done = child.name.elements.find((element) => ts.isIdentifier(element.name)
+                  && (element.propertyName?.getText(source) ?? element.name.text) === "done");
+                if (builtin && done && ts.isIdentifier(done.name)) doneSymbol = resolvedSymbol(checker, done.name);
+              }
+              ts.forEachChild(child, findRead);
+            };
+            findRead(node.statement);
+            if (doneSymbol) {
+              sawReaderLoop = true;
+              const breaks: ts.BreakStatement[] = [];
+              let abrupt = false;
+              const inspect = (child: ts.Node): void => {
+                if (child !== node.statement && (ts.isFunctionLike(child) || ts.isIterationStatement(child, false))) return;
+                if (ts.isBreakStatement(child)) breaks.push(child);
+                if (ts.isContinueStatement(child) || ts.isReturnStatement(child) || ts.isThrowStatement(child)) abrupt = true;
+                ts.forEachChild(child, inspect);
+              };
+              inspect(node.statement);
+              const onlyDoneBreaks = breaks.length > 0 && breaks.every((statement) => {
+                const parent = statement.parent;
+                return ts.isIfStatement(parent) && parent.thenStatement === statement && ts.isIdentifier(parent.expression)
+                  && resolvedSymbol(checker, parent.expression) === doneSymbol;
+              });
+              if (!abrupt && onlyDoneBreaks) drained = true;
+            }
+          }
+          ts.forEachChild(node, findDrainLoop);
+        };
+        findDrainLoop(source);
+        if (drained) responseStreamDischarge = "drain";
+        else if (sawReaderLoop) dischargeConditional = true;
+      }
     }
     const responseBodyStatus: AbortableFetch["responseBodyStatus"] = !operation ? "unconsumed"
       : conditional || dischargeConditional ? "unknown"
         : operation !== "getReader" ? "consumed"
-          : responseStreamDischarge === "cancel" ? "consumed"
+          : responseStreamDischarge === "cancel" || responseStreamDischarge === "drain" ? "consumed"
             : responseStreamDischarge === "release-lock" ? "unconsumed" : "stream-owned";
     return {
       ...fetch,
