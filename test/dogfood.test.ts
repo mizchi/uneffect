@@ -2752,6 +2752,31 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("separates ownership cache keys, reads, and atomic writes", () => {
+    const fileName = "src/ownership-evidence-cache.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "ownershipEvidenceKey"))
+      .toMatchObject({ evidence: "verified", effects: [] });
+    expect(selected.find((summary) => summary.functionName === "readOwnershipEvidenceCache"))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
+    expect(selected.find((summary) => summary.functionName === "writeOwnershipEvidenceCache"))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsWrite" })] });
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect none */\nexport function ownershipEvidenceKey",
+      "/* uneffect:capability effect FsRead */\nexport function ownershipEvidenceKey",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "ownershipEvidenceKey", effect: "FsRead", kind: "unused",
+    }));
+  });
+
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
     const program = ts.createProgram([entry], {

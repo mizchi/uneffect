@@ -1,3 +1,4 @@
+/* uneffect:capability module_effect none */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { OwnershipGuardObligation } from "./async-safety.js";
@@ -15,10 +16,12 @@ export interface OwnershipEvidenceCache {
   entries: OwnershipEvidenceCacheEntry[];
 }
 
+/* uneffect:capability effect none */
 export function ownershipEvidenceKey(fileName: string, obligation: OwnershipGuardObligation, occurrence = 0): string {
   return JSON.stringify([fileName, obligation.owner, obligation.callee, obligation.ownership, obligation.parameter, occurrence]);
 }
 
+/* uneffect:capability effect FsRead */
 export function readOwnershipEvidenceCache(path: string): OwnershipEvidenceCache {
   try {
     const value: unknown = JSON.parse(readFileSync(path, "utf8"));
@@ -31,6 +34,7 @@ export function readOwnershipEvidenceCache(path: string): OwnershipEvidenceCache
   }
 }
 
+/* uneffect:capability effect FsWrite */
 export function writeOwnershipEvidenceCache(path: string, cache: OwnershipEvidenceCache): void {
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.tmp`;
