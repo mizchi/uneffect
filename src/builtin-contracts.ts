@@ -356,6 +356,13 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: `ECMAScript ${owner}.${name} has no callback or host authority`,
       trustOwner: "@mizchi/uneffect",
     }))),
+    ...(["Array", "ReadonlyArray"] as const).map((owner) => trusted({
+      symbol: { module: "lib.es", export: `${owner}#toSorted` },
+      operation: { kind: "inline-callback", callbackArguments: [0] },
+      result: { kind: "fresh" },
+      trustReason: `ECMAScript ${owner}.toSorted returns a newly allocated Array and invokes its optional comparator synchronously`,
+      trustOwner: "@mizchi/uneffect",
+    })),
     ...(["keys", "entries"] as const).map((name) => trusted({
       symbol: { module: "lib.es", export: `ObjectConstructor#${name}` },
       result: { kind: "fresh" },

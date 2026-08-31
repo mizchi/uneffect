@@ -137,6 +137,7 @@ describe("builtin semantic overlays", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#map" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#flatMap" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toSorted" }, operation: { kind: "inline-callback", callbackArguments: [0] }, result: { kind: "fresh" } }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#slice" } }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#join" } }),
       expect.objectContaining({ symbol: { module: "node:module", export: "createRequire" } }),

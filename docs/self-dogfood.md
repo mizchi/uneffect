@@ -136,7 +136,12 @@ TypeScript compiler API; this is not presented as a filesystem effect.
 Dogfooding also generalized the reviewed fresh-result contract from
 `Object.keys` to `Object.entries`. Sorting the newly allocated entries array no
 longer leaks a fictitious mutation of caller-owned state, with a direct
-regression test for both builtins.
+regression test for both builtins. The optimizer itself uses `toSorted()` to
+state its non-mutating intent. Its reviewed contract preserves synchronous
+comparator timing metadata and marks the returned array fresh; `sort()` remains
+modeled as a destructive mutation of its receiver. Propagating an inline
+comparator's own effects through an enclosing function is not claimed by this
+dogfood case and remains part of the general callback-composition work.
 
 ## Next adoption order
 

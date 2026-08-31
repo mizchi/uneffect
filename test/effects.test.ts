@@ -377,6 +377,16 @@ describe("effect checker", () => {
     expect(analyzeEffects("fresh-result.ts", source)).toEqual([]);
   });
 
+  it("treats toSorted as a non-mutating fresh copy while keeping sort destructive", () => {
+    const source = `
+      /* uneffect:capability effect none */
+      function copied(values: number[]) { return values.toSorted().sort() }
+      /* uneffect:capability effect Mutate<typeof values> */
+      function inPlace(values: number[]) { return values.sort() }
+    `;
+    expect(analyzeEffects("to-sorted.ts", source)).toEqual([]);
+  });
+
   it("localizes mutation of a fresh default parameter but preserves an explicit alias", () => {
     const source = `
       function walk(value: string, seen = new Set<string>()) {

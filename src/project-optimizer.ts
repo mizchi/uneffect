@@ -44,7 +44,7 @@ function dependenciesOf(options: OptimizeUneffectProjectOptions): ProjectOptimiz
   return {
     compilerRevision: ts.version,
     builtinContractDigest: builtinContractDigest(),
-    sourceHashes: Object.fromEntries(Object.entries(options.files).sort(([left], [right]) => left.localeCompare(right)).map(([name, source]) => [name, digest(source)])),
+    sourceHashes: Object.fromEntries(Object.entries(options.files).toSorted(([left], [right]) => left.localeCompare(right)).map(([name, source]) => [name, digest(source)])),
     closedWorld: options.closedWorld,
   };
 }
