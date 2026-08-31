@@ -223,11 +223,15 @@ introducing another domain-local control-flow or alias model.
      builtin read result. Treat early break/continue/return/throw as unknown.
    - [x] Recognize direct unconditional `await response.body!.pipeTo(sink)` by
      builtin symbol identity as a `pipe-to` discharge. Keep floating or
-     conditional pipes unknown; options and pipeline aliases remain unsupported.
+     conditional pipes unknown; options remain unsupported.
    - [x] Recognize the direct unconditional builtin chain
      `await response.body!.pipeThrough(transform).pipeTo(sink)` as a
      `pipe-through-to` discharge. Reject floating chains and either method's
-     options; longer chains and intermediate aliases remain unsupported.
+     options; longer chains remain unsupported.
+   - [x] Resolve one non-reassigned, single-use local `const` alias for the
+     result of builtin `response.body!.pipeThrough(transform)`, by declaration
+     identity rather than binding spelling. Require a direct awaited builtin
+     `alias.pipeTo(sink)`; extra references and conditional use stay unknown.
    - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Compose cancellation races and external completion with
      resources/Promise settlement; connect conditional/async/controller aliases,
      direct controller signals, fetch and general abortable APIs; and retain

@@ -263,6 +263,34 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
           }
         }
       }
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "pipeTo" && ts.isIdentifier(node.expression.expression)) {
+        const pipelineSymbol = resolvedSymbol(checker, node.expression.expression);
+        const declaration = pipelineSymbol?.valueDeclaration;
+        if (pipelineSymbol && declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+          && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+          && ownerName(declaration) === fetch.owner && ts.isCallExpression(declaration.initializer)
+          && ts.isPropertyAccessExpression(declaration.initializer.expression)
+          && declaration.initializer.expression.name.text === "pipeThrough") {
+          const pipeThrough = declaration.initializer;
+          const pipeThroughAccess = pipeThrough.expression;
+          if (ts.isPropertyAccessExpression(pipeThroughAccess)) {
+            const sourceReceiver = unwrapExpression(pipeThroughAccess.expression);
+            const pipeToMethod = resolvedSymbol(checker, node.expression.name);
+            const pipeThroughMethod = resolvedSymbol(checker, pipeThroughAccess.name);
+            const builtinPipeTo = pipeToMethod?.declarations?.some((candidate) => program.isSourceFileDefaultLibrary(candidate.getSourceFile())) ?? false;
+            const builtinPipeThrough = pipeThroughMethod?.declarations?.some((candidate) => program.isSourceFileDefaultLibrary(candidate.getSourceFile())) ?? false;
+            if (builtinPipeTo && builtinPipeThrough && ts.isPropertyAccessExpression(sourceReceiver)
+              && sourceReceiver.name.text === "body" && ts.isIdentifier(sourceReceiver.expression)
+              && stableRootSymbol(sourceReceiver.expression) === responseSymbol) {
+              operation = "pipeThroughTo";
+              conditional = conditionallyExecuted(pipeThrough) || conditionallyExecuted(node)
+                || !ts.isAwaitExpression(node.parent) || node.arguments.length !== 1
+                || pipeThrough.arguments.length !== 1 || symbolReferenceCount(pipelineSymbol) !== 2;
+            }
+          }
+        }
+      }
       ts.forEachChild(node, findConsumption);
     };
     findConsumption(source);

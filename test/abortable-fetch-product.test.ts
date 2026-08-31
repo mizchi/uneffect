@@ -383,4 +383,67 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("tracks one immutable single-use transformed pipeline alias", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-pipeline-alias-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function aliased(
+          transform: TransformStream<Uint8Array, Uint8Array>,
+          sink: WritableStream<Uint8Array>,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/aliased-pipeline", { signal: controller.signal })
+          const response = await request
+          const pipeline = response.body!.pipeThrough(transform)
+          await pipeline.pipeTo(sink)
+        }
+        export async function reused(
+          transform: TransformStream<Uint8Array, Uint8Array>,
+          sink: WritableStream<Uint8Array>,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/reused-pipeline", { signal: controller.signal })
+          const response = await request
+          const pipeline = response.body!.pipeThrough(transform)
+          console.log(pipeline.locked)
+          await pipeline.pipeTo(sink)
+        }
+        export async function renamed(
+          transform: TransformStream<Uint8Array, Uint8Array>,
+          sink: WritableStream<Uint8Array>,
+        ) {
+          const aborter = new AbortController()
+          const pending = fetch("https://api.example.com/renamed-pipeline", { signal: aborter.signal })
+          const incoming = await pending
+          const transformedBytes = incoming.body!.pipeThrough(transform)
+          await transformedBytes.pipeTo(sink)
+        }
+        export async function conditional(
+          transform: TransformStream<Uint8Array, Uint8Array>,
+          sink: WritableStream<Uint8Array>,
+          enabled: boolean,
+        ) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/conditional-pipeline", { signal: controller.signal })
+          const response = await request
+          const pipeline = response.body!.pipeThrough(transform)
+          if (enabled) await pipeline.pipeTo(sink)
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({ owner: "aliased", responseBodyStatus: "consumed", responseBodyOperation: "pipeThroughTo", responseStreamDischarge: "pipe-through-to" }),
+        expect.objectContaining({ owner: "reused", responseBodyStatus: "unknown", responseBodyOperation: "pipeThroughTo" }),
+        expect.objectContaining({ owner: "renamed", responseBodyStatus: "consumed", responseBodyOperation: "pipeThroughTo", responseStreamDischarge: "pipe-through-to" }),
+        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "pipeThroughTo" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

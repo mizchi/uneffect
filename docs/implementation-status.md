@@ -157,8 +157,11 @@ same property is proved for arbitrary TypeScript.
   `await response.body!.pipeTo(sink)` discharges as `pipe-to`; floating and
   conditional pipes remain unknown. The exact direct chain
   `await response.body!.pipeThrough(transform).pipeTo(sink)` discharges as
-  `pipe-through-to`. Pipe options, longer chains, and intermediate pipeline
-  aliases are not yet modeled.
+  `pipe-through-to`. A single-use local `const` alias for the `pipeThrough`
+  result is also resolved by declaration identity when its only use is a direct
+  awaited builtin `pipeTo`. Extra alias references and conditional use are
+  unknown. Pipe options, longer chains, mutable aliases, and cross-function
+  pipelines are not yet modeled.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
