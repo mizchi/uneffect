@@ -36,6 +36,12 @@ HTTP default ports, DNS poll completion, repeating server callbacks, server
 handle acquisition/close, watcher close, `nextTick`, and the check-phase
 `setImmediate`/`clearImmediate` pair.
 
+The Web host slice owns `fetch`, console effects, timers and animation frames,
+AbortSignal constructors, Scheduler tasks, Web Crypto randomness, and
+structured-clone transfer at Worker and MessagePort boundaries. These entries
+preserve queue, cancellation-family, capability, and transfer metadata; they do
+not claim to verify browser implementations.
+
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
 host implementation was proved. Unsupported callback composition remains
 visible. For example, `toSorted` records its synchronous comparator and fresh

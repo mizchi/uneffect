@@ -44,6 +44,8 @@ and read-buffer mutation across callback, synchronous, and Promise variants.
 Node OS, crypto randomness, child-process execution, network, DNS, HTTP(S),
 server lifecycle, watcher close, next-tick, and check-phase timer definitions
 are also migrated with their queue and scope data.
+The Web host boundary slice now covers fetch, console, timers, animation frames,
+AbortSignal, Scheduler, Web Crypto, and Worker/MessagePort transfer definitions.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct

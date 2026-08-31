@@ -34,6 +34,13 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ platform: "node", symbol: { module: "node:dns", export: "lookup" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Net", queue: "poll" }) }),
       expect.objectContaining({ platform: "node", symbol: { module: "lib.node", export: "Process#nextTick" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "next-tick" } }),
       expect.objectContaining({ platform: "node", symbol: { module: "node:timers", export: "setImmediate" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "check" } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "console.error" }, operation: { kind: "effect", effect: "Console" } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "setTimeout" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: false, queue: "timer" } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Scheduler#postTask" }, operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Crypto#getRandomValues" }, operation: { kind: "effect", effect: "Random" } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Worker#postMessage" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
     ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,
