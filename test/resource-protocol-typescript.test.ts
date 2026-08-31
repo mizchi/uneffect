@@ -5,6 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { evaluateResourceProtocolCfg, type ResourceProtocolModel } from "../src/resource-protocol.js";
 import { analyzeCallableSummaries } from "../src/callable-summary.js";
+import { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "../src/resource-callable-typescript.js";
 import { collectCallableExceptionalTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "../src/resource-protocol-typescript.js";
 
 function fixture(text: string): { source: ts.SourceFile; fn: ts.FunctionDeclaration; sites: ResourceTransitionSite[] } {
@@ -32,6 +33,76 @@ const model: ResourceProtocolModel = {
 };
 
 describe("TypeScript resource protocol CFG lowering", () => {
+  it("extracts and instantiates declared resource boundaries by symbol identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-boundary-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        /* uneffect:resource
+          borrow input
+          consume body
+          transfer port -> return
+          escape callback
+        */
+        function boundary(input: object, body: object, port: object, callback: object): object { return port }
+        function main(input: object, body: object, port: object, callback: object) {
+          const returned = boundary(input, body, port, callback)
+          return returned
+        }
+        function shadow(input: object) {
+          const boundary = (value: object) => value
+          return boundary(input)
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const analysis = analyzeResourceCallableSummaries(program);
+      expect(analysis.diagnostics).toEqual([]);
+      expect(analysis.summaries).toMatchObject([{
+        evidence: "trusted",
+        operations: [
+          { kind: "borrow", subject: { kind: "parameter", index: 0, name: "input" } },
+          { kind: "consume", subject: { kind: "parameter", index: 1, name: "body" } },
+          { kind: "transfer", subject: { kind: "parameter", index: 2, name: "port" }, target: { kind: "return" } },
+          { kind: "escape", subject: { kind: "parameter", index: 3, name: "callback" } },
+        ],
+      }]);
+      const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).map((fn) => [fn.name!.text, fn]));
+      const instantiated = collectResourceCallableTransitionSites(program, functions.get("main")!, analysis.summaries);
+      expect(instantiated.diagnostics).toEqual([]);
+      expect(instantiated.sites).toHaveLength(1);
+      expect(instantiated.sites[0]!.transitions.map(({ kind, evidence }) => [kind, evidence])).toEqual([
+        ["use", "trusted"], ["consume", "trusted"], ["transfer", "trusted"], ["escape", "trusted"],
+      ]);
+      expect(collectResourceCallableTransitionSites(program, functions.get("shadow")!, analysis.summaries).sites).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed or unbound declared resource boundaries", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-boundary-invalid-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        /* uneffect:resource transfer value */
+        function malformed(value: object): object { return value }
+        /* uneffect:resource transfer value -> return */
+        function moves(value: object): object { return value }
+        function unbound(value: object) { moves(value) }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const analysis = analyzeResourceCallableSummaries(program);
+      expect(analysis.diagnostics).toMatchObject([{ code: "invalid-resource-transfer" }]);
+      const unbound = source.statements.filter(ts.isFunctionDeclaration).find((fn) => fn.name?.text === "unbound")!;
+      expect(collectResourceCallableTransitionSites(program, unbound, analysis.summaries).diagnostics)
+        .toMatchObject([{ code: "unresolved-resource-binding", message: expect.stringContaining("return resource") }]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("proves the same terminal transition in both if branches", () => {
     const { source, fn, sites } = fixture(`
       function main(flag: boolean) {

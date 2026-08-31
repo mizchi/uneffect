@@ -79,9 +79,30 @@ exact evidence; reviewed external summaries retain trusted evidence.
 
 Missing argument or return identities produce an explicit `unknown` result and
 a list of unresolved references. The API does not infer the contract from a
-function name or accept an executable plugin predicate as proof. TypeChecker
-extraction, comment syntax, and cross-package authentication remain future
-frontend work.
+function name or accept an executable plugin predicate as proof.
+
+The first TypeScript frontend accepts declarations such as:
+
+```ts
+/* uneffect:resource
+  borrow input
+  consume body
+  transfer port -> return
+  escape callback
+*/
+function boundary(input: Input, body: Body, port: MessagePort, callback: object) {
+  return port
+}
+```
+
+These comments are trusted declarations, not implementation proofs. Direct
+same-Program calls are matched by TypeChecker declaration identity, so renaming
+and immutable import aliases remain identity-based and a same-named shadow does
+not inherit the contract. Arguments and a direct `const result = boundary(...)`
+return are substituted into transition sites. Malformed parameter names,
+missing return bindings, dynamic calls, and unsupported resource expressions
+produce diagnostics or remain outside the fragment. Imported/package summary
+authentication is not implemented.
 
 ## Current lowering
 

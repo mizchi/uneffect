@@ -188,8 +188,12 @@ same property is proved for arbitrary TypeScript.
   A separate public `uneffect-resource-callable-summary/v1` contract represents
   parameter/return `borrow`, `consume`, `transfer`, and `escape` operations.
   It instantiates caller-provided stable identities into the same resource IR
-  and reports missing bindings as unknown. TypeChecker extraction and external
-  summary authentication are not implemented yet.
+  and reports missing bindings as unknown. The first `uneffect:resource`
+  TypeScript frontend extracts trusted same-Program declarations, resolves
+  direct calls by declaration identity, and substitutes supported argument and
+  direct-`const` return identities. This is declared evidence rather than an
+  implementation proof; external summary authentication and dynamic resource
+  identity remain unsupported.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

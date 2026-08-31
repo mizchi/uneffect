@@ -78,6 +78,18 @@ describe("Uneffect annotation marker", () => {
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
+  it("recognizes callable resource boundary operations", () => {
+    const source = `/* uneffect:resource
+      borrow input
+      consume body
+      transfer port -> return
+      escape callback
+    */`;
+    expect(extractAnnotations(source, "borrow")).toEqual(["input"]);
+    expect(extractAnnotations(source, "transfer")).toEqual(["port -> return"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
   it("recognizes guarded resource retention boundaries", () => {
     const source = "/* uneffect:async retains_resource_when 0: enabled */";
     expect(extractAnnotations(source, "retains_resource_when")).toEqual(["0: enabled"]);

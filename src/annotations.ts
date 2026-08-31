@@ -10,8 +10,9 @@ export type UneffectDirective =
   | "temporal_suspends" | "temporal_cancellable" | "temporal_eventually" | "temporal_repeatedly"
   | "temporal_stabilizes" | "temporal_response" | "temporal_fair"
   | "consumes_rejection" | "consumes_callback_rejection" | "consumes_rejection_when"
-  | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when";
-export type UneffectDialect = "capability" | "contract" | "temporal" | "temporal-summary" | "async" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
+  | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when"
+  | "borrow" | "consume" | "transfer" | "escape";
+export type UneffectDialect = "capability" | "contract" | "temporal" | "temporal-summary" | "async" | "resource" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
 export interface SourceSpan { start: number; end: number }
 export interface LocatedAnnotation { value: string; span: SourceSpan }
 export interface AnnotationDiagnostic {
@@ -27,6 +28,7 @@ const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   temporal: new Set(["state", "clock", "init", "action", "action_when", "action_fair", "invariant", "eventually", "repeatedly", "stabilizes", "response", "fair", "from"]),
   "temporal-summary": new Set(["requires", "ensures", "modifies", "throws", "rejects", "suspends", "cancellable", "eventually", "repeatedly", "stabilizes", "response", "fair"]),
   async: new Set(["consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when"]),
+  resource: new Set(["borrow", "consume", "transfer", "escape"]),
   refinement: new Set(["refinement", "abstraction"]), runtime: new Set(["runtime", "returns"]),
   trust: new Set(["trust", "trust_owner", "trust_expires"]), "react-component": new Set(), "react-hook": new Set(),
   "react-resource": new Set(["acquire", "release"]),
