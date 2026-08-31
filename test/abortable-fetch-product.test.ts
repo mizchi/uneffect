@@ -446,4 +446,78 @@ describe("abortable fetch product", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("requires both branches of one immutable Response clone to be consumed", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-abortable-fetch-clone-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function both() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/clone-both", { signal: controller.signal })
+          const response = await request
+          const copy = response.clone()
+          await response.text()
+          await copy.arrayBuffer()
+        }
+        export async function leaked() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/clone-leaked", { signal: controller.signal })
+          const response = await request
+          const copy = response.clone()
+          await copy.text()
+        }
+        export async function conditional(readOriginal: boolean) {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/clone-conditional", { signal: controller.signal })
+          const response = await request
+          const copy = response.clone()
+          if (readOriginal) await response.text()
+          await copy.text()
+        }
+        export async function unbound() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/clone-unbound", { signal: controller.signal })
+          const response = await request
+          response.clone()
+          await response.text()
+        }
+        export async function multiple() {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/clone-multiple", { signal: controller.signal })
+          const response = await request
+          const first = response.clone()
+          const second = response.clone()
+          await response.text()
+          await first.text()
+          await second.text()
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const analysis = analyzeAbortableFetchesInProgram(program, program.getSourceFile(fileName)!);
+      expect(analysis.fetches).toEqual([
+        expect.objectContaining({
+          owner: "both", responseBodyStatus: "consumed", responseBodyOperation: "clone",
+          responseBodyBranches: [
+            { binding: "response", operation: "text", status: "consumed" },
+            { binding: "copy", operation: "arrayBuffer", status: "consumed" },
+          ],
+        }),
+        expect.objectContaining({
+          owner: "leaked", responseBodyStatus: "unconsumed", responseBodyOperation: "clone",
+          responseBodyBranches: [
+            { binding: "response", status: "unconsumed" },
+            { binding: "copy", operation: "text", status: "consumed" },
+          ],
+        }),
+        expect.objectContaining({ owner: "conditional", responseBodyStatus: "unknown", responseBodyOperation: "clone" }),
+        expect.objectContaining({ owner: "unbound", responseBodyStatus: "unknown", responseBodyOperation: "clone" }),
+        expect.objectContaining({ owner: "multiple", responseBodyStatus: "unknown", responseBodyOperation: "clone" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

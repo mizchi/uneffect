@@ -15,13 +15,20 @@ export interface AbortableFetch {
   readonly promiseObservations: readonly string[];
   readonly responseBinding?: string;
   readonly responseBodyStatus: "not-acquired" | "consumed" | "stream-owned" | "unconsumed" | "unknown";
-  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "text";
+  readonly responseBodyOperation?: "arrayBuffer" | "blob" | "bytes" | "clone" | "formData" | "getReader" | "json" | "pipeThroughTo" | "pipeTo" | "text";
+  readonly responseBodyBranches?: readonly ResponseBodyBranch[];
   readonly responseStreamDischarge?: "cancel" | "drain" | "pipe-through-to" | "pipe-to" | "release-lock";
   readonly abortComposition?: number;
   readonly abortReason?: string;
   readonly abortConditional?: boolean;
   readonly span: { start: number; end: number };
   readonly evidence: "exact";
+}
+
+export interface ResponseBodyBranch {
+  readonly binding: string;
+  readonly operation?: "arrayBuffer" | "blob" | "bytes" | "formData" | "json" | "text";
+  readonly status: "consumed" | "unconsumed" | "unknown";
 }
 
 export interface AbortableFetchUnknown {
@@ -202,6 +209,68 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
     findResponse(source);
     if (!responseDeclaration || !ts.isIdentifier(responseDeclaration.name)) return fetch;
     const responseSymbol = resolvedSymbol(checker, responseDeclaration.name);
+    const cloneCalls: ts.CallExpression[] = [];
+    let cloneDeclaration: ts.VariableDeclaration | undefined;
+    const findClone = (node: ts.Node): void => {
+      if (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner) return;
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "clone" && ts.isIdentifier(node.expression.expression)
+        && stableRootSymbol(node.expression.expression) === responseSymbol) {
+        const method = resolvedSymbol(checker, node.expression.name);
+        const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+        if (builtin) {
+          cloneCalls.push(node);
+          if (cloneCalls.length === 1 && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+            && ts.isVariableDeclarationList(node.parent.parent) && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0
+            && !conditionallyExecuted(node)) cloneDeclaration = node.parent;
+        }
+      }
+      ts.forEachChild(node, findClone);
+    };
+    findClone(source);
+    if (cloneCalls.length > 0) {
+      if (cloneCalls.length !== 1 || !cloneDeclaration || !ts.isIdentifier(cloneDeclaration.name)) return {
+        ...fetch,
+        responseBinding: responseDeclaration.name.text,
+        responseBodyStatus: "unknown",
+        responseBodyOperation: "clone",
+      };
+      const cloneSymbol = resolvedSymbol(checker, cloneDeclaration.name);
+      const analyzeBranch = (symbol: ts.Symbol | undefined, binding: string): ResponseBodyBranch => {
+        const operations: Array<{ operation: NonNullable<ResponseBodyBranch["operation"]>; conditional: boolean }> = [];
+        const findOperation = (node: ts.Node): void => {
+          if (node !== source && ts.isFunctionLike(node) && ownerName(node) !== fetch.owner) return;
+          if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+            && ts.isIdentifier(node.expression.expression) && stableRootSymbol(node.expression.expression) === symbol
+            && bodyMethods.has(node.expression.name.text as NonNullable<ResponseBodyBranch["operation"]>)) {
+            const method = resolvedSymbol(checker, node.expression.name);
+            const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+            if (builtin) operations.push({
+              operation: node.expression.name.text as NonNullable<ResponseBodyBranch["operation"]>,
+              conditional: conditionallyExecuted(node),
+            });
+          }
+          ts.forEachChild(node, findOperation);
+        };
+        findOperation(source);
+        if (operations.length === 0) return { binding, status: "unconsumed" };
+        if (operations.length !== 1 || operations[0]!.conditional) return { binding, operation: operations[0]!.operation, status: "unknown" };
+        return { binding, operation: operations[0]!.operation, status: "consumed" };
+      };
+      const responseBodyBranches = [
+        analyzeBranch(responseSymbol, responseDeclaration.name.text),
+        analyzeBranch(cloneSymbol, cloneDeclaration.name.text),
+      ] as const;
+      const responseBodyStatus: AbortableFetch["responseBodyStatus"] = responseBodyBranches.some((branch) => branch.status === "unknown")
+        ? "unknown" : responseBodyBranches.every((branch) => branch.status === "consumed") ? "consumed" : "unconsumed";
+      return {
+        ...fetch,
+        responseBinding: responseDeclaration.name.text,
+        responseBodyStatus,
+        responseBodyOperation: "clone",
+        responseBodyBranches,
+      };
+    }
     let operation: AbortableFetch["responseBodyOperation"] | undefined;
     let conditional = false;
     let readerSymbol: ts.Symbol | undefined;
