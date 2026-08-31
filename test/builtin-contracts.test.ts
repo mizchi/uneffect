@@ -13,6 +13,12 @@ describe("builtin semantic overlays", () => {
     const contracts = compileBuiltinSemanticCatalog(builtinSemanticCatalog);
     expect(contracts).toHaveLength(builtinSemanticCatalog.definitions.length);
     expect(contracts.every((item) => item.evidence === "trusted")).toBe(true);
+    expect(builtinSemanticCatalog.definitions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "PromiseConstructor#all" }, operation: { kind: "promise-combinator", combinator: "all", iterableArgument: 0 } }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "Math.random" }, operation: { kind: "effect", effect: "Random" } }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
+    ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,
     ] })).toThrow("duplicate builtin semantic definition");

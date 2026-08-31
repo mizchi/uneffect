@@ -34,6 +34,9 @@ existing trusted TypeChecker-backed contracts. Array/Object copying semantics,
 Node module/path/process helpers, and DOM Storage permissions are the initial
 migrated groups; remaining handwritten builtins migrate incrementally with
 negative semantic tests.
+The next schema slice must support multiple projections for APIs such as
+`Array#sort` (inline callback plus receiver mutation) before those definitions
+leave the handwritten compatibility registry.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct

@@ -346,18 +346,10 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: `Valibot 1.4.2 ${name} constructs schema metadata without executing validation`,
       trustOwner: "@mizchi/uneffect",
     })),
-    ...(["map", "flatMap", "filter", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "reduce", "reduceRight", "sort"] as const)
-      .flatMap((name): BuiltinContract[] => ["Array", "ReadonlyArray"].map((owner) => trusted({
-        symbol: { module: "lib.es", export: `${owner}#${name}` },
-        operation: { kind: "inline-callback", callbackArguments: [0] },
-        trustReason: `ECMAScript ${owner}.${name} invokes its callback synchronously`,
-        trustOwner: "@mizchi/uneffect",
-      }))),
-    ...(["slice", "join"] as const).flatMap((name): BuiltinContract[] => ["Array", "ReadonlyArray"].map((owner) => trusted({
-      symbol: { module: "lib.es", export: `${owner}#${name}` },
-      trustReason: `ECMAScript ${owner}.${name} has no callback or host authority`,
-      trustOwner: "@mizchi/uneffect",
-    }))),
+    ...(["Array", "ReadonlyArray"] as const).map((owner): BuiltinContract => trusted({
+      symbol: { module: "lib.es", export: `${owner}#sort` }, operation: { kind: "inline-callback", callbackArguments: [0] },
+      trustReason: `ECMAScript ${owner}.sort invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
+    })),
     ...materializeBuiltinSemanticDefinitions(builtinSemanticCatalog.definitions),
     trusted({
       symbol: { module: "typescript", export: "Program#emit" },
@@ -488,16 +480,10 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     trusted({ symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),
     trusted({ symbol: { module: "lib.dom", export: "Scheduler#postTask" }, operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 } }),
     trusted({ symbol: { module: "lib.dom", export: "Scheduler#yield" }, operation: { kind: "scheduler-yield" } }),
-    ...(["all", "allSettled", "race", "any"] as const).map((combinator): BuiltinContract => trusted({
-      symbol: { module: "lib.es", export: `PromiseConstructor#${combinator}` },
-      operation: { kind: "promise-combinator", combinator, iterableArgument: 0 },
-    })),
-    trusted({ symbol: { module: "global", export: "Math.random" }, operation: { kind: "effect", effect: "Random" } }),
     trusted({ symbol: { module: "global", export: "crypto.randomUUID" }, operation: { kind: "effect", effect: "Random" } }),
     ...["getRandomValues", "randomUUID"].map((name): BuiltinContract => trusted({
       symbol: { module: "lib.dom", export: `Crypto#${name}` }, operation: { kind: "effect", effect: "Random" },
     })),
-    trusted({ symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
     ...["Worker#postMessage", "MessagePort#postMessage"].map((name): BuiltinContract => trusted({ symbol: { module: "lib.dom", export: name }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } })),
     ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#sort", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete"].map((name): BuiltinContract => ({
       ...trusted({ symbol: { module: "lib.es", export: name }, operation: { kind: "mutation" } }),
