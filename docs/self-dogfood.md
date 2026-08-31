@@ -32,7 +32,7 @@ just dogfood-leaf
 
 The gate uses `--infer` deliberately. Runtime imports load a wider internal
 Program whose unannotated dependencies are still adoption candidates. Inference
-mode continues to enforce every annotation in the eleven selected files while not
+mode continues to enforce every annotation in the twelve selected files while not
 requiring unrelated dependencies to be annotated in the same change. The
 `no-unknown` profile still rejects unknown summaries in the analyzed Program.
 
@@ -125,6 +125,18 @@ validation and rethrow effects. `Throw<unknown>` and `Throw<Error>` are both
 listed: the current throw lattice treats them as distinct tracked alternatives,
 not as TypeScript-style assignability where `unknown` is automatically an
 upper bound.
+
+## Eleventh boundary: project optimization evidence
+
+`src/project-optimizer.ts` verifies persisted-proof parsing as `FsRead` and the
+full regeneration boundary as `FsRead | FsWrite | InvokeUserCode`. The latter
+retains `InvokeUserCode` because it traverses values supplied by the external
+TypeScript compiler API; this is not presented as a filesystem effect.
+
+Dogfooding also generalized the reviewed fresh-result contract from
+`Object.keys` to `Object.entries`. Sorting the newly allocated entries array no
+longer leaks a fictitious mutation of caller-owned state, with a direct
+regression test for both builtins.
 
 ## Next adoption order
 

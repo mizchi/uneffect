@@ -371,6 +371,8 @@ describe("effect checker", () => {
     const source = `
       /* uneffect:capability effect none */
       function sortedKeys(value: object) { return Object.keys(value).sort() }
+      /* uneffect:capability effect none */
+      function sortedEntries(value: object) { return Object.entries(value).sort() }
     `;
     expect(analyzeEffects("fresh-result.ts", source)).toEqual([]);
   });

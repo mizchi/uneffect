@@ -2810,6 +2810,33 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("tracks persisted optimizer evidence reads independently from regeneration writes", () => {
+    const fileName = "src/project-optimizer.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    expect(selected.find((summary) => summary.functionName === "parseEvidence"))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
+    expect(selected.find((summary) => summary.functionName === "optimizeUneffectProject"))
+      .toMatchObject({ evidence: "verified", effects: expect.arrayContaining([
+        expect.objectContaining({ kind: "capability", name: "FsRead" }),
+        expect.objectContaining({ kind: "capability", name: "FsWrite" }),
+      ]) });
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:capability effect FsRead */\nfunction parseEvidence",
+      "/* uneffect:capability effect FsWrite */\nfunction parseEvidence",
+    ), { requireAnnotations: false })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "parseEvidence", effect: "FsRead", kind: "missing" }),
+      expect.objectContaining({ functionName: "parseEvidence", effect: "FsWrite", kind: "unused" }),
+    ]));
+  });
+
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
     const program = ts.createProgram([entry], {

@@ -356,12 +356,12 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: `ECMAScript ${owner}.${name} has no callback or host authority`,
       trustOwner: "@mizchi/uneffect",
     }))),
-    trusted({
-      symbol: { module: "lib.es", export: "ObjectConstructor#keys" },
+    ...(["keys", "entries"] as const).map((name) => trusted({
+      symbol: { module: "lib.es", export: `ObjectConstructor#${name}` },
       result: { kind: "fresh" },
-      trustReason: "ECMAScript Object.keys returns a newly allocated Array",
+      trustReason: `ECMAScript Object.${name} returns a newly allocated Array`,
       trustOwner: "@mizchi/uneffect",
-    }),
+    })),
     trusted({
       symbol: { module: "node:module", export: "createRequire" },
       trustReason: "Node createRequire constructs a resolver without loading a target module",
