@@ -21,6 +21,32 @@ function programOf(text: string) {
 }
 
 describe("evidence and optimizer obligations", () => {
+  it("resolves typed refinement attachments into source-bound project evidence", async () => {
+    const files = {
+      "src/counter.ts": `/* uneffect:refinement_from "./counter.uneffect.ts#default" */
+        export type Runtime = { value: number };
+        export const create = (value: Runtime): Runtime => value;
+        export const observe = (value: Runtime): Runtime => value;
+        export const increment = (value: Runtime): void => { value.value += 1 };
+        export const nonnegative = (value: Runtime): boolean => value.value >= 0;`,
+      "src/counter.uneffect.ts": `import { defineRefinement, identityProjection } from "@mizchi/uneffect/spec";
+        import { create, observe, increment, nonnegative } from "./counter.js";
+        export default defineRefinement({ name: "counter", version: "1", create, observe,
+          abstractions: { value: identityProjection("value") }, actions: { increment }, invariants: { nonnegative } });`,
+    };
+    const result = await verifyUneffectProject({ files });
+    expect(result.refinements.manifests).toContainEqual(expect.objectContaining({
+      schema: "uneffect-refinement-bindings/v1", fileName: "src/counter.ts", adapterName: "counter",
+    }));
+    expect(result.refinements.links).toContainEqual(expect.objectContaining({
+      schema: "uneffect-refinement-link/v1", implementationFile: "src/counter.ts",
+      specificationFile: "src/counter.uneffect.ts", reference: "./counter.uneffect.ts#default",
+      attachmentSpan: { start: expect.any(Number), end: expect.any(Number) },
+      implementationDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      specificationDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      typescriptVersion: ts.version,
+    }));
+  });
   it("verifies solution projects as independent compiler domains and aggregates provenance fail closed", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-project-workspace-"));
     const root = join(directory, "tsconfig.json");
@@ -1170,8 +1196,8 @@ describe("evidence and optimizer obligations", () => {
         output[0] = value
         console.log("decoded")
       }
-      /* uneffect:temporal-summary ensures ready' = true */
-      /* uneffect:temporal-summary modifies ready */
+      /* uneffect:temporal_contract ensures ready' = true */
+      /* uneffect:temporal_contract modifies ready */
       /* uneffect:trust trust_owner runtime-team */
       /* uneffect:trust trust_expires 2026-12-31 */
       function start() {}
@@ -1193,7 +1219,7 @@ describe("evidence and optimizer obligations", () => {
     expect(result.assumptions.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ domain: "typed-array", reason: "validated by the wire-format review", owner: "binary-platform", expiresOn: "2027-01-31", scope: expect.objectContaining({ fileName, functionName: "decode", span: expect.any(Object) }) }),
       expect.objectContaining({ domain: "builtin", reason: "reviewed Console log semantic overlay", owner: "@mizchi/uneffect", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
-      expect.objectContaining({ domain: "temporal-summary", owner: "runtime-team", expiresOn: "2026-12-31", scope: expect.objectContaining({ functionName: "start" }) }),
+      expect.objectContaining({ domain: "temporal-contract", owner: "runtime-team", expiresOn: "2026-12-31", scope: expect.objectContaining({ functionName: "start" }) }),
       expect.objectContaining({ domain: "dispatch-sealing", reason: "application owns the complete class graph", owner: "runtime-team", expiresOn: "2027-02-28", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
     ]));
     expect(result.assumptions.violations).toEqual([]);
@@ -1213,7 +1239,7 @@ describe("evidence and optimizer obligations", () => {
       assumptionPolicy: { requireOwner: true, asOf: "2026-08-21" },
     });
     expect(missingDispatchOwner.assumptions.violations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ rule: "owner-required", domain: "temporal-summary" }),
+      expect.objectContaining({ rule: "owner-required", domain: "temporal-contract" }),
       expect.objectContaining({ rule: "owner-required", domain: "dispatch-sealing" }),
     ]));
 
@@ -1223,7 +1249,7 @@ describe("evidence and optimizer obligations", () => {
     });
     expect(expired.assumptions.violations).toEqual(expect.arrayContaining([
       expect.objectContaining({ rule: "expired", domain: "typed-array" }),
-      expect.objectContaining({ rule: "expired", domain: "temporal-summary" }),
+      expect.objectContaining({ rule: "expired", domain: "temporal-contract" }),
       expect.objectContaining({ rule: "expired", domain: "dispatch-sealing" }),
     ]));
   });

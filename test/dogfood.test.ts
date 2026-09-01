@@ -3035,7 +3035,7 @@ describe("Uneffect dogfood", () => {
       asOf: "2026-08-21",
     };
     const verified = await verifyUneffectProject({ files: { [fileName]: source }, assumptionPolicy: policy });
-    expect(verified.assumptions.entries.map(({ domain }) => domain)).toEqual(["typed-array", "builtin", "temporal-summary"]);
+    expect(verified.assumptions.entries.map(({ domain }) => domain)).toEqual(["typed-array", "builtin", "temporal-contract"]);
     expect(verified.assumptions.violations).toEqual([]);
 
     const ownerless = await verifyUneffectProject({
@@ -3044,7 +3044,7 @@ describe("Uneffect dogfood", () => {
     });
     expect(ownerless.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "assumption-policy", domain: "typed-array", rule: "owner-required" }),
-      expect.objectContaining({ kind: "assumption-policy", domain: "temporal-summary", rule: "owner-required" }),
+      expect.objectContaining({ kind: "assumption-policy", domain: "temporal-contract", rule: "owner-required" }),
     ]));
   });
 

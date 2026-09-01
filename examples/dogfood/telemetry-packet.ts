@@ -8,8 +8,8 @@ export function encodeMetricKind(output: BoundedUint8Array<1>, metricKind: numbe
   console.debug("encoded metric kind", metricKind);
 }
 
-/* uneffect:temporal-summary ensures sent' = true */
-/* uneffect:temporal-summary modifies sent */
+/* uneffect:temporal_contract ensures sent' = true */
+/* uneffect:temporal_contract modifies sent */
 /* uneffect:trust trust_owner telemetry-platform */
 /* uneffect:trust trust_expires 2027-06-30 */
 export function markPacketSent(): void {}

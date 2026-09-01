@@ -465,8 +465,8 @@ describe("Hoare contract checker", () => {
     const fileName = "/declared-rejection-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:temporal-summary rejects RangeError */
-      /* uneffect:temporal-summary throws URIError */
+      /* uneffect:temporal_contract rejects RangeError */
+      /* uneffect:temporal_contract throws URIError */
       declare function readRemote(value: Int): Promise<Int>
       /* uneffect:ensures result === value || result === 0 */
       async function normalize(value: Int): Promise<Int> {
@@ -498,7 +498,7 @@ describe("Hoare contract checker", () => {
   it("does not apply a temporal rejection summary to a non-Promise return", async () => {
     const fileName = "/invalid-declared-rejection-contract.ts";
     const source = `
-      /* uneffect:temporal-summary rejects RangeError */
+      /* uneffect:temporal_contract rejects RangeError */
       declare function readImmediate(): number
       /* uneffect:ensures result === 0 */
       async function normalize(): Promise<number> {
@@ -516,7 +516,7 @@ describe("Hoare contract checker", () => {
     const source = `
       type Int = number
       /* uneffect:ensures result >= value */
-      /* uneffect:temporal-summary rejects RangeError */
+      /* uneffect:temporal_contract rejects RangeError */
       declare function readRemote(value: Int): Promise<Int>
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result >= 0 */

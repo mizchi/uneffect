@@ -8,9 +8,9 @@ import { generateComposedQuint, parseTemporalComposition } from "../src/temporal
 
 const source = `
 /* uneffect: state phase: int */ /* uneffect: init phase = 0 */ /* uneffect:always completedInOrder: pc !== 2 || phase === 2 */
-/* uneffect:temporal-summary requires phase === 0 */ /* uneffect:temporal-summary ensures phase' = 1 */ /* uneffect:temporal-summary modifies phase */
+/* uneffect:temporal_contract requires phase === 0 */ /* uneffect:temporal_contract ensures phase' = 1 */ /* uneffect:temporal_contract modifies phase */
 function open() {}
-/* uneffect:temporal-summary requires phase === 1 */ /* uneffect:temporal-summary ensures phase' = 2 */ /* uneffect:temporal-summary modifies phase */
+/* uneffect:temporal_contract requires phase === 1 */ /* uneffect:temporal_contract ensures phase' = 2 */ /* uneffect:temporal_contract modifies phase */
 function close() {}
 function main() { open(); close() }
 `;
@@ -48,7 +48,7 @@ describe("temporal function-summary composition", () => {
       /* uneffect: state phase: int */
       /* uneffect: init phase = 0 */
       /* uneffect:always neverEscapes: pc !== -1 */
-      /* uneffect:temporal-summary throws RangeError */
+      /* uneffect:temporal_contract throws RangeError */
       function dangerous() {}
       function main() { try { dangerous() } catch {} }
     `;
@@ -63,7 +63,7 @@ describe("temporal function-summary composition", () => {
       /* uneffect: state phase: int */
       /* uneffect: init phase = 0 */
       /* uneffect:always neverEscapes: pc !== -1 */
-      /* uneffect:temporal-summary throws RangeError */
+      /* uneffect:temporal_contract throws RangeError */
       function dangerous() {}
       function main() { dangerous() }
     `;
@@ -78,11 +78,11 @@ describe("temporal function-summary composition", () => {
     const supported = `
       /* uneffect: state phase: int */
       /* uneffect: init phase = 0 */
-      /* uneffect:temporal-summary throws Error */ function dangerous() {}
-      /* uneffect:temporal-summary ensures phase' = phase + 1 */
-      /* uneffect:temporal-summary modifies phase */ function recover() {}
-      /* uneffect:temporal-summary ensures phase' = phase + 1 */
-      /* uneffect:temporal-summary modifies phase */ function cleanup() {}
+      /* uneffect:temporal_contract throws Error */ function dangerous() {}
+      /* uneffect:temporal_contract ensures phase' = phase + 1 */
+      /* uneffect:temporal_contract modifies phase */ function recover() {}
+      /* uneffect:temporal_contract ensures phase' = phase + 1 */
+      /* uneffect:temporal_contract modifies phase */ function cleanup() {}
       function main() { try { dangerous() } catch { recover() } finally { cleanup() } return; dangerous() }
     `;
     const composition = parseTemporalComposition("catch.ts", supported, "main");
@@ -102,10 +102,10 @@ describe("temporal function-summary composition", () => {
       /* uneffect: response resumedFinishes: suspended => pc === 1 */
       /* uneffect: repeatedly becomesUnsuspended: !suspended */
       /* uneffect: stabilizes eventuallyFinishes: pc === 1 */
-      /* uneffect:temporal-summary rejects Error */
-      /* uneffect:temporal-summary suspends true */
-      /* uneffect:temporal-summary cancellable true */
-      /* uneffect:temporal-summary fair weak */
+      /* uneffect:temporal_contract rejects Error */
+      /* uneffect:temporal_contract suspends true */
+      /* uneffect:temporal_contract cancellable true */
+      /* uneffect:temporal_contract fair weak */
       async function wait() {}
       async function main() { try { await wait() } catch {} }
     `;
@@ -136,7 +136,7 @@ describe("temporal function-summary composition", () => {
       /* uneffect: state committed: int */
       /* uneffect: init committed = 0 */
       /* uneffect:always atMostOne: committed <= 1 */
-      /* uneffect:temporal-summary requires committed === 0 */ /* uneffect:temporal-summary ensures committed' = committed + 1 */ /* uneffect:temporal-summary modifies committed */
+      /* uneffect:temporal_contract requires committed === 0 */ /* uneffect:temporal_contract ensures committed' = committed + 1 */ /* uneffect:temporal_contract modifies committed */
       function commit() {}
       function main() { setInterval(commit, 0) }
     `;

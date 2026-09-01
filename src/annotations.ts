@@ -3,6 +3,7 @@ export type UneffectDirective =
   | "capability_from"
   | "requires" | "ensures" | "invariant" | "decreases" | "assert" | "validate" | "returns"
   | "contract_from"
+  | "refinement_from"
   | "trust" | "trust_owner" | "trust_expires" | "refinement" | "abstraction" | "runtime" | "react"
   | "state" | "clock" | "init" | "action" | "action_when" | "action_fair" | "temporal"
   | "temporal_from"
@@ -12,7 +13,7 @@ export type UneffectDirective =
   | "consumes_rejection" | "consumes_callback_rejection" | "consumes_rejection_when"
   | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when"
   | "borrow" | "consume" | "transfer" | "escape";
-export type UneffectDialect = "unified" | "temporal-summary" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
+export type UneffectDialect = "unified" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
 export interface SourceSpan { start: number; end: number }
 export interface LocatedAnnotation { value: string; span: SourceSpan }
 export interface AnnotationDiagnostic {
@@ -24,8 +25,9 @@ interface PayloadBlock { dialect: string; dialectSpan: SourceSpan; lines: Payloa
 
 const unifiedDirectives = new Set([
   "effect", "effect_parameter", "module_effect", "effect_schema", "capability_from",
-  "requires", "ensures", "loop_invariant", "decreases", "assert", "validate", "returns", "contract_from",
+  "requires", "ensures", "loop_invariant", "decreases", "assert", "validate", "returns", "contract_from", "refinement_from",
   "state", "clock", "init", "action", "action_when", "action_fair", "always", "eventually", "repeatedly", "stabilizes", "response", "fair", "temporal_from",
+  "temporal_contract",
   "consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when",
   "borrow", "consume", "transfer", "escape",
 ]);
@@ -36,7 +38,6 @@ export function isCoreUneffectDirective(directive: string): boolean {
 
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   unified: unifiedDirectives,
-  "temporal-summary": new Set(["requires", "ensures", "modifies", "throws", "rejects", "suspends", "cancellable", "eventually", "repeatedly", "stabilizes", "response", "fair"]),
   refinement: new Set(["refinement", "abstraction"]), runtime: new Set(["runtime", "returns"]),
   trust: new Set(["trust", "trust_owner", "trust_expires"]), "react-component": new Set(), "react-hook": new Set(),
   "react-resource": new Set(["acquire", "release"]),
@@ -48,7 +49,13 @@ const aliases: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     stabilizes: "temporal_stabilizes", response: "temporal_response",
     fair: "temporal_fair",
   },
-  "temporal-summary": { requires: "temporal_requires", ensures: "temporal_ensures", modifies: "temporal_modifies", throws: "temporal_throws", rejects: "temporal_rejects", suspends: "temporal_suspends", cancellable: "temporal_cancellable", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair" },
+};
+const temporalContractAliases: Readonly<Record<string, string>> = {
+  requires: "temporal_requires", ensures: "temporal_ensures", modifies: "temporal_modifies",
+  throws: "temporal_throws", rejects: "temporal_rejects", suspends: "temporal_suspends",
+  cancellable: "temporal_cancellable", eventually: "temporal_eventually",
+  repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes",
+  response: "temporal_response", fair: "temporal_fair",
 };
 
 function payloadBlocks(text: string, baseOffset: number): PayloadBlock[] {
@@ -111,6 +118,13 @@ export function extractLocatedAnnotations(text: string, directive: UneffectDirec
         values.push({ value, span: { start, end: start + value.length } });
         continue;
       }
+      if (block.dialect === "unified" && match[1] === "temporal_contract" && match[2]) {
+        const clause = /^([^\s]+)(?:\s+(.+))?$/.exec(match[2].trim());
+        if (!clause || temporalContractAliases[clause[1]!] !== directive || !clause[2]) continue;
+        const value = clause[2].trim(), start = line.start + line.cleaned.indexOf(value);
+        values.push({ value, span: { start, end: start + value.length } });
+        continue;
+      }
       if (canonicalDirective(block.dialect, match[1]!) !== directive || !match[2]) continue;
       const value = match[2].trim(), start = line.start + line.cleaned.indexOf(value);
       values.push({ value, span: { start, end: start + value.length } });
@@ -136,6 +150,13 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0, additi
       const match = /^([^\s]+)(?:\s+(.*))?$/.exec(candidate)!, name = match[1]!, leading = line.cleaned.indexOf(candidate);
       const span = { start: line.start + leading, end: line.start + leading + candidate.length };
       if (!accepted.has(name)) diagnostics.push({ kind: "wrong-dialect", directive: name, dialect: block.dialect, span, message: `Uneffect directive \`${name}\` is not valid in an \`uneffect:${block.dialect}\` block` });
+      else if (block.dialect === "unified" && name === "temporal_contract") {
+        const clause = /^([^\s]+)(?:\s+(.*))?$/.exec(match[2]?.trim() ?? ""), clauseName = clause?.[1] ?? "temporal_contract";
+        const clauseStart = line.start + leading + candidate.indexOf(clauseName, name.length);
+        const clauseSpan = { start: clauseStart, end: clauseStart + clauseName.length };
+        if (!temporalContractAliases[clauseName]) diagnostics.push({ kind: "unknown-directive", directive: clauseName, dialect: "temporal_contract", span: clauseSpan, message: `unknown Uneffect temporal contract clause \`${clauseName}\`` });
+        else if (!clause?.[2]?.trim()) diagnostics.push({ kind: "missing-payload", directive: clauseName, dialect: "temporal_contract", span: clauseSpan, message: `Uneffect temporal contract clause \`${clauseName}\` requires a payload` });
+      }
       else if (!match[2]?.trim()) diagnostics.push({ kind: "missing-payload", directive: name, dialect: block.dialect, span, message: `Uneffect directive \`${name}\` requires a payload` });
     }
   }

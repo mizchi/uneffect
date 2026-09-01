@@ -57,6 +57,7 @@ directive = effect_decl
           | ensures_decl
           | loop_invariant_decl
           | temporal_always_decl
+          | temporal_contract_decl
           | returns_decl
           | assert_decl
           | refinement_decl
@@ -93,6 +94,10 @@ requires_decl  = "requires", expression ;
 ensures_decl   = "ensures", expression ;
 loop_invariant_decl = "loop_invariant", expression ;
 temporal_always_decl = "always", identifier, ":", expression ;
+temporal_contract_decl = "temporal_contract", temporal_contract_clause, temporal_contract_payload ;
+temporal_contract_clause = "requires" | "ensures" | "modifies" | "throws" | "rejects"
+               | "suspends" | "cancellable" | "eventually" | "repeatedly"
+               | "stabilizes" | "response" | "fair" ;
 returns_decl   = "returns", refinement_type ;
 assert_decl    = "assert", identifier, ":", schema ;
 refinement_decl = "refinement", identifier, "@", version,
@@ -103,6 +108,47 @@ abstraction_decl = "abstraction", identifier, "@", version,
                    identifier, "=", abstraction_expression ;
 abstraction_expression = qualified_name
                        | "Set", "(", qualified_name, ")" ;
+
+The replacement for comment-authored refinement metadata starts in a typed
+`.uneffect.ts` module. Its contract API keeps callable identity visible to the
+TypeChecker and restricts projections to descriptors that Uneffect can parse
+without executing the module:
+
+```ts
+import {
+  defineRefinement,
+  globalRuntime,
+  identityProjection,
+} from "@mizchi/uneffect/spec";
+import { create, observe, increment, nonnegative } from "./counter.js";
+
+export default defineRefinement({
+  name: "counter",
+  version: "1",
+  runtime: globalRuntime(),
+  create,
+  observe,
+  abstractions: { value: identityProjection("value") },
+  actions: { increment },
+  invariants: { nonnegative },
+});
+```
+
+This API is implemented, but source attachment and static lowering are still
+experimental work tracked by issue #62. The resolver accepts an implementation
+attachment of the following form and lowers it to
+`uneffect-refinement-bindings/v1` without executing the specification module:
+
+```ts
+/* uneffect:refinement_from "./counter.uneffect.ts#default" */
+```
+
+When supplied a TypeScript Program, every callable in the model must resolve to
+an export declared by that attached implementation file. Project verification
+now resolves these attachments automatically and emits source-bound
+`uneffect-refinement-link/v1` evidence. Existing comment-authored refinement
+bindings remain accepted during migration and must not be confused with this
+TypeChecker-verified attachment path.
 
 effect_set   = "none" | effect_union ;
 effect_union = effect_term, { "|", effect_term } ;

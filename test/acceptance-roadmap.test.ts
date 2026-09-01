@@ -3587,9 +3587,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         /* uneffect: state phase: int */
         /* uneffect: init phase = 0 */
         /* uneffect:always committedOnce: phase <= 1 */
-        /* uneffect:temporal-summary requires phase === 0 */
-        /* uneffect:temporal-summary ensures phase' = phase + 1 */
-        /* uneffect:temporal-summary modifies phase */
+        /* uneffect:temporal_contract requires phase === 0 */
+        /* uneffect:temporal_contract ensures phase' = phase + 1 */
+        /* uneffect:temporal_contract modifies phase */
         function commit() {}
         function main() { queueMicrotask(commit) }
       `,
@@ -3605,9 +3605,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       "src/scheduler.ts": `
         /* uneffect: state phase: int */
         /* uneffect: init phase = 0 */
-        /* uneffect:temporal-summary requires phase === 0 */
-        /* uneffect:temporal-summary ensures phase' = phase + 1 */
-        /* uneffect:temporal-summary modifies phase */
+        /* uneffect:temporal_contract requires phase === 0 */
+        /* uneffect:temporal_contract ensures phase' = phase + 1 */
+        /* uneffect:temporal_contract modifies phase */
         function commit() {}
         function main() { queueMicrotask(commit); queueMicrotask(commit) }
       `,

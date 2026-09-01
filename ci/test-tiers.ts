@@ -35,6 +35,7 @@ export const ciTestTiers = {
     "test/react-semantics.test.ts",
     "test/release-readiness.test.ts",
     "test/refinement-bindings.test.ts",
+    "test/refinement-dsl.test.ts",
     "test/refinement-flow.test.ts",
     "test/refinement-handler-flow.test.ts",
     "test/region-alias.test.ts",

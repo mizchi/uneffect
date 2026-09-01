@@ -324,8 +324,8 @@ same property is proved for arbitrary TypeScript.
   `Promise.reject(value)` produces a distinct `Reject<E>` edge which catch can
   discharge, without requiring a synchronous `Throw<E>` declaration. A
   TypeChecker-resolved Promise-returning call may instead use a trusted
-  `temporal-summary rejects E` declaration; it branches into fulfilled and
-  rejected completion, while `temporal-summary throws E` declarations produce
+  `temporal_contract rejects E` declaration; it branches into fulfilled and
+  rejected completion, while `temporal_contract throws E` declarations produce
   separate synchronous edges. Unannotated Promise-producing calls, opaque catch
   payloads, and general exception fixed points are not accepted. A scalar
   Promise-returning callee may expose a trusted

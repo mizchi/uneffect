@@ -1,8 +1,9 @@
 import ts from "typescript";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
@@ -14,6 +15,9 @@ import { generateTemporalModel } from "./temporal-model.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
 import { prepareCapabilityDslLinks } from "./capability-dsl.js";
 import { prepareContractDslLinks } from "./contract-dsl.js";
+import { extractLocatedAnnotations } from "./annotations.js";
+import { resolveRefinementDslLink } from "./refinement-dsl.js";
+import type { RefinementBindingManifest } from "./refinement-bindings.js";
 import { hasProjectCallableAliasContracts, instrumentContractPredicates, relocateProjectCallableAliasContracts } from "./contract-runtime.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
@@ -84,6 +88,7 @@ export interface VerifyUneffectProjectResult {
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
   assumptions: AssumptionLedger;
   effects: EffectAnalysisResult;
+  refinements: ProjectRefinementVerification;
   assurance: ProjectAssuranceAssessment;
   temporal?: ProjectTemporalVerification;
   moduleInitialization?: ModuleInitializationOrder;
@@ -154,6 +159,26 @@ export interface ProjectTemporalVerification {
   backend: "quint";
   models: ProjectTemporalModel[];
   properties: ProjectTemporalProperty[];
+}
+
+export interface ProjectRefinementLinkEvidence {
+  schema: "uneffect-refinement-link/v1";
+  implementationFile: string;
+  specificationFile: string;
+  reference: string;
+  attachmentSpan: { start: number; end: number };
+  implementationDigest: string;
+  specificationDigest: string;
+  typescriptVersion: string;
+}
+
+export interface ProjectRefinementVerification {
+  manifests: RefinementBindingManifest[];
+  links: ProjectRefinementLinkEvidence[];
+}
+
+function sourceDigest(source: string): string {
+  return createHash("sha256").update(source).digest("hex");
 }
 
 function javascriptPath(fileName: string): string {
@@ -290,6 +315,22 @@ async function verifyUneffectProjectFiles(
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
+  const refinementManifests: RefinementBindingManifest[] = [];
+  const refinementLinks: ProjectRefinementLinkEvidence[] = [];
+  for (const [fileName, source] of Object.entries(options.files)) {
+    const attachments = extractLocatedAnnotations(source, "refinement_from");
+    if (attachments.length === 0) continue;
+    const manifest = resolveRefinementDslLink(fileName, source, options.files, program);
+    const attachment = attachments[0]!, quoted = /^(?:"([^"]+)"|'([^']+)')$/.exec(attachment.value)!;
+    const reference = quoted[1] ?? quoted[2]!, hash = reference.lastIndexOf("#"), requested = reference.slice(0, hash);
+    const specificationFile = posix.normalize(posix.join(posix.dirname(fileName), requested));
+    refinementManifests.push(manifest);
+    refinementLinks.push({
+      schema: "uneffect-refinement-link/v1", implementationFile: fileName, specificationFile, reference,
+      attachmentSpan: attachment.span, implementationDigest: sourceDigest(source),
+      specificationDigest: sourceDigest(options.files[specificationFile]!), typescriptVersion: ts.version,
+    });
+  }
   const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
   const preparedEffects = prepareCapabilityDslLinks(options.files, program);
   const effectFiles = preparedEffects.files;
@@ -400,6 +441,7 @@ async function verifyUneffectProjectFiles(
     ? undefined : analyzeModuleInitializationOrder(program, options.moduleInitializationEntry);
   const partial = {
     obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects,
+    refinements: { manifests: refinementManifests, links: refinementLinks },
     ...(temporal ? { temporal } : {}), ...(moduleInitialization ? { moduleInitialization } : {}),
   };
   return { ...partial, assurance: assessProjectVerification(partial, Object.keys(options.files), compilerContext?.project.provenance) };

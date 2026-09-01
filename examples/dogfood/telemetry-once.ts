@@ -2,7 +2,7 @@
 /* uneffect:init telemetrySends = 0 */
 /* uneffect:always sendsAtMostOnce: telemetrySends <= 1 */
 
-/* uneffect:temporal-summary requires telemetrySends === 0 */ /* uneffect:temporal-summary ensures telemetrySends' = telemetrySends + 1 */ /* uneffect:temporal-summary modifies telemetrySends */
+/* uneffect:temporal_contract requires telemetrySends === 0 */ /* uneffect:temporal_contract ensures telemetrySends' = telemetrySends + 1 */ /* uneffect:temporal_contract modifies telemetrySends */
 function sendTelemetry(): void {
   navigator.sendBeacon("https://telemetry.example/v1/events", "[]");
 }

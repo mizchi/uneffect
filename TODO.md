@@ -50,14 +50,31 @@ silent aliases.
    contract, temporal, Promise-ownership, and resource examples, fixtures,
    skills, and documentation to the unified marker; reject their old dialect
    headers once the repository migration is complete.
-3. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Replace
-   `temporal-summary` with explicit `summary requires|ensures|modifies|throws|
+3. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Replace
+   `temporal-summary` with explicit `temporal_contract requires|ensures|modifies|throws|
    rejects|suspends|cancellable|eventually|repeatedly|stabilizes|response|fair`
    directives whose attachment target is recorded in evidence.
 4. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move refinement,
    abstraction, and runtime bindings to typed `.uneffect.ts` APIs; comments
    retain only a stable model/binding reference where source attachment is
    required.
+   - [x] Add the typed `defineRefinement` contract plus explicit identity,
+     Set-from-array, Map-from-entries, global, and Node-global descriptors.
+   - [x] Parse the supported `.uneffect.ts` fragment without executing it,
+     rejecting dynamic expressions, spreads, computed fields, and helpers not
+     imported from `@mizchi/uneffect/spec`.
+   - [x] Validate helper provenance plus create/observe/action/invariant callable
+     identity, shared Runtime compatibility, and Boolean invariant results with
+     the TypeChecker.
+   - [x] Add `refinement_from "./model.uneffect.ts#default"` attachment and
+     lower the typed definition to `uneffect-refinement-bindings/v1`.
+     - [x] Add the fail-closed resolver/lowering API, including relative-path,
+       default-export, runtime-identity, and attached callable-origin checks.
+     - [x] Invoke the resolver from project verification and retain attachment
+       span, implementation/specification digests, and TypeScript version as
+       `uneffect-refinement-link/v1` evidence.
+   - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate repository fixtures and reject comment-authored `refinement`,
+     `abstraction`, and `runtime` declarations.
 5. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move trust metadata
    to authenticated config/evidence records. Source comments may reference an
    assumption ID but cannot self-author owner, expiry, or digest evidence.
@@ -1978,8 +1995,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   Rejection remains distinct from synchronous `Throw<E>` and therefore is not
   required in the synchronous Effect boundary.
 - [x] Connect TypeChecker-resolved Promise-returning calls carrying a trusted
-  `temporal-summary rejects E` declaration to may-reject contract paths, while
-  preserving declared `temporal-summary throws E` as separate synchronous
+  `temporal_contract rejects E` declaration to may-reject contract paths, while
+  preserving declared `temporal_contract throws E` as separate synchronous
   edges and rejecting annotations attached to non-Promise return types.
 - [x] Compose scalar fulfilled values from a trusted callee
   `contract ensures` summary through one direct `const value = await call()` or

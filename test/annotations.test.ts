@@ -18,6 +18,12 @@ describe("Uneffect annotation marker", () => {
     expect(extractAnnotations(source, "consumes_rejection")).toEqual(["0"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
+  it("extracts a refinement model attachment reference", () => {
+    const source = `/* uneffect:refinement_from "./counter.uneffect.ts#default" */`;
+    expect(extractAnnotations(source, "refinement_from"))
+      .toEqual([`"./counter.uneffect.ts#default"`]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
 
   it("accepts a unified multiline block", () => {
     const source = `/* uneffect:
@@ -39,6 +45,22 @@ describe("Uneffect annotation marker", () => {
     const source = `/* uneffect:queue_depth pending */\n/* uneffect:\n      queue_depth running\n    */`;
     expect(extractAnnotations(source, "queue_depth")).toEqual(["pending", "running"]);
     expect(validateUneffectAnnotations(source, 0, ["queue_depth"])).toEqual([]);
+  });
+  it("lowers canonical temporal contract clauses to temporal IR directives", () => {
+    const source = `/* uneffect:temporal_contract requires phase === 0 */\n/* uneffect:\n      temporal_contract ensures phase' = 1\n      temporal_contract modifies phase\n      temporal_contract rejects NetworkError\n    */`;
+    expect(extractAnnotations(source, "temporal_requires")).toEqual(["phase === 0"]);
+    expect(extractAnnotations(source, "temporal_ensures")).toEqual(["phase' = 1"]);
+    expect(extractAnnotations(source, "temporal_modifies")).toEqual(["phase"]);
+    expect(extractAnnotations(source, "temporal_rejects")).toEqual(["NetworkError"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+  it("rejects removed temporal-summary headers and invalid temporal contract clauses", () => {
+    expect(validateUneffectAnnotations("/* uneffect:temporal-summary requires ready */"))
+      .toMatchObject([{ kind: "unknown-dialect", directive: "temporal-summary" }]);
+    expect(validateUneffectAnnotations("/* uneffect:temporal_contract effects Console */"))
+      .toMatchObject([{ kind: "unknown-directive", directive: "effects" }]);
+    expect(validateUneffectAnnotations("/* uneffect:temporal_contract requires */"))
+      .toMatchObject([{ kind: "missing-payload", directive: "requires" }]);
   });
   it("requires a payload for a registered one-line plugin directive", () => {
     expect(validateUneffectAnnotations("/* uneffect:queue_depth */", 0, ["queue_depth"]))

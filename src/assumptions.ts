@@ -6,7 +6,7 @@ import { collectBuiltinCallRefinements } from "./frontend-adapter.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 
-export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-summary" | "dispatch-sealing" | "resource-callable";
+export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-contract" | "dispatch-sealing" | "resource-callable";
 
 export interface AssumptionScope {
   fileName: string;
@@ -81,7 +81,11 @@ function entry(input: Omit<AssumptionEntry, "id" | "evidence">): AssumptionEntry
 
 function temporalSummary(node: ts.FunctionDeclaration, source: ts.SourceFile): boolean {
   const leading = source.text.slice(node.getFullStart(), node.getStart(source));
-  const summaryDirectives = ["temporal_requires", "temporal_ensures", "temporal_modifies", "temporal_throws", "temporal_rejects", "temporal_suspends", "temporal_cancellable", "temporal_fair"] as const;
+  const summaryDirectives = [
+    "temporal_requires", "temporal_ensures", "temporal_modifies", "temporal_throws",
+    "temporal_rejects", "temporal_suspends", "temporal_cancellable", "temporal_eventually",
+    "temporal_repeatedly", "temporal_stabilizes", "temporal_response", "temporal_fair",
+  ] as const;
   return summaryDirectives
     .some((name) => extractAnnotations(leading, name).length > 0);
 }
@@ -181,7 +185,7 @@ export function collectAssumptionLedger(
     }
     for (const declaration of functions.values()) if (temporalSummary(declaration, source)) {
       entries.push(entry({
-        domain: "temporal-summary",
+        domain: "temporal-contract",
         reason: "user-supplied temporal function summary",
         ...metadata(source, declaration),
         scope: { fileName, functionName: declaration.name!.text, span: { start: declaration.getStart(source), end: declaration.getEnd() } },

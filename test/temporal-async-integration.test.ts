@@ -13,9 +13,9 @@ const source = `
 /* uneffect: init sends = 0 */
 /* uneffect:always atMostOnce: sends <= 1 */
 
-/* uneffect:temporal-summary requires sends === 0 */
-/* uneffect:temporal-summary ensures sends' = sends + 1 */
-/* uneffect:temporal-summary modifies sends */
+/* uneffect:temporal_contract requires sends === 0 */
+/* uneffect:temporal_contract ensures sends' = sends + 1 */
+/* uneffect:temporal_contract modifies sends */
 function send(): void {}
 
 export function main(): void {

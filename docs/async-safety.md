@@ -31,8 +31,8 @@ standard `Promise.reject(reason)` is recognized by TypeChecker symbol identity.
 Other TypeChecker-resolved Promise-returning calls can declare their boundary:
 
 ```ts
-/* uneffect:temporal-summary rejects NetworkError */
-/* uneffect:temporal-summary throws ConfigurationError */
+/* uneffect:temporal_contract rejects NetworkError */
+/* uneffect:temporal_contract throws ConfigurationError */
 declare function request(): Promise<Response>
 ```
 
@@ -46,7 +46,7 @@ A scalar fulfilled value can additionally use a contract relation:
 
 ```ts
 /* uneffect:ensures result >= minimum */
-/* uneffect:temporal-summary rejects NetworkError */
+/* uneffect:temporal_contract rejects NetworkError */
 declare function requestCount(minimum: number): Promise<number>
 
 /* uneffect:ensures result >= 0 */
