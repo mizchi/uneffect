@@ -150,6 +150,13 @@ now resolves these attachments automatically and emits source-bound
 bindings remain accepted during migration and must not be confused with this
 TypeChecker-verified attachment path.
 
+Action and invariant validation (including Z3-backed checks), create/observe
+state projection, and replay adapter construction can consume the lowered
+manifest directly. These paths no longer need callable or abstraction comments
+on the implementation. Workspace composition is still being migrated and may
+still rely on legacy binding comments; the typed attachment is therefore not
+yet the only public refinement path.
+
 effect_set   = "none" | effect_union ;
 effect_union = effect_term, { "|", effect_term } ;
 effect_term  = qualified_name

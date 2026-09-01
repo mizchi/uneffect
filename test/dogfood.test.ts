@@ -21,6 +21,7 @@ import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
+import { resolveRefinementDslLink } from "../src/refinement-dsl.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -358,12 +359,19 @@ describe("Uneffect dogfood", () => {
   it("proves a two-member scalar product across three sibling handler regions", async () => {
     const fileName = "examples/dogfood/scalar-product-three-region.ts";
     const source = readFileSync(fileName, "utf8");
+    const specificationFile = "examples/dogfood/scalar-product-three-region.uneffect.ts";
+    const specificationSource = readFileSync(specificationFile, "utf8");
+    const manifest = resolveRefinementDslLink(fileName, source, {
+      [fileName]: source,
+      [specificationFile]: specificationSource,
+    });
     const temporal = parseSpec(fileName, source).temporal;
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName,
       source,
       "scalarProductThreeRegion",
       temporal,
+      { manifest },
     );
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",

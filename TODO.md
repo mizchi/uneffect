@@ -75,6 +75,14 @@ silent aliases.
        `uneffect-refinement-link/v1` evidence.
    - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate repository fixtures and reject comment-authored `refinement`,
      `abstraction`, and `runtime` declarations.
+     - [x] Allow action validation and Z3 analysis to consume a lowered typed
+       manifest without re-extracting legacy refinement comments; migrate the
+       three-region scalar-product dogfood fixture as the first end-to-end case.
+     - [x] Move invariant validation/Z3 discharge, state projection, and replay
+       adapter construction to manifest-first inputs.
+     - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move workspace
+       composition to manifest-first inputs before rejecting the legacy
+       declarations.
 5. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move trust metadata
    to authenticated config/evidence records. Source comments may reference an
    assumption ID but cannot self-author owner, expiry, or digest evidence.

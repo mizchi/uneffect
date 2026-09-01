@@ -628,6 +628,24 @@ function parseAbstractionRelations(
   return abstraction;
 }
 
+function abstractionRelationsFromManifest(
+  manifest: RefinementBindingManifest,
+  stateNames: ReadonlySet<string>,
+): Map<string, string> {
+  const abstraction = new Map<string, string>();
+  for (const [stateName, value] of Object.entries(manifest.abstractions)) {
+    if (!stateNames.has(stateName)) throw new Error(`abstraction relation refers to unknown model state ${stateName}`);
+    const concretePath = parseAbstractionValue(value).path;
+    const overlaps = [...abstraction.values()].some((existing) => {
+      const existingPath = parseAbstractionValue(existing).path;
+      return existingPath === concretePath || existingPath.startsWith(`${concretePath}.`) || concretePath.startsWith(`${existingPath}.`);
+    });
+    if (overlaps) throw new Error(`duplicate or overlapping abstraction relation for ${stateName} or ${value}`);
+    abstraction.set(stateName, value);
+  }
+  return abstraction;
+}
+
 function parseAbstractionValue(value: string): { kind: "identity" | "set-from-array" | "map-from-entries"; path: string } {
   const pathPattern = "[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*";
   if (new RegExp(`^${pathPattern}$`).test(value)) return { kind: "identity", path: value };
@@ -1306,14 +1324,20 @@ function validateRefinementActionBodiesInSource(
   program?: ts.Program,
   options: RefinementActionValidationOptions = {},
   traceSink?: RefinementActionTraceSink,
+  suppliedManifest?: RefinementBindingManifest,
 ): RefinementActionDiagnostic[] {
   const fileName = source.fileName;
-  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const manifest = suppliedManifest ?? buildRefinementBindingManifest(fileName, text, adapterName);
+  if (manifest.fileName !== fileName || manifest.adapterName !== adapterName) {
+    throw new Error(`refinement manifest does not describe ${adapterName} in ${fileName}`);
+  }
   const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
-  const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
+  const abstraction = suppliedManifest
+    ? abstractionRelationsFromManifest(manifest, stateNames)
+    : parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
   const concreteToAbstract = new Map([...abstraction].map(([abstract, value]) => [parseAbstractionValue(value).path, abstract]));
   const expressionStateNames = new Set([...stateNames, ...[...concreteToAbstract.keys()].map((path) => path.split(".")[0]!).filter(Boolean)]);
   const canonicalize = (expression: TemporalExpression): TemporalExpression => canonicalizeAbstractionExpression(expression, abstraction);
@@ -4565,6 +4589,26 @@ export function validateRefinementActionBodies(
   );
 }
 
+/** Validates an implementation against bindings lowered from a typed `.uneffect.ts` module. */
+export function validateRefinementActionBodiesWithManifest(
+  fileName: string,
+  text: string,
+  manifest: RefinementBindingManifest,
+  spec: TemporalSpec,
+): RefinementActionDiagnostic[] {
+  return validateRefinementActionBodiesInSource(
+    ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+    text,
+    manifest.adapterName,
+    spec,
+    undefined,
+    undefined,
+    {},
+    undefined,
+    manifest,
+  );
+}
+
 interface RankingLoopJoinCandidate {
   readonly whileStatement: ts.WhileStatement;
   readonly tryStatement: ts.TryStatement;
@@ -5516,9 +5560,13 @@ export function analyzeRefinementActionBodies(
   adapterName: string,
   spec: TemporalSpec,
   options: RefinementActionAnalysisOptions = {},
+  suppliedManifest?: RefinementBindingManifest,
 ): RefinementActionAnalysis {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const manifest = suppliedManifest ?? buildRefinementBindingManifest(fileName, text, adapterName);
+  if (manifest.fileName !== fileName || manifest.adapterName !== adapterName) {
+    throw new Error(`refinement manifest does not describe ${adapterName} in ${fileName}`);
+  }
   const functions = new Map(source.statements.filter(ts.isFunctionDeclaration)
     .flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const limit = options.proofBudget?.cfgFixedPointIterations
@@ -5530,7 +5578,7 @@ export function analyzeRefinementActionBodies(
     tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [], handlerRegions: [], aliasRegions: [],
   };
   const diagnostics = validateRefinementActionBodiesInSource(
-    source, text, adapterName, spec, undefined, undefined, {}, traceSink,
+    source, text, adapterName, spec, undefined, undefined, {}, traceSink, suppliedManifest,
   );
   const obligations: RefinementActionObligation[] = [];
   for (const action of spec.actions) {
@@ -6152,6 +6200,8 @@ export async function verifyRefinementRecurrenceCertificateWithZ3(
 export interface RefinementActionAnalysisWithZ3Options {
   analysis?: RefinementActionAnalysisOptions;
   z3?: Z3ExecutionOptions;
+  /** Typed `.uneffect.ts` bindings; legacy comment extraction is used only when omitted. */
+  manifest?: RefinementBindingManifest;
 }
 
 /** Adds independent Z3 base/step/ranking checks to every retained recurrence certificate. */
@@ -6162,7 +6212,7 @@ export async function analyzeRefinementActionBodiesWithZ3(
   spec: TemporalSpec,
   options: RefinementActionAnalysisWithZ3Options = {},
 ): Promise<RefinementActionAnalysis> {
-  const analysis = analyzeRefinementActionBodies(fileName, text, adapterName, spec, options.analysis);
+  const analysis = analyzeRefinementActionBodies(fileName, text, adapterName, spec, options.analysis, options.manifest);
   const addedDiagnostics: RefinementActionDiagnostic[] = [];
   const dischargedScalarMismatches = new Set<string>();
   const obligations = await Promise.all(analysis.obligations.map(async (obligation): Promise<RefinementActionObligation> => {
@@ -6261,10 +6311,11 @@ export function validateRefinementActionBodiesInProgram(
   adapterName: string,
   spec: TemporalSpec,
   options: RefinementActionValidationOptions = {},
+  manifest?: RefinementBindingManifest,
 ): RefinementActionDiagnostic[] {
   const source = program.getSourceFile(fileName);
   if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
-  return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker(), program, options);
+  return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker(), program, options, undefined, manifest);
 }
 
 function collectProgramHelperFunctions(source: ts.SourceFile, checker: ts.TypeChecker): Map<string, ts.FunctionDeclaration> {
@@ -6297,14 +6348,20 @@ function validateRefinementInvariantBodiesInSource(
   adapterName: string,
   spec: TemporalSpec,
   checker?: ts.TypeChecker,
+  suppliedManifest?: RefinementBindingManifest,
 ): RefinementInvariantDiagnostic[] {
   const fileName = source.fileName;
-  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const manifest = suppliedManifest ?? buildRefinementBindingManifest(fileName, text, adapterName);
+  if (manifest.fileName !== fileName || manifest.adapterName !== adapterName) {
+    throw new Error(`refinement manifest does not describe ${adapterName} in ${fileName}`);
+  }
   const functions = checker
     ? collectProgramHelperFunctions(source, checker)
     : new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
-  const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
+  const abstraction = suppliedManifest
+    ? abstractionRelationsFromManifest(manifest, stateNames)
+    : parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
   const concreteToAbstract = new Map([...abstraction].map(([abstract, value]) => [parseAbstractionValue(value).path, abstract]));
   const expressionStateNames = new Set([...stateNames, ...[...concreteToAbstract.keys()].map((path) => path.split(".")[0]!).filter(Boolean)]);
   const canonicalize = (expression: TemporalExpression): TemporalExpression => canonicalizeAbstractionExpression(expression, abstraction);
@@ -6374,16 +6431,34 @@ export function validateRefinementInvariantBodies(
   );
 }
 
+/** Validates invariant bodies against bindings lowered from a typed `.uneffect.ts` module. */
+export function validateRefinementInvariantBodiesWithManifest(
+  fileName: string,
+  text: string,
+  manifest: RefinementBindingManifest,
+  spec: TemporalSpec,
+): RefinementInvariantDiagnostic[] {
+  return validateRefinementInvariantBodiesInSource(
+    ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+    text,
+    manifest.adapterName,
+    spec,
+    undefined,
+    manifest,
+  );
+}
+
 /** Resolves imported pure invariant helpers through a TypeScript Program. */
 export function validateRefinementInvariantBodiesInProgram(
   program: ts.Program,
   fileName: string,
   adapterName: string,
   spec: TemporalSpec,
+  manifest?: RefinementBindingManifest,
 ): RefinementInvariantDiagnostic[] {
   const source = program.getSourceFile(fileName);
   if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
-  return validateRefinementInvariantBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker());
+  return validateRefinementInvariantBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker(), manifest);
 }
 
 async function dischargeExpressionMismatchesWithZ3<T extends { code: string; expected?: string; actual?: string }>(
@@ -6436,8 +6511,12 @@ export async function validateRefinementActionBodiesInProgramWithZ3(
 /** Proves normalized single-return invariant predicates by logical rather than syntactic equivalence. */
 export async function validateRefinementInvariantBodiesWithZ3(
   fileName: string, text: string, adapterName: string, spec: TemporalSpec,
+  manifest?: RefinementBindingManifest,
 ): Promise<Array<Z3RefinementDiagnostic<RefinementInvariantDiagnostic>>> {
-  return dischargeExpressionMismatchesWithZ3(validateRefinementInvariantBodies(fileName, text, adapterName, spec), "invariant-expression-mismatch", spec);
+  const diagnostics = manifest
+    ? validateRefinementInvariantBodiesWithManifest(fileName, text, manifest, spec)
+    : validateRefinementInvariantBodies(fileName, text, adapterName, spec);
+  return dischargeExpressionMismatchesWithZ3(diagnostics, "invariant-expression-mismatch", spec);
 }
 
 /** Combines Program-resolved invariant helpers with Z3 predicate equivalence. */
@@ -6507,16 +6586,22 @@ function validateRefinementStateProjectionInSource(
   adapterName: string,
   spec: TemporalSpec,
   checker?: ts.TypeChecker,
+  suppliedManifest?: RefinementBindingManifest,
 ): RefinementStateProjectionDiagnostic[] {
   const fileName = source.fileName;
-  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const manifest = suppliedManifest ?? buildRefinementBindingManifest(fileName, text, adapterName);
+  if (manifest.fileName !== fileName || manifest.adapterName !== adapterName) {
+    throw new Error(`refinement manifest does not describe ${adapterName} in ${fileName}`);
+  }
   const functions = checker
     ? collectProgramHelperFunctions(source, checker)
     : new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
-  const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
+  const abstraction = suppliedManifest
+    ? abstractionRelationsFromManifest(manifest, stateNames)
+    : parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
   const concreteToAbstract = new Map([...abstraction].map(([abstract, value]) => [parseAbstractionValue(value).path, abstract]));
   const identity = () => new Map(spec.states.map(({ name }) => [name, { kind: "name", name } as TemporalExpression]));
 
@@ -6806,22 +6891,54 @@ export function validateRefinementStateProjection(
   );
 }
 
+/** Validates create/observe projection against a typed `.uneffect.ts` manifest. */
+export function validateRefinementStateProjectionWithManifest(
+  fileName: string,
+  text: string,
+  manifest: RefinementBindingManifest,
+  spec: TemporalSpec,
+): RefinementStateProjectionDiagnostic[] {
+  return validateRefinementStateProjectionInSource(
+    ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+    text,
+    manifest.adapterName,
+    spec,
+    undefined,
+    manifest,
+  );
+}
+
 /** Resolves imported create/observe wrappers through TypeScript symbol identity. */
 export function validateRefinementStateProjectionInProgram(
   program: ts.Program,
   fileName: string,
   adapterName: string,
   spec: TemporalSpec,
+  manifest?: RefinementBindingManifest,
 ): RefinementStateProjectionDiagnostic[] {
   const source = program.getSourceFile(fileName);
   if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
-  return validateRefinementStateProjectionInSource(source, source.text, adapterName, spec, program.getTypeChecker());
+  return validateRefinementStateProjectionInSource(source, source.text, adapterName, spec, program.getTypeChecker(), manifest);
 }
 
 function callable(exports: Record<string, unknown>, name: string): (...args: any[]) => any {
   const value = exports[name];
   if (typeof value !== "function") throw new Error(`refinement binding export ${name} is not callable`);
   return value as (...args: any[]) => any;
+}
+
+/** Resolves a typed manifest against already-loaded exports for replay tooling. */
+export function createRefinementAdapterFromManifest<State extends object = ModelState, Runtime = unknown>(
+  manifest: RefinementBindingManifest,
+  exports: Record<string, unknown>,
+): ModelRefinementAdapter<Runtime, State> {
+  return {
+    schema: "uneffect-refinement-adapter/v1", name: manifest.adapterName, version: manifest.version,
+    abstractions: manifest.abstractions,
+    create: callable(exports, manifest.create), observe: callable(exports, manifest.observe),
+    actions: Object.fromEntries(Object.entries(manifest.actions).map(([name, binding]) => [name, callable(exports, binding)])),
+    invariants: Object.fromEntries(Object.entries(manifest.invariants).map(([name, binding]) => [name, callable(exports, binding)])),
+  } as ModelRefinementAdapter<Runtime, State>;
 }
 
 /** Resolves an extracted manifest against already-loaded module exports for test/replay tooling. */
@@ -6832,13 +6949,7 @@ export function createAnnotatedRefinementAdapter<State extends object = ModelSta
   adapterName: string,
 ): ModelRefinementAdapter<Runtime, State> {
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
-  return {
-    schema: "uneffect-refinement-adapter/v1", name: manifest.adapterName, version: manifest.version,
-    abstractions: manifest.abstractions,
-    create: callable(exports, manifest.create), observe: callable(exports, manifest.observe),
-    actions: Object.fromEntries(Object.entries(manifest.actions).map(([name, binding]) => [name, callable(exports, binding)])),
-    invariants: Object.fromEntries(Object.entries(manifest.invariants).map(([name, binding]) => [name, callable(exports, binding)])),
-  } as ModelRefinementAdapter<Runtime, State>;
+  return createRefinementAdapterFromManifest<State, Runtime>(manifest, exports);
 }
 
 /** Emits a reviewable module that references implementation exports without runtime wrappers. */
