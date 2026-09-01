@@ -62,12 +62,11 @@ registry. `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.
 
-`async-quint`, `promise-quint`, `web-loop-quint`, and `node-loop-quint` remain
-experimental compatibility backends while their observations are migrated to
-the unified temporal projection. They are not independent proof domains and
-may change or be removed before 1.0. The corresponding low-level TypeScript
-generators are available only from `@mizchi/uneffect/experimental`; the stable
-root exports `generateTemporalModel`.
+The only host-aware async backend is `spec temporal --runtime web|node`.
+The removed `async-quint`, `promise-quint`, `web-loop-quint`, and
+`node-loop-quint` names are rejected. Corresponding low-level TypeScript
+generators remain available only from `@mizchi/uneffect/experimental`; the
+stable root exports `generateTemporalModel`.
 
 ## Checking the prerequisites
 

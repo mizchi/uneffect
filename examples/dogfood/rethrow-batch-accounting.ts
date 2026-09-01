@@ -1,4 +1,4 @@
-/* uneffect:temporal state recoveredUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state escalate: bool */ /* uneffect:temporal init recoveredUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init escalate = false */ /* uneffect:temporal action record: recoveredUnits' = recoveredUnits + (failed ? (escalate ? 8 : 6) : 2), auditedUnits' = auditedUnits + (failed ? (escalate ? 4 : 6) : 2) */
+/* uneffect:state recoveredUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state failed: bool */ /* uneffect:state escalate: bool */ /* uneffect:init recoveredUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init failed = false */ /* uneffect:init escalate = false */ /* uneffect:action record: recoveredUnits' = recoveredUnits + (failed ? (escalate ? 8 : 6) : 2), auditedUnits' = auditedUnits + (failed ? (escalate ? 4 : 6) : 2) */
 
 export interface RethrowBatchAccounting {
   recoveredUnits: number;

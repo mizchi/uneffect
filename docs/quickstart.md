@@ -31,16 +31,16 @@ policy matters.
 Create `src/uneffect-example.ts`:
 
 ```ts
-/* uneffect:capability effect Console */
+/* uneffect:effect Console */
 export function report(value: number): void {
   console.log(value)
 }
 
-/* uneffect:contract requires n >= 0 */
-/* uneffect:contract ensures result === n */
+/* uneffect:requires n >= 0 */
+/* uneffect:ensures result === n */
 export function count(n: number): number {
   let value = 0
-  /* uneffect:contract invariant value >= 0 && value <= n */
+  /* uneffect:loop_invariant value >= 0 && value <= n */
   while (value < n) value = value + 1
   return value
 }
@@ -233,7 +233,7 @@ Filesystem and network scopes use the same finite-set authority model as Deno.
 Symbolic path anchors keep machine-specific paths out of annotations:
 
 ```ts
-/* uneffect:capability effect FsRead<"$WORKSPACE_ROOT/config/**"> */
+/* uneffect:effect FsRead<"$WORKSPACE_ROOT/config/**"> */
 export function loadConfiguration(): unknown {
   // Existing node:fs code remains unchanged.
 }
@@ -248,7 +248,7 @@ Generator consumers have a separate lazy-effect bound. This prevents an empty
 function-body inventory from being mistaken for purity:
 
 ```ts
-/* uneffect:capability effect_parameter iterator extends Console | Throw<Error> */
+/* uneffect:effect_parameter iterator extends Console | Throw<Error> */
 export function consume(iterator: IteratorObject<unknown>): unknown[] {
   return Array.from(iterator)
 }
@@ -266,8 +266,8 @@ Uneffect exports TypeScript-friendly helper types such as `Int`, `Nat`,
 ```ts
 import type { Nat } from "@mizchi/uneffect"
 
-/* uneffect:contract requires value >= 0 */
-/* uneffect:contract ensures result === value */
+/* uneffect:requires value >= 0 */
+/* uneffect:ensures result === value */
 export function identity(value: Nat): Nat {
   return value
 }
@@ -288,7 +288,7 @@ Temporal expressions use a restricted TypeScript-style syntax and are parsed
 into Uneffect's neutral IR before backend generation:
 
 ```ts
-/* uneffect:temporal state pending: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal action enqueue: pending' = pending + 1 */ /* uneffect:temporal action complete: pending' = pending > 0 ? pending - 1 : pending */ /* uneffect:temporal invariant nonnegative: pending >= 0 */
+/* uneffect:state pending: int */ /* uneffect:init pending = 0 */ /* uneffect:action enqueue: pending' = pending + 1 */ /* uneffect:action complete: pending' = pending > 0 ? pending - 1 : pending */ /* uneffect:always nonnegative: pending >= 0 */
 export type QueueModel = never
 ```
 
@@ -325,7 +325,7 @@ Executable top-level code may declare its own authority upper bound in the file
 header. It is checked independently from function declarations:
 
 ```ts
-/* uneffect:capability module_effect Console | FsRead */
+/* uneffect:module_effect Console | FsRead */
 await main()
 ```
 
@@ -362,8 +362,8 @@ After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:
 
 ```ts
-/* uneffect:capability module_effect none */
-/* uneffect:capability effect none */
+/* uneffect:module_effect none */
+/* uneffect:effect none */
 export function normalize(value: string): string {
   return value.trim().toLowerCase()
 }

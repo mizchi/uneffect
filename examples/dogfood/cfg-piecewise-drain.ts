@@ -1,4 +1,4 @@
-/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (sampled ? pending : 0) : 0) */
+/* uneffect:state pending: int */ /* uneffect:state processed: int */ /* uneffect:state sampled: bool */ /* uneffect:init pending = 0 */ /* uneffect:init processed = 0 */ /* uneffect:init sampled = false */ /* uneffect:action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (sampled ? pending : 0) : 0) */
 
 export interface SampledDrainState {
   pending: number;

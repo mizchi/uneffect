@@ -40,16 +40,16 @@ Normal JSDoc remains untouched. Use ordinary block comments with an explicit
 dialect and no space around the colon:
 
 ```ts
-/* uneffect:capability effect Console */
+/* uneffect:effect Console */
 export function report(value: number): void {
   console.log(value)
 }
 
-/* uneffect:contract requires n >= 0 */
-/* uneffect:contract ensures result === n */
+/* uneffect:requires n >= 0 */
+/* uneffect:ensures result === n */
 export function count(n: number): number {
   let value = 0
-  /* uneffect:contract invariant value >= 0 && value <= n */
+  /* uneffect:loop_invariant value >= 0 && value <= n */
   while (value < n) value++
   return value
 }
@@ -66,29 +66,29 @@ The main dialects are:
 - `runtime`, `refinement`, and other specialized markers: bindings between
   static specifications, runtime identities, and implementation evidence.
 
-Use `/* uneffect:capability module_effect ... */` for executable module
+Use `/* uneffect:module_effect ... */` for executable module
 initialization, separately from function effects.
 
 ## Effect examples
 
 ```ts
-/* uneffect:capability effect Console | Fetch */
+/* uneffect:effect Console | Fetch */
 async function load() {
   console.log("loading")
   return fetch("https://api.example.com/v1/items")
 }
 
-/* uneffect:capability effect Mutate<typeof state.calls> */
+/* uneffect:effect Mutate<typeof state.calls> */
 function recordCall() {
   state.calls++
 }
 
-/* uneffect:capability effect Throw<RangeError> */
+/* uneffect:effect Throw<RangeError> */
 function checkedIndex(index: number) {
   if (index < 0) throw new RangeError("negative index")
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function add(a: number, b: number) {
   return a + b
 }
@@ -110,7 +110,7 @@ import { parseU8 } from "@mizchi/uneffect"
 
 const byte: U8 = parseU8(input)
 
-/* uneffect:contract requires size >= 0 && size <= 1024 */
+/* uneffect:requires size >= 0 && size <= 1024 */
 function allocate(size: Nat): BoundedUint8Array<1024> {
   return new Uint8Array(size)
 }

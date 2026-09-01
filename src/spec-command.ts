@@ -1,15 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 import { CliUsageError, exitCode, formatCommandHelp, parseCommandArgs, type CliCommand } from "./cli-support.js";
-import { analyzePromiseChains, generatePromiseChainsQuint } from "./promise-chains.js";
 import { generateQuint, generateSmtLib } from "./spec-backends.js";
 import { parseSpec } from "./spec-ir.js";
 import { lintSpecWithZ3 } from "./spec-lint.js";
 import { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
 import { generateTemporalModel } from "./temporal-model.js";
 
-const backends = ["ir", "lint", "z3", "quint", "compose", "temporal", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"] as const;
+const backends = ["ir", "lint", "z3", "quint", "compose", "temporal"] as const;
 type Backend = typeof backends[number];
 
 function moduleNameOf(fileName: string): string {
@@ -36,13 +34,9 @@ export const specCommand: CliCommand = {
     "quint              the temporal Quint module",
     "compose            the composed temporal Quint module rooted at the required function argument",
     "temporal           the unified user + JavaScript async temporal model",
-    "async-quint        experimental compatibility projection: async patterns only",
-    "web-loop-quint     experimental compatibility alias for temporal --runtime=web",
-    "node-loop-quint    experimental compatibility alias for temporal --runtime=node",
-    "promise-quint      experimental compatibility projection: Promise chains only",
     "",
     "--runtime=web|node                       host profile for the temporal backend",
-    "--node-top-level=commonjs|esm            top-level scheduling mode for node-loop-quint",
+    "--node-top-level=commonjs|esm            top-level scheduling mode for temporal --runtime=node",
     "--strengthening=<name,...>               strengthen the lint with these properties, repeatable",
     "--discover-strengthening                 discover strengthening properties from the specification",
     "--synthesize-strengthening               synthesize scalar strengthening properties",
@@ -128,19 +122,6 @@ export const specCommand: CliCommand = {
       }).quint);
       return exitCode.success;
     }
-    if (backend === "async-quint") {
-      io.out(generateAsyncPatternsQuint(moduleName, analyzeAsyncPatterns(fileName, source)));
-      return exitCode.success;
-    }
-    if (backend === "web-loop-quint") {
-      io.out(generateWebEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), {}, analyzePromiseChains(fileName, source)));
-      return exitCode.success;
-    }
-    if (backend === "node-loop-quint") {
-      io.out(generateNodeEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), { topLevelMode: nodeTopLevel ?? "commonjs" }, analyzePromiseChains(fileName, source)));
-      return exitCode.success;
-    }
-    io.out(generatePromiseChainsQuint(moduleName, analyzePromiseChains(fileName, source)));
-    return exitCode.success;
+    throw new CliUsageError(`unknown spec backend: ${backend}`);
   },
 };

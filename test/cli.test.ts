@@ -793,6 +793,11 @@ describe("uneffect command line", () => {
     const backend = capture();
     expect(await runCli(["spec", "wat", "a.ts"], backend)).toBe(exitCode.usage);
     expect(backend.stderr).toContain("unknown spec backend: wat");
+    for (const removed of ["async-quint", "promise-quint", "web-loop-quint", "node-loop-quint"]) {
+      const compatibility = capture();
+      expect(await runCli(["spec", removed, "a.ts"], compatibility)).toBe(exitCode.usage);
+      expect(compatibility.stderr).toContain(`unknown spec backend: ${removed}`);
+    }
   });
 
   it("reports an unreadable file as a bad argument, not as a toolchain failure", async () => {

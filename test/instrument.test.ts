@@ -42,7 +42,7 @@ describe("runtime assertion instrumenter", () => {
     const arguments_ = names.join(", ");
     const source = `
       declare function task(): Promise<void>
-      /* uneffect:async consumes_rejection_when 13: ${guard} */
+      /* uneffect:temporal consumes_rejection_when 13: ${guard} */
       declare function consume(${parameters}, value: Promise<void>): void
       /* uneffect:contract requires ${guard} */
       async function run(${parameters}) {
@@ -75,7 +75,7 @@ describe("runtime assertion instrumenter", () => {
     const evidencePath = join(directory, "ownership.json");
     const source = (last: string) => `
       declare function task(): Promise<void>
-      /* uneffect:async consumes_rejection_when 13: b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && ${last} */
+      /* uneffect:temporal consumes_rejection_when 13: b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && ${last} */
       declare function consume(b0: boolean, b1: boolean, b2: boolean, b3: boolean, b4: boolean, b5: boolean, b6: boolean, b7: boolean, b8: boolean, b9: boolean, b10: boolean, b11: boolean, b12: boolean, value: Promise<void>): void
       /* uneffect:contract requires b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && b12 */
       async function run(b0: boolean, b1: boolean, b2: boolean, b3: boolean, b4: boolean, b5: boolean, b6: boolean, b7: boolean, b8: boolean, b9: boolean, b10: boolean, b11: boolean, b12: boolean) {

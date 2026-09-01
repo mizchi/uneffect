@@ -1,7 +1,7 @@
 import { isDatadogMetricName } from "./datadog-validator.js";
 
-/* uneffect:contract requires isDatadogMetricName(name) */
-/* uneffect:contract ensures result === name */
+/* uneffect:requires isDatadogMetricName(name) */
+/* uneffect:ensures result === name */
 export function datadogMetricKey(name: string): string {
   return name;
 }

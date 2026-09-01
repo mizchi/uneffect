@@ -12,7 +12,7 @@ export type UneffectDirective =
   | "consumes_rejection" | "consumes_callback_rejection" | "consumes_rejection_when"
   | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when"
   | "borrow" | "consume" | "transfer" | "escape";
-export type UneffectDialect = "capability" | "contract" | "temporal" | "temporal-summary" | "async" | "resource" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
+export type UneffectDialect = "unified" | "capability" | "contract" | "temporal" | "temporal-summary" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
 export interface SourceSpan { start: number; end: number }
 export interface LocatedAnnotation { value: string; span: SourceSpan }
 export interface AnnotationDiagnostic {
@@ -22,18 +22,30 @@ export interface AnnotationDiagnostic {
 interface PayloadLine { cleaned: string; start: number }
 interface PayloadBlock { dialect: string; dialectSpan: SourceSpan; lines: PayloadLine[] }
 
+const unifiedDirectives = new Set([
+  "effect", "effect_parameter", "module_effect", "effect_schema", "capability_from",
+  "requires", "ensures", "loop_invariant", "decreases", "assert", "validate", "returns", "contract_from",
+  "state", "clock", "init", "action", "action_when", "action_fair", "always", "eventually", "repeatedly", "stabilizes", "response", "fair", "temporal_from",
+  "consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when",
+  "borrow", "consume", "transfer", "escape",
+]);
+
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
+  unified: unifiedDirectives,
   capability: new Set(["effect", "effect_parameter", "module_effect", "effect_schema", "from"]),
   contract: new Set(["requires", "ensures", "invariant", "decreases", "assert", "validate", "returns", "from"]),
-  temporal: new Set(["state", "clock", "init", "action", "action_when", "action_fair", "invariant", "eventually", "repeatedly", "stabilizes", "response", "fair", "from"]),
+  temporal: new Set([
+    "state", "clock", "init", "action", "action_when", "action_fair", "invariant", "eventually", "repeatedly", "stabilizes", "response", "fair", "from",
+    "consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when",
+    "borrow", "consume", "transfer", "escape",
+  ]),
   "temporal-summary": new Set(["requires", "ensures", "modifies", "throws", "rejects", "suspends", "cancellable", "eventually", "repeatedly", "stabilizes", "response", "fair"]),
-  async: new Set(["consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when"]),
-  resource: new Set(["borrow", "consume", "transfer", "escape"]),
   refinement: new Set(["refinement", "abstraction"]), runtime: new Set(["runtime", "returns"]),
   trust: new Set(["trust", "trust_owner", "trust_expires"]), "react-component": new Set(), "react-hook": new Set(),
   "react-resource": new Set(["acquire", "release"]),
 };
 const aliases: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  unified: { loop_invariant: "invariant", always: "temporal" },
   capability: { from: "capability_from" },
   contract: { from: "contract_from" },
   temporal: { invariant: "temporal", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair", from: "temporal_from" },
@@ -57,11 +69,18 @@ function payloadBlocks(text: string, baseOffset: number): PayloadBlock[] {
     const tailIndex = markerMatch.index + markerMatch[0].length;
     const header = markerLine.cleaned.slice(tailIndex).trim();
     const headerMatch = /^(\S+)(?:\s+(.+))?$/.exec(header);
-    const dialect = headerMatch?.[1] ?? "";
-    const dialectStart = markerLine.start + markerLine.cleaned.indexOf(dialect, tailIndex);
+    const headerName = headerMatch?.[1] ?? "";
+    const unified = headerName === "" || unifiedDirectives.has(headerName);
+    const dialect = unified ? "unified" : headerName;
+    const dialectStart = headerName === ""
+      ? markerLine.start + tailIndex
+      : markerLine.start + markerLine.cleaned.indexOf(headerName, tailIndex);
     const inline = headerMatch?.[2];
     const inlineStart = inline ? markerLine.start + markerLine.cleaned.indexOf(inline, tailIndex + dialect.length) : 0;
-    blocks.push({ dialect, dialectSpan: { start: dialectStart, end: dialectStart + dialect.length }, lines: [...(inline ? [{ cleaned: inline, start: inlineStart }] : []), ...lines.slice(marker + 1)] });
+    const headerDirective = unified && headerName !== ""
+      ? [{ cleaned: header, start: dialectStart }]
+      : inline ? [{ cleaned: inline, start: inlineStart }] : [];
+    blocks.push({ dialect, dialectSpan: { start: dialectStart, end: dialectStart + headerName.length }, lines: [...headerDirective, ...lines.slice(marker + 1)] });
   }
   return blocks;
 }
@@ -97,7 +116,7 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0, additi
   for (const block of payloadBlocks(text, baseOffset)) {
     const allowed = dialectDirectives[block.dialect as UneffectDialect];
     if (!allowed) { diagnostics.push({ kind: "unknown-dialect", directive: block.dialect, span: block.dialectSpan, message: `unknown Uneffect dialect \`${block.dialect || "(missing)"}\`` }); continue; }
-    const accepted = block.dialect === "temporal" ? new Set([...allowed, ...additionalDirectives]) : allowed;
+    const accepted = block.dialect === "temporal" || block.dialect === "unified" ? new Set([...allowed, ...additionalDirectives]) : allowed;
     for (const line of block.lines) {
       const candidate = line.cleaned.trim(); if (!candidate) continue;
       const match = /^([^\s]+)(?:\s+(.*))?$/.exec(candidate)!, name = match[1]!, leading = line.cleaned.indexOf(candidate);

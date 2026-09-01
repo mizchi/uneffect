@@ -1,6 +1,6 @@
 import { rebuildLease, snapshotLease } from "./lease-projection-helpers.js";
 
-/* uneffect:temporal state lease: { owner: int, epoch: int, valid: bool } */ /* uneffect:temporal init lease = { owner: 0, epoch: 0, valid: false } */ /* uneffect:temporal action renew: lease' = { ...lease, epoch: lease.epoch + 1 } */ /* uneffect:temporal action takeover: lease' = { ...lease, epoch: lease.epoch + 1, owner: lease.owner + 1 } */
+/* uneffect:state lease: { owner: int, epoch: int, valid: bool } */ /* uneffect:init lease = { owner: 0, epoch: 0, valid: false } */ /* uneffect:action renew: lease' = { ...lease, epoch: lease.epoch + 1 } */ /* uneffect:action takeover: lease' = { ...lease, epoch: lease.epoch + 1, owner: lease.owner + 1 } */
 
 export interface LeaseState {
   lease: {

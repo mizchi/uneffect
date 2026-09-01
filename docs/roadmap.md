@@ -6,10 +6,18 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 48–102 engineer-weeks; this is implementation volume, not a calendar
+estimate is 51–110 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
+
+0. [Unified async and temporal semantics](https://github.com/mizchi/uneffect/issues/63)
+   is complete for its documented bounded fragment: one public Web/Node facade,
+   user-temporal/host composition, experimental low-level generators, exact
+   direct-Promise ownership/settlement identity, bounded conditional resource
+   disposal and suppression, abortable fetch, and explicit no-fairness evidence.
+   Dynamic aliases and general resource flow remain #24; host completeness
+   remains #10.
 
 1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
    completed the shared exception-aware completion handoff used by refinement
@@ -205,6 +213,11 @@ explicit conservative boundaries rather than untracked support.
    barrel-traversing, and inferred predicate domains remain in the parent.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)
    completes alias, resize, control-flow, and shared-memory reasoning.
+6. [Mature backend-neutral specification DSL](https://github.com/mizchi/uneffect/issues/64)
+   separates the versioned Uneffect AST, modules, diagnostics, and source maps
+   from Quint as one generated backend. Promotion requires conformance tests,
+   deterministic unsupported results, and realistic dogfood rather than direct
+   pass-through of annotation text.
 
 ## Phase 3 — Production integration and trust
 

@@ -188,7 +188,7 @@ same property is proved for arbitrary TypeScript.
   A separate public `uneffect-resource-callable-summary/v1` contract represents
   parameter/return `borrow`, `consume`, `transfer`, and `escape` operations.
   It instantiates caller-provided stable identities into the same resource IR
-  and reports missing bindings as unknown. The first `uneffect:resource`
+  and reports missing bindings as unknown. The first `uneffect:temporal`
   TypeScript frontend extracts trusted same-Program declarations, resolves
   direct calls by declaration identity, and substitutes supported argument and
   direct-`const` return identities. This is declared evidence rather than an
@@ -975,13 +975,32 @@ same property is proved for arbitrary TypeScript.
   both profiles compose user temporal state, callback summaries, and safety
   properties with those extracted observations. A selected root's
   `using`/`await using` lifecycle is co-verified as a second projection through
-  the same result and project pipeline. Promise ownership and synchronization
-  between conditional/loop resource disposal and host queues remain explicit
-  exclusions. Straight-line `await using` has a bounded host product that
+  the same result and project pipeline. Binding-level Promise rejection
+  ownership for the selected root is projected through the common resource IR;
+  observed and transferred bindings satisfy `promiseOwnershipSafe`, while a
+  floating binding produces a counterexample. A directly bound builtin
+  `new Promise` is joined to its settlement transition through TypeChecker
+  declaration identity. Supported immutable local aliases normalize to that
+  same ownership resource; unsupported external producers retain
+  `promise-host-synchronization`. Bounded non-loop conditional acquisition now
+  uses explicit acquire-or-skip and release-or-skip host paths; repeated loop
+  acquisition remains excluded. Straight-line `await using` has a bounded host product that
   requires resumption inside a microtask checkpoint, but arbitrary callback
-  interleavings remain excluded. Direct low-level generators live under
+  interleavings remain excluded. Disposal throw/reject branches and the finite
+  multiple-failure suppression invariant are now retained in the same product;
+  exact nested `SuppressedError` payload identity remains in the detailed
+  resource projection. Direct low-level generators live under
   `@mizchi/uneffect/experimental` while #63 tracks the remaining composition.
   Host-specific gaps remain explicit.
+- The temporal result records scheduler coverage separately from properties:
+  fairness is currently `none`, and arbitrary resource/callback interleavings
+  are explicitly `excluded` when applicable. No progress assumption is silently
+  introduced.
+- Supported immutable abortable-fetch bindings are included in the same
+  temporal result. The product races AbortController cancellation with external
+  fulfillment/rejection and checks Promise observation plus Response-body
+  ownership. External or unresolved signals retain
+  `abortable-fetch-synchronization` rather than matching by spelling.
 - Real-time annotations use logical clocks, guards, deadlines, and bounded
   exploration. They are opt-in and are not assumed for ordinary programs.
 

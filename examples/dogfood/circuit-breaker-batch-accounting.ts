@@ -1,4 +1,4 @@
-/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state circuitOpen: bool */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init circuitOpen = false */ /* uneffect:temporal action recordAttempt: billedUnits' = billedUnits + (deliveryFailed ? (circuitOpen ? 4 : 7) : 3), auditedUnits' = auditedUnits + (deliveryFailed ? (circuitOpen ? 4 : 6) : 2) */
+/* uneffect:state billedUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state deliveryFailed: bool */ /* uneffect:state circuitOpen: bool */ /* uneffect:init billedUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init deliveryFailed = false */ /* uneffect:init circuitOpen = false */ /* uneffect:action recordAttempt: billedUnits' = billedUnits + (deliveryFailed ? (circuitOpen ? 4 : 7) : 3), auditedUnits' = auditedUnits + (deliveryFailed ? (circuitOpen ? 4 : 6) : 2) */
 
 export interface BatchAccounting {
   billedUnits: number;

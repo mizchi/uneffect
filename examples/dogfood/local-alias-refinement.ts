@@ -1,10 +1,10 @@
-/* uneffect:temporal state sent: int */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action send: sent' = sent + 1 */
+/* uneffect:state sent: int */ /* uneffect:init sent = 0 */ /* uneffect:action send: sent' = sent + 1 */
 
 export interface LocalAliasRuntime {
   sent: number;
 }
 
-/* uneffect:capability effect Mutate<typeof target.sent> */
+/* uneffect:effect Mutate<typeof target.sent> */
 function incrementSent(target: LocalAliasRuntime): void {
   target.sent += 1;
 }
@@ -20,7 +20,7 @@ export function observeLocalAlias(runtime: LocalAliasRuntime): LocalAliasRuntime
 }
 
 /* uneffect:refinement refinement localAlias@1 action send */
-/* uneffect:capability effect Mutate<typeof runtime.sent> */
+/* uneffect:effect Mutate<typeof runtime.sent> */
 export function sendThroughLocalAlias(runtime: LocalAliasRuntime): void {
   const target = runtime;
   incrementSent(target);

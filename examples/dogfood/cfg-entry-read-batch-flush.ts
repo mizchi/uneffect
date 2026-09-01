@@ -1,4 +1,4 @@
-/* uneffect:temporal state pending: int */ /* uneffect:temporal state batchSize: int */ /* uneffect:temporal state emitted: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init batchSize = 0 */ /* uneffect:temporal init emitted = 0 */ /* uneffect:temporal action flush: pending' = pending > 0 ? 0 : pending, batchSize' = batchSize + (pending > 0 ? pending : 0), emitted' = emitted + (pending > 0 ? pending * batchSize + pending * (pending - 1) / 2 : 0) */
+/* uneffect:state pending: int */ /* uneffect:state batchSize: int */ /* uneffect:state emitted: int */ /* uneffect:init pending = 0 */ /* uneffect:init batchSize = 0 */ /* uneffect:init emitted = 0 */ /* uneffect:action flush: pending' = pending > 0 ? 0 : pending, batchSize' = batchSize + (pending > 0 ? pending : 0), emitted' = emitted + (pending > 0 ? pending * batchSize + pending * (pending - 1) / 2 : 0) */
 
 export interface EntryReadBatchFlushState {
   pending: number;

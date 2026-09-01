@@ -39,6 +39,7 @@ export interface ResponseBodyBranch {
 }
 
 export interface AbortableFetchUnknown {
+  readonly owner: string;
   readonly expression: string;
   readonly reason: string;
   readonly span: { start: number; end: number };
@@ -155,6 +156,7 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         && ts.isVariableDeclarationList(node.parent.parent) && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0
         ? node.parent.name.text : undefined;
       if ((!controller && !composition) || !binding) unknown.push({
+        owner,
         expression: node.getText(source),
         reason: !binding ? "abortable fetch result requires an immutable local binding"
           : !options ? "fetch RequestInit must be an inline object or a single-use const object-literal alias"
@@ -674,6 +676,26 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
     };
   });
   return { fileName: source.fileName, fetches: enriched, unknown };
+}
+
+/** Source-text convenience entry used by the unified temporal facade. */
+export function analyzeAbortableFetches(fileName: string, text: string): AbortableFetchAnalysis {
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2024,
+    module: ts.ModuleKind.ESNext,
+    lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+    strict: true,
+    noEmit: true,
+  };
+  const host = ts.createCompilerHost(options);
+  const original = host.getSourceFile.bind(host);
+  host.getSourceFile = (candidate, languageVersion, onError, shouldCreateNewSourceFile) =>
+    candidate === fileName ? ts.createSourceFile(candidate, text, languageVersion, true, ts.ScriptKind.TS)
+      : original(candidate, languageVersion, onError, shouldCreateNewSourceFile);
+  const program = ts.createProgram([fileName], options, host);
+  const source = program.getSourceFile(fileName);
+  if (!source) return { fileName, fetches: [], unknown: [{ owner: "<module>", expression: "<source>", reason: "source file was not created", span: { start: 0, end: 0 } }] };
+  return analyzeAbortableFetchesInProgram(program, source);
 }
 
 function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/gu, "_"); }

@@ -1,4 +1,4 @@
-/* uneffect:temporal state active: int */ /* uneffect:temporal state starts: int */ /* uneffect:temporal state reconciles: int */ /* uneffect:temporal init active = 0 */ /* uneffect:temporal init starts = 0 */ /* uneffect:temporal init reconciles = 0 */ /* uneffect:temporal action reconcile: active' = active < 5 ? active + 2 * ((5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0)) : active, starts' = starts + (active < 5 ? 2 * ((5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0)) : 0), reconciles' = reconciles + 1 */
+/* uneffect:state active: int */ /* uneffect:state starts: int */ /* uneffect:state reconciles: int */ /* uneffect:init active = 0 */ /* uneffect:init starts = 0 */ /* uneffect:init reconciles = 0 */ /* uneffect:action reconcile: active' = active < 5 ? active + 2 * ((5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0)) : active, starts' = starts + (active < 5 ? 2 * ((5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0)) : 0), reconciles' = reconciles + 1 */
 
 export interface WorkerPool {
   active: number;

@@ -13,6 +13,8 @@ export type ResourceProtocolState =
   | "split"
   | "escaped"
   | "invalidated"
+  | "absent-or-available"
+  | "absent-or-released"
   | "unknown";
 
 export type ResourceTerminalState = Extract<ResourceProtocolState,
@@ -215,6 +217,10 @@ export function evaluateResourceProtocol(
       return;
     }
     const state = states.get(transition.resource)!;
+    if (transition.kind === "release" && state === "absent-or-available") {
+      states.set(transition.resource, "absent-or-released");
+      return;
+    }
     if (state !== "available") { invalid(transition, transition.resource, state, `cannot ${transition.kind} ${transition.resource} from ${state}`); return; }
     if (transition.kind === "consume") states.set(transition.resource, "consumed");
     else if (transition.kind === "release") states.set(transition.resource, "released");
@@ -231,7 +237,12 @@ export function evaluateResourceProtocol(
     const before = new Map(states);
     apply(transition);
     for (const resource of transitionResources(transition)) {
-      if (before.get(resource) !== states.get(resource)) states.set(resource, "unknown");
+      const previous = before.get(resource);
+      const next = states.get(resource);
+      if (previous === next) continue;
+      if (transition.kind === "acquire" && previous === "absent" && next === "available") {
+        states.set(resource, "absent-or-available");
+      } else states.set(resource, "unknown");
     }
   }
 
@@ -269,7 +280,12 @@ function terminalStatus(
 ): ResourceProtocolEvaluation["status"] {
   const required = resources.filter((resource) => resource.requiredTerminalStates?.length);
   const unresolved = required.some((resource) => states.get(resource.id) === "unknown");
-  const unsatisfied = required.some((resource) => !resource.requiredTerminalStates!.includes(states.get(resource.id) as ResourceTerminalState));
+  const accepted = (resource: ResourceProtocolResource): boolean => {
+    const state = states.get(resource.id);
+    return state === "absent-or-released" && resource.requiredTerminalStates!.includes("released")
+      || resource.requiredTerminalStates!.includes(state as ResourceTerminalState);
+  };
+  const unsatisfied = required.some((resource) => !accepted(resource));
   return diagnostics.length > 0 || unresolved ? "unknown" : unsatisfied ? "unsatisfied" : "satisfied";
 }
 

@@ -143,7 +143,7 @@ export interface ProjectTemporalProperty {
 
 export interface ProjectTemporalModel {
   fileName: string;
-  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "resource-lifecycle" | "resource-host-lifecycle";
+  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "promise-ownership" | "abortable-fetch" | "resource-lifecycle" | "resource-host-lifecycle";
   module?: string;
   owner?: string;
   quint: string;

@@ -2994,7 +2994,7 @@ describe("Uneffect dogfood", () => {
     }));
 
     const brokenHeader = analyzeAsyncSafety(fileName, source.replace(
-      "/* uneffect:async consumes_rejection 0 */",
+      "/* uneffect:consumes_rejection 0 */",
       "/* ownership contract removed */",
     ));
     expect(brokenHeader.diagnostics).toContainEqual(expect.objectContaining({
@@ -3014,7 +3014,7 @@ describe("Uneffect dogfood", () => {
     }));
 
     const brokenGate = analyzeAsyncSafety(fileName, source.replace(
-      "/* uneffect:capability effect Throw<Error> */",
+      "/* uneffect:effect Throw<Error> */",
       "/* throw contract removed */",
     ));
     expect(brokenGate.diagnostics).toContainEqual(expect.objectContaining({
@@ -3491,7 +3491,7 @@ describe("Uneffect dogfood", () => {
     expect(analyzeEffects(fileName, source.replace('FsRead<"config.json"> | ', ""))).toContainEqual(expect.objectContaining({
       functionName: "reportConfigChanges", kind: "missing", effect: 'FsRead<"config.json">',
     }));
-    expect(analyzeEffects(fileName, source.replace('/* uneffect:capability effect FsRead<"config.json"> */\nexport function probe', "export function probe")))
+    expect(analyzeEffects(fileName, source.replace('/* uneffect:effect FsRead<"config.json"> */\nexport function probe', "export function probe")))
       .toContainEqual(expect.objectContaining({
         functionName: "probeConfigWatcherLifecycle", kind: "missing", effect: 'FsRead<"config.json">',
       }));

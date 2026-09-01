@@ -1,4 +1,4 @@
-/* uneffect:temporal state total: int */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init first = false */ /* uneffect:temporal init second = false */ /* uneffect:temporal action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4) */
+/* uneffect:state total: int */ /* uneffect:state first: bool */ /* uneffect:state second: bool */ /* uneffect:init total = 0 */ /* uneffect:init first = false */ /* uneffect:init second = false */ /* uneffect:action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4) */
 
 export interface ScalarHandlerState {
   total: number;

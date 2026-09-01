@@ -1,4 +1,4 @@
-/* uneffect:temporal state pending: int */ /* uneffect:temporal state urgent: bool */ /* uneffect:temporal state sent: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init urgent = false */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action flush: pending' = pending > 0 ? 0 : pending, urgent' = urgent, sent' = sent + (pending > 0 ? urgent ? 2 * pending : pending : 0) */
+/* uneffect:state pending: int */ /* uneffect:state urgent: bool */ /* uneffect:state sent: int */ /* uneffect:init pending = 0 */ /* uneffect:init urgent = false */ /* uneffect:init sent = 0 */ /* uneffect:action flush: pending' = pending > 0 ? 0 : pending, urgent' = urgent, sent' = sent + (pending > 0 ? urgent ? 2 * pending : pending : 0) */
 
 export interface WeightedTelemetryState {
   pending: number;

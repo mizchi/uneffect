@@ -7,7 +7,7 @@ description: Add, review, or operate Uneffect annotations and checks for TypeScr
 
 Use Uneffect to add a zero- or low-runtime-cost specification layer to existing
 TypeScript. Preserve ordinary TypeScript syntax: specifications belong in
-canonical block comments such as `/* uneffect:capability ... */`.
+canonical block comments such as `/* uneffect:effect Console */`.
 
 ## Choose the smallest useful check
 
@@ -42,8 +42,9 @@ links in each reference instead of guessing unsupported behavior.
   errors; unused declared effects are warnings.
 - Use `effect none` only for an explicit checked empty bound. An unannotated
   function is not declared pure.
-- Keep dialect hints explicit: `uneffect:capability`, `uneffect:contract`,
-  `uneffect:temporal`, `uneffect:async`, and `uneffect:react-component`.
+- Use the unified directive surface: `uneffect:effect`, `uneffect:requires`,
+  `uneffect:loop_invariant`, `uneffect:state`, `uneffect:always`, and the
+  ownership/resource directives documented for the temporal model.
 - Use TypeChecker-resolved identities and scoped capabilities. Do not infer
   safety from matching names or structural casts.
 - Keep runtime validation at untrusted inputs. Branded helper types and static

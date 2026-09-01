@@ -84,6 +84,149 @@ describe("unified async temporal model", () => {
     expect(result.quint).not.toContain("callback_1_due' = clock + 1");
   });
 
+  it("lowers root Promise rejection ownership through the unified temporal facade", () => {
+    const promiseSource = `
+      declare function task(): Promise<number>
+      export async function main(): Promise<void> {
+        const pending = task()
+        await pending
+      }
+    `;
+    const result = generateTemporalModel({
+      fileName: "promise-owner.ts",
+      source: promiseSource,
+      runtime: "web",
+      root: "main",
+    });
+
+    expect(result.includedDomains).toContain("async-ownership");
+    expect(result.exclusions).not.toContain("async-ownership");
+    expect(result.models).toContainEqual(expect.objectContaining({
+      kind: "promise-ownership",
+      owner: "main",
+      properties: ["promiseOwnershipSafe"],
+    }));
+    expect(result.quint).toContain("val promiseOwnershipSafe");
+  });
+
+  it("retains a floating root Promise as an ownership counterexample", () => {
+    const promiseSource = `
+      declare function task(): Promise<number>
+      export async function main(): Promise<void> {
+        const pending = task()
+      }
+    `;
+    const result = generateTemporalModel({
+      fileName: "floating-owner.ts",
+      source: promiseSource,
+      runtime: "node",
+      root: "main",
+    });
+
+    const ownership = result.models.find((model) => model.kind === "promise-ownership");
+    expect(ownership?.quint).toContain("resource_0' = 1");
+    expect(ownership?.quint).toContain("val promiseOwnershipSafe");
+  });
+
+  it("checks Promise ownership with the project temporal verifier", async () => {
+    const result = await verifyUneffectProject({
+      files: {
+        "src/promise-owner.ts": `
+          declare function task(): Promise<number>
+          export async function main(): Promise<void> {
+            const pending = task()
+            await pending
+          }
+        `,
+      },
+      temporalRuntime: "web",
+      temporalRoot: "main",
+    });
+    expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
+      name: "main.promiseOwnershipSafe",
+      result: "verified",
+    }));
+  }, 30_000);
+
+  it("links a directly constructed Promise ownership resource to its exact host settlement identity", () => {
+    const result = generateTemporalModel({
+      fileName: "direct-promise.ts",
+      source: `
+        export async function main(): Promise<void> {
+          const renamed = new Promise<number>((resolve) => resolve(1))
+          await renamed
+        }
+      `,
+      runtime: "web",
+      root: "main",
+    });
+
+    expect(result.exclusions).not.toContain("promise-host-synchronization");
+    expect(result.synchronizations).toContainEqual(expect.objectContaining({
+      kind: "promise-ownership-host",
+      relation: "same-promise",
+      evidence: "exact",
+    }));
+    expect(result.synchronizations[0]?.hostTransitionId).toContain(":main:settle:");
+  });
+
+  it("normalizes a supported immutable Promise alias to one ownership and host identity", () => {
+    const result = generateTemporalModel({
+      fileName: "aliased-direct-promise.ts",
+      source: `
+        export async function main(): Promise<void> {
+          const original = new Promise<number>((resolve) => resolve(1))
+          const renamed = original
+          await renamed
+        }
+      `,
+      runtime: "node",
+      root: "main",
+    });
+    const ownership = result.models.find((model) => model.kind === "promise-ownership");
+    expect(ownership?.quint).toContain("var resource_0: int");
+    expect(ownership?.quint).not.toContain("var resource_1: int");
+    expect(result.synchronizations).toHaveLength(1);
+    expect(result.exclusions).not.toContain("promise-host-synchronization");
+  });
+
+  it("reports external Promise settlement as an unsupported synchronization", () => {
+    const result = generateTemporalModel({
+      fileName: "external-promise.ts",
+      source: `
+        declare function task(): Promise<number>
+        export async function main(): Promise<void> {
+          const renamed = task()
+          await renamed
+        }
+      `,
+      runtime: "node",
+      root: "main",
+    });
+    expect(result.includedDomains).toContain("async-ownership");
+    expect(result.exclusions).toContain("promise-host-synchronization");
+    expect(result.synchronizations).toEqual([]);
+  });
+
+  it("reports a floating Promise as a project temporal counterexample", async () => {
+    const result = await verifyUneffectProject({
+      files: {
+        "src/floating-owner.ts": `
+          declare function task(): Promise<number>
+          export async function main(): Promise<void> {
+            const pending = task()
+          }
+        `,
+      },
+      temporalRuntime: "node",
+      temporalRoot: "main",
+    });
+    expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
+      name: "main.promiseOwnershipSafe",
+      result: "counterexample",
+    }));
+  }, 30_000);
+
   it("co-verifies using disposal through the temporal facade and keeps host scheduling as an explicit gap", () => {
     const usingSource = `
       class Resource {
@@ -128,6 +271,10 @@ describe("unified async temporal model", () => {
     const temporalFacade = generateTemporalModel({ fileName: "src/using.ts", source: usingSource, runtime: "web", root: "main" });
     expect(temporalFacade.exclusions).not.toContain("resource-host-scheduling");
     expect(temporalFacade.exclusions).toContain("resource-host-callback-interleavings");
+    expect(temporalFacade.scheduling).toEqual({
+      fairness: "none",
+      resourceCallbackInterleavings: "excluded",
+    });
     expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
       name: "main.resourceSafe",
       result: "verified",
@@ -167,4 +314,77 @@ describe("unified async temporal model", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }, 30_000);
+
+  it("includes bounded conditional await-using acquisition in the resource/host product", () => {
+    const conditionalSource = `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      export async function main(enabled: boolean): Promise<void> {
+        if (enabled) { await using resource = open() }
+      }
+    `;
+    const result = generateTemporalModel({
+      fileName: "conditional-using.ts", source: conditionalSource, runtime: "web", root: "main",
+    });
+    expect(result.models).toContainEqual(expect.objectContaining({ kind: "resource-host-lifecycle", owner: "main" }));
+    expect(result.exclusions).not.toContain("resource-host-scheduling");
+    expect(result.quint).toContain("skip_acquire_0");
+  });
+
+  it("keeps repeated loop acquisition as explicit resource-host scheduling exclusion", () => {
+    const result = generateTemporalModel({
+      fileName: "loop-using.ts",
+      source: `
+        interface Resource { [Symbol.asyncDispose](): Promise<void> }
+        declare function open(): Resource
+        export async function main(values: boolean[]): Promise<void> {
+          for (const value of values) { await using resource = open(); void value }
+        }
+      `,
+      runtime: "node",
+      root: "main",
+    });
+    expect(result.models).not.toContainEqual(expect.objectContaining({ kind: "resource-host-lifecycle" }));
+    expect(result.exclusions).toContain("resource-host-scheduling");
+  });
+
+  it("includes supported AbortController fetch cancellation in the unified temporal result", () => {
+    const result = generateTemporalModel({
+      fileName: "abortable-fetch.ts",
+      source: `
+        export async function main(cancel: boolean): Promise<void> {
+          const controller = new AbortController()
+          const request = fetch("https://api.example.com/data", { signal: controller.signal })
+          if (cancel) controller.abort("stop")
+          await request
+        }
+      `,
+      runtime: "web",
+      root: "main",
+    });
+    expect(result.includedDomains).toContain("abortable-fetch");
+    expect(result.exclusions).not.toContain("abortable-fetch-synchronization");
+    expect(result.models).toContainEqual(expect.objectContaining({
+      kind: "abortable-fetch", owner: "main",
+      properties: ["abortableFetchSafe", "abortableFetchObserved", "abortableFetchBodiesConsumed"],
+    }));
+    expect(result.quint).toContain("action abort_0");
+  });
+
+  it("reports an unresolved fetch cancellation boundary instead of guessing a link", () => {
+    const result = generateTemporalModel({
+      fileName: "unknown-fetch.ts",
+      source: `
+        declare const externalSignal: AbortSignal
+        export async function main(): Promise<void> {
+          const request = fetch("https://api.example.com/data", { signal: externalSignal })
+          await request
+        }
+      `,
+      runtime: "node",
+      root: "main",
+    });
+    expect(result.exclusions).toContain("abortable-fetch-synchronization");
+    expect(result.models).not.toContainEqual(expect.objectContaining({ kind: "abortable-fetch" }));
+  });
 });

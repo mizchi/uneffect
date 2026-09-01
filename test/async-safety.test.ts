@@ -47,7 +47,7 @@ describe("async error and explicit resource safety", () => {
     const result = analyzeAsyncSafety("binding-promises.ts", `
       declare function task(): Promise<number>
       declare const flag: boolean
-      /* uneffect:async consumes_rejection 0 */
+      /* uneffect:temporal consumes_rejection 0 */
       declare function consume(value: Promise<number>): void
       declare function inspect(value: Promise<number>): void
       function forward(value: Promise<number>) { consume(value) }
@@ -97,15 +97,15 @@ describe("async error and explicit resource safety", () => {
 
   it("rejects malformed and out-of-range rejection ownership contracts", () => {
     const result = analyzeAsyncSafety("invalid-ownership-contract.ts", `
-      /* uneffect:async consumes_rejection first */
+      /* uneffect:temporal consumes_rejection first */
       declare function malformed(value: Promise<void>): void
-      /* uneffect:async consumes_rejection 1 */
+      /* uneffect:temporal consumes_rejection 1 */
       declare function outOfRange(value: Promise<void>): void
-      /* uneffect:async consumes_rejection 0, 0 */
+      /* uneffect:temporal consumes_rejection 0, 0 */
       declare function valid(value: Promise<void>): void
-      /* uneffect:async consumes_rejection_when nope */
+      /* uneffect:temporal consumes_rejection_when nope */
       declare function malformedConditional(value: Promise<void>): void
-      /* uneffect:async consumes_callback_rejection_when 0: missing */
+      /* uneffect:temporal consumes_callback_rejection_when 0: missing */
       declare function missingGuard(callback: () => Promise<void>): void
     `);
     expect(result.diagnostics).toEqual([
@@ -119,7 +119,7 @@ describe("async error and explicit resource safety", () => {
   it("requires higher-order callees to own Promise-returning callback rejections", () => {
     const result = analyzeAsyncSafety("callback-ownership.ts", `
       declare function unsafeSchedule(callback: () => Promise<void>): void
-      /* uneffect:async consumes_callback_rejection 0 */
+      /* uneffect:temporal consumes_callback_rejection 0 */
       declare function safeSchedule(callback: () => Promise<void>): void
       function forwardSchedule(callback: () => Promise<void>) { safeSchedule(callback) }
       function maybeSchedule(callback: () => Promise<void>) { if (Math.random()) safeSchedule(callback) }
@@ -170,11 +170,11 @@ describe("async error and explicit resource safety", () => {
     const result = analyzeAsyncSafety("conditional-ownership.ts", `
       declare const flag: boolean
       declare function task(): Promise<void>
-      /* uneffect:async consumes_rejection_when 1: enabled */
+      /* uneffect:temporal consumes_rejection_when 1: enabled */
       declare function maybeConsume(enabled: boolean, value: Promise<void>): void
-      /* uneffect:async consumes_callback_rejection_when 1: enabled */
+      /* uneffect:temporal consumes_callback_rejection_when 1: enabled */
       declare function maybeSchedule(enabled: boolean, callback: () => Promise<void>): void
-      /* uneffect:async consumes_rejection_when 2: enabled && active */
+      /* uneffect:temporal consumes_rejection_when 2: enabled && active */
       declare function consumeWhenActive(enabled: boolean, active: boolean, value: Promise<void>): void
       async function proven() { const pending = task(); maybeConsume(true, pending) }
       async function disproven() { const pending = task(); maybeConsume(false, pending) }
@@ -558,9 +558,9 @@ describe("async error and explicit resource safety", () => {
   it("executes loop conditions and iterable expressions before loop exits", () => {
     const result = analyzeAsyncSafety("loop-header-promises.ts", `
       declare function task(): Promise<number>
-      /* uneffect:async consumes_rejection 0 */
+      /* uneffect:temporal consumes_rejection 0 */
       declare function consumeAndTest(value: Promise<number>): boolean
-      /* uneffect:async consumes_rejection 0 */
+      /* uneffect:temporal consumes_rejection 0 */
       declare function consumeAndValues(value: Promise<number>): readonly number[]
       async function whileCondition() {
         const pending = task()
@@ -585,7 +585,7 @@ describe("async error and explicit resource safety", () => {
   it("uses finite loop-condition feasibility in Promise ownership fixed points", () => {
     const result = analyzeAsyncSafety("static-loop-promises.ts", `
       declare function task(): Promise<number>
-      /* uneffect:async consumes_rejection 0 */
+      /* uneffect:temporal consumes_rejection 0 */
       declare function consume(value: Promise<number>): void
       async function whileTrueBreak() {
         const pending = task()
@@ -1055,7 +1055,7 @@ describe("async error and explicit resource safety", () => {
     expect(nonAwaited.stdout + nonAwaited.stderr).toMatch(/violation|counterexample/i);
   }, 20_000);
 
-  it("does not claim an exact disposal projection for conditional acquisition", () => {
+  it("projects bounded conditional acquisition as an explicit absent-or-released lifecycle", () => {
     const result = analyzeAsyncSafety("conditional-using.ts", `
       interface Resource { [Symbol.dispose](): void }
       declare function open(): Resource
@@ -1063,8 +1063,11 @@ describe("async error and explicit resource safety", () => {
         if (enabled) { using resource = open() }
       }
     `);
-    expect(lowerResourceDisposalsToProtocol(result.resources, result.disposals, "work"))
-      .toEqual({ status: "unknown", owner: "work", reasons: ["conditional-acquisition"] });
+    const projection = lowerResourceDisposalsToProtocol(result.resources, result.disposals, "work");
+    expect(projection.status).toBe("exact");
+    if (projection.status === "unknown") return;
+    expect(evaluateResourceProtocol(projection.model)).toMatchObject({ status: "satisfied" });
+    expect([...evaluateResourceProtocol(projection.model).states.values()]).toEqual(["absent-or-released"]);
   });
 
   it("rejects resources without the required disposal protocol", () => {
@@ -4694,7 +4697,7 @@ describe("async error and explicit resource safety", () => {
     const result = analyzeAsyncSafety("retained-resource.ts", `
       interface Resource { send(): void; [Symbol.dispose](): void }
       declare function open(): Resource
-      /* uneffect:async retains_resource 0 */
+      /* uneffect:temporal retains_resource 0 */
       declare function register(resource: Resource): void
       declare function inspect(resource: Resource): void
       function retainWrapper(value: Resource) { register(value) }
@@ -4704,7 +4707,7 @@ describe("async error and explicit resource safety", () => {
       }
       class Registry {
         resource: Resource
-        /* uneffect:async retains_resource 0 */
+        /* uneffect:temporal retains_resource 0 */
         constructor(resource: Resource) { this.resource = resource }
       }
       function makeRegistry(value: Resource) { return new Registry(value) }
@@ -4735,9 +4738,9 @@ describe("async error and explicit resource safety", () => {
         inspect(resource)
         new Snapshot(resource)
       }
-      /* uneffect:async retains_resource nope */
+      /* uneffect:temporal retains_resource nope */
       declare function malformed(resource: Resource): void
-      /* uneffect:async retains_resource 1 */
+      /* uneffect:temporal retains_resource 1 */
       declare function outOfRange(resource: Resource): void
     `);
     expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
@@ -4768,7 +4771,7 @@ describe("async error and explicit resource safety", () => {
     const result = analyzeAsyncSafety("conditional-retention.ts", `
       interface Resource { [Symbol.dispose](): void }
       declare function open(): Resource
-      /* uneffect:async retains_resource_when 0: enabled */
+      /* uneffect:temporal retains_resource_when 0: enabled */
       declare function maybeRegister(resource: Resource, enabled: boolean): void
       function maybeRegisterWrapper(resource: Resource, enabled: boolean) {
         maybeRegister(resource, enabled)
@@ -4778,7 +4781,7 @@ describe("async error and explicit resource safety", () => {
         maybeRegister(resource, shouldRegister)
       }
       class MaybeRegistry {
-        /* uneffect:async retains_resource_when 0: enabled */
+        /* uneffect:temporal retains_resource_when 0: enabled */
         constructor(resource: Resource, enabled: boolean) {}
       }
       function disabled() {
@@ -4831,9 +4834,9 @@ describe("async error and explicit resource safety", () => {
         using resource = open()
         new MaybeRegistry(resource, enabled)
       }
-      /* uneffect:async retains_resource_when nope */
+      /* uneffect:temporal retains_resource_when nope */
       declare function malformed(resource: Resource): void
-      /* uneffect:async retains_resource_when 0: missing */
+      /* uneffect:temporal retains_resource_when 0: missing */
       declare function missingGuard(resource: Resource): void
     `);
     expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "disabled" }));

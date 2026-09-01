@@ -29,6 +29,7 @@ export interface InvokeCallbackTransition extends HostNeutralTransitionBase {
 export interface SettlePromiseTransition extends HostNeutralTransitionBase {
   readonly kind: "settle-promise";
   readonly promise: string;
+  readonly promiseIdentity?: BindingIdentity;
   readonly outcomes: readonly PromiseExecutorSettlement[];
   readonly firstSettlementWins: true;
   readonly mayRemainPending: boolean;
@@ -287,7 +288,8 @@ export function lowerPromiseChainTransitions(fileName: string, model: PromiseCha
     id: transitionId(fileName, executor.owner, "settle", index, executor.span.start),
     fileName,
     owner: executor.owner,
-    promise: executor.owner,
+    promise: executor.binding ?? executor.owner,
+    ...(executor.identity ? { promiseIdentity: executor.identity } : {}),
     lane: "inline",
     outcomes: executor.possibleSettlements,
     firstSettlementWins: true,

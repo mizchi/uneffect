@@ -19,13 +19,13 @@ effects warn, which helps remove stale permissions.
 Use for build tools, CLIs, server handlers, integrations, and plugins.
 
 ```ts
-/* uneffect:capability effect FsRead<"$WORKSPACE_ROOT/config/**"> | FsWrite<"$TEMP/**"> */
+/* uneffect:effect FsRead<"$WORKSPACE_ROOT/config/**"> | FsWrite<"$TEMP/**"> */
 function generate() { /* ... */ }
 
-/* uneffect:capability effect Fetch<GET | POST, "https://api.example.com/v1/**"> */
+/* uneffect:effect Fetch<GET | POST, "https://api.example.com/v1/**"> */
 async function request() { /* ... */ }
 
-/* uneffect:capability effect Net<"api.example.com:443"> | Env<"APP_*"> */
+/* uneffect:effect Net<"api.example.com:443"> | Env<"APP_*"> */
 function connect() { /* ... */ }
 ```
 
@@ -74,8 +74,8 @@ Use for parsers, numeric kernels, allocation limits, indexes, and domain
 validation.
 
 ```ts
-/* uneffect:contract requires denominator > 0 */
-/* uneffect:contract ensures result <= numerator */
+/* uneffect:requires denominator > 0 */
+/* uneffect:ensures result <= numerator */
 function divide(numerator: number, denominator: number) {
   return Math.floor(numerator / denominator)
 }
@@ -100,10 +100,10 @@ Uneffect detects selected floating Promise rejections and models supported
 `using`/`await using` disposal. APIs that take ownership can declare it:
 
 ```ts
-/* uneffect:async consumes_rejection 0 */
+/* uneffect:consumes_rejection 0 */
 declare function enqueue(job: Promise<void>): void
 
-/* uneffect:async consumes_callback_rejection 0 */
+/* uneffect:consumes_callback_rejection 0 */
 declare function schedule(job: () => Promise<void>): void
 ```
 
@@ -117,11 +117,11 @@ which effects may occur: at-most-once telemetry, retry budgets, lease epochs,
 timer ordering, cancellation, and resource states.
 
 ```ts
-/* uneffect:temporal state pending: int */
-/* uneffect:temporal init pending = 0 */
-/* uneffect:temporal action enqueue: pending' = pending + 1 */
-/* uneffect:temporal action complete: pending' = pending > 0 ? pending - 1 : pending */
-/* uneffect:temporal invariant nonnegative: pending >= 0 */
+/* uneffect:state pending: int */
+/* uneffect:init pending = 0 */
+/* uneffect:action enqueue: pending' = pending + 1 */
+/* uneffect:action complete: pending' = pending > 0 ? pending - 1 : pending */
+/* uneffect:always nonnegative: pending >= 0 */
 ```
 
 Uneffect parses a TypeScript-oriented annotation language into a neutral IR;

@@ -392,9 +392,12 @@ The temporal composition IR declares `explicit-unchanged` stuttering: each gener
 domain. Supported timers, microtasks, Promise reactions/combinators, and host
 event-loop observations are extracted from TypeScript and composed with the
 explicit temporal projection by `generateTemporalModel`. Web and Node use the
-same versioned result shape. Promise ownership and resource lifecycle are
-currently named exclusions from that facade; their low-level generators remain
-experimental until #63 completes the shared lowering.
+same versioned result shape. Selected-root binding-level Promise ownership and
+resource lifecycle are included projections when applicable. A directly bound
+builtin `new Promise` is linked to its host settlement transition by declaration
+identity. External Promise/host synchronization and unsupported resource
+scheduling remain named exclusions; low-level generators remain experimental
+while #63 completes the shared lowering.
 
 ```text
 TypeScript + Uneffect comments

@@ -55,13 +55,20 @@ const result = generateTemporalModel({
 | `runtime` | Selected host profile. |
 | `includedDomains` | Analyses that contributed to this result. This is not a whole-program coverage claim. |
 | `exclusions` | Relevant semantics that the generated projections do not prove. Never discard this field. |
+| `synchronizations` | Exact cross-projection identity links proved by the frontend. An absent link must not be inferred from matching display names. |
+| `scheduling` | Machine-readable scheduling boundary. The current facade records `fairness: "none"`; resource/callback interleavings are `excluded` or `not-applicable`. |
 | `models` | Authoritative list of independently checked Quint projections, including module, owner, properties, kind, and source text. |
 | `properties` | Display names for the host and owner-qualified projection properties. |
 | `quint` | All generated modules concatenated for inspection or storage. Project verification checks each `models` entry with its own module selection. |
 
 Current model kinds are `web-event-loop`, `node-event-loop`,
-`resource-lifecycle`, and `resource-host-lifecycle`. Current exclusions include
-`async-ownership`, `resource-lifecycle`, `resource-host-scheduling`, and
+`promise-ownership`, `abortable-fetch`, `resource-lifecycle`, and
+`resource-host-lifecycle`.
+`async-ownership` is included only when the selected root has supported tracked
+Promise bindings; otherwise it remains an explicit not-projected exclusion.
+Current exclusions include `async-ownership`, `promise-host-synchronization`,
+`abortable-fetch-synchronization`,
+`resource-lifecycle`, `resource-host-scheduling`, and
 `resource-host-callback-interleavings`. New exclusions may be added in a patch
 release because making an unproved boundary visible is a safety correction.
 
@@ -117,11 +124,12 @@ imports/re-exports, and direct properties of builtin-frozen static object
 literals. Runtime project lowering moves an alias contract to the resolved
 source callable rather than wrapping it.
 
-## Async and resource API placement
+## Temporal ownership and resource API placement
 
-`/* uneffect:async ... */`, async diagnostics, and the high-level analyzers are
-public inputs and evidence APIs. They feed the temporal pipeline; async is not
-a fourth independent formal-specification domain.
+`/* uneffect:temporal ... */`, async diagnostics, and the high-level analyzers are
+public inputs and evidence APIs. Promise ownership and resource directives now
+use the same `temporal` dialect; the former `async` and `resource` dialects are
+not compatibility aliases.
 
 Direct backend generators such as `generateAsyncPatternsQuint`,
 `generatePromiseChainsQuint`, `generateWebEventLoopQuint`,

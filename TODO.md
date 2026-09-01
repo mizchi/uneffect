@@ -1,6 +1,6 @@
 # Uneffect implementation ledger
 
-Last reconciled with GitHub Issues: 2026-08-30.
+Last reconciled with GitHub Issues: 2026-09-01.
 
 This file is the historical implementation ledger. Completed work is summarized
 in `docs/implementation-status.md` and classified by confidence in
@@ -26,6 +26,51 @@ Remaining volume and estimate assumptions are maintained in
   P0 Issues should be developed concurrently.
 
 ## Current implementation snapshot
+
+## Unified user-surface tasklist
+
+The target public annotation surface is one marker, `uneffect:`, plus typed
+`.uneffect.ts` model modules. Capability, contract, temporal, ownership, and
+plugin IRs remain separate internally; users should not have to select those
+internal domains before writing a directive. Migration is intentionally
+breaking before 1.0: removed dialect spellings are rejected rather than kept as
+silent aliases.
+
+1. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Accept canonical
+   one-line `/* uneffect:<directive> ... */` and multiline `/* uneffect: ... */`
+   blocks, preserving exact source spans and wrong-directive diagnostics.
+   - [x] Accept the canonical one-line and multiline forms while preserving the
+     existing located-directive extraction contract.
+   - [x] Split ambiguous `invariant` into Hoare `loop_invariant` and temporal
+     `always`, lowering both to their existing internal IR nodes.
+   - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Keep custom
+     temporal plugin directives discoverable without letting a plugin shadow a
+     core directive.
+2. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate capability,
+   contract, temporal, Promise-ownership, and resource examples, fixtures,
+   skills, and documentation to the unified marker; reject their old dialect
+   headers once the repository migration is complete.
+3. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Replace
+   `temporal-summary` with explicit `summary requires|ensures|modifies|throws|
+   rejects|suspends|cancellable|eventually|repeatedly|stabilizes|response|fair`
+   directives whose attachment target is recorded in evidence.
+4. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move refinement,
+   abstraction, and runtime bindings to typed `.uneffect.ts` APIs; comments
+   retain only a stable model/binding reference where source attachment is
+   required.
+5. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move trust metadata
+   to authenticated config/evidence records. Source comments may reference an
+   assumption ID but cannot self-author owner, expiry, or digest evidence.
+6. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Express React roles
+   through namespaced plugin directives (`react.component`, `react.hook`, and
+   resource lifecycle directives), with the same collision and provenance
+   rules available to third-party plugins.
+7. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Remove every legacy
+   dialect from `UneffectDialect`, README tables, CLI help, schemas, and skills;
+   retain only `uneffect:` and `.uneffect.ts` as public authoring entrypoints.
+8. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Gate completion on
+   parser negative controls, full CI and dogfood, a migration note, and an API
+   inventory test that prevents new public dialects or compatibility aliases.
 
 The `uneffect-builtin-semantics/v1` catalog now owns reviewed JavaScript, Node.js,
 DOM, and selected package definitions. It rejects duplicate symbol identities
@@ -62,10 +107,10 @@ catalog-migrated. Fetch, Promise combinators, timers, cancellation, Abort,
 Scheduler, streams, and disposal publish generic protocol transitions consumed
 by bounded specialized machines. Superseded builtin operation fields and
 branches have been removed. Repository-wide CI, parity, benchmarks, and
-no-unknown dogfood remain the final acceptance boundary for this worktree. The
-no-unknown self-dogfood now passes after parameterized capability composition;
-the remaining acceptance work is to rerun the full repository gates after this
-refactoring.
+no-unknown dogfood are the final acceptance boundary. The generic catalog
+migration passed `just dogfood-leaf`, `just dogfood`, `just ci-fast`, the full
+`pnpm test` suite, Corsa parity, `just bench`, and `git diff --check` before
+commit `7f137b2`.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct
@@ -115,20 +160,34 @@ Bounded child [#48](https://github.com/mizchi/uneffect/issues/48) is complete an
 composes that finite rule with one source-bound catch/finally handler topology
 and immutable Boolean failure selector.
 
-Active proof-boundary issue [#63](https://github.com/mizchi/uneffect/issues/63)
+Completed proof-boundary issue [#63](https://github.com/mizchi/uneffect/issues/63)
 reconnects explicit temporal specifications with extracted JavaScript async
 semantics. The first slice adds one stable `generateTemporalModel` entry,
 composes user properties in both Web and Node profiles, and moves standalone
-backend-specific generators to `@mizchi/uneffect/experimental`. Promise
-ownership remains an explicit exclusion. The second slice co-verifies the root
+backend-specific generators to `@mizchi/uneffect/experimental`. The second
+slice co-verifies the root
 function's `using`/`await using` lifecycle through the same facade and project
-pipeline. Resource acquisition/disposal is not yet synchronized with host queue
-steps, so `resource-host-scheduling` remains an explicit exclusion.
-The next bounded slice synchronizes straight-line `await using` disposal with a
-microtask checkpoint in a resource/host state product. Conditional acquisition
-still reports `resource-host-scheduling`; the supported product reports
+pipeline. Binding-level Promise rejection ownership for the selected root now
+lowers through the common resource protocol and is checked as
+`promiseOwnershipSafe`; a floating binding is a load-bearing counterexample.
+For a directly bound builtin `new Promise`, the ownership resource is linked to
+the host settlement transition by TypeChecker declaration identity. Supported
+immutable aliases normalize to the same resource. External producers and
+unsupported dynamic/escaping aliases remain explicitly excluded as
+`promise-host-synchronization`.
+The resource/host product synchronizes straight-line `await using` disposal
+with a microtask checkpoint. Bounded non-loop conditional acquisition now uses
+explicit acquire-or-skip and release-or-skip paths; repeated loop acquisition
+still reports `resource-host-scheduling`. The supported product reports
 `resource-host-callback-interleavings` because arbitrary callbacks are not yet
-interleaved into that product.
+interleaved into that product. Disposal throw/reject paths and a finite
+multiple-failure suppression invariant are included; exact nested
+`SuppressedError` payload identity remains outside the common product.
+Supported immutable AbortController/fetch bindings now include the existing
+cancellation/settlement/Promise/body product in the facade. External or
+unresolved signals retain `abortable-fetch-synchronization`.
+The result records `scheduling.fairness = "none"` and marks arbitrary
+resource/callback interleavings as excluded instead of choosing a guessed order.
 
 The first shared-completion slice for the general CFG track is now complete.
 It defines typed normal/return/throw/break/continue outcomes, separates an
@@ -199,16 +258,22 @@ introducing another domain-local control-flow or alias model.
      - [x] Project unconditional `using`/`await using` disposal lifecycles into
        the shared resource IR under an explicit all-resources-acquired
        precondition. Preserve reverse disposal order and sync throw/async
-       reject/catch/escape metadata; conditional acquisition fails closed.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend the resource-state lattice to retain `absent | available`
-       disjunctions, then connect initializer failure and per-scope conditional
-       acquisition without the all-acquired precondition.
+       reject/catch/escape metadata. Bounded non-loop conditional acquisition
+       uses explicit acquire-or-skip and release-or-skip paths.
+     - [x] Extend the resource-state lattice to retain `absent | available`
+       and `absent | released` disjunctions and use them for bounded per-scope
+       conditional acquisition without the all-acquired precondition.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Connect initializer
+       failure and repeated loop acquisition without widening either path to a
+       guessed resource state.
      - [x] Project binding-level Promise rejection ownership into the shared
        resource IR: floating remains available, observed consumes, and explicit
        ownership transfer transitions to transferred.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Replace binding-level Promise resources with TypeChecker-backed underlying
-       Promise identity so immutable aliases compose as one resource rather than
-       parallel compatibility records.
+     - [x] Replace supported binding-level Promise resources with
+       TypeChecker-backed underlying Promise identity so immutable local aliases
+       compose as one resource rather than parallel compatibility records.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend Promise
+       identity through mutable, escaping, and dynamically dispatched aliases.
      - [x] Project explicit `for await...of` exhaustion and abrupt
        break/return/uncaught-throw scenarios into consumed/released resource
        models. Preserve optional `return` lookup, user-code property access,
@@ -225,8 +290,12 @@ introducing another domain-local control-flow or alias model.
        backend-neutral resource temporal product. The previous using/host API
        has been removed. Positive and deliberately broken microtask-order
        models exercise the common backend.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend that product with conditional/failed acquisition, disposal
-       failure and suppression, other resource transitions, arbitrary callback
+     - [x] Extend that product with bounded non-loop conditional acquisition,
+       disposal throw/reject transitions, and a finite multiple-failure
+       suppression invariant.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend that product
+       through failed/repeated acquisition, exact nested `SuppressedError`
+       payload identity, other resource transitions, arbitrary callback
        interleavings, cancellation, and explicitly selected fairness assumptions.
    - [x] Add the backend-neutral resource-state lattice over the shared CFG
      fixed-point engine. Equal branch states remain exact, unequal states join
@@ -260,7 +329,7 @@ introducing another domain-local control-flow or alias model.
        missing-binding results.
      - [x] Add TypeChecker-bound same-Program frontend extraction and call-site
        resource identity substitution for direct calls and direct `const`
-       return bindings. `uneffect:resource` comments remain trusted declarations,
+       return bindings. `uneffect:temporal` comments remain trusted declarations,
        malformed/unbound references are diagnostics, and same-named shadows do
        not inherit a contract.
      - [x] Authenticate explicitly supplied package summaries against exact
@@ -549,13 +618,13 @@ introducing another domain-local control-flow or alias model.
     coverage/exclusions, bounded resource limits, package-level composition,
     editor tooling hooks, and dogfood on at least two realistic applications.
 
-There are 14 open implementation Issues after completing bounded children #60 and #61 and
+There are 14 open implementation Issues after completing #63 and bounded children #60 and #61 and
 bounded children #58
 and #59 and children #56 and #57,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-14 parent/epic Issues remain with #63 active: two proof-boundary
-parent in Phase 1, five specification-expressiveness parents in
+14 parent/epic Issues remain queued: one proof-boundary parent in Phase 1,
+six specification-expressiveness parents in
 Phase 2, six production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
 [#45](https://github.com/mizchi/uneffect/issues/45) belongs to #5 and follows
@@ -565,9 +634,8 @@ completed bounded children
 [#44](https://github.com/mizchi/uneffect/issues/44). Completed operational
 follow-up [#46](https://github.com/mizchi/uneffect/issues/46) owns the landed
 solver-heavy CI timing and sharding handoff. Completed child #47 remains inside
-parent #25's estimate, so the 12 non-overlapping epic
-estimates total 48–102
-engineer-weeks, while the deferred Phase 1 breadth is 1–3
+parent #25's estimate. The 13 non-overlapping epic estimates, including #64 DSL
+work, total 51–110 engineer-weeks, while the remaining Phase 1 breadth is 1–3
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
@@ -709,7 +777,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the bounded #18 seeds through #57 | Completed; broader #18 is 1–3 weeks if justified by new evidence | Local evidence survives one supported project boundary, one exact async module dependency, and one exact top-level Promise launch/handler attachment. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#50/#51/#52/#53/#54/#55/#56 | 12–28 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 5–15 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 48–102 engineer-weeks | Completed children #60/#61 narrow #4; #62 owns public-surface stabilization; completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45/#58/#59 narrow parent #5. |
+| Entire open research backlog | 14 Issues / 13 non-overlapping epics | 51–110 engineer-weeks | Completed #63 establishes the bounded async/temporal integration; #64 owns the mature neutral DSL; completed children #60/#61 narrow #4; #62 owns public-surface stabilization; completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45/#58/#59 narrow parent #5. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -736,8 +804,8 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-29 there are 13 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57/#58/#59/#60/#61 handoffs:
-thirteen queued parent/epic Issues and no active bounded child. Every open Issue has exactly one
+As of 2026-09-01 there are 14 open implementation Issues after the #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55/#56/#57/#58/#59/#60/#61/#63 handoffs:
+fourteen queued parent/epic Issues. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
@@ -750,6 +818,7 @@ label.
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 only for quantified/correlated invariants; basic finite collections are independent | Wider collection correlation and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Recursive, higher-order, multi-argument, barrel-traversing, and inferred predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
+| Queued | 2 | [#64](https://github.com/mizchi/uneffect/issues/64) | Backend-neutral DSL | Stable high-level facades and versioned IR | Mature parser/typechecker/modules, conformance, migration, and dogfood |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
 | Queued | 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |

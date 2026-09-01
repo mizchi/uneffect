@@ -7,7 +7,7 @@ export interface RuntimeMetadata {
   totalMemory: number;
 }
 
-/* uneffect:capability effect Sys<hostname | osRelease | cpus | systemMemoryInfo> */
+/* uneffect:effect Sys<hostname | osRelease | cpus | systemMemoryInfo> */
 export function collectRuntimeMetadata(): RuntimeMetadata {
   return {
     hostname: hostname(),

@@ -12,8 +12,8 @@ export interface ResourceDisposalCompletion {
 
 export type ResourceDisposalProtocolProjection =
   | {
-    readonly status: "exact-under-precondition";
-    readonly precondition: "all-listed-resources-acquired";
+    readonly status: "exact" | "exact-under-precondition";
+    readonly precondition?: "all-listed-resources-acquired";
     readonly owner: string;
     readonly model: ResourceProtocolModel;
     readonly disposalOrder: readonly string[];
@@ -22,7 +22,7 @@ export type ResourceDisposalProtocolProjection =
   | {
     readonly status: "unknown";
     readonly owner: string;
-    readonly reasons: readonly ("conditional-acquisition" | "missing-disposal" | "duplicate-disposal" | "unknown-disposal")[];
+    readonly reasons: readonly ("repeated-acquisition" | "missing-disposal" | "duplicate-disposal" | "unknown-disposal")[];
   };
 
 function resourceId(resource: Pick<ResourceBinding, "owner" | "scopeId" | "binding">): string {
@@ -42,8 +42,10 @@ export function lowerResourceDisposalsToProtocol(
   const ownedResources = resources.filter((resource) => resource.owner === owner)
     .sort((left, right) => left.acquisitionIndex - right.acquisitionIndex);
   const ownedDisposals = disposals.filter((disposal) => disposal.owner === owner);
-  const reasons = new Set<"conditional-acquisition" | "missing-disposal" | "duplicate-disposal" | "unknown-disposal">();
-  if (ownedResources.some((resource) => resource.conditional)) reasons.add("conditional-acquisition");
+  const reasons = new Set<"repeated-acquisition" | "missing-disposal" | "duplicate-disposal" | "unknown-disposal">();
+  if (ownedResources.some((resource) => resource.controlPaths.some((path) => path.some((condition) => condition.id.includes("@loop:"))))) {
+    reasons.add("repeated-acquisition");
+  }
   for (const resource of ownedResources) {
     const matches = ownedDisposals.filter((disposal) => disposal.binding === resource.binding && disposal.scopeId === resource.scopeId);
     if (matches.length === 0) reasons.add("missing-disposal");
@@ -57,8 +59,8 @@ export function lowerResourceDisposalsToProtocol(
   const byKey = new Map(ownedResources.map((resource) => [`${resource.scopeId}:${resource.binding}`, resource] as const));
   const ordered = ownedDisposals.map((disposal) => ({ disposal, resource: byKey.get(`${disposal.scopeId}:${disposal.binding}`)! }));
   return {
-    status: "exact-under-precondition",
-    precondition: "all-listed-resources-acquired",
+    status: ownedResources.some((resource) => resource.conditional) ? "exact" : "exact-under-precondition",
+    ...(ownedResources.some((resource) => resource.conditional) ? {} : { precondition: "all-listed-resources-acquired" as const }),
     owner,
     model: {
       schema: "uneffect-resource-protocol/v1",
@@ -67,7 +69,8 @@ export function lowerResourceDisposalsToProtocol(
         initialState: "absent", requiredTerminalStates: ["released"],
       })),
       transitions: [
-        ...ownedResources.map((resource) => ({ kind: "acquire" as const, resource: resourceId(resource), at: resource.span.start, evidence: "exact" as const })),
+        ...ownedResources.map((resource) => ({ kind: "acquire" as const, resource: resourceId(resource), at: resource.span.start, evidence: "exact" as const,
+          ...(resource.conditional ? { conditional: true } : {}) })),
         ...ordered.map(({ disposal, resource }, index) => ({
           kind: "release" as const, resource: resourceId(resource), at: disposal.disposalPoint + index, evidence: "exact" as const,
         })),

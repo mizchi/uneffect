@@ -31,16 +31,16 @@ pnpm exec uneffect doctor
 Add an annotation to an existing TypeScript function:
 
 ```ts
-/* uneffect:capability effect Console */
+/* uneffect:effect Console */
 export function log(value: number): void {
   console.log(value)
 }
 
-/* uneffect:contract requires n >= 0 */
-/* uneffect:contract ensures result === n */
+/* uneffect:requires n >= 0 */
+/* uneffect:ensures result === n */
 export function count(n: number): number {
   let value = 0
-  /* uneffect:contract invariant value >= 0 && value <= n */
+  /* uneffect:loop_invariant value >= 0 && value <= n */
   while (value < n) value++
   return value
 }
@@ -55,7 +55,7 @@ npx uneffect check --project tsconfig.json --infer
 
 An effect declaration is an upper bound. Missing transitive effects are errors;
 declared but unused effects are warnings. Use
-`/* uneffect:capability effect none */` for an explicit checked empty bound. An
+`/* uneffect:effect none */` for an explicit checked empty bound. An
 unannotated function is not declared pure.
 
 See the [Quickstart guide](./docs/quickstart.md) for project setup, CI, runtime
@@ -123,18 +123,18 @@ Before relying on a result, read:
 - [Feature matrix](./docs/feature-matrix.md)
 - [Implementation status](./docs/implementation-status.md)
 
-## Annotation domains
+## Annotation surface
 
-Only block comments with an explicit `uneffect:<dialect>` header are
-interpreted. Normal JSDoc is untouched.
+Only block comments with an explicit `uneffect:` marker are interpreted. The
+token after the marker is the directive; users do not select an internal proof
+domain. Normal JSDoc is untouched.
 
-| Dialect | Purpose |
+| Directive family | Purpose |
 | --- | --- |
-| `uneffect:capability` | Effect and module-initialization upper bounds |
-| `uneffect:contract` | Preconditions, postconditions, invariants, and assertions |
-| `uneffect:temporal` | State machines, transitions, and temporal invariants |
-| `uneffect:async` | Promise and callback rejection ownership |
-| `uneffect:react-component` | Opt-in React functional-component analysis |
+| `uneffect:effect`, `module_effect` | Effect and module-initialization upper bounds |
+| `uneffect:requires`, `ensures`, `loop_invariant` | Hoare-style contracts |
+| `uneffect:state`, `action`, `always` | State machines and temporal properties |
+| ownership and resource directives | Promise and resource protocols in the temporal model |
 
 Detailed references:
 

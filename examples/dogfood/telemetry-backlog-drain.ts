@@ -1,4 +1,4 @@
-/* uneffect:temporal state queued: int */ /* uneffect:temporal state accounted: int */ /* uneffect:temporal state flushes: int */ /* uneffect:temporal init queued = 0 */ /* uneffect:temporal init accounted = 0 */ /* uneffect:temporal init flushes = 0 */ /* uneffect:temporal action drain: queued' = queued + 1 >= 3 ? queued + 1 - 2 * ((queued - 1 - (queued - 1) % 2) / 2 + ((queued - 1) % 2 > 0 ? 1 : 0)) : queued + 1, accounted' = accounted + (queued + 1 >= 3 ? 2 * ((queued - 1 - (queued - 1) % 2) / 2 + ((queued - 1) % 2 > 0 ? 1 : 0)) : 0), flushes' = flushes + 1 */
+/* uneffect:state queued: int */ /* uneffect:state accounted: int */ /* uneffect:state flushes: int */ /* uneffect:init queued = 0 */ /* uneffect:init accounted = 0 */ /* uneffect:init flushes = 0 */ /* uneffect:action drain: queued' = queued + 1 >= 3 ? queued + 1 - 2 * ((queued - 1 - (queued - 1) % 2) / 2 + ((queued - 1) % 2 > 0 ? 1 : 0)) : queued + 1, accounted' = accounted + (queued + 1 >= 3 ? 2 * ((queued - 1 - (queued - 1) % 2) / 2 + ((queued - 1) % 2 > 0 ? 1 : 0)) : 0), flushes' = flushes + 1 */
 
 export interface TelemetryBacklog {
   queued: number;

@@ -6,7 +6,7 @@ interface RemoteAuditConnection {
 declare function connectRemoteAudit(notify?: () => void): RemoteAuditConnection;
 /* uneffect:react-resource release RemoteAuditConnection parameter 0 */
 declare function disconnectRemoteAudit(connection: RemoteAuditConnection): void;
-/* uneffect:capability effect RemoteAuditSnapshotRead */
+/* uneffect:effect RemoteAuditSnapshotRead */
 declare function readRemoteAuditSnapshot(): number;
 
 export function installRemoteAudit(): () => void {

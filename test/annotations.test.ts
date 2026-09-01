@@ -2,8 +2,38 @@ import { describe, expect, it } from "vitest";
 import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations } from "../src/annotations.js";
 
 describe("Uneffect annotation marker", () => {
-  it("requires an explicit annotation dialect", () => {
-    expect(validateUneffectAnnotations("/* uneffect:effect Console */")).toMatchObject([{ kind: "unknown-dialect", directive: "effect" }]);
+  it("accepts the unified one-line directive surface", () => {
+    const source = [
+      "/* uneffect:effect Console */",
+      "/* uneffect:requires n >= 0 */",
+      "/* uneffect:loop_invariant i >= 0 */",
+      "/* uneffect:always nonnegative: count >= 0 */",
+      "/* uneffect:consumes_rejection 0 */",
+    ].join("\n");
+
+    expect(extractAnnotations(source, "effect")).toEqual(["Console"]);
+    expect(extractAnnotations(source, "requires")).toEqual(["n >= 0"]);
+    expect(extractAnnotations(source, "invariant")).toEqual(["i >= 0"]);
+    expect(extractAnnotations(source, "temporal")).toEqual(["nonnegative: count >= 0"]);
+    expect(extractAnnotations(source, "consumes_rejection")).toEqual(["0"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
+  it("accepts a unified multiline block", () => {
+    const source = `/* uneffect:
+      effect Console | Fetch
+      requires n >= 0
+      ensures result >= n
+    */`;
+
+    expect(extractAnnotations(source, "effect")).toEqual(["Console | Fetch"]);
+    expect(extractAnnotations(source, "requires")).toEqual(["n >= 0"]);
+    expect(extractAnnotations(source, "ensures")).toEqual(["result >= n"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
+  it("rejects an unknown unified directive", () => {
+    expect(validateUneffectAnnotations("/* uneffect:not_a_directive value */")).toMatchObject([{ kind: "unknown-dialect", directive: "not_a_directive" }]);
   });
   it("separates contract and temporal invariant syntax by dialect", () => {
     const source = `/* uneffect:contract requires value >= 0 */\n/* uneffect:temporal state phase: int */\n/* uneffect:temporal invariant safe: phase >= 0 */`;
@@ -67,19 +97,19 @@ describe("Uneffect annotation marker", () => {
   });
 
   it("recognizes explicit Promise rejection ownership transfer", () => {
-    const source = "/* uneffect:async consumes_rejection 0, 2 */";
+    const source = "/* uneffect:temporal consumes_rejection 0, 2 */";
     expect(extractAnnotations(source, "consumes_rejection")).toEqual(["0, 2"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes explicit resource retention boundaries", () => {
-    const source = "/* uneffect:async retains_resource 0, 2 */";
+    const source = "/* uneffect:temporal retains_resource 0, 2 */";
     expect(extractAnnotations(source, "retains_resource")).toEqual(["0, 2"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes callable resource boundary operations", () => {
-    const source = `/* uneffect:resource
+    const source = `/* uneffect:temporal
       borrow input
       consume body
       transfer port -> return
@@ -91,21 +121,28 @@ describe("Uneffect annotation marker", () => {
   });
 
   it("recognizes guarded resource retention boundaries", () => {
-    const source = "/* uneffect:async retains_resource_when 0: enabled */";
+    const source = "/* uneffect:temporal retains_resource_when 0: enabled */";
     expect(extractAnnotations(source, "retains_resource_when")).toEqual(["0: enabled"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes Promise-returning callback ownership", () => {
-    const source = "/* uneffect:async consumes_callback_rejection 0 */";
+    const source = "/* uneffect:temporal consumes_callback_rejection 0 */";
     expect(extractAnnotations(source, "consumes_callback_rejection")).toEqual(["0"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes guarded ownership transfer", () => {
-    const source = "/* uneffect:async consumes_rejection_when 1: enabled */";
+    const source = "/* uneffect:temporal consumes_rejection_when 1: enabled */";
     expect(extractAnnotations(source, "consumes_rejection_when")).toEqual(["1: enabled"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
+  it("rejects the removed async and resource dialects", () => {
+    expect(validateUneffectAnnotations("/* uneffect:async consumes_rejection 0 */"))
+      .toContainEqual(expect.objectContaining({ kind: "unknown-dialect", directive: "async" }));
+    expect(validateUneffectAnnotations("/* uneffect:resource consume body */"))
+      .toContainEqual(expect.objectContaining({ kind: "unknown-dialect", directive: "resource" }));
   });
 
   it("preserves the exact payload source span", () => {

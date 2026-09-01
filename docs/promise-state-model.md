@@ -21,8 +21,8 @@ Promise observations compose into the host-aware temporal model:
 pnpm exec uneffect spec temporal examples/promise-chain.ts main --runtime web
 ```
 
-The old `promise-quint` output and its direct generator remain experimental
-compatibility projections, not a separate proof domain.
+The former `promise-quint` CLI backend has been removed. Its direct generator
+remains an experimental projection, not a separate proof domain.
 
 The analyzer recognizes the builtin constructor and prototype methods through
 TypeChecker declaration symbols. A source-defined class named `Promise` or a

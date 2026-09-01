@@ -21,7 +21,8 @@ independent specification domain:
 pnpm exec uneffect spec temporal examples/async-patterns.ts main --runtime web
 ```
 
-The old `async-quint` projection remains an experimental compatibility tool.
+The former `async-quint` CLI projection has been removed. Low-level generators
+remain experimental implementation tools.
 
 ## `setTimeout` loops
 

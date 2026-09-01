@@ -1,4 +1,4 @@
-/* uneffect:temporal state recoveredUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state escalateFinalization: bool */ /* uneffect:temporal init recoveredUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init escalateFinalization = false */ /* uneffect:temporal action recoverDelivery: recoveredUnits' = recoveredUnits + (deliveryFailed ? (escalateFinalization ? 8 : 5) : (escalateFinalization ? 6 : 3)) */
+/* uneffect:state recoveredUnits: int */ /* uneffect:state deliveryFailed: bool */ /* uneffect:state escalateFinalization: bool */ /* uneffect:init recoveredUnits = 0 */ /* uneffect:init deliveryFailed = false */ /* uneffect:init escalateFinalization = false */ /* uneffect:action recoverDelivery: recoveredUnits' = recoveredUnits + (deliveryFailed ? (escalateFinalization ? 8 : 5) : (escalateFinalization ? 6 : 3)) */
 
 export interface EscalationAccounting {
   recoveredUnits: number;

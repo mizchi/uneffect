@@ -1,4 +1,4 @@
-/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? pending : (mode === 1 ? 2 * pending : 3 * pending)) : 0) */
+/* uneffect:state pending: int */ /* uneffect:state processed: int */ /* uneffect:state mode: int */ /* uneffect:init pending = 0 */ /* uneffect:init processed = 0 */ /* uneffect:init mode = 0 */ /* uneffect:action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? pending : (mode === 1 ? 2 * pending : 3 * pending)) : 0) */
 
 export interface SwitchDrainRuntime {
   pending: number;

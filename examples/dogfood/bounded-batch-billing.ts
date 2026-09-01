@@ -1,4 +1,4 @@
-/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state outcome: int */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init outcome = 0 */ /* uneffect:temporal action billBatch: billedUnits' = outcome === 3 ? billedUnits : billedUnits + (outcome === 4 ? 8 : (outcome === 2 ? 4 : (outcome === 1 ? 13 : 14))), auditedUnits' = auditedUnits + ((outcome === 2 || outcome === 3 || outcome === 4) ? 6 : (outcome === 1 ? 27 : 30)) */
+/* uneffect:state billedUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state outcome: int */ /* uneffect:init billedUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init outcome = 0 */ /* uneffect:action billBatch: billedUnits' = outcome === 3 ? billedUnits : billedUnits + (outcome === 4 ? 8 : (outcome === 2 ? 4 : (outcome === 1 ? 13 : 14))), auditedUnits' = auditedUnits + ((outcome === 2 || outcome === 3 || outcome === 4) ? 6 : (outcome === 1 ? 27 : 30)) */
 
 export interface BatchBilling {
   billedUnits: number;

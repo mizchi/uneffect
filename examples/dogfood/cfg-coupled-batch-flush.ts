@@ -1,4 +1,4 @@
-/* uneffect:temporal state pending: int */ /* uneffect:temporal state batch: int */ /* uneffect:temporal state sent: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init batch = 0 */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending + 1) / 2 : 0) */
+/* uneffect:state pending: int */ /* uneffect:state batch: int */ /* uneffect:state sent: int */ /* uneffect:init pending = 0 */ /* uneffect:init batch = 0 */ /* uneffect:init sent = 0 */ /* uneffect:action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending + 1) / 2 : 0) */
 
 export interface TelemetryBatchState {
   pending: number;

@@ -120,19 +120,41 @@ aggregate states. User-authored temporal state and callback summaries are
 composed with those host transitions by `generateTemporalModel`; Web and Node
 share that public entry. `all`, `allSettled`, `race`, and `any` have distinct
 settlement guards and empty-input semantics. The projection also retains
-direct await/catch context and escaping aggregate rejection. Promise ownership
-is still a reported exclusion from this unified facade. For a selected root
+direct await/catch context and escaping aggregate rejection. Binding-level
+Promise ownership for a selected root lowers through the common resource IR and
+is checked as `promiseOwnershipSafe`; floating ownership is a counterexample.
+A directly bound builtin `new Promise` and its supported immutable local aliases
+receive one exact same-Promise link to the host settlement transition using
+declaration identity. External producers, reaction-job ordering, and dynamic or
+escaping aliases remain outside that bounded synchronization. For a selected root
 containing `using` or `await using`, the facade also emits and verifies a
 resource-lifecycle projection covering acquisition, reverse disposal, async
 disposal suspension, and failure completion. This is co-verification, not yet a
 state-product proof for every control shape. Straight-line `await using` roots
 also receive a bounded resource/host product: async disposal must start a
 microtask checkpoint and may resume only inside it. A load-bearing broken model
-resumes outside the checkpoint and Quint finds the violation. Conditional or
-loop acquisition still reports `resource-host-scheduling`; the supported
+resumes outside the checkpoint and Quint finds the violation. Bounded non-loop
+conditional acquisition uses explicit acquire-or-skip and release-or-skip
+paths. Repeated loop acquisition still reports `resource-host-scheduling`; the supported
 product reports `resource-host-callback-interleavings` because arbitrary host
 callbacks are not yet in the product. #63 tracks that remaining composition. It does not make
 the local function-summary composer itself concurrent.
+`TemporalModelResult.scheduling` records `fairness: "none"` and marks those
+resource/callback interleavings as `excluded`; a passing safety property must
+not be read as a progress guarantee.
+
+The common resource/host product also branches each reviewed disposal into
+success or throw/reject completion. Multiple failures retain a finite
+suppression flag; removing that update makes `disposalSuppressionSafe` fail.
+The product does not yet preserve the complete nested `SuppressedError` payload
+available in the detailed resource analysis.
+
+The selected-root facade also includes the existing abortable-fetch product
+when a builtin `AbortController` signal and immutable fetch Promise binding are
+resolved by TypeChecker identity. That product races abort, external fulfillment,
+and rejection with first-settlement-wins guards, and consumes the same Promise
+ownership and Response-body obligations. An external or dynamically selected
+signal produces `abortable-fetch-synchronization` instead of a guessed link.
 
 Promise reaction chains use a separate settlement-state projection. Builtin
 `new Promise` records synchronous executor invocation, rejection conversion,

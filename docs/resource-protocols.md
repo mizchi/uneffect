@@ -84,7 +84,7 @@ function name or accept an executable plugin predicate as proof.
 The first TypeScript frontend accepts declarations such as:
 
 ```ts
-/* uneffect:resource
+/* uneffect:temporal
   borrow input
   consume body
   transfer port -> return
@@ -127,13 +127,14 @@ safety analysis. The projection separately retains whether disposal runs inline
 or in a microtask, whether failure throws or rejects, whether it is caught, and
 which completion exits trigger cleanup.
 
-Its evidence status is deliberately `exact-under-precondition`, with
-`all-listed-resources-acquired` as that precondition. Conditional acquisition
-returns `unknown`. The current single-state join cannot preserve the
-`absent | available` disjunction needed to represent initializer failure while
-skipping disposal of unacquired resources. The existing Quint resource model
-remains the stronger check for acquisition failure, async suspension,
-`SuppressedError`, and reverse-order counterexamples.
+Unconditional acquisition evidence is deliberately
+`exact-under-precondition`, with `all-listed-resources-acquired` as that
+precondition. A bounded non-loop conditional acquisition preserves
+`absent-or-available` and reaches `absent-or-released`: the generated host
+product chooses acquire-or-skip, and skips disposal only on the unacquired path.
+Repeated loop acquisition remains `unknown`. The existing detailed Quint
+resource model remains the stronger check for acquisition failure, async
+suspension, `SuppressedError`, and reverse-order counterexamples.
 
 ## Promise rejection ownership
 
@@ -143,10 +144,20 @@ by supported `await`/handler forms becomes `consumed`, an explicit consumer or
 escape becomes `transferred`, and a floating binding remains `available`, so it
 fails the required `consumed | transferred` terminal set.
 
-This first projection intentionally mirrors the existing binding-level async
-analysis. Immutable aliases are currently separate compatibility records, not
-one proven underlying Promise identity. It therefore does not yet replace the
-alias/control-flow analysis or prove that an arbitrary thenable is handled.
+This projection mirrors the supported binding-level async analysis. A reviewed
+immutable local alias shares the originating TypeChecker declaration identity
+and is normalized to one Promise ownership resource. Reassignment, dynamic or
+escaping aliases, and arbitrary thenables remain outside this identity proof.
+
+For the selected root, `generateTemporalModel` now emits this projection as a
+`promise-ownership` model with the `promiseOwnershipSafe` property. Observed and
+explicitly transferred bindings reach an accepted terminal state; a floating
+binding produces a Quint counterexample. A directly bound builtin
+`new Promise(...)` is linked to its host settlement transition by the shared
+TypeChecker declaration identity and records that exact link in
+`TemporalModelResult.synchronizations`. External producers, arbitrary thenables,
+and unsupported aliases retain `promise-host-synchronization`; the link does not
+claim a general reaction-job ordering proof.
 
 ## Async iterator cleanup
 
@@ -175,15 +186,19 @@ disposal requires awaited microtask completion. The evaluator rejects dangling
 or duplicate links, lane mismatch, resource-identity mismatch, and any release
 without a host completion link.
 
-Results are always labeled `exact-under-precondition` and retain
-`all-listed-resources-acquired`; a plain `satisfied` result is not an
-unconditional whole-function proof. The same product now emits the bounded
+Unconditional results are labeled `exact-under-precondition` and retain
+`all-listed-resources-acquired`; bounded conditional results are `exact` only
+for the explicit acquire-or-skip paths admitted by the frontend. The same product now emits the bounded
 acquire/release Quint model. The former dedicated using/host generator has been
 removed. Positive execution and a deliberately invalid
-resume outside the microtask checkpoint are both checked. Conditional or failed
-acquisition, disposal rejection/suppression, transitions other than acquire and
-release, fairness, cancellation, and arbitrary callback interleavings remain
-future work and must not be inferred from a passing property.
+resume outside the microtask checkpoint are both checked. Initializer failure
+outside the represented skip path and repeated acquisition remain unsupported.
+Supported disposal throw/reject paths increment a finite failure count; a second
+failure sets `suppressed_failure`, and a load-bearing broken generator proves
+that dropping this transition violates `disposalSuppressionSafe`. Exact
+`SuppressedError` payload identity, transitions other than acquire and release,
+fairness, cancellation, and arbitrary callback interleavings remain future work
+and must not be inferred from a passing property.
 
 ## Current lowering
 

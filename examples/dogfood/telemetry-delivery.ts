@@ -1,7 +1,7 @@
 declare function sendTelemetryBatch(): Promise<void>;
-/* uneffect:async consumes_rejection 0 */
+/* uneffect:consumes_rejection 0 */
 declare function keepSendingWhileOnline(delivery: Promise<void>): boolean;
-/* uneffect:capability effect Throw<Error> */
+/* uneffect:effect Throw<Error> */
 declare function failTelemetryGate(): never;
 
 export async function deliverTelemetry(mode: "required" | "best-effort"): Promise<void> {

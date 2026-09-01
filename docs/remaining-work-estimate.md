@@ -1,6 +1,6 @@
 # Remaining work estimate
 
-Last reconciled with `main` and open GitHub Issues: 2026-08-29.
+Last reconciled with the local implementation and open GitHub Issues: 2026-09-01.
 
 This document estimates remaining implementation volume. GitHub Issues own the
 executable acceptance criteria; `TODO.md` remains the historical ledger. The
@@ -30,10 +30,10 @@ totals are calculated from them, not by mechanically adding label bounds.
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 after completed child #57 | 1–3 engineer-weeks | Medium |
-| 2 — Specification expressiveness | #25, #2, #5, #4, #6 | 15–33 engineer-weeks | Low–medium |
+| 2 — Specification expressiveness | #25, #2, #5, #4, #6, #64 | 18–41 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16, #62 | 26–54 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 13 open Issues / 12 non-overlapping epics | **48–102 engineer-weeks** | Low |
+| **Total additive effort** | 14 open Issues / 13 non-overlapping epics | **51–110 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -154,15 +154,15 @@ or dynamic-import domains in #8. The epic therefore returns to its `effort:L`
 
 There are three useful planning numbers:
 
-- **Phase 1 remaining breadth: 1–3 engineer-weeks.** #20 and all three bounded
-  #18 seeds, including #57's Workhub `main().catch(handler)` family, are complete.
-  Another widening requires fresh application evidence or a reusable result
-  from #25/#26.
+- **Phase 1 remaining breadth: 1–3 engineer-weeks.** #20, #63, and all three
+  bounded #18 seeds, including #57's Workhub `main().catch(handler)` family,
+  are complete. Another #18 widening requires fresh application evidence or a
+  reusable result from #25/#26.
 - **One focused product line: 5–15 engineer-weeks after Phase 1.** Node Lease
   prioritizes #2 and #5 (5–10 weeks), consuming the completed #23 CFG. Numeric/SHA-256
   prioritizes #26 and #4/#6 (7–15 weeks). These alternatives
   should not be added together unless both products are required.
-- **All currently requested work: 48–102 engineer-weeks.** This includes
+- **All currently requested work: 51–110 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -182,7 +182,7 @@ commitment to implement every row:
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-48–102 week total remains additive and intentionally ignores speculative
+51–110 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -354,11 +354,12 @@ be added to the owning Issue and reflected here before implementation begins.
 
 ## Next bounded-slice decision
 
-No implementation Issue is currently active. Bounded children #60 and #61
-completed the source-local and direct-cross-file generated-tests direction with
-full local gates and green remote CI. The
-next investment should start with exactly one skipped acceptance test and an
-adjacent negative control:
+#63 is complete for the bounded integration fragment. It projects selected-root
+Promise ownership through the common resource IR, binds direct builtin Promise
+settlement by TypeChecker identity, retains floating ownership as a Quint
+counterexample, composes bounded resource disposal and abortable fetch, and
+records unsupported synchronization and fairness as exclusions. Choose one of
+the queued product directions below:
 
 | Product direction | Parent | Proposed first child | Estimate | Explicitly excluded |
 | --- | --- | --- | ---: | --- |
@@ -446,7 +447,7 @@ closed bounded epic.
 - **Deferred breadth:** #18's broader semantics and #7, #10, #16, and #13
   remain queued until application evidence
   or dependencies justify another bounded slice.
-- **Entire open backlog:** 13 Issues / 12 non-overlapping epics and 48–102
+- **Entire open backlog:** 14 Issues / 13 non-overlapping epics and 51–110
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

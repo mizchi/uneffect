@@ -1,4 +1,4 @@
-/* uneffect:temporal state queued: int */ /* uneffect:temporal state pressure: int */ /* uneffect:temporal state priority: bool */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal init queued = 0 */ /* uneffect:temporal init pressure = 0 */ /* uneffect:temporal init priority = false */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal action drain: queued' = queued > 0 ? 0 : queued, pressure' = pressure + (queued > 0 ? ((!priority && !sampled) ? 0 : (priority ? queued * (queued - 1) / 2 : queued)) : 0) */
+/* uneffect:state queued: int */ /* uneffect:state pressure: int */ /* uneffect:state priority: bool */ /* uneffect:state sampled: bool */ /* uneffect:init queued = 0 */ /* uneffect:init pressure = 0 */ /* uneffect:init priority = false */ /* uneffect:init sampled = false */ /* uneffect:action drain: queued' = queued > 0 ? 0 : queued, pressure' = pressure + (queued > 0 ? ((!priority && !sampled) ? 0 : (priority ? queued * (queued - 1) / 2 : queued)) : 0) */
 
 export interface PriorityTelemetryBacklog {
   queued: number;

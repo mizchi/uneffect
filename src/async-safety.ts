@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
@@ -39,6 +40,8 @@ export interface PromiseBinding {
   binding: string;
   status: "floating" | "transferred" | "observed";
   observations: string[];
+  /** Stable within this source snapshot; spelling is diagnostic-only. */
+  identity?: BindingIdentity;
   span: { start: number; end: number };
 }
 export interface ResourceBinding {
@@ -641,7 +644,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           && isPromiseReturningCallback(checker, argument)) diagnostics.push({
           fileName: source.fileName, functionName: enclosingFunctionName(node), line: lineAt(source, argument.getStart(source)), kind: "floating-callback-promise", severity: "error",
           message: `${node.expression.getText(source)} does not declare ownership of the Promise returned by callback argument ${index}`,
-          notes: [{ label: "because", detail: `${node.expression.getText(source)} carries no /* uneffect:async consumes_callback_rejection ... */ for argument ${index}, so a rejection from that callback reaches no observer` }],
+          notes: [{ label: "because", detail: `${node.expression.getText(source)} carries no /* uneffect:temporal consumes_callback_rejection ... */ for argument ${index}, so a rejection from that callback reaches no observer` }],
         });
       });
       const declaration = checker.getResolvedSignature(node)?.declaration;
@@ -946,10 +949,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const registerBinding = (symbol: ts.Symbol, name: string, spanNode: ts.Node, existing?: PromiseBinding[]): void => {
       if (bindingGroups.has(symbol)) return;
       if (existing) {
-        const binding: PromiseBinding = { owner, binding: name, status: existing[0]!.status, observations: existing[0]!.observations, span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        const binding: PromiseBinding = { owner, binding: name, status: existing[0]!.status, observations: existing[0]!.observations, identity: existing[0]!.identity, span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
         existing.push(binding); bindingGroups.set(symbol, existing); localBindings.push(binding); promiseBindings.push(binding);
       } else {
-        const binding: PromiseBinding = { owner, binding: name, status: "floating", observations: [], span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        const binding: PromiseBinding = { owner, binding: name, status: "floating", observations: [], identity: bindingIdentity(symbol), span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
         bindingGroups.set(symbol, [binding]); localBindings.push(binding); promiseBindings.push(binding);
       }
     };

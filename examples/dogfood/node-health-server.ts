@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-/* uneffect:capability effect Net<"127.0.0.1:8080"> | Console */
+/* uneffect:effect Net<"127.0.0.1:8080"> | Console */
 export function startHealthServer(): void {
   const server = createServer((request, response) => {
     console.log(request.method, request.url);

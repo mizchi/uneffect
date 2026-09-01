@@ -1,4 +1,4 @@
-/* uneffect:temporal state billedUnits: int */ /* uneffect:temporal state auditedUnits: int */ /* uneffect:temporal state deliveryFailed: bool */ /* uneffect:temporal state shutdownRequested: bool */ /* uneffect:temporal init billedUnits = 0 */ /* uneffect:temporal init auditedUnits = 0 */ /* uneffect:temporal init deliveryFailed = false */ /* uneffect:temporal init shutdownRequested = false */ /* uneffect:temporal action recordDelivery: billedUnits' = deliveryFailed || shutdownRequested ? billedUnits : billedUnits + 3, auditedUnits' = auditedUnits + (deliveryFailed ? 4 : 3) */
+/* uneffect:state billedUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state deliveryFailed: bool */ /* uneffect:state shutdownRequested: bool */ /* uneffect:init billedUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init deliveryFailed = false */ /* uneffect:init shutdownRequested = false */ /* uneffect:action recordDelivery: billedUnits' = deliveryFailed || shutdownRequested ? billedUnits : billedUnits + 3, auditedUnits' = auditedUnits + (deliveryFailed ? 4 : 3) */
 
 export interface DeliveryAccounting {
   billedUnits: number;

@@ -25,7 +25,7 @@ export function decodeDnsHeader(view: BoundedDataView<12>): DnsHeader {
   };
 }
 
-/* uneffect:contract requires id <= 65535 && flags <= 65535 && questionCount <= 65535 && answerCount <= 65535 && authorityCount <= 65535 && additionalCount <= 65535 */
+/* uneffect:requires id <= 65535 && flags <= 65535 && questionCount <= 65535 && answerCount <= 65535 && authorityCount <= 65535 && additionalCount <= 65535 */
 export function encodeDnsHeader(
   view: BoundedDataView<12>,
   id: Nat,

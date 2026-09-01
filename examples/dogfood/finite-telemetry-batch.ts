@@ -1,4 +1,4 @@
-/* uneffect:temporal state sentUnits: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state stopAfter: int */ /* uneffect:temporal init sentUnits = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init stopAfter = 0 */ /* uneffect:temporal action sendBatch: sentUnits' = stopAfter === 1 ? sentUnits + 1 : stopAfter === 2 ? sentUnits + 1 + 2 : sentUnits + 1 + 2 + 4, finalized' = stopAfter === 1 ? finalized + 1 : stopAfter === 2 ? finalized + 1 + 1 : finalized + 1 + 1 + 1 */ /* uneffect:temporal invariant finalizationBounded: finalized <= 3 */
+/* uneffect:state sentUnits: int */ /* uneffect:state finalized: int */ /* uneffect:state stopAfter: int */ /* uneffect:init sentUnits = 0 */ /* uneffect:init finalized = 0 */ /* uneffect:init stopAfter = 0 */ /* uneffect:action sendBatch: sentUnits' = stopAfter === 1 ? sentUnits + 1 : stopAfter === 2 ? sentUnits + 1 + 2 : sentUnits + 1 + 2 + 4, finalized' = stopAfter === 1 ? finalized + 1 : stopAfter === 2 ? finalized + 1 + 1 : finalized + 1 + 1 + 1 */ /* uneffect:always finalizationBounded: finalized <= 3 */
 
 export interface TelemetryBatchAccounting {
   sentUnits: number;

@@ -35,9 +35,9 @@ function selectProxiedFlushGate<T>(mode: "proxy" | "plain", enabled: boolean, va
 }
 const proxiedFlushGate = forwardProxiedFlushGate(selectProxiedFlushGate("proxy", true, createProxiedFlushGate()));
 const forwardedProxiedFlushGate = proxiedFlushGate;
-/* uneffect:async retains_resource 0 */
+/* uneffect:retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;
-/* uneffect:async retains_resource_when 0: enabled */
+/* uneffect:retains_resource_when 0: enabled */
 declare function maybeRegisterAttempt(attempt: Attempt, enabled: boolean): void;
 function maybeRegisterRetryAttempt(attempt: Attempt, enabled: boolean): void {
   const shouldRegister = enabled;
@@ -48,7 +48,7 @@ function registerRetryAttempt(attempt: Attempt): void {
   registerAttempt(queuedAttempt);
 }
 class AttemptQueueEntry {
-  /* uneffect:async retains_resource 0 */
+  /* uneffect:retains_resource 0 */
   constructor(readonly attempt: Attempt) {}
 }
 function createAttemptQueueEntry(attempt: Attempt): AttemptQueueEntry {

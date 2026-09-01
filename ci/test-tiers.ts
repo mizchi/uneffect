@@ -42,7 +42,6 @@ export const ciTestTiers = {
     "test/resource-callable-artifact.test.ts",
     "test/resource-protocol-typescript.test.ts",
     "test/resource-protocol.test.ts",
-    "test/resource-temporal-product.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
     "test/test-timeouts.test.ts",
@@ -97,6 +96,7 @@ export const ciTestTiers = {
     "test/evidence-optimizer.test.ts",
     "test/fixtures.test.ts",
     "test/node-lease.test.ts",
+    "test/resource-temporal-product.test.ts",
     "test/spec-backends.test.ts",
     "test/temporal-dsl.test.ts",
     "test/temporal-map-default.test.ts",
@@ -115,6 +115,7 @@ export const ciIntegrationShards = {
   ],
   applications: [
     "test/async-safety.test.ts",
+    "test/resource-temporal-product.test.ts",
     "test/spec-backends.test.ts",
     "test/temporal-dsl.test.ts",
     "test/temporal-map-default.test.ts",

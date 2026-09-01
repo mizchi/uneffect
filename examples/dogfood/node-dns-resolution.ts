@@ -1,7 +1,7 @@
 import { lookup } from "node:dns";
 
 /** Resolve and report a deployment endpoint without wrapping the Node builtin. */
-/* uneffect:capability effect Net | Console */
+/* uneffect:effect Net | Console */
 export function reportDeploymentAddress(hostname: string): void {
   lookup(hostname, (error, address) => {
     if (error) {

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
 
 export type PromiseReactionKind = "then" | "catch" | "finally";
@@ -11,6 +12,8 @@ export interface PromiseExecutorEvent {
 export interface PromiseExecutorPattern {
   owner: string;
   binding?: string;
+  /** Identity of the directly bound Promise, when one exists. */
+  identity?: BindingIdentity;
   callback: string;
   synchronous: true;
   throwBecomesRejection: true;
@@ -600,7 +603,9 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         const analyzed = analyzeExecutor(callback, checker, source);
         const index = executors.length;
         const { adoptedSymbols, adoptedExpressions, ...publicAnalysis } = analyzed;
-        executors.push({ owner: name, binding, callback: callback?.getText(source) ?? "<unknown>", synchronous: true, throwBecomesRejection: true, ...publicAnalysis, span: { start: node.getStart(source), end: node.getEnd() } });
+        const directBinding = ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+          ? targetSymbol(checker, node.parent.name) : undefined;
+        executors.push({ owner: name, binding, ...(directBinding ? { identity: bindingIdentity(directBinding) } : {}), callback: callback?.getText(source) ?? "<unknown>", synchronous: true, throwBecomesRejection: true, ...publicAnalysis, span: { start: node.getStart(source), end: node.getEnd() } });
         if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
           const symbol = targetSymbol(checker, node.parent.name);
           if (symbol) executorBySymbol.set(symbol, index);

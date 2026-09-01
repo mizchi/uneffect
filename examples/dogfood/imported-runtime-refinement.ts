@@ -1,6 +1,6 @@
 import type { ImportedTelemetryRuntime } from "./imported-telemetry-runtime.js";
 
-/* uneffect:temporal state sent: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal action record: sent' = sent + 1, attempted' = attempted + 1 */ /* uneffect:temporal invariant accounting: sent <= attempted */
+/* uneffect:state sent: int */ /* uneffect:state attempted: int */ /* uneffect:init sent = 0 */ /* uneffect:init attempted = 0 */ /* uneffect:action record: sent' = sent + 1, attempted' = attempted + 1 */ /* uneffect:always accounting: sent <= attempted */
 
 /* uneffect:refinement refinement importedTelemetry@1 create */
 export function createImportedTelemetry(initial: ImportedTelemetryRuntime): ImportedTelemetryRuntime {
