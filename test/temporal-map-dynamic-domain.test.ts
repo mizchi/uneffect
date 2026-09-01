@@ -46,7 +46,7 @@ describe("proved finite domains for dynamic temporal Map keys", () => {
 
   it("fails closed when any finite-domain proof premise is absent", async () => {
     for (const [name, source] of [
-      ["missing-property", fixture.replace("/* uneffect:always selectedIsNode: nodes.contains(selected) */ ", "")],
+      ["missing-property", fixture.replace("/* uneffect:always selectedIsNode: nodes.contains(selected) */", "")],
       ["mutated-domain", fixture.replace("action selectMissing: selected' = 2", "action selectMissing: selected' = 2, nodes' = nodes.union(Set(3))")],
       ["non-inductive", fixture.replace("action selectMissing: selected' = 2", "action selectMissing: selected' = 3")],
       ["compound-key", fixture.replace("leases.getOrElse(selected, 0)", "leases.getOrElse(selected + 0, 0)")],
@@ -63,8 +63,8 @@ describe("proved finite domains for dynamic temporal Map keys", () => {
         "init selected = 1",
         "init selected = 1\n  init otherNodes = Set(1, 2)",
       ).replace(
-        "invariant selectedIsNode: nodes.contains(selected)",
-        "invariant selectedIsNode: nodes.contains(selected) */ /* uneffect:always selectedIsOtherNode: otherNodes.contains(selected)",
+        "always selectedIsNode: nodes.contains(selected)",
+        "always selectedIsNode: nodes.contains(selected) */ /* uneffect:always selectedIsOtherNode: otherNodes.contains(selected)",
       )],
     ] as const) {
       const temporal = parseSpec(`${name}.ts`, source).temporal;

@@ -43,8 +43,8 @@ describe("total temporal Map lookup", () => {
     await expect(findTemporalCounterexampleWithZ3(temporal, "presentUsesValue", { maxSteps: 1 }))
       .resolves.toEqual({ status: "safe-within-bound", depth: 1 });
     const broken = parseSpec("map-default-broken.ts", fixture.replace(
-      "invariant missingUsesDefault: epochs.getOrElse(2, 0) === 0",
-      "invariant missingUsesDefault: epochs.getOrElse(2, 0) === 1",
+      "always missingUsesDefault: epochs.getOrElse(2, 0) === 0",
+      "always missingUsesDefault: epochs.getOrElse(2, 0) === 1",
     )).temporal;
     await expect(findTemporalCounterexampleWithZ3(broken, "missingUsesDefault", { maxSteps: 1 }))
       .resolves.toMatchObject({

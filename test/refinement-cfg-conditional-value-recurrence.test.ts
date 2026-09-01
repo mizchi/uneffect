@@ -5,12 +5,12 @@ import {
   verifyRefinementRecurrenceCertificateWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state urgent: bool */ /* uneffect: state sent: int */ /* uneffect: init pending = 0 */ /* uneffect: init urgent = false */ /* uneffect: init sent = 0 */ /* uneffect: action flush: pending' = pending > 0 ? 0 : pending, urgent' = urgent, sent' = sent + (pending > 0 ? urgent ? 2 * pending : pending : 0) */
 interface Runtime { pending: number; urgent: boolean; sent: number }
-/* uneffect:refinement refinement cfgConditionalValueFlush@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect:refinement refinement cfgConditionalValueFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect:refinement refinement cfgConditionalValueFlush@1 action flush */
+export function create(initial: Runtime) { return initial }
+export function observe(runtime: Runtime) { return runtime }
 export function flush(runtime: Runtime) {
   while (runtime.pending > 0) {
     const weight = runtime.urgent ? 2 : 1
@@ -22,9 +22,11 @@ export function flush(runtime: Runtime) {
 
 describe("conditional-value CFG recurrence", () => {
   it("lowers a loop-local conditional value into generic predecessor evidence", async () => {
-    const spec = parseSpec("cfg-conditional-value-flush.ts", fixture).temporal;
+    const fileName = "cfg-conditional-value-flush.ts";
+    const spec = parseSpec(fileName, fixture).temporal;
+    const manifest = refinementManifest(fileName, "cfgConditionalValueFlush", { flush: "flush" });
     const structural = analyzeRefinementActionBodies(
-      "cfg-conditional-value-flush.ts", fixture, "cfgConditionalValueFlush", spec,
+      fileName, fixture, "cfgConditionalValueFlush", spec, {}, manifest,
     );
     expect(structural.diagnostics).toEqual([]);
     expect(structural.obligations).toContainEqual(expect.objectContaining({
@@ -57,7 +59,7 @@ describe("conditional-value CFG recurrence", () => {
     }));
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
-      "cfg-conditional-value-flush.ts", fixture, "cfgConditionalValueFlush", spec,
+      fileName, fixture, "cfgConditionalValueFlush", spec, { manifest },
     );
     expect(checked.diagnostics).toEqual([]);
     expect(checked.obligations).toContainEqual(expect.objectContaining({
@@ -113,7 +115,9 @@ describe("conditional-value CFG recurrence", () => {
       )],
     ] as const;
     for (const [name, source] of cases) {
-      const analysis = analyzeRefinementActionBodies(`${name}.ts`, source, "cfgConditionalValueFlush", spec);
+      const fileName = `${name}.ts`;
+      const analysis = analyzeRefinementActionBodies(fileName, source, "cfgConditionalValueFlush", spec, {},
+        refinementManifest(fileName, "cfgConditionalValueFlush", { flush: "flush" }));
       expect(analysis.obligations).toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",
         status: "unknown",
@@ -128,6 +132,7 @@ describe("conditional-value CFG recurrence", () => {
     const exhausted = analyzeRefinementActionBodies(
       "budget.ts", fixture, "cfgConditionalValueFlush", spec,
       { proofBudget: { cfgFixedPointIterations: 1 } },
+      refinementManifest("budget.ts", "cfgConditionalValueFlush", { flush: "flush" }),
     );
     expect(exhausted.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
@@ -136,7 +141,10 @@ describe("conditional-value CFG recurrence", () => {
 
     const unavailable = await analyzeRefinementActionBodiesWithZ3(
       "solver.ts", fixture, "cfgConditionalValueFlush", spec,
-      { z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" } },
+      {
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+        manifest: refinementManifest("solver.ts", "cfgConditionalValueFlush", { flush: "flush" }),
+      },
     );
     expect(unavailable.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",

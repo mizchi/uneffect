@@ -157,10 +157,11 @@ The same revision has a real source-bearing edge from packages such as
 `github-monitor` and `x-monitor` to `core`: consumers call the exported
 `StateStore.get/set` methods. A repository-derived acceptance fixture preserves
 the relevant class method, async suspension, dynamic record key, and
-project-reference call shape. It adds only this attempted marker to `set`:
+project-reference call shape. The attempted model attachment uses a typed
+sibling definition and a source attachment:
 
 ```ts
-/* uneffect:refinement refinement stateStore@1 action set */
+/* uneffect:refinement_from "./state-store.uneffect.ts#default" */
 async set(key: string, value: unknown): Promise<void> {
   const data = await this.load()
   data[key] = value

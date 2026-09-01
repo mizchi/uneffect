@@ -8,7 +8,7 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintT
 import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
-import { generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { generateRefinementAdapterModuleFromManifest, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithManifest, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection, type RefinementBindingManifest } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async-patterns.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
@@ -16,7 +16,27 @@ import { analyzePromiseChains } from "../src/promise-chains.js";
 import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject } from "../src/workspace-refinements.js";
 import type { TypeScriptProject } from "../src/typescript-project.js";
-import { SAME_REALM_GLOBAL_THIS_IDENTITY } from "../src/runtime-identities.js";
+import { nodeCurrentRealmGlobalIdentity, SAME_REALM_GLOBAL_THIS_IDENTITY } from "../src/runtime-identities.js";
+
+function validateGeneratedRefinementActionBodies(
+  fileName: string,
+  source: string,
+  adapterName: string,
+  temporal: ReturnType<typeof parseSpec>["temporal"],
+): void {
+  const actions = Object.fromEntries(temporal.actions.map(({ name }) => [name, name]));
+  validateRefinementActionBodiesWithManifest(fileName, source, {
+    schema: "uneffect-refinement-bindings/v1",
+    fileName,
+    adapterName,
+    version: "1",
+    create: "create",
+    observe: "observe",
+    abstractions: {},
+    actions,
+    invariants: {},
+  }, temporal);
+}
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -152,7 +172,6 @@ const workerPoolSpec = parseSpec(workerPoolFile, workerPoolSource).temporal;
 const triangularDrainFile = "bench/triangular-backlog-drain.ts";
 const triangularDrainSource = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0) */
 interface Runtime { pending: number; weighted: number }
-/* uneffect:refinement refinement triangularDrain@1 action drain */
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.pending--
@@ -220,7 +239,6 @@ const affineBranchBody = affineBranchFlags.map(
 ).join("\n    ");
 const affineBranchBudgetSource = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: ${affineBranchFlags.map((flag) => `state ${flag}: bool`).join("\n  ")} */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: ${affineBranchFlags.map((flag) => `init ${flag} = false`).join("\n  ")} */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (${affineBranchTotal}) : 0) */
 interface Runtime { pending: number; weighted: number; ${affineBranchFlags.map((flag) => `${flag}: boolean`).join("; ")} }
-/* uneffect:refinement refinement affineBranchBudget@1 action drain */
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.pending--
@@ -265,13 +283,18 @@ const indirectRefinementParentText = `
   import { increment as incrementChild, type Runtime } from "indirect-child"
   declare global { var armed: boolean; var count: number }
   /* uneffect: state armed: bool */ /* uneffect: state count: int */ /* uneffect: init armed = true */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */ /* uneffect: action_when increment: armed */
-  /* uneffect:runtime runtime counter@1 = globalThis */
-  /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
-  /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+  export function create(initial: Runtime) { return initial }
+  export function observe(runtime: Runtime) { return runtime }
   function bounce(runtime: Runtime) { incrementChild(runtime) }
   function apply(runtime: Runtime) { bounce(runtime) }
-  /* uneffect:refinement refinement counter@1 action increment */ export function increment(_runtime: Runtime) { apply(globalThis) }
+  export function increment(_runtime: Runtime) { apply(globalThis) }
 `;
+const indirectRefinementManifest = {
+  schema: "uneffect-refinement-bindings/v1", fileName: indirectRefinementParentName,
+  adapterName: "counter", version: "1", runtimeIdentity: SAME_REALM_GLOBAL_THIS_IDENTITY,
+  create: "create", observe: "observe", abstractions: {},
+  actions: { increment: "increment" }, invariants: {},
+} satisfies RefinementBindingManifest;
 const indirectRefinementDeclarationText = `declare module "indirect-child" {
   export interface Runtime { armed: boolean; count: number }
   export function increment(runtime: Runtime): void
@@ -321,11 +344,16 @@ const nodeRealmRefinementName = "/bench/node-realm-refinement.ts";
 const nodeRealmRefinementText = `
   declare function incrementChild(runtime: typeof global): void
   /* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */
-  /* uneffect:runtime runtime counter@1 = node:global@24#main */
-  /* uneffect:refinement refinement counter@1 create */ export function create(initial: typeof global) { return initial }
-  /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: typeof global) { return runtime }
-  /* uneffect:refinement refinement counter@1 action increment */ export function increment(_runtime: typeof global) { incrementChild(global) }
+  export function create(initial: typeof global) { return initial }
+  export function observe(runtime: typeof global) { return runtime }
+  export function increment(_runtime: typeof global) { incrementChild(global) }
 `;
+const nodeRealmRefinementManifest = {
+  schema: "uneffect-refinement-bindings/v1", fileName: nodeRealmRefinementName,
+  adapterName: "counter", version: "1", runtimeIdentity: nodeCurrentRealmGlobalIdentity("24", "main"),
+  create: "create", observe: "observe", abstractions: {},
+  actions: { increment: "increment" }, invariants: {},
+} satisfies RefinementBindingManifest;
 const nodeRealmCompilerOptions: ts.CompilerOptions = { ...compilerOptions, types: ["node"] };
 const nodeRealmHost = ts.createCompilerHost(nodeRealmCompilerOptions);
 const defaultNodeRealmGetSourceFile = nodeRealmHost.getSourceFile.bind(nodeRealmHost);
@@ -427,6 +455,7 @@ describe("refinement receiver identity", () => {
   bench("compose two same-realm project refinement helpers", () => {
     const result = composeWorkspaceRefinements(
       indirectRefinementProgram, indirectRefinementCurrent, [indirectRefinementCompleted],
+      new Map([[indirectRefinementParentName, [indirectRefinementManifest]]]),
     );
     if (result.links[0]?.callPath.length !== 4 || result.links[0]?.guard !== "armed"
       || result.links[0]?.helperDepthBudget !== 2
@@ -440,6 +469,7 @@ describe("refinement receiver identity", () => {
     const diagnostics = validateRefinementActionBodiesInProgram(
       nodeRealmProgram, nodeRealmRefinementName, "counter", nodeRealmSpec,
       { externalActions: nodeRealmExternalActions },
+      nodeRealmRefinementManifest,
     );
     if (diagnostics.length > 0) throw new Error(diagnostics.map(({ message }) => message).join("; "));
   }, { time: 500, iterations: 20 });
@@ -1211,13 +1241,13 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("extract and generate a 64-action refinement adapter", () => {
-    const actions = Array.from({ length: 64 }, (_, index) => `/* uneffect:refinement refinement machine@1 action action${index} */ export function action${index}(runtime: unknown) {}`).join("\n");
-    const source = `
-      /* uneffect:refinement refinement machine@1 create */ export function create(initial: unknown) { return initial }
-      /* uneffect:refinement refinement machine@1 observe */ export function observe(runtime: unknown) { return runtime }
-      ${actions}
-    `;
-    generateRefinementAdapterModule("machine.ts", source, "./machine.js", "machine");
+    const actions = Object.fromEntries(Array.from({ length: 64 }, (_, index) => [`action${index}`, `action${index}`]));
+    const manifest = {
+      schema: "uneffect-refinement-bindings/v1", fileName: "machine.ts",
+      adapterName: "machine", version: "1", create: "create", observe: "observe",
+      abstractions: {}, actions, invariants: {},
+    } satisfies RefinementBindingManifest;
+    generateRefinementAdapterModuleFromManifest(manifest, "./machine.js");
   }, { time: 500, iterations: 20 });
 
   bench("parse and validate complete telemetry scalar refinement", () => {
@@ -1260,9 +1290,8 @@ describe("typed-array static verification", () => {
   bench("compose an 8x8 nested outer-label transfer", () => {
     const source = `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action scan: value' = value */
       interface Runtime { value: number }
-      /* uneffect:refinement refinement nestedScan@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement nestedScan@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement nestedScan@1 action scan */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function scan(runtime: Runtime) {
         outer: for (let row = 0; row < 8; row++) {
           for (let column = 0; column < 8; column++) continue outer
@@ -1270,7 +1299,7 @@ describe("typed-array static verification", () => {
         }
       }
     `;
-    validateRefinementActionBodies("nested-scan.ts", source, "nestedScan", parseSpec("nested-scan.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("nested-scan.ts", source, "nestedScan", parseSpec("nested-scan.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
   bench("summarize a symbolic telemetry backlog countdown", () => {
@@ -1292,7 +1321,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("summarize a triangular loop-carried backlog recurrence", () => {
-    validateRefinementActionBodies(
+    validateGeneratedRefinementActionBodies(
       triangularDrainFile,
       triangularDrainSource,
       "triangularDrain",
@@ -1310,7 +1339,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("summarize the eight-leaf affine loop branch budget", () => {
-    validateRefinementActionBodies(
+    validateGeneratedRefinementActionBodies(
       affineBranchBudgetFile,
       affineBranchBudgetSource,
       "affineBranchBudget",
@@ -1438,29 +1467,26 @@ describe("typed-array static verification", () => {
   bench("join catch return and rethrow completions", () => {
     const source = `/* uneffect: state caught: int */ /* uneffect: state observed: int */ /* uneffect: state stop: bool */ /* uneffect: init caught = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init stop = false */ /* uneffect: action returnPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1 */ /* uneffect: action throwPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1 */
       interface Runtime { caught: number; observed: number; stop: boolean }
-      /* uneffect:refinement refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement recovery@1 action returnPath */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function returnPath(runtime: Runtime) {
         try { throw "failed" } catch { if (runtime.stop) return; runtime.caught++ }
         runtime.observed++
       }
-      /* uneffect:refinement refinement recovery@1 action throwPath */
       export function throwPath(runtime: Runtime) {
         try { throw "failed" } catch { if (runtime.stop) throw "again"; runtime.caught++ }
         runtime.observed++
       }
     `;
     const temporal = parseSpec("catch-completion-bench.ts", source).temporal;
-    validateRefinementActionBodies("catch-completion-bench.ts", source, "recovery", temporal);
+    validateGeneratedRefinementActionBodies("catch-completion-bench.ts", source, "recovery", temporal);
   }, { time: 500, iterations: 20 });
 
   bench("join conditional finally overrides", () => {
     const source = `/* uneffect: state worked: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: state cancel: bool */ /* uneffect: state fail: bool */ /* uneffect: init worked = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init cancel = false */ /* uneffect: init fail = false */ /* uneffect: action execute: worked' = worked + 1, released' = cancel ? released + 1 : fail ? released : released + 1, observed' = (cancel || fail) ? observed : observed + 1 */
       interface Runtime { worked: number; released: number; observed: number; cancel: boolean; fail: boolean }
-      /* uneffect:refinement refinement cleanup@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement cleanup@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement cleanup@1 action execute */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function execute(runtime: Runtime) {
         try { runtime.worked++ } finally {
           if (runtime.cancel) { runtime.released++; return }
@@ -1471,7 +1497,7 @@ describe("typed-array static verification", () => {
       }
     `;
     const temporal = parseSpec("finally-completion-bench.ts", source).temporal;
-    validateRefinementActionBodies("finally-completion-bench.ts", source, "cleanup", temporal);
+    validateGeneratedRefinementActionBodies("finally-completion-bench.ts", source, "cleanup", temporal);
   }, { time: 500, iterations: 20 });
 
   bench("compose a 16-case switch refinement with fallthrough", () => {
@@ -1479,20 +1505,18 @@ describe("typed-array static verification", () => {
     const expression = Array.from({ length: 16 }, (_, index) => `mode === ${index} ? value ${Array.from({ length: 4 - index % 4 }, () => "+ 1").join(" ")} : `).join("") + "value";
     const source = `/* uneffect: state value: int */ /* uneffect: state mode: int */ /* uneffect: init value = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: value' = ${expression} */
       interface Runtime { value: number; mode: number }
-      /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement routing@1 action route */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function route(runtime: Runtime) { switch (runtime.mode) { ${cases} } }
     `;
-    validateRefinementActionBodies("switch-routing.ts", source, "routing", parseSpec("switch-routing.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("switch-routing.ts", source, "routing", parseSpec("switch-routing.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
   bench("join value return and throw switch completions", () => {
     const source = `/* uneffect: state routed: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state mode: int */ /* uneffect: init routed = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1 */
       interface Runtime { routed: number; failed: number; settled: number; observed: number; mode: number }
-      /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement routing@1 action route */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function route(runtime: Runtime) {
         try {
           switch (runtime.mode) {
@@ -1505,29 +1529,27 @@ describe("typed-array static verification", () => {
         runtime.observed++
       }
     `;
-    validateRefinementActionBodies("switch-completion-bench.ts", source, "routing", parseSpec("switch-completion-bench.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("switch-completion-bench.ts", source, "routing", parseSpec("switch-completion-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
   bench("bind a conditional scalar throw payload", () => {
     const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action reject: failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed */
       interface Runtime { failed: number; code: number; shouldFail: boolean }
-      /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement accounting@1 action reject */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function reject(runtime: Runtime) {
         try { if (runtime.shouldFail) throw runtime.code }
         catch (error) { if (error > 0) runtime.failed++ }
       }
     `;
-    validateRefinementActionBodies("caught-payload-bench.ts", source, "accounting", parseSpec("caught-payload-bench.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("caught-payload-bench.ts", source, "accounting", parseSpec("caught-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
   bench("bind switch-selected scalar throw payloads", () => {
     const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state fallbackCode: int */ /* uneffect: state mode: int */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init fallbackCode = 1 */ /* uneffect: init mode = 0 */ /* uneffect: action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed */
       interface Runtime { failed: number; code: number; fallbackCode: number; mode: number }
-      /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement accounting@1 action reject */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function reject(runtime: Runtime) {
         try {
           switch (runtime.mode) {
@@ -1539,15 +1561,14 @@ describe("typed-array static verification", () => {
         }
       }
     `;
-    validateRefinementActionBodies("switch-caught-payload-bench.ts", source, "accounting", parseSpec("switch-caught-payload-bench.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("switch-caught-payload-bench.ts", source, "accounting", parseSpec("switch-caught-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
   bench("bind literal throw payloads through switch fallthrough", () => {
     const source = `/* uneffect: state failed: int */ /* uneffect: state mode: int */ /* uneffect: init failed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action reject: failed' = (mode === 0 ? 1 : mode === 1 ? 1 : 0) > 0 ? failed + 1 : failed */
       interface Runtime { failed: number; mode: number }
-      /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement accounting@1 action reject */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function reject(runtime: Runtime) {
         try {
           switch (runtime.mode) {
@@ -1560,29 +1581,27 @@ describe("typed-array static verification", () => {
         }
       }
     `;
-    validateRefinementActionBodies("literal-switch-payload-bench.ts", source, "accounting", parseSpec("literal-switch-payload-bench.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("literal-switch-payload-bench.ts", source, "accounting", parseSpec("literal-switch-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
   bench("project a direct record throw payload", () => {
     const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state retryable: bool */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init retryable = false */ /* uneffect: action reject: failed' = retryable && code > 0 ? failed + 1 : failed */
       interface Runtime { failed: number; code: number; retryable: boolean }
-      /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement accounting@1 action reject */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function reject(runtime: Runtime) {
         try { throw { code: runtime.code, retryable: runtime.retryable } }
         catch (error) { if (error.retryable && error.code > 0) runtime.failed++ }
       }
     `;
-    validateRefinementActionBodies("record-payload-bench.ts", source, "accounting", parseSpec("record-payload-bench.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("record-payload-bench.ts", source, "accounting", parseSpec("record-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
   bench("project conditional record throw payloads", () => {
     const source = `/* uneffect: state failed: int */ /* uneffect: state primary: bool */ /* uneffect: init failed = 0 */ /* uneffect: init primary = false */ /* uneffect: action reject: failed' = failed + (primary ? 1 : 2) */
       interface Runtime { failed: number; primary: boolean }
-      /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
-      /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
-      /* uneffect:refinement refinement accounting@1 action reject */
+      export function create(initial: Runtime) { return initial }
+      export function observe(runtime: Runtime) { return runtime }
       export function reject(runtime: Runtime) {
         try {
           if (runtime.primary) throw { code: 1, retryable: true }
@@ -1593,6 +1612,6 @@ describe("typed-array static verification", () => {
         }
       }
     `;
-    validateRefinementActionBodies("conditional-record-payload-bench.ts", source, "accounting", parseSpec("conditional-record-payload-bench.ts", source).temporal);
+    validateGeneratedRefinementActionBodies("conditional-record-payload-bench.ts", source, "accounting", parseSpec("conditional-record-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 });

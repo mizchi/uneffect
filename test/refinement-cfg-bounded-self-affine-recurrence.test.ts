@@ -7,9 +7,12 @@ import {
   verifyRefinementRecurrenceCertificateWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { resolveRefinementDslFileLink } from "../src/refinement-dsl.js";
 
-const fixture = readFileSync(join(process.cwd(), "examples/dogfood/cfg-bounded-retry-backoff.ts"), "utf8");
-const spec = parseSpec("cfg-bounded-retry-backoff.ts", fixture).temporal;
+const fileName = "examples/dogfood/cfg-bounded-retry-backoff.ts";
+const fixture = readFileSync(join(process.cwd(), fileName), "utf8");
+const spec = parseSpec(fileName, fixture).temporal;
+const manifest = resolveRefinementDslFileLink(fileName);
 
 describe("precondition-bounded self-affine recurrence", () => {
   it("publishes the conditional proof fields in the strict v2 artifact schema", () => {
@@ -39,7 +42,7 @@ describe("precondition-bounded self-affine recurrence", () => {
 
   it("proves exact exponential backoff only under the checked finite retry bound", async () => {
     const structural = analyzeRefinementActionBodies(
-      "cfg-bounded-retry-backoff.ts", fixture, "boundedRetryBackoff", spec,
+      fileName, fixture, "boundedRetryBackoff", spec, {}, manifest,
     );
     expect(structural.diagnostics).toEqual([]);
     expect(structural.obligations).toContainEqual(expect.objectContaining({
@@ -72,7 +75,7 @@ describe("precondition-bounded self-affine recurrence", () => {
     }));
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
-      "cfg-bounded-retry-backoff.ts", fixture, "boundedRetryBackoff", spec,
+      fileName, fixture, "boundedRetryBackoff", spec, { manifest },
     );
     expect(checked.diagnostics).toEqual([]);
     expect(checked.obligations).toContainEqual(expect.objectContaining({
@@ -117,7 +120,7 @@ describe("precondition-bounded self-affine recurrence", () => {
 
   it("fails closed without the exact bound or outside the bounded family", async () => {
     for (const [name, source] of [
-      ["missing-precondition", fixture.replace("/* uneffect:requires runtime.retries >= 0 && runtime.retries <= 8 */ ", "")],
+      ["missing-precondition", fixture.replace("/* uneffect:requires runtime.retries >= 0 && runtime.retries <= 8 */", "")],
       ["oversized-bound", fixture.replaceAll("<= 8", "<= 9")],
       ["wrong-counter", fixture.replace("requires runtime.retries", "requires runtime.delay")],
       ["additive-mixture", fixture.replace("runtime.delay *= 2", "runtime.delay = runtime.delay * 2 + 1")],
@@ -128,6 +131,7 @@ describe("precondition-bounded self-affine recurrence", () => {
       const candidateSpec = parseSpec(`${name}.ts`, source).temporal;
       const result = await analyzeRefinementActionBodiesWithZ3(
         `${name}.ts`, source, "boundedRetryBackoff", candidateSpec,
+        { manifest: { ...manifest, fileName: `${name}.ts` } },
       );
       expect(result.obligations).toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",
@@ -141,7 +145,10 @@ describe("precondition-bounded self-affine recurrence", () => {
 
     const unavailable = await analyzeRefinementActionBodiesWithZ3(
       "solver.ts", fixture, "boundedRetryBackoff", spec,
-      { z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" } },
+      {
+        manifest: { ...manifest, fileName: "solver.ts" },
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+      },
     );
     expect(unavailable.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",

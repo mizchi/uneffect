@@ -18,6 +18,17 @@ read emitted exclusions together with every result.
 Do not import unpublished paths such as `dist/src/async-patterns.js`. Package
 exports intentionally block those implementation paths.
 
+## Annotation dialect inventory
+
+`uneffectDialects` is the machine-readable public inventory of recognized
+comment headers. Its current values are `unified`, `trust`,
+`react-component`, `react-hook`, and `react-resource`. The ordinary form
+`/* uneffect:effect ... */` belongs to `unified`; the remaining values are
+explicit namespaced markers. Removed `capability`, `contract`, `temporal`,
+`refinement`, `runtime`, `async`, and `resource` headers are not compatibility
+aliases and fail closed as unknown dialects. Typed refinement metadata belongs
+in an attached `.uneffect.ts` module.
+
 See [TypeScript temporal specification modules](./temporal-dsl.md) for the
 initial `@mizchi/uneffect/spec` syntax and its explicit unsupported boundary.
 

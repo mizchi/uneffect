@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  analyzeRefinementActionBodies,
-  analyzeRefinementActionBodiesWithZ3,
   verifyRefinementRecurrenceCertificateWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state batch: int */ /* uneffect: state sent: int */ /* uneffect: init pending = 0 */ /* uneffect: init batch = 0 */ /* uneffect: init sent = 0 */ /* uneffect: action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending - 1) / 2 : 0) */
 interface Runtime { pending: number; batch: number; sent: number }
-/* uneffect:refinement refinement cfgEntryReadFlush@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect:refinement refinement cfgEntryReadFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect:refinement refinement cfgEntryReadFlush@1 action flush */
+export function create(initial: Runtime) { return initial }
+export function observe(runtime: Runtime) { return runtime }
 export function flush(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.sent += runtime.batch

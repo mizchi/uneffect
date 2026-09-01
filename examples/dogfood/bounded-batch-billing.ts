@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./bounded-batch-billing.uneffect.ts#default" */
 /* uneffect:state billedUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state outcome: int */ /* uneffect:init billedUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init outcome = 0 */ /* uneffect:action billBatch: billedUnits' = outcome === 3 ? billedUnits : billedUnits + (outcome === 4 ? 8 : (outcome === 2 ? 4 : (outcome === 1 ? 13 : 14))), auditedUnits' = auditedUnits + ((outcome === 2 || outcome === 3 || outcome === 4) ? 6 : (outcome === 1 ? 27 : 30)) */
 
 export interface BatchBilling {
@@ -6,17 +7,14 @@ export interface BatchBilling {
   outcome: number;
 }
 
-/* uneffect:refinement refinement boundedBatchBilling@1 create */
 export function createBatchBilling(initial: BatchBilling): BatchBilling {
   return initial;
 }
 
-/* uneffect:refinement refinement boundedBatchBilling@1 observe */
 export function observeBatchBilling(runtime: BatchBilling): BatchBilling {
   return runtime;
 }
 
-/* uneffect:refinement refinement boundedBatchBilling@1 action billBatch */
 export function billConfiguredBatch(runtime: BatchBilling): void {
   let units = 0;
   try {

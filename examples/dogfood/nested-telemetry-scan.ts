@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./nested-telemetry-scan.uneffect.ts#default" */
 /* uneffect:state attempted: int */ /* uneffect:state finalized: int */ /* uneffect:state audited: int */ /* uneffect:state throttledBatch: int */ /* uneffect:init attempted = 0 */ /* uneffect:init finalized = 0 */ /* uneffect:init audited = 0 */ /* uneffect:init throttledBatch = 0 */ /* uneffect:action flush: attempted' = throttledBatch === 1 || throttledBatch === 2 || throttledBatch === 3 ? attempted + 5 : attempted + 6, finalized' = finalized + 3, audited' = throttledBatch === 1 || throttledBatch === 2 || throttledBatch === 3 ? audited + 2 : audited + 3 */
 
 export interface TelemetryScanState {
@@ -7,17 +8,14 @@ export interface TelemetryScanState {
   throttledBatch: number;
 }
 
-/* uneffect:refinement refinement nestedTelemetryScan@1 create */
 export function createTelemetryScan(initial: TelemetryScanState): TelemetryScanState {
   return initial;
 }
 
-/* uneffect:refinement refinement nestedTelemetryScan@1 observe */
 export function observeTelemetryScan(runtime: TelemetryScanState): TelemetryScanState {
   return runtime;
 }
 
-/* uneffect:refinement refinement nestedTelemetryScan@1 action flush */
 export function flushTelemetry(runtime: TelemetryScanState): void {
   batch: for (let batchIndex = 0; batchIndex < 3; batchIndex++) {
     try {

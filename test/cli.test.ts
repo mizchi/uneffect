@@ -346,18 +346,22 @@ describe("uneffect command line", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it("fails closed on an unknown Uneffect directive in the normal check path", async () => {
+  it.each([
+    ["unknown", "/* uneffect: effects Console */", "effects"],
+    ["removed refinement", "/* uneffect:refinement counter@1 action report */", "refinement"],
+    ["removed runtime", "/* uneffect:runtime counter@1 = globalThis */", "runtime"],
+  ])("fails closed on an %s Uneffect dialect in the normal check path", async (_case, annotation, dialect) => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-invalid-directive-"));
     const fileName = join(directory, "invalid.ts");
     try {
-      writeFileSync(fileName, `/* uneffect: effects Console */ export function report() { console.log("x") }`);
+      writeFileSync(fileName, `${annotation} export function report() { console.log("x") }`);
       const io = capture();
       expect(await runCli(["check", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
       expect(io.stderr).toBe("");
       const report = JSON.parse(io.stdout);
       expect(report.diagnostics).toContainEqual(expect.objectContaining({
         code: "effect/invalid", severity: "error", functionName: "<annotation>",
-        message: "unknown Uneffect dialect `effects`",
+        message: `unknown Uneffect dialect \`${dialect}\``,
       }));
       expect(report.effects).toEqual(expect.arrayContaining([
         expect.objectContaining({ functionName: "report", evidence: "unknown", unknownReasons: expect.arrayContaining([
@@ -697,26 +701,49 @@ describe("uneffect command line", () => {
     const child = join(directory, "packages", "child");
     const parent = join(directory, "packages", "parent");
     try {
-      for (const path of [join(directory, "node_modules", "typescript"), join(child, "src"), join(parent, "src")]) {
+      for (const path of [join(directory, "node_modules", "typescript"), join(directory, "node_modules", "@mizchi", "uneffect"), join(child, "src"), join(parent, "src")]) {
         mkdirSync(path, { recursive: true });
       }
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
       writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      writeFileSync(join(directory, "node_modules", "@mizchi", "uneffect", "package.json"), JSON.stringify({
+        name: "@mizchi/uneffect", version: "0.0.0-test", type: "module", exports: { "./spec": "./refinement-dsl.d.ts" },
+      }));
+      writeFileSync(join(directory, "node_modules", "@mizchi", "uneffect", "refinement-dsl.d.ts"), `
+        export declare function defineRefinement<T>(definition: T): T;
+        export declare function identityProjection(path: string): unknown;
+      `);
       const model = `state armed: bool\nstate count: int\ninit armed = true\ninit count = 1\naction increment: count' = count + 1\naction_when increment: armed && count > 0`;
       writeFileSync(join(child, "src", "counter.ts"), `/* uneffect: \n${model}\n */
+        /* uneffect:refinement_from "./counter.uneffect.ts#default" */
         export interface Runtime { armed: boolean; count: number }
-        /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
-        /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        export function create(initial: Runtime) { return initial }
+        export function observe(runtime: Runtime) { return runtime }
         /* uneffect:effect Mutate<typeof runtime.count> */
-        /* uneffect:refinement refinement counter@1 action increment */ export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.count > 0)) return; runtime.count++ }
+        export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.count > 0)) return; runtime.count++ }
+      `);
+      writeFileSync(join(child, "src", "counter.uneffect.ts"), `
+        import { defineRefinement, identityProjection } from "@mizchi/uneffect/spec";
+        import { create, observe, increment } from "./counter.js";
+        export default defineRefinement({ name: "counter", version: "1", create, observe,
+          abstractions: { armed: identityProjection("armed"), count: identityProjection("count") },
+          actions: { increment }, invariants: {} });
       `);
       writeFileSync(join(parent, "src", "counter.ts"), `import { increment as incrementChild } from "../../child/src/counter.js"
         import type { Runtime } from "../../child/src/counter.js"
         /* uneffect: \n${model}\n */
-        /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
-        /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect:refinement_from "./counter.uneffect.ts#default" */
+        export function create(initial: Runtime) { return initial }
+        export function observe(runtime: Runtime) { return runtime }
         /* uneffect:effect Mutate<typeof runtime.count> */
-        /* uneffect:refinement refinement counter@1 action increment */ export function increment(runtime: Runtime) { incrementChild(runtime) }
+        export function increment(runtime: Runtime) { incrementChild(runtime) }
+      `);
+      writeFileSync(join(parent, "src", "counter.uneffect.ts"), `
+        import { defineRefinement, identityProjection } from "@mizchi/uneffect/spec";
+        import { create, observe, increment } from "./counter.js";
+        export default defineRefinement({ name: "counter", version: "1", create, observe,
+          abstractions: { armed: identityProjection("armed"), count: identityProjection("count") },
+          actions: { increment }, invariants: {} });
       `);
       const config = (references: unknown[] = []) => ({
         compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist", strict: true, module: "NodeNext", moduleResolution: "NodeNext", types: [] },
@@ -727,7 +754,10 @@ describe("uneffect command line", () => {
       writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/parent" }] }));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const io = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], io)).toBe(exitCode.success);
+      expect(
+        await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], io),
+        `${io.stdout}\n${io.stderr}`,
+      ).toBe(exitCode.success);
       expect(JSON.parse(io.stdout)).toMatchObject({
         refinementComposition: {
           status: "verified", blockers: [],

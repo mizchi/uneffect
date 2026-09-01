@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./finally-retry-accounting.uneffect.ts#default" */
 /* uneffect:state billedUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state deliveryFailed: bool */ /* uneffect:state retryImmediately: bool */ /* uneffect:init billedUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init deliveryFailed = false */ /* uneffect:init retryImmediately = false */ /* uneffect:action recordBatch: billedUnits' = deliveryFailed ? (retryImmediately ? billedUnits + 7 : billedUnits) : billedUnits + (retryImmediately ? 5 : 7), auditedUnits' = auditedUnits + (deliveryFailed ? (retryImmediately ? 11 : 4) : (retryImmediately ? 8 : 9)) */
 
 export interface FinallyRetryAccounting {
@@ -7,17 +8,14 @@ export interface FinallyRetryAccounting {
   retryImmediately: boolean;
 }
 
-/* uneffect:refinement refinement finallyRetryAccounting@1 create */
 export function createFinallyRetryAccounting(initial: FinallyRetryAccounting): FinallyRetryAccounting {
   return initial;
 }
 
-/* uneffect:refinement refinement finallyRetryAccounting@1 observe */
 export function observeFinallyRetryAccounting(runtime: FinallyRetryAccounting): FinallyRetryAccounting {
   return runtime;
 }
 
-/* uneffect:refinement refinement finallyRetryAccounting@1 action recordBatch */
 export function recordConfiguredRetries(runtime: FinallyRetryAccounting): void {
   let units = 1;
   for (let attempt = 0; attempt < 2; attempt++) {

@@ -65,7 +65,7 @@ describe("jointly inductive finite domains for temporal Map keys", () => {
 
   it("fails closed when the complete conjunction cannot be initiated or preserved", async () => {
     for (const [name, source] of [
-      ["missing-member", fixture.replace("/* uneffect:always backupNodeIsKnown: nodes.contains(backupNode) */ ", "")],
+      ["missing-member", fixture.replace("/* uneffect:always backupNodeIsKnown: nodes.contains(backupNode) */", "")],
       ["out-of-domain", fixture.replace("action selectStandby: backupNode' = 2", "action selectStandby: backupNode' = 3")],
       ["compound-primary", fixture.replace("leases.getOrElse(primaryNode,", "leases.getOrElse(primaryNode + 0,")],
       ["mutable-domain", fixture.replace("action selectStandby: backupNode' = 2", "action selectStandby: backupNode' = 2, nodes' = nodes.union(Set(3))")],

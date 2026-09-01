@@ -146,16 +146,32 @@ attachment of the following form and lowers it to
 When supplied a TypeScript Program, every callable in the model must resolve to
 an export declared by that attached implementation file. Project verification
 now resolves these attachments automatically and emits source-bound
-`uneffect-refinement-link/v1` evidence. Existing comment-authored refinement
-bindings remain accepted during migration and must not be confused with this
-TypeChecker-verified attachment path.
+`uneffect-refinement-link/v1` evidence. Removed comment-authored `refinement`,
+`abstraction`, and `runtime` dialects are rejected; the typed attachment is the
+only supported refinement authoring path.
 
 Action and invariant validation (including Z3-backed checks), create/observe
-state projection, and replay adapter construction can consume the lowered
-manifest directly. These paths no longer need callable or abstraction comments
-on the implementation. Workspace composition is still being migrated and may
-still rely on legacy binding comments; the typed attachment is therefore not
-yet the only public refinement path.
+state projection, replay adapter construction, and workspace composition can
+consume the lowered manifest directly. These paths no longer need callable or
+abstraction comments on the implementation.
+
+Files ending in `.uneffect.ts` are specification inputs: Uneffect parses them
+without executing them, TypeScript-checks their helper and callable identities,
+and excludes them from runtime Effect assurance and runtime assertion output.
+They must not be imported by application runtime code. Legacy comment bindings
+are rejected as unknown dialects. Migrate their callable, projection, and
+runtime identity metadata into the typed module, then retain only the
+`refinement_from` attachment comment in application source.
+
+The repository dogfood includes identity projections plus renamed nested `Set`
+and `Map` projections through this path. Their positive and deliberately
+incorrect action, invariant, and state-projection cases use the same lowered
+manifest; this migration is not only a parser demonstration.
+
+Ambient runtime identity is authored with `globalRuntime()` or
+`nodeGlobalRuntime(major, realm)`. Both lower to the same versioned runtime
+identity records used by workspace composition; arbitrary strings and invalid
+Node versions are rejected by the typed DSL parser.
 
 effect_set   = "none" | effect_union ;
 effect_union = effect_term, { "|", effect_term } ;
@@ -181,7 +197,7 @@ widen to their container.
 A return refinement describes a value more precisely for Uneffect analysis without changing runtime behavior:
 
 ```ts
-/* uneffect:runtime returns Path<"$TEMP"> */
+/* uneffect:returns Path<"$TEMP"> */
 declare function tmpdir(): string
 ```
 
@@ -189,21 +205,31 @@ Platform builtins carry equivalent refinements in the builtin semantic overlay r
 
 ## Model refinement bindings
 
-Exported implementation functions can be bound to an abstract temporal model
-without wrapping their runtime calls:
+Exported implementation functions are attached to an abstract temporal model
+through a typed sibling module, without wrapping their runtime calls:
 
 ```ts
-/* uneffect:refinement refinement lease@1 create */
-export function createLease(initial: LeaseState): LeaseRuntime { /* ... */ }
-
-/* uneffect:refinement refinement lease@1 observe */
+/* uneffect:refinement_from "./lease.uneffect.ts#default" */
+export function createLease(initial: LeaseRuntime): LeaseRuntime { return initial }
 export function observeLease(runtime: LeaseRuntime): LeaseState { /* ... */ }
-
-/* uneffect:refinement refinement lease@1 action takeoverB */
 export function takeover(runtime: LeaseRuntime): void { /* ... */ }
-
-/* uneffect:refinement refinement lease@1 invariant singleWriter */
 export function singleWriter(runtime: LeaseRuntime): boolean { /* ... */ }
+```
+
+```ts
+// lease.uneffect.ts
+import { defineRefinement, identityProjection } from "@mizchi/uneffect/spec"
+import { createLease, observeLease, takeover, singleWriter } from "./lease.js"
+
+export default defineRefinement({
+  name: "lease",
+  version: "1",
+  create: createLease,
+  observe: observeLease,
+  abstractions: { owner: identityProjection("owner") },
+  actions: { takeoverB: takeover },
+  invariants: { singleWriter },
+})
 ```
 
 `create` and `observe` are required exactly once. Action and invariant names
@@ -214,10 +240,11 @@ Build tooling can either resolve the manifest against already-loaded exports or
 emit a reviewable module containing direct namespace references. Normal
 TypeScript checking remains responsible for the concrete state/runtime types.
 
-An adapter may opt into a proof-relevant ambient runtime identity:
+An adapter may opt into a proof-relevant ambient runtime identity in the typed
+definition:
 
 ```ts
-/* uneffect:runtime runtime lease@1 = globalThis */
+runtime: globalRuntime()
 ```
 
 This states that the adapter's runtime parameter denotes the ECMAScript global
@@ -234,7 +261,7 @@ Node's ambient `global` requires both the `@types/node` major and an explicit
 realm label:
 
 ```ts
-/* uneffect:runtime runtime lease@1 = node:global@24#main */
+runtime: nodeGlobalRuntime(24, "main")
 ```
 
 Both sides must carry the exact same identity. The argument must resolve through
@@ -245,10 +272,12 @@ discover deployment topology or prove that two processes or Workers share a
 Realm.
 
 An implementation may use a different top-level field name from the temporal
-model by declaring an explicit, version-matched abstraction relation:
+model through a typed projection:
 
 ```ts
-/* uneffect:state subscribers: Set<int> */ /* uneffect:refinement abstraction routingState@1 subscribers = Set(routing.activeSubscriberIds) */
+abstractions: {
+  subscribers: setFromArrayProjection("routing.activeSubscriberIds"),
+}
 ```
 
 The left side is a temporal state field. A bare right side is an identity

@@ -5,12 +5,12 @@ import {
   verifyRefinementRecurrenceCertificateWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state batch: int */ /* uneffect: state sent: int */ /* uneffect: init pending = 0 */ /* uneffect: init batch = 0 */ /* uneffect: init sent = 0 */ /* uneffect: action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending + 1) / 2 : 0) */
 interface Runtime { pending: number; batch: number; sent: number }
-/* uneffect:refinement refinement cfgCoupledFlush@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect:refinement refinement cfgCoupledFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect:refinement refinement cfgCoupledFlush@1 action flush */
+export function create(initial: Runtime) { return initial }
+export function observe(runtime: Runtime) { return runtime }
 export function flush(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.batch++
@@ -22,9 +22,11 @@ export function flush(runtime: Runtime) {
 
 describe("upper-triangular affine CFG recurrence", () => {
   it("retains an ordered scalar dependency and verifies its closed form independently", async () => {
-    const spec = parseSpec("cfg-coupled-flush.ts", fixture).temporal;
+    const fileName = "cfg-coupled-flush.ts";
+    const spec = parseSpec(fileName, fixture).temporal;
+    const manifest = refinementManifest(fileName, "cfgCoupledFlush", { flush: "flush" });
     const structural = analyzeRefinementActionBodies(
-      "cfg-coupled-flush.ts", fixture, "cfgCoupledFlush", spec,
+      fileName, fixture, "cfgCoupledFlush", spec, {}, manifest,
     );
     expect(structural.diagnostics).toEqual([]);
     expect(structural.obligations).toContainEqual(expect.objectContaining({
@@ -60,7 +62,7 @@ describe("upper-triangular affine CFG recurrence", () => {
     }));
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
-      "cfg-coupled-flush.ts", fixture, "cfgCoupledFlush", spec,
+      fileName, fixture, "cfgCoupledFlush", spec, { manifest },
     );
     expect(checked.diagnostics).toEqual([]);
     expect(checked.obligations).toContainEqual(expect.objectContaining({
@@ -103,7 +105,9 @@ describe("upper-triangular affine CFG recurrence", () => {
         "runtime.sent += runtime.batch\n    runtime.sent++",
       )],
     ] as const) {
-      const analysis = analyzeRefinementActionBodies(`${name}.ts`, source, "cfgCoupledFlush", spec);
+      const fileName = `${name}.ts`;
+      const analysis = analyzeRefinementActionBodies(fileName, source, "cfgCoupledFlush", spec, {},
+        refinementManifest(fileName, "cfgCoupledFlush", { flush: "flush" }));
       expect(analysis.obligations).toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",
         status: "unknown",
@@ -118,6 +122,7 @@ describe("upper-triangular affine CFG recurrence", () => {
     const exhausted = analyzeRefinementActionBodies(
       "budget.ts", fixture, "cfgCoupledFlush", spec,
       { proofBudget: { cfgFixedPointIterations: 1 } },
+      refinementManifest("budget.ts", "cfgCoupledFlush", { flush: "flush" }),
     );
     expect(exhausted.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
@@ -126,7 +131,10 @@ describe("upper-triangular affine CFG recurrence", () => {
 
     const unavailable = await analyzeRefinementActionBodiesWithZ3(
       "solver.ts", fixture, "cfgCoupledFlush", spec,
-      { z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" } },
+      {
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+        manifest: refinementManifest("solver.ts", "cfgCoupledFlush", { flush: "flush" }),
+      },
     );
     expect(unavailable.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",

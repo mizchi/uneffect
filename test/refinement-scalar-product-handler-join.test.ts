@@ -4,15 +4,13 @@ import {
   analyzeRefinementActionBodiesWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = (between = "") => `
 /* uneffect: state total: int */ /* uneffect: state audited: int */ /* uneffect: state first: bool */ /* uneffect: state second: bool */ /* uneffect: action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40)${between ? " + 16" : ""} */
 interface Runtime { total: number; audited: number; first: boolean; second: boolean }
-/* uneffect:refinement refinement scalarProductJoin@1 create */
 export function create(initial: Runtime): Runtime { return { ...initial } }
-/* uneffect:refinement refinement scalarProductJoin@1 observe */
 export function observe(runtime: Runtime): Runtime { return { ...runtime } }
-/* uneffect:refinement refinement scalarProductJoin@1 action compose */
 export function compose(runtime: Runtime): void {
   try {
     try {
@@ -37,12 +35,15 @@ export function compose(runtime: Runtime): void {
 `;
 
 const specOf = (source: string) => parseSpec("scalar-product-handler-join.ts", source).temporal;
+const manifest = () => refinementManifest(
+  "scalar-product-handler-join.ts", "scalarProductJoin", { compose: "compose" },
+);
 
 describe("product scalar environments across sibling handler regions", () => {
   it("proves both independently updated members and retains per-member Z3 evidence", async () => {
     const source = fixture();
     const structural = analyzeRefinementActionBodies(
-      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source),
+      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source), {}, manifest(),
     );
     expect(structural.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -58,7 +59,7 @@ describe("product scalar environments across sibling handler regions", () => {
     }));
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
-      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source),
+      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source), { manifest: manifest() },
     );
     expect(checked.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -78,7 +79,10 @@ describe("product scalar environments across sibling handler regions", () => {
       source,
       "scalarProductJoin",
       specOf(source),
-      { z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" } },
+      {
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+        manifest: manifest(),
+      },
     );
     expect(unavailable.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -98,7 +102,7 @@ describe("product scalar environments across sibling handler regions", () => {
   it("does not verify the product when only one declared member matches", async () => {
     const source = fixture().replace("second ? 80 : 40", "second ? 81 : 40");
     const analysis = await analyzeRefinementActionBodiesWithZ3(
-      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source),
+      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source), { manifest: manifest() },
     );
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -118,7 +122,7 @@ describe("product scalar environments across sibling handler regions", () => {
   it("reports a member-level inter-region write as a lattice conflict", () => {
     const source = fixture("runtime.audited += 16;");
     const analysis = analyzeRefinementActionBodies(
-      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source),
+      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source), {}, manifest(),
     );
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -141,7 +145,7 @@ describe("product scalar environments across sibling handler regions", () => {
       )
       .replace("runtime.audited += 10;", "runtime.audited += 10; runtime.retries += 1;");
     const analysis = analyzeRefinementActionBodies(
-      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source),
+      "scalar-product-handler-join.ts", source, "scalarProductJoin", specOf(source), {}, manifest(),
     );
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",

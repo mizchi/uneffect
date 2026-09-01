@@ -4,7 +4,7 @@ export type UneffectDirective =
   | "requires" | "ensures" | "invariant" | "decreases" | "assert" | "validate" | "returns"
   | "contract_from"
   | "refinement_from"
-  | "trust" | "trust_owner" | "trust_expires" | "refinement" | "abstraction" | "runtime" | "react"
+  | "trust" | "trust_owner" | "trust_expires" | "react"
   | "state" | "clock" | "init" | "action" | "action_when" | "action_fair" | "temporal"
   | "temporal_from"
   | "temporal_requires" | "temporal_ensures" | "temporal_modifies" | "temporal_throws" | "temporal_rejects"
@@ -13,7 +13,10 @@ export type UneffectDirective =
   | "consumes_rejection" | "consumes_callback_rejection" | "consumes_rejection_when"
   | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when"
   | "borrow" | "consume" | "transfer" | "escape";
-export type UneffectDialect = "unified" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
+export const uneffectDialects = [
+  "unified", "trust", "react-component", "react-hook", "react-resource",
+] as const;
+export type UneffectDialect = (typeof uneffectDialects)[number];
 export interface SourceSpan { start: number; end: number }
 export interface LocatedAnnotation { value: string; span: SourceSpan }
 export interface AnnotationDiagnostic {
@@ -38,7 +41,6 @@ export function isCoreUneffectDirective(directive: string): boolean {
 
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   unified: unifiedDirectives,
-  refinement: new Set(["refinement", "abstraction"]), runtime: new Set(["runtime", "returns"]),
   trust: new Set(["trust", "trust_owner", "trust_expires"]), "react-component": new Set(), "react-hook": new Set(),
   "react-resource": new Set(["acquire", "release"]),
 };
@@ -95,7 +97,8 @@ function canonicalDirective(dialect: string, directive: string): string { return
 export function extractLocatedAnnotations(text: string, directive: UneffectDirective | string, baseOffset = 0): LocatedAnnotation[] {
   const values: LocatedAnnotation[] = [];
   for (const block of payloadBlocks(text, baseOffset)) {
-    if (block.dialect === directive && !dialectDirectives[block.dialect as UneffectDialect]) {
+    if (block.dialect === directive
+      && !dialectDirectives[block.dialect as UneffectDialect]) {
       for (const line of block.lines) {
         const value = line.cleaned.trim();
         if (!value) continue;

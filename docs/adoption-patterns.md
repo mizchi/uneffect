@@ -129,11 +129,14 @@ Refinement bindings connect named model actions and invariants to exported
 TypeScript functions:
 
 ```ts
-/* uneffect:refinement refinement queue@1 action enqueue */
+/* uneffect:refinement_from "./queue.uneffect.ts#default" */
 export function enqueue(runtime: Runtime): void {
   runtime.pending += 1
 }
 ```
+
+The sibling typed definition maps `actions: { enqueue }`; inline refinement
+role annotations are rejected.
 
 Coverage checks catch stale or missing bindings. Body refinement is stronger
 but supports only the fragments listed in

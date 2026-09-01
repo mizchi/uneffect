@@ -4,18 +4,16 @@ import {
   analyzeRefinementActionBodiesWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = (between = "", third = "") => `
 /* uneffect: state total: int */ /* uneffect: state first: bool */ /* uneffect: state second: bool */ /* uneffect: action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4)${between ? " + 16" : ""} */
 interface Runtime { total: number; first: boolean; second: boolean }
 
-/* uneffect:refinement refinement scalarHandlerJoin@1 create */
 export function create(initial: Runtime): Runtime { return { ...initial } }
 
-/* uneffect:refinement refinement scalarHandlerJoin@1 observe */
 export function observe(runtime: Runtime): Runtime { return { ...runtime } }
 
-/* uneffect:refinement refinement scalarHandlerJoin@1 action compose */
 export function compose(runtime: Runtime): void {
   try {
     try {
@@ -44,6 +42,7 @@ const analyze = (source: string, limit = 64) => {
     "scalarHandlerJoin",
     spec,
     { proofBudget: { cfgFixedPointIterations: limit } },
+    refinementManifest("scalar-handler-join.ts", "scalarHandlerJoin", { compose: "compose" }),
   );
 };
 
@@ -76,7 +75,10 @@ describe("scalar environments across sibling handler regions", () => {
       source,
       "scalarHandlerJoin",
       parseSpec("scalar-handler-join.ts", source).temporal,
-      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+      {
+        analysis: { proofBudget: { cfgFixedPointIterations: 64 } },
+        manifest: refinementManifest("scalar-handler-join.ts", "scalarHandlerJoin", { compose: "compose" }),
+      },
     );
     expect(checked.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -95,6 +97,7 @@ describe("scalar environments across sibling handler regions", () => {
       wrongAction,
       "scalarHandlerJoin",
       parseSpec("scalar-handler-join.ts", wrongAction).temporal,
+      { manifest: refinementManifest("scalar-handler-join.ts", "scalarHandlerJoin", { compose: "compose" }) },
     );
     expect(refuted.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -112,7 +115,10 @@ describe("scalar environments across sibling handler regions", () => {
       source,
       "scalarHandlerJoin",
       parseSpec("scalar-handler-join.ts", source).temporal,
-      { z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" } },
+      {
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+        manifest: refinementManifest("scalar-handler-join.ts", "scalarHandlerJoin", { compose: "compose" }),
+      },
     );
     expect(unavailable.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",

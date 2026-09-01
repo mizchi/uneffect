@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./finally-circuit-break-accounting.uneffect.ts#default" */
 /* uneffect:state billedUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state deliveryFailed: bool */ /* uneffect:state circuitOpen: bool */ /* uneffect:init billedUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init deliveryFailed = false */ /* uneffect:init circuitOpen = false */ /* uneffect:action recordAttempt: billedUnits' = deliveryFailed ? (circuitOpen ? billedUnits + 4 : billedUnits) : billedUnits + (circuitOpen ? 3 : 4), auditedUnits' = auditedUnits + (deliveryFailed ? 4 : 3) */
 
 export interface FinallyCircuitAccounting {
@@ -7,17 +8,14 @@ export interface FinallyCircuitAccounting {
   circuitOpen: boolean;
 }
 
-/* uneffect:refinement refinement finallyCircuitBreakAccounting@1 create */
 export function createFinallyCircuitAccounting(initial: FinallyCircuitAccounting): FinallyCircuitAccounting {
   return initial;
 }
 
-/* uneffect:refinement refinement finallyCircuitBreakAccounting@1 observe */
 export function observeFinallyCircuitAccounting(runtime: FinallyCircuitAccounting): FinallyCircuitAccounting {
   return runtime;
 }
 
-/* uneffect:refinement refinement finallyCircuitBreakAccounting@1 action recordAttempt */
 export function recordConfiguredAttempt(runtime: FinallyCircuitAccounting): void {
   let units = 1;
   for (let attempt = 0; attempt < 1; attempt++) {

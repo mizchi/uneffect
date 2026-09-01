@@ -1,14 +1,13 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, type RefinementBindingManifest } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
 const source = `/* uneffect: state pending: int */ /* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state audited: int */ /* uneffect: state reject: bool */ /* uneffect: init pending = 0 */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init reject = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0), audited' = audited + (pending > 0 ? pending : 0) */
   interface Runtime { pending: number; delivered: number; failed: number; audited: number; reject: boolean }
-  /* uneffect:refinement refinement fixedPointJoin@1 create */ export function create(initial: Runtime) { return initial }
-  /* uneffect:refinement refinement fixedPointJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
-  /* uneffect:refinement refinement fixedPointJoin@1 action drain */
+  export function create(initial: Runtime) { return initial }
+  export function observe(runtime: Runtime) { return runtime }
   export function drain(runtime: Runtime) {
     while (runtime.pending > 0) {
       try {
@@ -23,6 +22,17 @@ const source = `/* uneffect: state pending: int */ /* uneffect: state delivered:
     }
   }
 `;
+const manifest = {
+  schema: "uneffect-refinement-bindings/v1",
+  fileName: "refinement-fixed-point.ts",
+  adapterName: "fixedPointJoin",
+  version: "1",
+  create: "create",
+  observe: "observe",
+  abstractions: {},
+  actions: { drain: "drain" },
+  invariants: {},
+} satisfies RefinementBindingManifest;
 const spec = parseSpec("refinement-fixed-point.ts", source).temporal;
 const handlerJoinFile = "examples/dogfood/telemetry-routing-accounting.ts";
 const handlerJoinSource = readFileSync(handlerJoinFile, "utf8");
@@ -485,6 +495,7 @@ describe("refinement CFG fixed point", () => {
     const result = analyzeRefinementActionBodies(
       "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
       { proofBudget: { cfgFixedPointIterations: 64 } },
+      manifest,
     );
     const obligation = result.obligations.find((item) =>
       item.kind === "scalar-recurrence-fixed-point");
@@ -498,7 +509,7 @@ describe("refinement CFG fixed point", () => {
   bench("independently prove the recurrence summary with Z3", async () => {
     const result = await analyzeRefinementActionBodiesWithZ3(
       "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
-      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } }, manifest },
     );
     const obligation = result.obligations.find((item) => item.kind === "scalar-recurrence-fixed-point");
     if (result.diagnostics.length !== 0

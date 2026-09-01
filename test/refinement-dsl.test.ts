@@ -9,6 +9,7 @@ import {
   mapFromEntriesProjection,
   parseRefinementDsl,
   resolveRefinementDslLink,
+  resolveRefinementDslFileLink,
   setFromArrayProjection,
   validateRefinementDslIdentities,
 } from "../src/refinement-dsl.js";
@@ -295,5 +296,12 @@ describe("TypeScript refinement DSL", () => {
     expect(await adapter.invariants!.nonnegative!(runtime)).toBe(true);
     expect(() => createRefinementAdapterFromManifest(manifest, { create, observe, nonnegative }))
       .toThrow(/increment is not callable/);
+  });
+
+  it("loads an attached typed specification for Node tooling", () => {
+    expect(resolveRefinementDslFileLink("examples/dogfood/scalar-product-three-region.ts")).toMatchObject({
+      adapterName: "scalarProductThreeRegion",
+      actions: { compose: "composeThreeRegionAccounting" },
+    });
   });
 });

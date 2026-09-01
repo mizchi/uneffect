@@ -6,9 +6,11 @@ import {
   verifyRefinementRecurrenceCertificateWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { resolveRefinementDslFileLink } from "../src/refinement-dsl.js";
 
 const fileName = "examples/dogfood/cfg-caught-retry-backoff.ts";
 const fixture = readFileSync(fileName, "utf8");
+const manifest = resolveRefinementDslFileLink(fileName);
 
 describe("caught-path bounded self-affine recurrence", () => {
   it("publishes guarded activation in the strict v2 artifact schema", () => {
@@ -30,7 +32,7 @@ describe("caught-path bounded self-affine recurrence", () => {
   it("composes one immutable failure selector with catch/finally recurrence evidence", async () => {
     const spec = parseSpec(fileName, fixture).temporal;
     const structural = analyzeRefinementActionBodies(
-      fileName, fixture, "caughtRetryBackoff", spec,
+      fileName, fixture, "caughtRetryBackoff", spec, {}, manifest,
     );
     expect(structural.diagnostics).toEqual([]);
     expect(structural.obligations).toContainEqual(expect.objectContaining({
@@ -66,7 +68,7 @@ describe("caught-path bounded self-affine recurrence", () => {
     }));
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
-      fileName, fixture, "caughtRetryBackoff", spec,
+      fileName, fixture, "caughtRetryBackoff", spec, { manifest },
     );
     expect(checked.diagnostics).toEqual([]);
     expect(checked.obligations).toContainEqual(expect.objectContaining({
@@ -109,7 +111,7 @@ describe("caught-path bounded self-affine recurrence", () => {
   it("fails closed for mutable selectors and unsupported caught updates", async () => {
     for (const [name, source] of [
       ["missing-bound", fixture.replace(
-        "/* uneffect:requires runtime.attempts >= 0 && runtime.attempts <= 4 */ ", "",
+        "/* uneffect:requires runtime.attempts >= 0 && runtime.attempts <= 4 */", "",
       )],
       ["oversized-bound", fixture.replaceAll("<= 4", "<= 9")],
       ["inverted-selector", fixture.replace(
@@ -130,6 +132,7 @@ describe("caught-path bounded self-affine recurrence", () => {
       const candidateSpec = parseSpec(`${name}.ts`, source).temporal;
       const result = await analyzeRefinementActionBodiesWithZ3(
         `${name}.ts`, source, "caughtRetryBackoff", candidateSpec,
+        { manifest: { ...manifest, fileName: `${name}.ts` } },
       );
       expect(result.obligations).toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",

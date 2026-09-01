@@ -58,14 +58,14 @@ describe("proved finite domains for multiple temporal Map keys", () => {
 
   it("fails the whole universe closed when any key proof premise is absent", async () => {
     for (const [name, source] of [
-      ["missing-membership", fixture.replace("/* uneffect:always backupIsNode: nodes.contains(backup) */ ", "")],
+      ["missing-membership", fixture.replace("/* uneffect:always backupIsNode: nodes.contains(backup) */", "")],
       ["non-inductive-key", fixture.replace("action selectBackup: backup' = 2", "action selectBackup: backup' = 3")],
       ["compound-key", fixture.replace("leases.getOrElse(backup, 0)", "leases.getOrElse(backup + 0, 0)")],
       ["mutable-domain", fixture.replace("action selectBackup: backup' = 2", "action selectBackup: backup' = 2, nodes' = nodes.union(Set(3))")],
       ["ambiguous-backup-domain", fixture
         .replace("state primary: int", "state primary: int\n  state backupNodes: Set<int>")
         .replace("init primary = 1", "init primary = 1\n  init backupNodes = Set(1, 2)")
-        .replace("invariant backupIsNode: nodes.contains(backup)", "invariant backupIsNode: nodes.contains(backup) */ /* uneffect:always backupIsOtherNode: backupNodes.contains(backup)")],
+        .replace("always backupIsNode: nodes.contains(backup)", "always backupIsNode: nodes.contains(backup) */ /* uneffect:always backupIsOtherNode: backupNodes.contains(backup)")],
     ] as const) {
       const temporal = parseSpec(`${name}.ts`, source).temporal;
       await expect(findTemporalCounterexampleWithZ3(temporal, "selectedLeasesExist", { maxSteps: 2 }), name)

@@ -111,18 +111,19 @@ produced broken trace, replays all clock/takeover/publish actions, and observes
 `singleWriter` failing at the same final step. A deliberately incorrect runtime
 also produces a step-local mismatch. The same fixture now exercises the direct
 bounded-Z3 trace path. Collection-valued standalone TLC output for the supported fragment is
-covered as well. Uneffect does not yet generate adapters
-from source annotations.
+covered as well. Uneffect generates replay adapters from typed refinement
+manifests, not from implementation comments.
 
-## Annotated implementation bindings
+## Typed implementation bindings
 
-The `refinement` directive attaches model roles to existing exported functions.
-`createAnnotatedRefinementAdapter` resolves the checked manifest against loaded
-module exports for test tooling, and `generateRefinementAdapterModule` emits a
-reviewable direct-reference module for build integration. The acceptance test
-parses one annotated source into temporal IR, asks Z3 for its shortest
-counterexample, builds the adapter from the same source annotations, and
-replays the violation through the implementation functions.
+`refinement_from` attaches a typed `.uneffect.ts` module that maps model roles
+to exported implementation functions. `createRefinementAdapterFromManifest`
+resolves the checked manifest against loaded module exports for test tooling,
+and `generateRefinementAdapterModuleFromManifest` emits a reviewable
+direct-reference module for build integration. The acceptance test parses the
+temporal IR, asks Z3 for its shortest counterexample, builds the adapter from
+the lowered typed manifest, and replays the violation through the
+implementation functions.
 
 Replay alone is structural refinement plumbing, not a proof that the
 implementation refines the model. The separate action-body checker symbolically

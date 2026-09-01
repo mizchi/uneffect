@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./finally-escalation-accounting.uneffect.ts#default" */
 /* uneffect:state recoveredUnits: int */ /* uneffect:state deliveryFailed: bool */ /* uneffect:state escalateFinalization: bool */ /* uneffect:init recoveredUnits = 0 */ /* uneffect:init deliveryFailed = false */ /* uneffect:init escalateFinalization = false */ /* uneffect:action recoverDelivery: recoveredUnits' = recoveredUnits + (deliveryFailed ? (escalateFinalization ? 8 : 5) : (escalateFinalization ? 6 : 3)) */
 
 export interface EscalationAccounting {
@@ -6,17 +7,14 @@ export interface EscalationAccounting {
   escalateFinalization: boolean;
 }
 
-/* uneffect:refinement refinement finallyEscalationAccounting@1 create */
 export function createEscalationAccounting(initial: EscalationAccounting): EscalationAccounting {
   return initial;
 }
 
-/* uneffect:refinement refinement finallyEscalationAccounting@1 observe */
 export function observeEscalationAccounting(runtime: EscalationAccounting): EscalationAccounting {
   return runtime;
 }
 
-/* uneffect:refinement refinement finallyEscalationAccounting@1 action recoverDelivery */
 export function recoverDelivery(runtime: EscalationAccounting): void {
   let units = 1;
   try {

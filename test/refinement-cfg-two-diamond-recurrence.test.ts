@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state sampled: bool */ /* uneffect: state audit: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init sampled = false */ /* uneffect: init audit = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (audit ? (sampled ? 2 * pending : pending) : (sampled ? pending : 0)) : 0) */
 interface Runtime { pending: number; processed: number; sampled: boolean; audit: boolean }
-/* uneffect:refinement refinement twoDiamondDrain@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect:refinement refinement twoDiamondDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect:refinement refinement twoDiamondDrain@1 action drain */
+export function create(initial: Runtime) { return initial }
+export function observe(runtime: Runtime) { return runtime }
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     if (runtime.sampled) runtime.processed++

@@ -139,7 +139,7 @@ const root = tmpdir()
 The builtin overlay contains the equivalent declaration:
 
 ```ts
-/* uneffect:runtime returns Path<"$TEMP"> */
+/* uneffect:returns Path<"$TEMP"> */
 declare function tmpdir(): string
 ```
 

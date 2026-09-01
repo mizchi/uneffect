@@ -1,17 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  analyzeRefinementActionBodies,
-  analyzeRefinementActionBodiesWithZ3,
   verifyRefinementRecurrenceCertificateWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state sampled: bool */ /* uneffect: state mode: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init sampled = false */ /* uneffect: init mode = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? (sampled ? 2 * pending : pending) : (mode === 1 ? (sampled ? 3 * pending : 2 * pending) : (sampled ? 4 * pending : 3 * pending))) : 0) */
 interface Runtime { pending: number; processed: number; sampled: boolean; mode: number }
-/* uneffect:refinement refinement mixedDrain@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect:refinement refinement mixedDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect:refinement refinement mixedDrain@1 action drain */
+export function create(initial: Runtime) { return initial }
+export function observe(runtime: Runtime) { return runtime }
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     if (runtime.sampled) runtime.processed++

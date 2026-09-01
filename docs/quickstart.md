@@ -134,10 +134,10 @@ Helper-local guards, extra/conditional work, reassignment, recursion, and a
 third helper level remain `unknown`.
 
 For an adapter whose runtime is the ECMAScript global object in the current
-Realm, both projects may opt in explicitly:
+Realm, declare it in the typed `.uneffect.ts` definition:
 
 ```ts
-/* uneffect:runtime runtime counter@1 = globalThis */
+runtime: globalRuntime()
 ```
 
 Only the TypeChecker-resolved builtin `globalThis` symbol is accepted at the
@@ -150,7 +150,7 @@ For Node's ambient `global`, include the Node typings major and a user-chosen
 realm label on both sides:
 
 ```ts
-/* uneffect:runtime runtime counter@1 = node:global@24#main */
+runtime: nodeGlobalRuntime(24, "main")
 ```
 
 The composed call must use the TypeChecker-resolved `@types/node` major 24

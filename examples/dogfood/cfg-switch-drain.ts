@@ -1,4 +1,5 @@
 /* uneffect:state pending: int */ /* uneffect:state processed: int */ /* uneffect:state mode: int */ /* uneffect:init pending = 0 */ /* uneffect:init processed = 0 */ /* uneffect:init mode = 0 */ /* uneffect:action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? pending : (mode === 1 ? 2 * pending : 3 * pending)) : 0) */
+/* uneffect:refinement_from "./cfg-switch-drain.uneffect.ts#default" */
 
 export interface SwitchDrainRuntime {
   pending: number;
@@ -6,17 +7,14 @@ export interface SwitchDrainRuntime {
   mode: number;
 }
 
-/* uneffect:refinement refinement cfgSwitchDrain@1 create */
 export function createCfgSwitchDrain(initial: SwitchDrainRuntime): SwitchDrainRuntime {
   return initial;
 }
 
-/* uneffect:refinement refinement cfgSwitchDrain@1 observe */
 export function observeCfgSwitchDrain(runtime: SwitchDrainRuntime): SwitchDrainRuntime {
   return runtime;
 }
 
-/* uneffect:refinement refinement cfgSwitchDrain@1 action drain */
 export function drainCfgSwitch(runtime: SwitchDrainRuntime): void {
   while (runtime.pending > 0) {
     switch (runtime.mode) {

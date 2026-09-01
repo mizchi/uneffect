@@ -75,12 +75,16 @@ export function createCheckProgram(fileNames: readonly string[], options: CheckO
 /** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
   const program = options.program ?? createCheckProgram(fileNames, options);
-  const effects = analyzeProgramEffects(program, {
+  const analyzedEffects = analyzeProgramEffects(program, {
     mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
     builtinRegistry: options.builtinRegistry,
     externalFunctionEffects: options.externalFunctionEffects,
     externalModuleEffects: options.externalModuleEffects,
   });
+  const effects = {
+    summaries: analyzedEffects.summaries.filter((summary) => !summary.fileName?.endsWith(".uneffect.ts")),
+    diagnostics: analyzedEffects.diagnostics.filter((diagnostic) => !diagnostic.fileName.endsWith(".uneffect.ts")),
+  };
   const react = analyzeReactProgram(program);
   const diagnostics: CheckerDiagnostic[] = [];
   for (const fileName of fileNames) {
@@ -99,6 +103,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   diagnostics.push(...effects.diagnostics);
   const sources = new Map<string, string>(), artifacts: VerificationArtifact[] = [];
   for (const fileName of fileNames) {
+    if (fileName.endsWith(".uneffect.ts")) continue;
     const text = await readFile(fileName, "utf8");
     sources.set(fileName, text);
     const contracts = await verifyContractObligations(fileName, text, undefined, program);

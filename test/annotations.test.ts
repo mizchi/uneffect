@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations } from "../src/annotations.js";
+import { extractAnnotations, extractLocatedAnnotations, uneffectDialects, validateUneffectAnnotations } from "../src/annotations.js";
+import { analyzeEffects } from "../src/effects.js";
+import { parseSpec } from "../src/spec-ir.js";
 
 describe("Uneffect annotation marker", () => {
+  it("locks the public dialect inventory without legacy compatibility aliases", () => {
+    expect(uneffectDialects).toEqual([
+      "unified", "trust", "react-component", "react-hook", "react-resource",
+    ]);
+    expect(uneffectDialects).not.toEqual(expect.arrayContaining([
+      "capability", "contract", "temporal", "refinement", "runtime", "async", "resource",
+    ]));
+  });
   it("accepts the unified one-line directive surface", () => {
     const source = [
       "/* uneffect:effect Console */",
@@ -75,8 +85,8 @@ describe("Uneffect annotation marker", () => {
   it("uses react-component as an unambiguous semantic marker", () => {
     expect(extractAnnotations("/* uneffect:react-component */", "react")).toEqual(["component"]);
   });
-  it("rejects removed capability, contract, and temporal dialect headers", () => {
-    for (const dialect of ["capability", "contract", "temporal"]) {
+  it("rejects removed capability, contract, temporal, refinement, and runtime dialect headers", () => {
+    for (const dialect of ["capability", "contract", "temporal", "refinement", "runtime"]) {
       expect(validateUneffectAnnotations(`/* uneffect:${dialect} state phase: int */`))
         .toMatchObject([{ kind: "unknown-dialect", directive: dialect }]);
     }
@@ -114,14 +124,22 @@ describe("Uneffect annotation marker", () => {
   });
 
   it("extracts a return path refinement", () => {
-    expect(extractAnnotations('/* uneffect:runtime returns Path<"$TEMP"> */', "returns"))
+    expect(extractAnnotations('/* uneffect:returns Path<"$TEMP"> */', "returns"))
       .toEqual(['Path<"$TEMP">']);
   });
 
-  it("recognizes a versioned abstraction relation", () => {
-    const source = "/* uneffect:refinement abstraction routing@1 subscribers = activeSubscriberIds */";
-    expect(extractAnnotations(source, "abstraction")).toEqual(["routing@1 subscribers = activeSubscriberIds"]);
-    expect(validateUneffectAnnotations(source)).toEqual([]);
+  it.each([
+    ["refinement binding", "/* uneffect:refinement counter@1 action increment */", "refinement"],
+    ["abstraction relation", "/* uneffect:refinement abstraction routing@1 subscribers = activeSubscriberIds */", "refinement"],
+    ["runtime identity", "/* uneffect:runtime counter@1 = globalThis */", "runtime"],
+  ])("rejects the removed inline %s dialect at every parser entrypoint", (_name, source, dialect) => {
+    expect(validateUneffectAnnotations(source)).toMatchObject([
+      { kind: "unknown-dialect", directive: dialect },
+    ]);
+    expect(() => parseSpec("removed.ts", source)).toThrow(`unknown Uneffect dialect \`${dialect}\``);
+    expect(analyzeEffects("removed.ts", source)).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining(`unknown Uneffect dialect \`${dialect}\``),
+    }));
   });
 
   it("recognizes gradual React semantic roles", () => {

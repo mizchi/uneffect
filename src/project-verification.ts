@@ -333,7 +333,12 @@ async function verifyUneffectProjectFiles(
   }
   const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
   const preparedEffects = prepareCapabilityDslLinks(options.files, program);
-  const effectFiles = preparedEffects.files;
+  // `.uneffect.ts` modules are statically parsed and TypeChecked specification
+  // inputs. They are never runtime entrypoints and must not contribute module
+  // initialization effects merely because a tsconfig include pattern selects
+  // them alongside implementation sources.
+  const effectFiles = Object.fromEntries(Object.entries(preparedEffects.files)
+    .filter(([fileName]) => !fileName.endsWith(".uneffect.ts")));
   const preparedContracts = prepareContractDslLinks(options.files, program);
   const contractFiles = preparedContracts.files;
   const needsAliasRelocation = options.runtimeAssertions === "fallback" && hasProjectCallableAliasContracts(contractFiles);
@@ -343,7 +348,8 @@ async function verifyUneffectProjectFiles(
   const relocatedContracts = needsAliasRelocation ? relocateProjectCallableAliasContracts(contractFiles, contractProgram) : { files: contractFiles, diagnostics: [] };
   const runtimeContractFiles = relocatedContracts.files;
   diagnostics.push(...relocatedContracts.diagnostics);
-  const effectProgram = Object.entries(effectFiles).some(([name, source]) => source !== options.files[name])
+  const effectProgram = Object.keys(effectFiles).length !== Object.keys(options.files).length
+    || Object.entries(effectFiles).some(([name, source]) => source !== options.files[name])
     ? inMemoryProgram(effectFiles, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences)
     : program;
   const typescriptDiagnostics = Object.keys(options.files).flatMap((fileName) => {
@@ -361,12 +367,16 @@ async function verifyUneffectProjectFiles(
   if (typescriptDiagnostics.some((item) => item.kind === "options" && item.severity === "error")) {
     for (const fileName of Object.keys(options.files)) invalidSources.add(fileName);
   }
-  const effects = analyzeProgramEffects(effectProgram, {
+  const analyzedEffects = analyzeProgramEffects(effectProgram, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
     externalFunctionEffects: compilerContext?.externalFunctionEffects,
     externalModuleEffects: compilerContext?.externalModuleEffects,
     effectSchemas: preparedEffects.schemas,
   });
+  const effects = {
+    summaries: analyzedEffects.summaries.filter((summary) => !summary.fileName?.endsWith(".uneffect.ts")),
+    diagnostics: analyzedEffects.diagnostics.filter((diagnostic) => !diagnostic.fileName.endsWith(".uneffect.ts")),
+  };
   diagnostics.push(...effects.diagnostics);
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   for (const fileName of Object.keys(options.files)) {
@@ -393,6 +403,7 @@ async function verifyUneffectProjectFiles(
     }, compilerContext?.project.projectReferences)
     : undefined;
   for (const [fileName, source] of Object.entries(options.files)) {
+    if (fileName.endsWith(".uneffect.ts")) continue;
     const contractSource = contractFiles[fileName] ?? source;
     const verification = await verifyContractObligations(fileName, contractSource, options.z3, program);
     const effectBoundArtifacts = attachContractEffectBoundaries(verification.artifacts, effects.summaries);

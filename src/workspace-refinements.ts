@@ -1,13 +1,14 @@
 import { resolve } from "node:path";
 import ts from "typescript";
 import {
-  buildRefinementBindingManifest,
-  extractRefinementBindings,
   validateRefinementActionBodiesInProgram,
   validateRefinementStateProjectionInProgram,
   formatRefinementExpression,
   type ExternalRefinementActionContract,
+  type RefinementBindingManifest,
 } from "./refinement-bindings.js";
+import { extractAnnotations } from "./annotations.js";
+import { resolveRefinementDslLink } from "./refinement-dsl.js";
 import { parseSpec } from "./spec-ir.js";
 import type { TemporalExpression } from "./temporal-expressions.js";
 import type { TypeScriptProject, TypeScriptProjectProvenance } from "./typescript-project.js";
@@ -79,6 +80,18 @@ function ownsDeclaration(project: CompletedRefinementProject, fileName: string):
     || project.project.fileNames.some((source) => resolve(source) === normalized);
 }
 
+function refinementManifestsForSource(program: ts.Program, source: ts.SourceFile): RefinementBindingManifest[] {
+  const attachments = extractAnnotations(source.text, "refinement_from");
+  if (attachments.length > 0) {
+    const files = Object.fromEntries(program.getSourceFiles()
+      .filter((candidate) => !candidate.isDeclarationFile)
+      .map((candidate) => [candidate.fileName.replaceAll("\\", "/"), candidate.text]));
+    const fileName = source.fileName.replaceAll("\\", "/");
+    return [resolveRefinementDslLink(fileName, source.text, files, program)];
+  }
+  return [];
+}
+
 function symbolOccursIn(checker: ts.TypeChecker, root: ts.Node, symbol: ts.Symbol): boolean {
   let found = false;
   const visit = (node: ts.Node): void => {
@@ -120,6 +133,7 @@ export function composeWorkspaceRefinements(
   program: ts.Program,
   current: TypeScriptProject,
   completed: readonly CompletedRefinementProject[],
+  manifestsByFile: ReadonlyMap<string, readonly RefinementBindingManifest[]> = new Map(),
 ): WorkspaceRefinementComposition {
   const checker = program.getTypeChecker();
   const contracts = new Map<string, ExternalRefinementActionContract>();
@@ -131,8 +145,8 @@ export function composeWorkspaceRefinements(
     if (!source) continue;
     let actionExports: Set<string>;
     try {
-      actionExports = new Set(extractRefinementBindings(source.fileName, source.text)
-        .filter((binding) => binding.role === "action").map((binding) => binding.exportName));
+      actionExports = new Set((manifestsByFile.get(source.fileName) ?? refinementManifestsForSource(program, source))
+        .flatMap((manifest) => Object.values(manifest.actions)));
     } catch (error) {
       blockers.push({
         kind: "refinement-composition", classification: "violation", projectFile: current.projectFile,
@@ -287,6 +301,7 @@ export function analyzeProjectRefinements(
   program: ts.Program,
   project: TypeScriptProject,
   externalActions: ReadonlyMap<string, ExternalRefinementActionContract>,
+  manifestsByFile: ReadonlyMap<string, readonly RefinementBindingManifest[]> = new Map(),
 ): ProjectRefinementAnalysis {
   const summaries: ProjectRefinementActionSummary[] = [];
   const blockers: WorkspaceRefinementCompositionBlocker[] = [];
@@ -299,27 +314,35 @@ export function analyzeProjectRefinements(
     }],
   };
   const typeScriptDiagnostics = [
-    ...program.getOptionsDiagnostics(), ...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics(),
+    ...program.getOptionsDiagnostics(),
+    ...project.fileNames.flatMap((fileName) => {
+      const source = program.getSourceFile(fileName);
+      return source ? [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)] : [];
+    }),
   ];
   if (typeScriptDiagnostics.length > 0) return {
     summaries,
     blockers: [{
       kind: "refinement-composition", classification: "unknown", projectFile: project.projectFile,
-      subject: project.projectFile, message: "TypeScript diagnostics prevent proof-grade refinement summaries",
+      subject: project.projectFile,
+      message: `TypeScript diagnostics prevent proof-grade refinement summaries: ${typeScriptDiagnostics
+        .slice(0, 3)
+        .map((diagnostic) => `${diagnostic.file?.fileName ?? "<options>"}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`)
+        .join("; ")}`,
     }],
   };
   for (const fileName of project.fileNames) {
     const source = program.getSourceFile(fileName);
     if (!source) continue;
-    let adapters: string[];
+    let manifests: RefinementBindingManifest[];
     try {
-      adapters = [...new Set(extractRefinementBindings(source.fileName, source.text).map((binding) => binding.adapterName))];
+      manifests = [...(manifestsByFile.get(source.fileName) ?? refinementManifestsForSource(program, source))];
     } catch (error) {
       blockers.push({ kind: "refinement-composition", classification: "violation", projectFile: project.projectFile,
         subject: source.fileName, message: error instanceof Error ? error.message : String(error) });
       continue;
     }
-    if (adapters.length === 0) continue;
+    if (manifests.length === 0) continue;
     let temporal: ReturnType<typeof parseSpec>["temporal"];
     try {
       temporal = parseSpec(source.fileName, source.text).temporal;
@@ -328,11 +351,11 @@ export function analyzeProjectRefinements(
         subject: source.fileName, message: error instanceof Error ? error.message : String(error) });
       continue;
     }
-    for (const adapterName of adapters) {
+    for (const manifest of manifests) {
+      const adapterName = manifest.adapterName;
       try {
-        const manifest = buildRefinementBindingManifest(source.fileName, source.text, adapterName);
-        const projection = validateRefinementStateProjectionInProgram(program, source.fileName, adapterName, temporal);
-        const actions = validateRefinementActionBodiesInProgram(program, source.fileName, adapterName, temporal, { externalActions });
+        const projection = validateRefinementStateProjectionInProgram(program, source.fileName, adapterName, temporal, manifest);
+        const actions = validateRefinementActionBodiesInProgram(program, source.fileName, adapterName, temporal, { externalActions }, manifest);
         for (const diagnostic of [...projection, ...actions]) blockers.push({
           kind: "refinement-composition", classification: "violation", projectFile: project.projectFile,
           subject: `${adapterName}:${"modelName" in diagnostic ? diagnostic.modelName : diagnostic.role}`,

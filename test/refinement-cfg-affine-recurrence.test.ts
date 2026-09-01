@@ -4,12 +4,12 @@ import {
   analyzeRefinementActionBodiesWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0) */
 interface Runtime { pending: number; processed: number }
-/* uneffect:refinement refinement cfgDrain@1 create */ export function create(initial: Runtime) { return initial }
-/* uneffect:refinement refinement cfgDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
-/* uneffect:refinement refinement cfgDrain@1 action drain */
+export function create(initial: Runtime) { return initial }
+export function observe(runtime: Runtime) { return runtime }
 export function drain(runtime: Runtime) {
   while (runtime.pending > 0) {
     runtime.processed++
@@ -21,7 +21,8 @@ export function drain(runtime: Runtime) {
 describe("CFG-inferred affine scalar-product recurrence", () => {
   it("keeps structural convergence provisional until every recurrence member and ranking check passes Z3", async () => {
     const spec = parseSpec("cfg-drain.ts", fixture).temporal;
-    const structural = analyzeRefinementActionBodies("cfg-drain.ts", fixture, "cfgDrain", spec);
+    const structural = analyzeRefinementActionBodies("cfg-drain.ts", fixture, "cfgDrain", spec, {},
+      refinementManifest("cfg-drain.ts", "cfgDrain", { drain: "drain" }));
     expect(structural.diagnostics).toEqual([]);
     expect(structural.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
@@ -51,6 +52,7 @@ describe("CFG-inferred affine scalar-product recurrence", () => {
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
       "cfg-drain.ts", fixture, "cfgDrain", spec,
+      { manifest: refinementManifest("cfg-drain.ts", "cfgDrain", { drain: "drain" }) },
     );
     expect(checked.diagnostics).toEqual([]);
     expect(checked.obligations).toContainEqual(expect.objectContaining({
@@ -74,7 +76,9 @@ describe("CFG-inferred affine scalar-product recurrence", () => {
       ["self-amplifying", fixture.replace("runtime.processed++", "runtime.processed += runtime.processed")],
       ["path-dependent", fixture.replace("runtime.processed++", "if (runtime.pending > 1) runtime.processed++")],
     ] as const) {
-      const analysis = analyzeRefinementActionBodies(`${name}.ts`, source, "cfgDrain", spec);
+      const fileName = `${name}.ts`;
+      const analysis = analyzeRefinementActionBodies(fileName, source, "cfgDrain", spec, {},
+        refinementManifest(fileName, "cfgDrain", { drain: "drain" }));
       expect(analysis.obligations).toContainEqual(expect.objectContaining({
         kind: "scalar-recurrence-fixed-point",
         status: "unknown",
@@ -88,6 +92,7 @@ describe("CFG-inferred affine scalar-product recurrence", () => {
     const exhausted = analyzeRefinementActionBodies(
       "budget.ts", fixture, "cfgDrain", spec,
       { proofBudget: { cfgFixedPointIterations: 1 } },
+      refinementManifest("budget.ts", "cfgDrain", { drain: "drain" }),
     );
     expect(exhausted.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
@@ -97,7 +102,10 @@ describe("CFG-inferred affine scalar-product recurrence", () => {
 
     const unavailable = await analyzeRefinementActionBodiesWithZ3(
       "solver.ts", fixture, "cfgDrain", spec,
-      { z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" } },
+      {
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+        manifest: refinementManifest("solver.ts", "cfgDrain", { drain: "drain" }),
+      },
     );
     expect(unavailable.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",

@@ -4,6 +4,7 @@ import {
   analyzeRefinementActionBodiesWithZ3,
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = (thenPrefix = "", beforeCommon = "") => `
 /* uneffect: state total: int */ /* uneffect: state audited: int */ /* uneffect: state route: bool */ /* uneffect: state first: bool */ /* uneffect: state second: bool */ /* uneffect: state common: bool */ /* uneffect: action compose: total' = total + (route ? (first ? 2 : 1) : (second ? 8 : 4)) + (common ? 32 : 16), audited' = audited + (route ? (first ? 20 : 10) : (second ? 80 : 40)) + (common ? 320 : 160)${thenPrefix ? " + (route ? 1 : 0)" : ""}${beforeCommon ? " + 64" : ""} */
@@ -11,11 +12,8 @@ interface Runtime {
   total: number; audited: number;
   route: boolean; first: boolean; second: boolean; common: boolean;
 }
-/* uneffect:refinement refinement conditionalScalarProduct@1 create */
 export function create(initial: Runtime): Runtime { return { ...initial } }
-/* uneffect:refinement refinement conditionalScalarProduct@1 observe */
 export function observe(runtime: Runtime): Runtime { return { ...runtime } }
-/* uneffect:refinement refinement conditionalScalarProduct@1 action compose */
 export function compose(runtime: Runtime): void {
   try {
     if (runtime.route) {
@@ -52,12 +50,15 @@ export function compose(runtime: Runtime): void {
 `;
 
 const specOf = (source: string) => parseSpec("conditional-scalar-product.ts", source).temporal;
+const manifest = () => refinementManifest(
+  "conditional-scalar-product.ts", "conditionalScalarProduct", { compose: "compose" },
+);
 
 describe("conditional scalar-product handler join", () => {
   it("joins both source-keyed predecessors before the common successor", async () => {
     const source = fixture();
     const structural = analyzeRefinementActionBodies(
-      "conditional-scalar-product.ts", source, "conditionalScalarProduct", specOf(source),
+      "conditional-scalar-product.ts", source, "conditionalScalarProduct", specOf(source), {}, manifest(),
     );
     expect(structural.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -83,7 +84,7 @@ describe("conditional scalar-product handler join", () => {
     }));
 
     const checked = await analyzeRefinementActionBodiesWithZ3(
-      "conditional-scalar-product.ts", source, "conditionalScalarProduct", specOf(source),
+      "conditional-scalar-product.ts", source, "conditionalScalarProduct", specOf(source), { manifest: manifest() },
     );
     expect(checked.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -102,7 +103,7 @@ describe("conditional scalar-product handler join", () => {
   it("rejects a predecessor entry drift and an inter-join mutation", () => {
     for (const source of [fixture("runtime.audited += 1;"), fixture("", "runtime.audited += 64;")]) {
       const analysis = analyzeRefinementActionBodies(
-        "conditional-scalar-product.ts", source, "conditionalScalarProduct", specOf(source),
+        "conditional-scalar-product.ts", source, "conditionalScalarProduct", specOf(source), {}, manifest(),
       );
       expect(analysis.obligations).toContainEqual(expect.objectContaining({
         kind: "handler-scalar-environment-join",
@@ -117,7 +118,7 @@ describe("conditional scalar-product handler join", () => {
     const source = fixture();
     const lost = source.replace("if (runtime.route) {", "if (runtime.first) {");
     const lostAnalysis = analyzeRefinementActionBodies(
-      "conditional-scalar-product.ts", lost, "conditionalScalarProduct", specOf(lost),
+      "conditional-scalar-product.ts", lost, "conditionalScalarProduct", specOf(lost), {}, manifest(),
     );
     expect(lostAnalysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -128,6 +129,7 @@ describe("conditional scalar-product handler join", () => {
     const exhausted = analyzeRefinementActionBodies(
       "conditional-scalar-product.ts", source, "conditionalScalarProduct", specOf(source),
       { proofBudget: { cfgFixedPointIterations: 1 } },
+      manifest(),
     );
     expect(exhausted.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -140,7 +142,7 @@ describe("conditional scalar-product handler join", () => {
     const source = fixture();
     const wrong = source.replace("common ? 320 : 160", "common ? 321 : 160");
     const refuted = await analyzeRefinementActionBodiesWithZ3(
-      "conditional-scalar-product.ts", wrong, "conditionalScalarProduct", specOf(wrong),
+      "conditional-scalar-product.ts", wrong, "conditionalScalarProduct", specOf(wrong), { manifest: manifest() },
     );
     expect(refuted.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -154,7 +156,10 @@ describe("conditional scalar-product handler join", () => {
       source,
       "conditionalScalarProduct",
       specOf(source),
-      { z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" } },
+      {
+        z3: { preference: "native", nativeExecutable: "/definitely/missing/uneffect-z3" },
+        manifest: manifest(),
+      },
     );
     expect(unavailable.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",

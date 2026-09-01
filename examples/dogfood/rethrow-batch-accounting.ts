@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./rethrow-batch-accounting.uneffect.ts#default" */
 /* uneffect:state recoveredUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state failed: bool */ /* uneffect:state escalate: bool */ /* uneffect:init recoveredUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init failed = false */ /* uneffect:init escalate = false */ /* uneffect:action record: recoveredUnits' = recoveredUnits + (failed ? (escalate ? 8 : 6) : 2), auditedUnits' = auditedUnits + (failed ? (escalate ? 4 : 6) : 2) */
 
 export interface RethrowBatchAccounting {
@@ -7,17 +8,14 @@ export interface RethrowBatchAccounting {
   escalate: boolean;
 }
 
-/* uneffect:refinement refinement rethrowBatchAccounting@1 create */
 export function createRethrowBatchAccounting(initial: RethrowBatchAccounting): RethrowBatchAccounting {
   return initial;
 }
 
-/* uneffect:refinement refinement rethrowBatchAccounting@1 observe */
 export function observeRethrowBatchAccounting(runtime: RethrowBatchAccounting): RethrowBatchAccounting {
   return runtime;
 }
 
-/* uneffect:refinement refinement rethrowBatchAccounting@1 action record */
 export function recordRethrowBatch(runtime: RethrowBatchAccounting): void {
   let units = 1;
   try {

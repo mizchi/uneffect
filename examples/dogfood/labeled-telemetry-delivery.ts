@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./labeled-telemetry-delivery.uneffect.ts#default" */
 /* uneffect:state delivered: int */ /* uneffect:state finalized: int */ /* uneffect:state audited: int */ /* uneffect:state charged: int */ /* uneffect:state skip: bool */ /* uneffect:init delivered = 0 */ /* uneffect:init finalized = 0 */ /* uneffect:init audited = 0 */ /* uneffect:init charged = 0 */ /* uneffect:init skip = false */ /* uneffect:action deliver: delivered' = skip ? delivered : delivered + 1, finalized' = finalized + 1, audited' = audited + 1, charged' = skip ? charged + 3 : charged + 5 */
 
 export interface DeliveryAccounting {
@@ -8,17 +9,14 @@ export interface DeliveryAccounting {
   skip: boolean;
 }
 
-/* uneffect:refinement refinement labeledDelivery@1 create */
 export function createDelivery(initial: DeliveryAccounting): DeliveryAccounting {
   return initial;
 }
 
-/* uneffect:refinement refinement labeledDelivery@1 observe */
 export function observeDelivery(runtime: DeliveryAccounting): DeliveryAccounting {
   return runtime;
 }
 
-/* uneffect:refinement refinement labeledDelivery@1 action deliver */
 export function deliver(runtime: DeliveryAccounting): void {
   let units = 1;
   attempt: {

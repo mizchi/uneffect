@@ -73,16 +73,44 @@ silent aliases.
      - [x] Invoke the resolver from project verification and retain attachment
        span, implementation/specification digests, and TypeScript version as
        `uneffect-refinement-link/v1` evidence.
-   - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate repository fixtures and reject comment-authored `refinement`,
+   - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate repository fixtures and reject comment-authored `refinement`,
      `abstraction`, and `runtime` declarations.
      - [x] Allow action validation and Z3 analysis to consume a lowered typed
        manifest without re-extracting legacy refinement comments; migrate the
        three-region scalar-product dogfood fixture as the first end-to-end case.
      - [x] Move invariant validation/Z3 discharge, state projection, and replay
        adapter construction to manifest-first inputs.
-     - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move workspace
-       composition to manifest-first inputs before rejecting the legacy
-       declarations.
+     - [x] Move workspace composition to manifest-first inputs and keep typed
+       specification modules outside runtime Effect assurance while retaining
+       their TypeScript and refinement identity checks.
+     - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate all
+       remaining repository fixtures and delete the migration-only extractor.
+       The public parser already rejects comment-authored `refinement`,
+       `abstraction`, and `runtime` dialects.
+       - [x] Migrate an explicit Set-from-array abstraction fixture and its
+         action, invariant, projection, coverage, and negative Z3 checks.
+       - [x] Migrate a nested Map-from-entries fixture, including mutable entry
+         updates and negative action checks.
+       - [x] Migrate globalThis and versioned Node-global runtime identity
+         coverage to typed runtime descriptors.
+       - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate the
+         remaining CFG, benchmark, and generated-source
+         fixtures before deleting the migration-only extraction path.
+         - [x] Add a reusable filesystem attachment loader and migrate affine
+           loop and finite switch recurrence dogfood cases.
+         - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate the
+           remaining conditional, coupled, handler, retry, and labeled CFG
+           fixtures with the same loader.
+         - [x] Move the standalone conditional, coupled, handler, retry, and
+           scalar-product CFG regression suites to explicit test manifests.
+         - [x] Migrate every checked-in dogfood refinement fixture to a sibling
+           typed `.uneffect.ts` manifest; keep benchmark and generated in-memory
+           fixtures as the remaining rejection blockers.
+         - [x] Replace benchmark-local legacy annotations with explicit typed
+           manifests passed to the verification APIs, including in-memory
+           workspace and runtime-identity cases.
+         - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Replace the
+           remaining generated in-memory test fixtures with explicit manifests.
 5. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move trust metadata
    to authenticated config/evidence records. Source comments may reference an
    assumption ID but cannot self-author owner, expiry, or digest evidence.
@@ -90,10 +118,10 @@ silent aliases.
    through namespaced plugin directives (`react.component`, `react.hook`, and
    resource lifecycle directives), with the same collision and provenance
    rules available to third-party plugins.
-7. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Remove every legacy
+7. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Remove every legacy
    dialect from `UneffectDialect`, README tables, CLI help, schemas, and skills;
    retain only `uneffect:` and `.uneffect.ts` as public authoring entrypoints.
-8. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Gate completion on
+8. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Gate completion on
    parser negative controls, full CI and dogfood, a migration note, and an API
    inventory test that prevents new public dialects or compatibility aliases.
 

@@ -1,7 +1,7 @@
 /*
  * A discrete-time admission model. This is not a wall-clock guarantee.
  *
- * uneffect:temporal
+ * uneffect:
  * clock clock: 1
  * state pending: bool
  * state deadline: int
@@ -13,7 +13,7 @@
  * action_when complete: pending && clock <= deadline
  * action_when tick_clock: !pending || clock < deadline
  * action_fair tick_clock: weak
- * invariant deadlineSafe: !pending || clock <= deadline
+ * always deadlineSafe: !pending || clock <= deadline
  * response requestCompletes: pending => !pending
  * repeatedly returnsIdle: !pending
  */

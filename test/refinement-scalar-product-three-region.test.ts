@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  analyzeRefinementActionBodies,
-  analyzeRefinementActionBodiesWithZ3,
-} from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = (between = "", fourth = "") => `
 /* uneffect: state total: int */ /* uneffect: state audited: int */ /* uneffect: state first: bool */ /* uneffect: state second: bool */ /* uneffect: state third: bool */ /* uneffect: action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4) + (third ? 32 : 16), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40) + (third ? 320 : 160)${between ? " + 64" : ""} */
@@ -11,11 +8,8 @@ interface Runtime {
   total: number; audited: number;
   first: boolean; second: boolean; third: boolean;
 }
-/* uneffect:refinement refinement scalarProductThreeRegion@1 create */
 export function create(initial: Runtime): Runtime { return { ...initial } }
-/* uneffect:refinement refinement scalarProductThreeRegion@1 observe */
 export function observe(runtime: Runtime): Runtime { return { ...runtime } }
-/* uneffect:refinement refinement scalarProductThreeRegion@1 action compose */
 export function compose(runtime: Runtime): void {
   try {
     try {

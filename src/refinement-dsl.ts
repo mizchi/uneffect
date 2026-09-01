@@ -1,4 +1,5 @@
 import { posix } from "node:path";
+import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { RefinementBindingManifest } from "./refinement-bindings.js";
@@ -267,4 +268,24 @@ export function resolveRefinementDslLink(
     create: parsed.create, observe: parsed.observe,
     abstractions: parsed.abstractions, actions: parsed.actions, invariants: parsed.invariants,
   };
+}
+
+/** Loads one attached typed specification from disk for Node-based tooling. */
+export function resolveRefinementDslFileLink(
+  implementationFile: string,
+  program?: ts.Program,
+): RefinementBindingManifest {
+  const implementationSource = readFileSync(implementationFile, "utf8");
+  const links = extractAnnotations(implementationSource, "refinement_from");
+  if (links.length !== 1) throw new Error(`${implementationFile}: expected exactly one uneffect:refinement_from declaration`);
+  const quoted = /^(?:"([^"]+)"|'([^']+)')$/.exec(links[0]!);
+  if (!quoted) throw new Error(`${implementationFile}: refinement_from requires a quoted relative .uneffect.ts path and #default export`);
+  const reference = quoted[1] ?? quoted[2]!, hash = reference.lastIndexOf("#");
+  const requested = reference.slice(0, hash);
+  const specificationFile = posix.normalize(posix.join(posix.dirname(implementationFile), requested));
+  const specificationSource = readFileSync(specificationFile, "utf8");
+  return resolveRefinementDslLink(implementationFile, implementationSource, {
+    [implementationFile]: implementationSource,
+    [specificationFile]: specificationSource,
+  }, program);
 }

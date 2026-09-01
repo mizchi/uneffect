@@ -1,3 +1,4 @@
+/* uneffect:refinement_from "./circuit-breaker-batch-accounting.uneffect.ts#default" */
 /* uneffect:state billedUnits: int */ /* uneffect:state auditedUnits: int */ /* uneffect:state deliveryFailed: bool */ /* uneffect:state circuitOpen: bool */ /* uneffect:init billedUnits = 0 */ /* uneffect:init auditedUnits = 0 */ /* uneffect:init deliveryFailed = false */ /* uneffect:init circuitOpen = false */ /* uneffect:action recordAttempt: billedUnits' = billedUnits + (deliveryFailed ? (circuitOpen ? 4 : 7) : 3), auditedUnits' = auditedUnits + (deliveryFailed ? (circuitOpen ? 4 : 6) : 2) */
 
 export interface BatchAccounting {
@@ -7,17 +8,14 @@ export interface BatchAccounting {
   circuitOpen: boolean;
 }
 
-/* uneffect:refinement refinement circuitBreakerBatchAccounting@1 create */
 export function createBatchAccounting(initial: BatchAccounting): BatchAccounting {
   return initial;
 }
 
-/* uneffect:refinement refinement circuitBreakerBatchAccounting@1 observe */
 export function observeBatchAccounting(runtime: BatchAccounting): BatchAccounting {
   return runtime;
 }
 
-/* uneffect:refinement refinement circuitBreakerBatchAccounting@1 action recordAttempt */
 export function recordConfiguredAttempt(runtime: BatchAccounting): void {
   let units = 1;
   // The singleton tuple represents one statically configured Datadog intake.

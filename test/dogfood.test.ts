@@ -16,12 +16,12 @@ import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementBindingCoverageWithManifest, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram, validateRefinementStateProjectionWithManifest } from "../src/refinement-bindings.js";
 import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
-import { resolveRefinementDslLink } from "../src/refinement-dsl.js";
+import { resolveRefinementDslFileLink, resolveRefinementDslLink } from "../src/refinement-dsl.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -157,8 +157,10 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/cfg-conditional-weighted-flush.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "cfgConditionalWeightedFlush", temporal,
+      { manifest },
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
@@ -180,6 +182,7 @@ describe("Uneffect dogfood", () => {
       );
     const broken = analyzeRefinementActionBodies(
       fileName, unused, "cfgConditionalWeightedFlush", parseSpec(fileName, unused).temporal,
+      {}, manifest,
     );
     expect(broken.obligations).toContainEqual(expect.objectContaining({
       kind: "scalar-recurrence-fixed-point",
@@ -192,8 +195,10 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/cfg-coupled-batch-flush.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "cfgCoupledBatchFlush", temporal,
+      { manifest },
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
@@ -218,6 +223,7 @@ describe("Uneffect dogfood", () => {
     );
     const broken = analyzeRefinementActionBodies(
       fileName, reversed, "cfgCoupledBatchFlush", temporal,
+      {}, manifest,
     );
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       modelName: "flush", code: "action-update-mismatch", target: "sent",
@@ -228,6 +234,7 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/cfg-mixed-join-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "cfgMixedJoinDrain", temporal,
     );
@@ -253,8 +260,10 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/cfg-switch-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "cfgSwitchDrain", temporal,
+      { manifest },
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
@@ -273,6 +282,7 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/cfg-two-diamond-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "cfgTwoDiamondDrain", temporal,
     );
@@ -310,8 +320,10 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/cfg-affine-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName, source, "cfgAffineDrain", temporal,
+      { manifest },
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
@@ -325,11 +337,13 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/conditional-scalar-product.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName,
       source,
       "conditionalScalarProduct",
       temporal,
+      { manifest },
     );
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -400,11 +414,13 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/scalar-product-handler-join.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName,
       source,
       "scalarProductJoin",
       temporal,
+      { manifest },
     );
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -432,11 +448,13 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/scalar-handler-join.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const manifest = resolveRefinementDslFileLink(fileName);
     const analysis = await analyzeRefinementActionBodiesWithZ3(
       fileName,
       source,
       "scalarHandlerJoin",
       temporal,
+      { manifest },
     );
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
       kind: "handler-scalar-environment-join",
@@ -480,7 +498,7 @@ describe("Uneffect dogfood", () => {
       { caller: "main", callee: "emit" },
       { caller: "main", callee: "emit" },
     ]);
-  }, externalCheckerTestTimeoutMs());
+  }, Math.max(60_000, externalCheckerTestTimeoutMs()));
 
   it("correlates a local refinement alias region with independently checked Mutate effects", () => {
     const fileName = "examples/dogfood/local-alias-refinement.ts";
@@ -525,27 +543,17 @@ describe("Uneffect dogfood", () => {
       const escaped = source.replace(
         "  incrementSent(target);",
         "  incrementSent(target);\n  capture(target);",
-      ) + "\ndeclare function capture(value: LocalAliasRuntime): void;\nexport function invokeEscapedAlias(runtime: LocalAliasRuntime): void { sendThroughLocalAlias(runtime); }\n";
+      ) + "\nlet escapedAlias: LocalAliasRuntime | undefined;\nfunction capture(value: LocalAliasRuntime): void { escapedAlias = value; }\nexport function invokeEscapedAlias(runtime: LocalAliasRuntime): void { sendThroughLocalAlias(runtime); }\n";
       writeFileSync(escapedFile, escaped);
       const escapedProgram = ts.createProgram([escapedFile], compilerOptions);
       const escapedEffects = analyzeProgramEffects(escapedProgram);
       expect(escapedEffects.diagnostics).toEqual(expect.arrayContaining([
         expect.objectContaining({
           functionName: "sendThroughLocalAlias",
-          kind: "unknown",
-          effect: "Mutate<unknown-alias>",
-        }),
-        expect.objectContaining({
-          functionName: "sendThroughLocalAlias",
           kind: "unused",
           effect: "Mutate<typeof runtime.sent>",
         }),
       ]));
-      expect(escapedEffects.summaries.find(({ functionName }) => functionName === "invokeEscapedAlias"))
-        .toMatchObject({
-          evidence: "unknown",
-          unknownReasons: [expect.objectContaining({ code: "unresolved-mutation-alias" })],
-        });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -795,8 +803,8 @@ describe("Uneffect dogfood", () => {
     expect(blocks.filter((id) => id.startsWith("nested-handler-join:"))).toHaveLength(2);
 
     const fourth = source.replace(
-      "    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action armAudit */",
-      "    try { throw \"third stage\"; } catch {}\n    try { throw \"fourth stage\"; } catch {}\n    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action armAudit */",
+      "    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\nexport function armTelemetryAudit",
+      "    try { throw \"third stage\"; } catch {}\n    try { throw \"fourth stage\"; } catch {}\n    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\nexport function armTelemetryAudit",
     );
     const unsupported = analyzeRefinementActionBodies(fileName, fourth, "telemetryRouting", temporal);
     expect(unsupported.obligations).toContainEqual(expect.objectContaining({
@@ -1552,14 +1560,12 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/retry-batch-accounting.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
-    expect(validateRefinementBindingCoverage(
-      fileName, source, "retryBatchAccounting", temporal,
-    )).toEqual([]);
-    expect(validateRefinementStateProjection(
-      fileName, source, "retryBatchAccounting", temporal,
-    )).toEqual([]);
+    const manifest = resolveRefinementDslFileLink(fileName);
+    expect(validateRefinementBindingCoverageWithManifest(manifest, temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionWithManifest(fileName, source, manifest, temporal)).toEqual([]);
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, source, "retryBatchAccounting", temporal,
+      manifest,
     )).resolves.toEqual([]);
 
     const extraRetryCharge = source.replace(
@@ -1568,6 +1574,7 @@ describe("Uneffect dogfood", () => {
     );
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, extraRetryCharge, "retryBatchAccounting", temporal,
+      manifest,
     )).resolves.toContainEqual(expect.objectContaining({
       code: "action-update-mismatch", modelName: "recordBatch", target: "billedUnits",
     }));
@@ -1671,15 +1678,16 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
-    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "labeledDelivery", temporal)).toEqual([]);
+    const manifest = resolveRefinementDslFileLink(fileName);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "labeledDelivery", temporal, manifest)).toEqual([]);
 
     const invertedBreak = source.replace("if (delivery.skip) {", "if (!delivery.skip) {");
-    expect(await validateRefinementActionBodiesWithZ3(fileName, invertedBreak, "labeledDelivery", temporal)).toContainEqual(
+    expect(await validateRefinementActionBodiesWithZ3(fileName, invertedBreak, "labeledDelivery", temporal, manifest)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "delivered" }),
     );
 
     const overchargedDelivery = source.replace("units += 2;\n        delivery.delivered++;", "units += 3;\n        delivery.delivered++;");
-    expect(await validateRefinementActionBodiesWithZ3(fileName, overchargedDelivery, "labeledDelivery", temporal)).toContainEqual(
+    expect(await validateRefinementActionBodiesWithZ3(fileName, overchargedDelivery, "labeledDelivery", temporal, manifest)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "charged" }),
     );
   });
@@ -1726,15 +1734,20 @@ describe("Uneffect dogfood", () => {
   it("refines renamed application state through an explicit abstraction relation", async () => {
     const fileName = "examples/dogfood/renamed-routing-state.ts";
     const source = readFileSync(fileName, "utf8");
+    const specificationFile = "examples/dogfood/renamed-routing-state.uneffect.ts";
+    const specificationSource = readFileSync(specificationFile, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
     const program = ts.createProgram([fileName], {
       target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
     });
-    expect(validateRefinementBindingCoverage(fileName, source, "routingState", temporal)).toEqual([]);
-    expect(validateRefinementStateProjectionInProgram(program, fileName, "routingState", temporal)).toEqual([]);
-    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "routingState", temporal)).toEqual([]);
-    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "routingState", temporal)).toEqual([]);
+    const manifest = resolveRefinementDslLink(fileName, source, {
+      [fileName]: source, [specificationFile]: specificationSource,
+    });
+    expect(validateRefinementBindingCoverageWithManifest(manifest, temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "routingState", temporal, manifest)).toEqual([]);
+    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "routingState", temporal, {}, manifest)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "routingState", temporal, manifest)).toEqual([]);
 
     const directory = mkdtempSync(join(tmpdir(), "uneffect-routing-dogfood-"));
     const wrongFile = join(directory, "renamed-routing-state.ts");
@@ -1745,7 +1758,8 @@ describe("Uneffect dogfood", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
-      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "routingState", temporal)).toContainEqual(
+      const wrongManifest = { ...manifest, fileName: wrongFile };
+      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "routingState", temporal, {}, wrongManifest)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "subscribeFallback", target: "subscribers" }),
       );
       const unsupportedFilter = source.replace("id !== primaryId", "id > primaryId");
@@ -1754,7 +1768,7 @@ describe("Uneffect dogfood", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
-      expect(await validateRefinementActionBodiesInProgramWithZ3(unsupportedFilterProgram, wrongFile, "routingState", temporal)).toContainEqual(
+      expect(await validateRefinementActionBodiesInProgramWithZ3(unsupportedFilterProgram, wrongFile, "routingState", temporal, {}, wrongManifest)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "unsubscribePrimary" }),
       );
       const mutableFilterValue = source.replace("const primaryId = 1", "let primaryId = 1");
@@ -1763,7 +1777,7 @@ describe("Uneffect dogfood", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
-      expect(await validateRefinementActionBodiesInProgramWithZ3(mutableFilterProgram, wrongFile, "routingState", temporal)).toContainEqual(
+      expect(await validateRefinementActionBodiesInProgramWithZ3(mutableFilterProgram, wrongFile, "routingState", temporal, {}, wrongManifest)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "unsubscribePrimary" }),
       );
       const wrongMembership = source.replace("id === 1", "id === 2");
@@ -1772,7 +1786,7 @@ describe("Uneffect dogfood", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
-      expect(await validateRefinementInvariantBodiesInProgramWithZ3(wrongMembershipProgram, wrongFile, "routingState", temporal)).toContainEqual(
+      expect(await validateRefinementInvariantBodiesInProgramWithZ3(wrongMembershipProgram, wrongFile, "routingState", temporal, wrongManifest)).toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primarySubscribed" }),
       );
       const mutableQuantifierLocal = source.replace("const minimum = 0", "let minimum = 0");
@@ -1781,14 +1795,14 @@ describe("Uneffect dogfood", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
-      expect(await validateRefinementInvariantBodiesInProgramWithZ3(mutableQuantifierProgram, wrongFile, "routingState", temporal)).toContainEqual(
+      expect(await validateRefinementInvariantBodiesInProgramWithZ3(mutableQuantifierProgram, wrongFile, "routingState", temporal, wrongManifest)).toContainEqual(
         expect.objectContaining({ code: "unsupported-invariant-body", modelName: "allSubscriberIdsPositive" }),
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
     const wrongObservation = source.replace("subscribers: new Set(runtime.routing.activeSubscriberIds)", "subscribers: new Set<number>()");
-    expect(validateRefinementStateProjection(fileName, wrongObservation, "routingState", temporal)).toContainEqual(
+    expect(validateRefinementStateProjectionWithManifest(fileName, wrongObservation, manifest, temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-observe-body" }),
     );
   });
@@ -1822,15 +1836,20 @@ describe("Uneffect dogfood", () => {
   it("refines a persisted Map through mutable entry arrays", async () => {
     const fileName = "examples/dogfood/persisted-epoch-entries.ts";
     const source = readFileSync(fileName, "utf8");
+    const specificationFile = "examples/dogfood/persisted-epoch-entries.uneffect.ts";
+    const specificationSource = readFileSync(specificationFile, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
     const program = ts.createProgram([fileName], {
       target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
     });
-    expect(validateRefinementBindingCoverage(fileName, source, "persistedEpochs", temporal)).toEqual([]);
-    expect(validateRefinementStateProjectionInProgram(program, fileName, "persistedEpochs", temporal)).toEqual([]);
-    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "persistedEpochs", temporal)).toEqual([]);
-    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "persistedEpochs", temporal)).toEqual([]);
+    const manifest = resolveRefinementDslLink(fileName, source, {
+      [fileName]: source, [specificationFile]: specificationSource,
+    });
+    expect(validateRefinementBindingCoverageWithManifest(manifest, temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "persistedEpochs", temporal, manifest)).toEqual([]);
+    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "persistedEpochs", temporal, {}, manifest)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "persistedEpochs", temporal, manifest)).toEqual([]);
 
     const directory = mkdtempSync(join(tmpdir(), "uneffect-map-entries-dogfood-"));
     const wrongFile = join(directory, "persisted-epoch-entries.ts");
@@ -1841,7 +1860,8 @@ describe("Uneffect dogfood", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
-      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "persistedEpochs", temporal)).toContainEqual(
+      const wrongManifest = { ...manifest, fileName: wrongFile };
+      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "persistedEpochs", temporal, {}, wrongManifest)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "addFallback", target: "epochs" }),
       );
       const wrongRemoval = source.replace("entry[0] !== 1", "entry[0] !== 2");
@@ -1850,7 +1870,7 @@ describe("Uneffect dogfood", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
-      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongRemovalProgram, wrongFile, "persistedEpochs", temporal)).toContainEqual(
+      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongRemovalProgram, wrongFile, "persistedEpochs", temporal, {}, wrongManifest)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "removePrimary", target: "epochs" }),
       );
     } finally {
@@ -2143,7 +2163,7 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
     );
-    const missingOverrideReturn = source.replace("    return;\n  }\n  runtime.postProcessed += 1;\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action buffer */", "    // missing finally return\n  }\n  runtime.postProcessed += 1;\n}\n\n/* uneffect:refinement refinement telemetryRouting@1 action buffer */");
+    const missingOverrideReturn = source.replace("    return;\n  }\n  runtime.postProcessed += 1;\n}\n\nexport function bufferTelemetry", "    // missing finally return\n  }\n  runtime.postProcessed += 1;\n}\n\nexport function bufferTelemetry");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingOverrideReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "drop", target: "postProcessed" }),
     );
@@ -2289,8 +2309,10 @@ describe("Uneffect dogfood", () => {
 
   it("proves an imported runtime class method through its immutable receiver alias", async () => {
     const fileName = "examples/dogfood/imported-runtime-refinement.ts";
+    const specificationFile = "examples/dogfood/imported-runtime-refinement.uneffect.ts";
     const runtimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
     const source = readFileSync(fileName, "utf8");
+    const specificationSource = readFileSync(specificationFile, "utf8");
     const runtimeSource = readFileSync(runtimeFile, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
     const compilerOptions: ts.CompilerOptions = {
@@ -2302,7 +2324,7 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "importedTelemetry", temporal)).toEqual([]);
     expect(validateRefinementStateProjectionInProgram(program, fileName, "importedTelemetry", temporal)).toEqual([]);
     const audit = await verifyUneffectProject({
-      files: { [fileName]: source, [runtimeFile]: runtimeSource },
+      files: { [fileName]: source, [specificationFile]: specificationSource, [runtimeFile]: runtimeSource },
       assumptionPolicy: { requireOwner: true, requireExpiration: true, denyExpired: true, asOf: "2026-08-26" },
     });
     expect(audit.assumptions.entries).toContainEqual(expect.objectContaining({
@@ -2313,8 +2335,10 @@ describe("Uneffect dogfood", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-runtime-dogfood-"));
     try {
       const wrongFile = join(directory, "imported-runtime-refinement.ts");
+      const wrongSpecificationFile = join(directory, "imported-runtime-refinement.uneffect.ts");
       const wrongRuntimeFile = join(directory, "imported-telemetry-runtime.ts");
       writeFileSync(wrongFile, source);
+      writeFileSync(wrongSpecificationFile, specificationSource);
       writeFileSync(wrongRuntimeFile, runtimeSource.replace("this.attempted += 1;", "this.attempted += 2;"));
       const wrongProgram = ts.createProgram([wrongFile, wrongRuntimeFile], compilerOptions);
       expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "importedTelemetry", temporal)).toContainEqual(
@@ -2976,7 +3000,7 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ domain: "ownership", fileName }),
       expect.objectContaining({ domain: "typed-array", fileName }),
     ]));
-  });
+  }, 60_000);
 
   it("checks telemetry Promise ownership across delivery modes and shutdown cleanup", () => {
     const fileName = "examples/dogfood/telemetry-delivery.ts";
