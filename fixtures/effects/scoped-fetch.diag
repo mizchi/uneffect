@@ -2,22 +2,22 @@ $ uneffect check --evidence fixtures/effects/scoped-fetch.ts
 # A scoped effect is an authority, not a name: the in-scope call verifies, the out-of-scope one does not.
 
 error effect/missing fixtures/effects/scoped-fetch.ts:8 in loadReport
-  message: loadReport requires /* uneffect:capability effect Fetch<GET, "https://reports.example.com/latest"> */
+  message: loadReport requires /* uneffect:effect Fetch<GET, "https://reports.example.com/latest"> */
   8 | export function loadReport() {
     | ^
   declared: Fetch<GET, "https://api.example.com/**"> | Net<"api.example.com:443">
   because: loadReport performs fetch("https://reports.example.com/latest") at line 9
   out of authority: the declared Fetch<GET, "https://api.example.com/**"> shares this effect constructor, but its arguments do not cover Fetch<GET, "https://reports.example.com/latest">
-  hint: declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it
+  hint: declare the effect in the function's /* uneffect:effect ... */ comment, or move the operation into a callee that already declares it
 
 error effect/missing fixtures/effects/scoped-fetch.ts:8 in loadReport
-  message: loadReport requires /* uneffect:capability effect Net<"reports.example.com:443"> */
+  message: loadReport requires /* uneffect:effect Net<"reports.example.com:443"> */
   8 | export function loadReport() {
     | ^
   declared: Fetch<GET, "https://api.example.com/**"> | Net<"api.example.com:443">
   because: loadReport performs fetch("https://reports.example.com/latest") at line 9
   out of authority: the declared Net<"api.example.com:443"> shares this effect constructor, but its arguments do not cover Net<"reports.example.com:443">
-  hint: declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it
+  hint: declare the effect in the function's /* uneffect:effect ... */ comment, or move the operation into a callee that already declares it
 
 warning effect/unused fixtures/effects/scoped-fetch.ts:8 in loadReport
   message: loadReport declares unused effect Fetch<GET, "https://api.example.com/**">

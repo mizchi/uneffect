@@ -73,6 +73,12 @@ rather than treated as aliases.
 The unified grammar does not overload `invariant`: `loop_invariant` and `always`
 have distinct meanings and internal IR targets.
 
+Registered temporal plugins may add snake-case directives to the same surface,
+for example `/* uneffect:queue_depth pending */`. The registry rejects a plugin
+that attempts to own a core directive such as `state`, `effect`, or `always`.
+Registration makes the syntax discoverable; the plugin remains responsible for
+lowering its payload into explicit temporal IR and evidence.
+
 Standalone transition systems additionally support `action_when name:
 predicate`, `clock name: positiveInteger`, and `action_fair name: weak|strong`.
 A clock owns its implicit init and generated tick assignment; other actions

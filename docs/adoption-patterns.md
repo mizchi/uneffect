@@ -25,7 +25,7 @@ review.
 An effect declaration is an upper bound. A broad first annotation is valid:
 
 ```ts
-/* uneffect:capability effect FsRead | Console */
+/* uneffect:effect FsRead | Console */
 export function loadAndReport(): void {
   // Existing implementation.
 }
@@ -35,7 +35,7 @@ Once the call graph is classified, replace broad permissions with finite scope
 sets:
 
 ```ts
-/* uneffect:capability effect FsRead<"$WORKSPACE_ROOT/config/**"> | Console */
+/* uneffect:effect FsRead<"$WORKSPACE_ROOT/config/**"> | Console */
 export function loadAndReport(): void {
   // Existing implementation.
 }
@@ -77,8 +77,8 @@ assumptions become security or correctness requirements:
 ```ts
 import type { Nat } from "@mizchi/uneffect"
 
-/* uneffect:contract requires denominator > 0 */
-/* uneffect:contract ensures result <= numerator */
+/* uneffect:requires denominator > 0 */
+/* uneffect:ensures result <= numerator */
 export function quotient(numerator: Nat, denominator: Nat): number {
   return Math.floor(numerator / denominator)
 }

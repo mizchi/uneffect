@@ -13,7 +13,7 @@ fn consumes_versioned_corsa_symbols_types_overloads_calls_and_trivia() {
       ],
       "calls": [{ "caller": 1, "callee": 2, "overloadIndex": null, "callbackTiming": "inline", "span": { "start": 60, "end": 70 } }],
       "protocolSymbols": [],
-      "trivia": [{ "owner": 1, "text": "/* uneffect:capability effect FsRead<\"$CWD/data\"> */", "span": { "start": 0, "end": 56 } }]
+      "trivia": [{ "owner": 1, "text": "/* uneffect:effect FsRead<\"$CWD/data\"> */", "span": { "start": 0, "end": 41 } }]
     }"#).unwrap();
     assert_eq!(program.compiler_revision, "typescript-go@deadbeef");
     let load = &program.symbols[&1];

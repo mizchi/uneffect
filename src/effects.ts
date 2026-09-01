@@ -137,7 +137,7 @@ function sameConstructor(left: Effect, right: Effect): boolean {
 
 /** The declaration a diagnostic is judged against, shown so a reader need not open the source. */
 function declaredNote(declared: readonly Effect[]): DiagnosticNote {
-  return { label: "declared", detail: declared.length > 0 ? declared.map(formatEffect).join(" | ") : "(no /* uneffect:capability effect ... */ comment)" };
+  return { label: "declared", detail: declared.length > 0 ? declared.map(formatEffect).join(" | ") : "(no /* uneffect:effect ... */ comment)" };
 }
 
 function inferredNote(actual: readonly Effect[]): DiagnosticNote {
@@ -1216,7 +1216,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
     });
     for (const effect of checkedActual) if (!permits(info.declared, effect) && (info.declaredPresent || options.requireAnnotations !== false)) diagnostics.push({
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "missing", severity: "error", line,
-      message: `${info.name} requires /* uneffect:capability effect ${formatEffect(effect)} */`,
+      message: `${info.name} requires /* uneffect:effect ${formatEffect(effect)} */`,
       notes: missingEffectNotes(info.declared, effect),
     });
     for (const effect of info.declared) if (!checkedActual.some((item) => permits([effect], item))) diagnostics.push({
@@ -1694,7 +1694,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       const key = formatEffect(effect);
       diagnostics.push({
         fileName: source.fileName, functionName: graphNode.name, effect: key, kind: "missing", severity: "error", line,
-        message: `${graphNode.name} requires /* uneffect:capability effect ${key} */`,
+        message: `${graphNode.name} requires /* uneffect:effect ${key} */`,
         notes: missingEffectNotes(allowed, effect, origin(graphNode.id, key, source.fileName)),
       });
     }
@@ -2089,7 +2089,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     });
     for (const effect of effects) if (!permits(allowed, effect) && (moduleDeclared || options.requireAnnotations !== false)) diagnostics.push({
       fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "missing", severity: "error", line,
-      message: `<module> requires /* uneffect:capability module_effect ${formatEffect(effect)} */`,
+      message: `<module> requires /* uneffect:module_effect ${formatEffect(effect)} */`,
       notes: missingEffectNotes(allowed, effect),
     });
     for (const effect of allowed) if (!effects.some((item) => permits([effect], item))) diagnostics.push({

@@ -109,7 +109,7 @@ describe("caught-path bounded self-affine recurrence", () => {
   it("fails closed for mutable selectors and unsupported caught updates", async () => {
     for (const [name, source] of [
       ["missing-bound", fixture.replace(
-        "/* uneffect:contract requires runtime.attempts >= 0 && runtime.attempts <= 4 */ ", "",
+        "/* uneffect:requires runtime.attempts >= 0 && runtime.attempts <= 4 */ ", "",
       )],
       ["oversized-bound", fixture.replaceAll("<= 4", "<= 9")],
       ["inverted-selector", fixture.replace(

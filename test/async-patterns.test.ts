@@ -2422,7 +2422,7 @@ describe("builtin async temporal patterns", () => {
   it("keeps node:fs authority while scheduling callback APIs in the poll phase", () => {
     const source = `
       import { readFile } from "node:fs"
-      /* uneffect:capability effect FsRead<"settings.json"> | Timer */
+      /* uneffect:effect FsRead<"settings.json"> | Timer */
       function load() {
         readFile("settings.json", "utf8", () => queueMicrotask(() => undefined))
       }
@@ -2698,7 +2698,7 @@ describe("builtin async temporal patterns", () => {
   it("models TypeChecker-resolved node:net connection listeners in the poll phase", () => {
     const source = `
       import { createConnection as dial } from "node:net"
-      /* uneffect:capability effect Net | Timer */
+      /* uneffect:effect Net | Timer */
       function connect() {
         dial({ host: "example.com", port: 443 }, () => queueMicrotask(() => undefined))
       }
@@ -2783,7 +2783,7 @@ describe("builtin async temporal patterns", () => {
   it("models TypeChecker-resolved node:dns callbacks in the poll phase", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns"
-      /* uneffect:capability effect Net | Timer */
+      /* uneffect:effect Net | Timer */
       function resolve() { resolveHost("example.com", () => queueMicrotask(() => undefined)) }
       function lookup(_host: string, callback: () => void) { callback() }
       function local() { lookup("example.com", () => undefined) }

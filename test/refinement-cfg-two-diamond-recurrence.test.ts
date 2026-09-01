@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal state audit: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal init audit = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (audit ? (sampled ? 2 * pending : pending) : (sampled ? pending : 0)) : 0) */
+const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state sampled: bool */ /* uneffect: state audit: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init sampled = false */ /* uneffect: init audit = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (audit ? (sampled ? 2 * pending : pending) : (sampled ? pending : 0)) : 0) */
 interface Runtime { pending: number; processed: number; sampled: boolean; audit: boolean }
 /* uneffect:refinement refinement twoDiamondDrain@1 create */ export function create(initial: Runtime) { return initial }
 /* uneffect:refinement refinement twoDiamondDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }

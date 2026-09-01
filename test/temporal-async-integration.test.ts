@@ -9,9 +9,9 @@ import * as stable from "../src/index.js";
 import * as experimental from "../src/experimental.js";
 
 const source = `
-/* uneffect:temporal state sends: int */
-/* uneffect:temporal init sends = 0 */
-/* uneffect:temporal invariant atMostOnce: sends <= 1 */
+/* uneffect: state sends: int */
+/* uneffect: init sends = 0 */
+/* uneffect:always atMostOnce: sends <= 1 */
 
 /* uneffect:temporal-summary requires sends === 0 */
 /* uneffect:temporal-summary ensures sends' = sends + 1 */
@@ -71,9 +71,9 @@ describe("unified async temporal model", () => {
 
   it("keeps the Node host clock distinct from a user state named clock", () => {
     const clockSource = `
-      /* uneffect:temporal state clock: int */
-      /* uneffect:temporal init clock = 7 */
-      /* uneffect:temporal invariant userClock: clock === 7 */
+      /* uneffect: state clock: int */
+      /* uneffect: init clock = 7 */
+      /* uneffect:always userClock: clock === 7 */
       function parent() { setImmediate(() => undefined) }
       export function main() { queueMicrotask(parent) }
     `;

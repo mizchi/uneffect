@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect none */
+/* uneffect:module_effect none */
 import ts from "typescript";
 import type { AsyncSafetyDiagnostic } from "./async-safety.js";
 import { formatEffect } from "./capabilities.js";
@@ -24,7 +24,7 @@ export interface TypeScriptCheckerDiagnostic {
 }
 
 /** Convert compiler failures into the same source-attributed diagnostic contract used by every frontend. */
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function fromTypeScriptDiagnostic(
   diagnostic: ts.Diagnostic,
   kind: TypeScriptCheckerDiagnostic["kind"],
@@ -59,7 +59,7 @@ export interface ReportedDiagnostic {
 
 /** Next action for every diagnostic code, so a reader never has to guess what to change. */
 const hints: Readonly<Record<string, string>> = {
-  "effect/missing": "declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it",
+  "effect/missing": "declare the effect in the function's /* uneffect:effect ... */ comment, or move the operation into a callee that already declares it",
   "effect/unused": "delete the declared effect, or keep it deliberately as a wider upper bound; unused declarations never fail the CLI",
   "effect/unknown": "fix the effect name; the known constructors are FsRead, FsWrite, Console, Fetch, Dom, Env, Random, Timer, Mutate<region>, and Throw<ErrorType>",
   "effect/invalid": "fix the effect-set syntax; use `none` by itself for an explicit empty set, or a `|`-separated union of Effect terms",
@@ -107,15 +107,15 @@ const hints: Readonly<Record<string, string>> = {
   "trusted-types/untrusted-script-sink": "create the value with a reviewed trustedTypes policy and pass the resulting TrustedScript without casting it to or from string",
 };
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function diagnosticHint(code: string): string | undefined { return hints[code]; }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function severityOf(diagnostic: CheckerDiagnostic): DiagnosticSeverity {
   return "severity" in diagnostic ? diagnostic.severity : "error";
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function codeOf(diagnostic: CheckerDiagnostic): string {
   if ("domain" in diagnostic && diagnostic.domain === "typescript") return `typescript/${diagnostic.kind}`;
   if ("domain" in diagnostic && diagnostic.domain === "trusted-types") return `trusted-types/${diagnostic.kind}`;
@@ -126,7 +126,7 @@ function codeOf(diagnostic: CheckerDiagnostic): string {
 }
 
 /** Normalize every checker diagnostic into one reportable shape with its notes and hint. */
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function reportDiagnostic(diagnostic: CheckerDiagnostic): ReportedDiagnostic {
   const code = codeOf(diagnostic);
   const notes = [...(diagnostic.notes ?? [])];
@@ -142,14 +142,14 @@ export interface DiagnosticFormatOptions {
   sources?: ReadonlyMap<string, string>;
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function relative(fileName: string, cwd: string | undefined): string {
   if (!cwd) return fileName;
   const prefix = cwd.endsWith("/") ? cwd : `${cwd}/`;
   return fileName.startsWith(prefix) ? fileName.slice(prefix.length) : fileName;
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function frame(source: string | undefined, line: number): string[] {
   const text = source?.split(/\r?\n/u)[line - 1];
   if (text === undefined) return [];
@@ -158,7 +158,7 @@ function frame(source: string | undefined, line: number): string[] {
 }
 
 /** Render one diagnostic as a stable text block: header, source frame, then explanation notes. */
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: DiagnosticFormatOptions = {}): string {
   const reported = reportDiagnostic(diagnostic);
   const source = options.sources?.get(diagnostic.fileName);
@@ -167,7 +167,7 @@ export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: Diagnos
 }
 
 /** Render a whole run: every diagnostic block plus a counted summary line. */
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function formatDiagnostics(diagnostics: readonly CheckerDiagnostic[], options: DiagnosticFormatOptions = {}): string {
   const reported = diagnostics.map(reportDiagnostic);
   const errors = reported.filter((item) => item.severity === "error").length;
@@ -178,7 +178,7 @@ export function formatDiagnostics(diagnostics: readonly CheckerDiagnostic[], opt
 }
 
 /** What a run established: the obligations that were proved and the inferred effect of every function. */
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function formatCheckEvidence(result: Pick<CheckResult, "artifacts" | "summaries">): string {
   const lines = [
     ...result.artifacts.filter((artifact) => artifact.status === "verified" && artifact.obligation)

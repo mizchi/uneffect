@@ -12,7 +12,7 @@ same property is proved for arbitrary TypeScript.
 
 ## Annotation and contract surface
 
-- Existing TypeScript remains valid: Uneffect reads only `/* uneffect:temporal ... */`
+- Existing TypeScript remains valid: Uneffect reads only `/* uneffect: ... */`
   block comments and reports malformed or unsupported directives.
 - The typed annotation AST separates capability effects, Hoare-style
   preconditions/postconditions/invariants, and temporal specifications.

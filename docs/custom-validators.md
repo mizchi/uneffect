@@ -25,7 +25,7 @@ defineUneffectValidator({
 Source opts in with a normal block comment:
 
 ```ts
-/* uneffect:contract validate DatadogOnce */
+/* uneffect:validate DatadogOnce */
 function report(enabled: boolean) {
   if (enabled) datadogRum.addAction("loaded")
 }

@@ -22,8 +22,8 @@ export function isMetricName(value: string): boolean {
 // metrics.ts
 import { isMetricName } from "./validators.js"
 
-/* uneffect:contract requires isMetricName(name) */
-/* uneffect:contract ensures result === name */
+/* uneffect:requires isMetricName(name) */
+/* uneffect:ensures result === name */
 export function metricKey(name: string): string {
   return name
 }

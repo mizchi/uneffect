@@ -103,15 +103,15 @@ describe("evidence and optimizer obligations", () => {
       expect(freshArtifacts.assurance).toMatchObject({ status: "verified", passed: true });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability module_effect Console */
+        /* uneffect:module_effect Console */
         console.log("module-a")
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function report() { console.log("a") }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:capability module_effect Console */
+        /* uneffect:module_effect Console */
         import { report } from "../../a/src/a.js"
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function relay() { report() }
       `);
       writeFileSync(join(bDirectory, "tsconfig.json"), JSON.stringify({
@@ -154,9 +154,9 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(childDeclaration, originalDeclaration);
 
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:capability module_effect FsRead<"$CWD/**"> */
+        /* uneffect:module_effect FsRead<"$CWD/**"> */
         import { report } from "../../a/src/a.js"
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function relay() { report() }
       `);
       const missingModuleAuthority = await verifyUneffectProject({ projectFile: root });
@@ -167,13 +167,13 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         import "reviewed"
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function report() { console.log("a") }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:capability module_effect Console */
+        /* uneffect:module_effect Console */
         import { report } from "../../a/src/a.js"
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function relay() { report() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -190,16 +190,16 @@ describe("evidence and optimizer obligations", () => {
         .verification.effects.summaries.find((item) => item.functionName === "<module>")).toMatchObject({ evidence: "unknown" });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability module_effect Console */
+        /* uneffect:module_effect Console */
         console.log("module-a")
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function report() { console.log("a") }
       `);
 
       writeFileSync(join(cDirectory, "src", "c.ts"), `
-        /* uneffect:capability module_effect Console */
+        /* uneffect:module_effect Console */
         import { relay } from "../../b/src/b.js"
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function forward() { relay() }
       `);
       writeFileSync(join(cDirectory, "tsconfig.json"), JSON.stringify({
@@ -227,7 +227,7 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { report } from "../../a/src/a.js"
-        /* uneffect:capability effect FsRead<"$CWD/**"> */
+        /* uneffect:effect FsRead<"$CWD/**"> */
         export function relay() { report() }
       `);
       const missingParentDeclaration = await verifyUneffectProject({ projectFile: root });
@@ -240,7 +240,7 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(aDirectory, "src", "a.ts"), `export function report() { console.log("a") }`);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { report } from "../../a/src/a.js"
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function relay() { report() }
       `);
       const inferredChild = await verifyUneffectProject({ projectFile: root });
@@ -295,8 +295,8 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
       mkdirSync(join(child, "src"), { recursive: true });
       mkdirSync(join(parent, "src"), { recursive: true });
-      writeFileSync(join(child, "src", "child.ts"), `/* uneffect:capability effect Console */\nexport function report() { console.log("verified") }\n`);
-      writeFileSync(join(parent, "src", "parent.ts"), `import { report } from "../../child/dist/child.js"\n/* uneffect:capability effect Console */\nexport function relay() { report() }\n`);
+      writeFileSync(join(child, "src", "child.ts"), `/* uneffect:effect Console */\nexport function report() { console.log("verified") }\n`);
+      writeFileSync(join(parent, "src", "parent.ts"), `import { report } from "../../child/dist/child.js"\n/* uneffect:effect Console */\nexport function relay() { report() }\n`);
       const compilerOptions = { composite: true, declaration: true, outDir: "dist", rootDir: "src", types: [] };
       writeFileSync(join(child, "tsconfig.json"), JSON.stringify({ compilerOptions, include: ["src/**/*.ts"] }));
       writeFileSync(join(parent, "tsconfig.json"), JSON.stringify({ compilerOptions, include: ["src/**/*.ts"], references: [{ path: "../child" }] }));
@@ -337,16 +337,16 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
       writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability effect_parameter iterator extends Console | Throw<Error> */
+        /* uneffect:effect_parameter iterator extends Console | Throw<Error> */
         export function consume(iterator: Iterator<unknown>) {
           for (;;) { const step = iterator.next(); if (step.done) return }
         }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { consume } from "../../a/src/a.js"
-        /* uneffect:capability effect Console | Throw<RangeError> */
+        /* uneffect:effect Console | Throw<RangeError> */
         function* generate() { console.log("item"); throw new RangeError("stop") }
-        /* uneffect:capability effect Console | Throw<RangeError> */
+        /* uneffect:effect Console | Throw<RangeError> */
         export function run() { consume(generate()) }
       `);
       writeFileSync(join(aDirectory, "tsconfig.json"), JSON.stringify({
@@ -379,7 +379,7 @@ describe("evidence and optimizer obligations", () => {
       });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability effect_parameter iterator extends Console */
+        /* uneffect:effect_parameter iterator extends Console */
         export function consume(iterator: Iterator<unknown>) {
           for (;;) { const step = iterator.next(); if (step.done) return }
         }
@@ -406,7 +406,7 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { consume } from "../../a/src/a.js"
-        /* uneffect:capability effect_parameter items extends Console */
+        /* uneffect:effect_parameter items extends Console */
         export function forward(items: Iterator<unknown>) { consume(items) }
         export function pure() { consume([1, 2].values()) }
       `);
@@ -424,9 +424,9 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(cDirectory, "src", "c.ts"), `
         import { forward } from "../../b/src/b.js"
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         function* generate() { console.log("item") }
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         export function run() { forward(generate()) }
       `);
       writeFileSync(join(cDirectory, "tsconfig.json"), JSON.stringify({
@@ -450,7 +450,7 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { consume } from "../../a/src/a.js"
-        /* uneffect:capability effect_parameter items extends Console | Throw<Error> */
+        /* uneffect:effect_parameter items extends Console | Throw<Error> */
         export function forward(items: Iterator<unknown>) { consume(items) }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -464,17 +464,17 @@ describe("evidence and optimizer obligations", () => {
         .toMatchObject({ evidence: "unknown" });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability effect InvokeUserCode */
-        /* uneffect:capability effect_parameter iterator extends Console | Throw<Error> */
+        /* uneffect:effect InvokeUserCode */
+        /* uneffect:effect_parameter iterator extends Console | Throw<Error> */
         export async function consumeAll(iterator: IterableIterator<PromiseLike<unknown>>) {
           await Promise.all(iterator)
         }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { consumeAll } from "../../a/src/a.js"
-        /* uneffect:capability effect Console | Throw<RangeError> */
+        /* uneffect:effect Console | Throw<RangeError> */
         function* generate() { console.log("item"); throw new RangeError("stop") }
-        /* uneffect:capability effect Console | InvokeUserCode */
+        /* uneffect:effect Console | InvokeUserCode */
         export function runAll() { return consumeAll(generate()) }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -511,12 +511,12 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         export interface Box { value: number }
-        /* uneffect:capability effect Mutate<typeof box.value> */
+        /* uneffect:effect Mutate<typeof box.value> */
         export function setValue(box: Box) { box.value = 1 }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { setValue, type Box } from "../../a/src/a.js"
-        /* uneffect:capability effect Mutate<typeof state.value> */
+        /* uneffect:effect Mutate<typeof state.value> */
         export function update(state: Box) { setValue(state) }
       `);
       writeFileSync(join(aDirectory, "tsconfig.json"), JSON.stringify({
@@ -546,7 +546,7 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { setValue as apply, type Box } from "../../a/src/a.js"
         interface Parent { child: Box }
-        /* uneffect:capability effect Mutate<typeof state.child.value> */
+        /* uneffect:effect Mutate<typeof state.child.value> */
         export function update(state: Parent) { apply(state.child) }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -559,7 +559,7 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { setValue, type Box } from "../../a/src/a.js"
         declare function select(): Box
-        /* uneffect:capability effect Mutate<typeof state.value> */
+        /* uneffect:effect Mutate<typeof state.value> */
         export function update(state: Box) { setValue(select()) }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -574,7 +574,7 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         export interface Box { value: number }
-        /* uneffect:capability effect Mutate<typeof box.value> */
+        /* uneffect:effect Mutate<typeof box.value> */
         export function setValue(box: Box = { value: 0 }) { box.value = 1 }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
@@ -592,12 +592,12 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         export const shared = { value: 0 }
-        /* uneffect:capability effect Mutate<typeof shared.value> */
+        /* uneffect:effect Mutate<typeof shared.value> */
         export function setShared() { shared.value = 1 }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { setShared, shared } from "../../a/src/a.js"
-        /* uneffect:capability effect Mutate<typeof shared.value> */
+        /* uneffect:effect Mutate<typeof shared.value> */
         export function update() { setShared() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -617,7 +617,7 @@ describe("evidence and optimizer obligations", () => {
 
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import * as child from "../../a/src/a.js"
-        /* uneffect:capability effect Mutate<typeof child.shared.value> */
+        /* uneffect:effect Mutate<typeof child.shared.value> */
         export function update() { child.setShared() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -631,7 +631,7 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { setShared } from "../../a/src/a.js"
         import { shared } from "./other.js"
-        /* uneffect:capability effect Mutate<typeof shared.value> */
+        /* uneffect:effect Mutate<typeof shared.value> */
         export function update() { setShared() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -659,13 +659,13 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(aDirectory, "src", "state.ts"), "export const shared = { value: 0 }\n");
       writeFileSync(join(aDirectory, "src", "bridge.ts"), "export { shared } from './state.js'\n");
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability module_effect Mutate<typeof shared.value> */
+        /* uneffect:module_effect Mutate<typeof shared.value> */
         import { shared } from "./bridge.js"
         export { shared } from "./bridge.js"
         shared.value = 1
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:capability module_effect Mutate<typeof shared.value> */
+        /* uneffect:module_effect Mutate<typeof shared.value> */
         import { shared } from "../../a/src/a.js"
         export const value = shared.value
       `);
@@ -685,7 +685,7 @@ describe("evidence and optimizer obligations", () => {
         });
 
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:capability module_effect Mutate<typeof shared.value> */
+        /* uneffect:module_effect Mutate<typeof shared.value> */
         import "../../a/src/a.js"
         import { shared } from "./other.js"
         export const value = shared.value
@@ -697,13 +697,13 @@ describe("evidence and optimizer obligations", () => {
         .toMatchObject({ evidence: "unknown" });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> */
         export {}
         declare global { var appState: { value: number } }
         globalThis.appState.value = 1
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:capability module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> */
         import "../../a/src/a.js"
         export const value = globalThis.appState.value
       `);
@@ -724,12 +724,12 @@ describe("evidence and optimizer obligations", () => {
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         export {}
         declare global { var appState: { value: number } }
-        /* uneffect:capability effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:effect Mutate<typeof globalThis.appState.value> */
         export function setGlobal() { globalThis.appState.value = 1 }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { setGlobal } from "../../a/src/a.js"
-        /* uneffect:capability effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:effect Mutate<typeof globalThis.appState.value> */
         export function update() { setGlobal() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -746,13 +746,13 @@ describe("evidence and optimizer obligations", () => {
         .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "globalThis.appState.value" })] });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:capability module_effect Mutate<typeof window.appState.value> */
+        /* uneffect:module_effect Mutate<typeof window.appState.value> */
         export {}
         declare global { interface Window { appState: { value: number } } }
         window.appState.value = 1
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:capability module_effect Mutate<typeof window.appState.value> */
+        /* uneffect:module_effect Mutate<typeof window.appState.value> */
         import "../../a/src/a.js"
         export const value = window.appState.value
       `);
@@ -799,9 +799,9 @@ describe("evidence and optimizer obligations", () => {
   it("rejects a manually claimed verified external iterator contract with missing bounds", () => {
     const { program, source } = programOf(`
       declare function consume(iterator: Iterator<unknown>): void
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function* generate() { console.log("item") }
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       export function run() { consume(generate()) }
     `);
     const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
@@ -850,12 +850,12 @@ describe("evidence and optimizer obligations", () => {
     const result = await verifyUneffectProject({
       files: { "src/contract.ts": `
         type Nat = number
-        /* uneffect:contract requires value >= 0 */
-        /* uneffect:contract ensures result >= 0 */
+        /* uneffect:requires value >= 0 */
+        /* uneffect:ensures result >= 0 */
         export function identity(value: Nat): Nat { return value }
       `, "src/typed-array.ts": `
         type Nat = number
-        /* uneffect:contract requires value * 2 <= 255 */
+        /* uneffect:requires value * 2 <= 255 */
         export function write(bytes: Uint8Array, value: Nat) { bytes[0] = value }
       ` },
       z3: { preference: "native", nativeExecutable: "/uneffect/missing/integrated-z3" },
@@ -936,7 +936,7 @@ describe("evidence and optimizer obligations", () => {
   it("makes runtime instrumentation failures project assurance blockers", async () => {
     const fileName = "src/runtime-boundary.ts";
     const result = await verifyUneffectProject({ runtimeAssertions: "fallback", files: { [fileName]: `
-      /* uneffect:contract assert missing: Nat */
+      /* uneffect:assert missing: Nat */
       export function parse(value: number) { return value }
     ` } });
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unknown-parameter", parameter: "missing" }));
@@ -952,7 +952,7 @@ describe("evidence and optimizer obligations", () => {
       const broken: number = "not-a-number"
       type BoundedUint8Array<N extends number> = Uint8Array
       function writeTag(output: BoundedUint8Array<1>) { output[0] = 7 }
-      /* uneffect:contract ensures result === value */
+      /* uneffect:ensures result === value */
       export function identity(value: number): number { return value }
     ` } });
 
@@ -978,9 +978,9 @@ describe("evidence and optimizer obligations", () => {
 
   it("attaches evidence to every summary and binds reproducibility inputs", () => {
     const { program, source } = programOf(`
-      /* uneffect:capability effect Console */ function checked() { console.log("x") }
+      /* uneffect:effect Console */ function checked() { console.log("x") }
       function inferred() { console.log("x") }
-      /* uneffect:capability effect Console */ function unknown() { fetch("https://example.com") }
+      /* uneffect:effect Console */ function unknown() { fetch("https://example.com") }
     `);
     const result = analyzeEffectSummariesInProgram(program, source);
     const artifact = createEvidenceArtifact(program, source, result.summaries, builtinContractRegistry);
@@ -1001,10 +1001,10 @@ describe("evidence and optimizer obligations", () => {
 
   it("preserves polymorphic iterator contracts and bounds in evidence artifacts", () => {
     const { program, source } = programOf(`
-      /* uneffect:capability effect Console */ function* generate() { console.log("step"); yield 1 }
-      /* uneffect:capability effect_parameter iterator extends Console */
+      /* uneffect:effect Console */ function* generate() { console.log("step"); yield 1 }
+      /* uneffect:effect_parameter iterator extends Console */
       function consume(iterator: IteratorObject<unknown>) { iterator.next() }
-      /* uneffect:capability effect Console */ function main() { consume(generate()) }
+      /* uneffect:effect Console */ function main() { consume(generate()) }
     `);
     const artifact = createEvidenceArtifact(program, source, analyzeEffectSummariesInProgram(program, source).summaries, builtinContractRegistry);
     expect(artifact.summaries.find((summary) => summary.functionName === "consume")).toMatchObject({
@@ -1038,7 +1038,7 @@ describe("evidence and optimizer obligations", () => {
 
   it("validates effect evidence against every regenerated dependency and summary", () => {
     const { program, source } = programOf(`
-      /* uneffect:capability effect Console */ function report() { console.log("ok") }
+      /* uneffect:effect Console */ function report() { console.log("ok") }
     `);
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;
     const artifact = createEvidenceArtifact(program, source, summaries, builtinContractRegistry);

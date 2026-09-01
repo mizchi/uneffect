@@ -28,8 +28,8 @@ function programForFiles(files: Readonly<Record<string, string>>): ts.Program {
 describe("Hoare contract checker", () => {
   it("proves a valid postcondition", async () => {
     const source = `
-      /* uneffect:contract requires x >= 0 */
-      /* uneffect:contract ensures result > x */
+      /* uneffect:requires x >= 0 */
+      /* uneffect:ensures result > x */
       function inc(x: number) { return x + 1 }
     `;
     expect(await verifyContracts("ok.ts", source)).toEqual([]);
@@ -37,8 +37,8 @@ describe("Hoare contract checker", () => {
 
   it("finds a counterexample", async () => {
     const source = `
-      /* uneffect:contract requires x >= 0 */
-      /* uneffect:contract ensures result > x */
+      /* uneffect:requires x >= 0 */
+      /* uneffect:ensures result > x */
       function same(x: number) { return x }
     `;
     const [failure] = await verifyContracts("bad.ts", source);
@@ -55,11 +55,11 @@ describe("Hoare contract checker", () => {
 
   it("checks loop invariant initialization and preservation", async () => {
     const source = `
-      /* uneffect:contract requires n >= 0 */
-      /* uneffect:contract ensures result == n */
+      /* uneffect:requires n >= 0 */
+      /* uneffect:ensures result == n */
       function count(n: number) {
         let i = 0
-        /* uneffect:contract invariant i >= 0 && i <= n */
+        /* uneffect:loop_invariant i >= 0 && i <= n */
         while (i < n) { i = i + 1 }
         return i
       }
@@ -69,7 +69,7 @@ describe("Hoare contract checker", () => {
 
   it("treats unsupported syntax as a non-proof", async () => {
     const [failure] = await verifyContracts("unsupported.ts", `
-      /* uneffect:contract ensures result > 0 */
+      /* uneffect:ensures result > 0 */
       function value() { for (;;) break; return 1 }
     `);
     expect(failure).toMatchObject({ functionName: "value", clause: "unsupported" });
@@ -78,7 +78,7 @@ describe("Hoare contract checker", () => {
 
   it("returns machine-readable evidence for successful obligations", async () => {
     const result = await verifyContractObligations("proof.ts", `
-      /* uneffect:contract ensures result === x */
+      /* uneffect:ensures result === x */
       function identity(x: Int): Int { return x }
     `);
     expect(result.diagnostics).toEqual([]);
@@ -92,7 +92,7 @@ describe("Hoare contract checker", () => {
 
   it("reports only the failing early-return path", async () => {
     const result = await verifyContractObligations("broken-absolute.ts", `
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       function brokenAbsolute(value: Int): Int {
         if (value < 0) return value
         return value
@@ -113,7 +113,7 @@ describe("Hoare contract checker", () => {
     const source = `
       type Int = number
       type Digit = 0 | 1 | 2
-      /* uneffect:contract ensures result >= 0 && result <= 2 */
+      /* uneffect:ensures result >= 0 && result <= 2 */
       function preserveDigit(value: Digit): Int { return value }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
@@ -132,7 +132,7 @@ describe("Hoare contract checker", () => {
     const source = `
       type Int = number
       type Digit = number
-      /* uneffect:contract ensures result >= 0 && result <= 2 */
+      /* uneffect:ensures result >= 0 && result <= 2 */
       function preserveDigit(value: Digit): Int { return value }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
@@ -147,7 +147,7 @@ describe("Hoare contract checker", () => {
       type Int = number
       type Digit = 0 | 1
       const invalid: Digit = 2
-      /* uneffect:contract ensures result >= 0 && result <= 1 */
+      /* uneffect:ensures result >= 0 && result <= 1 */
       function preserveDigit(value: Digit): Int { return value }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
@@ -163,7 +163,7 @@ describe("Hoare contract checker", () => {
         fact: "value: number | undefined via nullish guard",
         source: `
           type Int = number
-          /* uneffect:contract ensures result >= 0 */
+          /* uneffect:ensures result >= 0 */
           function magnitude(value: Int | undefined): Int {
             if (value === undefined) return 0
             if (value < 0) return -value
@@ -176,7 +176,7 @@ describe("Hoare contract checker", () => {
         fact: "value: number | string via typeof number guard",
         source: `
           type Int = number
-          /* uneffect:contract ensures result >= 0 */
+          /* uneffect:ensures result >= 0 */
           function magnitude(value: Int | string): Int {
             if (typeof value !== "number") return 0
             if (value < 0) return -value
@@ -189,7 +189,7 @@ describe("Hoare contract checker", () => {
         fact: "value: number | null | undefined via nullish guard",
         source: `
           type Int = number
-          /* uneffect:contract ensures result >= 0 */
+          /* uneffect:ensures result >= 0 */
           function magnitude(value: Int | null | undefined): Int {
             if (value == null) return 0
             if (value < 0) return -value
@@ -211,7 +211,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/invalid-typeof.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       function invalid(value: Int | string): Int {
         if (typeof value === "string") return value + 1
         return value
@@ -225,7 +225,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/caught-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       function magnitude(value: Int): Int {
         try {
           if (value < 0) throw new RangeError("negative")
@@ -255,7 +255,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/uncaught-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       function magnitude(value: Int): Int {
         if (value < 0) throw new RangeError("negative")
         return value
@@ -285,9 +285,9 @@ describe("Hoare contract checker", () => {
     const fileName = "/declared-throw-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:capability effect Throw<RangeError> */
+      /* uneffect:effect Throw<RangeError> */
       function fail(): never { throw new RangeError("negative") }
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       function magnitude(value: Int): Int {
         if (value < 0) {
           try { fail() } catch { return 0 }
@@ -310,7 +310,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/rejection-is-not-throw.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       async function invalid(value: Int): Promise<Int> {
         try { await Promise.reject(new RangeError("negative")) }
         catch { return 0 }
@@ -331,8 +331,8 @@ describe("Hoare contract checker", () => {
     const fileName = "/finally-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result === value */
-      /* uneffect:capability effect Throw<RangeError> */
+      /* uneffect:ensures result === value */
+      /* uneffect:effect Throw<RangeError> */
       function guardedIdentity(value: Int): Int {
         try { return value }
         finally { if (value < 0) throw new RangeError("negative") }
@@ -351,7 +351,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/catch-binding-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       function magnitude(value: Int): Int {
         try {
           if (value < 0) throw -value
@@ -377,7 +377,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/await-rejection-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       async function normalize(value: Int): Promise<Int> {
         try {
           if (value < 0) await Promise.reject(new RangeError("negative"))
@@ -403,7 +403,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/await-rejection-binding-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       async function magnitude(value: Int): Promise<Int> {
         try {
           if (value < 0) await Promise.reject(-value)
@@ -429,7 +429,7 @@ describe("Hoare contract checker", () => {
     const fileName = "/uncaught-rejection-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       async function normalize(value: Int): Promise<Int> {
         if (value < 0) await Promise.reject(new RangeError("negative"))
         return value
@@ -450,7 +450,7 @@ describe("Hoare contract checker", () => {
     const source = `
       export {}
       const Promise = { reject(input: unknown) { return globalThis.Promise.reject(input) } }
-      /* uneffect:contract ensures result === value */
+      /* uneffect:ensures result === value */
       async function normalize(value: number): Promise<number> {
         try { await Promise.reject(new RangeError("negative")) }
         catch { return value }
@@ -468,7 +468,7 @@ describe("Hoare contract checker", () => {
       /* uneffect:temporal-summary rejects RangeError */
       /* uneffect:temporal-summary throws URIError */
       declare function readRemote(value: Int): Promise<Int>
-      /* uneffect:contract ensures result === value || result === 0 */
+      /* uneffect:ensures result === value || result === 0 */
       async function normalize(value: Int): Promise<Int> {
         try {
           if (value >= 0) await readRemote(value)
@@ -500,7 +500,7 @@ describe("Hoare contract checker", () => {
     const source = `
       /* uneffect:temporal-summary rejects RangeError */
       declare function readImmediate(): number
-      /* uneffect:contract ensures result === 0 */
+      /* uneffect:ensures result === 0 */
       async function normalize(): Promise<number> {
         try { await readImmediate() } catch {}
         return 0
@@ -515,11 +515,11 @@ describe("Hoare contract checker", () => {
     const fileName = "/awaited-fulfillment-contract.ts";
     const source = `
       type Int = number
-      /* uneffect:contract ensures result >= value */
+      /* uneffect:ensures result >= value */
       /* uneffect:temporal-summary rejects RangeError */
       declare function readRemote(value: Int): Promise<Int>
-      /* uneffect:contract requires value >= 0 */
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= 0 */
       async function normalize(value: Int): Promise<Int> {
         try {
           const loaded = await readRemote(value)
@@ -548,9 +548,9 @@ describe("Hoare contract checker", () => {
   it("composes a scalar fulfillment postcondition through return await", async () => {
     const fileName = "/return-await-contract.ts";
     const source = `
-      /* uneffect:contract ensures result === value + 1 */
+      /* uneffect:ensures result === value + 1 */
       declare function addOne(value: number): Promise<number>
-      /* uneffect:contract ensures result > value */
+      /* uneffect:ensures result > value */
       async function increment(value: number): Promise<number> {
         return await addOne(value)
       }
@@ -568,11 +568,11 @@ describe("Hoare contract checker", () => {
   it("proves an awaited callee precondition at the call path", async () => {
     const fileName = "/await-requires-contract.ts";
     const source = `
-      /* uneffect:contract requires value >= 0 */
-      /* uneffect:contract ensures result >= value */
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= value */
       declare function readRemote(value: number): Promise<number>
-      /* uneffect:contract requires value >= 0 */
-      /* uneffect:contract ensures result >= value */
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= value */
       async function normalize(value: number): Promise<number> {
         return await readRemote(value)
       }
@@ -586,7 +586,7 @@ describe("Hoare contract checker", () => {
       controlFlow: expect.objectContaining({ completion: "call" }),
     }));
 
-    const unsafe = source.replace("/* uneffect:contract requires value >= 0 */\n      /* uneffect:contract ensures result >= value */\n      async function normalize", "/* uneffect:contract ensures result >= value */\n      async function normalize");
+    const unsafe = source.replace("/* uneffect:requires value >= 0 */\n      /* uneffect:ensures result >= value */\n      async function normalize", "/* uneffect:ensures result >= value */\n      async function normalize");
     const invalid = await verifyContractObligations(fileName, unsafe, undefined, programFor(fileName, unsafe));
     expect(invalid.artifacts).toContainEqual(expect.objectContaining({
       status: "counterexample", obligation: expect.objectContaining({ clause: "requires", source: "value >= 0" }),
@@ -596,10 +596,10 @@ describe("Hoare contract checker", () => {
   it("uses a narrowed call path to prove an awaited callee precondition", async () => {
     const fileName = "/await-path-requires-contract.ts";
     const source = `
-      /* uneffect:contract requires value >= 0 */
-      /* uneffect:contract ensures result >= value */
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= value */
       declare function readRemote(value: number): Promise<number>
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       async function normalize(value: number): Promise<number> {
         if (value >= 0) return await readRemote(value)
         return 0
@@ -628,11 +628,11 @@ describe("Hoare contract checker", () => {
   it("promotes a local relational summary only after the callee contract verifies", async () => {
     const fileName = "/verified-relational-call.ts";
     const source = `
-      /* uneffect:contract ensures result === value + 1 */
+      /* uneffect:ensures result === value + 1 */
       async function addOne(value: number): Promise<number> {
         return value + 1
       }
-      /* uneffect:contract ensures result > value */
+      /* uneffect:ensures result > value */
       async function increment(value: number): Promise<number> {
         return await addOne(value)
       }
@@ -657,11 +657,11 @@ describe("Hoare contract checker", () => {
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `
-      /* uneffect:contract ensures result === value + 1 */
+      /* uneffect:ensures result === value + 1 */
       async function addOne(value: number): Promise<number> { return value + 1 }
-      /* uneffect:contract ensures result === value + 2 */
+      /* uneffect:ensures result === value + 2 */
       async function addTwo(value: number): Promise<number> { return await addOne(value + 1) }
-      /* uneffect:contract ensures result > value */
+      /* uneffect:ensures result > value */
       async function increment(value: number): Promise<number> { return await addTwo(value) }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
@@ -682,9 +682,9 @@ describe("Hoare contract checker", () => {
   it("does not promote a circular relational proof", async () => {
     const fileName = "/circular-relational-contract.ts";
     const source = `
-      /* uneffect:contract ensures result === value */
+      /* uneffect:ensures result === value */
       async function left(value: number): Promise<number> { return await right(value) }
-      /* uneffect:contract ensures result === value */
+      /* uneffect:ensures result === value */
       async function right(value: number): Promise<number> { return await left(value) }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
@@ -697,12 +697,12 @@ describe("Hoare contract checker", () => {
   it("reconciles a TypeChecker-resolved relational summary across source files", async () => {
     const files = {
       "/producer.ts": `
-        /* uneffect:contract ensures result === value + 1 */
+        /* uneffect:ensures result === value + 1 */
         export async function addOne(value: number): Promise<number> { return value + 1 }
       `,
       "/consumer.ts": `
         import { addOne } from "./producer"
-        /* uneffect:contract ensures result > value */
+        /* uneffect:ensures result > value */
         export async function increment(value: number): Promise<number> { return await addOne(value) }
       `,
     };
@@ -741,12 +741,12 @@ describe("Hoare contract checker", () => {
   it("applies cross-file relational reconciliation in project verification", async () => {
     const result = await verifyUneffectProject({ files: {
       "/producer.ts": `
-        /* uneffect:contract ensures result === value + 1 */
+        /* uneffect:ensures result === value + 1 */
         export async function addOne(value: number): Promise<number> { return value + 1 }
       `,
       "/consumer.ts": `
         import { addOne } from "./producer"
-        /* uneffect:contract ensures result > value */
+        /* uneffect:ensures result > value */
         export async function increment(value: number): Promise<number> { return await addOne(value) }
       `,
     } });
@@ -757,7 +757,7 @@ describe("Hoare contract checker", () => {
 
   it("does not silently assume that an unmodeled call is pure", async () => {
     const [failure] = await verifyContracts("call.ts", `
-      /* uneffect:contract ensures result === x */
+      /* uneffect:ensures result === x */
       function wrapped(x: Int): Int { touch(); return x }
     `);
     expect(failure).toMatchObject({ clause: "unsupported", message: expect.stringContaining("verified function summary") });
@@ -766,14 +766,14 @@ describe("Hoare contract checker", () => {
   it("lowers only imported Effect pipe with inline unary expression callbacks", async () => {
     expect(await verifyContracts("effect-pipe.ts", `
       import { pipe as flow } from "effect/Function"
-      /* uneffect:contract requires x >= 0 */
-      /* uneffect:contract ensures result === x + 2 */
+      /* uneffect:requires x >= 0 */
+      /* uneffect:ensures result === x + 2 */
       function addTwo(x: number) { return flow(x, value => value + 1, value => value + 1) }
     `)).toEqual([]);
 
     const [spoofed] = await verifyContracts("spoofed-pipe.ts", `
       function pipe(value: number, stage: (value: number) => number) { return stage(value) }
-      /* uneffect:contract ensures result === x + 1 */
+      /* uneffect:ensures result === x + 1 */
       function addOne(x: number) { return pipe(x, value => value + 1) }
     `);
     expect(spoofed).toMatchObject({ clause: "unsupported", message: expect.stringContaining("unsupported invariant expression") });

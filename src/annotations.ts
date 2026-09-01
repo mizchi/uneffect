@@ -12,7 +12,7 @@ export type UneffectDirective =
   | "consumes_rejection" | "consumes_callback_rejection" | "consumes_rejection_when"
   | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when"
   | "borrow" | "consume" | "transfer" | "escape";
-export type UneffectDialect = "unified" | "capability" | "contract" | "temporal" | "temporal-summary" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
+export type UneffectDialect = "unified" | "temporal-summary" | "refinement" | "runtime" | "trust" | "react-component" | "react-hook" | "react-resource";
 export interface SourceSpan { start: number; end: number }
 export interface LocatedAnnotation { value: string; span: SourceSpan }
 export interface AnnotationDiagnostic {
@@ -30,25 +30,24 @@ const unifiedDirectives = new Set([
   "borrow", "consume", "transfer", "escape",
 ]);
 
+export function isCoreUneffectDirective(directive: string): boolean {
+  return unifiedDirectives.has(directive);
+}
+
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   unified: unifiedDirectives,
-  capability: new Set(["effect", "effect_parameter", "module_effect", "effect_schema", "from"]),
-  contract: new Set(["requires", "ensures", "invariant", "decreases", "assert", "validate", "returns", "from"]),
-  temporal: new Set([
-    "state", "clock", "init", "action", "action_when", "action_fair", "invariant", "eventually", "repeatedly", "stabilizes", "response", "fair", "from",
-    "consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when",
-    "borrow", "consume", "transfer", "escape",
-  ]),
   "temporal-summary": new Set(["requires", "ensures", "modifies", "throws", "rejects", "suspends", "cancellable", "eventually", "repeatedly", "stabilizes", "response", "fair"]),
   refinement: new Set(["refinement", "abstraction"]), runtime: new Set(["runtime", "returns"]),
   trust: new Set(["trust", "trust_owner", "trust_expires"]), "react-component": new Set(), "react-hook": new Set(),
   "react-resource": new Set(["acquire", "release"]),
 };
 const aliases: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  unified: { loop_invariant: "invariant", always: "temporal" },
-  capability: { from: "capability_from" },
-  contract: { from: "contract_from" },
-  temporal: { invariant: "temporal", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair", from: "temporal_from" },
+  unified: {
+    loop_invariant: "invariant", always: "temporal",
+    eventually: "temporal_eventually", repeatedly: "temporal_repeatedly",
+    stabilizes: "temporal_stabilizes", response: "temporal_response",
+    fair: "temporal_fair",
+  },
   "temporal-summary": { requires: "temporal_requires", ensures: "temporal_ensures", modifies: "temporal_modifies", throws: "temporal_throws", rejects: "temporal_rejects", suspends: "temporal_suspends", cancellable: "temporal_cancellable", eventually: "temporal_eventually", repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes", response: "temporal_response", fair: "temporal_fair" },
 };
 
@@ -89,6 +88,15 @@ function canonicalDirective(dialect: string, directive: string): string { return
 export function extractLocatedAnnotations(text: string, directive: UneffectDirective | string, baseOffset = 0): LocatedAnnotation[] {
   const values: LocatedAnnotation[] = [];
   for (const block of payloadBlocks(text, baseOffset)) {
+    if (block.dialect === directive && !dialectDirectives[block.dialect as UneffectDialect]) {
+      for (const line of block.lines) {
+        const value = line.cleaned.trim();
+        if (!value) continue;
+        const start = line.start + line.cleaned.indexOf(value);
+        values.push({ value, span: { start, end: start + value.length } });
+      }
+      continue;
+    }
     if (directive === "react" && (block.dialect === "react-component" || block.dialect === "react-hook")) {
       values.push({ value: block.dialect === "react-component" ? "component" : "hook", span: block.dialectSpan });
     }
@@ -113,10 +121,16 @@ export function extractLocatedAnnotations(text: string, directive: UneffectDirec
 
 export function validateUneffectAnnotations(text: string, baseOffset = 0, additionalDirectives: Iterable<string> = []): AnnotationDiagnostic[] {
   const diagnostics: AnnotationDiagnostic[] = [];
+  const additional = new Set(additionalDirectives);
   for (const block of payloadBlocks(text, baseOffset)) {
     const allowed = dialectDirectives[block.dialect as UneffectDialect];
+    if (!allowed && additional.has(block.dialect)) {
+      const payload = block.lines.map((line) => line.cleaned.trim()).find(Boolean);
+      if (!payload) diagnostics.push({ kind: "missing-payload", directive: block.dialect, dialect: "unified", span: block.dialectSpan, message: `Uneffect directive \`${block.dialect}\` requires a payload` });
+      continue;
+    }
     if (!allowed) { diagnostics.push({ kind: "unknown-dialect", directive: block.dialect, span: block.dialectSpan, message: `unknown Uneffect dialect \`${block.dialect || "(missing)"}\`` }); continue; }
-    const accepted = block.dialect === "temporal" || block.dialect === "unified" ? new Set([...allowed, ...additionalDirectives]) : allowed;
+    const accepted = block.dialect === "unified" ? new Set([...allowed, ...additional]) : allowed;
     for (const line of block.lines) {
       const candidate = line.cleaned.trim(); if (!candidate) continue;
       const match = /^([^\s]+)(?:\s+(.*))?$/.exec(candidate)!, name = match[1]!, leading = line.cleaned.indexOf(candidate);

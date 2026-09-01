@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect none */
+/* uneffect:module_effect none */
 import ts from "typescript";
 
 export type StaticPrimitive = string | number | boolean;
@@ -14,7 +14,7 @@ export interface StaticEvaluationOptions {
 }
 
 /** A deliberately finite evaluator for proof-directed TypeScript control flow. */
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function evaluateStaticPrimitive(
   expression: ts.Expression,
   options: StaticEvaluationOptions,
@@ -60,7 +60,7 @@ export function evaluateStaticPrimitive(
     : undefined;
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function evaluateStaticBoolean(expression: ts.Expression, options: StaticEvaluationOptions): boolean | undefined {
   const value = evaluateStaticPrimitive(expression, options);
   return typeof value === "boolean" ? value : undefined;

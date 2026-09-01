@@ -12,7 +12,7 @@ describe("backend-neutral callable summaries", () => {
     try {
       const fileName = join(directory, "entry.ts");
       writeFileSync(fileName, `
-        /* uneffect:capability effect_parameter callback extends Console | Fetch */
+        /* uneffect:effect_parameter callback extends Console | Fetch */
         function once(callback: () => void) {
           const stable = callback
           stable()

@@ -4,7 +4,7 @@ import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/b
 
 describe("effect checker", () => {
   it("reports an invalid effect-set annotation without crashing the checker", () => {
-    const source = `/* uneffect:capability effect none | Console */ function invalid() {}`;
+    const source = `/* uneffect:effect none | Console */ function invalid() {}`;
     expect(analyzeEffects("invalid-effect-set.ts", source)).toContainEqual(expect.objectContaining({
       fileName: "invalid-effect-set.ts", functionName: "invalid", kind: "invalid", severity: "error",
       message: expect.stringContaining("`none` must be the only member"),
@@ -13,11 +13,11 @@ describe("effect checker", () => {
 
   it("rejects unknown and payload-less Uneffect directives instead of inferring around them", () => {
     const source = `
-      /* uneffect:temporal effects Console */ function misspelled() { console.log("x") }
-      /* uneffect:capability effect */ function missingPayload() {}
+      /* uneffect: effects Console */ function misspelled() { console.log("x") }
+      /* uneffect:effect */ function missingPayload() {}
     `;
     expect(analyzeEffects("invalid-directives.ts", source)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ functionName: "<annotation>", kind: "invalid", severity: "error", message: expect.stringContaining("`effects` is not valid in an `uneffect:temporal` block") }),
+      expect.objectContaining({ functionName: "<annotation>", kind: "invalid", severity: "error", message: "unknown Uneffect dialect `effects`" }),
       expect.objectContaining({ functionName: "<annotation>", kind: "invalid", severity: "error", message: expect.stringContaining("requires a payload") }),
     ]));
   });
@@ -25,10 +25,10 @@ describe("effect checker", () => {
   it("propagates effects from implicit using disposal", () => {
     const source = `
       class Resource {
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         [Symbol.dispose]() { console.log("disposed") }
       }
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function valid() { using resource = new Resource() }
       function invalid() { using resource = new Resource() }
     `;
@@ -40,7 +40,7 @@ describe("effect checker", () => {
   it("discharges a synchronous disposer throw caught around using", () => {
     const source = `
       class Resource {
-        /* uneffect:capability effect Throw<RangeError> */
+        /* uneffect:effect Throw<RangeError> */
         [Symbol.dispose]() { throw new RangeError("dispose") }
       }
       function safe() { try { using resource = new Resource() } catch {} }
@@ -57,7 +57,7 @@ describe("effect checker", () => {
 
   it("checks an in-place recursive quicksort as one reference-scoped mutation", () => {
     const source = `
-      /* uneffect:capability effect Mutate<typeof values> */
+      /* uneffect:effect Mutate<typeof values> */
       function partition(values: number[], lo: number, hi: number): number {
         const pivot = values[hi]!
         let p = lo
@@ -74,7 +74,7 @@ describe("effect checker", () => {
         values[hi] = value
         return p
       }
-      /* uneffect:capability effect Mutate<typeof values> */
+      /* uneffect:effect Mutate<typeof values> */
       function quicksort(values: number[], lo = 0, hi = values.length - 1): void {
         if (lo >= hi) return
         const pivot = partition(values, lo, hi)
@@ -87,16 +87,16 @@ describe("effect checker", () => {
 
   it("infers direct and transitive effects", () => {
     const source = `
-      /* uneffect:capability effect Console */ function log() { console.log("x") }
-      /* uneffect:capability effect Console | Fetch | Net */ async function main() { log(); await fetch("/") }
+      /* uneffect:effect Console */ function log() { console.log("x") }
+      /* uneffect:effect Console | Fetch | Net */ async function main() { log(); await fetch("/") }
     `;
     expect(analyzeEffects("ok.ts", source)).toEqual([]);
   });
 
   it("reports a missing transitive effect", () => {
     const source = `
-      /* uneffect:capability effect Console */ function log() { console.log("x") }
-      /* uneffect:capability effect Fetch | Net */ async function main() { log(); await fetch("/") }
+      /* uneffect:effect Console */ function log() { console.log("x") }
+      /* uneffect:effect Fetch | Net */ async function main() { log(); await fetch("/") }
     `;
     expect(analyzeEffects("bad.ts", source)).toMatchObject([
       { functionName: "main", effect: "Console", kind: "missing" },
@@ -104,21 +104,21 @@ describe("effect checker", () => {
   });
 
   it("warns about an unused upper-bound effect", () => {
-    const source = `/* uneffect:capability effect Console | Fetch */ function f() { console.log("x") }`;
+    const source = `/* uneffect:effect Console | Fetch */ function f() { console.log("x") }`;
     expect(analyzeEffects("ok.ts", source)).toEqual([
       expect.objectContaining({ functionName: "f", effect: "Fetch", kind: "unused", severity: "warning" }),
     ]);
   });
 
   it("treats timer scheduling and cancellation as the same Timer capability", () => {
-    const source = `/* uneffect:capability effect Timer */ function f() { const h = setTimeout(() => {}, 1); clearTimeout(h); AbortSignal.timeout(10) }`;
+    const source = `/* uneffect:effect Timer */ function f() { const h = setTimeout(() => {}, 1); clearTimeout(h); AbortSignal.timeout(10) }`;
     expect(analyzeEffects("timer.ts", source)).toEqual([]);
   });
 
   it("recognizes node:fs read/write APIs through aliases", () => {
     const source = `
       import { readFileSync as read, writeFileSync as write } from "node:fs";
-      /* uneffect:capability effect FsRead | FsWrite */
+      /* uneffect:effect FsRead | FsWrite */
       function copy() { write("b", read("a")) }
     `;
     expect(analyzeEffects("fs.ts", source)).toEqual([]);
@@ -127,23 +127,23 @@ describe("effect checker", () => {
   it("uses the same scoped permission primitives for node:fs/promises", () => {
     const source = `
       import { readFile as read, writeFile as write } from "node:fs/promises";
-      /* uneffect:capability effect FsRead<"input.txt"> | FsWrite<"output.txt"> */
+      /* uneffect:effect FsRead<"input.txt"> | FsWrite<"output.txt"> */
       async function copy() { await write("output.txt", await read("input.txt")) }
     `;
     expect(analyzeEffects("fs-promises.ts", source)).toEqual([]);
 
     const dynamic = `
       import { readFile } from "node:fs/promises";
-      /* uneffect:capability effect FsRead */
+      /* uneffect:effect FsRead */
       async function load(path: string) { return readFile(path) }
     `;
     expect(analyzeEffects("fs-promises-dynamic.ts", dynamic)).toEqual([]);
 
     const instantiated = `
       import { readFile } from "node:fs/promises";
-      /* uneffect:capability effect FsRead */
+      /* uneffect:effect FsRead */
       async function load(path: string) { return readFile(path) }
-      /* uneffect:capability effect FsRead<"input.txt"> */
+      /* uneffect:effect FsRead<"input.txt"> */
       async function main() { return load("input.txt") }
     `;
     expect(analyzeEffects("fs-promises-instantiated.ts", instantiated)).toEqual([]);
@@ -152,9 +152,9 @@ describe("effect checker", () => {
 
     const forwarded = `
       import { readFile } from "node:fs/promises";
-      /* uneffect:capability effect FsRead */
+      /* uneffect:effect FsRead */
       function load(path: string) { return readFile(path) }
-      /* uneffect:capability effect FsRead */
+      /* uneffect:effect FsRead */
       function wrapper(input: string) { return load(input) }
     `;
     expect(analyzeEffects("fs-promises-forwarded.ts", forwarded)).toEqual([]);
@@ -167,7 +167,7 @@ describe("effect checker", () => {
 
     const promiseSpecific = `
       import { mkdtemp, opendir, statfs } from "node:fs/promises";
-      /* uneffect:capability effect FsRead<"input"> | FsWrite<"tmp-"> */
+      /* uneffect:effect FsRead<"input"> | FsWrite<"tmp-"> */
       async function inspect() {
         await opendir("input");
         await statfs("input");
@@ -180,7 +180,7 @@ describe("effect checker", () => {
   it("propagates capabilities from TypeChecker-resolved deferred callbacks", () => {
     const source = `
       import type { Server } from "node:net";
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function shutdown(server: Server) {
         server.close(() => console.log("closed"));
       }
@@ -192,14 +192,14 @@ describe("effect checker", () => {
     ]));
     expect(analyzeEffects("node-close-named-effects.ts", `
       import type { Server } from "node:net";
-      /* uneffect:capability effect Console */ function afterClose() { console.log("closed") }
-      /* uneffect:capability effect Console */ function shutdown(server: Server) { server.close(afterClose) }
+      /* uneffect:effect Console */ function afterClose() { console.log("closed") }
+      /* uneffect:effect Console */ function shutdown(server: Server) { server.close(afterClose) }
     `)).toEqual([]);
   });
 
   it("propagates deferred disposal callbacks from generic disposal-stack semantics", () => {
     const source = `
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function cleanup(stack: DisposableStack) { stack.defer(() => console.log("disposed")) }
       class LocalStack { defer(callback: () => void) { callback() } }
       function shadow(stack: LocalStack) { stack.defer(() => {}) }
@@ -210,7 +210,7 @@ describe("effect checker", () => {
   it("tracks Node DNS authority and callback capabilities through aliases", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns";
-      /* uneffect:capability effect Net<"example.com"> | Console */
+      /* uneffect:effect Net<"example.com"> | Console */
       function resolve() { resolveHost("example.com", () => console.log("resolved")) }
       function lookup(_host: string, callback: () => void) { callback() }
       function local() { lookup("example.com", () => undefined) }
@@ -224,7 +224,7 @@ describe("effect checker", () => {
   it("narrows literal node:net connection options to a host-and-port authority", () => {
     const source = `
       import { createConnection as dial } from "node:net";
-      /* uneffect:capability effect Net<"api.example.com:443"> */
+      /* uneffect:effect Net<"api.example.com:443"> */
       function connect() { return dial({ host: "api.example.com", port: 443 }, () => undefined) }
     `;
     expect(analyzeEffects("node-net-effects.ts", source)).toEqual([]);
@@ -237,7 +237,7 @@ describe("effect checker", () => {
   it("tracks a TypeChecker-resolved Socket.connect listener without matching a lookalike", () => {
     const source = `
       import type { Socket } from "node:net";
-      /* uneffect:capability effect Net<"api.example.com:443"> */
+      /* uneffect:effect Net<"api.example.com:443"> */
       function reconnect(socket: Socket) {
         return socket.connect({ host: "api.example.com", port: 443 }, () => undefined)
       }
@@ -250,9 +250,9 @@ describe("effect checker", () => {
   it("tracks Random for synchronous and callback node:crypto randomBytes overloads", () => {
     const source = `
       import { randomBytes as secureBytes } from "node:crypto";
-      /* uneffect:capability effect Random */
+      /* uneffect:effect Random */
       function syncToken() { return secureBytes(32) }
-      /* uneffect:capability effect Random | Console */
+      /* uneffect:effect Random | Console */
       function asyncToken() { secureBytes(32, (_error, bytes) => console.log(bytes.length)) }
       function randomBytes(_size: number, callback: () => void) { callback() }
       function local() { randomBytes(1, () => undefined) }
@@ -263,11 +263,11 @@ describe("effect checker", () => {
   it("treats common Web and Node randomness APIs as Random capability boundaries", () => {
     const source = `
       import { randomFill, randomFillSync, randomInt, randomUUID as nodeRandomUUID } from "node:crypto";
-      /* uneffect:capability effect Random */
+      /* uneffect:effect Random */
       function web(bytes: Uint8Array) { crypto.getRandomValues(bytes); return crypto.randomUUID() }
-      /* uneffect:capability effect Random */
+      /* uneffect:effect Random */
       function nodeSync(bytes: Uint8Array) { randomFillSync(bytes); randomInt(10); return nodeRandomUUID() }
-      /* uneffect:capability effect Random | Console */
+      /* uneffect:effect Random | Console */
       function nodeAsync(bytes: Uint8Array) {
         randomFill(bytes, error => console.log(error))
         randomInt(1, 10, (error, value) => console.log(error, value))
@@ -282,9 +282,9 @@ describe("effect checker", () => {
     const source = `
       import { request as httpRequest } from "node:http";
       import { get as httpsGet } from "node:https";
-      /* uneffect:capability effect Net<"api.example.com:80"> */
+      /* uneffect:effect Net<"api.example.com:80"> */
       function byUrl() { return httpRequest("http://api.example.com/v1", () => undefined) }
-      /* uneffect:capability effect Net<"secure.example.com:8443"> */
+      /* uneffect:effect Net<"secure.example.com:8443"> */
       function byOptions() { return httpsGet({ hostname: "secure.example.com", port: 8443 }, () => undefined) }
       function request(_url: string, callback: () => void) { callback() }
       function local() { request("http://api.example.com", () => undefined) }
@@ -295,11 +295,11 @@ describe("effect checker", () => {
   it("tracks Deno-compatible Run authority across child_process APIs", () => {
     const source = `
       import { exec, execFile as runFile, execSync, execFileSync, spawn, spawnSync, fork } from "node:child_process";
-      /* uneffect:capability effect Run */ function shell() { exec("git status", () => undefined); execSync("git status") }
-      /* uneffect:capability effect Run<"git"> */ function files() { runFile("git", ["status"], () => undefined); execFileSync("git", ["status"]); spawn("git"); spawnSync("git") }
-      /* uneffect:capability effect Run */ function module() { fork("worker.js") }
-      /* uneffect:capability effect Run */ function launch(program: string) { spawn(program) }
-      /* uneffect:capability effect Run<"git"> */ function status() { launch("git") }
+      /* uneffect:effect Run */ function shell() { exec("git status", () => undefined); execSync("git status") }
+      /* uneffect:effect Run<"git"> */ function files() { runFile("git", ["status"], () => undefined); execFileSync("git", ["status"]); spawn("git"); spawnSync("git") }
+      /* uneffect:effect Run */ function module() { fork("worker.js") }
+      /* uneffect:effect Run */ function launch(program: string) { spawn(program) }
+      /* uneffect:effect Run<"git"> */ function status() { launch("git") }
       function execFile(_file: string, callback: () => void) { callback() }
       function local() { execFile("git", () => undefined) }
     `;
@@ -308,14 +308,14 @@ describe("effect checker", () => {
 
   it("tracks Deno-compatible process.env authority by TypeChecker identity", () => {
     const source = `
-      /* uneffect:capability effect Env<"HOME" | "CI"> */
+      /* uneffect:effect Env<"HOME" | "CI"> */
       function exact(key: "HOME" | "CI") {
         process.env.CI = "1"
         const home = process.env["HOME"]
         delete process.env[key]
         return home
       }
-      /* uneffect:capability effect Env */
+      /* uneffect:effect Env */
       function dynamic(key: string) { return process.env[key] }
       function shadowed(process: { env: Record<string, string> }) { return process.env.HOME }
     `;
@@ -327,7 +327,7 @@ describe("effect checker", () => {
   it("tracks Deno-compatible Sys authority for TypeChecker-resolved node:os calls", () => {
     const source = `
       import { hostname as osHostname, cpus, userInfo as currentUser } from "node:os"
-      /* uneffect:capability effect Sys<hostname | cpus | username | uid | gid | homedir> */
+      /* uneffect:effect Sys<hostname | cpus | username | uid | gid | homedir> */
       function diagnostics() { return { hostname: osHostname(), cores: cpus().length, user: currentUser() } }
       function hostname() { return "shadowed" }
       function local() { return hostname() }
@@ -340,7 +340,7 @@ describe("effect checker", () => {
   it("tracks scoped Net authority for TypeChecker-resolved Node server listeners", () => {
     const source = `
       import { createServer } from "node:net"
-      /* uneffect:capability effect Net<"127.0.0.1:8080"> | Console */
+      /* uneffect:effect Net<"127.0.0.1:8080"> | Console */
       function serve() { createServer().listen(8080, "127.0.0.1", () => console.log("ready")) }
       class Server { listen(_port: number, callback: () => void) { callback() } }
       function local() { new Server().listen(8080, () => undefined) }
@@ -353,7 +353,7 @@ describe("effect checker", () => {
   it("propagates effects from TypeChecker-resolved Node request listeners", () => {
     const source = `
       import { createServer as createHttpServer } from "node:http"
-      /* uneffect:capability effect Net<"127.0.0.1:8080"> | Console */
+      /* uneffect:effect Net<"127.0.0.1:8080"> | Console */
       function serve() {
         const server = createHttpServer((_request, _response) => console.log("request"))
         server.listen(8080, "127.0.0.1")
@@ -369,7 +369,7 @@ describe("effect checker", () => {
   it("propagates effects from repeating node:fs watcher callbacks", () => {
     const source = `
       import { watch as watchFs } from "node:fs"
-      /* uneffect:capability effect FsRead<"config.json"> | Console */
+      /* uneffect:effect FsRead<"config.json"> | Console */
       function watchConfig() { watchFs("config.json", () => console.log("changed")) }
       function watch(_path: string, callback: () => void) { callback() }
       function local() { watch("config.json", () => console.log("local")) }
@@ -382,7 +382,7 @@ describe("effect checker", () => {
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";
-      /* uneffect:capability effect FsRead<"$WORKSPACE_ROOT/data/**"> */
+      /* uneffect:effect FsRead<"$WORKSPACE_ROOT/data/**"> */
       function load() { return readFileSync("$WORKSPACE_ROOT/data/users.json") }
     `;
     expect(analyzeEffects("fs.ts", source)).toEqual([]);
@@ -391,7 +391,7 @@ describe("effect checker", () => {
   it("models fs.read as a filesystem read that mutates its buffer", () => {
     const source = `
       import { read } from "node:fs";
-      /* uneffect:capability effect FsRead */
+      /* uneffect:effect FsRead */
       function fill(fd: number, buffer: Buffer) { read(fd, buffer, 0, buffer.length, 0, () => {}) }
     `;
     expect(analyzeEffects("fs.ts", source)).toContainEqual(
@@ -402,7 +402,7 @@ describe("effect checker", () => {
   it("models copyFile as both a filesystem read and write", () => {
     const source = `
       import * as fs from "node:fs";
-      /* uneffect:capability effect FsWrite */
+      /* uneffect:effect FsWrite */
       function copy() { fs.copyFile("a", "b", () => {}) }
     `;
     expect(analyzeEffects("fs.ts", source)).toContainEqual(
@@ -412,7 +412,7 @@ describe("effect checker", () => {
 
   it("tracks member mutation as a reference-scoped effect", () => {
     const source = `
-      /* uneffect:capability effect Mutate<typeof value> */
+      /* uneffect:effect Mutate<typeof value> */
       function increment(value: { count: number }) { value.count++ }
     `;
     expect(analyzeEffects("mutate.ts", source)).toEqual([]);
@@ -420,7 +420,7 @@ describe("effect checker", () => {
 
   it("resolves mutating builtins by symbol and ignores a user method with the same name", () => {
     const source = `
-      /* uneffect:capability effect Mutate<typeof values> */
+      /* uneffect:effect Mutate<typeof values> */
       function builtin(values: number[]) { values.push(1) }
       class Queue { push(_value: number) {} }
       function user(queue: Queue) { queue.push(1) }
@@ -437,7 +437,7 @@ describe("effect checker", () => {
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "mutate", target: { kind: "receiver" } }] },
     }] });
     const source = `
-      /* uneffect:capability effect Console | Mutate<typeof values> | Throw<TypeError> */
+      /* uneffect:effect Console | Mutate<typeof values> | Throw<TypeError> */
       function reviewed(values: number[]) { console.log(values); values.push(1) }
       class Queue { push(_value: number) {} }
       function shadows(console: { log(value: unknown): void }, queue: Queue) { console.log(queue); queue.push(1) }
@@ -452,9 +452,9 @@ describe("effect checker", () => {
 
   it("does not leak mutation of a reviewed fresh builtin result", () => {
     const source = `
-      /* uneffect:capability effect none */
+      /* uneffect:effect none */
       function sortedKeys(value: object) { return Object.keys(value).sort() }
-      /* uneffect:capability effect none */
+      /* uneffect:effect none */
       function sortedEntries(value: object) { return Object.entries(value).sort() }
     `;
     expect(analyzeEffects("fresh-result.ts", source)).toEqual([]);
@@ -462,9 +462,9 @@ describe("effect checker", () => {
 
   it("treats toSorted as a non-mutating fresh copy while keeping sort destructive", () => {
     const source = `
-      /* uneffect:capability effect none */
+      /* uneffect:effect none */
       function copied(values: number[]) { return values.toSorted().sort() }
-      /* uneffect:capability effect Mutate<typeof values> */
+      /* uneffect:effect Mutate<typeof values> */
       function inPlace(values: number[]) { return values.sort() }
     `;
     expect(analyzeEffects("to-sorted.ts", source)).toEqual([]);
@@ -476,9 +476,9 @@ describe("effect checker", () => {
         seen.add(value)
         if (value.length > 1) walk(value.slice(1), seen)
       }
-      /* uneffect:capability effect none */
+      /* uneffect:effect none */
       function local() { walk("abc") }
-      /* uneffect:capability effect none */
+      /* uneffect:effect none */
       function aliased(seen: Set<string>) { walk("abc", seen) }
     `;
     const diagnostics = analyzeEffects("fresh-default.ts", source, { requireAnnotations: false });
@@ -490,15 +490,15 @@ describe("effect checker", () => {
 
   it("supports inference-only adoption without weakening annotated boundaries", () => {
     expect(analyzeEffects("infer.ts", `function inferred() { console.log("x") }`, { requireAnnotations: false })).toEqual([]);
-    expect(analyzeEffects("infer.ts", `/* uneffect:capability effect Timer */ function checked() { console.log("x") }`, { requireAnnotations: false }))
+    expect(analyzeEffects("infer.ts", `/* uneffect:effect Timer */ function checked() { console.log("x") }`, { requireAnnotations: false }))
       .toContainEqual(expect.objectContaining({ functionName: "checked", effect: "Console", kind: "missing" }));
   });
 
   it("tracks standard process stdout and stderr writes as Console", () => {
     const source = `
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function output() { process.stdout.write("out"); process.stderr.write("err") }
-      /* uneffect:capability effect none */
+      /* uneffect:effect none */
       function invalid() { process.stdout.write("out") }
     `;
     const diagnostics = analyzeEffects("process-streams.ts", source);
@@ -510,9 +510,9 @@ describe("effect checker", () => {
 
   it("substitutes mutation regions through calls", () => {
     const source = `
-      /* uneffect:capability effect Mutate<typeof value> */
+      /* uneffect:effect Mutate<typeof value> */
       function increment(value: { count: number }) { value.count++ }
-      /* uneffect:capability effect Mutate<typeof state> */
+      /* uneffect:effect Mutate<typeof state> */
       function update(state: { count: number }) { increment(state) }
     `;
     expect(analyzeEffects("mutate.ts", source)).toEqual([]);
@@ -520,7 +520,7 @@ describe("effect checker", () => {
 
   it("counts a narrower member mutation as use of a broad region", () => {
     const source = `
-      /* uneffect:capability effect Mutate<typeof state> */
+      /* uneffect:effect Mutate<typeof state> */
       function update(state: { nested: { count: number } }) { state.nested.count++ }
     `;
     expect(analyzeEffects("mutate.ts", source)).toEqual([]);
@@ -528,7 +528,7 @@ describe("effect checker", () => {
 
   it("rejects mutation of a different reference", () => {
     const source = `
-      /* uneffect:capability effect Mutate<typeof left> */
+      /* uneffect:effect Mutate<typeof left> */
       function bad(left: { n: number }, right: { n: number }) { right.n = left.n }
     `;
     expect(analyzeEffects("mutate.ts", source)).toContainEqual(
@@ -538,7 +538,7 @@ describe("effect checker", () => {
 
   it("names the written property, not only the object that holds it", () => {
     const source = `
-      /* uneffect:capability effect Mutate<typeof state.calls> */
+      /* uneffect:effect Mutate<typeof state.calls> */
       function bump(state: { calls: number; total: number }) { state.total += 1 }
     `;
     const [missing] = analyzeEffects("mutate.ts", source);
@@ -551,14 +551,14 @@ describe("effect checker", () => {
 
   it("accepts a declaration of exactly the written property", () => {
     expect(analyzeEffects("mutate.ts", `
-      /* uneffect:capability effect Mutate<typeof state.calls> */
+      /* uneffect:effect Mutate<typeof state.calls> */
       function bump(state: { calls: number; total: number }) { state.calls += 1 }
     `)).toEqual([]);
   });
 
   it("keeps a mutating builtin at the receiver it is called on", () => {
     expect(analyzeEffects("mutate.ts", `
-      /* uneffect:capability effect Mutate<typeof state.items> */
+      /* uneffect:effect Mutate<typeof state.items> */
       function add(state: { items: number[] }, value: number) { state.items.push(value) }
     `)).toEqual([]);
   });
@@ -577,16 +577,16 @@ describe("effect checker", () => {
 
   it("substitutes a member-path region through a call", () => {
     expect(analyzeEffects("mutate.ts", `
-      /* uneffect:capability effect Mutate<typeof target.count> */
+      /* uneffect:effect Mutate<typeof target.count> */
       function increment(target: { count: number }) { target.count++ }
-      /* uneffect:capability effect Mutate<typeof state.inner.count> */
+      /* uneffect:effect Mutate<typeof state.inner.count> */
       function update(state: { inner: { count: number } }) { increment(state.inner) }
     `)).toEqual([]);
   });
 
   it("tracks the concrete Error constructed by a throw statement", () => {
     const source = `
-      /* uneffect:capability effect Throw<RangeError> */
+      /* uneffect:effect Throw<RangeError> */
       function parse(value: number) { if (value < 0) throw new RangeError("negative") }
     `;
     expect(analyzeEffects("throw.ts", source)).toEqual([]);
@@ -595,27 +595,27 @@ describe("effect checker", () => {
   it("propagates typed throw effects through local calls", () => {
     const source = `
       class ParseError extends Error {}
-      /* uneffect:capability effect Throw<ParseError> */ function parse() { throw new ParseError() }
-      /* uneffect:capability effect Throw<ParseError> */ function main() { parse() }
+      /* uneffect:effect Throw<ParseError> */ function parse() { throw new ParseError() }
+      /* uneffect:effect Throw<ParseError> */ function main() { parse() }
     `;
     expect(analyzeEffects("throw.ts", source)).toEqual([]);
   });
 
   it("allows Throw<Error> as an upper bound for concrete Error types", () => {
-    const source = `/* uneffect:capability effect Throw<Error> */ function f() { throw new TypeError("bad") }`;
+    const source = `/* uneffect:effect Throw<Error> */ function f() { throw new TypeError("bad") }`;
     expect(analyzeEffects("throw.ts", source)).toEqual([]);
   });
 
   it("preserves an Error-constrained type parameter", () => {
     const source = `
-      /* uneffect:capability effect Throw<T> */
+      /* uneffect:effect Throw<T> */
       function raise<T extends Error>(error: T): never { throw error }
     `;
     expect(analyzeEffects("throw.ts", source)).toEqual([]);
   });
 
   it("tracks non-Error JavaScript throws as Throw<unknown>", () => {
-    const source = `/* uneffect:capability effect Throw<Error> */ function f() { throw "bad" }`;
+    const source = `/* uneffect:effect Throw<Error> */ function f() { throw "bad" }`;
     expect(analyzeEffects("throw.ts", source)).toContainEqual(
       expect.objectContaining({ functionName: "f", effect: "Throw<unknown>", kind: "missing" }),
     );
@@ -623,7 +623,7 @@ describe("effect checker", () => {
 
   it("does not classify an async-function rejection as synchronous Throw", () => {
     const source = `
-      /* uneffect:capability effect Throw<RangeError> */
+      /* uneffect:effect Throw<RangeError> */
       async function rejects() { throw new RangeError("async") }
       function starts() { rejects() }
     `;
@@ -638,16 +638,16 @@ describe("effect checker", () => {
 
   it("moves generator effects from construction to iterator consumption", () => {
     const source = `
-      /* uneffect:capability effect Console | Throw<RangeError> */
+      /* uneffect:effect Console | Throw<RangeError> */
       function* generate() { console.log("step"); throw new RangeError("step") }
       function constructOnly() { generate() }
       function buildIterator() { return generate() }
       function consumeNext() { generate().next() }
       function consumeLoop() { for (const value of generate()) void value }
       function consumeFactory() { for (const value of buildIterator()) void value }
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function* logOnly() { console.log("log") }
-      /* uneffect:capability effect Throw<TypeError> */
+      /* uneffect:effect Throw<TypeError> */
       function* failOnly() { throw new TypeError("fail") }
       function chooseIterator(log: boolean) {
         if (log) return logOnly()
@@ -656,9 +656,9 @@ describe("effect checker", () => {
       function consumeBranchingFactory(log: boolean) {
         for (const value of chooseIterator(log)) void value
       }
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function caughtConsumption() { try { generate().next() } catch {} }
-      /* uneffect:capability effect Console | Throw<URIError> */
+      /* uneffect:effect Console | Throw<URIError> */
       async function* generateAsync() { console.log("async step"); throw new URIError("async step") }
       async function consumeAsync() { for await (const value of generateAsync()) void value }
     `;
@@ -698,7 +698,7 @@ describe("effect checker", () => {
   });
 
   it("does not admit a class that is not assignable to Error", () => {
-    const source = `class NotAnError {} /* uneffect:capability effect Throw<Error> */ function f() { throw new NotAnError() }`;
+    const source = `class NotAnError {} /* uneffect:effect Throw<Error> */ function f() { throw new NotAnError() }`;
     expect(analyzeEffects("throw.ts", source)).toContainEqual(expect.objectContaining({ functionName: "f", effect: "Throw<unknown>", kind: "missing" }));
   });
 
@@ -709,7 +709,7 @@ describe("effect checker", () => {
 
   it("discharges a transitive throw from a call in a try block", () => {
     const source = `
-      /* uneffect:capability effect Throw<RangeError> */ function dangerous() { throw new RangeError("bad") }
+      /* uneffect:effect Throw<RangeError> */ function dangerous() { throw new RangeError("bad") }
       function safe() { try { dangerous() } catch {} }
     `;
     expect(analyzeEffects("throw.ts", source)).toEqual([]);
@@ -717,7 +717,7 @@ describe("effect checker", () => {
 
   it("does not discharge a throw originating in the catch body", () => {
     const source = `
-      /* uneffect:capability effect Throw<TypeError> */
+      /* uneffect:effect Throw<TypeError> */
       function translate() {
         try { throw new RangeError("bad") }
         catch { throw new TypeError("translated") }
@@ -728,7 +728,7 @@ describe("effect checker", () => {
 
   it("preserves non-throw effects inside a caught try block", () => {
     const source = `
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       function f() {
         try { console.log("before"); throw new Error("bad") } catch {}
       }
@@ -738,7 +738,7 @@ describe("effect checker", () => {
 
   it("warns when a declared throw is fully discharged", () => {
     const source = `
-      /* uneffect:capability effect Throw<Error> */
+      /* uneffect:effect Throw<Error> */
       function f() { try { throw new Error("bad") } catch {} }
     `;
     expect(analyzeEffects("throw.ts", source)).toContainEqual(
@@ -748,7 +748,7 @@ describe("effect checker", () => {
 
   it("does not treat try/finally without catch as a discharge point", () => {
     const source = `
-      /* uneffect:capability effect Throw<RangeError> */
+      /* uneffect:effect Throw<RangeError> */
       function f() { try { throw new RangeError("bad") } finally { console.log() } }
     `;
     expect(analyzeEffects("throw.ts", source)).toContainEqual(
@@ -761,7 +761,7 @@ describe("effect checker", () => {
 
   it("propagates a new throw from finally after discharging the try body", () => {
     const source = `
-      /* uneffect:capability effect Throw<TypeError> */
+      /* uneffect:effect Throw<TypeError> */
       function f() {
         try { throw new RangeError("caught") }
         catch {}
@@ -772,14 +772,14 @@ describe("effect checker", () => {
   });
 
   it("warns for an unknown user effect in gradual mode", () => {
-    const source = `/* uneffect:capability effect app.Audit */ function f() {}`;
+    const source = `/* uneffect:effect app.Audit */ function f() {}`;
     expect(analyzeEffects("unknown.ts", source)).toContainEqual(
       expect.objectContaining({ functionName: "f", effect: "app.Audit", kind: "unknown", severity: "warning" }),
     );
   });
 
   it("rejects an unknown user effect in strict mode", () => {
-    const source = `/* uneffect:capability effect app.Audit */ function f() {}`;
+    const source = `/* uneffect:effect app.Audit */ function f() {}`;
     expect(analyzeEffects("unknown.ts", source, { mode: "strict" })).toContainEqual(
       expect.objectContaining({ functionName: "f", effect: "app.Audit", kind: "unknown", severity: "error" }),
     );

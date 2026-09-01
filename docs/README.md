@@ -46,7 +46,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 
 ## Current design decisions
 
-1. `/* uneffect:temporal ... */` is the only annotation marker.
+1. `/* uneffect: ... */` is the only annotation marker.
 2. An effect declaration is an upper bound; an unannotated or unresolved boundary is not pure.
 3. Domain effects and optimizer-facing semantic footprints remain distinct.
 4. Scoped-effect subtyping is set inclusion over operations and scope languages.

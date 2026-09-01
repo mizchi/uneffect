@@ -644,7 +644,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           && isPromiseReturningCallback(checker, argument)) diagnostics.push({
           fileName: source.fileName, functionName: enclosingFunctionName(node), line: lineAt(source, argument.getStart(source)), kind: "floating-callback-promise", severity: "error",
           message: `${node.expression.getText(source)} does not declare ownership of the Promise returned by callback argument ${index}`,
-          notes: [{ label: "because", detail: `${node.expression.getText(source)} carries no /* uneffect:temporal consumes_callback_rejection ... */ for argument ${index}, so a rejection from that callback reaches no observer` }],
+          notes: [{ label: "because", detail: `${node.expression.getText(source)} carries no /* uneffect: consumes_callback_rejection ... */ for argument ${index}, so a rejection from that callback reaches no observer` }],
         });
       });
       const declaration = checker.getResolvedSignature(node)?.declaration;

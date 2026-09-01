@@ -9,7 +9,7 @@ import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { generateRuntimeAssertionExpression } from "../src/temporal-expressions.js";
 
-const fixture = `/* uneffect:temporal state epochs: Map<int, int> */ /* uneffect:temporal state observed: int */ /* uneffect:temporal init epochs = Map([[1, 7]]) */ /* uneffect:temporal init observed = -1 */ /* uneffect:temporal action observeMissing: observed' = epochs.getOrElse(2, 0) */ /* uneffect:temporal invariant missingUsesDefault: epochs.getOrElse(2, 0) === 0 */ /* uneffect:temporal invariant presentUsesValue: epochs.getOrElse(1, 0) === 7 */`;
+const fixture = `/* uneffect: state epochs: Map<int, int> */ /* uneffect: state observed: int */ /* uneffect: init epochs = Map([[1, 7]]) */ /* uneffect: init observed = -1 */ /* uneffect: action observeMissing: observed' = epochs.getOrElse(2, 0) */ /* uneffect:always missingUsesDefault: epochs.getOrElse(2, 0) === 0 */ /* uneffect:always presentUsesValue: epochs.getOrElse(1, 0) === 7 */`;
 
 describe("total temporal Map lookup", () => {
   it("lowers getOrElse consistently to Quint, runtime, Z3, and TLC action replay", async () => {
@@ -89,7 +89,7 @@ State 2: <observeMissing line 1, col 1 to line 1, col 1 of module map_default>
       )), name).toThrow(message);
     }
 
-    const records = parseSpec("record-default.ts", `/* uneffect:temporal state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect:temporal init leases = Map([]) */ /* uneffect:temporal action publish: leases' = leases.put(1, { epoch: 1, valid: true }) */ /* uneffect:temporal invariant absentIsInvalid: !leases.getOrElse(2, { epoch: 0, valid: false }).valid */`).temporal;
+    const records = parseSpec("record-default.ts", `/* uneffect: state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect: init leases = Map([]) */ /* uneffect: action publish: leases' = leases.put(1, { epoch: 1, valid: true }) */ /* uneffect:always absentIsInvalid: !leases.getOrElse(2, { epoch: 0, valid: false }).valid */`).temporal;
     expect(generateQuint("record_default", records)).toContain(
       '(if (leases.keys().contains(2)) leases.get(2) else { epoch: 0, valid: false }).valid',
     );

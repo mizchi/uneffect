@@ -4,7 +4,7 @@ import { generateObligationSmt, lowerInvariantProgram, proveBooleanImplication }
 describe("shared invariant obligation IR", () => {
   it("preserves each early-return path as versioned control-flow evidence", () => {
     const obligations = lowerInvariantProgram("absolute.ts", `
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       function absolute(value: Int): Int {
         if (value < 0) return -value
         return value
@@ -30,8 +30,8 @@ describe("shared invariant obligation IR", () => {
   });
 
   const source = `
-    /* uneffect:contract requires n >= 0 */
-    /* uneffect:contract ensures result >= n */
+    /* uneffect:requires n >= 0 */
+    /* uneffect:ensures result >= n */
     function choose(n: Nat, flag: boolean): Nat {
       let value = n
       if (flag) value = value + 1
@@ -55,11 +55,11 @@ describe("shared invariant obligation IR", () => {
 
   it("creates initialization, preservation, and exit/post obligations for loops", () => {
     const obligations = lowerInvariantProgram("loop.ts", `
-      /* uneffect:contract requires n >= 0 */
-      /* uneffect:contract ensures result == n */
+      /* uneffect:requires n >= 0 */
+      /* uneffect:ensures result == n */
       function count(n: Int) {
         let i = 0
-        /* uneffect:contract invariant i >= 0 && i <= n */
+        /* uneffect:loop_invariant i >= 0 && i <= n */
         while (i < n) { i = i + 1 }
         return i
       }
@@ -69,7 +69,7 @@ describe("shared invariant obligation IR", () => {
 
   it("preserves Float as a distinct Real-backed domain", () => {
     const [obligation] = lowerInvariantProgram("float.ts", `
-      /* uneffect:contract ensures result == x */
+      /* uneffect:ensures result == x */
       function identity(x: Float): Float { return x }
     `);
     expect(obligation?.variables[0]).toEqual({ name: "x", domain: "float", sort: "Real" });

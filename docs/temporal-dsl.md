@@ -36,7 +36,7 @@ property-test backends can consume the same IR.
 Connect implementation code to the default export of a nearby specification:
 
 ```ts
-/* uneffect:temporal from "./upload.uneffect.ts#default" */
+/* uneffect:temporal_from "./upload.uneffect.ts#default" */
 export async function upload() {
   // ordinary TypeScript implementation
 }
@@ -88,7 +88,7 @@ export const LoadConfiguration = defineCapability({
 ```
 
 ```ts
-/* uneffect:capability from "./policy.uneffect.ts#LoadConfiguration" */
+/* uneffect:capability_from "./policy.uneffect.ts#LoadConfiguration" */
 export async function loadConfiguration() {
   // ordinary TypeScript implementation
 }
@@ -151,7 +151,7 @@ export const Increment = defineContract({
 ```
 
 ```ts
-/* uneffect:contract from "./counter.uneffect.ts#Increment" */
+/* uneffect:contract_from "./counter.uneffect.ts#Increment" */
 export function increment(value: number): number {
   return value + 1;
 }

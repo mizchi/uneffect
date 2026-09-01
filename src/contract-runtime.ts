@@ -28,6 +28,14 @@ export interface RelocatedContractAliases {
   diagnostics: InstrumentDiagnostic[];
 }
 
+const runtimeContractDirectives = ["requires", "ensures", "returns", "assert", "validate"] as const;
+function hasRuntimeContractAnnotation(text: string): boolean {
+  return runtimeContractDirectives.some((directive) => extractLocatedAnnotations(text, directive).length > 0);
+}
+function runtimeContractComments(text: string): RegExpMatchArray[] {
+  return [...text.matchAll(/\/\*[\s\S]*?\*\//g)].filter((comment) => hasRuntimeContractAnnotation(comment[0]));
+}
+
 function sourceHasCallableAliasContract(source: ts.SourceFile): boolean {
   let found = false;
   const visit = (current: ts.Node): void => {
@@ -35,7 +43,7 @@ function sourceHasCallableAliasContract(source: ts.SourceFile): boolean {
       const initializer = current.declarationList.declarations[0]!.initializer;
       const leading = source.text.slice(current.getFullStart(), current.getStart(source));
       if (initializer && (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer))
-        && /uneffect\s*:\s*contract\b/.test(leading)) found = true;
+        && hasRuntimeContractAnnotation(leading)) found = true;
     }
     if (!found) ts.forEachChild(current, visit);
   };
@@ -193,7 +201,7 @@ export function relocateProjectCallableAliasContracts(files: Readonly<Record<str
       if (ts.isVariableStatement(current) && current.declarationList.declarations.length === 1) {
         const declaration = current.declarationList.declarations[0]!, initializer = declaration.initializer;
         const leadingStart = current.getFullStart(), leading = source.text.slice(leadingStart, current.getStart(source));
-        const comments = [...leading.matchAll(/\/\*\s*uneffect\s*:\s*contract\b[\s\S]*?\*\//g)];
+        const comments = runtimeContractComments(leading);
         if (comments.length > 0 && initializer && (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer))) {
           const target = bridge.resolveStableCallable(initializer), line = source.getLineAndCharacterOfPosition(current.getStart(source)).line + 1;
           if (!target) diagnostics.push({ fileName, line, kind: "unsupported-function", parameter: "<contract>", message: "runtime contracts require an immutable TypeChecker-resolved callable alias" });
@@ -238,7 +246,7 @@ export function instrumentContractPredicates(fileName: string, text: string, opt
       const initializer = current.declarationList.declarations[0]!.initializer;
       if (initializer && (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer))) {
         const leading = source.text.slice(current.getFullStart(), current.getStart(source));
-        if (/uneffect\s*:\s*contract\b/.test(leading)) needsAliasResolution = true;
+        if (hasRuntimeContractAnnotation(leading)) needsAliasResolution = true;
       }
     }
     ts.forEachChild(current, detectAliasContract);
@@ -252,7 +260,7 @@ export function instrumentContractPredicates(fileName: string, text: string, opt
       if (ts.isVariableStatement(current) && current.declarationList.declarations.length === 1 && !covered.has(current)) {
         const initializer = current.declarationList.declarations[0]!.initializer;
         const leading = source.text.slice(current.getFullStart(), current.getStart(source));
-        if (initializer && (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer)) && /uneffect\s*:\s*contract\b/.test(leading)) {
+        if (initializer && (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer)) && hasRuntimeContractAnnotation(leading)) {
           const line = source.getLineAndCharacterOfPosition(current.getStart(source)).line + 1;
           diagnostics.push({ fileName, line, kind: "unsupported-function", parameter: "<contract>", message: "runtime contracts require an immutable TypeChecker-resolved callable alias" });
         }

@@ -5,7 +5,7 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0) */
+const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0) */
 interface Runtime { pending: number; processed: number }
 /* uneffect:refinement refinement cfgDrain@1 create */ export function create(initial: Runtime) { return initial }
 /* uneffect:refinement refinement cfgDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }

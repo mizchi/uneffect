@@ -37,12 +37,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         name: "typescript", version: ts.version, main: "index.js",
       }));
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
-      const model = `/* uneffect:temporal state count: int */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */`;
+      const model = `/* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */`;
       const childSource = `${model}
         export interface Runtime { count: number }
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { runtime.count++ }
       `;
@@ -56,7 +56,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         ${model}
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { incrementChild(runtime) }
       `);
@@ -212,12 +212,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         name: "typescript", version: ts.version, main: "index.js",
       }));
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
-      const model = `/* uneffect:temporal state armed: bool */ /* uneffect:temporal state count: int */ /* uneffect:temporal init armed = true */ /* uneffect:temporal init count = 1 */ /* uneffect:temporal action increment: count' = count + 1 */ /* uneffect:temporal action_when increment: armed && count > 0 */`;
+      const model = `/* uneffect: state armed: bool */ /* uneffect: state count: int */ /* uneffect: init armed = true */ /* uneffect: init count = 1 */ /* uneffect: action increment: count' = count + 1 */ /* uneffect: action_when increment: armed && count > 0 */`;
       writeFileSync(join(child, "src", "counter.ts"), `${model}
         export interface Runtime { armed: boolean; count: number }
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) {
           if (!(runtime.armed && runtime.count > 0)) return
@@ -229,7 +229,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         ${model}
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { incrementChild(runtime) }
       `);
@@ -350,12 +350,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         name: "typescript", version: ts.version, main: "index.js",
       }));
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
-      const model = `/* uneffect:temporal state count: int */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */`;
+      const model = `/* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */`;
       writeFileSync(join(child, "src", "counter.ts"), `${model}
         export interface Runtime { count: number }
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { runtime.count++ }
       `);
@@ -364,8 +364,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         ${model}
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */ function apply(runtime: Runtime) { incrementChild(runtime) }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */ function apply(runtime: Runtime) { incrementChild(runtime) }
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { apply(runtime) }
       `);
@@ -477,12 +477,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         name: "typescript", version: ts.version, main: "index.js",
       }));
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
-      const model = `/* uneffect:temporal state armed: bool */ /* uneffect:temporal state count: int */ /* uneffect:temporal init armed = true */ /* uneffect:temporal init count = 1 */ /* uneffect:temporal action increment: count' = count + 1 */ /* uneffect:temporal action_when increment: armed && count > 0 */`;
+      const model = `/* uneffect: state armed: bool */ /* uneffect: state count: int */ /* uneffect: init armed = true */ /* uneffect: init count = 1 */ /* uneffect: action increment: count' = count + 1 */ /* uneffect: action_when increment: armed && count > 0 */`;
       writeFileSync(join(child, "src", "counter.ts"), `${model}
         export interface Runtime { armed: boolean; count: number }
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.count > 0)) return; runtime.count++ }
       `);
@@ -493,7 +493,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
         function bounce(runtime: Runtime) { incrementChild(runtime) }
         function apply(runtime: Runtime) { bounce(runtime) }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { apply(runtime) }
       `);
@@ -608,13 +608,13 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         name: "typescript", version: ts.version, main: "index.js",
       }));
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
-      const model = `/* uneffect:temporal state count: int */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */`;
+      const model = `/* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */`;
       writeFileSync(join(child, "src", "counter.ts"), `${model}
         export interface Runtime { count: number }
         /* uneffect:runtime runtime counter@1 = globalThis */
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.count++ }
       `);
       const parentSource = `import { increment as incrementChild } from "../../child/src/counter.js"
@@ -626,7 +626,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
         function bounce(runtime: Runtime) { incrementChild(runtime) }
         function apply(runtime: Runtime) { bounce(runtime) }
-        /* uneffect:capability effect Mutate<typeof globalThis.count> */
+        /* uneffect:effect Mutate<typeof globalThis.count> */
         /* uneffect:refinement refinement counter@1 action increment */ export function increment(_runtime: Runtime) { apply(globalThis) }
       `;
       writeFileSync(join(parent, "src", "counter.ts"), parentSource);
@@ -730,13 +730,13 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       }));
       writeFileSync(join(directory, "node_modules", "@types", "node", "index.d.ts"),
         "declare var global: typeof globalThis & { count: number };\n");
-      const model = `/* uneffect:temporal state count: int */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */`;
+      const model = `/* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */`;
       const childSource = `${model}
         export interface Runtime { count: number }
         /* uneffect:runtime runtime counter@1 = node:global@24#main */
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.count++ }
       `;
       writeFileSync(join(child, "src", "counter.ts"), childSource);
@@ -747,7 +747,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
         function apply(runtime: Runtime) { incrementChild(runtime) }
-        /* uneffect:capability effect Mutate<typeof global.count> */
+        /* uneffect:effect Mutate<typeof global.count> */
         /* uneffect:refinement refinement counter@1 action increment */ export function increment(_runtime: Runtime) { apply(global) }
       `;
       writeFileSync(join(parent, "src", "counter.ts"), parentSource);
@@ -843,20 +843,20 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         name: "typescript", version: ts.version, main: "index.js",
       }));
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
-      writeFileSync(join(child, "src", "counter.ts"), `/* uneffect:temporal state count: int */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */
+      writeFileSync(join(child, "src", "counter.ts"), `/* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */
         export interface Runtime { count: number }
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { runtime.count++ }
       `);
       writeFileSync(join(parent, "src", "counter.ts"), `import { increment as incrementChild } from "../../child/src/counter.js"
         import type { Runtime } from "../../child/src/counter.js"
-        /* uneffect:temporal state count: int */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */
+        /* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */
         /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        /* uneffect:capability effect Mutate<typeof runtime.count> */
+        /* uneffect:effect Mutate<typeof runtime.count> */
         /* uneffect:refinement refinement counter@1 action increment */
         export function increment(runtime: Runtime) { incrementChild(runtime) }
       `);
@@ -968,7 +968,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state sent: int */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action record: sent' = sent + 1 */
+      /* uneffect: state sent: int */ /* uneffect: init sent = 0 */ /* uneffect: action record: sent' = sent + 1 */
       interface Runtime { sent: number }
       /* uneffect:refinement refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -987,7 +987,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state sent: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal action record: sent' = sent + 1, attempted' = attempted + 1 */
+      /* uneffect: state sent: int */ /* uneffect: state attempted: int */ /* uneffect: init sent = 0 */ /* uneffect: init attempted = 0 */ /* uneffect: action record: sent' = sent + 1, attempted' = attempted + 1 */
       class Runtime {
         sent = 0
         attempted = 0
@@ -1013,7 +1013,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const mainFile = join(directory, "main.ts");
     const source = `
       import type { Runtime } from "./runtime.js"
-      /* uneffect:temporal state sent: int */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action record: sent' = sent + 1 */
+      /* uneffect: state sent: int */ /* uneffect: init sent = 0 */ /* uneffect: action record: sent' = sent + 1 */
       /* uneffect:refinement refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
       /* uneffect:refinement refinement telemetry@1 action record */
@@ -1052,7 +1052,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const mainFile = join(directory, "main.ts");
     const source = `
       import { activeEpochs, activeOwners } from "./collections.js"
-      /* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal state epochs: Map<int, int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal init epochs = Map([[1, 0]]) */ /* uneffect:temporal invariant primaryPresent: owners.contains(1) */ /* uneffect:temporal invariant primaryCurrent: epochs.keys().contains(1) && epochs.get(1) === 0 */ /* uneffect:refinement abstraction routing@1 owners = Set(routing.activeOwnerIds) */ /* uneffect:refinement abstraction routing@1 epochs = Map(routing.epochEntries) */
+      /* uneffect: state owners: Set<int> */ /* uneffect: state epochs: Map<int, int> */ /* uneffect: init owners = Set(1) */ /* uneffect: init epochs = Map([[1, 0]]) */ /* uneffect:always primaryPresent: owners.contains(1) */ /* uneffect:always primaryCurrent: epochs.keys().contains(1) && epochs.get(1) === 0 */ /* uneffect:refinement abstraction routing@1 owners = Set(routing.activeOwnerIds) */ /* uneffect:refinement abstraction routing@1 epochs = Map(routing.epochEntries) */
       interface Runtime { routing: { activeOwnerIds: number[]; epochEntries: Array<[number, number]> } }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: { owners: Set<number>; epochs: Map<number, number> }): Runtime { return { routing: { activeOwnerIds: Array.from(initial.owners), epochEntries: Array.from(initial.epochs) } } }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.routing.activeOwnerIds), epochs: new Map(runtime.routing.epochEntries) } }
@@ -1111,7 +1111,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const source = `
       import { isPositive, isPrimary } from "./predicates.js"
       const selectedPrimary = isPrimary
-      /* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal invariant allPositive: owners.forall(owner => owner > 0) */ /* uneffect:temporal invariant primaryPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = Set(routing.activeOwnerIds) */
+      /* uneffect: state owners: Set<int> */ /* uneffect: init owners = Set(1) */ /* uneffect:always allPositive: owners.forall(owner => owner > 0) */ /* uneffect:always primaryPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = Set(routing.activeOwnerIds) */
       interface Runtime { routing: { activeOwnerIds: number[] } }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: { owners: Set<number> }): Runtime { return { routing: { activeOwnerIds: Array.from(initial.owners) } } }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.routing.activeOwnerIds) } }
@@ -1175,7 +1175,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       import { isPositive, isPrimary } from "./predicates.js"
       const positive = isPositive
       const primary = isPrimary
-      /* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal invariant allPositive: owners.forall(owner => owner > 0) */ /* uneffect:temporal invariant primaryPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = Set(activeOwnerIds) */
+      /* uneffect: state owners: Set<int> */ /* uneffect: init owners = Set(1) */ /* uneffect:always allPositive: owners.forall(owner => owner > 0) */ /* uneffect:always primaryPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = Set(activeOwnerIds) */
       interface Runtime { activeOwnerIds: number[] }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: { owners: Set<number> }): Runtime { return { activeOwnerIds: Array.from(initial.owners) } }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.activeOwnerIds) } }
@@ -1221,7 +1221,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const mainFile = join(directory, "main.ts");
     const source = `
       import { predicates } from "./registry.js"
-      /* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal invariant allPositive: owners.forall(owner => owner > 0) */ /* uneffect:temporal invariant primaryPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = Set(activeOwnerIds) */
+      /* uneffect: state owners: Set<int> */ /* uneffect: init owners = Set(1) */ /* uneffect:always allPositive: owners.forall(owner => owner > 0) */ /* uneffect:always primaryPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = Set(activeOwnerIds) */
       interface Runtime { activeOwnerIds: number[] }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: { owners: Set<number> }): Runtime { return { activeOwnerIds: Array.from(initial.owners) } }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.activeOwnerIds) } }
@@ -1275,7 +1275,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state delivered: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state skip: bool */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init skip = false */ /* uneffect:temporal action deliver: delivered' = skip ? delivered : delivered + 1, finalized' = finalized + 1, audited' = audited + 1 */
+      /* uneffect: state delivered: int */ /* uneffect: state finalized: int */ /* uneffect: state audited: int */ /* uneffect: state skip: bool */ /* uneffect: init delivered = 0 */ /* uneffect: init finalized = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init skip = false */ /* uneffect: action deliver: delivered' = skip ? delivered : delivered + 1, finalized' = finalized + 1, audited' = audited + 1 */
       interface Runtime { delivered: number; finalized: number; audited: number; skip: boolean }
       /* uneffect:refinement refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1300,7 +1300,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const continueSource = `
-      /* uneffect:temporal state visited: int */ /* uneffect:temporal state cleaned: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state stop: int */ /* uneffect:temporal init visited = 0 */ /* uneffect:temporal init cleaned = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init stop = 0 */ /* uneffect:temporal action scan: visited' = stop === 1 || stop === 2 || stop === 3 ? visited + 5 : visited + 6, cleaned' = cleaned + 3, audited' = stop === 1 || stop === 2 || stop === 3 ? audited + 2 : audited + 3 */
+      /* uneffect: state visited: int */ /* uneffect: state cleaned: int */ /* uneffect: state audited: int */ /* uneffect: state stop: int */ /* uneffect: init visited = 0 */ /* uneffect: init cleaned = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init stop = 0 */ /* uneffect: action scan: visited' = stop === 1 || stop === 2 || stop === 3 ? visited + 5 : visited + 6, cleaned' = cleaned + 3, audited' = stop === 1 || stop === 2 || stop === 3 ? audited + 2 : audited + 3 */
       interface Runtime { visited: number; cleaned: number; audited: number; stop: number }
       /* uneffect:refinement refinement scan@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement scan@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1348,7 +1348,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0), audited' = audited + 1 */
+      /* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state audited: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0), audited' = audited + 1 */
       interface Runtime { pending: number; processed: number; audited: number }
       /* uneffect:refinement refinement drain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement drain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1379,7 +1379,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal action drainWeighted: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: action drainWeighted: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0) */
       interface Runtime { pending: number; weighted: number }
       /* uneffect:refinement refinement triangularDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement triangularDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1412,7 +1412,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state priority: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init priority = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : 0) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state priority: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init priority = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : 0) : 0) */
       interface Runtime { pending: number; weighted: number; priority: boolean }
       /* uneffect:refinement refinement conditionalDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement conditionalDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1446,7 +1446,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state priority: bool */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init priority = false */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : (sampled ? pending : 0)) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state priority: bool */ /* uneffect: state sampled: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init priority = false */ /* uneffect: init sampled = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : (sampled ? pending : 0)) : 0) */
       interface Runtime { pending: number; weighted: number; priority: boolean; sampled: boolean }
       /* uneffect:refinement refinement tieredDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement tieredDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1477,7 +1477,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state priority: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init priority = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (!priority ? 0 : pending * (pending - 1) / 2) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state priority: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init priority = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (!priority ? 0 : pending * (pending - 1) / 2) : 0) */
       interface Runtime { pending: number; weighted: number; priority: boolean }
       /* uneffect:refinement refinement continueDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement continueDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1508,7 +1508,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state paused: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init paused = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state paused: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init paused = false */ /* uneffect: action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0) */
       interface Runtime { pending: number; weighted: number; paused: boolean }
       /* uneffect:refinement refinement breakDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement breakDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1539,7 +1539,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state deferred: int */ /* uneffect:temporal state paused: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init deferred = 0 */ /* uneffect:temporal init paused = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0), deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state deferred: int */ /* uneffect: state paused: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init deferred = 0 */ /* uneffect: init paused = false */ /* uneffect: action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0), deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0) */
       interface Runtime { pending: number; weighted: number; deferred: number; paused: boolean }
       /* uneffect:refinement refinement deferredDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement deferredDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1573,7 +1573,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state deferred: int */ /* uneffect:temporal state deferredWeight: int */ /* uneffect:temporal state paused: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init deferred = 0 */ /* uneffect:temporal init deferredWeight = 0 */ /* uneffect:temporal init paused = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0), deferredWeight' = deferredWeight + (pending > 0 ? (paused ? 2 * pending : 0) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state deferred: int */ /* uneffect: state deferredWeight: int */ /* uneffect: state paused: bool */ /* uneffect: init pending = 0 */ /* uneffect: init deferred = 0 */ /* uneffect: init deferredWeight = 0 */ /* uneffect: init paused = false */ /* uneffect: action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0), deferredWeight' = deferredWeight + (pending > 0 ? (paused ? 2 * pending : 0) : 0) */
       interface Runtime { pending: number; deferred: number; deferredWeight: number; paused: boolean }
       /* uneffect:refinement refinement boundedBreakUpdates@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement boundedBreakUpdates@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1599,7 +1599,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state fatal: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init fatal = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (fatal ? pending - 1 : 0) : pending, processed' = processed + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? pending : 0) : 0), audited' = audited + (pending > 0 ? (fatal ? 1 : pending) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state failed: int */ /* uneffect: state audited: int */ /* uneffect: state fatal: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init fatal = false */ /* uneffect: action drain: pending' = pending > 0 ? (fatal ? pending - 1 : 0) : pending, processed' = processed + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? pending : 0) : 0), audited' = audited + (pending > 0 ? (fatal ? 1 : pending) : 0) */
       interface Runtime { pending: number; processed: number; failed: number; audited: number; fatal: boolean }
       /* uneffect:refinement refinement caughtBreak@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement caughtBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1627,7 +1627,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state retried: int */ /* uneffect:temporal state attempts: int */ /* uneffect:temporal state fatal: bool */ /* uneffect:temporal state stopOnFailure: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init retried = 0 */ /* uneffect:temporal init attempts = 0 */ /* uneffect:temporal init fatal = false */ /* uneffect:temporal init stopOnFailure = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (fatal && stopOnFailure ? pending - 1 : 0) : pending, delivered' = delivered + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? (stopOnFailure ? pending : pending * (pending + 1) / 2) : 0) : 0), retried' = retried + (pending > 0 ? (fatal && !stopOnFailure ? pending * (pending + 1) / 2 : 0) : 0), attempts' = attempts + (pending > 0 ? (fatal && stopOnFailure ? 1 : pending) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state retried: int */ /* uneffect: state attempts: int */ /* uneffect: state fatal: bool */ /* uneffect: state stopOnFailure: bool */ /* uneffect: init pending = 0 */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init retried = 0 */ /* uneffect: init attempts = 0 */ /* uneffect: init fatal = false */ /* uneffect: init stopOnFailure = false */ /* uneffect: action drain: pending' = pending > 0 ? (fatal && stopOnFailure ? pending - 1 : 0) : pending, delivered' = delivered + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? (stopOnFailure ? pending : pending * (pending + 1) / 2) : 0) : 0), retried' = retried + (pending > 0 ? (fatal && !stopOnFailure ? pending * (pending + 1) / 2 : 0) : 0), attempts' = attempts + (pending > 0 ? (fatal && stopOnFailure ? 1 : pending) : 0) */
       interface Runtime { pending: number; delivered: number; failed: number; retried: number; attempts: number; fatal: boolean; stopOnFailure: boolean }
       /* uneffect:refinement refinement caughtPolicy@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement caughtPolicy@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1657,7 +1657,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state stoppedWeight: int */ /* uneffect:temporal state fatal: bool */ /* uneffect:temporal state circuitOpen: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init stoppedWeight = 0 */ /* uneffect:temporal init fatal = false */ /* uneffect:temporal init circuitOpen = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (fatal || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? (fatal || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (fatal ? pending : (circuitOpen ? 2 * pending : 0)) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state stoppedWeight: int */ /* uneffect: state fatal: bool */ /* uneffect: state circuitOpen: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init stoppedWeight = 0 */ /* uneffect: init fatal = false */ /* uneffect: init circuitOpen = false */ /* uneffect: action drain: pending' = pending > 0 ? (fatal || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? (fatal || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (fatal ? pending : (circuitOpen ? 2 * pending : 0)) : 0) */
       interface Runtime { pending: number; processed: number; stoppedWeight: number; fatal: boolean; circuitOpen: boolean }
       /* uneffect:refinement refinement disjunctiveStop@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement disjunctiveStop@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1687,7 +1687,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state stoppedWeight: int */ /* uneffect:temporal state urgent: bool */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal state circuitOpen: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init stoppedWeight = 0 */ /* uneffect:temporal init urgent = false */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal init circuitOpen = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? ((urgent && sampled) || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? ((urgent && sampled) || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (urgent ? (sampled ? pending : (circuitOpen ? 2 * pending : 0)) : (circuitOpen ? 2 * pending : 0)) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state stoppedWeight: int */ /* uneffect: state urgent: bool */ /* uneffect: state sampled: bool */ /* uneffect: state circuitOpen: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init stoppedWeight = 0 */ /* uneffect: init urgent = false */ /* uneffect: init sampled = false */ /* uneffect: init circuitOpen = false */ /* uneffect: action drain: pending' = pending > 0 ? ((urgent && sampled) || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? ((urgent && sampled) || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (urgent ? (sampled ? pending : (circuitOpen ? 2 * pending : 0)) : (circuitOpen ? 2 * pending : 0)) : 0) */
       interface Runtime { pending: number; processed: number; stoppedWeight: number; urgent: boolean; sampled: boolean; circuitOpen: boolean }
       /* uneffect:refinement refinement nestedStop@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement nestedStop@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1719,7 +1719,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state total: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state urgent: bool */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init urgent = false */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal action record: total' = total + (sampled ? (urgent ? 5 : 4) : (urgent ? 2 : 1)), audited' = audited + 1 */
+      /* uneffect: state total: int */ /* uneffect: state audited: int */ /* uneffect: state urgent: bool */ /* uneffect: state sampled: bool */ /* uneffect: init total = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init urgent = false */ /* uneffect: init sampled = false */ /* uneffect: action record: total' = total + (sampled ? (urgent ? 5 : 4) : (urgent ? 2 : 1)), audited' = audited + 1 */
       interface Runtime { total: number; audited: number; urgent: boolean; sampled: boolean }
       /* uneffect:refinement refinement localJoin@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement localJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1742,7 +1742,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state priority: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init priority = false */ /* uneffect:temporal action record: billed' = priority ? billed : billed + 4, audited' = priority ? audited : audited + 1 */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state priority: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init priority = false */ /* uneffect: action record: billed' = priority ? billed : billed + 4, audited' = priority ? audited : audited + 1 */
       interface Runtime { billed: number; audited: number; priority: boolean }
       /* uneffect:refinement refinement abruptLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement abruptLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1768,7 +1768,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal action record: billed' = billed + (failed ? 4 : 3), audited' = audited + 1 */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: action record: billed' = billed + (failed ? 4 : 3), audited' = audited + 1 */
       interface Runtime { billed: number; audited: number; failed: boolean }
       /* uneffect:refinement refinement caughtLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement caughtLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1800,7 +1800,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state stopped: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init stopped = false */ /* uneffect:temporal action record: billed' = stopped ? billed : billed + (failed ? 6 : 4), audited' = audited + (stopped ? 2 : (failed ? 3 : 4)) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state stopped: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init stopped = false */ /* uneffect: action record: billed' = stopped ? billed : billed + (failed ? 6 : 4), audited' = audited + (stopped ? 2 : (failed ? 3 : 4)) */
       interface Runtime { billed: number; audited: number; failed: boolean; stopped: boolean }
       /* uneffect:refinement refinement finallyLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement finallyLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1836,7 +1836,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state kind: int */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init kind = 0 */ /* uneffect:temporal action record: billed' = kind === 1 ? billed : billed + (kind === 2 ? 8 : (kind === 3 ? 6 : 2)), audited' = audited + (kind === 1 ? 3 : (kind === 2 ? 4 : (kind === 3 ? 6 : 2))) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state kind: int */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init kind = 0 */ /* uneffect: action record: billed' = kind === 1 ? billed : billed + (kind === 2 ? 8 : (kind === 3 ? 6 : 2)), audited' = audited + (kind === 1 ? 3 : (kind === 2 ? 4 : (kind === 3 ? 6 : 2))) */
       interface Runtime { billed: number; audited: number; kind: number }
       /* uneffect:refinement refinement switchLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement switchLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1880,7 +1880,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action record: billed' = mode === 3 ? billed : billed + (mode === 4 ? 8 : (mode === 2 ? 4 : (mode === 1 ? 13 : 14))), audited' = audited + ((mode === 2 || mode === 3 || mode === 4) ? 6 : (mode === 1 ? 27 : 30)) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state mode: int */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action record: billed' = mode === 3 ? billed : billed + (mode === 4 ? 8 : (mode === 2 ? 4 : (mode === 1 ? 13 : 14))), audited' = audited + ((mode === 2 || mode === 3 || mode === 4) ? 6 : (mode === 1 ? 27 : 30)) */
       interface Runtime { billed: number; audited: number; mode: number }
       /* uneffect:refinement refinement finiteLoopLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement finiteLoopLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1960,7 +1960,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
 
     const canonicalWhile = `
-      /* uneffect:temporal state total: int */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal action record: total' = total + 6 */
+      /* uneffect: state total: int */ /* uneffect: init total = 0 */ /* uneffect: action record: total' = total + 6 */
       interface Runtime { total: number }
       /* uneffect:refinement refinement finiteWhileLocal@1 create */ export function createWhile(initial: Runtime) { return initial }
       /* uneffect:refinement refinement finiteWhileLocal@1 observe */ export function observeWhile(runtime: Runtime) { return runtime }
@@ -1988,7 +1988,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state total: int */ /* uneffect:temporal state stopped: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init stopped = false */ /* uneffect:temporal action record: total' = stopped ? total : total + 5 */
+      /* uneffect: state total: int */ /* uneffect: state stopped: bool */ /* uneffect: init total = 0 */ /* uneffect: init stopped = false */ /* uneffect: action record: total' = stopped ? total : total + 5 */
       interface Runtime { total: number; stopped: boolean }
       /* uneffect:refinement refinement lexicalLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement lexicalLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2033,7 +2033,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state total: int */ /* uneffect:temporal state stopped: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init stopped = false */ /* uneffect:temporal action record: total' = stopped ? total + 3 : total + 5 */
+      /* uneffect: state total: int */ /* uneffect: state stopped: bool */ /* uneffect: init total = 0 */ /* uneffect: init stopped = false */ /* uneffect: action record: total' = stopped ? total + 3 : total + 5 */
       interface Runtime { total: number; stopped: boolean }
       /* uneffect:refinement refinement labeledLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement labeledLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2081,7 +2081,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state total: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal action record: total' = failed ? total + 4 : total + 2 */
+      /* uneffect: state total: int */ /* uneffect: state failed: bool */ /* uneffect: init total = 0 */ /* uneffect: init failed = false */ /* uneffect: action record: total' = failed ? total + 4 : total + 2 */
       interface Runtime { total: number; failed: boolean }
       /* uneffect:refinement refinement catchLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement catchLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2125,7 +2125,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action record: billed' = mode === 1 ? billed : billed + (mode === 2 ? 5 : 6), audited' = audited + (mode === 1 ? 3 : (mode === 2 ? 5 : 6)) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state mode: int */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action record: billed' = mode === 1 ? billed : billed + (mode === 2 ? 5 : 6), audited' = audited + (mode === 1 ? 3 : (mode === 2 ? 5 : 6)) */
       interface Runtime { billed: number; audited: number; mode: number }
       /* uneffect:refinement refinement finallyMutation@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement finallyMutation@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2164,7 +2164,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
 
     const nestedSource = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state stopped: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init stopped = false */ /* uneffect:temporal action record: billed' = stopped ? billed : billed + 4, audited' = audited + (stopped ? 3 : 4) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state stopped: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init stopped = false */ /* uneffect: action record: billed' = stopped ? billed : billed + 4, audited' = audited + (stopped ? 3 : 4) */
       interface Runtime { billed: number; audited: number; stopped: boolean }
       /* uneffect:refinement refinement nestedFinallyMutation@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement nestedFinallyMutation@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2210,7 +2210,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal action record: billed' = failed ? billed : billed + 2, audited' = audited + (failed ? 4 : 2) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: action record: billed' = failed ? billed : billed + 2, audited' = audited + (failed ? 4 : 2) */
       interface Runtime { billed: number; audited: number; failed: boolean }
       /* uneffect:refinement refinement catchReturnLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement catchReturnLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2259,7 +2259,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state recovered: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal init recovered = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal action record: recovered' = recovered + (failed ? 8 : 2), audited' = audited + (failed ? 4 : 2) */
+      /* uneffect: state recovered: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: init recovered = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: action record: recovered' = recovered + (failed ? 8 : 2), audited' = audited + (failed ? 4 : 2) */
       interface Runtime { recovered: number; audited: number; failed: boolean }
       /* uneffect:refinement refinement catchRethrowLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement catchRethrowLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2313,7 +2313,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action record: billed' = failed && stop ? billed : billed + (failed ? 6 : 2), audited' = audited + (failed ? (stop ? 4 : 6) : 2) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state stop: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init stop = false */ /* uneffect: action record: billed' = failed && stop ? billed : billed + (failed ? 6 : 2), audited' = audited + (failed ? (stop ? 4 : 6) : 2) */
       interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
       /* uneffect:refinement refinement conditionalCatchReturn@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement conditionalCatchReturn@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2366,7 +2366,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state recovered: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state escalate: bool */ /* uneffect:temporal init recovered = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init escalate = false */ /* uneffect:temporal action record: recovered' = recovered + (failed ? (escalate ? 8 : 6) : 2), audited' = audited + (failed ? (escalate ? 4 : 6) : 2) */
+      /* uneffect: state recovered: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state escalate: bool */ /* uneffect: init recovered = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init escalate = false */ /* uneffect: action record: recovered' = recovered + (failed ? (escalate ? 8 : 6) : 2), audited' = audited + (failed ? (escalate ? 4 : 6) : 2) */
       interface Runtime { recovered: number; audited: number; failed: boolean; escalate: boolean }
       /* uneffect:refinement refinement conditionalCatchRethrow@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement conditionalCatchRethrow@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2424,7 +2424,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action record: billed' = billed + (failed ? (stop ? 4 : 7) : 3), audited' = audited + (failed ? (stop ? 4 : 6) : 2) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state stop: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init stop = false */ /* uneffect: action record: billed' = billed + (failed ? (stop ? 4 : 7) : 3), audited' = audited + (failed ? (stop ? 4 : 6) : 2) */
       interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
       /* uneffect:refinement refinement catchBreakLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement catchBreakLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2477,7 +2477,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state retry: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init retry = false */ /* uneffect:temporal action record: billed' = billed + (failed ? (retry ? 7 : 13) : 5), audited' = audited + (failed ? (retry ? 11 : 18) : 6) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state retry: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init retry = false */ /* uneffect: action record: billed' = billed + (failed ? (retry ? 7 : 13) : 5), audited' = audited + (failed ? (retry ? 11 : 18) : 6) */
       interface Runtime { billed: number; audited: number; failed: boolean; retry: boolean }
       /* uneffect:refinement refinement catchContinueLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement catchContinueLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2539,7 +2539,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action record: billed' = failed || stop ? billed : billed + 3, audited' = audited + (failed ? 4 : 3) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state stop: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init stop = false */ /* uneffect: action record: billed' = failed || stop ? billed : billed + 3, audited' = audited + (failed ? 4 : 3) */
       interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
       /* uneffect:refinement refinement conditionalFinallyReturn@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement conditionalFinallyReturn@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2592,7 +2592,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state recovered: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state escalate: bool */ /* uneffect:temporal init recovered = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init escalate = false */ /* uneffect:temporal action record: recovered' = recovered + (failed ? (escalate ? 8 : 5) : (escalate ? 6 : 3)) */
+      /* uneffect: state recovered: int */ /* uneffect: state failed: bool */ /* uneffect: state escalate: bool */ /* uneffect: init recovered = 0 */ /* uneffect: init failed = false */ /* uneffect: init escalate = false */ /* uneffect: action record: recovered' = recovered + (failed ? (escalate ? 8 : 5) : (escalate ? 6 : 3)) */
       interface Runtime { recovered: number; failed: boolean; escalate: boolean }
       /* uneffect:refinement refinement conditionalFinallyThrow@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement conditionalFinallyThrow@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2647,7 +2647,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action record: billed' = failed ? (stop ? billed + 4 : billed) : billed + (stop ? 3 : 4), audited' = audited + (failed ? 4 : 3) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state stop: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init stop = false */ /* uneffect: action record: billed' = failed ? (stop ? billed + 4 : billed) : billed + (stop ? 3 : 4), audited' = audited + (failed ? 4 : 3) */
       interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
       /* uneffect:refinement refinement conditionalFinallyBreak@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement conditionalFinallyBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2705,7 +2705,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActionsStatically = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal state retry: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal init retry = false */ /* uneffect:temporal action record: billed' = failed ? (retry ? billed + 7 : billed) : billed + (retry ? 5 : 7), audited' = audited + (failed ? (retry ? 11 : 4) : (retry ? 8 : 9)) */
+      /* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: state retry: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: init retry = false */ /* uneffect: action record: billed' = failed ? (retry ? billed + 7 : billed) : billed + (retry ? 5 : 7), audited' = audited + (failed ? (retry ? 11 : 4) : (retry ? 8 : 9)) */
       interface Runtime { billed: number; audited: number; failed: boolean; retry: boolean }
       /* uneffect:refinement refinement conditionalFinallyContinue@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement conditionalFinallyContinue@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2764,7 +2764,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal action refillAndDrain: pending' = pending + 1 > 0 ? 0 : pending + 1, processed' = processed + (pending + 1 > 0 ? pending + 1 : 0), audited' = audited + 1 */
+      /* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state audited: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: action refillAndDrain: pending' = pending + 1 > 0 ? 0 : pending + 1, processed' = processed + (pending + 1 > 0 ? pending + 1 : 0), audited' = audited + 1 */
       interface Runtime { pending: number; processed: number; audited: number }
       /* uneffect:refinement refinement affineEntry@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement affineEntry@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2786,7 +2786,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal action retainTwo: pending' = pending + 2 >= 3 ? 2 : pending + 2, processed' = processed + (pending + 2 >= 3 ? pending : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: action retainTwo: pending' = pending + 2 >= 3 ? 2 : pending + 2, processed' = processed + (pending + 2 >= 3 ? pending : 0) */
       interface Runtime { pending: number; processed: number }
       /* uneffect:refinement refinement boundedFloor@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement boundedFloor@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2807,7 +2807,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal action drainPairs: pending' = pending + 2 >= 3 ? pending + 2 - 2 * ((pending - pending % 2) / 2 + (pending % 2 > 0 ? 1 : 0)) : pending + 2, processed' = processed + (pending + 2 >= 3 ? (pending - pending % 2) / 2 + (pending % 2 > 0 ? 1 : 0) : 0) */
+      /* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: action drainPairs: pending' = pending + 2 >= 3 ? pending + 2 - 2 * ((pending - pending % 2) / 2 + (pending % 2 > 0 ? 1 : 0)) : pending + 2, processed' = processed + (pending + 2 >= 3 ? (pending - pending % 2) / 2 + (pending % 2 > 0 ? 1 : 0) : 0) */
       interface Runtime { pending: number; processed: number }
       /* uneffect:refinement refinement pairDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement pairDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2828,7 +2828,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state active: int */ /* uneffect:temporal state starts: int */ /* uneffect:temporal init active = 0 */ /* uneffect:temporal init starts = 0 */ /* uneffect:temporal action scaleUp: active' = active < 5 ? active + 2 * ((5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0)) : active, starts' = starts + (active < 5 ? (5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0) : 0) */
+      /* uneffect: state active: int */ /* uneffect: state starts: int */ /* uneffect: init active = 0 */ /* uneffect: init starts = 0 */ /* uneffect: action scaleUp: active' = active < 5 ? active + 2 * ((5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0)) : active, starts' = starts + (active < 5 ? (5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0) : 0) */
       interface Pool { active: number; starts: number }
       /* uneffect:refinement refinement workerScale@1 create */ export function create(initial: Pool) { return initial }
       /* uneffect:refinement refinement workerScale@1 observe */ export function observe(pool: Pool) { return pool }
@@ -2848,7 +2848,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state attempted: int */ /* uneffect:temporal state recovered: int */ /* uneffect:temporal state unreachable: int */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init recovered = 0 */ /* uneffect:temporal init unreachable = 0 */ /* uneffect:temporal action recover: attempted' = attempted + 1, recovered' = recovered + 1 */
+      /* uneffect: state attempted: int */ /* uneffect: state recovered: int */ /* uneffect: state unreachable: int */ /* uneffect: init attempted = 0 */ /* uneffect: init recovered = 0 */ /* uneffect: init unreachable = 0 */ /* uneffect: action recover: attempted' = attempted + 1, recovered' = recovered + 1 */
       interface Runtime { attempted: number; recovered: number; unreachable: number }
       /* uneffect:refinement refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2874,7 +2874,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state started: int */ /* uneffect:temporal state finished: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state cancel: bool */ /* uneffect:temporal init started = 0 */ /* uneffect:temporal init finished = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init cancel = false */ /* uneffect:temporal action execute: started' = started + 1, finished' = cancel ? finished : finished + 1, audited' = cancel ? audited : audited + 1 */
+      /* uneffect: state started: int */ /* uneffect: state finished: int */ /* uneffect: state audited: int */ /* uneffect: state cancel: bool */ /* uneffect: init started = 0 */ /* uneffect: init finished = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init cancel = false */ /* uneffect: action execute: started' = started + 1, finished' = cancel ? finished : finished + 1, audited' = cancel ? audited : audited + 1 */
       interface Runtime { started: number; finished: number; audited: number; cancel: boolean }
       /* uneffect:refinement refinement lexical@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement lexical@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2897,7 +2897,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state total: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state stop: int */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init stop = 0 */ /* uneffect:temporal action applyBatch: total' = stop === 1 ? total + 1 : stop === 2 ? total + 1 + 2 : total + 1 + 2 + 3, settled' = stop === 1 ? settled + 1 : stop === 2 ? settled + 1 + 1 : settled + 1 + 1 + 1 */
+      /* uneffect: state total: int */ /* uneffect: state settled: int */ /* uneffect: state stop: int */ /* uneffect: init total = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init stop = 0 */ /* uneffect: action applyBatch: total' = stop === 1 ? total + 1 : stop === 2 ? total + 1 + 2 : total + 1 + 2 + 3, settled' = stop === 1 ? settled + 1 : stop === 2 ? settled + 1 + 1 : settled + 1 + 1 + 1 */
       interface Runtime { total: number; settled: number; stop: number }
       /* uneffect:refinement refinement batch@1 create */
       export function create(initial: Runtime) { return initial }
@@ -2924,8 +2924,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const result = await generatePropertyTests({ files: files({
       "src/divide.ts": `
         import type { Int, Nat } from "@mizchi/uneffect"
-        /* uneffect:contract requires denominator > 0 */
-        /* uneffect:contract ensures result * denominator <= numerator */
+        /* uneffect:requires denominator > 0 */
+        /* uneffect:ensures result * denominator <= numerator */
         export function quotient(numerator: Nat, denominator: Int): Int {
           return Math.floor(numerator / denominator) as Int
         }
@@ -2941,7 +2941,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeProject = futureApi("analyzeUneffectProject");
     const result = await analyzeProject({ mode: "strict", files: files({
       "src/io.ts": `
-        /* uneffect:capability effect Console | FsRead<"$CWD/config/**"> */
+        /* uneffect:effect Console | FsRead<"$CWD/config/**"> */
         export async function load() {
           await fetch("https://api.example.com/data")
         }
@@ -2987,20 +2987,20 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       declare function subscribe(): void
       /* uneffect:react-resource release Subscription */
       declare function unsubscribe(): void
-      /* uneffect:capability effect StyleWrite */
+      /* uneffect:effect StyleWrite */
       declare function insertFeedStyles(): void
-      /* uneffect:capability effect StyleWrite */
+      /* uneffect:effect StyleWrite */
       declare function removeFeedStyles(): void
       interface TopicStatusSubscription { readonly topic: string }
       /* uneffect:react-resource acquire TopicStatusSubscription result */
       declare function openTopicStatus(notify: () => void): TopicStatusSubscription
       /* uneffect:react-resource release TopicStatusSubscription parameter 0 */
       declare function closeTopicStatus(subscription: TopicStatusSubscription): void
-      /* uneffect:capability effect TopicStatusRead */
+      /* uneffect:effect TopicStatusRead */
       declare function readTopicStatus(): boolean
-      /* uneffect:capability effect HandlePrepare */
+      /* uneffect:effect HandlePrepare */
       declare function prepareFeedHandle(): void
-      /* uneffect:capability effect TopicSave */
+      /* uneffect:effect TopicSave */
       declare function saveTopic(topic: string): Promise<void>
       function subscribeTopicStatus(notify: () => void) {
         const subscription = openTopicStatus(notify)
@@ -3296,8 +3296,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       files: files({
         "src/app.ts": `
           import { readFile } from "node:fs/promises"
-          /* uneffect:capability effect_schema Audit<ResourceSet> */
-          /* uneffect:capability effect FsRead<\"$WORKSPACE_ROOT/config/**\"> | Fetch<Fetch.GET, \"https://api.example.com/v1/**\"> | Net<\"api.example.com:443\"> | Audit<\"users\"> | Console */
+          /* uneffect:effect_schema Audit<ResourceSet> */
+          /* uneffect:effect FsRead<\"$WORKSPACE_ROOT/config/**\"> | Fetch<Fetch.GET, \"https://api.example.com/v1/**\"> | Net<\"api.example.com:443\"> | Audit<\"users\"> | Console */
           export async function load() {
             await fetch("https://api.example.com/v1/users")
             return readFile("$WORKSPACE_ROOT/config/app.json")
@@ -3322,7 +3322,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const result = await analyzeProject({ validators: [datadogOnce], files: files({
       "src/report.ts": `
         import { datadogRum } from "@datadog/browser-rum"
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         export function report(enabled: boolean) {
           if (enabled) datadogRum.addAction("loaded")
         }
@@ -3352,17 +3352,17 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         import { forwarded as renamed, defaultReporter, Reporter } from "./barrel.js"
         import * as reports from "./barrel.js"
         import { opaque } from "./missing.js"
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         export function viaAlias() { renamed() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         export function viaNamespace() { reports.forwarded() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         export function viaDefault() { defaultReporter() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         export function viaMethod() { new Reporter().report() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         export function twice() { renamed(); new Reporter().report() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         export function unresolved() { opaque() }
       `,
     }) }) as { diagnostics: Array<{ code: string; functionName: string; inferredMaximum: string }>; summaries: Array<{ functionName: string; specializations: Array<{ evidence: string; inferredMaximum: string }> }> };
@@ -3382,15 +3382,15 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       "src/metrics.ts": `export declare function sendMetric(): Promise<void>`,
       "src/duplicates.ts": `
         import { sendMetric } from "./metrics"
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         function sequential() { sendMetric(); sendMetric() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         function repeated(items: string[]) { for (const item of items) sendMetric() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         async function concurrent() { await Promise.all([sendMetric(), sendMetric()]) }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         function recursive() { sendMetric(); if (retry()) recursive() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         function callback(run: (job: () => void) => void) { run(() => sendMetric()) }
       `,
     }) }) as { diagnostics: Array<{ code: string; functionName: string; inferredMaximum: string }> };
@@ -3412,13 +3412,13 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         function* optional(enabled: boolean) {
           if (enabled) yield sendMetric()
         }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         function constructOnly() { optional(true) }
         async function* pipeline(enabled: boolean) {
           yield* optional(enabled)
           yield await loadWithoutMetrics()
         }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         async function main(enabled: boolean) {
           for await (const _effect of pipeline(enabled)) {}
         }
@@ -3433,7 +3433,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       "src/main.ts": `
         import { sendMetric } from "./metrics"
         function* pipeline() { yield sendMetric() }
-        /* uneffect:contract validate DatadogOnce */
+        /* uneffect:validate DatadogOnce */
         async function main() {
           for (const _effect of pipeline()) {}
           for (const _effect of pipeline()) {}
@@ -3448,9 +3448,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const result = await analyzeProject({ files: files({
       "src/errors.ts": `
         class ParseError extends Error {}
-        /* uneffect:capability effect Throw<Error> */
+        /* uneffect:effect Throw<Error> */
         function fail(): never { throw new Error("route") }
-        /* uneffect:capability effect Throw<ParseError> */
+        /* uneffect:effect Throw<ParseError> */
         function parse(input: string) { if (!input) throw new ParseError(); return input }
         function syncHandled() { try { parse("") } catch (error) {} }
         async function asyncHandled() { try { await Promise.reject(new ParseError()) } catch (error) {} }
@@ -3493,9 +3493,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const result = await verifyProject({ files: files({
       "src/numeric.ts": `
         import type { Nat } from "@mizchi/uneffect"
-        /* uneffect:contract requires value >= 0 */
-        /* uneffect:contract ensures result > value */
-        /* uneffect:contract assert value: Nat */
+        /* uneffect:requires value >= 0 */
+        /* uneffect:ensures result > value */
+        /* uneffect:assert value: Nat */
         export function increment(value: Nat) { return value + 1 }
       `,
     }), runtimeAssertions: "fallback" }) as { obligations: Array<{ backend: string; result: string }>; emittedFiles: Record<string, string> };
@@ -3509,9 +3509,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       "src/digits.ts": `export type Digit = 0 | 1 | 2`,
       "src/numeric.ts": `
         import type { Digit } from "./digits.js"
-        /* uneffect:contract ensures result >= 0 && result <= 2 */
+        /* uneffect:ensures result >= 0 && result <= 2 */
         export function preserveDigit(value: Digit): number { return value }
-        /* uneffect:contract ensures result >= 0 */
+        /* uneffect:ensures result >= 0 */
         export function magnitude(value: number | undefined): number {
           if (value === undefined) return 0
           if (value < 0) return -value
@@ -3536,8 +3536,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const result = await verifyProject({ files: files({
       "src/magnitude.ts": `
-        /* uneffect:capability effect none */
-        /* uneffect:contract ensures result >= 0 */
+        /* uneffect:effect none */
+        /* uneffect:ensures result >= 0 */
         export function magnitude(value: number | undefined): number {
           if (value === undefined) return 0
           try {
@@ -3550,8 +3550,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         export async function recordMagnitude(value: number | undefined): Promise<number> {
           return await Promise.resolve(magnitude(value))
         }
-        /* uneffect:capability effect Throw<RangeError> */
-        /* uneffect:contract ensures result >= 0 */
+        /* uneffect:effect Throw<RangeError> */
+        /* uneffect:ensures result >= 0 */
         export function strictMagnitude(value: number): number {
           if (value < 0) throw new RangeError("negative")
           return value
@@ -3584,9 +3584,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const result = await verifyProject({ files: files({
       "src/scheduler.ts": `
-        /* uneffect:temporal state phase: int */
-        /* uneffect:temporal init phase = 0 */
-        /* uneffect:temporal invariant committedOnce: phase <= 1 */
+        /* uneffect: state phase: int */
+        /* uneffect: init phase = 0 */
+        /* uneffect:always committedOnce: phase <= 1 */
         /* uneffect:temporal-summary requires phase === 0 */
         /* uneffect:temporal-summary ensures phase' = phase + 1 */
         /* uneffect:temporal-summary modifies phase */
@@ -3603,8 +3603,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
 
     const broken = await verifyProject({ files: files({
       "src/scheduler.ts": `
-        /* uneffect:temporal state phase: int */
-        /* uneffect:temporal init phase = 0 */
+        /* uneffect: state phase: int */
+        /* uneffect: init phase = 0 */
         /* uneffect:temporal-summary requires phase === 0 */
         /* uneffect:temporal-summary ensures phase' = phase + 1 */
         /* uneffect:temporal-summary modifies phase */
@@ -4150,7 +4150,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("produces equivalent neutral IR from the TypeScript and Corsa frontends", async () => {
     const compareFrontends = futureApi("compareUneffectFrontends");
     const result = await compareFrontends({ files: files({
-      "src/parity.ts": `/* uneffect:capability effect Console | Mutate<typeof value> */ export function update(value: { n: number }) { value.n++; console.log(value.n) }`,
+      "src/parity.ts": `/* uneffect:effect Console | Mutate<typeof value> */ export function update(value: { n: number }) { value.n++; console.log(value.n) }`,
     }) }) as { equivalent: boolean; schemaDrift: unknown[]; typescriptIr: unknown; corsaIr: unknown };
     expect(result.schemaDrift).toEqual([]);
     expect(result.typescriptIr).toEqual(result.corsaIr);
@@ -4161,9 +4161,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const verifyTypedArrays = futureApi("verifyTypedArraySafety");
     const result = await verifyTypedArrays("bytes.ts", `
       import type { BoundedUint8Array, Nat, U8 } from "@mizchi/uneffect"
-      /* uneffect:contract requires size >= 0 && size <= 1024 */
+      /* uneffect:requires size >= 0 && size <= 1024 */
       function allocate(size: Nat): BoundedUint8Array<1024> { return new Uint8Array(size) }
-      /* uneffect:contract requires value >= 0 && value <= 255 */
+      /* uneffect:requires value >= 0 && value <= 255 */
       function write(bytes: BoundedUint8Array<1024>, index: Nat, value: U8) { bytes[index] = value }
       function truncates(bytes: Uint8Array, value: number) { bytes[0] = value }
       function unbounded(size: number): BoundedUint8Array<1024> { return new Uint8Array(size) }
@@ -4177,7 +4177,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("refines switch entry, fallthrough, break, and default as a symbolic temporal update", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 + 4 : value + 4 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state mode: int */ /* uneffect: init value = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 + 4 : value + 4 */
       interface Runtime { value: number; mode: number }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4202,7 +4202,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("composes switch return and throw paths through catch, finally, and normal continuation", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state routed: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init routed = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1 */
+    const source = `/* uneffect: state routed: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state mode: int */ /* uneffect: init routed = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1 */
       interface Runtime { routed: number; failed: number; settled: number; observed: number; mode: number }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4229,7 +4229,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("eliminates an unreachable catch edge but rejects an unknown throwing try edge", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state outcome: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal init outcome = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal action deliver: outcome' = outcome + 1, attempted' = attempted + 1 */
+    const source = `/* uneffect: state outcome: int */ /* uneffect: state attempted: int */ /* uneffect: init outcome = 0 */ /* uneffect: init attempted = 0 */ /* uneffect: action deliver: outcome' = outcome + 1, attempted' = attempted + 1 */
       interface Runtime { outcome: number; attempted: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4256,7 +4256,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("refines an explicitly thrown failure through catch and finally", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state attempted: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal action reject: attempted' = attempted + 1, failed' = failed + 1, settled' = settled + 1 */
+    const source = `/* uneffect: state attempted: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: init attempted = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: action reject: attempted' = attempted + 1, failed' = failed + 1, settled' = settled + 1 */
       interface Runtime { attempted: number; failed: number; settled: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4285,7 +4285,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("joins a conditional failure with the normal path through catch and finally", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state shouldFail: bool */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init shouldFail = false */ /* uneffect:temporal action deliver: delivered' = shouldFail ? delivered : delivered + 1, failed' = shouldFail ? failed + 1 : failed, settled' = settled + 1 */
+    const source = `/* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action deliver: delivered' = shouldFail ? delivered : delivered + 1, failed' = shouldFail ? failed + 1 : failed, settled' = settled + 1 */
       interface Runtime { delivered: number; failed: number; settled: number; shouldFail: boolean }
       /* uneffect:refinement refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4308,7 +4308,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("uses a tracked scalar throw payload in catch control flow", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state shouldFail: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init shouldFail = false */ /* uneffect:temporal action reject: failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action reject: failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed */
       interface Runtime { failed: number; code: number; shouldFail: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4325,7 +4325,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("uses switch-selected scalar throw payloads in catch control flow", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state fallbackCode: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init fallbackCode = 1 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state fallbackCode: int */ /* uneffect: state mode: int */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init fallbackCode = 1 */ /* uneffect: init mode = 0 */ /* uneffect: action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed */
       interface Runtime { failed: number; code: number; fallbackCode: number; mode: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4348,7 +4348,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("uses boolean literal throw payloads in catch control flow", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state shouldFail: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init shouldFail = false */ /* uneffect:temporal action reject: failed' = shouldFail ? failed + 1 : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init failed = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action reject: failed' = shouldFail ? failed + 1 : failed */
       interface Runtime { failed: number; shouldFail: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4369,7 +4369,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("uses fields from a direct record throw payload in catch control flow", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state retryable: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init retryable = false */ /* uneffect:temporal action reject: failed' = retryable && code > 0 ? failed + 1 : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state retryable: bool */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init retryable = false */ /* uneffect: action reject: failed' = retryable && code > 0 ? failed + 1 : failed */
       interface Runtime { failed: number; code: number; retryable: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4386,7 +4386,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("uses common fields from conditional record throw payloads", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state primary: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init primary = false */ /* uneffect:temporal action reject: failed' = failed + (primary ? 1 : 2) */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state primary: bool */ /* uneffect: init failed = 0 */ /* uneffect: init primary = false */ /* uneffect: action reject: failed' = failed + (primary ? 1 : 2) */
       interface Runtime { failed: number; primary: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4408,7 +4408,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("routes a nested conditional throw through the enclosing catch path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state outer: bool */ /* uneffect:temporal state inner: bool */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init outer = false */ /* uneffect:temporal init inner = false */ /* uneffect:temporal action deliver: delivered' = outer ? inner ? delivered : delivered + 1 : delivered, failed' = (outer ? inner : false) ? failed + 1 : failed, settled' = settled + 1 */
+    const source = `/* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state outer: bool */ /* uneffect: state inner: bool */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init outer = false */ /* uneffect: init inner = false */ /* uneffect: action deliver: delivered' = outer ? inner ? delivered : delivered + 1 : delivered, failed' = (outer ? inner : false) ? failed + 1 : failed, settled' = settled + 1 */
       interface Runtime { delivered: number; failed: number; settled: number; outer: boolean; inner: boolean }
       /* uneffect:refinement refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4433,7 +4433,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("keeps return and throw paths distinct while catch discharges only throw", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state returned: int */ /* uneffect:temporal state caught: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state chooseReturn: bool */ /* uneffect:temporal init returned = 0 */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init chooseReturn = false */ /* uneffect:temporal action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1 */
+    const source = `/* uneffect: state returned: int */ /* uneffect: state caught: int */ /* uneffect: state settled: int */ /* uneffect: state chooseReturn: bool */ /* uneffect: init returned = 0 */ /* uneffect: init caught = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init chooseReturn = false */ /* uneffect: action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1 */
       interface Runtime { returned: number; caught: number; settled: number; chooseReturn: boolean }
       /* uneffect:refinement refinement completion@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4456,7 +4456,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("continues only the caught path after a heterogeneous try completion", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state returned: int */ /* uneffect:temporal state caught: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state chooseReturn: bool */ /* uneffect:temporal init returned = 0 */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init chooseReturn = false */ /* uneffect:temporal action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1, observed' = chooseReturn ? observed : observed + 1 */
+    const source = `/* uneffect: state returned: int */ /* uneffect: state caught: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state chooseReturn: bool */ /* uneffect: init returned = 0 */ /* uneffect: init caught = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init chooseReturn = false */ /* uneffect: action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1, observed' = chooseReturn ? observed : observed + 1 */
       interface Runtime { returned: number; caught: number; settled: number; observed: number; chooseReturn: boolean }
       /* uneffect:refinement refinement completion@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4480,7 +4480,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("propagates a catch-local return through finally and the post-try join", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state caught: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action recover: caught' = stop ? caught : caught + 1, settled' = settled + 1, observed' = stop ? observed : observed + 1 */
+    const source = `/* uneffect: state caught: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state stop: bool */ /* uneffect: init caught = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init stop = false */ /* uneffect: action recover: caught' = stop ? caught : caught + 1, settled' = settled + 1, observed' = stop ? observed : observed + 1 */
       interface Runtime { caught: number; settled: number; observed: number; stop: boolean }
       /* uneffect:refinement refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4503,7 +4503,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("propagates a catch-local rethrow through finally without post-try work", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state caught: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state rethrow: bool */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init rethrow = false */ /* uneffect:temporal action recover: caught' = rethrow ? caught : caught + 1, settled' = settled + 1, observed' = rethrow ? observed : observed + 1 */
+    const source = `/* uneffect: state caught: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state rethrow: bool */ /* uneffect: init caught = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init rethrow = false */ /* uneffect: action recover: caught' = rethrow ? caught : caught + 1, settled' = settled + 1, observed' = rethrow ? observed : observed + 1 */
       interface Runtime { caught: number; settled: number; observed: number; rethrow: boolean }
       /* uneffect:refinement refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4526,7 +4526,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("lets conditional finally return or throw override prior completion", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state worked: int */ /* uneffect:temporal state released: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state cancel: bool */ /* uneffect:temporal state fail: bool */ /* uneffect:temporal init worked = 0 */ /* uneffect:temporal init released = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init cancel = false */ /* uneffect:temporal init fail = false */ /* uneffect:temporal action execute: worked' = worked + 1, released' = cancel ? released + 1 : fail ? released : released + 1, observed' = (cancel || fail) ? observed : observed + 1 */
+    const source = `/* uneffect: state worked: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: state cancel: bool */ /* uneffect: state fail: bool */ /* uneffect: init worked = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init cancel = false */ /* uneffect: init fail = false */ /* uneffect: action execute: worked' = worked + 1, released' = cancel ? released + 1 : fail ? released : released + 1, observed' = (cancel || fail) ? observed : observed + 1 */
       interface Runtime { worked: number; released: number; observed: number; cancel: boolean; fail: boolean }
       /* uneffect:refinement refinement cleanup@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement cleanup@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4549,7 +4549,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("lets a finally throw override a retained return completion", async () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
-    const source = `/* uneffect:temporal state recovered: int */ /* uneffect:temporal state released: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal state cleanupFails: bool */ /* uneffect:temporal init recovered = 0 */ /* uneffect:temporal init released = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal init cleanupFails = false */ /* uneffect:temporal action recover: recovered' = stop ? recovered : recovered + 1, released' = cleanupFails ? released : released + 1, observed' = (stop || cleanupFails) ? observed : observed + 1 */
+    const source = `/* uneffect: state recovered: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: state stop: bool */ /* uneffect: state cleanupFails: bool */ /* uneffect: init recovered = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init stop = false */ /* uneffect: init cleanupFails = false */ /* uneffect: action recover: recovered' = stop ? recovered : recovered + 1, released' = cleanupFails ? released : released + 1, observed' = (stop || cleanupFails) ? observed : observed + 1 */
       interface Runtime { recovered: number; released: number; observed: number; stop: boolean; cleanupFails: boolean }
       /* uneffect:refinement refinement cleanup@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement cleanup@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4574,7 +4574,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("executes finally but suppresses post-try work on an early-return path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state worked: int */ /* uneffect:temporal state released: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state cancelled: bool */ /* uneffect:temporal init worked = 0 */ /* uneffect:temporal init released = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init cancelled = false */ /* uneffect:temporal action execute: worked' = cancelled ? worked : worked + 1, released' = released + 1, observed' = cancelled ? observed : observed + 1 */
+    const source = `/* uneffect: state worked: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: state cancelled: bool */ /* uneffect: init worked = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init cancelled = false */ /* uneffect: action execute: worked' = cancelled ? worked : worked + 1, released' = released + 1, observed' = cancelled ? observed : observed + 1 */
       interface Runtime { worked: number; released: number; observed: number; cancelled: boolean }
       /* uneffect:refinement refinement resource@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4596,7 +4596,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("allows finally to override normal completion with a void return", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state worked: int */ /* uneffect:temporal state released: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal init worked = 0 */ /* uneffect:temporal init released = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal action execute: worked' = worked + 1, released' = released + 1 */
+    const source = `/* uneffect: state worked: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: init worked = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: action execute: worked' = worked + 1, released' = released + 1 */
       interface Runtime { worked: number; released: number; observed: number }
       /* uneffect:refinement refinement resource@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4614,7 +4614,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("propagates nested early return without executing enclosing continuations", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state routed: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state outer: bool */ /* uneffect:temporal state inner: bool */ /* uneffect:temporal init routed = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init outer = false */ /* uneffect:temporal init inner = false */ /* uneffect:temporal action route: routed' = outer ? inner ? routed : routed + 1 : routed, observed' = outer ? inner ? observed : observed + 1 : observed + 1 */
+    const source = `/* uneffect: state routed: int */ /* uneffect: state observed: int */ /* uneffect: state outer: bool */ /* uneffect: state inner: bool */ /* uneffect: init routed = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init outer = false */ /* uneffect: init inner = false */ /* uneffect: action route: routed' = outer ? inner ? routed : routed + 1 : routed, observed' = outer ? inner ? observed : observed + 1 : observed + 1 */
       interface Runtime { routed: number; observed: number; outer: boolean; inner: boolean }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4634,7 +4634,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("joins an early-return action branch without executing its trailing updates", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
-    const source = `/* uneffect:temporal state attempts: int */ /* uneffect:temporal state routed: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init attempts = 0 */ /* uneffect:temporal init routed = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action route: attempts' = attempts + 1, routed' = stop ? routed + 1 : routed + 2 */
+    const source = `/* uneffect: state attempts: int */ /* uneffect: state routed: int */ /* uneffect: state stop: bool */ /* uneffect: init attempts = 0 */ /* uneffect: init routed = 0 */ /* uneffect: init stop = false */ /* uneffect: action route: attempts' = attempts + 1, routed' = stop ? routed + 1 : routed + 2 */
       interface Runtime { attempts: number; routed: number; stop: boolean }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4663,7 +4663,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateInvariantsWithoutTypes = futureApi("validateRefinementInvariantBodies");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-lease-"));
     const fileName = join(directory, "lease.ts");
-    const source = `/* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal state allowedOwners: Set<int> */ /* uneffect:temporal state epochs: Map<int, int> */ /* uneffect:temporal state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal init allowedOwners = Set(1, 2) */ /* uneffect:temporal init epochs = Map([[1, 1]]) */ /* uneffect:temporal init leases = Map([[1, { epoch: 1, valid: true }]]) */ /* uneffect:temporal action acquire: owners' = owners.union(Set(2)), epochs' = epochs.put(2, 1) */ /* uneffect:temporal invariant ownerPresent: owners.contains(1) */ /* uneffect:temporal invariant epochRegistered: epochs.keys().contains(1) */ /* uneffect:temporal invariant initialEpoch: epochs.keys().contains(1) && epochs.get(1) === 1 */ /* uneffect:temporal invariant epochsNonNegative: epochs.values().forall(epoch => epoch >= 0) */ /* uneffect:temporal invariant epochKeysKnown: epochs.keys().forall(owner => owner === 1 || owner === 2) */ /* uneffect:temporal invariant validLeases: leases.values().forall(lease => !lease.valid || lease.epoch > 0) */ /* uneffect:temporal invariant ownersAllowed: owners.forall(owner => allowedOwners.contains(owner)) */ /* uneffect:temporal invariant hasOwnerOne: owners.exists(owner => owner === 1) */
+    const source = `/* uneffect: state owners: Set<int> */ /* uneffect: state allowedOwners: Set<int> */ /* uneffect: state epochs: Map<int, int> */ /* uneffect: state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect: init owners = Set(1) */ /* uneffect: init allowedOwners = Set(1, 2) */ /* uneffect: init epochs = Map([[1, 1]]) */ /* uneffect: init leases = Map([[1, { epoch: 1, valid: true }]]) */ /* uneffect: action acquire: owners' = owners.union(Set(2)), epochs' = epochs.put(2, 1) */ /* uneffect:always ownerPresent: owners.contains(1) */ /* uneffect:always epochRegistered: epochs.keys().contains(1) */ /* uneffect:always initialEpoch: epochs.keys().contains(1) && epochs.get(1) === 1 */ /* uneffect:always epochsNonNegative: epochs.values().forall(epoch => epoch >= 0) */ /* uneffect:always epochKeysKnown: epochs.keys().forall(owner => owner === 1 || owner === 2) */ /* uneffect:always validLeases: leases.values().forall(lease => !lease.valid || lease.epoch > 0) */ /* uneffect:always ownersAllowed: owners.forall(owner => allowedOwners.contains(owner)) */ /* uneffect:always hasOwnerOne: owners.exists(owner => owner === 1) */
       interface LeaseRecord { epoch: number; valid: boolean }
       interface Runtime { owners: Set<number>; allowedOwners: Set<number>; epochs: Map<number, number>; leases: Map<number, LeaseRecord> }
       /* uneffect:refinement refinement lease@1 create */
@@ -4775,7 +4775,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state attempted: int */ /* uneffect:temporal state completed: int */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init completed = 0 */ /* uneffect:temporal action runOnce: attempted' = attempted + 1, completed' = completed + 1 */
+      /* uneffect: state attempted: int */ /* uneffect: state completed: int */ /* uneffect: init attempted = 0 */ /* uneffect: init completed = 0 */ /* uneffect: action runOnce: attempted' = attempted + 1, completed' = completed + 1 */
       interface Runtime { attempted: number; completed: number }
       /* uneffect:refinement refinement staticLoop@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement staticLoop@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4796,7 +4796,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state total: int */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal action addBatch: total' = total + 1 + 2 + 3 */
+      /* uneffect: state total: int */ /* uneffect: init total = 0 */ /* uneffect: action addBatch: total' = total + 1 + 2 + 3 */
       interface Runtime { total: number }
       /* uneffect:refinement refinement whileBatch@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement whileBatch@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4817,7 +4817,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state applied: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state stop: int */ /* uneffect:temporal init applied = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init stop = 0 */ /* uneffect:temporal action apply: applied' = stop === 0 ? applied + 1 : stop === 1 ? applied + 1 + 1 : applied + 1 + 1 + 1, finalized' = stop === 0 ? finalized + 1 : stop === 1 ? finalized + 1 + 1 : finalized + 1 + 1 + 1, audited' = audited + 1 */
+      /* uneffect: state applied: int */ /* uneffect: state finalized: int */ /* uneffect: state audited: int */ /* uneffect: state stop: int */ /* uneffect: init applied = 0 */ /* uneffect: init finalized = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init stop = 0 */ /* uneffect: action apply: applied' = stop === 0 ? applied + 1 : stop === 1 ? applied + 1 + 1 : applied + 1 + 1 + 1, finalized' = stop === 0 ? finalized + 1 : stop === 1 ? finalized + 1 + 1 : finalized + 1 + 1 + 1, audited' = audited + 1 */
       interface Runtime { applied: number; finalized: number; audited: number; stop: number }
       /* uneffect:refinement refinement breakBatch@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement breakBatch@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4844,7 +4844,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state applied: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state skip: int */ /* uneffect:temporal init applied = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init skip = 0 */ /* uneffect:temporal action apply: applied' = skip === 0 ? applied + 1 + 1 : skip === 1 ? applied + 1 + 1 : skip === 2 ? applied + 1 + 1 : applied + 1 + 1 + 1, finalized' = finalized + 1 + 1 + 1, audited' = audited + 1 */
+      /* uneffect: state applied: int */ /* uneffect: state finalized: int */ /* uneffect: state audited: int */ /* uneffect: state skip: int */ /* uneffect: init applied = 0 */ /* uneffect: init finalized = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init skip = 0 */ /* uneffect: action apply: applied' = skip === 0 ? applied + 1 + 1 : skip === 1 ? applied + 1 + 1 : skip === 2 ? applied + 1 + 1 : applied + 1 + 1 + 1, finalized' = finalized + 1 + 1 + 1, audited' = audited + 1 */
       interface Runtime { applied: number; finalized: number; audited: number; skip: number }
       /* uneffect:refinement refinement continueBatch@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement continueBatch@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -4869,7 +4869,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
     const source = `
-      /* uneffect:temporal state applied: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state skip: int */ /* uneffect:temporal init applied = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init skip = 0 */ /* uneffect:temporal action apply: applied' = skip === 0 ? applied + 1 + 1 : skip === 1 ? applied + 1 + 1 : skip === 2 ? applied + 1 + 1 : applied + 1 + 1 + 1, finalized' = finalized + 1 + 1 + 1, audited' = audited + 1 */
+      /* uneffect: state applied: int */ /* uneffect: state finalized: int */ /* uneffect: state audited: int */ /* uneffect: state skip: int */ /* uneffect: init applied = 0 */ /* uneffect: init finalized = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init skip = 0 */ /* uneffect: action apply: applied' = skip === 0 ? applied + 1 + 1 : skip === 1 ? applied + 1 + 1 : skip === 2 ? applied + 1 + 1 : applied + 1 + 1 + 1, finalized' = finalized + 1 + 1 + 1, audited' = audited + 1 */
       interface Runtime { applied: number; finalized: number; audited: number; skip: number }
       /* uneffect:refinement refinement labeledContinue@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement labeledContinue@1 observe */ export function observe(runtime: Runtime) { return runtime }

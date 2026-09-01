@@ -45,7 +45,7 @@ const result = generateTemporalModel({
 | `runtime` | Required host profile: `web` or `node`. |
 | `root` | Temporal and resource root; defaults to `main`. |
 | `nodeTopLevelMode` | Node top-level scheduling profile; defaults to `commonjs`. |
-| `linkedTemporal` | A resolved `.uneffect.ts` link. Project verification resolves `uneffect:temporal from` comments automatically. |
+| `linkedTemporal` | A resolved `.uneffect.ts` link. Project verification resolves `uneffect: from` comments automatically. |
 
 `TemporalModelResult` is tagged with
 `schema: "uneffect-temporal-model/v1"`. Its fields are:
@@ -126,7 +126,7 @@ source callable rather than wrapping it.
 
 ## Temporal ownership and resource API placement
 
-`/* uneffect:temporal ... */`, async diagnostics, and the high-level analyzers are
+`/* uneffect: ... */`, async diagnostics, and the high-level analyzers are
 public inputs and evidence APIs. Promise ownership and resource directives now
 use the same `temporal` dialect; the former `async` and `resource` dialects are
 not compatibility aliases.

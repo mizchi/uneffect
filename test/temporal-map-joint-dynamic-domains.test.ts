@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:temporal state nodes: Set<int> */ /* uneffect:temporal state primaryNode: int */ /* uneffect:temporal state backupNode: int */ /* uneffect:temporal state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect:temporal init nodes = Set(1, 2) */ /* uneffect:temporal init primaryNode = 1 */ /* uneffect:temporal init backupNode = 1 */ /* uneffect:temporal init leases = Map([[1, { epoch: 1, valid: true }]]) */ /* uneffect:temporal action selectStandby: backupNode' = 2 */ /* uneffect:temporal action promoteStandby: primaryNode' = backupNode, backupNode' = 2 */ /* uneffect:temporal invariant primaryNodeIsKnown: nodes.contains(primaryNode) */ /* uneffect:temporal invariant backupNodeIsKnown: nodes.contains(backupNode) */ /* uneffect:temporal invariant selectedLeasesAreFenced: (!leases.getOrElse(primaryNode, { epoch: 0, valid: false }).valid || leases.keys().contains(primaryNode)) && (!leases.getOrElse(backupNode, { epoch: -1, valid: false }).valid || leases.keys().contains(backupNode)) */`;
+const fixture = `/* uneffect: state nodes: Set<int> */ /* uneffect: state primaryNode: int */ /* uneffect: state backupNode: int */ /* uneffect: state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect: init nodes = Set(1, 2) */ /* uneffect: init primaryNode = 1 */ /* uneffect: init backupNode = 1 */ /* uneffect: init leases = Map([[1, { epoch: 1, valid: true }]]) */ /* uneffect: action selectStandby: backupNode' = 2 */ /* uneffect: action promoteStandby: primaryNode' = backupNode, backupNode' = 2 */ /* uneffect:always primaryNodeIsKnown: nodes.contains(primaryNode) */ /* uneffect:always backupNodeIsKnown: nodes.contains(backupNode) */ /* uneffect:always selectedLeasesAreFenced: (!leases.getOrElse(primaryNode, { epoch: 0, valid: false }).valid || leases.keys().contains(primaryNode)) && (!leases.getOrElse(backupNode, { epoch: -1, valid: false }).valid || leases.keys().contains(backupNode)) */`;
 
 describe("jointly inductive finite domains for temporal Map keys", () => {
   it("uses the complete membership conjunction for a primary/backup failover", async () => {
@@ -65,7 +65,7 @@ describe("jointly inductive finite domains for temporal Map keys", () => {
 
   it("fails closed when the complete conjunction cannot be initiated or preserved", async () => {
     for (const [name, source] of [
-      ["missing-member", fixture.replace("/* uneffect:temporal invariant backupNodeIsKnown: nodes.contains(backupNode) */ ", "")],
+      ["missing-member", fixture.replace("/* uneffect:always backupNodeIsKnown: nodes.contains(backupNode) */ ", "")],
       ["out-of-domain", fixture.replace("action selectStandby: backupNode' = 2", "action selectStandby: backupNode' = 3")],
       ["compound-primary", fixture.replace("leases.getOrElse(primaryNode,", "leases.getOrElse(primaryNode + 0,")],
       ["mutable-domain", fixture.replace("action selectStandby: backupNode' = 2", "action selectStandby: backupNode' = 2, nodes' = nodes.union(Set(3))")],

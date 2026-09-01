@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect Throw<Error> */
+/* uneffect:module_effect Throw<Error> */
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkFiles, createCheckHost, type CheckOptions } from "./check.js";
@@ -22,7 +22,7 @@ export interface FixtureRun extends Fixture {
   diagnostics: CheckerDiagnostic[];
 }
 
-/* uneffect:capability effect FsRead */
+/* uneffect:effect FsRead */
 async function sourceFiles(directory: string, root: string): Promise<string[]> {
   const entries = await readdir(join(root, directory), { withFileTypes: true });
   const found: string[] = [];
@@ -34,14 +34,14 @@ async function sourceFiles(directory: string, root: string): Promise<string[]> {
   return found;
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function summaryOf(text: string): string {
   const first = text.split(/\r?\n/u)[0] ?? "";
   return first.startsWith("//") ? first.slice(2).trim() : "";
 }
 
 /** Every fixture source in `fixtures/`, sorted so reports and tests keep a stable order. */
-/* uneffect:capability effect FsRead */
+/* uneffect:effect FsRead */
 export async function listFixtures(root = process.cwd()): Promise<Fixture[]> {
   const paths = await sourceFiles(fixturesRoot, root);
   const fixtures: Fixture[] = [];
@@ -71,7 +71,7 @@ export async function runFixtures(root = process.cwd()): Promise<FixtureRun[]> {
   return runs;
 }
 
-/* uneffect:capability effect FsRead */
+/* uneffect:effect FsRead */
 export async function readFixtureReport(fixture: Fixture, root = process.cwd()): Promise<string | undefined> {
   try {
     return await readFile(join(root, fixture.reportPath), "utf8");
@@ -80,7 +80,7 @@ export async function readFixtureReport(fixture: Fixture, root = process.cwd()):
   }
 }
 
-/* uneffect:capability effect FsWrite */
+/* uneffect:effect FsWrite */
 export async function writeFixtureReport(run: FixtureRun, root = process.cwd()): Promise<void> {
   await writeFile(join(root, run.reportPath), run.report);
 }

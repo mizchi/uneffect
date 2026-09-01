@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect none */
+/* uneffect:module_effect none */
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -88,7 +88,7 @@ export function createModelCounterexample<State extends object>(input: Omit<Mode
 export interface ReadModelCounterexampleOptions { expectedModelHash?: string }
 
 /** Atomically persists a JSON-safe normalized model trace for later adapter replay. */
-/* uneffect:capability effect FsWrite | Random | Throw<unknown> | Throw<Error> | Clone<All> */
+/* uneffect:effect FsWrite | Random | Throw<unknown> | Throw<Error> | Clone<All> */
 export function writeModelCounterexample<State extends object>(path: string, trace: ModelCounterexample<State>): void {
   const normalized = createModelCounterexample({
     backend: trace.backend, modelHash: trace.modelHash, initialState: trace.initialState, steps: trace.steps,
@@ -105,7 +105,7 @@ export function writeModelCounterexample<State extends object>(path: string, tra
 }
 
 /** Loads and validates a persisted trace, optionally rejecting stale model evidence. */
-/* uneffect:capability effect FsRead | Throw<Error> | Clone<All> */
+/* uneffect:effect FsRead | Throw<Error> | Clone<All> */
 export function readModelCounterexample<State extends object = ModelState>(
   path: string,
   options: ReadModelCounterexampleOptions = {},

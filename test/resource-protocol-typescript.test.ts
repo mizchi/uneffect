@@ -65,7 +65,7 @@ describe("TypeScript resource protocol CFG lowering", () => {
     try {
       const fileName = join(directory, "entry.ts");
       writeFileSync(fileName, `
-        /* uneffect:temporal
+        /* uneffect:
           borrow input
           consume body
           transfer port -> return
@@ -112,9 +112,9 @@ describe("TypeScript resource protocol CFG lowering", () => {
     try {
       const fileName = join(directory, "entry.ts");
       writeFileSync(fileName, `
-        /* uneffect:temporal transfer value */
+        /* uneffect: transfer value */
         function malformed(value: object): object { return value }
-        /* uneffect:temporal transfer value -> return */
+        /* uneffect: transfer value -> return */
         function moves(value: object): object { return value }
         function unbound(value: object) { moves(value) }
       `);

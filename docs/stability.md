@@ -43,7 +43,7 @@ npx uneffect check --project tsconfig.json --infer \
 
 Within that workflow, these bounded capabilities have a supported fragment:
 
-- parsing and validating `/* uneffect:temporal ... */` directives;
+- parsing and validating `/* uneffect: ... */` directives;
 - explicit function and module Effect upper bounds for documented direct,
   TypeChecker-resolved builtin and local-call shapes;
 - versioned JSON decision reports and fail-closed assurance profiles;

@@ -8,7 +8,7 @@ trusting JavaScript's coercion semantics:
 ```ts
 import type { BoundedUint8Array, Nat, U8 } from "@mizchi/uneffect"
 
-/* uneffect:contract requires size >= 0 && size <= 1024 */
+/* uneffect:requires size >= 0 && size <= 1024 */
 function allocate(size: Nat): BoundedUint8Array<1024> {
   return new Uint8Array(size)
 }
@@ -130,7 +130,7 @@ const SHA256_K = u32Table([
   // ...
 ] as const)
 
-/* uneffect:contract requires round < SHA256_K.length */
+/* uneffect:requires round < SHA256_K.length */
 function constantForRound(round: Nat): U32 {
   return SHA256_K[round]!
 }
@@ -280,7 +280,7 @@ dynamic shift produces an independent `shift-count` obligation requiring
 masking. Both can be discharged by `Nat` plus a `requires` upper bound:
 
 ```ts
-/* uneffect:contract requires index < 32 && shift <= 31 */
+/* uneffect:requires index < 32 && shift <= 31 */
 function write(bytes: BoundedUint8Array<32>, index: Nat, word: U32, shift: Nat) {
   bytes[index] = (word >>> shift) & 0xff
 }

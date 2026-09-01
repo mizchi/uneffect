@@ -47,18 +47,18 @@ const source = `
   declare function subscribe(label: string): Subscription
   /* uneffect:react-resource release Subscription parameter 0 */
   declare function unsubscribe(subscription: Subscription): void
-  /* uneffect:capability effect StyleWrite */
+  /* uneffect:effect StyleWrite */
   declare function insertRule(): void
-  /* uneffect:capability effect StyleWrite */
+  /* uneffect:effect StyleWrite */
   declare function removeRule(): void
-  /* uneffect:capability effect LabelSave */
+  /* uneffect:effect LabelSave */
   declare function persistLabel(label: string): Promise<void>
   interface CatalogVersionSubscription { readonly id: string }
   /* uneffect:react-resource acquire CatalogVersionSubscription result */
   declare function openCatalogVersion(notify: () => void): CatalogVersionSubscription
   /* uneffect:react-resource release CatalogVersionSubscription parameter 0 */
   declare function closeCatalogVersion(subscription: CatalogVersionSubscription): void
-  /* uneffect:capability effect CatalogVersionRead */
+  /* uneffect:effect CatalogVersionRead */
   declare function readCatalogVersion(): number
   function subscribeCatalogVersion(notify: () => void) {
     const subscription = openCatalogVersion(notify)
@@ -86,7 +86,7 @@ const callbackSource = `
   declare function subscribeModule(): ModuleSubscription
   /* uneffect:react-resource release ModuleSubscription parameter 0 */
   declare function unsubscribeModule(subscription: ModuleSubscription): void
-  /* uneffect:capability effect ModuleSnapshotRead */
+  /* uneffect:effect ModuleSnapshotRead */
   declare function readModuleSnapshot(): number
   export function moduleInstall() {
     const subscription = subscribeModule()

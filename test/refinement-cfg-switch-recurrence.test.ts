@@ -6,7 +6,7 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? pending : (mode === 1 ? 2 * pending : 3 * pending)) : 0) */
+const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state mode: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? pending : (mode === 1 ? 2 * pending : 3 * pending)) : 0) */
 interface Runtime { pending: number; processed: number; mode: number }
 /* uneffect:refinement refinement switchDrain@1 create */ export function create(initial: Runtime) { return initial }
 /* uneffect:refinement refinement switchDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }

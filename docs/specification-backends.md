@@ -11,7 +11,7 @@ Capability effects answer:
 Examples include `Console`, `Mutate<typeof state>`, `Throw<E>`, scoped Fetch access, DOM operations, and Worker messaging.
 
 ```ts
-/* uneffect:capability effect Fetch<GET, "https://example.com/**"> | Console */
+/* uneffect:effect Fetch<GET, "https://example.com/**"> | Console */
 ```
 
 The core judgment is lattice inclusion:
@@ -31,7 +31,7 @@ This category answers:
 It includes preconditions, postconditions, loop invariants, representation invariants, and optional refinements.
 
 ```ts
-/* uneffect:contract requires x >= 0 */ /* uneffect:contract ensures result > x */
+/* uneffect:requires x >= 0 */ /* uneffect:ensures result > x */
 function inc(x: number) {
   return x + 1
 }
@@ -60,7 +60,7 @@ This category answers:
 It covers async invalidation, lifecycle protocols, retries, cancellation, Worker transfer ownership, event ordering, and eventually/always properties.
 
 ```ts
-/* uneffect:temporal state epoch: int */ /* uneffect:temporal state cacheValid: bool */ /* uneffect:temporal init epoch = 0 */ /* uneffect:temporal init cacheValid = false */ /* uneffect:temporal action suspend: epoch' = epoch + 1, cacheValid' = false */ /* uneffect:temporal invariant cacheIsSound: !cacheValid || epoch === 0 */
+/* uneffect: state epoch: int */ /* uneffect: state cacheValid: bool */ /* uneffect: init epoch = 0 */ /* uneffect: init cacheValid = false */ /* uneffect: action suspend: epoch' = epoch + 1, cacheValid' = false */ /* uneffect:always cacheIsSound: !cacheValid || epoch === 0 */
 ```
 
 The prototype generates a Quint module containing variables, an `init` action, named actions with explicit or generated stuttering assignments, a nondeterministic `step`, and named safety predicates. Quint simulation supplies fast counterexamples. Exhaustive verification remains a separate Apalache/TLC CI tier.
@@ -108,7 +108,7 @@ including closed-record values, and lowers the operation explicitly instead
 of depending on a backend-specific helper:
 
 ```ts
-/* uneffect:temporal state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect:temporal init leases = Map([]) */ /* uneffect:temporal invariant unknownIsFenced: */ /* uneffect:temporal !leases.getOrElse(3, { epoch: 0, valid: false }).valid */
+/* uneffect: state leases: Map<int, { epoch: int, valid: bool }> */ /* uneffect: init leases = Map([]) */ /* uneffect:always unknownIsFenced: */ /* uneffect: !leases.getOrElse(3, { epoch: 0, valid: false }).valid */
 ```
 
 Quint receives `if (map.keys().contains(key)) map.get(key) else fallback`, the

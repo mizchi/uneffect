@@ -27,7 +27,7 @@ describe("TypeScript contract DSL", () => {
 
   it("connects the contract to the existing Z3 verifier", async () => {
     const result = await verifyUneffectProject({ files: {
-      "src/counter.ts": `/* uneffect:contract from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
+      "src/counter.ts": `/* uneffect:contract_from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
       "src/counter.uneffect.ts": specification,
     } });
     expect(result.obligations).toContainEqual(expect.objectContaining({ obligation: expect.objectContaining({ functionName: "increment" }), result: "verified" }));
@@ -37,7 +37,7 @@ describe("TypeScript contract DSL", () => {
   it("lowers the safe predicate fragment to optional runtime assertions", async () => {
     const result = await verifyUneffectProject({
       files: {
-        "src/counter.ts": `/* uneffect:contract from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
+        "src/counter.ts": `/* uneffect:contract_from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
         "src/counter.uneffect.ts": specification,
       },
       runtimeAssertions: "fallback",
@@ -49,7 +49,7 @@ describe("TypeScript contract DSL", () => {
     expect(result.emittedFiles["src/counter.js"]).not.toContain("src/counter.ts:1:1 Uneffect postcondition");
 
     const prepared = prepareContractDslLinks({
-      "src/counter.ts": `/* uneffect:contract from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
+      "src/counter.ts": `/* uneffect:contract_from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
       "src/counter.uneffect.ts": specification,
     });
     expect(prepared.provenance["src/counter.ts"]).toHaveLength(4);
@@ -63,7 +63,7 @@ describe("TypeScript contract DSL", () => {
 
   it("does not execute unsupported calls embedded in contract comments", () => {
     const result = instrumentContractPredicates("unsafe.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * requires validate(value)
        */
       function unsafe(value: number): number { return value }
@@ -74,7 +74,7 @@ describe("TypeScript contract DSL", () => {
 
   it("instruments every value return in a synchronous branching function", () => {
     const result = instrumentContractPredicates("branch.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function absolute(value: number): number {
@@ -90,7 +90,7 @@ describe("TypeScript contract DSL", () => {
 
   it("does not treat returns in nested functions as outer contract exits", () => {
     const result = instrumentContractPredicates("nested.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function outer(value: number): number {
@@ -105,7 +105,7 @@ describe("TypeScript contract DSL", () => {
 
   it("chooses generated result names that do not shadow user bindings", () => {
     const result = instrumentContractPredicates("collision.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function collision(value: number): number {
@@ -119,7 +119,7 @@ describe("TypeScript contract DSL", () => {
 
   it("fails closed when a postcondition function may fall through", () => {
     const result = instrumentContractPredicates("fallthrough.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function incomplete(value: number): number {
@@ -136,7 +136,7 @@ describe("TypeScript contract DSL", () => {
 
   it("checks the fulfilled value of an async contract", () => {
     const result = instrumentContractPredicates("async.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= value
        */
       async function load(value: number): Promise<number> {
@@ -150,7 +150,7 @@ describe("TypeScript contract DSL", () => {
 
   it("preserves async rejection and rejects a bad fulfilled value", async () => {
     const result = instrumentContractPredicates("async-runtime.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       async function checked(value: number): Promise<number> {
@@ -167,7 +167,7 @@ describe("TypeScript contract DSL", () => {
 
   it("does not make an async returned rejection catchable by the surrounding try", async () => {
     const result = instrumentContractPredicates("async-try.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       async function checked(): Promise<number> {
@@ -182,7 +182,7 @@ describe("TypeScript contract DSL", () => {
 
   it("recognizes exhaustive switch exits", () => {
     const result = instrumentContractPredicates("switch.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function choose(value: number): number {
@@ -199,7 +199,7 @@ describe("TypeScript contract DSL", () => {
 
   it("composes switch fallthrough before deciding exit coverage", () => {
     const result = instrumentContractPredicates("switch-fallthrough.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function choose(value: number): number {
@@ -216,7 +216,7 @@ describe("TypeScript contract DSL", () => {
 
   it("composes try/catch exits and instruments both returns", () => {
     const result = instrumentContractPredicates("try.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function recover(value: number): number {
@@ -231,7 +231,7 @@ describe("TypeScript contract DSL", () => {
 
   it("accepts an obvious non-breaking infinite loop as non-fallthrough", () => {
     const result = instrumentContractPredicates("loop.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function waitForever(): number {
@@ -244,7 +244,7 @@ describe("TypeScript contract DSL", () => {
 
   it("resolves break targets instead of rejecting every nested break", () => {
     const result = instrumentContractPredicates("targeted-loop.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function loop(value: number): number {
@@ -261,7 +261,7 @@ describe("TypeScript contract DSL", () => {
 
   it("reports the source location in generated contract failures", () => {
     const result = instrumentContractPredicates("located.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * requires value >= 0
        * ensures result >= value
        */
@@ -289,7 +289,7 @@ describe("TypeScript contract DSL", () => {
 
   it("checks a Generator final return without treating yielded values as results", () => {
     const instrumented = instrumentContractPredicates("generator.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function* values(): Generator<number, number, void> {
@@ -307,7 +307,7 @@ describe("TypeScript contract DSL", () => {
 
   it("checks an AsyncGenerator fulfilled final return", async () => {
     const instrumented = instrumentContractPredicates("async-generator.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       async function* values(): AsyncGenerator<number, number, void> {
@@ -325,7 +325,7 @@ describe("TypeScript contract DSL", () => {
 
   it("attributes each runtime failure to its directive line", () => {
     const instrumented = instrumentContractPredicates("clauses.ts", `
-      /* uneffect:contract
+      /* uneffect:
        * requires value >= 0
        * ensures result >= value
        */
@@ -340,7 +340,7 @@ describe("TypeScript contract DSL", () => {
   it("uses TypeChecker-resolved never calls as non-fallthrough exits", () => {
     const source = `
       declare function stop(message: string): never;
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function checked(value: number): number {
@@ -356,7 +356,7 @@ describe("TypeScript contract DSL", () => {
   it("uses TypeChecker literal booleans for semantic branch reachability", () => {
     const source = `
       const enabled: true = true;
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function checked(value: number): number {
@@ -371,7 +371,7 @@ describe("TypeScript contract DSL", () => {
   it("uses TypeScript CFG diagnostics to accept an exhaustive literal-union switch", () => {
     const source = `
       type Kind = "left" | "right";
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       function checked(kind: Kind): number {
@@ -442,12 +442,12 @@ describe("TypeScript contract DSL", () => {
   it("instruments contracts on methods and immutable variable-bound functions", () => {
     const source = `
       class Counter {
-        /* uneffect:contract
+        /* uneffect:
          * ensures result >= 0
          */
         next(value: number): number { return value + 1; }
       }
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       const next = (value: number): number => { return value + 1; };
@@ -465,11 +465,11 @@ describe("TypeScript contract DSL", () => {
     const source = `
       class Box {
         #value = 1;
-        /* uneffect:contract
+        /* uneffect:
          * ensures result >= 0
          */
         get value(): number { return this.#value; }
-        /* uneffect:contract
+        /* uneffect:
          * requires value >= 0
          */
         set value(value: number) { this.#value = value; }
@@ -487,7 +487,7 @@ describe("TypeScript contract DSL", () => {
   it("accepts literal computed methods and rejects dynamic computed dispatch", () => {
     const source = `
       class Checks {
-        /* uneffect:contract
+        /* uneffect:
          * ensures result >= 0
          */
         ["run"](value: number): number { return value; }
@@ -507,12 +507,12 @@ describe("TypeScript contract DSL", () => {
 
   it("lowers synchronous and async expression-bodied arrows", async () => {
     const source = `
-      /* uneffect:contract
+      /* uneffect:
        * requires value >= 0
        * ensures result > value
        */
       const next = (value: number): number => value + 1;
-      /* uneffect:contract
+      /* uneffect:
        * ensures result >= 0
        */
       const asyncNext = async (value: number): Promise<number> => Promise.resolve(value + 1);
@@ -531,7 +531,7 @@ describe("TypeScript contract DSL", () => {
     const source = `
       const base = (value: number): number => value + 1;
       const first = base;
-      /* uneffect:contract
+      /* uneffect:
        * ensures result > value
        */
       const next = first;
@@ -549,11 +549,11 @@ describe("TypeScript contract DSL", () => {
   it("instruments lexically nested declarations without crossing function boundaries", () => {
     const source = `
       function outer(value: number): number {
-        /* uneffect:contract
+        /* uneffect:
          * ensures result > value
          */
         function inner(value: number): number { return value + 1; }
-        /* uneffect:contract
+        /* uneffect:
          * ensures result > value
          */
         const arrow = (value: number): number => value + 2;
@@ -574,7 +574,7 @@ describe("TypeScript contract DSL", () => {
       function outer(value: number): number {
         const base = (input: number): number => input + 1;
         const first = base;
-        /* uneffect:contract
+        /* uneffect:
          * ensures result > input
          */
         const next = first;
@@ -595,7 +595,7 @@ describe("TypeScript contract DSL", () => {
         "src/barrel.ts": `export { base as nextBase } from "./base.js";`,
         "src/consumer.ts": `
           import { nextBase } from "./barrel.js";
-          /* uneffect:contract
+          /* uneffect:
            * ensures result > value
            */
           export const next = nextBase;
@@ -603,7 +603,7 @@ describe("TypeScript contract DSL", () => {
         "src/registry.ts": `
           const local = (value: number): number => value + 2;
           const registry = Object.freeze({ run: local });
-          /* uneffect:contract
+          /* uneffect:
            * ensures result > value
            */
           export const run = registry.run;
@@ -619,7 +619,7 @@ describe("TypeScript contract DSL", () => {
     const unfrozen = instrumentContractPredicates("unfrozen.ts", `
       const base = (value: number): number => value + 1;
       const registry = { run: base };
-      /* uneffect:contract
+      /* uneffect:
        * ensures result > value
        */
       const run = registry.run;
@@ -643,7 +643,7 @@ describe("TypeScript contract DSL", () => {
 
   it("keeps a broken implementation as a counterexample", async () => {
     const result = await verifyUneffectProject({ files: {
-      "src/counter.ts": `/* uneffect:contract from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value }`,
+      "src/counter.ts": `/* uneffect:contract_from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value }`,
       "src/counter.uneffect.ts": specification,
     } });
     expect(result.obligations).toContainEqual(expect.objectContaining({ obligation: expect.objectContaining({ functionName: "increment" }), result: "counterexample" }));
@@ -657,7 +657,7 @@ describe("TypeScript contract DSL", () => {
 
   it("rejects an implementation signature that does not match the contract", async () => {
     await expect(verifyUneffectProject({ files: {
-      "src/counter.ts": `/* uneffect:contract from "./counter.uneffect.ts#Increment" */\nexport function increment(value: boolean): number { return 1 }`,
+      "src/counter.ts": `/* uneffect:contract_from "./counter.uneffect.ts#Increment" */\nexport function increment(value: boolean): number { return 1 }`,
       "src/counter.uneffect.ts": specification,
     } })).rejects.toThrow(/parameter value expects int, implementation is bool/);
   });
@@ -672,7 +672,7 @@ describe("TypeScript contract DSL", () => {
     `;
     const result = await verifyUneffectProject({
       files: {
-        "src/double.ts": `import type { Nat } from "@mizchi/uneffect";\n/* uneffect:contract from "./double.uneffect.ts#Double" */\nexport function double(value: Nat): Nat { return value }`,
+        "src/double.ts": `import type { Nat } from "@mizchi/uneffect";\n/* uneffect:contract_from "./double.uneffect.ts#Double" */\nexport function double(value: Nat): Nat { return value }`,
         "src/double.uneffect.ts": refined,
       },
       runtimeAssertions: "fallback",

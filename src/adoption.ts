@@ -18,15 +18,15 @@ const fixtures: Record<AdoptionFixtureName, AdoptionFixture> = {
     function endpointOf(value: { endpoint: string }) { return value.endpoint }
     function label(value: string) { return "endpoint=" + value }
     function output(value: string) { console.log(value) }
-    /* uneffect:capability effect FsRead<"$CWD/config/app.json"> | Console */
+    /* uneffect:effect FsRead<"$CWD/config/app.json"> | Console */
     export function main() { const raw = readFileSync("$CWD/config/app.json", "utf8"); output(label(endpointOf(parseSettings(raw)))) }
   ` } },
   "browser-app": { expectedDiagnostics: [], files: { "src/app.ts": `
     function byId(id: string) { return document.getElementById(id) }
     function text(value: unknown) { return String(value) }
-    /* uneffect:capability effect Dom<Parse, typeof target> | Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Dom<Parse, typeof target.parentNode> | Dom<NodeWrite, typeof target.parentNode> | Mutate<typeof target.parentNode> | Mutate<typeof target> | InvokeUserCode */
+    /* uneffect:effect Dom<Parse, typeof target> | Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Dom<Parse, typeof target.parentNode> | Dom<NodeWrite, typeof target.parentNode> | Mutate<typeof target.parentNode> | Mutate<typeof target> | InvokeUserCode */
     function render(target: HTMLElement, value: string, replaceShell = false) { if (replaceShell) target.outerHTML = '<main id="app"></main>'; else { target.innerHTML = ""; target.insertAdjacentText("beforeend", value); target.normalize() } }
-    /* uneffect:capability effect Dom<AttributeRead, typeof target> | Dom<AttributeWrite, typeof target> | Dom<NodeRead, typeof target> | Dom<LayoutRead, typeof target> | Dom<TextRead, typeof label> | Mutate<typeof target> | InvokeUserCode */
+    /* uneffect:effect Dom<AttributeRead, typeof target> | Dom<AttributeWrite, typeof target> | Dom<NodeRead, typeof target> | Dom<LayoutRead, typeof target> | Dom<TextRead, typeof label> | Mutate<typeof target> | InvokeUserCode */
     function snapshotAndMarkReady(target: HTMLElement, label: CharacterData) { const attrs = target.attributes; const busy = attrs.getNamedItem("aria-busy"); const snapshot = [attrs.length, target.children.length, target.clientWidth, label.substringData(0, 5)]; if (busy) attrs.removeNamedItem("aria-busy"); target.toggleAttribute("data-ready", true); return snapshot }
     function listen(target: HTMLElement, run: () => void) { target.addEventListener("click", run) }
     function now() { return performance.now() }
@@ -205,7 +205,7 @@ export async function compareEffectImplementations(options: { fixture: "fetch-an
   const fetcher = async (): Promise<string> => { throw new TypeError("offline"); };
   const native = async (): Promise<string> => { try { return await fetcher(); } catch { return "recovered"; } };
   const uneffectSource = `
-    /* uneffect:capability effect Fetch<Fetch.GET, "https://api.example.com/data"> | Net<"api.example.com:443"> */
+    /* uneffect:effect Fetch<Fetch.GET, "https://api.example.com/data"> | Net<"api.example.com:443"> */
     export async function load() { try { return await fetch("https://api.example.com/data") } catch { return "recovered" } }
   `;
   const analyzed = analyzeUneffectProject({ files: { "src/load.ts": uneffectSource }, mode: "strict" });

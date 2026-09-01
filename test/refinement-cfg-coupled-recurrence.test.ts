@@ -6,7 +6,7 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state batch: int */ /* uneffect:temporal state sent: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init batch = 0 */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending + 1) / 2 : 0) */
+const fixture = `/* uneffect: state pending: int */ /* uneffect: state batch: int */ /* uneffect: state sent: int */ /* uneffect: init pending = 0 */ /* uneffect: init batch = 0 */ /* uneffect: init sent = 0 */ /* uneffect: action flush: pending' = pending > 0 ? 0 : pending, batch' = batch + (pending > 0 ? pending : 0), sent' = sent + (pending > 0 ? pending * batch + pending * (pending + 1) / 2 : 0) */
 interface Runtime { pending: number; batch: number; sent: number }
 /* uneffect:refinement refinement cfgCoupledFlush@1 create */ export function create(initial: Runtime) { return initial }
 /* uneffect:refinement refinement cfgCoupledFlush@1 observe */ export function observe(runtime: Runtime) { return runtime }

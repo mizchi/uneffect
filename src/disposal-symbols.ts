@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect none */
+/* uneffect:module_effect none */
 import ts from "typescript";
 
 export interface ResolvedDisposalProtocol {
@@ -6,13 +6,13 @@ export interface ResolvedDisposalProtocol {
   asyncSymbol?: ts.Symbol;
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
   const symbol = checker.getSymbolAtLocation(node);
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
 }
 
-/* uneffect:capability effect Mutate<typeof seen> */
+/* uneffect:effect Mutate<typeof seen> */
 function standardProtocolExpression(checker: ts.TypeChecker, expression: ts.Expression, seen = new Set<ts.Symbol>()): "sync" | "async" | undefined {
   if (ts.isPropertyAccessExpression(expression)) {
     const access = expression;
@@ -41,7 +41,7 @@ function standardProtocolExpression(checker: ts.TypeChecker, expression: ts.Expr
   return undefined;
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function standardProtocolKind(checker: ts.TypeChecker, property: ts.Symbol): "sync" | "async" | undefined {
   for (const declaration of property.declarations ?? []) {
     const name = (declaration as ts.NamedDeclaration).name;
@@ -52,7 +52,7 @@ function standardProtocolKind(checker: ts.TypeChecker, property: ts.Symbol): "sy
   return undefined;
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function resolveDisposalProtocol(checker: ts.TypeChecker, expression: ts.Expression): ResolvedDisposalProtocol {
   let type = checker.getTypeAtLocation(expression);
   type = checker.getAwaitedType(type) ?? type;

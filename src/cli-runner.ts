@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect Throw<Error> */
+/* uneffect:module_effect Throw<Error> */
 import { relative } from "node:path";
 import { checkCommand } from "./check-command.js";
 import { CliUsageError, exitCode, formatCommandHelp, processStreams, type CliCommand, type CliStreams } from "./cli-support.js";
@@ -13,12 +13,12 @@ import { moduleOrderCommand } from "./module-order-command.js";
 export const cliCommands: readonly CliCommand[] = [checkCommand, doctorCommand, specCommand, instrumentCommand, evidenceCommand, moduleOrderCommand, resourceCommand, asyncModelCommand];
 
 /** The published version, read from this package's own manifest. */
-/* uneffect:capability effect FsRead */
+/* uneffect:effect FsRead */
 export async function cliVersion(): Promise<string> {
   return (await readPackageManifest()).version ?? "unknown";
 }
 
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 export function formatCliHelp(): string {
   const width = Math.max(...cliCommands.map((command) => command.name.length));
   return [

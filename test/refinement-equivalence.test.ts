@@ -4,7 +4,7 @@ import { validateRefinementActionBodiesWithZ3, validateRefinementInvariantBodies
 import { checkTemporalExpressionEquivalenceWithZ3 } from "../src/spec-lint.js";
 import { parseTemporalExpression } from "../src/temporal-expressions.js";
 
-const prelude = `/* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal action_when increment: armed && value > 0 */ /* uneffect:temporal invariant guarded: !armed || value > 0 */
+const prelude = `/* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect: action increment: value' = value + 1 */ /* uneffect: action_when increment: armed && value > 0 */ /* uneffect:always guarded: !armed || value > 0 */
 interface Runtime { value: number; armed: boolean }
 /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
 /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -21,7 +21,7 @@ describe("Z3-backed refinement expression equivalence", () => {
   });
 
   it("proves integer update equivalence and discharges syntax-only action mismatches", async () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal action increment: value' = armed ? value : value + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect: action increment: value' = armed ? value : value + 1 */
       interface Runtime { value: number; armed: boolean }
       /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }

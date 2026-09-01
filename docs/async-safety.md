@@ -45,11 +45,11 @@ checker can still determine whether their rejection is observed.
 A scalar fulfilled value can additionally use a contract relation:
 
 ```ts
-/* uneffect:contract ensures result >= minimum */
+/* uneffect:ensures result >= minimum */
 /* uneffect:temporal-summary rejects NetworkError */
 declare function requestCount(minimum: number): Promise<number>
 
-/* uneffect:contract ensures result >= 0 */
+/* uneffect:ensures result >= 0 */
 async function load(): Promise<number> {
   return await requestCount(0)
 }
@@ -113,7 +113,7 @@ observes or transfers it. A branch on which no Promise was assigned creates no
 obligation, while an assigned-but-unobserved branch is diagnosed.
 
 ```ts
-/* uneffect:temporal consumes_rejection 0 */
+/* uneffect: consumes_rejection 0 */
 declare function enqueue(job: Promise<void>): void
 
 const job = startJob()
@@ -143,7 +143,7 @@ or propagate callback contracts through higher-order wrappers.
 Promise-returning callbacks have a separate ownership boundary:
 
 ```ts
-/* uneffect:temporal consumes_callback_rejection 0 */
+/* uneffect: consumes_callback_rejection 0 */
 declare function schedule(task: () => Promise<void>): void
 
 schedule(async () => work())       // accepted
@@ -338,7 +338,7 @@ being treated as proofs.
 Conditional APIs can expose the guard explicitly:
 
 ```ts
-/* uneffect:temporal consumes_rejection_when 1: enabled */
+/* uneffect: consumes_rejection_when 1: enabled */
 declare function maybeEnqueue(enabled: boolean, job: Promise<void>): void
 
 maybeEnqueue(true, job)  // must-consume: ownership transfers
@@ -497,13 +497,13 @@ for the selected disposal method propagate to the function containing the
 
 ```ts
 class Resource {
-  /* uneffect:capability effect Console */
+  /* uneffect:effect Console */
   [Symbol.dispose]() {
     console.log("disposed")
   }
 }
 
-/* uneffect:capability effect Console */
+/* uneffect:effect Console */
 function work() {
   using resource = new Resource()
 }

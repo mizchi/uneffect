@@ -20,7 +20,7 @@ This does not mean every Uneffect effect is a Deno permission. `Fetch`, DOM oper
 An unparameterized capability means unscoped access to the entire category:
 
 ```ts
-/* uneffect:capability effect FsRead | Net | Env */
+/* uneffect:effect FsRead | Net | Env */
 ```
 
 Uneffect does not encode this as a magic `"*"` scope because Deno's scope languages differ by category and a wildcard can have category-specific meaning.
@@ -36,11 +36,11 @@ Capability(name, [All | Finite(atoms) | Unknown])
 Examples:
 
 ```ts
-/* uneffect:capability effect FsRead<"./data" | "./config.json"> */
-/* uneffect:capability effect Net<"api.example.com:443" | "*.example.net"> */
-/* uneffect:capability effect Env<"HOME" | "AWS_*"> */
-/* uneffect:capability effect Run<"git" | "curl"> */
-/* uneffect:capability effect Sys<hostname | cpus> */
+/* uneffect:effect FsRead<"./data" | "./config.json"> */
+/* uneffect:effect Net<"api.example.com:443" | "*.example.net"> */
+/* uneffect:effect Env<"HOME" | "AWS_*"> */
+/* uneffect:effect Run<"git" | "curl"> */
+/* uneffect:effect Sys<hostname | cpus> */
 ```
 
 The same generic code performs set union, subset checks, unknown propagation, and unused-authority diagnostics. A versioned schema selects the atom domain. Both the TypeScript prototype and Rust core now use registries for parsing and containment; builtin and user-defined effects take the same path:
@@ -80,16 +80,16 @@ Net    == Net<All>
 ## Filesystem permissions
 
 ```ts
-/* uneffect:capability effect FsRead<"./data"> | FsWrite<"./cache"> */
+/* uneffect:effect FsRead<"./data"> | FsWrite<"./cache"> */
 ```
 
 Path atoms may start with a reserved symbolic anchor:
 
 ```ts
-/* uneffect:capability effect FsRead<"$WORKSPACE_ROOT/**"> */
-/* uneffect:capability effect FsWrite<"$CWD/.cache/**"> */
-/* uneffect:capability effect FsRead<"$PACKAGE_ROOT/assets/**"> */
-/* uneffect:capability effect FsRead<"$SOURCE_DIR/fixtures/**"> */
+/* uneffect:effect FsRead<"$WORKSPACE_ROOT/**"> */
+/* uneffect:effect FsWrite<"$CWD/.cache/**"> */
+/* uneffect:effect FsRead<"$PACKAGE_ROOT/assets/**"> */
+/* uneffect:effect FsRead<"$SOURCE_DIR/fixtures/**"> */
 ```
 
 These are Uneffect symbols, not shell environment-variable expansion. The initial reserved set is:
@@ -167,13 +167,13 @@ Node `node:fs` and Deno filesystem APIs instantiate the same `FsRead`/`FsWrite` 
 Deno `net` authority is host-oriented:
 
 ```ts
-/* uneffect:capability effect Net<"api.example.com:443"> */
+/* uneffect:effect Net<"api.example.com:443"> */
 ```
 
 It does not include HTTP method or URL path. Uneffect therefore keeps `Net` and `Fetch` separate:
 
 ```ts
-/* uneffect:capability effect Net<"api.example.com:443"> */ /* uneffect:temporal  */
+/* uneffect:effect Net<"api.example.com:443"> */
 ```
 
 A Fetch call can instantiate both effects. `Net` answers whether the runtime connection is authorized; `Fetch` answers whether the application-level HTTP operation and path are authorized.
@@ -185,7 +185,7 @@ Deno network scopes support exact hostnames/IP addresses, optional ports, IPv6 l
 ## Environment
 
 ```ts
-/* uneffect:capability effect Env<"HOME" | "AWS_*"> */
+/* uneffect:effect Env<"HOME" | "AWS_*"> */
 ```
 
 Deno's environment permission gates both reads and writes. Uneffect may retain `Read(Env)` and `Write(Env)` semantic footprints for optimization, while the domain capability remains `Env`.
@@ -195,7 +195,7 @@ Environment-name matching is case-insensitive on Windows and case-sensitive on o
 ## Subprocesses
 
 ```ts
-/* uneffect:capability effect Run<"git" | "curl"> */
+/* uneffect:effect Run<"git" | "curl"> */
 ```
 
 Child processes are outside the parent Deno sandbox. `Run` is therefore an authority boundary that also invalidates closed-world assumptions about external state. A command carrying `LD_*` or `DYLD_*` dynamic-loader variables requires unscoped `Run`, matching Deno's escalation rule.
@@ -205,7 +205,7 @@ Program arguments are not part of Deno's permission scope. Uneffect may later ad
 ## System information
 
 ```ts
-/* uneffect:capability effect Sys<hostname | cpus | networkInterfaces> */
+/* uneffect:effect Sys<hostname | cpus | networkInterfaces> */
 ```
 
 `Sys` uses Deno's finite descriptor vocabulary, including operations such as `hostname`, `osRelease`, `osUptime`, `loadavg`, `networkInterfaces`, `systemMemoryInfo`, `uid`, `gid`, `username`, `cpus`, and `homedir`. Node compatibility APIs map to the same capability names when they expose equivalent host information.
@@ -220,7 +220,7 @@ functions are not classified as system authority.
 ## FFI
 
 ```ts
-/* uneffect:capability effect Ffi<"./native/libexample.so"> */
+/* uneffect:effect Ffi<"./native/libexample.so"> */
 ```
 
 FFI scopes use filesystem path containment, but FFI is not equivalent to file reading. Loaded native code runs with the operating-system authority of the process and can bypass the Deno sandbox. Any verified summary reaching FFI must record an explicit sandbox-escape footprint and stop optimizer assumptions that depend on closed-world state.
@@ -228,7 +228,7 @@ FFI scopes use filesystem path containment, but FFI is not equivalent to file re
 ## Remote imports
 
 ```ts
-/* uneffect:capability effect Import<"example.com"> */
+/* uneffect:effect Import<"example.com"> */
 ```
 
 `Import` is distinct from `Net`. It authorizes loading executable module code from HTTPS hosts. Static graph loading, analyzable literal dynamic imports, Deno's default trusted registries, and computed dynamic imports have different runtime permission behavior. Uneffect records the import authority at the relevant module or dynamic-import boundary and applies the selected Deno policy profile when projecting deployment permissions.

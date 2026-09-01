@@ -189,12 +189,12 @@ export function validateContractDslLink(program: ts.Program, implementationFile:
 }
 
 export function prepareContractDslLinks(files: Readonly<Record<string, string>>, program?: ts.Program): PreparedContractDslLinks {
-  const output = { ...files }, annotationPrefix = ["uneffect", "contract"].join(":");
+  const output = { ...files }, annotationPrefix = ["uneffect", ""].join(":");
   const provenance: Record<string, ContractClauseProvenance[]> = {};
   for (const [fileName, source] of Object.entries(files)) {
     const links = extractAnnotations(source, "contract_from");
     if (links.length === 0) continue;
-    if (links.length !== 1) throw new Error(`${fileName}: expected exactly one uneffect:contract from declaration`);
+    if (links.length !== 1) throw new Error(`${fileName}: expected exactly one uneffect:contract_from declaration`);
     const quoted = /^(?:"([^"]+)"|'([^']+)')$/.exec(links[0]!);
     if (!quoted) throw new Error(`${fileName}: contract from requires a quoted relative .uneffect.ts path and export`);
     const reference = quoted[1] ?? quoted[2]!, hash = reference.lastIndexOf("#"), requested = reference.slice(0, hash), exportName = reference.slice(hash + 1);
@@ -210,7 +210,7 @@ export function prepareContractDslLinks(files: Readonly<Record<string, string>>,
       ...contract.requires.map((value) => `requires ${value}`),
       ...contract.ensures.map((value) => `ensures ${value}`),
     ].join("\n * ");
-    output[fileName] = source.replace(/(\/\*\s*uneffect\s*:\s*contract\s+)from\s+(?:"[^"]+"|'[^']+')\s*(\*\/)/, `/* ${annotationPrefix}\n * ${body}\n */`);
+    output[fileName] = source.replace(/\/\*\s*uneffect\s*:\s*contract_from\s+(?:"[^"]+"|'[^']+')\s*\*\//, `/* ${annotationPrefix}\n * ${body}\n */`);
   }
   return { files: output, provenance };
 }

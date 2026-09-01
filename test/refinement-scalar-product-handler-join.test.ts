@@ -6,7 +6,7 @@ import {
 import { parseSpec } from "../src/spec-ir.js";
 
 const fixture = (between = "") => `
-/* uneffect:temporal state total: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40)${between ? " + 16" : ""} */
+/* uneffect: state total: int */ /* uneffect: state audited: int */ /* uneffect: state first: bool */ /* uneffect: state second: bool */ /* uneffect: action compose: total' = total + (first ? 2 : 1) + (second ? 8 : 4), audited' = audited + (first ? 20 : 10) + (second ? 80 : 40)${between ? " + 16" : ""} */
 interface Runtime { total: number; audited: number; first: boolean; second: boolean }
 /* uneffect:refinement refinement scalarProductJoin@1 create */
 export function create(initial: Runtime): Runtime { return { ...initial } }

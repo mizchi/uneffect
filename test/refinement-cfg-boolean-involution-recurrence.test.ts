@@ -6,7 +6,7 @@ import {
 } from "../src/refinement-bindings.js";
 import { parseSpec } from "../src/spec-ir.js";
 
-const fixture = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state primary: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init primary = true */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, primary' = pending > 0 ? (pending % 2 === 0 ? primary : !primary) : primary */
+const fixture = `/* uneffect: state pending: int */ /* uneffect: state primary: bool */ /* uneffect: init pending = 0 */ /* uneffect: init primary = true */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, primary' = pending > 0 ? (pending % 2 === 0 ? primary : !primary) : primary */
 interface Runtime { pending: number; primary: boolean }
 /* uneffect:refinement refinement cfgBooleanInvolution@1 create */ export function create(initial: Runtime) { return initial }
 /* uneffect:refinement refinement cfgBooleanInvolution@1 observe */ export function observe(runtime: Runtime) { return runtime }

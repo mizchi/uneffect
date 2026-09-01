@@ -115,7 +115,7 @@ describe("annotated refinement bindings", () => {
 
   it("binds a backend counterexample to exported implementation functions", async () => {
     const source = `
-      /* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal invariant belowTwo: value < 2 */
+      /* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action increment: value' = value + 1 */ /* uneffect:always belowTwo: value < 2 */
       /* uneffect:refinement refinement counter@1 create */
       export function createCounter(initial: { value: number }) { return { ...initial } }
       /* uneffect:refinement refinement counter@1 observe */
@@ -222,7 +222,7 @@ describe("annotated refinement bindings", () => {
 
   it("reports stale and missing temporal model bindings", () => {
     const source = `
-      /* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal action reset: value' = 0 */ /* uneffect:temporal invariant nonNegative: value >= 0 */
+      /* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action increment: value' = value + 1 */ /* uneffect: action reset: value' = 0 */ /* uneffect:always nonNegative: value >= 0 */
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: unknown) {}
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: unknown) {}
       /* uneffect:refinement refinement counter@1 action increment */ export function incrementCounter(runtime: unknown) {}
@@ -240,7 +240,7 @@ describe("annotated refinement bindings", () => {
 
   it("proves direct scalar action updates and reports semantic mismatches", () => {
     const source = `
-      /* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal action arm: armed' = true */ /* uneffect:temporal action observe: armed' = armed */ /* uneffect:temporal action badExtra: value' = value */
+      /* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect: action increment: value' = value + 1 */ /* uneffect: action arm: armed' = true */ /* uneffect: action observe: armed' = armed */ /* uneffect: action badExtra: value' = value */
       interface Runtime { value: number; armed: boolean }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -268,7 +268,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("composes repeated writes sequentially without confusing them with model simultaneous updates", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state left: int */ /* uneffect:temporal state right: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init left = 1 */ /* uneffect:temporal init right = 2 */ /* uneffect:temporal action incrementTwice: value' = value + 1 + 1 */ /* uneffect:temporal action brokenSwap: left' = right, right' = left */
+    const source = `/* uneffect: state value: int */ /* uneffect: state left: int */ /* uneffect: state right: int */ /* uneffect: init value = 0 */ /* uneffect: init left = 1 */ /* uneffect: init right = 2 */ /* uneffect: action incrementTwice: value' = value + 1 + 1 */ /* uneffect: action brokenSwap: left' = right, right' = left */
       interface Runtime { value: number; left: number; right: number }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -283,7 +283,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("preserves immutable action-local snapshots across later writes", () => {
-    const source = `/* uneffect:temporal state left: int */ /* uneffect:temporal state right: int */ /* uneffect:temporal init left = 1 */ /* uneffect:temporal init right = 2 */ /* uneffect:temporal action swap: left' = right, right' = left */
+    const source = `/* uneffect: state left: int */ /* uneffect: state right: int */ /* uneffect: init left = 1 */ /* uneffect: init right = 2 */ /* uneffect: action swap: left' = right, right' = left */
       interface Runtime { left: number; right: number }
       /* uneffect:refinement refinement pair@1 create */ export function createPair(initial: Runtime) { return initial }
       /* uneffect:refinement refinement pair@1 observe */ export function observePair(runtime: Runtime) { return runtime }
@@ -302,7 +302,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("composes an if branch into a conditional model update", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal action maybeIncrement: value' = armed ? value + 1 : value */
+    const source = `/* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect: action maybeIncrement: value' = armed ? value + 1 : value */
       interface Runtime { value: number; armed: boolean }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -313,7 +313,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("composes switch entry, fallthrough, break, and default into one model update", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 + 4 : value + 4 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state mode: int */ /* uneffect: init value = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 + 4 : value + 4 */
       interface Runtime { value: number; mode: number }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -350,7 +350,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("propagates switch return and throw paths through catch and finally", () => {
-    const source = `/* uneffect:temporal state routed: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init routed = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1 */
+    const source = `/* uneffect: state routed: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state mode: int */ /* uneffect: init routed = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1 */
       interface Runtime { routed: number; failed: number; settled: number; observed: number; mode: number }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -387,7 +387,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("composes mandatory finally updates after a normally completing try block", () => {
-    const source = `/* uneffect:temporal state attempted: int */ /* uneffect:temporal state phase: int */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init phase = 0 */ /* uneffect:temporal action account: attempted' = attempted + 1, phase' = 2 */
+    const source = `/* uneffect: state attempted: int */ /* uneffect: state phase: int */ /* uneffect: init attempted = 0 */ /* uneffect: init phase = 0 */ /* uneffect: action account: attempted' = attempted + 1, phase' = 2 */
       interface Runtime { attempted: number; phase: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -416,7 +416,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("routes a direct terminal throw through catch and mandatory finally updates", () => {
-    const source = `/* uneffect:temporal state attempted: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal action reject: attempted' = attempted + 1, failed' = failed + 1, settled' = settled + 1 */
+    const source = `/* uneffect: state attempted: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: init attempted = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: action reject: attempted' = attempted + 1, failed' = failed + 1, settled' = settled + 1 */
       interface Runtime { attempted: number; failed: number; settled: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -449,7 +449,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("joins conditional throw and normal paths before finally and trailing updates", () => {
-    const source = `/* uneffect:temporal state attempted: int */ /* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state shouldFail: bool */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init shouldFail = false */ /* uneffect:temporal action deliver: attempted' = attempted + 1, delivered' = shouldFail ? delivered : delivered + 1, failed' = shouldFail ? failed + 1 : failed, settled' = settled + 1, observed' = observed + 1 */
+    const source = `/* uneffect: state attempted: int */ /* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init attempted = 0 */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action deliver: attempted' = attempted + 1, delivered' = shouldFail ? delivered : delivered + 1, failed' = shouldFail ? failed + 1 : failed, settled' = settled + 1, observed' = observed + 1 */
       interface Runtime { attempted: number; delivered: number; failed: number; settled: number; observed: number; shouldFail: boolean }
       /* uneffect:refinement refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -476,7 +476,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("binds a conditional scalar throw payload in catch control flow", () => {
-    const source = `/* uneffect:temporal state attempted: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state shouldFail: bool */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init shouldFail = false */ /* uneffect:temporal action reject: attempted' = attempted + 1, failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed, settled' = settled + 1 */
+    const source = `/* uneffect: state attempted: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state code: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init attempted = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init code = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action reject: attempted' = attempted + 1, failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed, settled' = settled + 1 */
       interface Runtime { attempted: number; failed: number; settled: number; code: number; shouldFail: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -501,7 +501,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("binds scalar throw payloads selected by switch cases", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state fallbackCode: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init fallbackCode = 1 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state fallbackCode: int */ /* uneffect: state mode: int */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init fallbackCode = 1 */ /* uneffect: init mode = 0 */ /* uneffect: action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed */
       interface Runtime { failed: number; code: number; fallbackCode: number; mode: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -526,7 +526,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("binds numeric literal payloads across switch fallthrough and default", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action reject: failed' = (mode === 0 ? 1 : mode === 1 ? 1 : 0) > 0 ? failed + 1 : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state mode: int */ /* uneffect: init failed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action reject: failed' = (mode === 0 ? 1 : mode === 1 ? 1 : 0) > 0 ? failed + 1 : failed */
       interface Runtime { failed: number; mode: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -554,7 +554,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("binds boolean literal payloads across conditional throws", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state shouldFail: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init shouldFail = false */ /* uneffect:temporal action reject: failed' = shouldFail ? failed + 1 : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init failed = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action reject: failed' = shouldFail ? failed + 1 : failed */
       interface Runtime { failed: number; shouldFail: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -572,7 +572,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("projects fields from a direct record throw payload", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state retryable: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init retryable = false */ /* uneffect:temporal action reject: failed' = retryable && code > 0 ? failed + 1 : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state retryable: bool */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init retryable = false */ /* uneffect: action reject: failed' = retryable && code > 0 ? failed + 1 : failed */
       interface Runtime { failed: number; code: number; retryable: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -596,7 +596,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("projects common scalar fields across conditional record throw payloads", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state primary: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init primary = false */ /* uneffect:temporal action reject: failed' = failed + (primary ? 1 : 2) */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state primary: bool */ /* uneffect: init failed = 0 */ /* uneffect: init primary = false */ /* uneffect: action reject: failed' = failed + (primary ? 1 : 2) */
       interface Runtime { failed: number; primary: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -623,7 +623,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("propagates a nested conditional throw to the enclosing catch path", () => {
-    const source = `/* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state outer: bool */ /* uneffect:temporal state inner: bool */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init outer = false */ /* uneffect:temporal init inner = false */ /* uneffect:temporal action deliver: delivered' = outer ? inner ? delivered : delivered + 1 : delivered, failed' = (outer ? inner : false) ? failed + 1 : failed, settled' = settled + 1 */
+    const source = `/* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state outer: bool */ /* uneffect: state inner: bool */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init outer = false */ /* uneffect: init inner = false */ /* uneffect: action deliver: delivered' = outer ? inner ? delivered : delivered + 1 : delivered, failed' = (outer ? inner : false) ? failed + 1 : failed, settled' = settled + 1 */
       interface Runtime { delivered: number; failed: number; settled: number; outer: boolean; inner: boolean }
       /* uneffect:refinement refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -645,7 +645,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("keeps return and throw completions distinct across catch and finally", () => {
-    const source = `/* uneffect:temporal state returned: int */ /* uneffect:temporal state caught: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state chooseReturn: bool */ /* uneffect:temporal init returned = 0 */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init chooseReturn = false */ /* uneffect:temporal action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1 */
+    const source = `/* uneffect: state returned: int */ /* uneffect: state caught: int */ /* uneffect: state settled: int */ /* uneffect: state chooseReturn: bool */ /* uneffect: init returned = 0 */ /* uneffect: init caught = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init chooseReturn = false */ /* uneffect: action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1 */
       interface Runtime { returned: number; caught: number; settled: number; chooseReturn: boolean }
       /* uneffect:refinement refinement completion@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -665,7 +665,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("applies post-try updates only to the caught path of a heterogeneous completion", () => {
-    const source = `/* uneffect:temporal state returned: int */ /* uneffect:temporal state caught: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state chooseReturn: bool */ /* uneffect:temporal init returned = 0 */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init chooseReturn = false */ /* uneffect:temporal action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1, observed' = chooseReturn ? observed : observed + 1 */
+    const source = `/* uneffect: state returned: int */ /* uneffect: state caught: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state chooseReturn: bool */ /* uneffect: init returned = 0 */ /* uneffect: init caught = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init chooseReturn = false */ /* uneffect: action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1, observed' = chooseReturn ? observed : observed + 1 */
       interface Runtime { returned: number; caught: number; settled: number; observed: number; chooseReturn: boolean }
       /* uneffect:refinement refinement completion@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -686,7 +686,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("runs finally on an early-return path without running statements after try", () => {
-    const source = `/* uneffect:temporal state started: int */ /* uneffect:temporal state worked: int */ /* uneffect:temporal state released: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state cancelled: bool */ /* uneffect:temporal init started = 0 */ /* uneffect:temporal init worked = 0 */ /* uneffect:temporal init released = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init cancelled = false */ /* uneffect:temporal action execute: started' = started + 1, worked' = cancelled ? worked : worked + 1, released' = released + 1, observed' = cancelled ? observed : observed + 1 */
+    const source = `/* uneffect: state started: int */ /* uneffect: state worked: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: state cancelled: bool */ /* uneffect: init started = 0 */ /* uneffect: init worked = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init cancelled = false */ /* uneffect: action execute: started' = started + 1, worked' = cancelled ? worked : worked + 1, released' = released + 1, observed' = cancelled ? observed : observed + 1 */
       interface Runtime { started: number; worked: number; released: number; observed: number; cancelled: boolean }
       /* uneffect:refinement refinement resource@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -709,7 +709,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("propagates a nested branch return through the enclosing conditional join", () => {
-    const source = `/* uneffect:temporal state routed: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state outer: bool */ /* uneffect:temporal state inner: bool */ /* uneffect:temporal init routed = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init outer = false */ /* uneffect:temporal init inner = false */ /* uneffect:temporal action route: routed' = outer ? inner ? routed : routed + 1 : routed, observed' = outer ? inner ? observed : observed + 1 : observed + 1 */
+    const source = `/* uneffect: state routed: int */ /* uneffect: state observed: int */ /* uneffect: state outer: bool */ /* uneffect: state inner: bool */ /* uneffect: init routed = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init outer = false */ /* uneffect: init inner = false */ /* uneffect: action route: routed' = outer ? inner ? routed : routed + 1 : routed, observed' = outer ? inner ? observed : observed + 1 : observed + 1 */
       interface Runtime { routed: number; observed: number; outer: boolean; inner: boolean }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -726,7 +726,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("lets a direct void return in finally override normal completion", () => {
-    const source = `/* uneffect:temporal state worked: int */ /* uneffect:temporal state released: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal init worked = 0 */ /* uneffect:temporal init released = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal action execute: worked' = worked + 1, released' = released + 1 */
+    const source = `/* uneffect: state worked: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: init worked = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: action execute: worked' = worked + 1, released' = released + 1 */
       interface Runtime { worked: number; released: number; observed: number }
       /* uneffect:refinement refinement resource@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -748,7 +748,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("joins a branch-local void return with the continuing path", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal state attempts: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal init attempts = 0 */ /* uneffect:temporal action route: value' = stop ? value + 1 : value + 2, attempts' = attempts + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state stop: bool */ /* uneffect: state attempts: int */ /* uneffect: init value = 0 */ /* uneffect: init stop = false */ /* uneffect: init attempts = 0 */ /* uneffect: action route: value' = stop ? value + 1 : value + 2, attempts' = attempts + 1 */
       interface Runtime { value: number; stop: boolean; attempts: number }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -785,7 +785,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("unrolls a statically bounded ascending for loop and rejects dynamic bounds", () => {
-    const model = `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action addThree: value' = value + 1 + 1 + 1 */`;
+    const model = `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action addThree: value' = value + 1 + 1 + 1 */`;
     const safe = `${model}
       interface Runtime { value: number }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
@@ -801,7 +801,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("unrolls finite for-of literals through return and finally completion", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state cleanup: int */ /* uneffect:temporal state stop: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init cleanup = 0 */ /* uneffect:temporal init stop = 0 */ /* uneffect:temporal action addUntil: value' = stop === 1 ? value + 1 : value + 1 + 2, cleanup' = stop === 1 ? cleanup + 1 : cleanup + 1 + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state cleanup: int */ /* uneffect: state stop: int */ /* uneffect: init value = 0 */ /* uneffect: init cleanup = 0 */ /* uneffect: init stop = 0 */ /* uneffect: action addUntil: value' = stop === 1 ? value + 1 : value + 1 + 2, cleanup' = stop === 1 ? cleanup + 1 : cleanup + 1 + 1 */
       interface Runtime { value: number; cleanup: number; stop: number }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -831,7 +831,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("propagates early return while unrolling a classic finite for loop", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action addAtMostTwo: value' = stop ? value + 1 : value + 1 + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state stop: bool */ /* uneffect: init value = 0 */ /* uneffect: init stop = false */ /* uneffect: action addAtMostTwo: value' = stop ? value + 1 : value + 1 + 1 */
       interface Runtime { value: number; stop: boolean }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -847,7 +847,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("inlines acyclic same-file action helpers and rejects recursion", () => {
-    const model = `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action addTwo: value' = value + 1 + 1 */`;
+    const model = `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action addTwo: value' = value + 1 + 1 */`;
     const safe = `${model}
       interface Runtime { value: number }
       function increment(runtime: Runtime, amount: number) { runtime.value += amount }
@@ -869,7 +869,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("composes terminal void returns and return-forwarded action helpers", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action increment: value' = value + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action increment: value' = value + 1 */
       interface Runtime { value: number }
       function applyIncrement(runtime: Runtime) { runtime.value++; return }
       function forwardIncrement(runtime: Runtime) { return applyIncrement(runtime) }
@@ -887,7 +887,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("lowers one nested scalar field mutation to an immutable record update", () => {
-    const source = `/* uneffect:temporal state lease: { owner: int, epoch: int } */ /* uneffect:temporal init lease = { owner: 1, epoch: 0 } */ /* uneffect:temporal action renew: lease' = { ...lease, epoch: lease.epoch + 1 } */
+    const source = `/* uneffect: state lease: { owner: int, epoch: int } */ /* uneffect: init lease = { owner: 1, epoch: 0 } */ /* uneffect: action renew: lease' = { ...lease, epoch: lease.epoch + 1 } */
       interface Runtime { lease: { owner: number; epoch: number } }
       /* uneffect:refinement refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
       /* uneffect:refinement refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
@@ -902,7 +902,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("tracks immutable receiver aliases and rejects mutable or escaping aliases", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action increment: value' = value + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action increment: value' = value + 1 */
       interface Runtime { value: number }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -937,7 +937,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("consumes a labeled-block break after finally and before the outer continuation", () => {
-    const source = `/* uneffect:temporal state sent: int */ /* uneffect:temporal state finalized: int */ /* uneffect:temporal state continued: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal init finalized = 0 */ /* uneffect:temporal init continued = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action route: sent' = stop ? sent : sent + 1, finalized' = finalized + 1, continued' = continued + 1 */
+    const source = `/* uneffect: state sent: int */ /* uneffect: state finalized: int */ /* uneffect: state continued: int */ /* uneffect: state stop: bool */ /* uneffect: init sent = 0 */ /* uneffect: init finalized = 0 */ /* uneffect: init continued = 0 */ /* uneffect: init stop = false */ /* uneffect: action route: sent' = stop ? sent : sent + 1, finalized' = finalized + 1, continued' = continued + 1 */
       interface Runtime { sent: number; finalized: number; continued: number; stop: boolean }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -971,7 +971,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("ignores unreachable suffixes after unconditional return and throw completions", () => {
-    const source = `/* uneffect:temporal state attempted: int */ /* uneffect:temporal state caught: int */ /* uneffect:temporal state unreachable: int */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init unreachable = 0 */ /* uneffect:temporal action fail: attempted' = attempted + 1, caught' = caught + 1 */
+    const source = `/* uneffect: state attempted: int */ /* uneffect: state caught: int */ /* uneffect: state unreachable: int */ /* uneffect: init attempted = 0 */ /* uneffect: init caught = 0 */ /* uneffect: init unreachable = 0 */ /* uneffect: action fail: attempted' = attempted + 1, caught' = caught + 1 */
       interface Runtime { attempted: number; caught: number; unreachable: number }
       /* uneffect:refinement refinement completion@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -993,7 +993,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("propagates nested lexical-block completion without leaking local aliases", () => {
-    const source = `/* uneffect:temporal state attempted: int */ /* uneffect:temporal state completed: int */ /* uneffect:temporal state continued: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal init completed = 0 */ /* uneffect:temporal init continued = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action run: attempted' = attempted + 1, completed' = stop ? completed : completed + 1, continued' = stop ? continued : continued + 1 */
+    const source = `/* uneffect: state attempted: int */ /* uneffect: state completed: int */ /* uneffect: state continued: int */ /* uneffect: state stop: bool */ /* uneffect: init attempted = 0 */ /* uneffect: init completed = 0 */ /* uneffect: init continued = 0 */ /* uneffect: init stop = false */ /* uneffect: action run: attempted' = attempted + 1, completed' = stop ? completed : completed + 1, continued' = stop ? continued : continued + 1 */
       interface Runtime { attempted: number; completed: number; continued: number; stop: boolean }
       /* uneffect:refinement refinement blocks@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement blocks@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1017,7 +1017,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("merges multiple nested member writes independent of model field order", () => {
-    const source = `/* uneffect:temporal state lease: { owner: int, epoch: int } */ /* uneffect:temporal init lease = { owner: 1, epoch: 0 } */ /* uneffect:temporal action advance: lease' = { ...lease, epoch: lease.epoch + 1, owner: lease.owner + 1 } */
+    const source = `/* uneffect: state lease: { owner: int, epoch: int } */ /* uneffect: init lease = { owner: 1, epoch: 0 } */ /* uneffect: action advance: lease' = { ...lease, epoch: lease.epoch + 1, owner: lease.owner + 1 } */
       interface Runtime { lease: { owner: number; epoch: number } }
       /* uneffect:refinement refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
       /* uneffect:refinement refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
@@ -1033,7 +1033,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("normalizes an immutable object-spread action assignment", () => {
-    const source = `/* uneffect:temporal state lease: { owner: int, epoch: int } */ /* uneffect:temporal init lease = { owner: 1, epoch: 0 } */ /* uneffect:temporal action renew: lease' = { ...lease, epoch: lease.epoch + 1 } */
+    const source = `/* uneffect: state lease: { owner: int, epoch: int } */ /* uneffect: init lease = { owner: 1, epoch: 0 } */ /* uneffect: action renew: lease' = { ...lease, epoch: lease.epoch + 1 } */
       interface Runtime { lease: { owner: number; epoch: number } }
       /* uneffect:refinement refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
       /* uneffect:refinement refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
@@ -1049,7 +1049,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("lowers nested Set.add and Map.set mutations to immutable collection updates", () => {
-    const source = `/* uneffect:temporal state authority: { owners: Set<int>, epochs: Map<int, int> } */ /* uneffect:temporal init authority = { owners: Set(1), epochs: Map([[1, 0]]) } */ /* uneffect:temporal action addOwner: authority' = { ...authority, owners: authority.owners.union(Set(2)) } */ /* uneffect:temporal action publishEpoch: authority' = { ...authority, epochs: authority.epochs.put(2, 1) } */ /* uneffect:temporal action clearOwners: authority' = { ...authority, owners: Set() } */ /* uneffect:temporal action clearEpochs: authority' = { ...authority, epochs: Map([]) } */ /* uneffect:temporal action deleteOwner: authority' = { ...authority, owners: authority.owners.exclude(Set(2)) } */ /* uneffect:temporal action deleteEpoch: authority' = { ...authority, epochs: authority.epochs.remove(2) } */
+    const source = `/* uneffect: state authority: { owners: Set<int>, epochs: Map<int, int> } */ /* uneffect: init authority = { owners: Set(1), epochs: Map([[1, 0]]) } */ /* uneffect: action addOwner: authority' = { ...authority, owners: authority.owners.union(Set(2)) } */ /* uneffect: action publishEpoch: authority' = { ...authority, epochs: authority.epochs.put(2, 1) } */ /* uneffect: action clearOwners: authority' = { ...authority, owners: Set() } */ /* uneffect: action clearEpochs: authority' = { ...authority, epochs: Map([]) } */ /* uneffect: action deleteOwner: authority' = { ...authority, owners: authority.owners.exclude(Set(2)) } */ /* uneffect: action deleteEpoch: authority' = { ...authority, epochs: authority.epochs.remove(2) } */
       interface Runtime { authority: { owners: Set<number>; epochs: Map<number, number> } }
       /* uneffect:refinement refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
       /* uneffect:refinement refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
@@ -1069,7 +1069,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("requires builtin collection receiver identity in the TypeChecker-backed path", () => {
-    const model = `/* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal action addOwner: owners' = owners.union(Set(2)) */`;
+    const model = `/* uneffect: state owners: Set<int> */ /* uneffect: init owners = Set(1) */ /* uneffect: action addOwner: owners' = owners.union(Set(2)) */`;
     const standard = `${model}
       interface Runtime { owners: Set<number> }
       /* uneffect:refinement refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
@@ -1123,7 +1123,7 @@ describe("annotated refinement bindings", () => {
       function insertOwner(runtime: { owners: Set<number> }, owner: number) { runtime.owners.add(owner) }
       export function addOwner(runtime: { owners: Set<number> }, owner: number) { insertOwner(runtime, owner) }
     `;
-    const source = `/* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal action addOwner: owners' = owners.union(Set(2)) */
+    const source = `/* uneffect: state owners: Set<int> */ /* uneffect: init owners = Set(1) */ /* uneffect: action addOwner: owners' = owners.union(Set(2)) */
       import { addOwner as applyOwner } from "./helper.js"
       const ownerOperation = applyOwner
       interface Runtime { owners: Set<number> }
@@ -1188,7 +1188,7 @@ describe("annotated refinement bindings", () => {
 
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
-      /* uneffect:temporal state delivered: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal action deliver: delivered' = delivered + 1, attempted' = attempted + 1 */ /* uneffect:temporal action conditional: delivered' = delivered + 1 */
+      /* uneffect: state delivered: int */ /* uneffect: state attempted: int */ /* uneffect: init delivered = 0 */ /* uneffect: init attempted = 0 */ /* uneffect: action deliver: delivered' = delivered + 1, attempted' = attempted + 1 */ /* uneffect: action conditional: delivered' = delivered + 1 */
       class Runtime {
         delivered = 0
         attempted = 0
@@ -1228,7 +1228,7 @@ describe("annotated refinement bindings", () => {
     const mainFile = join(directory, "main.ts");
     const source = `
       import type { Runtime } from "./runtime.js"
-      /* uneffect:temporal state sent: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal init sent = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal action record: sent' = sent + 1, attempted' = attempted + 1 */
+      /* uneffect: state sent: int */ /* uneffect: state attempted: int */ /* uneffect: init sent = 0 */ /* uneffect: init attempted = 0 */ /* uneffect: action record: sent' = sent + 1, attempted' = attempted + 1 */
       /* uneffect:refinement refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
       /* uneffect:refinement refinement telemetry@1 action record */
@@ -1333,7 +1333,7 @@ describe("annotated refinement bindings", () => {
 
   it("does not treat a missing action binding as a successful body proof", () => {
     const source = `
-      /* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action increment: value' = value + 1 */
+      /* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action increment: value' = value + 1 */
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: unknown) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: unknown) { return runtime }
     `;
@@ -1344,7 +1344,7 @@ describe("annotated refinement bindings", () => {
 
   it("proves scalar invariant predicates without accepting missing, stale, or unsupported bodies", () => {
     const source = `
-      /* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal invariant nonNegative: value >= 0 */ /* uneffect:temporal invariant guarded: !armed || value > 0 */ /* uneffect:temporal invariant unsupported: value < 10 */ /* uneffect:temporal invariant strictZero: value === 0 */ /* uneffect:temporal invariant missing: value === 0 */
+      /* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect:always nonNegative: value >= 0 */ /* uneffect:always guarded: !armed || value > 0 */ /* uneffect:always unsupported: value < 10 */ /* uneffect:always strictZero: value === 0 */ /* uneffect:always missing: value === 0 */
       interface Runtime { value: number; armed: boolean }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -1363,7 +1363,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("proves immutable local scalar aliases in invariant bodies", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal invariant guarded: !armed || value > 0 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect:always guarded: !armed || value > 0 */
       interface Runtime { value: number; armed: boolean }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect:refinement refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
@@ -1378,7 +1378,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("proves native Set membership and size invariant predicates", () => {
-    const source = `/* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal invariant ownerPresent: owners.contains(1) */ /* uneffect:temporal invariant boundedOwners: owners.size() <= 2 */
+    const source = `/* uneffect: state owners: Set<int> */ /* uneffect: init owners = Set(1) */ /* uneffect:always ownerPresent: owners.contains(1) */ /* uneffect:always boundedOwners: owners.size() <= 2 */
       interface Runtime { owners: Set<number> }
       /* uneffect:refinement refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
       /* uneffect:refinement refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
@@ -1395,7 +1395,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("inlines an acyclic local pure invariant helper graph without trusting recursive calls", () => {
-    const model = `/* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal invariant guarded: !armed || value > 0 */`;
+    const model = `/* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect:always guarded: !armed || value > 0 */`;
     const safe = `${model}
       interface Runtime { value: number; armed: boolean }
       function isGuarded(state: Runtime) { return !state.armed || state.value > 0 }
@@ -1426,7 +1426,7 @@ describe("annotated refinement bindings", () => {
       function nonnegative(value: number) { return value >= 0 }
       export function validEpoch(value: number) { return nonnegative(value) }
     `;
-    const source = `/* uneffect:temporal state epoch: int */ /* uneffect:temporal init epoch = 0 */ /* uneffect:temporal action tick: epoch' = epoch + 1 */ /* uneffect:temporal invariant validEpoch: epoch >= 0 */
+    const source = `/* uneffect: state epoch: int */ /* uneffect: init epoch = 0 */ /* uneffect: action tick: epoch' = epoch + 1 */ /* uneffect:always validEpoch: epoch >= 0 */
       import { validEpoch as checkEpoch } from "./predicate.js"
       const epochPredicate = checkEpoch
       interface Runtime { epoch: number }
@@ -1475,7 +1475,7 @@ describe("annotated refinement bindings", () => {
       function outcomes(runtime: Runtime): number { return runtime.delivered + runtime.dropped }
       export function balanced(runtime: Runtime): boolean { return outcomes(runtime) === runtime.attempted }
     `;
-    const source = `/* uneffect:temporal state delivered: int */ /* uneffect:temporal state dropped: int */ /* uneffect:temporal state attempted: int */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init dropped = 0 */ /* uneffect:temporal init attempted = 0 */ /* uneffect:temporal invariant balanced: delivered + dropped === attempted */
+    const source = `/* uneffect: state delivered: int */ /* uneffect: state dropped: int */ /* uneffect: state attempted: int */ /* uneffect: init delivered = 0 */ /* uneffect: init dropped = 0 */ /* uneffect: init attempted = 0 */ /* uneffect:always balanced: delivered + dropped === attempted */
       import { balanced as importedBalanced } from "./predicate.js"
       interface Runtime { delivered: number; dropped: number; attempted: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
@@ -1500,7 +1500,7 @@ describe("annotated refinement bindings", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-namespace-invariant-"));
     const helperFile = join(directory, "predicate.ts");
     const mainFile = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state epoch: int */ /* uneffect:temporal init epoch = 0 */ /* uneffect:temporal invariant valid: epoch >= 0 */
+    const source = `/* uneffect: state epoch: int */ /* uneffect: init epoch = 0 */ /* uneffect:always valid: epoch >= 0 */
       import * as Predicates from "./predicate.js"
       interface Runtime { epoch: number }
       /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
@@ -1522,7 +1522,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("proves create/observe state projection and reports transformed or swapped fields", () => {
-    const model = `/* uneffect:temporal state left: int */ /* uneffect:temporal state right: int */ /* uneffect:temporal init left = 0 */ /* uneffect:temporal init right = 0 */`;
+    const model = `/* uneffect: state left: int */ /* uneffect: state right: int */ /* uneffect: init left = 0 */ /* uneffect: init right = 0 */`;
     const safe = `${model}
       interface State { left: number; right: number }
       class Runtime { left = 0; right = 0 }
@@ -1545,7 +1545,7 @@ describe("annotated refinement bindings", () => {
   it("proves an explicit scalar abstraction relation across concrete field names", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-scalar-abstraction-"));
     const fileName = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state owner: int */ /* uneffect:temporal init owner = 1 */ /* uneffect:temporal action transfer: owner' = owner + 1 */ /* uneffect:temporal invariant validOwner: owner >= 0 */ /* uneffect:refinement abstraction lease@1 owner = ownerId */
+    const source = `/* uneffect: state owner: int */ /* uneffect: init owner = 1 */ /* uneffect: action transfer: owner' = owner + 1 */ /* uneffect:always validOwner: owner >= 0 */ /* uneffect:refinement abstraction lease@1 owner = ownerId */
       interface ModelState { owner: number }
       interface Runtime { ownerId: number }
       /* uneffect:refinement refinement lease@1 create */
@@ -1605,7 +1605,7 @@ describe("annotated refinement bindings", () => {
   it("refines a renamed builtin Set through projection, action, and invariant checks", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-set-abstraction-"));
     const fileName = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal init owners = Set(1) */ /* uneffect:temporal action admit: owners' = owners.union(Set(2)) */ /* uneffect:temporal invariant initialOwnerPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = activeUserIds */
+    const source = `/* uneffect: state owners: Set<int> */ /* uneffect: init owners = Set(1) */ /* uneffect: action admit: owners' = owners.union(Set(2)) */ /* uneffect:always initialOwnerPresent: owners.contains(1) */ /* uneffect:refinement abstraction routing@1 owners = activeUserIds */
       interface ModelState { owners: Set<number> }
       interface Runtime { activeUserIds: Set<number> }
       /* uneffect:refinement refinement routing@1 create */
@@ -1635,7 +1635,7 @@ describe("annotated refinement bindings", () => {
   it("refines a temporal field through a nested concrete path", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-nested-abstraction-"));
     const fileName = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state subscribers: Set<int> */ /* uneffect:temporal init subscribers = Set(1) */ /* uneffect:temporal action admit: subscribers' = subscribers.union(Set(2)) */ /* uneffect:temporal invariant primaryPresent: subscribers.contains(1) */ /* uneffect:refinement abstraction nested@1 subscribers = routing.activeSubscriberIds */
+    const source = `/* uneffect: state subscribers: Set<int> */ /* uneffect: init subscribers = Set(1) */ /* uneffect: action admit: subscribers' = subscribers.union(Set(2)) */ /* uneffect:always primaryPresent: subscribers.contains(1) */ /* uneffect:refinement abstraction nested@1 subscribers = routing.activeSubscriberIds */
       interface ModelState { subscribers: Set<number> }
       interface Runtime { routing: { activeSubscriberIds: Set<number> } }
       /* uneffect:refinement refinement nested@1 create */
@@ -1680,7 +1680,7 @@ describe("annotated refinement bindings", () => {
   it("refines a Set model through a computed array abstraction", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-array-set-abstraction-"));
     const fileName = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state subscribers: Set<int> */ /* uneffect:temporal init subscribers = Set(1) */ /* uneffect:temporal action admit: subscribers' = subscribers.union(Set(2)) */ /* uneffect:temporal action revokePrimary: subscribers' = subscribers.exclude(Set(1)) */ /* uneffect:temporal action clearSubscribers: subscribers' = Set() */ /* uneffect:temporal invariant primaryPresent: subscribers.contains(1) */ /* uneffect:temporal invariant nonEmpty: subscribers.size() > 0 */ /* uneffect:temporal invariant allPositive: subscribers.forall(id => id > 0) */ /* uneffect:refinement abstraction arraySet@1 subscribers = Set(routing.activeSubscriberIds) */
+    const source = `/* uneffect: state subscribers: Set<int> */ /* uneffect: init subscribers = Set(1) */ /* uneffect: action admit: subscribers' = subscribers.union(Set(2)) */ /* uneffect: action revokePrimary: subscribers' = subscribers.exclude(Set(1)) */ /* uneffect: action clearSubscribers: subscribers' = Set() */ /* uneffect:always primaryPresent: subscribers.contains(1) */ /* uneffect:always nonEmpty: subscribers.size() > 0 */ /* uneffect:always allPositive: subscribers.forall(id => id > 0) */ /* uneffect:refinement abstraction arraySet@1 subscribers = Set(routing.activeSubscriberIds) */
       interface ModelState { subscribers: Set<number> }
       interface Runtime { routing: { activeSubscriberIds: number[] } }
       /* uneffect:refinement refinement arraySet@1 create */
@@ -1802,7 +1802,7 @@ describe("annotated refinement bindings", () => {
   it("refines a Map model through a computed entry-array abstraction", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-array-map-abstraction-"));
     const fileName = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state epochs: Map<int, int> */ /* uneffect:temporal init epochs = Map([[1, 0]]) */ /* uneffect:temporal action addFallback: epochs' = epochs.put(2, 1) */ /* uneffect:temporal action removePrimary: epochs' = epochs.remove(1) */ /* uneffect:temporal action clearEpochs: epochs' = Map([]) */ /* uneffect:temporal action upsertPrimary: epochs' = epochs.put(1, 5) */ /* uneffect:temporal invariant primaryPresent: epochs.keys().contains(1) */ /* uneffect:temporal invariant primaryZero: epochs.keys().contains(1) && epochs.get(1) === 0 */ /* uneffect:temporal invariant nonEmpty: epochs.size() > 0 */ /* uneffect:temporal invariant nonNegative: epochs.values().forall(epoch => epoch >= 0) */ /* uneffect:refinement abstraction mapEntries@1 epochs = Map(storage.epochEntries) */
+    const source = `/* uneffect: state epochs: Map<int, int> */ /* uneffect: init epochs = Map([[1, 0]]) */ /* uneffect: action addFallback: epochs' = epochs.put(2, 1) */ /* uneffect: action removePrimary: epochs' = epochs.remove(1) */ /* uneffect: action clearEpochs: epochs' = Map([]) */ /* uneffect: action upsertPrimary: epochs' = epochs.put(1, 5) */ /* uneffect:always primaryPresent: epochs.keys().contains(1) */ /* uneffect:always primaryZero: epochs.keys().contains(1) && epochs.get(1) === 0 */ /* uneffect:always nonEmpty: epochs.size() > 0 */ /* uneffect:always nonNegative: epochs.values().forall(epoch => epoch >= 0) */ /* uneffect:refinement abstraction mapEntries@1 epochs = Map(storage.epochEntries) */
       interface ModelState { epochs: Map<number, number> }
       interface Runtime { storage: { epochEntries: Array<[number, number]> } }
       /* uneffect:refinement refinement mapEntries@1 create */
@@ -1945,7 +1945,7 @@ describe("annotated refinement bindings", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-projection-"));
     const helperFile = join(directory, "projection.ts");
     const mainFile = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state owner: int */ /* uneffect:temporal state epoch: int */ /* uneffect:temporal init owner = 0 */ /* uneffect:temporal init epoch = 0 */
+    const source = `/* uneffect: state owner: int */ /* uneffect: state epoch: int */ /* uneffect: init owner = 0 */ /* uneffect: init epoch = 0 */
       import { hydrate } from "./projection.js"
       import * as Projections from "./projection.js"
       const createRuntime = hydrate
@@ -2016,7 +2016,7 @@ describe("annotated refinement bindings", () => {
   it("checks builtin Set and Map runtime shapes by symbol identity", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-collection-projection-"));
     const fileName = join(directory, "main.ts");
-    const source = `/* uneffect:temporal state owners: Set<int> */ /* uneffect:temporal state epochs: Map<int, int> */ /* uneffect:temporal init owners = Set() */ /* uneffect:temporal init epochs = Map([]) */
+    const source = `/* uneffect: state owners: Set<int> */ /* uneffect: state epochs: Map<int, int> */ /* uneffect: init owners = Set() */ /* uneffect: init epochs = Map([]) */
       interface Runtime { owners: Set<number>; epochs: Map<number, number> }
       /* uneffect:refinement refinement authority@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement authority@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2049,7 +2049,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("inlines acyclic same-file create and observe projection helpers", () => {
-    const model = `/* uneffect:temporal state left: int */ /* uneffect:temporal state right: int */ /* uneffect:temporal init left = 0 */ /* uneffect:temporal init right = 0 */`;
+    const model = `/* uneffect: state left: int */ /* uneffect: state right: int */ /* uneffect: init left = 0 */ /* uneffect: init right = 0 */`;
     const safe = `${model}
       interface State { left: number; right: number }
       class Runtime { left = 0; right = 0 }
@@ -2072,7 +2072,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("proves complete nested-record reconstruction and rejects missing nested fields", () => {
-    const model = `/* uneffect:temporal state lease: { owner: int, valid: bool } */ /* uneffect:temporal init lease = { owner: 1, valid: true } */`;
+    const model = `/* uneffect: state lease: { owner: int, valid: bool } */ /* uneffect: init lease = { owner: 1, valid: true } */`;
     const safe = `${model}
       interface State { lease: { owner: number; valid: boolean } }
       /* uneffect:refinement refinement lease@1 create */
@@ -2090,7 +2090,7 @@ describe("annotated refinement bindings", () => {
 
   it("does not accept arbitrary create or observe calls as a state projection", () => {
     const source = `
-      /* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */
+      /* uneffect: state value: int */ /* uneffect: init value = 0 */
       interface State { value: number }
       declare function factory(value: State): State
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: State) { return factory(initial) }
@@ -2104,7 +2104,7 @@ describe("annotated refinement bindings", () => {
 
   it("does not confuse same-named globals with model state fields", () => {
     const source = `
-      /* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal invariant nonNegative: value >= 0 */
+      /* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action increment: value' = value + 1 */ /* uneffect:always nonNegative: value >= 0 */
       const value = 0
       interface Runtime { value: number }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
@@ -2122,7 +2122,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("requires guarded model actions to enforce the same early-return predicate", () => {
-    const model = `/* uneffect:temporal state value: int */ /* uneffect:temporal state armed: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init armed = false */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal action_when increment: armed && value > 0 */`;
+    const model = `/* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect: action increment: value' = value + 1 */ /* uneffect: action_when increment: armed && value > 0 */`;
     const safe = `${model}
       interface Runtime { value: number; armed: boolean }
       /* uneffect:refinement refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
@@ -2142,14 +2142,14 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "action-guard-mismatch", modelName: "increment", expected: "armed && value > 0", actual: "armed && value >= 0" }),
     ]);
 
-    const unexpected = safe.replace("/* uneffect:temporal action_when increment: armed && value > 0 */", "");
+    const unexpected = safe.replace("/* uneffect: action_when increment: armed && value > 0 */", "");
     expect(validateRefinementActionBodies("unexpected.ts", unexpected, "counter", parseSpec("unexpected.ts", unexpected).temporal)).toEqual([
       expect.objectContaining({ code: "unexpected-action-guard", modelName: "increment", expected: "<none>", actual: "armed && value > 0" }),
     ]);
   });
 
   it("only lowers literal while forms whose iteration count is statically exact", () => {
-    const model = `/* uneffect:temporal state value: int */ /* uneffect:temporal state enabled: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init enabled = false */ /* uneffect:temporal action run: value' = value + 1 */`;
+    const model = `/* uneffect: state value: int */ /* uneffect: state enabled: bool */ /* uneffect: init value = 0 */ /* uneffect: init enabled = false */ /* uneffect: action run: value' = value + 1 */`;
     const exact = `${model}
       interface Runtime { value: number; enabled: boolean }
       /* uneffect:refinement refinement loop@1 create */ export function create(initial: Runtime) { return initial }
@@ -2174,7 +2174,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("summarizes only terminating constant-delta state countdown loops", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0), audited' = audited + 1 */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state audited: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0), audited' = audited + 1 */
       interface Runtime { pending: number; processed: number; audited: number }
       /* uneffect:refinement refinement countdown@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement countdown@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2246,7 +2246,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("summarizes loop-carried affine deltas over the ranking counter", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0) */
       interface Runtime { pending: number; weighted: number }
       /* uneffect:refinement refinement triangular@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement triangular@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2283,7 +2283,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("summarizes affine branch joins only when their condition is loop-invariant", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state priority: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init priority = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : pending) : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state priority: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init priority = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : pending) : 0) */
       interface Runtime { pending: number; weighted: number; priority: boolean }
       /* uneffect:refinement refinement branchDrain@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement branchDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2323,7 +2323,7 @@ describe("annotated refinement bindings", () => {
         "0",
       );
       const branchBody = flags.map((flag, index) => `${index === 0 ? "if" : "else if"} (runtime.${flag}) runtime.weighted += runtime.pending`).join("\n          ");
-      return `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal ${flags.map((flag) => `state ${flag}: bool`).join("\n        ")} */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal ${flags.map((flag) => `init ${flag} = false`).join("\n        ")} */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (${branchTotal}) : 0) */
+      return `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: ${flags.map((flag) => `state ${flag}: bool`).join("\n        ")} */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: ${flags.map((flag) => `init ${flag} = false`).join("\n        ")} */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (${branchTotal}) : 0) */
         interface Runtime { pending: number; weighted: number; ${flags.map((flag) => `${flag}: boolean`).join("; ")} }
         /* uneffect:refinement refinement boundedBranches@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect:refinement refinement boundedBranches@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2349,7 +2349,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("consumes continue only after every path takes the affine ranking step", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state priority: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init priority = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (!priority ? 0 : pending * (pending - 1) / 2) : 0), audited' = audited + (pending > 0 ? pending : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state audited: int */ /* uneffect: state priority: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init priority = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (!priority ? 0 : pending * (pending - 1) / 2) : 0), audited' = audited + (pending > 0 ? pending : 0) */
       interface Runtime { pending: number; weighted: number; audited: number; priority: boolean }
       /* uneffect:refinement refinement continueFinally@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement continueFinally@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2393,7 +2393,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("splits a zero-update early break from the repeating affine path", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state paused: bool */ /* uneffect:temporal state requestedPause: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init paused = false */ /* uneffect:temporal init requestedPause = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (requestedPause ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (requestedPause ? 0 : pending * (pending - 1) / 2) : 0), paused' = requestedPause */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state paused: bool */ /* uneffect: state requestedPause: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init paused = false */ /* uneffect: init requestedPause = false */ /* uneffect: action drain: pending' = pending > 0 ? (requestedPause ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (requestedPause ? 0 : pending * (pending - 1) / 2) : 0), paused' = requestedPause */
       interface Runtime { pending: number; weighted: number; paused: boolean; requestedPause: boolean }
       /* uneffect:refinement refinement earlyBreak@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement earlyBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2437,7 +2437,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("composes one affine state update on an invariant early-break path", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal state deferred: int */ /* uneffect:temporal state paused: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal init deferred = 0 */ /* uneffect:temporal init paused = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0), deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: state deferred: int */ /* uneffect: state paused: bool */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: init deferred = 0 */ /* uneffect: init paused = false */ /* uneffect: action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0), deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0) */
       interface Runtime { pending: number; weighted: number; deferred: number; paused: boolean }
       /* uneffect:refinement refinement stateChangingBreak@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement stateChangingBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2519,7 +2519,7 @@ describe("annotated refinement bindings", () => {
       const updates = names.map((name, index) => (
         `runtime.${name} += ${index + 1} * runtime.pending`
       )).join("\n            ");
-      return `/* uneffect:temporal state pending: int */ /* uneffect:temporal state paused: bool */ /* uneffect:temporal ${states} */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init paused = false */ /* uneffect:temporal ${inits} */ /* uneffect:temporal action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, ${actionUpdates} */
+      return `/* uneffect: state pending: int */ /* uneffect: state paused: bool */ /* uneffect: ${states} */ /* uneffect: init pending = 0 */ /* uneffect: init paused = false */ /* uneffect: ${inits} */ /* uneffect: action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, ${actionUpdates} */
       interface Runtime { pending: number; paused: boolean; ${fields} }
       /* uneffect:refinement refinement breakBudget@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement breakBudget@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2548,7 +2548,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("joins a caught scalar failure through ranking finally into an affine break", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state fatal: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init fatal = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (fatal ? pending - 1 : 0) : pending, processed' = processed + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? pending : 0) : 0), audited' = audited + (pending > 0 ? (fatal ? 1 : pending) : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state failed: int */ /* uneffect: state audited: int */ /* uneffect: state fatal: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init fatal = false */ /* uneffect: action drain: pending' = pending > 0 ? (fatal ? pending - 1 : 0) : pending, processed' = processed + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? pending : 0) : 0), audited' = audited + (pending > 0 ? (fatal ? 1 : pending) : 0) */
       interface Runtime { pending: number; processed: number; failed: number; audited: number; fatal: boolean }
       /* uneffect:refinement refinement caughtRankingBreak@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement caughtRankingBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2598,7 +2598,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("records a budgeted fixed point for a ranking loop throw/normal join", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state reject: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init reject = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0), audited' = audited + (pending > 0 ? pending : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state audited: int */ /* uneffect: state reject: bool */ /* uneffect: init pending = 0 */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init reject = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0), audited' = audited + (pending > 0 ? pending : 0) */
       interface Runtime { pending: number; delivered: number; failed: number; audited: number; reject: boolean }
       /* uneffect:refinement refinement fixedPointJoin@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement fixedPointJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2927,7 +2927,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("joins caught break and continue completions after one common ranking finally", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state delivered: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state retried: int */ /* uneffect:temporal state attempts: int */ /* uneffect:temporal state fatal: bool */ /* uneffect:temporal state stopOnFailure: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init delivered = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init retried = 0 */ /* uneffect:temporal init attempts = 0 */ /* uneffect:temporal init fatal = false */ /* uneffect:temporal init stopOnFailure = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? (fatal && stopOnFailure ? pending - 1 : 0) : pending, delivered' = delivered + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? (stopOnFailure ? pending : pending * (pending + 1) / 2) : 0) : 0), retried' = retried + (pending > 0 ? (fatal && !stopOnFailure ? pending * (pending + 1) / 2 : 0) : 0), attempts' = attempts + (pending > 0 ? (fatal && stopOnFailure ? 1 : pending) : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state retried: int */ /* uneffect: state attempts: int */ /* uneffect: state fatal: bool */ /* uneffect: state stopOnFailure: bool */ /* uneffect: init pending = 0 */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init retried = 0 */ /* uneffect: init attempts = 0 */ /* uneffect: init fatal = false */ /* uneffect: init stopOnFailure = false */ /* uneffect: action drain: pending' = pending > 0 ? (fatal && stopOnFailure ? pending - 1 : 0) : pending, delivered' = delivered + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? (stopOnFailure ? pending : pending * (pending + 1) / 2) : 0) : 0), retried' = retried + (pending > 0 ? (fatal && !stopOnFailure ? pending * (pending + 1) / 2 : 0) : 0), attempts' = attempts + (pending > 0 ? (fatal && stopOnFailure ? 1 : pending) : 0) */
       interface Runtime { pending: number; delivered: number; failed: number; retried: number; attempts: number; fatal: boolean; stopOnFailure: boolean }
       /* uneffect:refinement refinement caughtPolicyJoin@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement caughtPolicyJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -2998,7 +2998,7 @@ describe("annotated refinement bindings", () => {
             runtime.stoppedWeight += ${index + 1} * runtime.pending
             break
           }`).join("");
-      return `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state stoppedWeight: int */ /* uneffect:temporal ${flagStates} */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init stoppedWeight = 0 */ /* uneffect:temporal ${flagInits} */ /* uneffect:temporal action drain: pending' = pending > 0 ? (${stopCondition} ? pending : 0) : pending, processed' = processed + (pending > 0 ? (${stopCondition} ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (${stoppedDelta}) : 0) */
+      return `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state stoppedWeight: int */ /* uneffect: ${flagStates} */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init stoppedWeight = 0 */ /* uneffect: ${flagInits} */ /* uneffect: action drain: pending' = pending > 0 ? (${stopCondition} ? pending : 0) : pending, processed' = processed + (pending > 0 ? (${stopCondition} ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (${stoppedDelta}) : 0) */
       interface Runtime { pending: number; processed: number; stoppedWeight: number; ${flagFields} }
       /* uneffect:refinement refinement disjunctiveBudget@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement disjunctiveBudget@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3055,7 +3055,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("specializes only entailed facts in a nested Boolean stop tree", async () => {
-    const source = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state processed: int */ /* uneffect:temporal state stoppedWeight: int */ /* uneffect:temporal state urgent: bool */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal state circuitOpen: bool */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init processed = 0 */ /* uneffect:temporal init stoppedWeight = 0 */ /* uneffect:temporal init urgent = false */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal init circuitOpen = false */ /* uneffect:temporal action drain: pending' = pending > 0 ? ((urgent && sampled) || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? ((urgent && sampled) || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (urgent ? (sampled ? pending : (circuitOpen ? 2 * pending : 0)) : (circuitOpen ? 2 * pending : 0)) : 0) */
+    const source = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state stoppedWeight: int */ /* uneffect: state urgent: bool */ /* uneffect: state sampled: bool */ /* uneffect: state circuitOpen: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init stoppedWeight = 0 */ /* uneffect: init urgent = false */ /* uneffect: init sampled = false */ /* uneffect: init circuitOpen = false */ /* uneffect: action drain: pending' = pending > 0 ? ((urgent && sampled) || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? ((urgent && sampled) || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (urgent ? (sampled ? pending : (circuitOpen ? 2 * pending : 0)) : (circuitOpen ? 2 * pending : 0)) : 0) */
       interface Runtime { pending: number; processed: number; stoppedWeight: number; urgent: boolean; sampled: boolean; circuitOpen: boolean }
       /* uneffect:refinement refinement nestedStop@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement nestedStop@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3128,7 +3128,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("joins initialized mutable scalar locals only across normal if diamonds", async () => {
-    const source = `/* uneffect:temporal state total: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state urgent: bool */ /* uneffect:temporal state sampled: bool */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init urgent = false */ /* uneffect:temporal init sampled = false */ /* uneffect:temporal action record: total' = total + (sampled ? (urgent ? 5 : 4) : (urgent ? 2 : 1)), audited' = audited + 1 */
+    const source = `/* uneffect: state total: int */ /* uneffect: state audited: int */ /* uneffect: state urgent: bool */ /* uneffect: state sampled: bool */ /* uneffect: init total = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init urgent = false */ /* uneffect: init sampled = false */ /* uneffect: action record: total' = total + (sampled ? (urgent ? 5 : 4) : (urgent ? 2 : 1)), audited' = audited + 1 */
       interface Runtime { total: number; audited: number; urgent: boolean; sampled: boolean }
       /* uneffect:refinement refinement localJoin@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement localJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3200,7 +3200,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("owns mutable-local snapshots on typed throw and catch edges", async () => {
-    const source = `/* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state failed: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init failed = false */ /* uneffect:temporal action record: billed' = billed + (failed ? 4 : 3), audited' = audited + 1 */
+    const source = `/* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state failed: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init failed = false */ /* uneffect: action record: billed' = billed + (failed ? 4 : 3), audited' = audited + 1 */
       interface Runtime { billed: number; audited: number; failed: boolean }
       /* uneffect:refinement refinement caughtLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement caughtLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3281,7 +3281,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("owns mutable-local snapshots entering mandatory finally", async () => {
-    const source = `/* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state stopped: bool */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init stopped = false */ /* uneffect:temporal action record: billed' = stopped ? billed : billed + 3, audited' = audited + (stopped ? 2 : 3) */
+    const source = `/* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state stopped: bool */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init stopped = false */ /* uneffect: action record: billed' = stopped ? billed : billed + 3, audited' = audited + (stopped ? 2 : 3) */
       interface Runtime { billed: number; audited: number; stopped: boolean }
       /* uneffect:refinement refinement finallyLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement finallyLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3322,7 +3322,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("owns mutable-local snapshots across scalar switch paths", async () => {
-    const source = `/* uneffect:temporal state billed: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state kind: int */ /* uneffect:temporal init billed = 0 */ /* uneffect:temporal init audited = 0 */ /* uneffect:temporal init kind = 0 */ /* uneffect:temporal action record: billed' = kind === 1 ? billed : billed + (kind === 2 ? 8 : (kind === 3 ? 6 : 2)), audited' = audited + (kind === 1 ? 3 : (kind === 2 ? 4 : (kind === 3 ? 6 : 2))) */
+    const source = `/* uneffect: state billed: int */ /* uneffect: state audited: int */ /* uneffect: state kind: int */ /* uneffect: init billed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init kind = 0 */ /* uneffect: action record: billed' = kind === 1 ? billed : billed + (kind === 2 ? 8 : (kind === 3 ? 6 : 2)), audited' = audited + (kind === 1 ? 3 : (kind === 2 ? 4 : (kind === 3 ? 6 : 2))) */
       interface Runtime { billed: number; audited: number; kind: number }
       /* uneffect:refinement refinement switchLocal@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement switchLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3351,7 +3351,7 @@ describe("annotated refinement bindings", () => {
       "switch-local.ts", source, "switchLocal", temporal,
     )).resolves.toEqual([]);
 
-    const defaultFree = `/* uneffect:temporal state total: int */ /* uneffect:temporal state kind: int */ /* uneffect:temporal init total = 0 */ /* uneffect:temporal init kind = 0 */ /* uneffect:temporal action record: total' = total + (kind === 0 ? 2 : 1) */
+    const defaultFree = `/* uneffect: state total: int */ /* uneffect: state kind: int */ /* uneffect: init total = 0 */ /* uneffect: init kind = 0 */ /* uneffect: action record: total' = total + (kind === 0 ? 2 : 1) */
       interface Runtime { total: number; kind: number }
       /* uneffect:refinement refinement defaultFreeSwitch@1 create */ export function createDefaultFree(initial: Runtime) { return initial }
       /* uneffect:refinement refinement defaultFreeSwitch@1 observe */ export function observeDefaultFree(runtime: Runtime) { return runtime }
@@ -3389,7 +3389,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
-    const source = `/* uneffect:temporal state active: int */ /* uneffect:temporal state starts: int */ /* uneffect:temporal init active = 0 */ /* uneffect:temporal init starts = 0 */ /* uneffect:temporal action scale: active' = active <= -2 ? -1 : active, starts' = starts + (active <= -2 ? -1 - active : 0) */
+    const source = `/* uneffect: state active: int */ /* uneffect: state starts: int */ /* uneffect: init active = 0 */ /* uneffect: init starts = 0 */ /* uneffect: action scale: active' = active <= -2 ? -1 : active, starts' = starts + (active <= -2 ? -1 - active : 0) */
       interface Pool { active: number; starts: number }
       /* uneffect:refinement refinement scaleUp@1 create */ export function create(initial: Pool) { return initial }
       /* uneffect:refinement refinement scaleUp@1 observe */ export function observe(pool: Pool) { return pool }
@@ -3421,7 +3421,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("unrolls only canonical bounded local-counter while loops", () => {
-    const model = `/* uneffect:temporal state value: int */ /* uneffect:temporal state limit: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init limit = 3 */ /* uneffect:temporal action addThree: value' = value + 0 + 1 + 2 */`;
+    const model = `/* uneffect: state value: int */ /* uneffect: state limit: int */ /* uneffect: init value = 0 */ /* uneffect: init limit = 3 */ /* uneffect: action addThree: value' = value + 0 + 1 + 2 */`;
     const exact = `${model}
       interface Runtime { value: number; limit: number }
       /* uneffect:refinement refinement boundedWhile@1 create */ export function create(initial: Runtime) { return initial }
@@ -3437,7 +3437,7 @@ describe("annotated refinement bindings", () => {
     `;
     expect(validateRefinementActionBodies("bounded-while.ts", exact, "boundedWhile", parseSpec("bounded-while.ts", exact).temporal)).toEqual([]);
 
-    const returning = `/* uneffect:temporal state value: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action addAtMostTwo: value' = stop ? value + 1 : value + 1 + 1 */
+    const returning = `/* uneffect: state value: int */ /* uneffect: state stop: bool */ /* uneffect: init value = 0 */ /* uneffect: init stop = false */ /* uneffect: action addAtMostTwo: value' = stop ? value + 1 : value + 1 + 1 */
       interface Runtime { value: number; stop: boolean }
       /* uneffect:refinement refinement returningWhile@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement returningWhile@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3475,7 +3475,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("consumes an unlabeled bounded-loop break while preserving finally and continuation", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state cleaned: int */ /* uneffect:temporal state after: int */ /* uneffect:temporal state stop: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init cleaned = 0 */ /* uneffect:temporal init after = 0 */ /* uneffect:temporal init stop = 0 */ /* uneffect:temporal action run: value' = stop === 0 ? value + 1 : stop === 1 ? value + 1 + 1 : value + 1 + 1 + 1, cleaned' = stop === 0 ? cleaned + 1 : stop === 1 ? cleaned + 1 + 1 : cleaned + 1 + 1 + 1, after' = after + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state cleaned: int */ /* uneffect: state after: int */ /* uneffect: state stop: int */ /* uneffect: init value = 0 */ /* uneffect: init cleaned = 0 */ /* uneffect: init after = 0 */ /* uneffect: init stop = 0 */ /* uneffect: action run: value' = stop === 0 ? value + 1 : stop === 1 ? value + 1 + 1 : value + 1 + 1 + 1, cleaned' = stop === 0 ? cleaned + 1 : stop === 1 ? cleaned + 1 + 1 : cleaned + 1 + 1 + 1, after' = after + 1 */
       interface Runtime { value: number; cleaned: number; after: number; stop: number }
       /* uneffect:refinement refinement breaking@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement breaking@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3499,7 +3499,7 @@ describe("annotated refinement bindings", () => {
   });
 
   it("consumes continue only where the finite loop guarantees advancement", async () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state cleaned: int */ /* uneffect:temporal state after: int */ /* uneffect:temporal state skip: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init cleaned = 0 */ /* uneffect:temporal init after = 0 */ /* uneffect:temporal init skip = 0 */ /* uneffect:temporal action run: value' = skip === 0 ? value + 1 + 1 : skip === 1 ? value + 1 + 1 : skip === 2 ? value + 1 + 1 : value + 1 + 1 + 1, cleaned' = cleaned + 1 + 1 + 1, after' = after + 1 */
+    const source = `/* uneffect: state value: int */ /* uneffect: state cleaned: int */ /* uneffect: state after: int */ /* uneffect: state skip: int */ /* uneffect: init value = 0 */ /* uneffect: init cleaned = 0 */ /* uneffect: init after = 0 */ /* uneffect: init skip = 0 */ /* uneffect: action run: value' = skip === 0 ? value + 1 + 1 : skip === 1 ? value + 1 + 1 : skip === 2 ? value + 1 + 1 : value + 1 + 1 + 1, cleaned' = cleaned + 1 + 1 + 1, after' = after + 1 */
       interface Runtime { value: number; cleaned: number; after: number; skip: number }
       /* uneffect:refinement refinement continuing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement continuing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3526,7 +3526,7 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
     );
 
-    const oneShot = `/* uneffect:temporal state cleaned: int */ /* uneffect:temporal state after: int */ /* uneffect:temporal init cleaned = 0 */ /* uneffect:temporal init after = 0 */ /* uneffect:temporal action run: cleaned' = cleaned + 1, after' = after + 1 */
+    const oneShot = `/* uneffect: state cleaned: int */ /* uneffect: state after: int */ /* uneffect: init cleaned = 0 */ /* uneffect: init after = 0 */ /* uneffect: action run: cleaned' = cleaned + 1, after' = after + 1 */
       interface Runtime { cleaned: number; after: number }
       /* uneffect:refinement refinement oneShotContinue@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement oneShotContinue@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -3543,7 +3543,7 @@ describe("annotated refinement bindings", () => {
     const labeled = source.replace("continue\n", "continue batch\n").replace("        for (", "        batch: for (");
     await expect(validateRefinementActionBodiesWithZ3("labeled-continuing-for.ts", labeled, "continuing", parseSpec("labeled-continuing-for.ts", labeled).temporal)).resolves.toEqual([]);
 
-    const crossLoop = `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action run: value' = value */
+    const crossLoop = `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action run: value' = value */
       interface Runtime { value: number }
       /* uneffect:refinement refinement crossLoop@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement crossLoop@1 observe */ export function observe(runtime: Runtime) { return runtime }

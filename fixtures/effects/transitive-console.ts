@@ -1,5 +1,5 @@
 // Effects propagate through calls: `summarize` inherits Console from `report` and must declare it.
-/* uneffect:capability effect Console */
+/* uneffect:effect Console */
 function report(value: number) {
   console.log(value);
 }

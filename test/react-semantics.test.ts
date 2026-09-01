@@ -37,9 +37,9 @@ describe("React Function Component semantics", () => {
           input: { ref?: unknown }
         }
       }
-      /* uneffect:capability effect Subscribe */ declare function subscribe(): void
-      /* uneffect:capability effect Unsubscribe */ declare function unsubscribe(): void
-      /* uneffect:capability effect CompareAudit */ declare function compareAudit(): void
+      /* uneffect:effect Subscribe */ declare function subscribe(): void
+      /* uneffect:effect Unsubscribe */ declare function unsubscribe(): void
+      /* uneffect:effect CompareAudit */ declare function compareAudit(): void
 
       /* uneffect:react-component */
       const MemoButton = remember((props: { path: string }) => {
@@ -225,9 +225,9 @@ describe("React Function Component semantics", () => {
         useRef,
         useState,
       } from "react"
-      /* uneffect:capability effect StyleWrite */
+      /* uneffect:effect StyleWrite */
       declare function insertRule(): void
-      /* uneffect:capability effect StyleWrite */
+      /* uneffect:effect StyleWrite */
       declare function removeRule(): void
       /* uneffect:react-component */
       function Styled() {
@@ -373,9 +373,9 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("external-store.tsx", `
       import { useSyncExternalStore as useStore } from "react"
       interface StoreSubscription { readonly id: string }
-      /* uneffect:capability effect StoreRead */
+      /* uneffect:effect StoreRead */
       declare function readStore(): number
-      /* uneffect:capability effect ServerStoreRead */
+      /* uneffect:effect ServerStoreRead */
       declare function readServerStore(): number
       /* uneffect:react-resource acquire StoreSubscription result */
       declare function openStoreSubscription(notify: () => void): StoreSubscription
@@ -442,9 +442,9 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("imperative-handle.tsx", `
       import React, { useImperativeHandle as expose } from "react"
 
-      /* uneffect:capability effect Audit */ declare function audit(value: string): void
-      /* uneffect:capability effect Focus */ declare function focusInput(): void
-      /* uneffect:capability effect Submit */ declare function submitForm(): void
+      /* uneffect:effect Audit */ declare function audit(value: string): void
+      /* uneffect:effect Focus */ declare function focusInput(): void
+      /* uneffect:effect Submit */ declare function submitForm(): void
 
       /* uneffect:react-hook */
       function useEditorHandle(ref: unknown, label: string) {
@@ -524,8 +524,8 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("react-actions.tsx", `
       import React, { useActionState as actionState, useOptimistic as optimistic } from "react"
       declare namespace JSX { interface IntrinsicElements { form: { action?: unknown }; button: { formAction?: unknown; onClick?: unknown } } }
-      /* uneffect:capability effect Save */ declare function save(value: string): Promise<void>
-      /* uneffect:capability effect Audit */ declare function audit(): void
+      /* uneffect:effect Save */ declare function save(value: string): Promise<void>
+      /* uneffect:effect Audit */ declare function audit(): void
 
       /* uneffect:react-hook */
       function useSave(initial: string) {
@@ -792,12 +792,12 @@ describe("React Function Component semantics", () => {
     const helpersFile = join(directory, "helpers.ts"), appFile = join(directory, "app.tsx");
     try {
       writeFileSync(helpersFile, `
-        /* uneffect:capability effect DeepTransition */ declare function auditDeepTransition(): void
+        /* uneffect:effect DeepTransition */ declare function auditDeepTransition(): void
         export function auditDeep() { auditDeepTransition() }
       `);
       writeFileSync(callbacksFile, `
         import { auditDeep } from "./helpers.js"
-        /* uneffect:capability effect RemoteTransition */ declare function auditTransition(): void
+        /* uneffect:effect RemoteTransition */ declare function auditTransition(): void
         function fetchRemote() { auditTransition(); auditDeep(); fetch("/remote") }
         export function remoteAction() { fetchRemote() }
         export default function defaultAction() { fetchRemote() }
@@ -933,10 +933,10 @@ describe("React Function Component semantics", () => {
       import { useRef as ref } from "react"
       declare namespace JSX { interface IntrinsicElements { section: { ref?: unknown; children?: unknown } } }
       interface Observer { readonly id: string }
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       /* uneffect:react-resource acquire Observer result */
       declare function observe(node: Element | null): Observer
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       /* uneffect:react-resource release Observer parameter 0 */
       declare function disconnect(observer: Observer): void
       /* uneffect:react-component */
@@ -1267,7 +1267,7 @@ describe("React Function Component semantics", () => {
     const appFile = join(directory, "app.tsx");
     try {
       writeFileSync(helpersFile, `
-        /* uneffect:capability effect DeepEvent */ declare function auditDeepEvent(): void
+        /* uneffect:effect DeepEvent */ declare function auditDeepEvent(): void
         export function auditEvent() { auditDeepEvent() }
       `);
       writeFileSync(callbacksFile, `
@@ -1323,7 +1323,7 @@ describe("React Function Component semantics", () => {
     const appFile = join(directory, "app.tsx");
     try {
       writeFileSync(helpersFile, `
-        /* uneffect:capability effect DeepSetup */ declare function auditDeepSetup(): void
+        /* uneffect:effect DeepSetup */ declare function auditDeepSetup(): void
         export function auditSetup() { auditDeepSetup() }
       `);
       writeFileSync(callbacksFile, `
@@ -1396,10 +1396,10 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(callbacksFile, `
         interface StoreConnection { readonly store: unique symbol }
-        /* uneffect:capability effect SaveRecord */ declare function saveRecord(): void
-        /* uneffect:capability effect PrepareHandle */ declare function prepareHandle(): void
-        /* uneffect:capability effect SnapshotRead */ declare function readSnapshot(): number
-        /* uneffect:capability effect CompareAudit */ declare function auditCompare(): void
+        /* uneffect:effect SaveRecord */ declare function saveRecord(): void
+        /* uneffect:effect PrepareHandle */ declare function prepareHandle(): void
+        /* uneffect:effect SnapshotRead */ declare function readSnapshot(): number
+        /* uneffect:effect CompareAudit */ declare function auditCompare(): void
         /* uneffect:react-resource acquire StoreConnection result */
         declare function connectStore(notify: () => void): StoreConnection
         /* uneffect:react-resource release StoreConnection parameter 0 */
@@ -1941,7 +1941,7 @@ describe("React Function Component semantics", () => {
   it("exposes production and Strict Mode development replay models", () => {
     const result = analyzeReactSemantics("strict-mode.tsx", `
       import { useEffect, useLayoutEffect } from "react"
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       declare function observe(): void
       /* uneffect:react-component */
       function Panel() {

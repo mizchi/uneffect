@@ -74,7 +74,7 @@ const initializedTelemetryDeliverySource = telemetryDeliverySource.replace(
 );
 const explicitCatchOwnershipSource = `
   declare function task(): Promise<number>
-  /* uneffect:capability effect Throw<Error> */ declare function fail(): never
+  /* uneffect:effect Throw<Error> */ declare function fail(): never
   declare const flag: boolean
 ${Array.from({ length: 64 }, (_, index) => `
   async function caught${index}() {
@@ -150,7 +150,7 @@ const workerPoolFile = "examples/dogfood/worker-pool-scale-up.ts";
 const workerPoolSource = readFileSync(workerPoolFile, "utf8");
 const workerPoolSpec = parseSpec(workerPoolFile, workerPoolSource).temporal;
 const triangularDrainFile = "bench/triangular-backlog-drain.ts";
-const triangularDrainSource = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0) */
+const triangularDrainSource = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0) */
 interface Runtime { pending: number; weighted: number }
 /* uneffect:refinement refinement triangularDrain@1 action drain */
 export function drain(runtime: Runtime) {
@@ -218,7 +218,7 @@ const affineBranchTotal = affineBranchFlags.reduceRight(
 const affineBranchBody = affineBranchFlags.map(
   (flag, index) => `${index === 0 ? "if" : "else if"} (runtime.${flag}) runtime.weighted += runtime.pending`,
 ).join("\n    ");
-const affineBranchBudgetSource = `/* uneffect:temporal state pending: int */ /* uneffect:temporal state weighted: int */ /* uneffect:temporal ${affineBranchFlags.map((flag) => `state ${flag}: bool`).join("\n  ")} */ /* uneffect:temporal init pending = 0 */ /* uneffect:temporal init weighted = 0 */ /* uneffect:temporal ${affineBranchFlags.map((flag) => `init ${flag} = false`).join("\n  ")} */ /* uneffect:temporal action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (${affineBranchTotal}) : 0) */
+const affineBranchBudgetSource = `/* uneffect: state pending: int */ /* uneffect: state weighted: int */ /* uneffect: ${affineBranchFlags.map((flag) => `state ${flag}: bool`).join("\n  ")} */ /* uneffect: init pending = 0 */ /* uneffect: init weighted = 0 */ /* uneffect: ${affineBranchFlags.map((flag) => `init ${flag} = false`).join("\n  ")} */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (${affineBranchTotal}) : 0) */
 interface Runtime { pending: number; weighted: number; ${affineBranchFlags.map((flag) => `${flag}: boolean`).join("; ")} }
 /* uneffect:refinement refinement affineBranchBudget@1 action drain */
 export function drain(runtime: Runtime) {
@@ -264,7 +264,7 @@ const indirectRefinementDeclarationName = "/bench/indirect-child.d.ts";
 const indirectRefinementParentText = `
   import { increment as incrementChild, type Runtime } from "indirect-child"
   declare global { var armed: boolean; var count: number }
-  /* uneffect:temporal state armed: bool */ /* uneffect:temporal state count: int */ /* uneffect:temporal init armed = true */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */ /* uneffect:temporal action_when increment: armed */
+  /* uneffect: state armed: bool */ /* uneffect: state count: int */ /* uneffect: init armed = true */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */ /* uneffect: action_when increment: armed */
   /* uneffect:runtime runtime counter@1 = globalThis */
   /* uneffect:refinement refinement counter@1 create */ export function create(initial: Runtime) { return initial }
   /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -320,7 +320,7 @@ const indirectRefinementCompleted: CompletedRefinementProject = {
 const nodeRealmRefinementName = "/bench/node-realm-refinement.ts";
 const nodeRealmRefinementText = `
   declare function incrementChild(runtime: typeof global): void
-  /* uneffect:temporal state count: int */ /* uneffect:temporal init count = 0 */ /* uneffect:temporal action increment: count' = count + 1 */
+  /* uneffect: state count: int */ /* uneffect: init count = 0 */ /* uneffect: action increment: count' = count + 1 */
   /* uneffect:runtime runtime counter@1 = node:global@24#main */
   /* uneffect:refinement refinement counter@1 create */ export function create(initial: typeof global) { return initial }
   /* uneffect:refinement refinement counter@1 observe */ export function observe(runtime: typeof global) { return runtime }
@@ -368,7 +368,7 @@ const typedIntegerProgram = ts.createProgram([typedIntegerSourceName], compilerO
 const typedIntegerSource = typedIntegerProgram.getSourceFile(typedIntegerSourceName)!;
 const domPropertySourceName = "/bench/dom-properties.ts";
 const domPropertySourceText = Array.from({ length: 64 }, (_, index) => `
-  /* uneffect:capability effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> | Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Dom<NodeRead, typeof element> | Dom<NodeWrite, typeof element> | Dom<TextRead, typeof element> | Dom<TextWrite, typeof element> | Dom<LayoutRead, typeof element> | Dom<Create, typeof element> | Dom<Parse, typeof element> | Dom<NodeWrite, typeof element.parentNode> | Dom<Parse, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode | Dom<TextRead, typeof data> | Dom<TextWrite, typeof data> | Mutate<typeof data> */
+  /* uneffect:effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> | Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Dom<NodeRead, typeof element> | Dom<NodeWrite, typeof element> | Dom<TextRead, typeof element> | Dom<TextWrite, typeof element> | Dom<LayoutRead, typeof element> | Dom<Create, typeof element> | Dom<Parse, typeof element> | Dom<NodeWrite, typeof element.parentNode> | Dom<Parse, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode | Dom<TextRead, typeof data> | Dom<TextWrite, typeof data> | Mutate<typeof data> */
   function update${index}(input: HTMLInputElement, element: Element, data: CharacterData) {
     input.value += "${index}"; data.data += input["value"]; data.replaceData(0, 0, "")
     const attrs = element.attributes; attrs.getNamedItem("data-active"); attrs.removeNamedItem("data-stale")
@@ -656,18 +656,18 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {
-    const temporal = parseSpec("lease.ts", `/* uneffect:temporal clock realNow: 1 */ /* uneffect:temporal state leaseExpiryA: int */ /* uneffect:temporal state localDeadlineA: int */ /* uneffect:temporal state ownerEpoch: int */ /* uneffect:temporal state residentEpochA: int */ /* uneffect:temporal state residentEpochB: int */ /* uneffect:temporal state ownerIsA: bool */ /* uneffect:temporal init leaseExpiryA = 10 */ /* uneffect:temporal init localDeadlineA = 10 */ /* uneffect:temporal init ownerEpoch = 1 */ /* uneffect:temporal init residentEpochA = 1 */ /* uneffect:temporal init residentEpochB = 0 */ /* uneffect:temporal init ownerIsA = true */ /* uneffect:temporal action takeoverB: ownerIsA' = false, ownerEpoch' = ownerEpoch + 1 */ /* uneffect:temporal action_when takeoverB: ownerIsA && realNow + 1 >= leaseExpiryA + 1 */ /* uneffect:temporal action publishB: residentEpochB' = ownerEpoch */ /* uneffect:temporal action_when publishB: !ownerIsA && residentEpochB !== ownerEpoch */ /* uneffect:temporal invariant singleWriter: !(residentEpochA > 0 && realNow < localDeadlineA && residentEpochB > 0) */`).temporal;
+    const temporal = parseSpec("lease.ts", `/* uneffect: clock realNow: 1 */ /* uneffect: state leaseExpiryA: int */ /* uneffect: state localDeadlineA: int */ /* uneffect: state ownerEpoch: int */ /* uneffect: state residentEpochA: int */ /* uneffect: state residentEpochB: int */ /* uneffect: state ownerIsA: bool */ /* uneffect: init leaseExpiryA = 10 */ /* uneffect: init localDeadlineA = 10 */ /* uneffect: init ownerEpoch = 1 */ /* uneffect: init residentEpochA = 1 */ /* uneffect: init residentEpochB = 0 */ /* uneffect: init ownerIsA = true */ /* uneffect: action takeoverB: ownerIsA' = false, ownerEpoch' = ownerEpoch + 1 */ /* uneffect: action_when takeoverB: ownerIsA && realNow + 1 >= leaseExpiryA + 1 */ /* uneffect: action publishB: residentEpochB' = ownerEpoch */ /* uneffect: action_when publishB: !ownerIsA && residentEpochB !== ownerEpoch */ /* uneffect:always singleWriter: !(residentEpochA > 0 && realNow < localDeadlineA && residentEpochB > 0) */`).temporal;
     lintTemporalSpec(temporal);
     generateQuint("node_lease", temporal);
   }, { time: 500, iterations: 20 });
 
   bench("solver-lint 5 temporal properties and one guarded action", async () => {
-    const temporal = parseSpec("semantic-lint.ts", `/* uneffect:temporal state epoch: int */ /* uneffect:temporal state ready: bool */ /* uneffect:temporal init epoch = 0 */ /* uneffect:temporal init ready = false */ /* uneffect:temporal action publish: ready' = true */ /* uneffect:temporal action_when publish: epoch >= 0 */ /* uneffect:temporal invariant nonnegative: epoch >= 0 */ /* uneffect:temporal invariant positive: epoch > 0 */ /* uneffect:temporal invariant bounded: epoch >= 0 && epoch < 100 */ /* uneffect:temporal invariant totalOrder: epoch > 0 || epoch <= 0 */ /* uneffect:temporal invariant readyAfterPublish: ready || !ready */`).temporal;
+    const temporal = parseSpec("semantic-lint.ts", `/* uneffect: state epoch: int */ /* uneffect: state ready: bool */ /* uneffect: init epoch = 0 */ /* uneffect: init ready = false */ /* uneffect: action publish: ready' = true */ /* uneffect: action_when publish: epoch >= 0 */ /* uneffect:always nonnegative: epoch >= 0 */ /* uneffect:always positive: epoch > 0 */ /* uneffect:always bounded: epoch >= 0 && epoch < 100 */ /* uneffect:always totalOrder: epoch > 0 || epoch <= 0 */ /* uneffect:always readyAfterPublish: ready || !ready */`).temporal;
     await lintTemporalSpecWithZ3(temporal);
   }, { time: 500, iterations: 1 });
 
   bench("bounded reachability lint for 3 actions over 4 steps", async () => {
-    const temporal = parseSpec("reachability.ts", `/* uneffect:temporal state phase: int */ /* uneffect:temporal init phase = 0 */ /* uneffect:temporal action advance: phase' = 1 */ /* uneffect:temporal action_when advance: phase === 0 */ /* uneffect:temporal action finish: phase' = 2 */ /* uneffect:temporal action_when finish: phase === 1 */ /* uneffect:temporal action never: phase' = 3 */ /* uneffect:temporal action_when never: phase === 99 */`).temporal;
+    const temporal = parseSpec("reachability.ts", `/* uneffect: state phase: int */ /* uneffect: init phase = 0 */ /* uneffect: action advance: phase' = 1 */ /* uneffect: action_when advance: phase === 0 */ /* uneffect: action finish: phase' = 2 */ /* uneffect: action_when finish: phase === 1 */ /* uneffect: action never: phase' = 3 */ /* uneffect: action_when never: phase === 99 */`).temporal;
     await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
   }, { time: 500, iterations: 1 });
 
@@ -723,24 +723,24 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 1 });
 
   bench("bounded vacuity lint for one frozen-state property", async () => {
-    const temporal = parseSpec("vacuity.ts", `/* uneffect:temporal state phase: int */ /* uneffect:temporal state counter: int */ /* uneffect:temporal init phase = 0 */ /* uneffect:temporal init counter = 0 */ /* uneffect:temporal action tick: counter' = counter + 1 */ /* uneffect:temporal invariant phaseFixed: phase === 0 */`).temporal;
+    const temporal = parseSpec("vacuity.ts", `/* uneffect: state phase: int */ /* uneffect: state counter: int */ /* uneffect: init phase = 0 */ /* uneffect: init counter = 0 */ /* uneffect: action tick: counter' = counter + 1 */ /* uneffect:always phaseFixed: phase === 0 */`).temporal;
     await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
   }, { time: 500, iterations: 1 });
 
   bench("extract a bounded 11-step Node Lease Z3 counterexample", async () => {
-    const temporal = parseSpec("lease-counterexample.ts", `/* uneffect:temporal clock realNow: 1 */ /* uneffect:temporal state leaseExpiryA: int */ /* uneffect:temporal state localDeadlineA: int */ /* uneffect:temporal state ownerEpoch: int */ /* uneffect:temporal state residentEpochA: int */ /* uneffect:temporal state residentEpochB: int */ /* uneffect:temporal state ownerIsA: bool */ /* uneffect:temporal init leaseExpiryA = 10 */ /* uneffect:temporal init localDeadlineA = 10 */ /* uneffect:temporal init ownerEpoch = 1 */ /* uneffect:temporal init residentEpochA = 1 */ /* uneffect:temporal init residentEpochB = 0 */ /* uneffect:temporal init ownerIsA = true */ /* uneffect:temporal action takeoverB: ownerIsA' = false, ownerEpoch' = ownerEpoch + 1 */ /* uneffect:temporal action_when takeoverB: ownerIsA && realNow + 1 >= leaseExpiryA */ /* uneffect:temporal action publishB: residentEpochB' = ownerEpoch */ /* uneffect:temporal action_when publishB: !ownerIsA && residentEpochB !== ownerEpoch */ /* uneffect:temporal invariant singleWriter: !(residentEpochA > 0 && realNow < localDeadlineA && residentEpochB > 0) */`).temporal;
+    const temporal = parseSpec("lease-counterexample.ts", `/* uneffect: clock realNow: 1 */ /* uneffect: state leaseExpiryA: int */ /* uneffect: state localDeadlineA: int */ /* uneffect: state ownerEpoch: int */ /* uneffect: state residentEpochA: int */ /* uneffect: state residentEpochB: int */ /* uneffect: state ownerIsA: bool */ /* uneffect: init leaseExpiryA = 10 */ /* uneffect: init localDeadlineA = 10 */ /* uneffect: init ownerEpoch = 1 */ /* uneffect: init residentEpochA = 1 */ /* uneffect: init residentEpochB = 0 */ /* uneffect: init ownerIsA = true */ /* uneffect: action takeoverB: ownerIsA' = false, ownerEpoch' = ownerEpoch + 1 */ /* uneffect: action_when takeoverB: ownerIsA && realNow + 1 >= leaseExpiryA */ /* uneffect: action publishB: residentEpochB' = ownerEpoch */ /* uneffect: action_when publishB: !ownerIsA && residentEpochB !== ownerEpoch */ /* uneffect:always singleWriter: !(residentEpochA > 0 && realNow < localDeadlineA && residentEpochB > 0) */`).temporal;
     await findTemporalCounterexampleWithZ3(temporal, "singleWriter", { maxSteps: 12 });
   }, { time: 500, iterations: 1 });
 
   bench("lower a node-indexed Set/Map lease model to Quint", () => {
-    const temporal = parseSpec("lease-set.ts", `/* uneffect:temporal clock realNow: 1 */ /* uneffect:temporal state nodes: Set<int> */ /* uneffect:temporal state activeWriters: Set<int> */ /* uneffect:temporal state residentEpochs: Map<int, int> */ /* uneffect:temporal init nodes = Set(1, 2) */ /* uneffect:temporal init activeWriters = Set(1) */ /* uneffect:temporal init residentEpochs = Map([[1, 1], [2, 0]]) */ /* uneffect:temporal action publish: activeWriters' = activeWriters.union(Set(2)), residentEpochs' = residentEpochs.put(2, 2) */ /* uneffect:temporal invariant writersAreNodes: activeWriters.forall(node => nodes.contains(node)) */ /* uneffect:temporal invariant epochsAreNonNegative: residentEpochs.values().forall(epoch => epoch >= 0) */`).temporal;
+    const temporal = parseSpec("lease-set.ts", `/* uneffect: clock realNow: 1 */ /* uneffect: state nodes: Set<int> */ /* uneffect: state activeWriters: Set<int> */ /* uneffect: state residentEpochs: Map<int, int> */ /* uneffect: init nodes = Set(1, 2) */ /* uneffect: init activeWriters = Set(1) */ /* uneffect: init residentEpochs = Map([[1, 1], [2, 0]]) */ /* uneffect: action publish: activeWriters' = activeWriters.union(Set(2)), residentEpochs' = residentEpochs.put(2, 2) */ /* uneffect:always writersAreNodes: activeWriters.forall(node => nodes.contains(node)) */ /* uneffect:always epochsAreNonNegative: residentEpochs.values().forall(epoch => epoch >= 0) */`).temporal;
     generateQuint("lease_set", temporal);
   }, { time: 500, iterations: 20 });
 
   bench("generate 16 scalar contract property tests", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires denominator > 0 */
-      /* uneffect:contract ensures result * denominator <= numerator */
+      /* uneffect:requires denominator > 0 */
+      /* uneffect:ensures result * denominator <= numerator */
       export function quotient${index}(numerator: Nat, denominator: Int): Int {
         return Math.floor(numerator / denominator) as Int
       }
@@ -750,7 +750,7 @@ describe("typed-array static verification", () => {
 
   bench("generate 16 bounded-array and literal-union property tests", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:ensures result >= 0 */
       export function packet${index}(bytes: BoundedUint8Array<64>, mode: "fast" | "safe"): Nat {
         return (bytes.length + mode.length) as Nat
       }
@@ -761,8 +761,8 @@ describe("typed-array static verification", () => {
   bench("generate 16 explicit user-predicate property specializations", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
       export function metricPredicate${index}(value: string): boolean { return /^[a-z][a-z0-9_.]{0,31}$/.test(value) }
-      /* uneffect:contract requires metricPredicate${index}(name) */
-      /* uneffect:contract ensures result === name */
+      /* uneffect:requires metricPredicate${index}(name) */
+      /* uneffect:ensures result === name */
       export function metric${index}(name: string): string { return name }
     `).join("\n");
     const predicateSpecializations = Object.fromEntries(Array.from({ length: 16 }, (_, index) => [
@@ -777,8 +777,8 @@ describe("typed-array static verification", () => {
       `export function metricPredicate${index}(value: string): boolean { return /^[a-z]+$/.test(value) }`).join("\n");
     const functions = Array.from({ length: 16 }, (_, index) => `
       import { metricPredicate${index} } from "./metric-predicates.js"
-      /* uneffect:contract requires metricPredicate${index}(name) */
-      /* uneffect:contract ensures result === name */
+      /* uneffect:requires metricPredicate${index}(name) */
+      /* uneffect:ensures result === name */
       export function metric${index}(name: string): string { return name }
     `).join("\n");
     const predicateSpecializations = Object.fromEntries(Array.from({ length: 16 }, (_, index) => [
@@ -794,8 +794,8 @@ describe("typed-array static verification", () => {
 
   bench("derive generator hints for 16 refined scalar contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires value >= ${index * 10} && value < ${index * 10 + 10} */
-      /* uneffect:contract ensures result >= ${index * 10} */
+      /* uneffect:requires value >= ${index * 10} && value < ${index * 10 + 10} */
+      /* uneffect:ensures result >= ${index * 10} */
       export function range${index}(value: Int): Int { return value }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/ranges.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
@@ -803,8 +803,8 @@ describe("typed-array static verification", () => {
 
   bench("derive aligned hints for 16 modulo-refined shard contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires shard >= ${index * 1024} && shard < ${(index + 1) * 1024} && shard % 16 === 0 */
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:requires shard >= ${index * 1024} && shard < ${(index + 1) * 1024} && shard % 16 === 0 */
+      /* uneffect:ensures result >= 0 */
       export function shard${index}(shard: Nat): Nat { return shard }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/shards.ts": `import type { Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
@@ -812,8 +812,8 @@ describe("typed-array static verification", () => {
 
   bench("derive branch-local hints for 16 tenant shard contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires (shard >= ${index * 256} && shard < ${index * 256 + 32} && shard % 16 === 0) || (shard >= ${index * 256 + 100} && shard < ${index * 256 + 132} && shard % 16 === 4) */
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:requires (shard >= ${index * 256} && shard < ${index * 256 + 32} && shard % 16 === 0) || (shard >= ${index * 256 + 100} && shard < ${index * 256 + 132} && shard % 16 === 4) */
+      /* uneffect:ensures result >= 0 */
       export function tenantShard${index}(shard: Nat): Nat { return shard }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/tenant-shards.ts": `import type { Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
@@ -821,8 +821,8 @@ describe("typed-array static verification", () => {
 
   bench("combine congruence hints for 16 partition routing contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires partition >= ${index * 256} && partition < ${(index + 1) * 256} && partition % 4 === 1 && partition % 6 === 3 */
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:requires partition >= ${index * 256} && partition < ${(index + 1) * 256} && partition % 4 === 1 && partition % 6 === 3 */
+      /* uneffect:ensures result >= 0 */
       export function route${index}(partition: Nat): Nat { return partition }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/partition-routes.ts": `import type { Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
@@ -830,8 +830,8 @@ describe("typed-array static verification", () => {
 
   bench("derive signed remainder hints for 16 negative partition contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires partition >= ${-256 * (index + 1)} && partition < ${-256 * index} && partition % 6 === -3 */
-      /* uneffect:contract ensures result < 0 */
+      /* uneffect:requires partition >= ${-256 * (index + 1)} && partition < ${-256 * index} && partition % 6 === -3 */
+      /* uneffect:ensures result < 0 */
       export function signedRoute${index}(partition: Int): Int { return partition }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/signed-routes.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
@@ -839,8 +839,8 @@ describe("typed-array static verification", () => {
 
   bench("derive branched affine hints for 16 scalar contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires (value + 2 >= ${index * 10} && value + 2 < ${index * 10 + 5}) || (value >= ${index * 10 + 20} && value < ${index * 10 + 25}) */
-      /* uneffect:contract ensures result >= ${index * 10 - 2} */
+      /* uneffect:requires (value + 2 >= ${index * 10} && value + 2 < ${index * 10 + 5}) || (value >= ${index * 10 + 20} && value < ${index * 10 + 25}) */
+      /* uneffect:ensures result >= ${index * 10 - 2} */
       export function branched${index}(value: Int): Int { return value }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/branched.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
@@ -848,8 +848,8 @@ describe("typed-array static verification", () => {
 
   bench("derive correlated affine tuples for 16 three-parameter contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect:contract requires x >= ${index * 10} && x < ${index * 10 + 5} && y === x + 1 && z === y + 2 */
-      /* uneffect:contract ensures result === z */
+      /* uneffect:requires x >= ${index * 10} && x < ${index * 10 + 5} && y === x + 1 && z === y + 2 */
+      /* uneffect:ensures result === z */
       export function dependent${index}(x: Int, y: Int, z: Int): Int { return z }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/dependent.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
@@ -858,16 +858,16 @@ describe("typed-array static verification", () => {
   bench("derive nonlinear property tuples with Z3", async () => {
     await generateUneffectPropertyTestsWithZ3({ files: { "src/circle.ts": `
       import type { Int } from "@mizchi/uneffect"
-      /* uneffect:contract requires x >= 0 && y >= 0 && x * x + y * y === 625 */
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:requires x >= 0 && y >= 0 && x * x + y * y === 625 */
+      /* uneffect:ensures result >= 0 */
       export function radius(x: Int, y: Int): Int { return x + y }
     ` }, solverCases: 8 });
   }, { time: 500, iterations: 1 });
 
   bench("derive correlated literal-union tuples with JavaScript arithmetic", async () => {
     await generateUneffectPropertyTestsWithZ3({ files: { "src/replicas.ts": `
-      /* uneffect:contract requires replicas >= 4 && (allowLarge || replicas <= 4) && (region === "local" || allowLarge) && signed === -7 && signed / 3 === -2 && signed % 3 === -1 */
-      /* uneffect:contract ensures result >= 4 */
+      /* uneffect:requires replicas >= 4 && (allowLarge || replicas <= 4) && (region === "local" || allowLarge) && signed === -7 && signed / 3 === -2 && signed % 3 === -1 */
+      /* uneffect:ensures result >= 4 */
       export function deployment(replicas: 1 | 4 | 9, allowLarge: false | true, region: "local" | "edge", signed: Int): number { return replicas }
     ` }, solverCases: 4 });
   }, { time: 500, iterations: 1 });
@@ -875,8 +875,8 @@ describe("typed-array static verification", () => {
   bench("derive nested optional rollout configurations", async () => {
     await generateUneffectPropertyTestsWithZ3({ files: { "src/rollout.ts": `
       type U8 = number
-      /* uneffect:contract requires config.rollout === undefined || (config.rollout.maxReplicas === 9 && (config.rollout.minReplicas === undefined || config.rollout.minReplicas >= 4)) */
-      /* uneffect:contract ensures result >= 0 */
+      /* uneffect:requires config.rollout === undefined || (config.rollout.maxReplicas === 9 && (config.rollout.minReplicas === undefined || config.rollout.minReplicas >= 4)) */
+      /* uneffect:ensures result >= 0 */
       export function rolloutFloor(config: { rollout?: { minReplicas?: U8; maxReplicas: U8 } }): number { return config.rollout?.minReplicas ?? 0 }
     ` }, solverCases: 8 });
   }, { time: 500, iterations: 1 });
@@ -892,8 +892,8 @@ describe("typed-array static verification", () => {
   bench("verify an affine contract through external Effect pipe", async () => {
     await verifyUneffectProject({ files: { "src/effect-adapter.ts": `
       import { pipe } from "effect/Function"
-      /* uneffect:contract requires value >= 0 */
-      /* uneffect:contract ensures result > value */
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result > value */
       export function increment(value: number): number { return pipe(value, current => current + 1) }
     ` } });
   }, { time: 500, iterations: 1 });
@@ -1175,7 +1175,7 @@ describe("typed-array static verification", () => {
       "src/metrics.ts": `export declare function sendMetric(): void`,
       "src/reporters.ts": `import { sendMetric as emit } from "./metrics.js"; export function helper() { emit() }; export class Reporter { report() { emit() } }`,
       "src/barrel.ts": `export { helper as forwarded, Reporter } from "./reporters.js"`,
-      "src/main.ts": `import { forwarded, Reporter } from "./barrel.js"; /* uneffect:contract validate Once */ export function main(flag: boolean) { if (flag) forwarded(); else new Reporter().report() }`,
+      "src/main.ts": `import { forwarded, Reporter } from "./barrel.js"; /* uneffect:validate Once */ export function main(flag: boolean) { if (flag) forwarded(); else new Reporter().report() }`,
     } });
   }, { time: 500, iterations: 5 });
 
@@ -1205,7 +1205,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("parse and recover a 100-step scalar TLC counterexample", () => {
-    const temporal = parseSpec("tlc-counter.ts", `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action increment: value' = value + 1 */ /* uneffect:temporal invariant belowHundred: value < 100 */`).temporal;
+    const temporal = parseSpec("tlc-counter.ts", `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action increment: value' = value + 1 */ /* uneffect:always belowHundred: value < 100 */`).temporal;
     const states = Array.from({ length: 101 }, (_, index) => `State ${index + 1}: <${index === 0 ? "Initial predicate" : "q_step"}>\nvalue = ${index}`).join("\n");
     parseTlcCounterexample(`Error: Invariant q_inv is violated.\n${states}`, temporal, "counter");
   }, { time: 500, iterations: 20 });
@@ -1258,7 +1258,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("compose an 8x8 nested outer-label transfer", () => {
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal action scan: value' = value */
+    const source = `/* uneffect: state value: int */ /* uneffect: init value = 0 */ /* uneffect: action scan: value' = value */
       interface Runtime { value: number }
       /* uneffect:refinement refinement nestedScan@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement nestedScan@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1436,7 +1436,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("join catch return and rethrow completions", () => {
-    const source = `/* uneffect:temporal state caught: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state stop: bool */ /* uneffect:temporal init caught = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init stop = false */ /* uneffect:temporal action returnPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1 */ /* uneffect:temporal action throwPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1 */
+    const source = `/* uneffect: state caught: int */ /* uneffect: state observed: int */ /* uneffect: state stop: bool */ /* uneffect: init caught = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init stop = false */ /* uneffect: action returnPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1 */ /* uneffect: action throwPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1 */
       interface Runtime { caught: number; observed: number; stop: boolean }
       /* uneffect:refinement refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1456,7 +1456,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("join conditional finally overrides", () => {
-    const source = `/* uneffect:temporal state worked: int */ /* uneffect:temporal state released: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state cancel: bool */ /* uneffect:temporal state fail: bool */ /* uneffect:temporal init worked = 0 */ /* uneffect:temporal init released = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init cancel = false */ /* uneffect:temporal init fail = false */ /* uneffect:temporal action execute: worked' = worked + 1, released' = cancel ? released + 1 : fail ? released : released + 1, observed' = (cancel || fail) ? observed : observed + 1 */
+    const source = `/* uneffect: state worked: int */ /* uneffect: state released: int */ /* uneffect: state observed: int */ /* uneffect: state cancel: bool */ /* uneffect: state fail: bool */ /* uneffect: init worked = 0 */ /* uneffect: init released = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init cancel = false */ /* uneffect: init fail = false */ /* uneffect: action execute: worked' = worked + 1, released' = cancel ? released + 1 : fail ? released : released + 1, observed' = (cancel || fail) ? observed : observed + 1 */
       interface Runtime { worked: number; released: number; observed: number; cancel: boolean; fail: boolean }
       /* uneffect:refinement refinement cleanup@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement cleanup@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1477,7 +1477,7 @@ describe("typed-array static verification", () => {
   bench("compose a 16-case switch refinement with fallthrough", () => {
     const cases = Array.from({ length: 16 }, (_, index) => `case ${index}: runtime.value += 1;${index % 4 === 3 ? " break;" : ""}`).join("\n");
     const expression = Array.from({ length: 16 }, (_, index) => `mode === ${index} ? value ${Array.from({ length: 4 - index % 4 }, () => "+ 1").join(" ")} : `).join("") + "value";
-    const source = `/* uneffect:temporal state value: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init value = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action route: value' = ${expression} */
+    const source = `/* uneffect: state value: int */ /* uneffect: state mode: int */ /* uneffect: init value = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: value' = ${expression} */
       interface Runtime { value: number; mode: number }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1488,7 +1488,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("join value return and throw switch completions", () => {
-    const source = `/* uneffect:temporal state routed: int */ /* uneffect:temporal state failed: int */ /* uneffect:temporal state settled: int */ /* uneffect:temporal state observed: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init routed = 0 */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init settled = 0 */ /* uneffect:temporal init observed = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1 */
+    const source = `/* uneffect: state routed: int */ /* uneffect: state failed: int */ /* uneffect: state settled: int */ /* uneffect: state observed: int */ /* uneffect: state mode: int */ /* uneffect: init routed = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init settled = 0 */ /* uneffect: init observed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1 */
       interface Runtime { routed: number; failed: number; settled: number; observed: number; mode: number }
       /* uneffect:refinement refinement routing@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1509,7 +1509,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("bind a conditional scalar throw payload", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state shouldFail: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init shouldFail = false */ /* uneffect:temporal action reject: failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state shouldFail: bool */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init shouldFail = false */ /* uneffect: action reject: failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed */
       interface Runtime { failed: number; code: number; shouldFail: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1523,7 +1523,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("bind switch-selected scalar throw payloads", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state fallbackCode: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init fallbackCode = 1 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state fallbackCode: int */ /* uneffect: state mode: int */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init fallbackCode = 1 */ /* uneffect: init mode = 0 */ /* uneffect: action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed */
       interface Runtime { failed: number; code: number; fallbackCode: number; mode: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1543,7 +1543,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("bind literal throw payloads through switch fallthrough", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state mode: int */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init mode = 0 */ /* uneffect:temporal action reject: failed' = (mode === 0 ? 1 : mode === 1 ? 1 : 0) > 0 ? failed + 1 : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state mode: int */ /* uneffect: init failed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action reject: failed' = (mode === 0 ? 1 : mode === 1 ? 1 : 0) > 0 ? failed + 1 : failed */
       interface Runtime { failed: number; mode: number }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1564,7 +1564,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("project a direct record throw payload", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state code: int */ /* uneffect:temporal state retryable: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init code = 0 */ /* uneffect:temporal init retryable = false */ /* uneffect:temporal action reject: failed' = retryable && code > 0 ? failed + 1 : failed */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state code: int */ /* uneffect: state retryable: bool */ /* uneffect: init failed = 0 */ /* uneffect: init code = 0 */ /* uneffect: init retryable = false */ /* uneffect: action reject: failed' = retryable && code > 0 ? failed + 1 : failed */
       interface Runtime { failed: number; code: number; retryable: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -1578,7 +1578,7 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("project conditional record throw payloads", () => {
-    const source = `/* uneffect:temporal state failed: int */ /* uneffect:temporal state primary: bool */ /* uneffect:temporal init failed = 0 */ /* uneffect:temporal init primary = false */ /* uneffect:temporal action reject: failed' = failed + (primary ? 1 : 2) */
+    const source = `/* uneffect: state failed: int */ /* uneffect: state primary: bool */ /* uneffect: init failed = 0 */ /* uneffect: init primary = false */ /* uneffect: action reject: failed' = failed + (primary ? 1 : 2) */
       interface Runtime { failed: number; primary: boolean }
       /* uneffect:refinement refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
       /* uneffect:refinement refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }

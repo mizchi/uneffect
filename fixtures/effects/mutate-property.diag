@@ -2,13 +2,13 @@ $ uneffect check --evidence fixtures/effects/mutate-property.ts
 # A write names the property it touches, so declaring a sibling property does not cover it.
 
 error effect/missing fixtures/effects/mutate-property.ts:5 in record
-  message: record requires /* uneffect:capability effect Mutate<typeof state.total> */
+  message: record requires /* uneffect:effect Mutate<typeof state.total> */
   5 | export function record(weight: number) {
     | ^
   declared: Mutate<typeof state.calls>
   because: record performs state.total += weight at line 7
   out of authority: the declared Mutate<typeof state.calls> names a different region of state; a region only permits itself and the members below it
-  hint: declare the effect in the function's /* uneffect:capability effect ... */ comment, or move the operation into a callee that already declares it
+  hint: declare the effect in the function's /* uneffect:effect ... */ comment, or move the operation into a callee that already declares it
 
 1 error(s), 0 warning(s)
 

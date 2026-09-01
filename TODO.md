@@ -36,17 +36,17 @@ internal domains before writing a directive. Migration is intentionally
 breaking before 1.0: removed dialect spellings are rejected rather than kept as
 silent aliases.
 
-1. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Accept canonical
+1. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Accept canonical
    one-line `/* uneffect:<directive> ... */` and multiline `/* uneffect: ... */`
    blocks, preserving exact source spans and wrong-directive diagnostics.
    - [x] Accept the canonical one-line and multiline forms while preserving the
      existing located-directive extraction contract.
    - [x] Split ambiguous `invariant` into Hoare `loop_invariant` and temporal
      `always`, lowering both to their existing internal IR nodes.
-   - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Keep custom
+   - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Keep custom
      temporal plugin directives discoverable without letting a plugin shadow a
      core directive.
-2. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate capability,
+2. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate capability,
    contract, temporal, Promise-ownership, and resource examples, fixtures,
    skills, and documentation to the unified marker; reject their old dialect
    headers once the repository migration is complete.
@@ -527,14 +527,14 @@ introducing another domain-local control-flow or alias model.
     - [x] Add the first typed `*.uneffect.ts` temporal authoring fragment and
       lower it to the backend-neutral `TemporalSpec` without executing it.
     - [x] Connect an implementation with
-      `/* uneffect:temporal from "./model.uneffect.ts#default" */`, resolve it
+      `/* uneffect:temporal_from "./model.uneffect.ts#default" */`, resolve it
       in project verification, and verify linked safety invariants.
     - [x] Resolve DSL helpers through TypeChecker symbol identity during project
       verification; retain the text-only parser as a lower-assurance standalone frontend.
     - [ ] Add typed Set/Map/record descriptors and package-level spec imports. ([#64](https://github.com/mizchi/uneffect/issues/64))
     - [x] Add the first `defineCapability` fragment with Console, scoped Fetch,
       FsRead/FsWrite, and Throw descriptors; connect named exports through
-      `uneffect:capability from` to the existing effect analyzer.
+      `uneffect:capability_from` to the existing effect analyzer.
     - [x] Cover all registered builtin Effect schemas through the schema-driven
       `Builtin` descriptor and validate capability helpers through TypeChecker
       symbol identity during project verification.
@@ -544,7 +544,7 @@ introducing another domain-local control-flow or alias model.
     - [ ] Compose user-defined Effect schema evidence across packages, including ([#64](https://github.com/mizchi/uneffect/issues/64))
       provenance, version compatibility, and conflicting-schema diagnostics.
     - [x] Add the first typed `defineContract` fragment and connect named exports
-      through `uneffect:contract from` to the existing Z3 Hoare-contract verifier.
+      through `uneffect:contract_from` to the existing Z3 Hoare-contract verifier.
     - [x] Match linked scalar contract parameter names/domains and result domains
       against the exact implementation signature and resolve helpers by
       TypeChecker identity.

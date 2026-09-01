@@ -4,7 +4,7 @@ import { compareUneffectFrontends } from "../src/frontend-parity.js";
 describe("TypeScript/Corsa neutral projection parity", () => {
   it("preserves explicit empty effect declarations across the TypeScript and Rust projections", async () => {
     const result = await compareUneffectFrontends({
-      files: { "pure.ts": `/* uneffect:capability effect none */ export function pure(value: number) { return value }` },
+      files: { "pure.ts": `/* uneffect:effect none */ export function pure(value: number) { return value }` },
     });
     expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
     expect(result.typescriptIr.functions).toContainEqual(expect.objectContaining({ name: "pure", effects: [] }));
@@ -52,7 +52,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
   });
 
   it("normalizes UTF-8 trivia and reports schema drift instead of treating it as parity", async () => {
-    const files = { "unicode.ts": `/* uneffect:capability effect FsRead<"$CWD/データ/**"> */ export function read() {}` };
+    const files = { "unicode.ts": `/* uneffect:effect FsRead<"$CWD/データ/**"> */ export function read() {}` };
     const matching = await compareUneffectFrontends({ files });
     expect(matching).toMatchObject({ equivalent: true, schemaDrift: [] });
 
@@ -134,8 +134,8 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     const result = await compareUneffectFrontends({ files: { "suppressed.ts": `
       class FirstError extends Error {}
       class SecondError extends Error {}
-      class First { /* uneffect:capability effect Throw<FirstError> */ [Symbol.dispose](): void {} }
-      class Second { /* uneffect:capability effect Throw<SecondError> */ [Symbol.dispose](): void {} }
+      class First { /* uneffect:effect Throw<FirstError> */ [Symbol.dispose](): void {} }
+      class Second { /* uneffect:effect Throw<SecondError> */ [Symbol.dispose](): void {} }
       export function run() { using first = new First(); using second = new Second() }
     ` } });
     expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
@@ -169,7 +169,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
 
   it("compares inferred effects, call edges, and ordered call events", async () => {
     const result = await compareUneffectFrontends({ files: { "calls.ts": `
-      /* uneffect:capability effect Console */
+      /* uneffect:effect Console */
       export function emit() { console.log("x") }
       export function main() { emit() }
     ` } });

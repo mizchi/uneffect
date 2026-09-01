@@ -6,7 +6,7 @@ import {
 import { parseSpec } from "../src/spec-ir.js";
 
 const fixture = (thenPrefix = "", beforeCommon = "") => `
-/* uneffect:temporal state total: int */ /* uneffect:temporal state audited: int */ /* uneffect:temporal state route: bool */ /* uneffect:temporal state first: bool */ /* uneffect:temporal state second: bool */ /* uneffect:temporal state common: bool */ /* uneffect:temporal action compose: total' = total + (route ? (first ? 2 : 1) : (second ? 8 : 4)) + (common ? 32 : 16), audited' = audited + (route ? (first ? 20 : 10) : (second ? 80 : 40)) + (common ? 320 : 160)${thenPrefix ? " + (route ? 1 : 0)" : ""}${beforeCommon ? " + 64" : ""} */
+/* uneffect: state total: int */ /* uneffect: state audited: int */ /* uneffect: state route: bool */ /* uneffect: state first: bool */ /* uneffect: state second: bool */ /* uneffect: state common: bool */ /* uneffect: action compose: total' = total + (route ? (first ? 2 : 1) : (second ? 8 : 4)) + (common ? 32 : 16), audited' = audited + (route ? (first ? 20 : 10) : (second ? 80 : 40)) + (common ? 320 : 160)${thenPrefix ? " + (route ? 1 : 0)" : ""}${beforeCommon ? " + 64" : ""} */
 interface Runtime {
   total: number; audited: number;
   route: boolean; first: boolean; second: boolean; common: boolean;

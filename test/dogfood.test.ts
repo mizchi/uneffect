@@ -2445,12 +2445,12 @@ describe("Uneffect dogfood", () => {
         import { readFile } from "node:fs"
         function flushSuccess() { queueMicrotask(() => console.log("flushed")) }
         function flushFailure() { nextTick(() => console.log("retry")) }
-        /* uneffect:capability effect Throw<SyntaxError> */
+        /* uneffect:effect Throw<SyntaxError> */
         function parseSettings() { throw new SyntaxError("invalid settings") }
         async function loadSettings() { throw new SyntaxError("async settings") }
-        /* uneffect:capability effect Console */
+        /* uneffect:effect Console */
         function* flushSteps() { console.log("prepare flush"); yield "ready" }
-        /* uneffect:capability effect Throw<TypeError> */
+        /* uneffect:effect Throw<TypeError> */
         function* failedFlushSteps() { throw new TypeError("flush unavailable") }
         declare function externalFlushSteps(): Generator<string>
         function buildFlushSteps(preferCache: boolean) {
@@ -2462,7 +2462,7 @@ describe("Uneffect dogfood", () => {
           handlers: { success: flushSuccess, failure: flushFailure } as const,
           select(outcome: "success" | "failure") { return this.handlers[outcome] },
         } as const
-        /* uneffect:capability effect FsRead<"settings.json"> | Console | Timer | InvokeUserCode */
+        /* uneffect:effect FsRead<"settings.json"> | Console | Timer | InvokeUserCode */
         export function scheduleFlush(preferCache: boolean) {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
@@ -2564,8 +2564,8 @@ describe("Uneffect dogfood", () => {
       ]);
 
     const broken = analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect none */",
-      "/* uneffect:capability effect Console */",
+      "/* uneffect:effect none */",
+      "/* uneffect:effect Console */",
     ), { requireAnnotations: false });
     expect(broken).toContainEqual(expect.objectContaining({
       functionName: "evaluateStaticPrimitive",
@@ -2593,8 +2593,8 @@ describe("Uneffect dogfood", () => {
       .toEqual([{ name: "base", effects: ["Throw<Error>"] }, { name: "offset", effects: ["Throw<Error>"] }]);
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect none */",
-      "/* uneffect:capability effect Console */",
+      "/* uneffect:effect none */",
+      "/* uneffect:effect Console */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "createProjectByteCoordinates", effect: "Console", kind: "unused",
     }));
@@ -2616,8 +2616,8 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "verified", effects: [] });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect Mutate<typeof seen> */",
-      "/* uneffect:capability effect none */",
+      "/* uneffect:effect Mutate<typeof seen> */",
+      "/* uneffect:effect none */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "standardProtocolExpression", effect: "Mutate<typeof seen>", kind: "missing",
     }));
@@ -2642,8 +2642,8 @@ describe("Uneffect dogfood", () => {
 
     const source = readFileSync("src/diagnostic-quality.ts", "utf8");
     expect(analyzeEffects("src/diagnostic-quality.ts", source.replace(
-      "/* uneffect:capability effect none */",
-      "/* uneffect:capability effect Console */",
+      "/* uneffect:effect none */",
+      "/* uneffect:effect Console */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "quotesSource", effect: "Console", kind: "unused",
     }));
@@ -2667,8 +2667,8 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "CliUsageError" })] });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect Console */",
-      "/* uneffect:capability effect none */",
+      "/* uneffect:effect Console */",
+      "/* uneffect:effect none */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "writeStdout", effect: "Console", kind: "missing",
     }));
@@ -2695,8 +2695,8 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect none */\nfunction minimumMajor",
-      "/* uneffect:capability effect Console */\nfunction minimumMajor",
+      "/* uneffect:effect none */\nfunction minimumMajor",
+      "/* uneffect:effect Console */\nfunction minimumMajor",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "minimumMajor", effect: "Console", kind: "unused",
     }));
@@ -2718,8 +2718,8 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect none */\nexport function formatCliHelp",
-      "/* uneffect:capability effect Console */\nexport function formatCliHelp",
+      "/* uneffect:effect none */\nexport function formatCliHelp",
+      "/* uneffect:effect Console */\nexport function formatCliHelp",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "formatCliHelp", effect: "Console", kind: "unused",
     }));
@@ -2745,8 +2745,8 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsWrite" })] });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect none */\nfunction summaryOf",
-      "/* uneffect:capability effect FsWrite */\nfunction summaryOf",
+      "/* uneffect:effect none */\nfunction summaryOf",
+      "/* uneffect:effect FsWrite */\nfunction summaryOf",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "summaryOf", effect: "FsWrite", kind: "unused",
     }));
@@ -2770,8 +2770,8 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsWrite" })] });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect none */\nexport function ownershipEvidenceKey",
-      "/* uneffect:capability effect FsRead */\nexport function ownershipEvidenceKey",
+      "/* uneffect:effect none */\nexport function ownershipEvidenceKey",
+      "/* uneffect:effect FsRead */\nexport function ownershipEvidenceKey",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "ownershipEvidenceKey", effect: "FsRead", kind: "unused",
     }));
@@ -2803,8 +2803,8 @@ describe("Uneffect dogfood", () => {
       });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect FsWrite | Random | Throw<unknown> | Throw<Error> | Clone<All> */",
-      "/* uneffect:capability effect FsWrite | Throw<unknown> | Throw<Error> | Clone<All> */",
+      "/* uneffect:effect FsWrite | Random | Throw<unknown> | Throw<Error> | Clone<All> */",
+      "/* uneffect:effect FsWrite | Throw<unknown> | Throw<Error> | Clone<All> */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "writeModelCounterexample", effect: "Random", kind: "missing",
     }));
@@ -2829,8 +2829,8 @@ describe("Uneffect dogfood", () => {
       ]) });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:capability effect FsRead */\nfunction parseEvidence",
-      "/* uneffect:capability effect FsWrite */\nfunction parseEvidence",
+      "/* uneffect:effect FsRead */\nfunction parseEvidence",
+      "/* uneffect:effect FsWrite */\nfunction parseEvidence",
     ), { requireAnnotations: false })).toEqual(expect.arrayContaining([
       expect.objectContaining({ functionName: "parseEvidence", effect: "FsRead", kind: "missing" }),
       expect.objectContaining({ functionName: "parseEvidence", effect: "FsWrite", kind: "unused" }),

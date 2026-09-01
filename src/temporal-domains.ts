@@ -1,4 +1,4 @@
-import { extractAnnotations } from "./annotations.js";
+import { extractAnnotations, isCoreUneffectDirective } from "./annotations.js";
 import type { TemporalClock, TemporalState } from "./spec-ir.js";
 import type { TemporalValueType } from "./temporal-expressions.js";
 
@@ -25,12 +25,17 @@ export interface TemporalSemanticDomain {
   expand(source: string): TemporalDomainExpansion;
 }
 
+const builtinDirectiveAuthority = {};
+
 export class TemporalDomainRegistry {
   readonly #domains = new Map<string, TemporalSemanticDomain>();
 
-  register(domain: TemporalSemanticDomain): this {
+  register(domain: TemporalSemanticDomain, authority?: object): this {
     for (const directive of domain.directives) {
       if (!/^[a-z][a-z0-9_]*$/.test(directive)) throw new Error(`invalid temporal domain directive \`${directive}\``);
+      if (isCoreUneffectDirective(directive) && authority !== builtinDirectiveAuthority) {
+        throw new Error(`temporal directive \`${directive}\` collides with a core Uneffect directive`);
+      }
       const owner = this.#domains.get(directive);
       if (owner) throw new Error(`temporal directive \`${directive}\` is already owned by domain \`${owner.name}\``);
       this.#domains.set(directive, domain);
@@ -127,5 +132,5 @@ export function createLogicalClockDomain(): TemporalSemanticDomain {
 }
 
 export function createDefaultTemporalDomainRegistry(): TemporalDomainRegistry {
-  return new TemporalDomainRegistry().register(createLogicalClockDomain());
+  return new TemporalDomainRegistry().register(createLogicalClockDomain(), builtinDirectiveAuthority);
 }

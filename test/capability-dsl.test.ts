@@ -40,7 +40,7 @@ describe("TypeScript capability DSL", () => {
 
   it("connects a capability export to the existing effect analyzer", async () => {
     const result = await verifyUneffectProject({ files: {
-      "src/log.ts": `/* uneffect:capability from "./policy.uneffect.ts#Log" */\nexport function log() { console.log("ok") }`,
+      "src/log.ts": `/* uneffect:capability_from "./policy.uneffect.ts#Log" */\nexport function log() { console.log("ok") }`,
       "src/policy.uneffect.ts": specification,
     } });
     expect(result.diagnostics).toEqual([]);
@@ -50,7 +50,7 @@ describe("TypeScript capability DSL", () => {
 
   it("keeps user schemas project-local while the analyzer understands their domains", async () => {
     const result = await verifyUneffectProject({ files: {
-      "src/audit.ts": `/* uneffect:capability from "./policy.uneffect.ts#AuditOnly" */\nexport function audit() {}`,
+      "src/audit.ts": `/* uneffect:capability_from "./policy.uneffect.ts#AuditOnly" */\nexport function audit() {}`,
       "src/policy.uneffect.ts": specification,
     } });
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "audit", kind: "unused", effect: 'Audit<"metric.write">' }));

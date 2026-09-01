@@ -8,7 +8,7 @@ declare namespace JSX {
   }
 }
 
-/* uneffect:capability effect Fetch | Throw<TypeError> */
+/* uneffect:effect Fetch | Throw<TypeError> */
 declare function submitOrder(quantity: number): Promise<number>;
 
 /* uneffect:react-component */

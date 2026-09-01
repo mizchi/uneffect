@@ -458,8 +458,8 @@ function makeObligation(value: Omit<InvariantObligation, "id">): InvariantObliga
 /** Maps a lowering rejection to the concrete edit that brings the function back into the verified subset. */
 function loweringHint(message: string): string | undefined {
   if (message.startsWith("call requires a verified function summary")) return "inline the callee, or move the call out of the contracted function; the prototype has no call summaries yet";
-  if (message.startsWith("unsupported invariant statement")) return "the verified statement subset is: initialized let/const, plain assignment, if/else, while with /* uneffect:contract invariant ... */, and return";
-  if (message.startsWith("while requires")) return "write /* uneffect:contract invariant ... */ directly above the while statement";
+  if (message.startsWith("unsupported invariant statement")) return "the verified statement subset is: initialized let/const, plain assignment, if/else, while with /* uneffect:loop_invariant ... */, and return";
+  if (message.startsWith("while requires")) return "write /* uneffect:loop_invariant ... */ directly above the while statement";
   if (message.startsWith("unsupported invariant expression") || message.startsWith("invalid invariant expression")) return "the expression language is integers, + - * / %, comparisons, && || !, and imported effect/Function pipe with inline unary callbacks";
   if (message.startsWith("unsupported contract parameter type")) return "annotate the parameter as number, Int, Nat, Float, or boolean";
   if (message.startsWith("destructured contract parameters")) return "give the parameter one identifier name and destructure inside the body";
@@ -641,7 +641,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         paths = forked;
       } else if (ts.isWhileStatement(statement)) {
         const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
-        if (!invariantSource) throw new Error(`while requires /* uneffect:contract invariant ... */ but ${statement.expression.getText(source)} has none`);
+        if (!invariantSource) throw new Error(`while requires /* uneffect:loop_invariant ... */ but ${statement.expression.getText(source)} has none`);
         const invariant = parseLogicExpression(invariantSource);
         const exited: PathState[] = [];
         for (const path of paths) {

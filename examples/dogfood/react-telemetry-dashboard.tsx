@@ -41,13 +41,13 @@ declare function detachTelemetryViewport(viewport: TelemetryViewport): void;
 declare function openTelemetryStatus(notify: () => void): TelemetryStatusSubscription;
 /* uneffect:react-resource release TelemetryStatusSubscription parameter 0 */
 declare function closeTelemetryStatus(subscription: TelemetryStatusSubscription): void;
-/* uneffect:capability effect TelemetryStatusRead */
+/* uneffect:effect TelemetryStatusRead */
 declare function readTelemetryStatus(): boolean;
-/* uneffect:capability effect StyleWrite */
+/* uneffect:effect StyleWrite */
 declare function insertTelemetryStyles(): void;
-/* uneffect:capability effect StyleWrite */
+/* uneffect:effect StyleWrite */
 declare function removeTelemetryStyles(): void;
-/* uneffect:capability effect TelemetryFilterSave */
+/* uneffect:effect TelemetryFilterSave */
 declare function saveTelemetryFilter(service: string): Promise<void>;
 
 /* uneffect:react-hook */

@@ -99,7 +99,7 @@ describe("bounded Uint8Array safety", () => {
   it("does not bypass an explicitly unavailable native Z3 backend", async () => {
     const result = await verifyTypedArraySafety("native-unavailable.ts", `
       import type { Nat, U8 } from "@mizchi/uneffect"
-      /* uneffect:contract requires value * 2 <= 255 */
+      /* uneffect:requires value * 2 <= 255 */
       function write(bytes: Uint8Array, value: Nat) { bytes[0] = value }
     `, { preference: "native", nativeExecutable: "/uneffect/missing/z3" });
     expect(result.obligations).toContainEqual(expect.objectContaining({
@@ -112,7 +112,7 @@ describe("bounded Uint8Array safety", () => {
   it("checks DataView byte offsets and rejects implicit value coercion", async () => {
     const result = await verifyTypedArraySafety("data-view.ts", `
       import type { BoundedDataView, Nat, U8, U32 } from "@mizchi/uneffect"
-      /* uneffect:contract requires offset <= 60 */
+      /* uneffect:requires offset <= 60 */
       function safe(view: BoundedDataView<64>, offset: Nat, byte: U8, word: U32) {
         view.setUint8(offset, byte)
         view.setUint32(offset, word)
@@ -138,7 +138,7 @@ describe("bounded Uint8Array safety", () => {
   it("tracks const DataView aliases and byte widths for standard accessors", async () => {
     const result = await verifyTypedArraySafety("data-view-codec.ts", `
       import type { BoundedDataView, Nat } from "@mizchi/uneffect"
-      /* uneffect:contract requires offset <= 8 */
+      /* uneffect:requires offset <= 8 */
       function decode(view: BoundedDataView<16>, offset: Nat) {
         const cursor = view
         const alias = cursor
@@ -217,7 +217,7 @@ describe("bounded Uint8Array safety", () => {
   it("derives integer intervals from strict and reversed requires bounds", async () => {
     const result = await verifyTypedArraySafety("data-view-interval.ts", `
       import type { BoundedDataView, Int } from "@mizchi/uneffect"
-      /* uneffect:contract requires -32768 <= value && value < 32768 */
+      /* uneffect:requires -32768 <= value && value < 32768 */
       function write(view: BoundedDataView<2>, value: Int) {
         view.setInt16(0, value, false)
       }
@@ -232,7 +232,7 @@ describe("bounded Uint8Array safety", () => {
   it("checks DataView constructor length against its view and backing buffer", async () => {
     const result = await verifyTypedArraySafety("data-view-constructor.ts", `
       import type { BoundedArrayBuffer, BoundedDataView, FixedArrayBuffer, Nat } from "@mizchi/uneffect"
-      /* uneffect:contract requires length <= 16 && offset + length <= 64 */
+      /* uneffect:requires length <= 16 && offset + length <= 64 */
       function slice(buffer: FixedArrayBuffer<64>, offset: Nat, length: Nat): BoundedDataView<16> {
         return new DataView(buffer, offset, length)
       }
@@ -305,7 +305,7 @@ describe("bounded Uint8Array safety", () => {
   it("proves bounded indices and rejects JavaScript shift-count masking", async () => {
     const result = await verifyTypedArraySafety("indices.ts", `
       import type { BoundedUint8Array, Nat, U32 } from "@mizchi/uneffect"
-      /* uneffect:contract requires index < 32 && shift <= 31 */
+      /* uneffect:requires index < 32 && shift <= 31 */
       function safe(bytes: BoundedUint8Array<32>, index: Nat, word: U32, shift: Nat) {
         bytes[index] = (word >>> shift) & 0xff
       }
@@ -344,7 +344,7 @@ describe("bounded Uint8Array safety", () => {
   it("checks SHA-256 padding copies through TypedArray.set bounds", async () => {
     const result = await verifyTypedArraySafety("padding-copy.ts", `
       import type { BoundedUint8Array, Nat } from "@mizchi/uneffect"
-      /* uneffect:contract requires offset <= 64 */
+      /* uneffect:requires offset <= 64 */
       function copyIntoPadding(target: BoundedUint8Array<1048640>, input: BoundedUint8Array<1048576>, offset: Nat) {
         target.set(input, offset)
       }
@@ -408,7 +408,7 @@ describe("bounded Uint8Array safety", () => {
       import { U32_MAX } from "@mizchi/uneffect"
       const ROUND = u32Table([0x428a2f98, U32_MAX, 0x71374491] as const)
       const INVALID = u32Table([0, U32_MAX + 1] as const)
-      /* uneffect:contract requires index < ROUND.length */
+      /* uneffect:requires index < ROUND.length */
       function useRound(output: BoundedUint32Array<1>, index: Nat) {
         output[0] = ROUND[index]!
       }
@@ -437,7 +437,7 @@ describe("bounded Uint8Array safety", () => {
       "/src/round.ts": `
         import { ROUND_CONSTANTS as K } from "./barrel.js"
         import type { BoundedUint32Array, Nat } from "@mizchi/uneffect"
-        /* uneffect:contract requires round < K.length */
+        /* uneffect:requires round < K.length */
         export function round(output: BoundedUint32Array<1>, round: Nat) {
           output[0] = K[round]!
         }
@@ -456,7 +456,7 @@ describe("bounded Uint8Array safety", () => {
       "/src/round.ts": `
         import * as Tables from "./constants.js"
         import type { BoundedUint32Array, Nat } from "@mizchi/uneffect"
-        /* uneffect:contract requires round < Tables.SHA_K.length */
+        /* uneffect:requires round < Tables.SHA_K.length */
         export function round(output: BoundedUint32Array<1>, round: Nat) {
           output[0] = Tables.SHA_K[round]!
         }
@@ -480,7 +480,7 @@ describe("bounded Uint8Array safety", () => {
       "/src/round.ts": `
         import { SHA_K } from "@fixtures/sha"
         import type { BoundedUint32Array, Nat } from "@mizchi/uneffect"
-        /* uneffect:contract requires round < SHA_K.length */
+        /* uneffect:requires round < SHA_K.length */
         export function round(output: BoundedUint32Array<1>, round: Nat) {
           output[0] = SHA_K[round]!
         }
@@ -499,7 +499,7 @@ describe("bounded Uint8Array safety", () => {
       const PREFIX = u32Table([1, 2] as const)
       const SUFFIX = u32Table([3, 4] as const)
       const ROUND = u32Table([...PREFIX, ...SUFFIX, 5] as const)
-      /* uneffect:contract requires index < ROUND.length */
+      /* uneffect:requires index < ROUND.length */
       function read(index: Nat): U32 { return ROUND[index]! }
     `);
     expect(result.diagnostics).toEqual([]);
@@ -515,7 +515,7 @@ describe("bounded Uint8Array safety", () => {
       const ROUNDS = 4
       const ROUND = u32Table(Array.from({ length: ROUNDS }, (_, index) => index * 0x01010101))
       const INVALID = u8Table(Array.from({ length: 2 }, (_, index) => index * 256))
-      /* uneffect:contract requires index < ROUND.length */
+      /* uneffect:requires index < ROUND.length */
       function read(index: Nat): U32 { return ROUND[index]! }
     `);
     expect(result.obligations).toEqual(expect.arrayContaining([

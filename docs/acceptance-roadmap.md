@@ -647,7 +647,7 @@ reviewed external annotation boundary. Reviewed application adapters below
 provide the constraint-bearing verifier coverage.
 
 A separate checked-in adapter imports `pipe` from the same external package
-and declares `/* uneffect:capability effect Console */` on its application boundary. The
+and declares `/* uneffect:effect Console */` on its application boundary. The
 boundary verifies with the exact inferred Console authority. A negative control
 replaces it with `FsRead<"$CWD/**">` and must report both the missing Console
 and unused FsRead declarations. This is a meaningful capability constraint over

@@ -80,7 +80,7 @@ describe("TypeScript temporal DSL", () => {
 
   it("connects an implementation comment to a .uneffect.ts model", () => {
     const files = {
-      "src/upload.ts": `/* uneffect:temporal from "./upload.uneffect.ts#default" */\nexport function upload() {}`,
+      "src/upload.ts": `/* uneffect:temporal_from "./upload.uneffect.ts#default" */\nexport function upload() {}`,
       "src/upload.uneffect.ts": source,
     };
     const link = resolveTemporalDslLink("src/upload.ts", files["src/upload.ts"], files);
@@ -97,7 +97,7 @@ describe("TypeScript temporal DSL", () => {
   });
 
   it("fails closed on missing, non-default, and ambiguous temporal links", () => {
-    const implementation = `/* uneffect:temporal from "./missing.uneffect.ts#default" */\nexport function upload() {}`;
+    const implementation = `/* uneffect:temporal_from "./missing.uneffect.ts#default" */\nexport function upload() {}`;
     expect(() => resolveTemporalDslLink("src/upload.ts", implementation, {})).toThrow(/does not exist/);
     expect(() => resolveTemporalDslLink("src/upload.ts", implementation.replace("#default", "#Upload"), { "src/missing.uneffect.ts": source })).toThrow(/only #default/);
     expect(() => resolveTemporalDslLink("src/upload.ts", `${implementation}\n${implementation}`, {})).toThrow(/exactly one/);
@@ -106,7 +106,7 @@ describe("TypeScript temporal DSL", () => {
   it("loads the linked model during project verification", async () => {
     const result = await verifyUneffectProject({
       files: {
-        "src/upload.ts": `/* uneffect:temporal from "./upload.uneffect.ts#default" */\nexport function upload() {}`,
+        "src/upload.ts": `/* uneffect:temporal_from "./upload.uneffect.ts#default" */\nexport function upload() {}`,
         "src/upload.uneffect.ts": source,
       },
       temporalRuntime: "web",

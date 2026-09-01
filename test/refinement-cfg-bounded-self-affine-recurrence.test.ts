@@ -117,7 +117,7 @@ describe("precondition-bounded self-affine recurrence", () => {
 
   it("fails closed without the exact bound or outside the bounded family", async () => {
     for (const [name, source] of [
-      ["missing-precondition", fixture.replace("/* uneffect:contract requires runtime.retries >= 0 && runtime.retries <= 8 */ ", "")],
+      ["missing-precondition", fixture.replace("/* uneffect:requires runtime.retries >= 0 && runtime.retries <= 8 */ ", "")],
       ["oversized-bound", fixture.replaceAll("<= 8", "<= 9")],
       ["wrong-counter", fixture.replace("requires runtime.retries", "requires runtime.delay")],
       ["additive-mixture", fixture.replace("runtime.delay *= 2", "runtime.delay = runtime.delay * 2 + 1")],

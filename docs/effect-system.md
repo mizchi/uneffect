@@ -11,7 +11,7 @@ Status labels used in this document:
 Uneffect adds gradual effect specifications to existing TypeScript without changing JavaScript evaluation or requiring an Effect runtime. Comments form a contract layer that can be adopted function by function.
 
 ```ts
-/* uneffect:capability effect Console | Fetch */
+/* uneffect:effect Console | Fetch */
 async function main() {
   console.log("start")
   await fetch("https://example.com/")
@@ -29,7 +29,7 @@ Missing effects are errors. Declared but unobserved effects are warnings because
 The reserved payload `none` denotes the empty upper-bound set:
 
 ```ts
-/* uneffect:capability effect none */
+/* uneffect:effect none */
 function increment(value: number) {
   return value + 1
 }
@@ -182,7 +182,7 @@ a closed proof that the function is effect-free: its lazy effects are supplied
 by each call site. Bound it separately from the function body's effects:
 
 ```ts
-/* uneffect:capability effect InvokeUserCode */ /* uneffect:capability effect_parameter iterator extends Console | Throw<Error> */
+/* uneffect:effect InvokeUserCode */ /* uneffect:effect_parameter iterator extends Console | Throw<Error> */
 export function consume(iterator: IteratorObject<unknown>) {
   return Array.from(iterator)
 }
@@ -238,7 +238,7 @@ worker.postMessage(message, transfer)
 Some authorities carry finite operation sets and scope languages.
 
 ```ts
-/* uneffect:capability effect Fetch<GET | POST, "https://api.example.com/v1/**"> */
+/* uneffect:effect Fetch<GET | POST, "https://api.example.com/v1/**"> */
 ```
 
 All parameterized capabilities share one representation:

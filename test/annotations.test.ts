@@ -35,8 +35,17 @@ describe("Uneffect annotation marker", () => {
   it("rejects an unknown unified directive", () => {
     expect(validateUneffectAnnotations("/* uneffect:not_a_directive value */")).toMatchObject([{ kind: "unknown-dialect", directive: "not_a_directive" }]);
   });
+  it("accepts registered plugin directives in one-line and multiline unified forms", () => {
+    const source = `/* uneffect:queue_depth pending */\n/* uneffect:\n      queue_depth running\n    */`;
+    expect(extractAnnotations(source, "queue_depth")).toEqual(["pending", "running"]);
+    expect(validateUneffectAnnotations(source, 0, ["queue_depth"])).toEqual([]);
+  });
+  it("requires a payload for a registered one-line plugin directive", () => {
+    expect(validateUneffectAnnotations("/* uneffect:queue_depth */", 0, ["queue_depth"]))
+      .toMatchObject([{ kind: "missing-payload", directive: "queue_depth" }]);
+  });
   it("separates contract and temporal invariant syntax by dialect", () => {
-    const source = `/* uneffect:contract requires value >= 0 */\n/* uneffect:temporal state phase: int */\n/* uneffect:temporal invariant safe: phase >= 0 */`;
+    const source = `/* uneffect:requires value >= 0 */\n/* uneffect: state phase: int */\n/* uneffect:always safe: phase >= 0 */`;
     expect(extractAnnotations(source, "requires")).toEqual(["value >= 0"]);
     expect(extractAnnotations(source, "temporal")).toEqual(["safe: phase >= 0"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
@@ -44,25 +53,28 @@ describe("Uneffect annotation marker", () => {
   it("uses react-component as an unambiguous semantic marker", () => {
     expect(extractAnnotations("/* uneffect:react-component */", "react")).toEqual(["component"]);
   });
-  it("rejects directives from another dialect", () => {
-    expect(validateUneffectAnnotations("/* uneffect:contract state phase: int */")).toMatchObject([{ kind: "wrong-dialect", directive: "state", dialect: "contract" }]);
+  it("rejects removed capability, contract, and temporal dialect headers", () => {
+    for (const dialect of ["capability", "contract", "temporal"]) {
+      expect(validateUneffectAnnotations(`/* uneffect:${dialect} state phase: int */`))
+        .toMatchObject([{ kind: "unknown-dialect", directive: dialect }]);
+    }
   });
   it("accepts module-level effect upper bounds without using JSDoc semantics", () => {
-    const source = `/* uneffect:capability module_effect Console | Env<\"PLUGIN\"> */\nawait main()`;
+    const source = `/* uneffect:module_effect Console | Env<\"PLUGIN\"> */\nawait main()`;
     expect(extractAnnotations(source, "module_effect")).toEqual([`Console | Env<"PLUGIN">`]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("extracts a canonical single-line directive", () => {
-    expect(extractAnnotations("/* uneffect:capability effect Console | app.Audit */", "effect"))
+    expect(extractAnnotations("/* uneffect:effect Console | app.Audit */", "effect"))
       .toEqual(["Console | app.Audit"]);
-    expect(extractAnnotations("/* uneffect:capability effect_parameter iterator extends Console | Fetch */", "effect_parameter"))
+    expect(extractAnnotations("/* uneffect:effect_parameter iterator extends Console | Fetch */", "effect_parameter"))
       .toEqual(["iterator extends Console | Fetch"]);
   });
 
   it("extracts multiple directives from one non-JSDoc block", () => {
     const comment = `
-      /* uneffect:capability effect Console | Throw<Error> */ /* uneffect:contract requires value >= 0 */
+      /* uneffect:effect Console | Throw<Error> */ /* uneffect:requires value >= 0 */
     `;
     expect(extractAnnotations(comment, "effect")).toEqual(["Console | Throw<Error>"]);
     expect(extractAnnotations(comment, "requires")).toEqual(["value >= 0"]);
@@ -97,19 +109,19 @@ describe("Uneffect annotation marker", () => {
   });
 
   it("recognizes explicit Promise rejection ownership transfer", () => {
-    const source = "/* uneffect:temporal consumes_rejection 0, 2 */";
+    const source = "/* uneffect: consumes_rejection 0, 2 */";
     expect(extractAnnotations(source, "consumes_rejection")).toEqual(["0, 2"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes explicit resource retention boundaries", () => {
-    const source = "/* uneffect:temporal retains_resource 0, 2 */";
+    const source = "/* uneffect: retains_resource 0, 2 */";
     expect(extractAnnotations(source, "retains_resource")).toEqual(["0, 2"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes callable resource boundary operations", () => {
-    const source = `/* uneffect:temporal
+    const source = `/* uneffect:
       borrow input
       consume body
       transfer port -> return
@@ -121,19 +133,19 @@ describe("Uneffect annotation marker", () => {
   });
 
   it("recognizes guarded resource retention boundaries", () => {
-    const source = "/* uneffect:temporal retains_resource_when 0: enabled */";
+    const source = "/* uneffect: retains_resource_when 0: enabled */";
     expect(extractAnnotations(source, "retains_resource_when")).toEqual(["0: enabled"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes Promise-returning callback ownership", () => {
-    const source = "/* uneffect:temporal consumes_callback_rejection 0 */";
+    const source = "/* uneffect: consumes_callback_rejection 0 */";
     expect(extractAnnotations(source, "consumes_callback_rejection")).toEqual(["0"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes guarded ownership transfer", () => {
-    const source = "/* uneffect:temporal consumes_rejection_when 1: enabled */";
+    const source = "/* uneffect: consumes_rejection_when 1: enabled */";
     expect(extractAnnotations(source, "consumes_rejection_when")).toEqual(["1: enabled"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
@@ -146,38 +158,39 @@ describe("Uneffect annotation marker", () => {
   });
 
   it("preserves the exact payload source span", () => {
-    const source = `before\n/* uneffect:capability effect Console | Fetch */\nafter`;
+    const source = `before\n/* uneffect:effect Console | Fetch */\nafter`;
     const [annotation] = extractLocatedAnnotations(source, "effect");
-    expect(annotation).toEqual({ value: "Console | Fetch", span: { start: 37, end: 52 } });
+    const start = source.indexOf("Console | Fetch");
+    expect(annotation).toEqual({ value: "Console | Fetch", span: { start, end: start + "Console | Fetch".length } });
     expect(source.slice(annotation!.span.start, annotation!.span.end)).toBe(annotation!.value);
   });
 
   it("reports unknown directives and missing payloads only inside Uneffect blocks", () => {
     const source = `
       /** @returns ordinary JSDoc */
-      /* uneffect:temporal effects Console */ /* uneffect:capability effect */
+      /* uneffect: effects Console */ /* uneffect:effect */
     `;
     expect(validateUneffectAnnotations(source)).toMatchObject([
-      { kind: "wrong-dialect", directive: "effects", dialect: "temporal" },
+      { kind: "unknown-dialect", directive: "effects" },
       { kind: "missing-payload", directive: "effect" },
     ]);
   });
 
   it("recognizes a decreases clause for termination arguments", () => {
-    const source = `/* uneffect:contract decreases hi - lo */`;
+    const source = `/* uneffect:decreases hi - lo */`;
     expect(extractLocatedAnnotations(source, "decreases").map((item) => item.value))
       .toEqual(["hi - lo"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes an action guard without adding Quint syntax", () => {
-    const source = `/* uneffect:temporal action_when tick: clock < deadline */`;
+    const source = `/* uneffect: action_when tick: clock < deadline */`;
     expect(extractAnnotations(source, "action_when")).toEqual(["tick: clock < deadline"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
   it("recognizes structured clock and standalone action fairness", () => {
-    const source = `/* uneffect:temporal clock clock: 1 */ /* uneffect:temporal action_fair tick_clock: weak */`;
+    const source = `/* uneffect: clock clock: 1 */ /* uneffect: action_fair tick_clock: weak */`;
     expect(extractAnnotations(source, "clock")).toEqual(["clock: 1"]);
     expect(extractAnnotations(source, "action_fair")).toEqual(["tick_clock: weak"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);

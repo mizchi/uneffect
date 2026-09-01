@@ -124,7 +124,7 @@ export function loadTypeScriptProject(projectFile: string): TypeScriptProject {
 }
 
 /** Resolve a solution graph while preserving one compiler-option domain per tsconfig. */
-/* uneffect:capability effect Throw<Error> */
+/* uneffect:effect Throw<Error> */
 export function loadTypeScriptWorkspace(projectFile: string): TypeScriptWorkspace {
   const rootProjectFile = resolve(projectFile);
   const projects: TypeScriptProject[] = [], references: TypeScriptProjectReference[] = [], blockers: TypeScriptWorkspaceBlocker[] = [];

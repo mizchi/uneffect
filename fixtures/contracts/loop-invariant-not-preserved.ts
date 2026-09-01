@@ -1,9 +1,9 @@
 // The invariant holds on entry but one iteration of the body breaks it.
-/* uneffect:contract requires n >= 0 */
-/* uneffect:contract ensures result >= n */
+/* uneffect:requires n >= 0 */
+/* uneffect:ensures result >= n */
 export function countByTwo(n: number) {
   let i = 0;
-  /* uneffect:contract invariant i >= 0 && i <= n */
+  /* uneffect:loop_invariant i >= 0 && i <= n */
   while (i < n) {
     i = i + 2;
   }

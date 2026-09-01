@@ -195,7 +195,7 @@ export function prepareCapabilityDslLinks(files: Readonly<Record<string, string>
   for (const [fileName, source] of Object.entries(files)) {
     const links = extractAnnotations(source, "capability_from");
     if (links.length === 0) continue;
-    if (links.length !== 1) throw new Error(`${fileName}: expected exactly one uneffect:capability from declaration`);
+    if (links.length !== 1) throw new Error(`${fileName}: expected exactly one uneffect:capability_from declaration`);
     const match = /^(?:"([^"]+)"|'([^']+)')$/.exec(links[0]!);
     if (!match) throw new Error(`${fileName}: capability from requires a quoted relative .uneffect.ts path and export`);
     const reference = match[1] ?? match[2]!, hash = reference.lastIndexOf("#");
@@ -214,7 +214,8 @@ export function prepareCapabilityDslLinks(files: Readonly<Record<string, string>
       schemas.set(name, schema);
     }
     const declaration = parsed.effects.map(formatEffect).join(" | ");
-    output[fileName] = source.replace(/(\/\*\s*uneffect\s*:\s*capability\s+)from\s+(?:"[^"]+"|'[^']+')\s*(\*\/)/, `$1effect ${declaration} $2`);
+    const annotationPrefix = ["uneffect", "effect"].join(":");
+    output[fileName] = source.replace(/\/\*\s*uneffect\s*:\s*capability_from\s+(?:"[^"]+"|'[^']+')\s*\*\//, `/* ${annotationPrefix} ${declaration} */`);
   }
   return { files: output, schemas };
 }

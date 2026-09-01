@@ -18,8 +18,8 @@ describe("persisted contract summary bundles", () => {
   it("binds verified exported contracts to package, compiler, source, signature, and artifacts", async () => {
     const fileName = "/src/index.ts";
     const source = `
-      /* uneffect:contract requires value >= 0 */
-      /* uneffect:contract ensures result === value + 1 */
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
       export async function addOne(value: number): Promise<number> { return value + 1 }
     `;
     const program = programFor(fileName, source);
@@ -54,7 +54,7 @@ describe("persisted contract summary bundles", () => {
   it("refuses to publish a counterexample as a verified package summary", async () => {
     const fileName = "/src/index.ts";
     const source = `
-      /* uneffect:contract ensures result === value + 1 */
+      /* uneffect:ensures result === value + 1 */
       export async function addOne(value: number): Promise<number> { return value - 1 }
     `;
     const program = programFor(fileName, source);
