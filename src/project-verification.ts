@@ -28,6 +28,7 @@ import {
   type ProjectAssuranceAssessment,
 } from "./project-assurance.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
+import type { AssumptionRegistry } from "./assumption-registry.js";
 import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from "./module-initialization.js";
 import { loadTypeScriptWorkspace, type TypeScriptProject, type TypeScriptProjectProvenance, type TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectCompositionBlocker, type WorkspaceEffectLink } from "./workspace-effects.js";
@@ -53,6 +54,8 @@ export interface VerifyUneffectProjectBaseOptions {
   nodeTopLevelMode?: "commonjs" | "esm";
   temporalRoot?: string;
   assumptionPolicy?: AssumptionPolicy;
+  /** Caller-owned review records referenced by source-level trust IDs. */
+  assumptionRegistry?: AssumptionRegistry;
   /** Caller-owned, versioned semantic contracts. Defaults to Uneffect's registry. */
   builtinRegistry?: BuiltinContractRegistry;
   /** Opt in to source-mapped ESM initialization-order evidence for one entry module. */
@@ -331,7 +334,7 @@ async function verifyUneffectProjectFiles(
       specificationDigest: sourceDigest(options.files[specificationFile]!), typescriptVersion: ts.version,
     });
   }
-  const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
+  const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3, options.assumptionRegistry);
   const preparedEffects = prepareCapabilityDslLinks(options.files, program);
   // `.uneffect.ts` modules are statically parsed and TypeChecked specification
   // inputs. They are never runtime entrypoints and must not contribute module
@@ -391,7 +394,7 @@ async function verifyUneffectProjectFiles(
   typedArrays.obligations = Object.values(typedArrays.files).flatMap((result) => result.obligations);
   typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
   diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
-  const assumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry);
+  const assumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry, options.assumptionRegistry);
   diagnostics.push(...assumptions.diagnostics);
   const runtimeInputs = Object.fromEntries(Object.entries(options.files).map(([fileName, source]) => {
     const contractSource = runtimeContractFiles[fileName] ?? source;
@@ -507,6 +510,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     ...(options.nodeTopLevelMode === undefined ? {} : { nodeTopLevelMode: options.nodeTopLevelMode }),
     ...(options.temporalRoot === undefined ? {} : { temporalRoot: options.temporalRoot }),
     ...(options.assumptionPolicy === undefined ? {} : { assumptionPolicy: options.assumptionPolicy }),
+    ...(options.assumptionRegistry === undefined ? {} : { assumptionRegistry: options.assumptionRegistry }),
     ...(options.builtinRegistry === undefined ? {} : { builtinRegistry: options.builtinRegistry }),
   };
   for (const project of workspace.projects) {

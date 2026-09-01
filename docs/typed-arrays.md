@@ -222,7 +222,7 @@ When a proof cannot be completed but an external review or validator establishes
 the invariant, a function may carry a reason-bearing escape hatch:
 
 ```ts
-/* uneffect:trust trust typed-array externally validated binary format */
+/* uneffect:trust trust typed-array wire-format-v1 */
 function decode(output: BoundedUint8Array<1>, value: number) {
   output[0] = value
 }
@@ -235,9 +235,7 @@ statement form where possible:
 
 ```ts
 function decode(output: BoundedUint8Array<2>, tag: number, payload: number) {
-  /* uneffect:trust trust typed-array:u8-write validated packet tag */
-  /* uneffect:trust trust_owner wire-team */
-  /* uneffect:trust trust_expires 2027-06-30 */
+  /* uneffect:trust trust typed-array:u8-write packet-tag-v1 */
   output[0] = tag
   output[1] = payload // still requires an independent proof
 }

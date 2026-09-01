@@ -54,7 +54,7 @@ silent aliases.
    `temporal-summary` with explicit `temporal_contract requires|ensures|modifies|throws|
    rejects|suspends|cancellable|eventually|repeatedly|stabilizes|response|fair`
    directives whose attachment target is recorded in evidence.
-4. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move refinement,
+4. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Move refinement,
    abstraction, and runtime bindings to typed `.uneffect.ts` APIs; comments
    retain only a stable model/binding reference where source attachment is
    required.
@@ -111,9 +111,14 @@ silent aliases.
            workspace and runtime-identity cases.
          - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Replace the
            remaining generated in-memory test fixtures with explicit manifests.
-5. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Move trust metadata
+5. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Move trust metadata
    to authenticated config/evidence records. Source comments may reference an
    assumption ID but cannot self-author owner, expiry, or digest evidence.
+   - [x] Add the strict `uneffect-assumption-registry/v1` contract, public
+     parser, JSON Schema, exact domain binding, review digest, and typed-array,
+     dispatch-sealing, and temporal-contract project-ledger handoffs.
+   - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate checked-in trust fixtures to registry IDs, then reject `trust_owner` and
+     `trust_expires` source directives.
 6. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Express React roles
    through namespaced plugin directives (`react.component`, `react.hook`, and
    resource lifecycle directives), with the same collision and provenance

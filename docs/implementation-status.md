@@ -431,7 +431,7 @@ same property is proved for arbitrary TypeScript.
   dispatch. A subclass declaration known to the source or Program disables the
   specialization (using TypeChecker symbol identity in Program mode). An
   exported runtime class additionally requires an explicit
-  `trust dispatch-sealing <reason>` marker. That dependency enters the
+  `trust dispatch-sealing <assumption-id>` marker. That dependency enters the
   cross-domain assumption ledger with `trusted` evidence and optional enforced
   owner/expiration metadata; it never upgrades dispatch to `verified`.
   Unscanned external subclasses, proxies, and prototype mutation remain excluded.

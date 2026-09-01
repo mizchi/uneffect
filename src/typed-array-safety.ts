@@ -5,6 +5,7 @@ import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
 import { executeZ3, type Z3ExecutionOptions } from "./z3.js";
 import { resolveStableRegion } from "./region-alias.js";
 import { symbolIdentityKey } from "./binding-identity.js";
+import { resolveAssumptionRecord, type AssumptionRegistry } from "./assumption-registry.js";
 
 export interface TypedArrayObligation {
   functionName: string;
@@ -12,8 +13,10 @@ export interface TypedArrayObligation {
   result: "verified" | "trusted" | "counterexample" | "unknown";
   goal: string;
   trustReason?: string;
+  assumptionId?: string;
   trustOwner?: string;
   trustExpiresOn?: string;
+  trustReviewDigest?: string;
   span: { start: number; end: number };
 }
 export interface TypedArrayDiagnostic {
@@ -123,25 +126,29 @@ function bindingKey(identifier: ts.Identifier, semantics?: TypedArraySemantics):
 }
 
 interface TypedArrayTrust {
+  assumptionId?: string;
   reason: string;
   owner?: string;
   expiresOn?: string;
+  reviewDigest?: string;
 }
 
-function typedArrayTrust(text: string, kind?: TypedArrayObligation["kind"]): TypedArrayTrust | undefined {
+function typedArrayTrust(text: string, kind?: TypedArrayObligation["kind"], registry?: AssumptionRegistry): TypedArrayTrust | undefined {
   const value = extractAnnotations(text, "trust").find((item) => {
     const match = /^typed-array(?::([a-z0-9-]+))?\s+(.+)$/i.exec(item);
     return match && (!match[1] || match[1] === kind);
   });
   const match = value && /^typed-array(?::[a-z0-9-]+)?\s+(.+)$/i.exec(value);
   if (!match) return undefined;
-  const owner = extractAnnotations(text, "trust_owner")[0]?.trim();
-  const expiresOn = extractAnnotations(text, "trust_expires")[0]?.trim();
-  return {
-    reason: match[1]!.trim(),
-    ...(owner ? { owner } : {}),
-    ...(expiresOn ? { expiresOn } : {}),
+  const authenticated = resolveAssumptionRecord(registry, match[1]!.trim(), "typed-array");
+  if (authenticated) return {
+    assumptionId: authenticated.id,
+    reason: authenticated.reason,
+    owner: authenticated.owner,
+    ...(authenticated.expiresOn ? { expiresOn: authenticated.expiresOn } : {}),
+    reviewDigest: authenticated.reviewDigest,
   };
+  return undefined;
 }
 
 function enclosingStatement(node: ts.Node, owner: ts.FunctionDeclaration): ts.Statement | undefined {
@@ -435,7 +442,7 @@ function enclosingLoopAssumptions(current: ts.Node, owner: ts.FunctionDeclaratio
   return facts;
 }
 
-async function verifyTypedArraySafetyWithTables(fileName: string, text: string, importedTables: ReadonlyMap<string, ConstantTable>, semantics?: TypedArraySemantics, z3?: Z3ExecutionOptions): Promise<TypedArraySafetyResult> {
+async function verifyTypedArraySafetyWithTables(fileName: string, text: string, importedTables: ReadonlyMap<string, ConstantTable>, semantics?: TypedArraySemantics, z3?: Z3ExecutionOptions, assumptionRegistry?: AssumptionRegistry): Promise<TypedArraySafetyResult> {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS), obligations: TypedArrayObligation[] = [], diagnostics: TypedArrayDiagnostic[] = [];
   let solverQueries = 0;
   const constants = collectConstants(source);
@@ -456,7 +463,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
     const functionName = node.name.text, leading = source.text.slice(node.getFullStart(), node.getStart(source));
     const shadowedBindings = hasShadowedBindings(node);
-    const functionTrust = typedArrayTrust(leading);
+    const functionTrust = typedArrayTrust(leading, undefined, assumptionRegistry);
     const tableLengths = new Map([...tables].map(([name, table]) => [`${name}.length`, String(table.length)]));
     const assumptions = [...extractAnnotations(leading, "requires"), ...typeAssumptions(node.parameters, source)]
       .map((assumption) => [...tableLengths].reduce((text, [name, length]) => text.replaceAll(name, length), assumption));
@@ -674,16 +681,18 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const proofResult = unresolvedShadowing && rawProofResult === "verified" ? "unknown" : rawProofResult;
       const statement = enclosingStatement(candidate.node, node);
       const statementLeading = statement ? source.text.slice(statement.getFullStart(), statement.getStart(source)) : "";
-      const trust = typedArrayTrust(statementLeading, candidate.kind) ?? functionTrust;
+      const trust = typedArrayTrust(statementLeading, candidate.kind, assumptionRegistry) ?? functionTrust;
       const result = proofResult !== "verified" && trust ? "trusted" : proofResult;
       const spanNode = result === "trusted" && statement ? statement : candidate.node;
       const span = { start: spanNode.getStart(source), end: spanNode.getEnd() };
       obligations.push({
         functionName, kind: candidate.kind, result, goal: candidate.goal, span,
         ...(result === "trusted" ? {
+          ...(trust!.assumptionId ? { assumptionId: trust!.assumptionId } : {}),
           trustReason: trust!.reason,
           ...(trust!.owner ? { trustOwner: trust!.owner } : {}),
           ...(trust!.expiresOn ? { trustExpiresOn: trust!.expiresOn } : {}),
+          ...(trust!.reviewDigest ? { trustReviewDigest: trust!.reviewDigest } : {}),
         } : {}),
       });
       if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : unresolvedShadowing ? `${candidate.kind} constraint could not be proved because this legacy numeric scope contains same-spelled bindings` : `${candidate.kind} constraint could not be proved` });
@@ -692,12 +701,12 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
   return { obligations, diagnostics, statistics: { solverQueries } };
 }
 
-export async function verifyTypedArraySafety(fileName: string, text: string, z3?: Z3ExecutionOptions): Promise<TypedArraySafetyResult> {
-  return verifyTypedArraySafetyWithTables(fileName, text, new Map(), undefined, z3);
+export async function verifyTypedArraySafety(fileName: string, text: string, z3?: Z3ExecutionOptions, assumptionRegistry?: AssumptionRegistry): Promise<TypedArraySafetyResult> {
+  return verifyTypedArraySafetyWithTables(fileName, text, new Map(), undefined, z3, assumptionRegistry);
 }
 
 /** Strict builtin recognition for callers that already own a TypeScript Program. */
-export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Program, source: ts.SourceFile, z3?: Z3ExecutionOptions): Promise<TypedArraySafetyResult> {
+export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Program, source: ts.SourceFile, z3?: Z3ExecutionOptions, assumptionRegistry?: AssumptionRegistry): Promise<TypedArraySafetyResult> {
   const checker = program.getTypeChecker();
   const methods = new Set(["floor", "ceil", "round", "trunc"] as const);
   type IntegerCast = "floor" | "ceil" | "round" | "trunc";
@@ -847,7 +856,7 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
     ts.forEachChild(node, collectFunctions);
   };
   collectFunctions(source);
-  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, integerOperations, dataViewAliases, bindingKeys, constantKeys }, z3);
+  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, integerOperations, dataViewAliases, bindingKeys, constantKeys }, z3, assumptionRegistry);
 }
 
 function resolveProgramModule(from: string, specifier: string, files: Readonly<Record<string, string>>): string | undefined {
@@ -888,7 +897,7 @@ function resolveProgramModule(from: string, specifier: string, files: Readonly<R
   return candidates.find((candidate) => Object.hasOwn(files, candidate));
 }
 
-export async function verifyTypedArraySafetyInProgram(files: Record<string, string>, z3?: Z3ExecutionOptions): Promise<TypedArrayProgramSafetyResult> {
+export async function verifyTypedArraySafetyInProgram(files: Record<string, string>, z3?: Z3ExecutionOptions, assumptionRegistry?: AssumptionRegistry): Promise<TypedArrayProgramSafetyResult> {
   const sources = new Map(Object.entries(files).map(([fileName, text]) => [fileName, ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)]));
   const localTables = new Map<string, Map<string, ConstantTable>>();
   const exportedTables = new Map<string, Map<string, ConstantTable>>();
@@ -938,7 +947,7 @@ export async function verifyTypedArraySafetyInProgram(files: Record<string, stri
         }
       }
     }
-    results[fileName] = await verifyTypedArraySafetyWithTables(fileName, files[fileName]!, imports, undefined, z3);
+    results[fileName] = await verifyTypedArraySafetyWithTables(fileName, files[fileName]!, imports, undefined, z3, assumptionRegistry);
   }
   return {
     files: results,

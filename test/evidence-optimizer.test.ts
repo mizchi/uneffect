@@ -10,6 +10,7 @@ import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnership
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
 import { ciMeasuredNativeProjectTimeoutMs } from "../ci/test-tiers.js";
+import { reviewedAssumptions } from "./assumption-fixtures.js";
 
 function programOf(text: string) {
   const fileName = "/virtual/evidence.ts";
@@ -1189,25 +1190,21 @@ describe("evidence and optimizer obligations", () => {
     const fileName = "src/trusted-boundary.ts";
     const source = `
       type BoundedUint8Array<N extends number> = Uint8Array
-      /* uneffect:trust trust typed-array validated by the wire-format review */
-      /* uneffect:trust trust_owner binary-platform */
-      /* uneffect:trust trust_expires 2027-01-31 */
+      /* uneffect:trust trust typed-array wire-format-v1 */
       function decode(output: BoundedUint8Array<1>, value: number) {
         output[0] = value
         console.log("decoded")
       }
       /* uneffect:temporal_contract ensures ready' = true */
       /* uneffect:temporal_contract modifies ready */
-      /* uneffect:trust trust_owner runtime-team */
-      /* uneffect:trust trust_expires 2026-12-31 */
+      /* uneffect:trust trust assumption runtime-summary-v1 */
       function start() {}
-      /* uneffect:trust trust dispatch-sealing application owns the complete class graph */
-      /* uneffect:trust trust_owner runtime-team */
-      /* uneffect:trust trust_expires 2027-02-28 */
+      /* uneffect:trust trust dispatch-sealing closed-runtime-v1 */
       export class Runtime { run() {} }
     `;
     const result = await verifyUneffectProject({
       files: { [fileName]: source },
+      assumptionRegistry: reviewedAssumptions,
       assumptionPolicy: {
         requireOwner: true,
         requireExpiration: true,
@@ -1226,25 +1223,28 @@ describe("evidence and optimizer obligations", () => {
     expect(result.assurance).toMatchObject({ passed: true, blockers: [] });
 
     const missingOwner = await verifyUneffectProject({
-      files: { [fileName]: source.replace("/* uneffect:trust trust_owner binary-platform */", "") },
+      files: { [fileName]: source },
+      assumptionRegistry: { ...reviewedAssumptions, records: reviewedAssumptions.records.filter((record) => record.id !== "wire-format-v1") },
       assumptionPolicy: { requireOwner: true, asOf: "2026-08-21" },
     });
-    expect(missingOwner.assumptions.violations).toContainEqual(expect.objectContaining({ rule: "owner-required", domain: "typed-array" }));
+    expect(missingOwner.typedArrays.diagnostics).toContainEqual(expect.objectContaining({ functionName: "decode", kind: "u8-write" }));
     expect(missingOwner.assurance).toMatchObject({ passed: false });
-    expect(missingOwner.assurance.blockers).toContainEqual(expect.objectContaining({ domain: "assumption", fileName }));
-    expect(missingOwner.diagnostics).toContainEqual(expect.objectContaining({ kind: "assumption-policy", rule: "owner-required" }));
+    expect(missingOwner.assurance.blockers).toContainEqual(expect.objectContaining({ domain: "typed-array", fileName }));
+    expect(missingOwner.diagnostics).toContainEqual(expect.objectContaining({ kind: "u8-write", functionName: "decode" }));
 
     const missingDispatchOwner = await verifyUneffectProject({
-      files: { [fileName]: source.replaceAll("/* uneffect:trust trust_owner runtime-team */", "") },
+      files: { [fileName]: source },
+      assumptionRegistry: { ...reviewedAssumptions, records: reviewedAssumptions.records.filter((record) => !["runtime-summary-v1", "closed-runtime-v1"].includes(record.id)) },
       assumptionPolicy: { requireOwner: true, asOf: "2026-08-21" },
     });
     expect(missingDispatchOwner.assumptions.violations).toEqual(expect.arrayContaining([
       expect.objectContaining({ rule: "owner-required", domain: "temporal-contract" }),
-      expect.objectContaining({ rule: "owner-required", domain: "dispatch-sealing" }),
     ]));
+    expect(missingDispatchOwner.assumptions.entries).not.toContainEqual(expect.objectContaining({ domain: "dispatch-sealing" }));
 
     const expired = await verifyUneffectProject({
       files: { [fileName]: source },
+      assumptionRegistry: reviewedAssumptions,
       assumptionPolicy: { denyExpired: true, asOf: "2028-01-01" },
     });
     expect(expired.assumptions.violations).toEqual(expect.arrayContaining([
@@ -1259,15 +1259,14 @@ describe("evidence and optimizer obligations", () => {
     const source = `
       type BoundedUint8Array<N extends number> = Uint8Array
       function encode(output: BoundedUint8Array<2>, value: number) {
-        /* uneffect:trust trust typed-array:u8-write reviewed packet tag */
-        /* uneffect:trust trust_owner wire-team */
-        /* uneffect:trust trust_expires 2027-04-01 */
+        /* uneffect:trust trust typed-array:u8-write packet-tag-v1 */
         output[0] = value
         output[1] = value
       }
     `;
     const result = await verifyUneffectProject({
       files: { [fileName]: source },
+      assumptionRegistry: reviewedAssumptions,
       assumptionPolicy: { requireOwner: true, requireExpiration: true, asOf: "2026-08-21" },
     });
     expect(result.assumptions.entries).toEqual([

@@ -5,6 +5,7 @@ import { builtinContractRegistry, findBuiltinContract, resolveModuleInitializati
 import { collectBuiltinCallRefinements } from "./frontend-adapter.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
+import { resolveAssumptionRecord, type AssumptionRegistry } from "./assumption-registry.js";
 
 export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-contract" | "dispatch-sealing" | "resource-callable";
 
@@ -22,6 +23,7 @@ export interface AssumptionEntry {
   scope: AssumptionScope;
   owner?: string;
   expiresOn?: string;
+  reviewDigest?: string;
   dependency?: {
     module: string;
     packageVersion?: string;
@@ -68,15 +70,16 @@ function validDate(value: string): boolean {
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
 
-function metadata(source: ts.SourceFile, node: ts.Node): { owner?: string; expiresOn?: string } {
+function metadata(source: ts.SourceFile, node: ts.Node, domain: AssumptionDomain, registry?: AssumptionRegistry): { id?: string; owner?: string; expiresOn?: string; reason?: string; reviewDigest?: string } {
   const leading = source.text.slice(node.getFullStart(), node.getStart(source));
-  const owner = extractAnnotations(leading, "trust_owner")[0]?.trim();
-  const expiresOn = extractAnnotations(leading, "trust_expires")[0]?.trim();
-  return { ...(owner ? { owner } : {}), ...(expiresOn ? { expiresOn } : {}) };
+  const reference = extractAnnotations(leading, "trust").map((value) => /^assumption\s+(.+)$/.exec(value.trim())).find(Boolean)?.[1]?.trim();
+  const authenticated = reference ? resolveAssumptionRecord(registry, reference, domain) : undefined;
+  if (authenticated) return { id: authenticated.id, owner: authenticated.owner, expiresOn: authenticated.expiresOn, reason: authenticated.reason, reviewDigest: authenticated.reviewDigest };
+  return {};
 }
 
-function entry(input: Omit<AssumptionEntry, "id" | "evidence">): AssumptionEntry {
-  return { ...input, id: digest(JSON.stringify(input)), evidence: "trusted" };
+function entry(input: Omit<AssumptionEntry, "id" | "evidence">, id?: string): AssumptionEntry {
+  return { ...input, id: id ?? digest(JSON.stringify(input)), evidence: "trusted" };
 }
 
 function temporalSummary(node: ts.FunctionDeclaration, source: ts.SourceFile): boolean {
@@ -113,6 +116,7 @@ export function collectAssumptionLedger(
   typedArrays: TypedArrayProgramSafetyResult | undefined,
   policy: AssumptionPolicy = {},
   registry: BuiltinContractRegistry = builtinContractRegistry,
+  assumptionRegistry?: AssumptionRegistry,
 ): { ledger: AssumptionLedger; diagnostics: AssumptionPolicyDiagnostic[] } {
   const entries: AssumptionEntry[] = [];
   for (const fileName of Object.keys(files)) {
@@ -164,12 +168,15 @@ export function collectAssumptionLedger(
         .map((value) => /^dispatch-sealing\s+(.+)$/.exec(value.trim()))
         .find((match) => !!match);
       if (!trusted?.[1]) continue;
+      const authenticated = resolveAssumptionRecord(assumptionRegistry, trusted[1].trim(), "dispatch-sealing");
+      if (assumptionRegistry && !authenticated) continue;
+      const sourceMetadata = metadata(source, declaration, "dispatch-sealing", assumptionRegistry);
       entries.push(entry({
         domain: "dispatch-sealing",
-        reason: trusted[1].trim(),
-        ...metadata(source, declaration),
+        reason: authenticated?.reason ?? trusted[1].trim(),
+        ...(authenticated ? { owner: authenticated.owner, expiresOn: authenticated.expiresOn, reviewDigest: authenticated.reviewDigest } : sourceMetadata),
         scope: { fileName, span: { start: declaration.getStart(source), end: declaration.getEnd() } },
-      }));
+      }, authenticated?.id));
     }
     for (const obligation of typedArrays?.files[fileName]?.obligations ?? []) {
       if (obligation.result !== "trusted") continue;
@@ -179,17 +186,19 @@ export function collectAssumptionLedger(
         reason: obligation.trustReason ?? "explicit typed-array trust escape hatch",
         ...(obligation.trustOwner ? { owner: obligation.trustOwner } : {}),
         ...(obligation.trustExpiresOn ? { expiresOn: obligation.trustExpiresOn } : {}),
-        ...(!obligation.trustOwner && !obligation.trustExpiresOn && declaration ? metadata(source, declaration) : {}),
+        ...(obligation.trustReviewDigest ? { reviewDigest: obligation.trustReviewDigest } : {}),
+        ...(!obligation.trustOwner && !obligation.trustExpiresOn && declaration ? metadata(source, declaration, "typed-array", assumptionRegistry) : {}),
         scope: { fileName, functionName: obligation.functionName, span: obligation.span },
-      }));
+      }, obligation.assumptionId));
     }
     for (const declaration of functions.values()) if (temporalSummary(declaration, source)) {
+      const sourceMetadata = metadata(source, declaration, "temporal-contract", assumptionRegistry);
       entries.push(entry({
         domain: "temporal-contract",
-        reason: "user-supplied temporal function summary",
-        ...metadata(source, declaration),
+        reason: sourceMetadata.reason ?? "user-supplied temporal function summary",
+        ...sourceMetadata,
         scope: { fileName, functionName: declaration.name!.text, span: { start: declaration.getStart(source), end: declaration.getEnd() } },
-      }));
+      }, sourceMetadata.id));
     }
   }
   entries.sort((left, right) => left.scope.fileName.localeCompare(right.scope.fileName) || left.scope.span.start - right.scope.span.start || left.domain.localeCompare(right.domain));

@@ -185,6 +185,8 @@ export type {
 } from "./spec-ir.js";
 export type { AnnotationDiagnostic, LocatedAnnotation, SourceSpan } from "./annotations.js";
 export { extractLocatedAnnotations, uneffectDialects, validateUneffectAnnotations } from "./annotations.js";
+export { assumptionRegistrySchema, AssumptionRegistryError, loadAssumptionRegistry, parseAssumptionRegistry, resolveAssumptionRecord } from "./assumption-registry.js";
+export type { AssumptionRecord, AssumptionRegistry } from "./assumption-registry.js";
 export { generateQuint, generateSmtLib } from "./spec-backends.js";
 export { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
 export type { TemporalCall, TemporalComposition, TemporalFunctionSummary } from "./temporal-compose.js";

@@ -234,7 +234,7 @@ same-shaped interfaces, computed or polymorphic methods, and reassigned or
 escaping receivers are not proved. This body comparison also does not prove
 closed-world dispatch. A locally or Program-visible subclass makes method
 specialization fail closed, including the dogfood's wrong override oracle.
-Exported runtime classes also require `trust dispatch-sealing <reason>`; the
+Exported runtime classes also require `trust dispatch-sealing <assumption-id>`; the
 dogfoods attach owner and expiration metadata, and project verification records
 the dependency as a `trusted` assumption rather than proof. Removing the marker
 makes the method action unsupported. Unscanned external subclasses, prototype

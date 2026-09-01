@@ -605,14 +605,15 @@ function count(n: number) {
 
 The current Z3 prototype supports `Int`, `Nat`, a real-arithmetic abstraction of finite `Float`, comparisons, Boolean operators, simple assignments, branches, returns, and simple loops with invariants. It proves partial correctness, not termination. Unsupported statements, unmodeled calls, and solver `unknown` results are non-proofs. The direct verifier and emitted SMT-LIB share stable, source-mapped proof obligations.
 
-`trust` is an explicit escape-hatch directive. `trust typed-array <reason>` may
+`trust` is an explicit escape-hatch directive. `trust typed-array <assumption-id>` may
 be attached to a function or directly before a statement. The narrower
-`trust typed-array:<obligation-kind> <reason>` form exempts only the selected
+`trust typed-array:<obligation-kind> <assumption-id>` form exempts only the selected
 obligation on that statement. Used assumptions record `trusted` evidence and
 remain visible in the cross-domain ledger; they never become `verified`.
-Statement-level `trust_owner` and `trust_expires` metadata travel with the exact
-source span. An exported runtime class whose method body participates in
-refinement must use `trust dispatch-sealing <reason>`: this declares that the
+Owner, expiration, reason, and review digest come from the caller-owned
+assumption registry; source-authored metadata is rejected. An exported runtime
+class whose method body participates in refinement must use
+`trust dispatch-sealing <assumption-id>`: this declares that the
 application owns the relevant class graph. It is recorded as `trusted`, never
 `verified`, and does not hide Program-visible subclasses. Other proof domains
 do not yet expose a general-purpose `sorry`.

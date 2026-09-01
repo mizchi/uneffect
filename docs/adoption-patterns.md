@@ -165,11 +165,11 @@ lint feedback.
 ## Pattern 10: use escape hatches without erasing uncertainty
 
 Typed-array obligations currently support an explicit
-`trust typed-array <reason>` directive. It records trusted evidence with a source
-span and reason; it does not become verified evidence. Other proof domains do
+`trust typed-array <assumption-id>` directive. It records trusted evidence with
+a source span and registry-authenticated review metadata; it does not become verified evidence. Other proof domains do
 not generally expose a `sorry` directive. Exported runtime classes have the
-narrower `trust dispatch-sealing <reason>` assumption for declaration-body
-method refinement. Give it an owner and expiration, audit it in CI, and do not
+narrower `trust dispatch-sealing <assumption-id>` assumption for declaration-body
+method refinement. Keep its owner and expiration in the caller-owned registry, audit it in CI, and do not
 interpret it as proof against externally loaded subclasses or prototype
 mutation.
 

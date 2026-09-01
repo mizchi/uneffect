@@ -1,5 +1,19 @@
 # Evidence and optimization
 
+## Caller-owned assumption registry
+
+New trust integrations should keep review metadata outside application source.
+Parse a versioned `uneffect-assumption-registry/v1` record with
+`parseAssumptionRegistry` and pass it as `assumptionRegistry` to project or
+typed-array verification. A source annotation such as
+`/* uneffect:trust trust typed-array wire-format-v1 */` then names only the
+stable review ID. The registry supplies its domain, reason, owner, expiration,
+and SHA-256 digest of the caller-owned review artifact. A record cannot be used
+across domains.
+
+Source-authored `trust_owner` and `trust_expires` directives are rejected.
+Review metadata must come from the caller-owned registry.
+
 Uneffect separates gradual diagnostics from authority to rewrite code. Every effect summary carries one evidence status:
 
 - `verified`: inferred behavior is contained by a checked declaration or a discharged solver obligation.
@@ -156,18 +170,16 @@ records every trusted builtin call that the frontend resolves, every
 function-level `trust typed-array` escape hatch, and every user-supplied
 temporal function summary, dispatch-sealing assumption, and reviewed external
 module-initialization contract use, including its resolved package version or
-Node runtime major. Each entry has a stable content-derived ID, reason,
-domain, file/function scope, UTF-16 source span, and optional owner and
-expiration date. Builtin defaults are owned by `@mizchi/uneffect`; their
+Node runtime major. Each entry has a stable registry or content-derived ID,
+reason, domain, file/function scope, UTF-16 source span, and review metadata.
+Builtin defaults are owned by `@mizchi/uneffect`; their
 expiration is deliberately unbounded and must be explicitly allowed by policy.
 
-User assumptions attach review metadata without changing JSDoc semantics:
+Application source references caller-owned review metadata without changing JSDoc semantics:
 
 ```ts
 function encodePacket(output: BoundedUint8Array<1>, value: number) {
-  /* uneffect:trust trust typed-array:u8-write validated by the packet conformance suite */
-  /* uneffect:trust trust_owner telemetry-platform */
-  /* uneffect:trust trust_expires 2027-06-30 */
+  /* uneffect:trust trust typed-array:u8-write telemetry-packet-v1 */
   output[0] = value
 }
 ```

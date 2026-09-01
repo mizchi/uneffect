@@ -4,7 +4,7 @@ export type UneffectDirective =
   | "requires" | "ensures" | "invariant" | "decreases" | "assert" | "validate" | "returns"
   | "contract_from"
   | "refinement_from"
-  | "trust" | "trust_owner" | "trust_expires" | "react"
+  | "trust" | "react"
   | "state" | "clock" | "init" | "action" | "action_when" | "action_fair" | "temporal"
   | "temporal_from"
   | "temporal_requires" | "temporal_ensures" | "temporal_modifies" | "temporal_throws" | "temporal_rejects"
@@ -41,7 +41,7 @@ export function isCoreUneffectDirective(directive: string): boolean {
 
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   unified: unifiedDirectives,
-  trust: new Set(["trust", "trust_owner", "trust_expires"]), "react-component": new Set(), "react-hook": new Set(),
+  trust: new Set(["trust"]), "react-component": new Set(), "react-hook": new Set(),
   "react-resource": new Set(["acquire", "release"]),
 };
 const aliases: Readonly<Record<string, Readonly<Record<string, string>>>> = {

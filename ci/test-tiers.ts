@@ -51,6 +51,7 @@ export const ciTestTiers = {
     "test/workspace-module-initialization.test.ts",
   ],
   z3: [
+    "test/assumption-registry.test.ts",
     "test/contract-summary.test.ts",
     "test/contracts.test.ts",
     "test/contract-dsl.test.ts",

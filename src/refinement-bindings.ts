@@ -1355,7 +1355,8 @@ function validateRefinementActionBodiesInSource(
     if (!exported) return true;
     const classSource = runtimeClass.getSourceFile();
     const leading = classSource.text.slice(runtimeClass.getFullStart(), runtimeClass.getStart(classSource));
-    return extractAnnotations(leading, "trust").some((value) => /^dispatch-sealing\s+\S/.test(value.trim()));
+    return extractAnnotations(leading, "trust").some((value) =>
+      /^dispatch-sealing\s+[A-Za-z0-9][A-Za-z0-9._/-]*$/u.test(value.trim()));
   };
   const hasKnownSubclass = (runtimeClass: ts.ClassDeclaration): boolean => {
     const cached = knownSubclassCache.get(runtimeClass);

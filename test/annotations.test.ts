@@ -236,10 +236,10 @@ describe("Uneffect annotation marker", () => {
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
-  it("recognizes assumption review owner and expiration metadata", () => {
-    const source = `/* uneffect:trust trust typed-array reviewed against the wire format */ /* uneffect:trust trust_owner binary-platform */ /* uneffect:trust trust_expires 2027-06-30 */`;
-    expect(extractAnnotations(source, "trust_owner")).toEqual(["binary-platform"]);
-    expect(extractAnnotations(source, "trust_expires")).toEqual(["2027-06-30"]);
-    expect(validateUneffectAnnotations(source)).toEqual([]);
+  it("rejects source-authored assumption review metadata", () => {
+    for (const directive of ["trust_owner", "trust_expires"]) {
+      expect(validateUneffectAnnotations(`/* uneffect:trust ${directive} value */`))
+        .toMatchObject([{ kind: "wrong-dialect", directive, dialect: "trust" }]);
+    }
   });
 });

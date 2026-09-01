@@ -4,6 +4,7 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseFixedArrayBuffer, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/index.js";
+import { reviewedAssumptions } from "./assumption-fixtures.js";
 import type { BoundedArrayBuffer, BoundedDataView, BoundedUint32Array, BoundedUint8Array, FixedArrayBuffer, U32, U8 } from "../src/index.js";
 
 describe("bounded Uint8Array safety", () => {
@@ -578,38 +579,54 @@ describe("bounded Uint8Array safety", () => {
   it("keeps an explicit proof escape hatch visible as trusted evidence", async () => {
     const result = await verifyTypedArraySafety("trusted.ts", `
       import type { BoundedUint8Array } from "@mizchi/uneffect"
-      /* uneffect:trust trust typed-array externally validated binary format */
+      /* uneffect:trust trust typed-array wire-format-v1 */
       function decode(output: BoundedUint8Array<1>, value: number) {
         output[0] = value
       }
-    `);
+    `, undefined, reviewedAssumptions);
     expect(result.diagnostics).toEqual([]);
     expect(result.obligations).toContainEqual(expect.objectContaining({
       functionName: "decode", kind: "u8-write", result: "trusted",
-      trustReason: "externally validated binary format",
+      assumptionId: "wire-format-v1", trustReason: "validated by the wire-format review",
     }));
     expect(result.obligations).not.toContainEqual(expect.objectContaining({ functionName: "decode", kind: "u8-write", result: "verified" }));
+  });
+
+  it("resolves trust metadata from a caller-owned assumption registry", async () => {
+    const result = await verifyTypedArraySafety("registry-trusted.ts", `
+      type BoundedUint8Array<N extends number> = Uint8Array
+      /* uneffect:trust trust typed-array wire-format-v1 */
+      function decode(output: BoundedUint8Array<1>, value: number) { output[0] = value }
+    `, undefined, {
+      schema: "uneffect-assumption-registry/v1",
+      records: [{
+        id: "wire-format-v1", domain: "typed-array", reason: "reviewed wire format",
+        owner: "binary-platform", expiresOn: "2027-01-31", reviewDigest: "a".repeat(64),
+      }],
+    });
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      result: "trusted", assumptionId: "wire-format-v1", trustReason: "reviewed wire format",
+      trustOwner: "binary-platform", trustExpiresOn: "2027-01-31",
+    }));
   });
 
   it("limits statement and obligation trust to the annotated typed-array operation", async () => {
     const result = await verifyTypedArraySafety("narrow-trust.ts", `
       type BoundedUint8Array<N extends number> = Uint8Array
       function decode(output: BoundedUint8Array<2>, first: number, second: number) {
-        /* uneffect:trust trust typed-array externally checked first byte */
-        /* uneffect:trust trust_owner packet-team */
-        /* uneffect:trust trust_expires 2027-06-30 */
+        /* uneffect:trust trust typed-array packet-tag-v1 */
         output[0] = first
         output[1] = second
       }
       function writeView(view: BoundedDataView<1>, value: number) {
-        /* uneffect:trust trust typed-array:u8-write external value validation */
+        /* uneffect:trust trust typed-array:u8-write wire-format-v1 */
         view.setUint8(2, value)
       }
-    `);
+    `, undefined, reviewedAssumptions);
     expect(result.obligations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ functionName: "decode", kind: "u8-write", goal: expect.stringContaining("first"), result: "trusted", trustOwner: "packet-team", trustExpiresOn: "2027-06-30" }),
+      expect.objectContaining({ functionName: "decode", kind: "u8-write", goal: expect.stringContaining("first"), result: "trusted", trustOwner: "wire-team", trustExpiresOn: "2027-04-01" }),
       expect.objectContaining({ functionName: "decode", kind: "u8-write", goal: expect.stringContaining("second"), result: "counterexample" }),
-      expect.objectContaining({ functionName: "writeView", kind: "u8-write", result: "trusted", trustReason: "external value validation" }),
+      expect.objectContaining({ functionName: "writeView", kind: "u8-write", result: "trusted", trustReason: "validated by the wire-format review" }),
       expect.objectContaining({ functionName: "writeView", kind: "dataview-bounds", result: "counterexample" }),
     ]));
     expect(result.diagnostics).toEqual(expect.arrayContaining([
