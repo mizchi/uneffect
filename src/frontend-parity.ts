@@ -8,7 +8,7 @@ import type { CorsaCheckerFactFile } from "./corsa-checker-exporter.js";
 import { isAuthenticatedCorsaCheckerFacts } from "./corsa-fact-provenance.js";
 import { createProjectByteCoordinates, projectFunctionDisplayName } from "./project-coordinates.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
-import type { BuiltinOperation } from "./builtin-contracts.js";
+import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js";
 
 export interface CompareUneffectFrontendsOptions {
   files: Record<string, string>;
@@ -79,17 +79,6 @@ function projectFileName(files: Readonly<Record<string, string>>, candidate: str
   return Object.keys(files).find((fileName) => resolve(fileName) === absolute);
 }
 
-function referenceBuiltinEffectNames(operation: BuiltinOperation | undefined): string[] {
-  if (!operation) return [];
-  if (operation.kind === "effect") return [operation.effect];
-  if (operation.kind === "fetch") return ["Fetch"];
-  if (operation.kind === "fs") return [
-    ...(operation.read ? ["FsRead"] : []),
-    ...(operation.write ? ["FsWrite"] : []),
-  ];
-  return [];
-}
-
 function corsaInput(program: ts.Program, files: Record<string, string>, schemaVersion: number) {
   const coordinates = createProjectByteCoordinates(files);
   const nameCounts = topLevelFunctionNameCounts(program, files);
@@ -120,7 +109,11 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
       if (child !== callable.body && ts.isFunctionLike(child)) return;
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
-        const inferredBuiltinEffects = resolvedBuiltin ? referenceBuiltinEffectNames(resolvedBuiltin.operation) : [];
+        const genericEvents = resolvedBuiltin?.semantics
+          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, child, { symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span })
+          : undefined;
+        const inferredBuiltinEffects = genericEvents?.flatMap((event) => event.kind === "effect" ? [event.capability]
+          : event.kind === "throw" ? [`Throw<${event.error}>`] : []) ?? [];
         if (resolvedBuiltin && inferredBuiltinEffects.length > 0) {
           const lookup = ts.isPropertyAccessExpression(child.expression) ? child.expression.name : child.expression;
           let builtinSymbol = checker.getSymbolAtLocation(lookup);
@@ -234,17 +227,19 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
       input.provenance.producer === "corsa-checker" && isAuthenticatedCorsaCheckerFacts(input)
     ),
   };
-  const protocolSymbols = referenceInput.protocolSymbols.map((item) => ({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end }));
-  const names = new Map(referenceInput.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
+  const protocolSymbols: NormalizedFrontendIr["protocolSymbols"] = [];
+  const names = new Map<number, string>();
+  for (const item of referenceInput.protocolSymbols) protocolSymbols.push({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end });
+  for (const symbol of referenceInput.symbols) names.set(symbol.id as number, symbol.name as string);
   for (const symbol of referenceInput.symbols) {
     const summary = functions.find((item) => item.name === symbol.name);
     if (!summary) continue;
-    summary.effects = [...new Set([
-      ...summary.effects,
-      ...(symbol.inferredEffects ?? []).map((item: any) => item.effect as string),
-    ])].sort();
+    const inferred = [...summary.effects];
+    for (const item of symbol.inferredEffects ?? []) inferred.push(item.effect as string);
+    summary.effects = [...new Set(inferred)].sort();
   }
-  const calls = referenceInput.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
+  const calls: NormalizedFrontendIr["calls"] = [];
+  for (const call of referenceInput.calls) calls.push({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" });
   let changed = true;
   while (changed) {
     changed = false;
@@ -254,21 +249,27 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
       if (next.join("\0") !== caller.effects.join("\0")) { caller.effects = next; changed = true; }
     }
   }
-  const orderedEvents = referenceInput.calls.map((call) => ({ kind: "call" as const, caller: names.get(call.caller)!, callee: names.get(call.callee)!, start: call.span.start, end: call.span.end }))
-    .sort((left, right) => left.start - right.start || left.end - right.end);
-  const promiseObservations = referenceInput.promiseObservations.map((item: any) => ({ owner: names.get(item.owner)!, source: item.source, observation: item.observation,
-    catchesRejection: item.catchesRejection, conditional: item.conditional, controlConditions: item.controlConditions, controlPaths: item.controlPaths, start: item.span.start, end: item.span.end }));
-  const rejectionOwnership = referenceInput.rejectionOwnership.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, status: item.status,
-    observations: item.observations, start: item.span.start, end: item.span.end }));
-  const resourceScopes = referenceInput.resourceScopes.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, ownerAsync: item.ownerAsync,
+  const orderedEvents: NormalizedFrontendIr["orderedEvents"] = [];
+  for (const call of referenceInput.calls) orderedEvents.push({ kind: "call", caller: names.get(call.caller)!, callee: names.get(call.callee)!, start: call.span.start, end: call.span.end });
+  orderedEvents.sort((left, right) => left.start - right.start || left.end - right.end);
+  const promiseObservations: NormalizedFrontendIr["promiseObservations"] = [];
+  for (const item of referenceInput.promiseObservations as any[]) promiseObservations.push({ owner: names.get(item.owner)!, source: item.source, observation: item.observation,
+    catchesRejection: item.catchesRejection, conditional: item.conditional, controlConditions: item.controlConditions, controlPaths: item.controlPaths, start: item.span.start, end: item.span.end });
+  const rejectionOwnership: NormalizedFrontendIr["rejectionOwnership"] = [];
+  for (const item of referenceInput.rejectionOwnership as any[]) rejectionOwnership.push({ owner: names.get(item.owner)!, binding: item.binding, status: item.status,
+    observations: item.observations, start: item.span.start, end: item.span.end });
+  const resourceScopes: NormalizedFrontendIr["resourceScopes"] = [];
+  for (const item of referenceInput.resourceScopes as any[]) resourceScopes.push({ owner: names.get(item.owner)!, binding: item.binding, ownerAsync: item.ownerAsync,
     asynchronous: item.asynchronous, conditional: item.conditional, controlConditions: item.controlConditions, controlPaths: item.controlPaths, acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: item.scopeEnd,
     catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, protocolSymbol: item.protocolSymbol,
-    protocolKind: item.protocolKind, start: item.span.start, end: item.span.end }));
-  const disposals = referenceInput.disposals.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, order: item.order,
+    protocolKind: item.protocolKind, start: item.span.start, end: item.span.end });
+  const disposals: NormalizedFrontendIr["disposals"] = [];
+  for (const item of referenceInput.disposals as any[]) disposals.push({ owner: names.get(item.owner)!, binding: item.binding, order: item.order,
     asynchronous: item.asynchronous, scopeId: item.scopeId, scopeDepth: item.scopeDepth, disposalPoint: item.disposalPoint,
     failureKind: item.failureKind, failureType: item.failureType, catchesFailure: item.catchesFailure,
-    escapingFailure: item.escapingFailure, exits: item.exits }));
-  const suppressedErrors = referenceInput.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
+    escapingFailure: item.escapingFailure, exits: item.exits });
+  const suppressedErrors: NormalizedFrontendIr["suppressedErrors"] = [];
+  for (const item of referenceInput.suppressedErrors as any[]) suppressedErrors.push({ owner: names.get(item.owner)!, payload: item.payload as ResourceError });
   const irProvenance = { ...referenceInput.provenance, compilerRevision: referenceInput.compilerRevision };
   const typescriptIr: NormalizedFrontendIr = { schemaVersion: 8, provenance: irProvenance, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
@@ -328,9 +329,14 @@ function checkerCoverageFailures(program: ts.Program, files: Readonly<Record<str
 
 function checkerMetadataParityFailures(reference: any, actual: any): FrontendSchemaDrift[] {
   const failures: FrontendSchemaDrift[] = [];
-  const referenceNames = new Map(reference.symbols.map((symbol: any) => [symbol.id, symbol.name]));
-  const actualNames = new Map(actual.symbols.map((symbol: any) => [symbol.id, symbol.name]));
-  const actualByName = new Map(actual.symbols.map((symbol: any) => [symbol.name, symbol]));
+  const referenceNames = new Map<any, any>();
+  const actualNames = new Map<any, any>();
+  const actualByName = new Map<any, any>();
+  for (const symbol of reference.symbols) referenceNames.set(symbol.id, symbol.name);
+  for (const symbol of actual.symbols) {
+    actualNames.set(symbol.id, symbol.name);
+    actualByName.set(symbol.name, symbol);
+  }
   for (const expected of reference.symbols) {
     const observed: any = actualByName.get(expected.name);
     if (!observed) continue;
@@ -339,8 +345,12 @@ function checkerMetadataParityFailures(reference: any, actual: any): FrontendSch
       message: `checker-backed overload candidates differ for ${expected.name}`,
     });
     const evidenceKey = (item: any): string => `${item.effect}\0${item.builtin?.module}\0${item.builtin?.export}\0${item.span?.start}\0${item.span?.end}`;
-    const expectedEffects = (expected.inferredEffects ?? []).map(evidenceKey).sort();
-    const observedEffects = (observed.inferredEffects ?? []).map(evidenceKey).sort();
+    const expectedEffects: string[] = [];
+    const observedEffects: string[] = [];
+    for (const item of expected.inferredEffects ?? []) expectedEffects.push(evidenceKey(item));
+    for (const item of observed.inferredEffects ?? []) observedEffects.push(evidenceKey(item));
+    expectedEffects.sort();
+    observedEffects.sort();
     if (JSON.stringify(expectedEffects) !== JSON.stringify(observedEffects)) failures.push({
       frontend: "corsa",
       message: `checker-backed inferred-effect evidence differs for ${expected.name}: expected ${JSON.stringify(expectedEffects)}, observed ${JSON.stringify(observedEffects)}`,
@@ -356,17 +366,20 @@ function checkerMetadataParityFailures(reference: any, actual: any): FrontendSch
     controlPaths: item.controlPaths,
     span: item.span,
   });
-  const expectedPromises = reference.promiseObservations
-    .map((item: any) => promiseKey(item, referenceNames)).sort();
-  const observedPromises = actual.promiseObservations
-    .map((item: any) => promiseKey(item, actualNames)).sort();
+  const expectedPromises: string[] = [];
+  const observedPromises: string[] = [];
+  for (const item of reference.promiseObservations) expectedPromises.push(promiseKey(item, referenceNames));
+  for (const item of actual.promiseObservations) observedPromises.push(promiseKey(item, actualNames));
+  expectedPromises.sort();
+  observedPromises.sort();
   if (JSON.stringify(expectedPromises) !== JSON.stringify(observedPromises)) failures.push({
     frontend: "corsa",
     message: `checker-backed Promise observation evidence differs: expected ${JSON.stringify(expectedPromises)}, observed ${JSON.stringify(observedPromises)}`,
   });
   const callKey = (call: any, names: Map<any, any>): string =>
     `${names.get(call.caller)}\0${names.get(call.callee)}\0${call.span.start}\0${call.span.end}`;
-  const actualCalls = new Map(actual.calls.map((call: any) => [callKey(call, actualNames), call]));
+  const actualCalls = new Map<string, any>();
+  for (const call of actual.calls) actualCalls.set(callKey(call, actualNames), call);
   for (const expected of reference.calls) {
     const observed: any = actualCalls.get(callKey(expected, referenceNames));
     if (!observed) continue;

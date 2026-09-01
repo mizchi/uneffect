@@ -5,7 +5,7 @@ import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 describe("corsa-bind checker fact exporter", () => {
-  it("exports Workhub-shaped FsRead, Fetch, and FsWrite facts in source order", async () => {
+  it("exports Workhub-shaped FsRead, Fetch/Net, and FsWrite facts in source order", async () => {
     const fileName = "examples/dogfood/corsa-workhub-builtins.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
     const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
@@ -14,7 +14,9 @@ describe("corsa-bind checker fact exporter", () => {
     expect(synchronize.inferredEffects.map(({ effect, builtin }) => ({ effect, builtin }))).toEqual([
       { effect: "FsRead", builtin: { module: "node:fs/promises", export: "readFile" } },
       { effect: "Fetch", builtin: { module: "global", export: "fetch" } },
+      { effect: "Net", builtin: { module: "global", export: "fetch" } },
       { effect: "Fetch", builtin: { module: "global", export: "fetch" } },
+      { effect: "Net", builtin: { module: "global", export: "fetch" } },
       { effect: "FsWrite", builtin: { module: "node:fs/promises", export: "writeFile" } },
     ]);
     expect(synchronize.inferredEffects.map((effect) => effect.span.start)).toEqual(
@@ -22,7 +24,7 @@ describe("corsa-bind checker fact exporter", () => {
     );
     expect(synchronize.inferredEffects[0]?.declaration).toEqual(expect.objectContaining({ fileName }));
     expect(synchronize.inferredEffects[1]?.declaration.fileName).toMatch(/lib\.(dom|webworker)\.d\.ts$/);
-    expect(synchronize.inferredEffects[3]?.declaration).toEqual(expect.objectContaining({ fileName }));
+    expect(synchronize.inferredEffects[5]?.declaration).toEqual(expect.objectContaining({ fileName }));
 
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
     expect(compared, JSON.stringify({
@@ -36,7 +38,7 @@ describe("corsa-bind checker fact exporter", () => {
       schemaDrift: [],
     });
     expect(compared.corsaIr?.functions).toEqual([
-      { name: "synchronizeState", effects: ["Fetch", "FsRead", "FsWrite"] },
+      { name: "synchronizeState", effects: ["Fetch", "FsRead", "FsWrite", "Net"] },
     ]);
     expect(compared.corsaIr?.promiseObservations).toEqual([
       expect.objectContaining({ owner: "synchronizeState", source: 'readFile(path, "utf8")', observation: "await", conditional: false }),

@@ -34,8 +34,9 @@ API-family-specific operation:
   AbortSignal, timers, streams, and disposal.
 
 Scope and target projectors are typed data. Unknown projectors or unsupported
-dynamic inputs must produce attributed unknown evidence, not silently widen to
-an unscoped successful claim.
+dynamic inputs produce attributed unknown evidence. A resolved filesystem path
+or executable whose runtime value is not enumerable has a sound unscoped
+may-effect; a narrow declaration does not cover that widening.
 
 ## Migration stages
 
@@ -51,6 +52,52 @@ an unscoped successful claim.
 | 8. Stateful protocols | Connect Fetch, Promise combinators, AbortSignal, timers, streams, and disposal through named protocol transitions. | Special behavior is isolated in protocol machines; symbol catalogs only assign inputs and transitions. |
 | 9. External schema | Expose the same validated primitives to registry configuration, package summaries, and plugins. | A third-party API can express supported semantics without adding source code to uneffect; unsupported primitives fail closed. |
 | 10. Cleanup and dogfood | Migrate TypeScript, Valibot, Corsa, remaining ECMAScript definitions, and uneffect's own external boundaries. | Handwritten builtin definitions and superseded operation kinds are removed; CI, parity, benchmarks, and no-unknown dogfood pass. |
+
+### Implementation status
+
+Stages 1 through 7 are implemented. `uneffect-semantic-primitives/v1` is the
+only builtin semantic contract: recursively validated projectors lower through
+one interpreter to source-attributed events consumed by effect inference,
+frontend parity, callback timing, mutation, result refinement, ownership,
+resource tracking, and directional property access. Invalid or unsupported
+projectors fail closed. The superseded `BuiltinOperation` union, per-family
+operation fields, analyzer branches, and source-name fallbacks have been
+removed.
+
+The catalog now describes reviewed JavaScript, Node.js, DOM, TypeScript,
+Valibot, Corsa, and Effect APIs with the same primitives. This includes the
+separate `node:fs` and `node:fs/promises` surfaces, scoped filesystem and network
+authority, callback queues and cardinality, collection/DOM mutation, result
+aliases, clone/transfer ownership, resources, and property read/write effects.
+TypeChecker symbol identity remains mandatory: a same-spelled local function
+does not inherit builtin semantics.
+
+Stage 8 is implemented as a bounded protocol bridge. Fetch, Promise
+combinators, timer scheduling/cancellation, AbortController/AbortSignal,
+Scheduler, Web Streams, and explicit disposal-stack calls publish named
+protocol events. Specialized state machines consume those events instead of
+recognizing API names. This does not prove complete browser or Node host
+behavior: arbitrary stream pipelines, dynamic resource aliases, host fairness,
+and all lexical `using` control-flow shapes remain outside the verified
+fragment and must stay unknown when not recognized.
+
+Stage 9 is implemented for registry configuration and distributable semantics
+modules. External definitions use the same validator and interpreter as the
+builtin catalog, carry trust provenance and digests, and fail closed on unknown
+primitives. Such a definition is a reviewed assumption about a package API,
+not a proof of the dependency implementation.
+
+Stage 10 has completed catalog centralization and legacy removal. Filesystem
+and process scopes derived directly from parameters are preserved as internal
+parameterized summaries and instantiated at local and cross-project call
+sites. Literal arguments recover exact authorities; forwarded parameters keep
+the template; other resolved expressions widen to the unscoped may-effect.
+Templates are retained in evidence but shown as the broad capability in a
+function's missing/unused diagnostics because no call site has bound them yet.
+Invalid projectors remain attributed unknown evidence.
+
+The repository-wide no-unknown self-dogfood now passes. Release acceptance also
+requires the full CI, parity, and benchmark gates for the current worktree.
 
 Each stage follows Red, Green, Refactoring: first add a positive catalog case,
 a same-spelled shadow negative control, and an unsupported dynamic case; then
@@ -76,4 +123,3 @@ shape does not require long-term compatibility. Migration should nevertheless
 be incremental to make semantic regressions visible. A legacy field is deleted
 as soon as all definitions and consumers for its stage have moved; no permanent
 dual interpreter is kept.
-

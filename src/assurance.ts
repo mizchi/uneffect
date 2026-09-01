@@ -1,5 +1,5 @@
 import type { CheckResult } from "./check.js";
-import { formatEffect, unknownCapabilityReasons } from "./capabilities.js";
+import { formatEffect, unresolvedCapabilityReasons } from "./capabilities.js";
 import type { AssumptionLedger } from "./assumptions.js";
 
 export type AssuranceProfile = "no-unknown" | "declared" | "verified";
@@ -101,7 +101,7 @@ export function assessCheckAssurance(
       message: `${summary.functionName}: effect summary is ${summary.evidence}, not declaration-checked`,
     });
     for (const effect of summary.effects) {
-      const reasons = unknownCapabilityReasons(effect);
+      const reasons = unresolvedCapabilityReasons(effect);
       if (reasons.length === 0) continue;
       blockers.push({
         kind: "effect", classification: "unknown", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,

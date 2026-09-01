@@ -1,14 +1,14 @@
 import ts from "typescript";
 import { createHash } from "node:crypto";
-import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinOperation, type BuiltinResultRefinement, type BuiltinSymbolKey } from "./builtin-contracts.js";
+import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinResultRefinement, type BuiltinSymbolKey } from "./builtin-contracts.js";
 import type { SourceSpan } from "./annotations.js";
+import type { BuiltinSemantics } from "./builtin-semantic-schema.js";
 
 export interface ResolvedCallSite {
   symbol: BuiltinSymbolKey;
   span: SourceSpan;
   result?: BuiltinResultRefinement;
-  operation?: BuiltinOperation;
-  receiverMutation?: boolean;
+  semantics?: BuiltinSemantics;
   callableResult?: BuiltinContract["callableResult"];
   capturedCallbacks?: readonly ts.Expression[];
   queryRefinement?: { kind: "css-selector"; selector: string };
@@ -16,18 +16,12 @@ export interface ResolvedCallSite {
 export interface ResolvedPropertySite {
   symbol: BuiltinSymbolKey;
   span: SourceSpan;
-  operation: Extract<BuiltinOperation, { kind: "dom-property" }>;
-}
-export interface ResolvedEffectPropertySite {
-  symbol: BuiltinSymbolKey;
-  span: SourceSpan;
-  operation: Extract<BuiltinOperation, { kind: "effect-property" }>;
+  semantics: BuiltinSemantics;
 }
 
 export interface FrontendSymbolAdapter {
   resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined;
   resolveProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedPropertySite | undefined;
-  resolveEffectProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedEffectPropertySite | undefined;
   resolveDomReceiverRegion(expression: ts.Expression): ts.Expression | undefined;
   isDomReceiver(expression: ts.Expression): boolean;
   mayInvokeUserCode(node: ts.Node): boolean;
@@ -60,7 +54,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     this.#globalContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module === "global").map((contract) => [contract.symbol.export, contract]));
     this.#memberContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module.startsWith("lib.")).map((contract) => [contract.symbol.export, contract]));
     for (const contract of registry.contracts) {
-      if (contract.operation?.kind !== "dom-property") continue;
+      if (!contract.semantics?.primitives.some((primitive) => primitive.kind === "property")) continue;
       const separator = contract.symbol.export.indexOf("#");
       if (separator < 0) continue;
       const owner = contract.symbol.export.slice(0, separator);
@@ -230,22 +224,28 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       return {
         symbol: factory.symbol,
         span: { start: call.getStart(), end: call.getEnd() },
-        operation: factory.callableResult.operation,
+        semantics: factory.callableResult.semantics,
         ...(capturedCallbacks?.length ? { capturedCallbacks } : {}),
       };
     }
     return {
       symbol: contract.symbol,
       span: { start: call.getStart(), end: call.getEnd() },
-      result: contract.result,
-      operation: contract.operation,
-      receiverMutation: contract.receiverMutation,
+      result: (() => {
+        const result = contract.semantics?.primitives.find((primitive) => primitive.kind === "result"
+          && (primitive.refinement.kind === "fresh" || primitive.refinement.kind === "path"));
+        return result?.kind === "result" && (result.refinement.kind === "fresh" || result.refinement.kind === "path")
+          ? result.refinement : undefined;
+      })(),
+      semantics: contract.semantics,
       callableResult: contract.callableResult,
-      queryRefinement: contract.operation?.kind === "dom" && contract.operation.queryArgument !== undefined
-        && call.arguments[contract.operation.queryArgument] !== undefined
-        && ts.isStringLiteralLike(call.arguments[contract.operation.queryArgument]!)
-        ? { kind: "css-selector", selector: (call.arguments[contract.operation.queryArgument] as ts.StringLiteralLike).text }
-        : undefined,
+      queryRefinement: (() => {
+        const refinement = contract.semantics?.primitives.find((primitive) => primitive.kind === "result" && primitive.refinement.kind === "css-selector");
+        if (refinement?.kind !== "result" || refinement.refinement.kind !== "css-selector"
+          || refinement.refinement.target.kind !== "argument") return undefined;
+        const argument = call.arguments[refinement.refinement.target.index];
+        return argument && ts.isStringLiteralLike(argument) ? { kind: "css-selector" as const, selector: argument.text } : undefined;
+      })(),
     };
   }
 
@@ -274,23 +274,12 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         }
       }
     }
-    if (contract?.operation?.kind !== "dom-property") return undefined;
+    if (!contract?.semantics?.primitives.some((primitive) => primitive.kind === "property")) return undefined;
     return {
       symbol: contract.symbol,
       span: { start: access.getStart(), end: access.getEnd() },
-      operation: contract.operation,
+      semantics: contract.semantics,
     };
-  }
-
-  resolveEffectProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedEffectPropertySite | undefined {
-    const literalName = ts.isElementAccessExpression(access) && access.argumentExpression && ts.isStringLiteralLike(access.argumentExpression)
-      ? access.argumentExpression.text : undefined;
-    const lookup = ts.isPropertyAccessExpression(access) ? access.name
-      : literalName === undefined ? undefined : this.#checker.getPropertyOfType(this.#checker.getTypeAtLocation(access.expression), literalName)?.valueDeclaration;
-    const symbol = lookup ? targetSymbol(this.#checker, lookup) : undefined;
-    const contract = symbol ? this.#resolveSymbolContract(symbol) : undefined;
-    if (contract?.operation?.kind !== "effect-property") return undefined;
-    return { symbol: contract.symbol, span: { start: access.getStart(), end: access.getEnd() }, operation: contract.operation };
   }
 
   resolveDomReceiverRegion(original: ts.Expression): ts.Expression | undefined {
@@ -301,7 +290,10 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         || ts.isNonNullExpression(value)) value = value.expression;
       if (ts.isPropertyAccessExpression(value) || ts.isElementAccessExpression(value)) {
         const property = this.resolveProperty(value);
-        if (property?.operation.resultRegion === "receiver") return resolve(value.expression) ?? value.expression;
+        const aliasesReceiver = property?.semantics.primitives.some((primitive) => primitive.kind === "property"
+          && primitive.read.some((nested) => nested.kind === "result" && nested.refinement.kind === "alias"
+            && nested.refinement.target.kind === "receiver"));
+        if (aliasesReceiver) return resolve(value.expression) ?? value.expression;
         return undefined;
       }
       if (!ts.isIdentifier(value)) return undefined;

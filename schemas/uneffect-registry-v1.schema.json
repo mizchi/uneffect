@@ -84,55 +84,67 @@
         "export": { "$ref": "#/$defs/nonEmptyString" }
       }
     },
-    "operation": {
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["kind", "effect"],
-          "properties": {
-            "kind": { "const": "effect" },
-            "effect": { "$ref": "#/$defs/nonEmptyString" }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["kind", "effect"],
-          "properties": {
-            "kind": { "const": "scoped-effect" },
-            "effect": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$" },
-            "effectScopeArgument": { "type": "integer", "minimum": 0 },
-            "effectScopeKind": { "enum": ["literal", "run-program"] }
-          }
-        }
-      ]
-    },
-    "pathResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "pattern"],
-      "properties": {
-        "kind": { "const": "path" },
-        "pattern": { "$ref": "#/$defs/nonEmptyString" }
-      }
-    },
-    "freshResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind"],
-      "properties": { "kind": { "const": "fresh" } }
-    },
     "callableResult": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "operation": { "$ref": "#/$defs/operation" },
+        "semantics": { "$ref": "#/$defs/builtinSemantics" },
         "capturedCallbackArguments": {
           "type": "array",
           "items": { "type": "integer", "minimum": 0 },
           "uniqueItems": true
         }
+      }
+    },
+    "valueProjector": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "enum": ["receiver", "result"] } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "index"], "properties": { "kind": { "const": "argument" }, "index": { "type": "integer", "minimum": 0 }, "optional": { "type": "boolean" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "offset"], "properties": { "kind": { "const": "argument-from-end" }, "offset": { "type": "integer", "minimum": 0 }, "minimumArguments": { "type": "integer", "minimum": 0 } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target"], "properties": { "kind": { "const": "array-elements" }, "target": { "$ref": "#/$defs/valueProjector" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target", "key"], "properties": { "kind": { "const": "property" }, "target": { "$ref": "#/$defs/valueProjector" }, "key": { "$ref": "#/$defs/nonEmptyString" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target", "region"], "properties": { "kind": { "const": "region" }, "target": { "$ref": "#/$defs/valueProjector" }, "region": { "enum": ["parentNode", "buffer"] } } }
+      ]
+    },
+    "scopeProjector": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "literal" }, "value": { "$ref": "#/$defs/nonEmptyString" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target"], "properties": { "kind": { "enum": ["value", "filesystem-path", "run-program"] }, "target": { "$ref": "#/$defs/valueProjector" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target", "member"], "properties": { "kind": { "const": "region" }, "target": { "$ref": "#/$defs/valueProjector" }, "member": { "$ref": "#/$defs/nonEmptyString" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target"], "properties": { "kind": { "const": "url" }, "target": { "$ref": "#/$defs/valueProjector" }, "methodArgument": { "type": "integer", "minimum": 0 }, "methodFrom": { "enum": ["value", "request-init"] } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target", "format"], "properties": { "kind": { "const": "network" }, "target": { "$ref": "#/$defs/valueProjector" }, "format": { "enum": ["host", "connect", "http-request"] }, "defaultPort": { "type": "integer", "minimum": 0 }, "hostArgument": { "type": "integer", "minimum": 0 } } }
+      ]
+    },
+    "resultRefinement": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "fresh" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target"], "properties": { "kind": { "const": "alias" }, "target": { "$ref": "#/$defs/valueProjector" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "pattern"], "properties": { "kind": { "const": "path" }, "pattern": { "$ref": "#/$defs/nonEmptyString" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "family"], "properties": { "kind": { "const": "resource" }, "family": { "$ref": "#/$defs/nonEmptyString" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target"], "properties": { "kind": { "const": "css-selector" }, "target": { "$ref": "#/$defs/valueProjector" } } }
+      ]
+    },
+    "semanticPrimitive": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind", "capability"], "properties": { "kind": { "const": "effect" }, "capability": { "$ref": "#/$defs/nonEmptyString" }, "scope": { "$ref": "#/$defs/scopeProjector" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target"], "properties": { "kind": { "enum": ["mutate", "clone"] }, "target": { "$ref": "#/$defs/valueProjector" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target"], "properties": { "kind": { "const": "transfer" }, "target": { "$ref": "#/$defs/valueProjector" }, "optional": { "type": "boolean" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "target", "timing", "queue", "cardinality"], "properties": { "kind": { "const": "callback" }, "target": { "$ref": "#/$defs/valueProjector" }, "timing": { "enum": ["sync", "deferred"] }, "queue": { "enum": ["current", "microtask", "next-tick", "timer", "animation-frame", "scheduler-task", "poll", "check", "close"] }, "cardinality": { "enum": ["0..1", "1", "0..n", "1..n"] }, "callable": { "enum": ["required", "optional"] }, "returnDepth": { "type": "integer", "minimum": 0 } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "invoke-user-code" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "refinement"], "properties": { "kind": { "const": "result" }, "refinement": { "$ref": "#/$defs/resultRefinement" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "resource"], "properties": { "kind": { "enum": ["acquire", "release"] }, "resource": { "$ref": "#/$defs/nonEmptyString" }, "target": { "$ref": "#/$defs/valueProjector" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "error"], "properties": { "kind": { "const": "throw" }, "error": { "$ref": "#/$defs/nonEmptyString" }, "condition": { "$ref": "#/$defs/nonEmptyString" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "read", "write"], "properties": { "kind": { "const": "property" }, "read": { "type": "array", "items": { "$ref": "#/$defs/semanticPrimitive" } }, "write": { "type": "array", "items": { "$ref": "#/$defs/semanticPrimitive" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "name", "transition"], "properties": { "kind": { "const": "protocol" }, "name": { "$ref": "#/$defs/nonEmptyString" }, "transition": { "$ref": "#/$defs/nonEmptyString" }, "inputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/valueProjector" } } } }
+      ]
+    },
+    "builtinSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "primitives"],
+      "properties": {
+        "schema": { "const": "uneffect-semantic-primitives/v1" },
+        "primitives": { "type": "array", "items": { "$ref": "#/$defs/semanticPrimitive" } }
       }
     },
     "builtinContract": {
@@ -146,9 +158,7 @@
         "trustReason": { "$ref": "#/$defs/nonEmptyString" },
         "trustOwner": { "$ref": "#/$defs/nonEmptyString" },
         "trustExpiresOn": { "type": "string", "format": "date" },
-        "result": { "oneOf": [{ "$ref": "#/$defs/pathResult" }, { "$ref": "#/$defs/freshResult" }] },
-        "receiverMutation": { "type": "boolean" },
-        "operation": { "$ref": "#/$defs/operation" },
+        "semantics": { "$ref": "#/$defs/builtinSemantics" },
         "callableResult": { "$ref": "#/$defs/callableResult" }
       }
     },

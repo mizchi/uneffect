@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseEffectExpression } from "./capabilities.js";
+import { validateBuiltinSemantics } from "./builtin-semantic-schema.js";
+import type { BuiltinSemantics, SemanticPrimitive } from "./builtin-semantic-schema.js";
 import {
   builtinContractRegistry,
   extendBuiltinContractRegistry,
@@ -82,32 +84,26 @@ function effect(value: unknown, path: string): string {
   return text;
 }
 
-function effectName(value: unknown, path: string): string {
-  const text = string(value, path);
-  if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/u.test(text)) fail(path, "expected an effect capability name");
-  return text;
-}
-
-function builtinOperation(value: unknown, path: string): BuiltinContract["operation"] {
-  const operation = record(value, path);
-  if (operation.kind === "effect") {
-    keys(operation, ["kind", "effect"], path);
-    return { kind: "effect", effect: effect(operation.effect, `${path}.effect`) };
+function registrySemantics(value: unknown, path: string): BuiltinSemantics {
+  let semantics: BuiltinSemantics;
+  try { semantics = validateBuiltinSemantics(value); } catch (cause) {
+    fail(path, cause instanceof Error ? cause.message : String(cause));
   }
-  if (operation.kind === "scoped-effect") {
-    keys(operation, ["kind", "effect", "effectScopeArgument", "effectScopeKind"], path);
-    const scopeKind = operation.effectScopeKind;
-    if (scopeKind !== undefined && scopeKind !== "literal" && scopeKind !== "run-program") {
-      fail(`${path}.effectScopeKind`, "expected literal or run-program");
+  const visit = (primitive: SemanticPrimitive, primitivePath: string): void => {
+    if (primitive.kind === "property") {
+      primitive.read.forEach((nested, index) => visit(nested, `${primitivePath}.read[${index}]`));
+      primitive.write.forEach((nested, index) => visit(nested, `${primitivePath}.write[${index}]`));
+      return;
     }
-    return {
-      kind: "scoped-effect",
-      effect: effectName(operation.effect, `${path}.effect`),
-      ...(operation.effectScopeArgument === undefined ? {} : { effectScopeArgument: integer(operation.effectScopeArgument, `${path}.effectScopeArgument`) }),
-      ...(scopeKind === undefined ? {} : { effectScopeKind: scopeKind }),
-    };
-  }
-  return fail(`${path}.kind`, "unsupported operation; expected effect or scoped-effect");
+    if (primitive.kind !== "effect") return;
+    if (primitive.scope) {
+      if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/u.test(primitive.capability)) {
+        fail(`${primitivePath}.capability`, "expected an effect capability name");
+      }
+    } else effect(primitive.capability, `${primitivePath}.capability`);
+  };
+  semantics.primitives.forEach((primitive, index) => visit(primitive, `${path}.primitives[${index}]`));
+  return semantics;
 }
 
 function moduleInitialization(value: unknown, path: string): ModuleInitializationContract {
@@ -139,7 +135,7 @@ function moduleInitialization(value: unknown, path: string): ModuleInitializatio
 
 function builtin(value: unknown, path: string): BuiltinContract {
   const input = record(value, path);
-  keys(input, ["symbol", "runtime", "evidence", "trustReason", "trustOwner", "trustExpiresOn", "result", "receiverMutation", "operation", "callableResult"], path);
+  keys(input, ["symbol", "runtime", "evidence", "trustReason", "trustOwner", "trustExpiresOn", "semantics", "callableResult"], path);
   const symbol = record(input.symbol, `${path}.symbol`);
   keys(symbol, ["module", "export"], `${path}.symbol`);
   const module = string(symbol.module, `${path}.symbol.module`);
@@ -153,20 +149,19 @@ function builtin(value: unknown, path: string): BuiltinContract {
   if (module.startsWith("node:") && runtimeValue?.kind === "package") fail(path, "node: function contracts require a node runtime");
   const externalPackage = module !== "global" && !module.startsWith("lib.") && !module.startsWith("node:");
   if (externalPackage && runtimeValue?.kind !== "package") fail(path, "package contracts require a package runtime");
-  const operationValue = input.operation === undefined ? undefined : builtinOperation(input.operation, `${path}.operation`);
+  let semanticsValue: BuiltinContract["semantics"];
+  if (input.semantics !== undefined) {
+    semanticsValue = registrySemantics(input.semantics, `${path}.semantics`);
+  }
   const callableResult = input.callableResult === undefined ? undefined : record(input.callableResult, `${path}.callableResult`);
-  if (callableResult) keys(callableResult, ["operation", "capturedCallbackArguments"], `${path}.callableResult`);
+  if (callableResult) keys(callableResult, ["semantics", "capturedCallbackArguments"], `${path}.callableResult`);
   const callableResultValue: BuiltinContract["callableResult"] = callableResult ? {
-    ...(callableResult.operation === undefined ? {} : { operation: builtinOperation(callableResult.operation, `${path}.callableResult.operation`) }),
+    ...(callableResult.semantics === undefined ? {} : { semantics: registrySemantics(callableResult.semantics, `${path}.callableResult.semantics`) }),
     ...(callableResult.capturedCallbackArguments === undefined ? {} : {
       capturedCallbackArguments: array(callableResult.capturedCallbackArguments, `${path}.callableResult.capturedCallbackArguments`)
         .map((item, index) => integer(item, `${path}.callableResult.capturedCallbackArguments[${index}]`)),
     }),
   } : undefined;
-  const result = input.result === undefined ? undefined : record(input.result, `${path}.result`);
-  if (result) keys(result, result.kind === "path" ? ["kind", "pattern"] : ["kind"], `${path}.result`);
-  if (result && result.kind !== "path" && result.kind !== "fresh") fail(`${path}.result.kind`, "expected path or fresh");
-  if (input.receiverMutation !== undefined && typeof input.receiverMutation !== "boolean") fail(`${path}.receiverMutation`, "expected a boolean");
   return {
     symbol: { module, export: string(symbol.export, `${path}.symbol.export`) },
     ...(runtimeValue === undefined ? {} : { runtime: runtimeValue }),
@@ -174,10 +169,7 @@ function builtin(value: unknown, path: string): BuiltinContract {
     trustReason: string(input.trustReason, `${path}.trustReason`),
     trustOwner: string(input.trustOwner, `${path}.trustOwner`),
     ...(expiration(input.trustExpiresOn, `${path}.trustExpiresOn`) ? { trustExpiresOn: input.trustExpiresOn as string } : {}),
-    ...(result?.kind === "path" ? { result: { kind: "path" as const, pattern: string(result.pattern, `${path}.result.pattern`) } }
-      : result?.kind === "fresh" ? { result: { kind: "fresh" as const } } : {}),
-    ...(operationValue === undefined ? {} : { operation: operationValue }),
-    ...(input.receiverMutation === undefined ? {} : { receiverMutation: input.receiverMutation as boolean }),
+    ...(semanticsValue === undefined ? {} : { semantics: semanticsValue }),
     ...(callableResultValue === undefined ? {} : { callableResult: callableResultValue }),
   };
 }

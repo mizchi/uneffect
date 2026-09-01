@@ -25,7 +25,7 @@ const auditModule = {
       evidence: "trusted",
       trustOwner: "security-platform",
       trustReason: "reviewed emit boundary",
-      operation: { kind: "scoped-effect", effect: "Acme.Audit.Emit", effectScopeArgument: 0, effectScopeKind: "literal" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Acme.Audit.Emit", scope: { kind: "value", target: { kind: "argument", index: 0 } } }] },
     }],
   },
 } as const;
@@ -41,8 +41,8 @@ describe("declarative Uneffect modules", () => {
     const installed = installUneffectModules([auditModule], builtinContractRegistry);
     expect(effectSchema("Acme.Audit.Emit")).toEqual({ name: "Acme.Audit.Emit", version: 1, arguments: ["literal"] });
     expect(parseEffectExpression('Acme.Audit.Emit<"login">')).toMatchObject({ name: "Acme.Audit.Emit" });
-    expect(findBuiltinContract(installed.registry, { module: "@acme/audit", export: "emit" })?.operation)
-      .toMatchObject({ kind: "scoped-effect", effect: "Acme.Audit.Emit" });
+    expect(findBuiltinContract(installed.registry, { module: "@acme/audit", export: "emit" })?.semantics?.primitives)
+      .toMatchObject([{ kind: "effect", capability: "Acme.Audit.Emit" }]);
     expect(installed.ledger).toEqual([expect.objectContaining({
       name: "@acme/audit-semantics", version: "1.2.0", namespace: "Acme.Audit", evidence: "trusted",
       digest: expect.stringMatching(/^[a-f0-9]{64}$/),

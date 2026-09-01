@@ -1,6 +1,8 @@
 import ts from "typescript";
 import type { CallableSummary } from "./callable-summary.js";
-import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourceProtocolCfg, type ResourceProtocolModel, type ResourceProtocolTransition } from "./resource-protocol.js";
+import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourceProtocolCfg, type ResourceProtocolModel, type ResourceProtocolResource, type ResourceProtocolTransition } from "./resource-protocol.js";
+import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import { interpretBuiltinCallSemantics, type ProjectedValue } from "./builtin-semantic-interpreter.js";
 
 export interface ResourceTransitionSite {
   readonly node: ts.Node;
@@ -25,6 +27,73 @@ export type ResourceProtocolTypeScriptLowering =
 
 export interface ResourceProtocolTypeScriptLoweringOptions {
   readonly budget?: { readonly name: string; readonly limit: number };
+}
+
+export interface BuiltinResourceTransitionCollection {
+  readonly resources: readonly ResourceProtocolResource[];
+  readonly sites: readonly ResourceTransitionSite[];
+  readonly unknown: readonly { readonly node: ts.CallExpression; readonly reason: string }[];
+}
+
+/** Projects generic builtin acquire/release events into the shared resource CFG. */
+export function collectBuiltinResourceTransitionSites(
+  program: ts.Program,
+  fn: ts.FunctionLikeDeclaration,
+): BuiltinResourceTransitionCollection {
+  if (!fn.body) return { resources: [], sites: [], unknown: [] };
+  const adapter = new TypeScriptFrontendAdapter(program);
+  const checker = program.getTypeChecker();
+  const resources = new Map<string, ResourceProtocolResource>();
+  const sites: ResourceTransitionSite[] = [];
+  const unknown: Array<{ node: ts.CallExpression; reason: string }> = [];
+  const resultBinding = (call: ts.CallExpression): string | undefined => {
+    const parent = call.parent;
+    return ts.isVariableDeclaration(parent) && parent.initializer === call && ts.isIdentifier(parent.name)
+      ? parent.name.text : undefined;
+  };
+  const stableRoot = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
+    if (!ts.isIdentifier(expression)) return expression;
+    let symbol = checker.getSymbolAtLocation(expression);
+    if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+    if (!symbol || seen.has(symbol)) return expression;
+    const declaration = symbol.valueDeclaration;
+    if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+      || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+      || !ts.isIdentifier(declaration.initializer)) return expression;
+    return stableRoot(declaration.initializer, new Set(seen).add(symbol));
+  };
+  const identity = (target: ProjectedValue, call: ts.CallExpression): string | undefined => {
+    if (target.status === "result") return resultBinding(call);
+    if (target.status !== "resolved") return undefined;
+    const root = stableRoot(target.expression);
+    return `${root.getText(root.getSourceFile())}${target.path.map((part) => `.${part}`).join("")}`;
+  };
+  const visit = (node: ts.Node): void => {
+    if (node !== fn && ts.isFunctionLike(node)) return;
+    if (ts.isCallExpression(node)) {
+      const resolved = adapter.resolveCall(node);
+      const events = resolved?.semantics
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }) : [];
+      const transitions: ResourceProtocolTransition[] = [];
+      for (const event of events) {
+        if ((event.kind !== "acquire" && event.kind !== "release") || !event.target) continue;
+        const resource = identity(event.target, node);
+        if (!resource) {
+          unknown.push({ node, reason: `${event.kind}(${event.resource}) has no stable projected resource identity` });
+          continue;
+        }
+        if (!resources.has(resource)) resources.set(resource, {
+          id: resource, label: resource, kind: event.resource,
+          initialState: event.kind === "acquire" ? "absent" : "available", requiredTerminalStates: ["released"],
+        });
+        transitions.push({ kind: event.kind, resource, at: node.getStart(node.getSourceFile()), evidence: "trusted" });
+      }
+      if (transitions.length) sites.push({ node, transitions });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(fn.body);
+  return { resources: [...resources.values()], sites, unknown };
 }
 
 function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {

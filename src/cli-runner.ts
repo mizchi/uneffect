@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect none */
+/* uneffect:capability module_effect Throw<Error> */
 import { relative } from "node:path";
 import { checkCommand } from "./check-command.js";
 import { CliUsageError, exitCode, formatCommandHelp, processStreams, type CliCommand, type CliStreams } from "./cli-support.js";

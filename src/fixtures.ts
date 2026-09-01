@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect none */
+/* uneffect:capability module_effect Throw<Error> */
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkFiles, createCheckHost, type CheckOptions } from "./check.js";

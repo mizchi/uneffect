@@ -7,6 +7,7 @@ import ts from "typescript";
 import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { analyzeEffects } from "../src/effects.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 const source = `
   function poll() { setTimeout(poll, 5) }
@@ -25,6 +26,23 @@ function run(program: string, invariant: string) {
 }
 
 describe("builtin async temporal patterns", () => {
+  it("extracts a timer from generic callback and protocol semantics without a legacy operation", () => {
+    const builtinRegistry = extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
+      symbol: { module: "global", export: "setTimeout" }, evidence: "trusted",
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "timer", cardinality: "0..1" },
+        { kind: "protocol", name: "timer", transition: "schedule", inputs: {
+          callback: { kind: "argument", index: 0 }, delay: { kind: "argument", index: 1 },
+        } },
+      ] },
+    }] });
+    expect(analyzeAsyncPatterns("generic-timer.ts", `function tick() { setTimeout(tick, 4) }`, { builtinRegistry }))
+      .toMatchObject({ timers: [{ owner: "tick", callback: "tick", delay: 4, recursive: true, repeats: false, queue: "timer" }] });
+    expect(analyzeAsyncPatterns("shadowed-timer.ts", `
+      function setTimeout(callback: () => void, _delay: number) { callback() }
+      function tick() { setTimeout(tick, 4) }
+    `, { builtinRegistry }).timers).toEqual([]);
+  });
   it("extracts a recursive timeout and Promise.all fork/join by builtin symbol", () => {
     expect(analyzeAsyncPatterns("patterns.ts", source)).toMatchObject({
       timers: [{ owner: "poll", callback: "poll", delay: 5, recursive: true }],

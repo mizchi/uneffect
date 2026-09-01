@@ -6,8 +6,33 @@ import { describe, expect, it } from "vitest";
 import { buildProgramCallGraph, instantiateCallbackEffects } from "../src/call-graph.js";
 import { analyzeProgramEffects } from "../src/effects.js";
 import { formatEffect, parseEffectExpression } from "../src/capabilities.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 describe("multi-file call graph and effect polymorphism", () => {
+  it("classifies callbacks from generic semantics without a legacy operation", () => {
+    const fileName = "generic-callback.ts";
+    const source = ts.createSourceFile(fileName, `
+      function deferred(callback: () => void) { setTimeout(callback, 0) }
+      function shadowed(setTimeout: (callback: () => void) => void, callback: () => void) { setTimeout(callback) }
+    `, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true };
+    const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, version, onError, fresh) => name === fileName ? source : original(name, version, onError, fresh);
+    host.fileExists = (name) => name === fileName || ts.sys.fileExists(name);
+    host.readFile = (name) => name === fileName ? source.text : ts.sys.readFile(name);
+    const program = ts.createProgram([fileName], options, host);
+    const builtinRegistry = extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
+      symbol: { module: "global", export: "setTimeout" }, evidence: "trusted",
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{
+        kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "timer", cardinality: "0..1",
+      }] },
+    }] });
+    const graph = buildProgramCallGraph(program, { builtinRegistry });
+    expect(graph.nodes.find((node) => node.name === "deferred")?.effectParameters)
+      .toContainEqual(expect.objectContaining({ index: 0, timing: "deferred" }));
+    expect(graph.nodes.find((node) => node.name === "shadowed")?.effectParameters)
+      .toContainEqual(expect.objectContaining({ index: 1, timing: "unknown" }));
+  });
   it("distinguishes an explicit empty effect bound from an inferred empty inventory", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-empty-effect-"));
     try {
@@ -1184,15 +1209,20 @@ describe("multi-file call graph and effect polymorphism", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-fs-callback-"));
     const source = join(directory, "fs.ts");
     writeFileSync(source, `
-      import { readFile as loadFile } from "node:fs"
+      import { readFile as loadFile, watch } from "node:fs"
       /* uneffect:capability effect FsRead | Console */
       export function load() { loadFile("settings.json", () => console.log("loaded")) }
+      /* uneffect:capability effect FsRead | Console */
+      export function watchConfig() { watch("settings.json", () => console.log("changed")) }
+      function watchLocal(_path: string, callback: () => void) { callback() }
+      export function local() { watchLocal("settings.json", () => console.log("local")) }
     `);
     const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true });
     const graph = buildProgramCallGraph(program);
     expect(graph.edges).toContainEqual(expect.objectContaining({ kind: "callback-argument", timing: "deferred" }));
     const result = analyzeProgramEffects(program, { requireAnnotations: false });
     expect(result.diagnostics.filter((item) => item.functionName === "load")).toEqual([]);
+    expect(result.diagnostics.filter((item) => item.functionName === "watchConfig")).toEqual([]);
     expect(result.summaries.find((item) => item.functionName === "load")).toMatchObject({ evidence: "verified" });
     rmSync(directory, { recursive: true, force: true });
   });

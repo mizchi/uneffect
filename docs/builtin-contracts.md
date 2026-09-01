@@ -107,17 +107,17 @@ The `check` and `evidence` commands load the same extension through
 `schemas/uneffect-registry-v1.schema.json` provides editor validation, while the
 runtime loader additionally rejects semantic mismatches and unknown keys.
 Caller entries replace same-identity defaults instead of leaving a stale
-fallback. Registry v1 exposes static and scoped effect overlays; specialized
-platform operation records remain curated code-owned contracts. An external
+fallback. Registry v1 exposes the same validated generic primitives used by
+the repository-owned catalog. An external
 package function contract must carry an exact package runtime. A missing or
 mismatched version leaves the call unresolved and records no builtin
-assumption. Omitting `operation` explicitly reviews a zero-authority call; it
+assumption. Omitting `semantics` explicitly reviews a zero-authority call; it
 does not prove arbitrary functions in that package pure.
 
-A contract may declare `result: { kind: "fresh" }` when every call returns a
+A contract may declare `result({ kind: "fresh" })` in `semantics.primitives` when every call returns a
 new caller-owned object with no pre-existing aliases. In-place mutation of that
 direct result is then local rather than a `Mutate` capability. This is separate
-from the call's `operation`: a fresh-returning API may still perform effects.
+from other primitives: a fresh-returning API may still perform effects.
 The claim is trusted and exact-version-bound for packages. It is invalid for
 caches, pools, input aliases, retained objects, and views over existing memory.
 
@@ -127,8 +127,8 @@ array/object literal or TypeChecker-resolved standard `Array`, `Map`, `Set`,
 Mutation is not propagated to the caller. Passing an explicit argument
 preserves the Mutation; a same-spelled user constructor is not trusted.
 
-A reviewed factory may declare `callableResult`. Its `operation` describes the
-authority of calling the returned function, and `capturedCallbackArguments`
+A reviewed factory may declare `callableResult`. Its `semantics` describes the
+authority and other facts of calling the returned function, and `capturedCallbackArguments`
 lists factory arguments synchronously invoked by that returned function. The
 frontend follows this contract only through an immutable `const` initializer;
 mutable or otherwise dynamic bindings remain unknown.
@@ -237,10 +237,9 @@ not claim synchronous callback invocation. Literal selector arguments are
 retained as `{ kind: "css-selector" }` query refinements but never used to
 authorize a different receiver.
 
-A call contract stores a non-empty `operations` array. This is also the
-canonical representation for one-operation calls; there is no legacy scalar
-field. Compound calls therefore retain every relevant category. `cloneNode`
-is `NodeRead + Create`, `normalize` is `NodeWrite + TextWrite`,
+A DOM call composes one or more generic `effect` primitives. Compound calls
+therefore retain every relevant category without a DOM-specific contract
+shape. `cloneNode` is `NodeRead + Create`, `normalize` is `NodeWrite + TextWrite`,
 `insertAdjacentText` is `TextWrite + NodeWrite`, and `insertAdjacentHTML` is
 `Parse + NodeWrite`. The latter also carries `InvokeUserCode` because parsing
 and insertion may synchronously run custom-element reactions.
@@ -349,23 +348,14 @@ The checker must reject a use after a transfer when the transfer definitely occu
 
 ## User-defined builtins and effects
 
-Projects may extend the registry without wrappers. A future configuration API should declare effect parameter domains and bind resolved symbols to templates:
-
-```ts
-export default defineUneffect({
-  effects: {
-    "app.Database": {
-      parameters: [enumSet(["SELECT", "INSERT", "UPDATE", "DELETE"]), globSet()],
-    },
-  },
-  builtins: [
-    contract("app/db", "query", ({ args }) =>
-      scoped("app.Database", methodFrom(args[0]), scopeFrom(args[1]))),
-  ],
-})
-```
-
-Configuration is compiled to the same neutral contract IR as platform builtins. Unknown effect names are warnings during gradual adoption and errors in strict mode.
+Projects may extend the registry without wrappers through a validated registry
+configuration or a distributable semantics module. Both bind a
+TypeChecker-resolved package export to the same ordered generic primitives used
+by platform builtins. Semantics modules may also declare namespaced effect
+schemas; invalid or unknown primitive data is rejected atomically. See
+[Semantics modules](./semantics-modules.md) for the manifest, CLI, and
+programmatic APIs. External definitions remain reviewed `trusted` assumptions,
+never verified facts about the dependency implementation.
 
 ## Versioning and trust
 

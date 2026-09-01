@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { generateOwnershipObligationQuint, generateOwnershipObligationSmt, type OwnershipGuardObligation } from "./async-safety.js";
 import { builtinContractRegistry, type BuiltinContractRegistry, type SemanticModuleLedgerEntry } from "./builtin-contracts.js";
-import { formatEffect, parseEffectExpression, unknownCapabilityReasons } from "./capabilities.js";
+import { formatEffect, parseEffectExpression, parseParameterizedCapabilityScope, unknownCapabilityReasons } from "./capabilities.js";
 import type { EffectSummary, EvidenceStatus } from "./effects.js";
 import { executeZ3, type Z3Backend, type Z3ExecutionResult } from "./z3.js";
 
@@ -185,7 +185,10 @@ export function assessEvidenceArtifactEligibility(
     if (summary.evidence !== "verified") {
       blockers.push({ summaryId: summary.id, reason: summary.evidence });
     }
-    if (summary.effects.some((effect) => unknownCapabilityReasons(parseEffectExpression(effect)).length > 0)) {
+    if (summary.effects.some((effect) => unknownCapabilityReasons(parseEffectExpression(effect)).some((reason) => {
+      const parameterized = parseParameterizedCapabilityScope(reason);
+      return !parameterized || parameterized.parameterIndex >= (summary.parameters?.length ?? 0);
+    }))) {
       blockers.push({ summaryId: summary.id, reason: "unknown-capability-scope" });
     }
 

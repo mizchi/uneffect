@@ -1,14 +1,15 @@
 import ts from "typescript";
 import { extractLocatedAnnotations, validateUneffectAnnotations, type AnnotationDiagnostic } from "./annotations.js";
 import type { DiagnosticNote } from "./diagnostics.js";
-import { effectPermits, effectSchema, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, type Effect, type EffectSchema } from "./capabilities.js";
+import { effectPermits, effectSchema, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, parseParameterizedCapabilityScope, unknownCapabilityReasons, type Effect, type EffectSchema } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
-import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry, type FsBuiltinOperation } from "./builtin-contracts.js";
+import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { buildProgramCallGraph, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { SameRealmGlobalThisIdentity } from "./runtime-identities.js";
+import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics, projectedArrayElements, projectBuiltinCallbacks, type ProjectedScope, type ProjectedValue } from "./builtin-semantic-interpreter.js";
 
 export interface EffectDiagnostic {
   fileName: string;
@@ -41,6 +42,7 @@ export type EffectUnknownReasonCode =
   | "unresolved-dynamic-import"
   | "unresolved-call"
   | "unresolved-callback"
+  | "unresolved-effect-scope"
   | "unknown-dependency";
 export interface EffectUnknownReason {
   code: EffectUnknownReasonCode;
@@ -313,148 +315,249 @@ function freshDefaultParameter(expression: ts.Expression, checker: ts.TypeChecke
 }
 
 function capability(name: string): Effect { return parseEffectExpression(name); }
+function unresolvedGenericScopeReasons(effect: Effect): string[] {
+  return unknownCapabilityReasons(effect).filter((reason) => reason.startsWith("generic-projector-")
+    || reason === "dynamic-filesystem-path" || reason === "dynamic-program" || reason === "dynamic-scope" || reason === "unsupported-scope");
+}
+
+type ParameterizedCapabilityScope = "filesystem-path" | "run-program";
+
+function parameterIndexForExpression(expression: ts.Expression, checker: ts.TypeChecker | undefined): number | undefined {
+  if (!checker) return undefined;
+  while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+  if (!ts.isIdentifier(expression)) return undefined;
+  let owner: ts.Node | undefined = expression;
+  while (owner && !ts.isFunctionLike(owner)) owner = owner.parent;
+  if (!owner) return undefined;
+  let symbol = checker.getSymbolAtLocation(expression);
+  if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+  const index = owner.parameters.findIndex((parameter) => {
+    if (!ts.isIdentifier(parameter.name)) return false;
+    let parameterSymbol = checker.getSymbolAtLocation(parameter.name);
+    if (parameterSymbol && (parameterSymbol.flags & ts.SymbolFlags.Alias) !== 0) parameterSymbol = checker.getAliasedSymbol(parameterSymbol);
+    return symbol !== undefined && parameterSymbol === symbol;
+  });
+  return index < 0 ? undefined : index;
+}
+
+function parameterizedScopeReason(
+  target: ProjectedValue,
+  scope: ParameterizedCapabilityScope,
+  checker: ts.TypeChecker | undefined,
+): string | undefined {
+  if (target.status !== "resolved" || target.path.length !== 0) return undefined;
+  const index = parameterIndexForExpression(target.expression, checker);
+  return index === undefined ? undefined : `parameter-${scope}-${index}`;
+}
 
 function addEffect(target: Effect[], effect: Effect): void {
   if (!target.some((item) => formatEffect(item) === formatEffect(effect))) target.push(effect);
 }
 
-function effectsForBuiltinOperation(operation: FsBuiltinOperation, call: ts.CallExpression): Effect[] {
-  const pathEffect = (name: "FsRead" | "FsWrite", index: number | undefined): Effect => {
-    const path = index === undefined ? undefined : call.arguments[index];
-    const literal = path && ts.isStringLiteralLike(path) ? JSON.stringify(path.text) : undefined;
-    return capability(literal ? `${name}<${literal}>` : name);
-  };
-  const effects: Effect[] = [];
-  if (operation.read) effects.push(pathEffect("FsRead", operation.readPathArgument));
-  if (operation.write) effects.push(pathEffect("FsWrite", operation.writePathArgument));
-  if (operation.mutateArgument !== undefined && call.arguments[operation.mutateArgument]) effects.push(mutateEffect(call.arguments[operation.mutateArgument]!));
-  return effects;
+/**
+ * Replace an unresolved runtime scope with an explicitly declared `all`
+ * upper bound. This loses precision but not authority: a narrow declaration
+ * cannot close an unknown value, and parameter templates remain open for
+ * call-site substitution.
+ */
+function closeCapabilityScope(effect: Effect, declared: readonly Effect[]): Effect {
+  if (effect.kind !== "capability") return effect;
+  for (const bound of declared) {
+    if (bound.kind !== "capability" || bound.name !== effect.name || bound.arguments.length !== effect.arguments.length) continue;
+    let changed = false;
+    const arguments_ = effect.arguments.map((argument, index) => {
+      if (argument.kind !== "unknown" || parseParameterizedCapabilityScope(argument.reason)) return argument;
+      const allowed = bound.arguments[index]!;
+      if (allowed.kind !== "all") return argument;
+      changed = true;
+      return allowed;
+    });
+    const closed: Effect = changed ? { ...effect, arguments: arguments_ } : effect;
+    if (changed && effectPermits(bound, closed)) return closed;
+  }
+  return effect;
 }
 
-function processStreamEffects(checker: ts.TypeChecker | undefined, call: ts.CallExpression): Effect[] | undefined {
-  if (!checker || !ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "write") return undefined;
-  const receiver = call.expression.expression;
-  if (!ts.isPropertyAccessExpression(receiver) || !ts.isIdentifier(receiver.expression)
-    || receiver.expression.text !== "process" || (receiver.name.text !== "stdout" && receiver.name.text !== "stderr")) return undefined;
-  const stream = checker.getSymbolAtLocation(receiver.name);
-  const standard = stream?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
-    && ts.isPropertySignature(declaration) && ts.isInterfaceDeclaration(declaration.parent)
-    && declaration.parent.name.text === "Process");
-  return standard ? [capability("Console")] : undefined;
+/**
+ * Parameter placeholders and Node's multi-shape connection target are useful
+ * in summaries, but a declaration cannot spell either as a narrow authority.
+ * Keep the precise reason in evidence while presenting the broad authority
+ * users must add. Other unknown scopes stay explicit in diagnostics.
+ */
+function widenDiagnosticCapability(effect: Effect): Effect {
+  if (effect.kind !== "capability") return effect;
+  let changed = false;
+  const arguments_ = effect.arguments.map((argument) => {
+    if (argument.kind !== "unknown" || (
+      !parseParameterizedCapabilityScope(argument.reason)
+      && argument.reason !== "dynamic-network-authority"
+    )) return argument;
+    changed = true;
+    return { kind: "all" as const };
+  });
+  return changed ? { ...effect, arguments: arguments_ } : effect;
+}
+
+function projectedMutationEffect(target: ProjectedValue, adapter?: FrontendSymbolAdapter): Effect | undefined {
+  if (target.status !== "resolved") return undefined;
+  const expression = adapter?.resolveDomReceiverRegion(target.expression) ?? target.expression;
+  const suffix = target.path.map((part) => plainMember.test(part) ? `.${part}` : `[${JSON.stringify(part)}]`).join("");
+  return mutateRegionEffect(`${mutationRegion(expression)}${suffix}`);
+}
+
+function projectedRegionText(target: ProjectedValue, adapter?: FrontendSymbolAdapter): string | undefined {
+  if (target.status !== "resolved") return undefined;
+  const base = adapter?.resolveDomReceiverRegion(target.expression) ?? target.expression;
+  return `${base.getText()}${target.path.map((part) => plainMember.test(part) ? `.${part}` : `[${JSON.stringify(part)}]`).join("")}`;
+}
+
+function objectLiteralValue(object: ts.ObjectLiteralExpression, keys: readonly string[]): ts.Expression | undefined {
+  for (const key of keys) {
+    const property = object.properties.find((candidate) => ts.isPropertyAssignment(candidate)
+      && !ts.isComputedPropertyName(candidate.name)
+      && candidate.name.getText().replace(/^['"]|['"]$/g, "") === key);
+    if (property && ts.isPropertyAssignment(property)) return property.initializer;
+  }
+  return undefined;
+}
+
+/** Project a reviewed network projector without knowing which API symbol supplied it. */
+function projectedNetworkAuthority(scope: Extract<ProjectedScope, { status: "resolved" }>, call: ts.CallExpression): string | undefined {
+  if (scope.kind !== "network" || scope.target?.status !== "resolved") return undefined;
+  const target = scope.target.expression;
+  if (scope.networkFormat === "host") return ts.isStringLiteralLike(target) ? target.text : undefined;
+  if (scope.networkFormat === "connect") {
+    if (ts.isStringLiteralLike(target)) return target.text;
+    if (ts.isObjectLiteralExpression(target)) {
+      const host = objectLiteralValue(target, ["host"]), port = objectLiteralValue(target, ["port"]);
+      return host && ts.isStringLiteralLike(host) && port && (ts.isStringLiteralLike(port) || ts.isNumericLiteral(port))
+        ? `${host.text}:${port.text}` : undefined;
+    }
+    const host = scope.hostArgument === undefined ? undefined : call.arguments[scope.hostArgument];
+    return ts.isNumericLiteral(target) && host && ts.isStringLiteralLike(host) ? `${host.text}:${target.text}` : undefined;
+  }
+  if (scope.networkFormat === "http-request") {
+    const projectedUrl = fetchUrlExpression(target);
+    if (projectedUrl) {
+      try {
+        const url = new URL(projectedUrl);
+        return `${url.hostname}:${url.port || String(scope.defaultPort ?? (url.protocol === "https:" ? 443 : 80))}`;
+      } catch { return undefined; }
+    }
+    if (ts.isObjectLiteralExpression(target)) {
+      const host = objectLiteralValue(target, ["hostname", "host"]), port = objectLiteralValue(target, ["port"]);
+      const hostText = host && ts.isStringLiteralLike(host) ? host.text : undefined;
+      const portText = port && (ts.isStringLiteralLike(port) || ts.isNumericLiteral(port))
+        ? port.text : scope.defaultPort === undefined ? undefined : String(scope.defaultPort);
+      return hostText && portText ? `${hostText}:${portText}` : undefined;
+    }
+  }
+  return undefined;
+}
+
+/** First shared-interpreter slice. Unsupported events fall back to the legacy consumer during migration. */
+function effectsForGenericSemantics(
+  resolved: NonNullable<ReturnType<FrontendSymbolAdapter["resolveCall"]>>,
+  call: ts.CallExpression,
+  adapter: FrontendSymbolAdapter,
+  checker?: ts.TypeChecker,
+): Effect[] | undefined {
+  if (!resolved.semantics) return undefined;
+  const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
+  const domRegionSemantics = events.some((event) => event.kind === "effect" && event.capability === "Dom" && event.scope?.status === "resolved" && event.scope.kind === "region");
+  const effects: Effect[] = [];
+  for (const event of events) {
+    if (event.kind === "effect") {
+      if (!event.scope) effects.push(capability(event.capability));
+      else if (event.scope.status === "resolved" && event.scope.kind === "url" && event.scope.target?.status === "resolved") {
+        const url = fetchUrlExpression(event.scope.target.expression);
+        const method = event.scope.methodArgument === undefined ? "GET"
+          : event.scope.methodFrom === "request-init" ? fetchMethod(call, event.scope.methodArgument)
+          : (() => {
+              const value = call.arguments[event.scope!.methodArgument!];
+              return value && ts.isStringLiteralLike(value) ? value.text.toUpperCase() : undefined;
+            })();
+        const authority = url ? netAuthority(url) : undefined;
+        effects.push(capability(`${event.capability}<${method ?? "Unknown<dynamic-method>"}, ${url && authority ? JSON.stringify(url) : "Unknown<dynamic-url>"}>`));
+      }
+      else if (event.scope.status === "resolved" && event.scope.kind === "region" && event.scope.member && event.scope.target) {
+        const region = projectedRegionText(event.scope.target, adapter);
+        if (!region) return undefined;
+        effects.push(capability(`${event.capability}<${event.scope.member}, typeof ${region}>`));
+      }
+      else if (event.scope.status === "resolved" && event.scope.kind === "literal" && event.scope.value !== undefined) {
+        effects.push(capability(`${event.capability}<${JSON.stringify(event.scope.value)}>`));
+      } else if (event.scope.status === "resolved" && event.scope.target?.status === "resolved") {
+        const target = event.scope.target.expression;
+        const literal = event.scope.kind === "network"
+          ? projectedNetworkAuthority(event.scope, call)
+          : ts.isStringLiteralLike(target) ? target.text : undefined;
+        const parameterReason = event.scope.kind === "filesystem-path" || event.scope.kind === "run-program"
+          ? parameterizedScopeReason(event.scope.target, event.scope.kind, checker) : undefined;
+        const reason = parameterReason ?? (event.scope.kind === "filesystem-path" ? "dynamic-filesystem-path"
+          : event.scope.kind === "run-program" ? "dynamic-program"
+          : event.scope.kind === "url" ? "dynamic-url"
+          : event.scope.kind === "network" && event.scope.networkFormat === "http-request" ? "dynamic-origin"
+          : event.scope.kind === "network" ? "dynamic-network-authority" : "dynamic-scope");
+        if (literal !== undefined) effects.push(capability(`${event.capability}<${JSON.stringify(literal)}>`));
+        else if (parameterReason) effects.push(capability(`${event.capability}<Unknown<${parameterReason}>>`));
+        else if (event.scope.kind === "filesystem-path" || event.scope.kind === "run-program") {
+          // The runtime value is not statically enumerable, but the capability
+          // family is known. Its sound may-effect is the unscoped/all upper
+          // bound; restricted declarations still reject this widening.
+          effects.push(capability(event.capability));
+        } else effects.push(capability(`${event.capability}<Unknown<${reason}>>`));
+      } else {
+        const reason = event.scope.status === "unknown" ? `generic-projector-${event.scope.reason.replaceAll(/[^A-Za-z0-9_-]/g, "-")}` : "unsupported-scope";
+        effects.push(capability(`${event.capability}<Unknown<${reason}>>`));
+      }
+    } else if (event.kind === "mutate") {
+      const mutation = projectedMutationEffect(event.target, domRegionSemantics ? adapter : undefined);
+      if (!mutation) return undefined;
+      if (event.target.status === "resolved" && ts.isCallExpression(event.target.expression)
+        && adapter.resolveCall(event.target.expression)?.result?.kind === "fresh") continue;
+      effects.push(mutation);
+    } else if (event.kind === "invoke-user-code") effects.push(capability("InvokeUserCode"));
+    else if (event.kind === "throw") effects.push({ kind: "throw", errorType: event.error });
+    else if (event.kind === "clone" && event.target.status === "resolved") {
+      const value = event.target.expression;
+      effects.push(capability(`Clone<typeof ${value.getText()}>`));
+      if (adapter.ownershipKind(value) === "shared") effects.push(capability(`SharedMemory<typeof ${value.getText()}>`));
+    } else if (event.kind === "transfer") {
+      const items = projectedArrayElements(event.target);
+      if (!items) return undefined;
+      for (const item of items) {
+        const kind = adapter.ownershipKind(item);
+        effects.push(capability(`${kind === "shared" ? "SharedMemory" : "Transfer"}<typeof ${item.getText()}>`));
+      }
+    }
+    else if (event.kind === "protocol" && event.name === "promise-combinator") {
+      const iterable = event.inputs.iterable;
+      if (iterable?.status !== "resolved") return undefined;
+      const staticallySafeArray = (expression: ts.Expression): boolean => {
+        while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+        return ts.isArrayLiteralExpression(expression)
+          && expression.elements.every((element) => !ts.isSpreadElement(element) || staticallySafeArray(element.expression));
+      };
+      if (!staticallySafeArray(iterable.expression)) effects.push(capability("InvokeUserCode"));
+    }
+    else if (event.kind === "callback" || event.kind === "protocol" || event.kind === "result"
+      || event.kind === "acquire" || event.kind === "release") continue;
+    else if (event.kind === "unknown" && ((event.primitive.kind === "callback" && event.primitive.callable === "optional")
+      || (event.primitive.kind === "transfer" && event.primitive.optional))) continue;
+    else return undefined;
+  }
+  return effects;
 }
 
 function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker): Effect[] {
-  const processStream = processStreamEffects(checker, call);
-  if (processStream) return processStream;
   const resolved = adapter?.resolveCall(call);
   const scriptEffects = effectsForStaticScriptInsertion(call, adapter);
-  if (scriptEffects.length > 0) return [...(resolved?.operation?.kind === "dom" ? effectsForResolvedDomCall(resolved.operation, call, adapter) : []), ...scriptEffects];
-  if (resolved?.operation?.kind === "fs") return effectsForBuiltinOperation(resolved.operation, call);
-  if (resolved?.operation?.kind === "fetch") return effectsForFetch(call);
-  if (resolved?.operation?.kind === "timer") return [capability("Timer")];
-  if (resolved?.operation?.kind === "timer-clear") return resolved.operation.effect ? [capability(resolved.operation.effect)] : [];
-  if (resolved?.operation?.kind === "abort-timeout") return [capability("Timer")];
-  if (resolved?.operation?.kind === "abort-static" || resolved?.operation?.kind === "abort-any") return [];
-  if (resolved?.operation?.kind === "deferred-callback") {
-    if (!resolved.operation.effect) return [];
-    const scope = resolved.operation.effectScopeArgument === undefined ? undefined : call.arguments[resolved.operation.effectScopeArgument];
-    let literalScope = scope && ts.isStringLiteralLike(scope) ? scope.text : undefined;
-    if (resolved.operation.effectScopeKind === "net-connect" && scope) {
-      if (ts.isObjectLiteralExpression(scope)) {
-        const value = (name: string): ts.Expression | undefined => {
-          const property = scope.properties.find((candidate) => ts.isPropertyAssignment(candidate)
-            && !ts.isComputedPropertyName(candidate.name) && candidate.name.getText().replace(/^['"]|['"]$/g, "") === name);
-          return property && ts.isPropertyAssignment(property) ? property.initializer : undefined;
-        };
-        const host = value("host"), port = value("port");
-        if (host && ts.isStringLiteralLike(host) && port && ts.isNumericLiteral(port)) literalScope = `${host.text}:${port.text}`;
-      } else if (ts.isNumericLiteral(scope)) {
-        const host = call.arguments[resolved.operation.effectScopeArgument! + 1];
-        if (host && ts.isStringLiteralLike(host)) literalScope = `${host.text}:${scope.text}`;
-      }
-    }
-    if (resolved.operation.effectScopeKind === "http-request" && scope) {
-      if (ts.isStringLiteralLike(scope)) {
-        try {
-          const url = new URL(scope.text);
-          const port = url.port || String(resolved.operation.effectDefaultPort ?? (url.protocol === "https:" ? 443 : 80));
-          literalScope = `${url.hostname}:${port}`;
-        } catch { literalScope = undefined; }
-      } else if (ts.isObjectLiteralExpression(scope)) {
-        const value = (name: string): ts.Expression | undefined => {
-          const property = scope.properties.find((candidate) => ts.isPropertyAssignment(candidate)
-            && !ts.isComputedPropertyName(candidate.name) && candidate.name.getText().replace(/^['"]|['"]$/g, "") === name);
-          return property && ts.isPropertyAssignment(property) ? property.initializer : undefined;
-        };
-        const host = value("hostname") ?? value("host"), port = value("port");
-        const hostText = host && ts.isStringLiteralLike(host) ? host.text : undefined;
-        const portText = port && (ts.isStringLiteralLike(port) || ts.isNumericLiteral(port))
-          ? port.text : resolved.operation.effectDefaultPort === undefined ? undefined : String(resolved.operation.effectDefaultPort);
-        if (hostText && portText) literalScope = `${hostText}:${portText}`;
-      }
-    }
-    return [capability(literalScope ? `${resolved.operation.effect}<${JSON.stringify(literalScope)}>` : resolved.operation.effect)];
-  }
-  if (resolved?.operation?.kind === "scoped-effect") {
-    const scope = resolved.operation.effectScopeArgument === undefined ? undefined : call.arguments[resolved.operation.effectScopeArgument];
-    const literal = scope && ts.isStringLiteralLike(scope) ? scope.text : undefined;
-    return [capability(literal ? `${resolved.operation.effect}<${JSON.stringify(literal)}>` : resolved.operation.effect)];
-  }
-  if (resolved?.operation?.kind === "scheduler-post-task" || resolved?.operation?.kind === "scheduler-yield") return [capability("Timer")];
-  if (resolved?.operation?.kind === "promise-combinator") {
-    const staticallySafeArray = (expression: ts.Expression): boolean => {
-      while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
-      return ts.isArrayLiteralExpression(expression) && expression.elements.every((element) => !ts.isSpreadElement(element) || staticallySafeArray(element.expression));
-    };
-    const iterable = call.arguments[resolved.operation.iterableArgument];
-    return iterable && staticallySafeArray(iterable) ? [] : [capability("InvokeUserCode")];
-  }
-  if (resolved?.operation?.kind === "effect") return [capability(resolved.operation.effect)];
-  if (resolved?.operation?.kind === "mutation" && ts.isPropertyAccessExpression(call.expression)) {
-    const receiver = call.expression.expression;
-    if (ts.isCallExpression(receiver) && adapter.resolveCall(receiver)?.result?.kind === "fresh") return [];
-    return [mutateEffect(receiver)];
-  }
-  if (resolved?.operation?.kind === "clone") {
-    const value = call.arguments[resolved.operation.valueArgument];
-    const effects: Effect[] = value ? [capability(`Clone<typeof ${value.getText()}>`)] : [];
-    if (value && adapter.ownershipKind(value) === "shared") effects.push(capability(`SharedMemory<typeof ${value.getText()}>`));
-    const transfer = call.arguments[resolved.operation.transferArgument];
-    const list = transfer && ts.isArrayLiteralExpression(transfer) ? transfer
-      : transfer && ts.isObjectLiteralExpression(transfer) ? transfer.properties.flatMap((property) => ts.isPropertyAssignment(property)
-        && property.name.getText().replaceAll(/["']/g, "") === "transfer" && ts.isArrayLiteralExpression(property.initializer) ? [property.initializer] : [])[0]
-      : undefined;
-    for (const item of list?.elements ?? []) {
-      if (!ts.isExpression(item)) continue;
-      const kind = adapter.ownershipKind(item);
-      effects.push(capability(`${kind === "shared" ? "SharedMemory" : "Transfer"}<typeof ${item.getText()}>`));
-    }
-    return effects;
-  }
-  if (resolved?.operation?.kind === "dom" && ts.isPropertyAccessExpression(call.expression)) {
-    return effectsForResolvedDomCall(resolved.operation, call, adapter);
-  }
-  if (resolved?.receiverMutation && ts.isPropertyAccessExpression(call.expression)) {
-    const receiver = call.expression.expression;
-    if (ts.isCallExpression(receiver) && adapter.resolveCall(receiver)?.result?.kind === "fresh") return [];
-    return [mutateEffect(receiver)];
-  }
+  const generic = resolved ? effectsForGenericSemantics(resolved, call, adapter, checker) : undefined;
+  if (generic !== undefined) return [...generic, ...scriptEffects];
+  if (scriptEffects.length > 0) return scriptEffects;
   return [];
-}
-
-function effectsForResolvedDomCall(
-  operation: Extract<NonNullable<ReturnType<FrontendSymbolAdapter["resolveCall"]>>["operation"], { kind: "dom" }>,
-  call: ts.CallExpression,
-  adapter: FrontendSymbolAdapter,
-): Effect[] {
-  if (!ts.isPropertyAccessExpression(call.expression)) return [];
-  const receiver = call.expression.expression;
-  const region = adapter.resolveDomReceiverRegion(receiver) ?? receiver;
-  const effects: Effect[] = operation.operations.map((item) => capability(`Dom<${item}, typeof ${region.getText()}>`));
-  if (operation.mutatesReceiver) effects.push(mutateEffect(region));
-  for (const index of operation.mutatesArguments ?? []) if (call.arguments[index]) effects.push(mutateEffect(call.arguments[index]!));
-  if (operation.invokesUserCode) effects.push(capability("InvokeUserCode"));
-  return effects;
 }
 
 function effectsForStaticScriptInsertion(call: ts.CallExpression, adapter: FrontendSymbolAdapter): Effect[] {
@@ -536,28 +639,28 @@ function effectsForDomProperty(access: ts.PropertyAccessExpression | ts.ElementA
   const resolved = adapter.resolveProperty(access);
   if (!resolved) return undefined;
   const mode = domPropertyAccessMode(access);
-  const receiverRegion = access.expression.getText();
-  const writeRegion = resolved.operation.writeRegion === "parentNode"
-    ? `${receiverRegion}.parentNode`
-    : receiverRegion;
-  const effects = [
-    ...(mode.read ? resolved.operation.readOperations.map((operation) => capability(`Dom<${operation}, typeof ${receiverRegion}>`)) : []),
-    ...(mode.write ? resolved.operation.writeOperations.map((operation) => capability(`Dom<${operation}, typeof ${writeRegion}>`)) : []),
+  const events = [
+    ...(mode.read ? interpretBuiltinPropertySemantics(resolved.semantics, access, resolved, "read") : []),
+    ...(mode.write ? interpretBuiltinPropertySemantics(resolved.semantics, access, resolved, "write") : []),
   ];
-  if (mode.write && resolved.operation.mutatesReceiverOnWrite) effects.push(mutateEffect(access.expression));
-  if (mode.write && resolved.operation.mutatesWriteRegionOnWrite) effects.push(mutateRegionEffect(writeRegion));
-  if (mode.write && resolved.operation.invokesUserCodeOnWrite) effects.push(capability("InvokeUserCode"));
+  const effects: Effect[] = [];
+  for (const event of events) {
+    if (event.kind === "effect") {
+      if (!event.scope) addEffect(effects, capability(event.capability));
+      else if (event.scope.status === "resolved" && event.scope.kind === "region" && event.scope.member && event.scope.target) {
+        const region = projectedRegionText(event.scope.target, adapter);
+        if (!region) return undefined;
+        addEffect(effects, capability(`${event.capability}<${event.scope.member}, typeof ${region}>`));
+      } else return undefined;
+    } else if (event.kind === "mutate") {
+      const mutation = projectedMutationEffect(event.target, adapter);
+      if (!mutation) return undefined;
+      addEffect(effects, mutation);
+    } else if (event.kind === "invoke-user-code") addEffect(effects, capability("InvokeUserCode"));
+    else if (event.kind === "result") continue;
+    else return undefined;
+  }
   return effects;
-}
-
-function effectsForEffectProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression, adapter: FrontendSymbolAdapter): Effect[] | undefined {
-  const resolved = adapter.resolveEffectProperty(access);
-  if (!resolved) return undefined;
-  const mode = domPropertyAccessMode(access);
-  return [
-    ...(mode.read && resolved.operation.readEffect ? [capability(resolved.operation.readEffect)] : []),
-    ...(mode.write && resolved.operation.writeEffect ? [capability(resolved.operation.writeEffect)] : []),
-  ];
 }
 
 function effectsForDynamicDomProperty(access: ts.ElementAccessExpression, adapter: FrontendSymbolAdapter): Effect[] {
@@ -569,8 +672,8 @@ function effectsForDynamicDomProperty(access: ts.ElementAccessExpression, adapte
   return effects;
 }
 
-function fetchMethod(call: ts.CallExpression): string | undefined {
-  const init = call.arguments[1];
+function fetchMethod(call: ts.CallExpression, initArgument = 1): string | undefined {
+  const init = call.arguments[initArgument];
   if (!init) return "GET";
   if (!ts.isObjectLiteralExpression(init)) return undefined;
   const property = init.properties.find((item) =>
@@ -583,8 +686,7 @@ function fetchMethod(call: ts.CallExpression): string | undefined {
     : undefined;
 }
 
-function fetchUrl(call: ts.CallExpression): string | undefined {
-  const input = call.arguments[0];
+function fetchUrlExpression(input: ts.Expression | undefined): string | undefined {
   if (input && ts.isStringLiteralLike(input)) return input.text;
   if (input && ts.isNoSubstitutionTemplateLiteral(input)) return input.text;
   if (input && ts.isTemplateExpression(input)) {
@@ -617,21 +719,13 @@ function netAuthority(url: string): string | undefined {
   }
 }
 
-function effectsForFetch(call: ts.CallExpression): Effect[] {
-  const method = fetchMethod(call), url = fetchUrl(call);
-  const authority = url ? netAuthority(url) : undefined;
-  const fetch = `Fetch<${method ?? "Unknown<dynamic-method>"}, ${url && authority ? JSON.stringify(url) : "Unknown<dynamic-url>"}>`;
-  return [capability(fetch), capability(`Net<${authority ? JSON.stringify(authority) : "Unknown<dynamic-origin>"}>`)];
-}
-
 function networkBoundaryFromEffects(
   call: ts.CallExpression,
   resolved: ReturnType<FrontendSymbolAdapter["resolveCall"]>,
   effects: readonly Effect[],
 ): NetworkBoundaryEvidence | undefined {
   const script = effects.find((effect) => effect.kind === "capability" && effect.name === "ScriptLoad");
-  const fetch = resolved?.operation?.kind === "fetch"
-    ? effects.find((effect) => effect.kind === "capability" && effect.name === "Fetch") : undefined;
+  const fetch = effects.find((effect) => effect.kind === "capability" && effect.name === "Fetch");
   if (!script && !fetch) return undefined;
   const scoped = script && script.kind === "capability" ? script : fetch && fetch.kind === "capability" ? fetch : undefined;
   const targetSet = scoped?.arguments[1];
@@ -650,7 +744,50 @@ function networkBoundaryFromEffects(
   };
 }
 
-function substitute(effect: Effect, callee: FunctionInfo, edge: CallEdge): Effect | undefined {
+function staticStringArgument(text: string): string | undefined {
+  const parsed = ts.createSourceFile("__uneffect_argument.ts", `const value = (${text});`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const statement = parsed.statements[0];
+  let expression = statement && ts.isVariableStatement(statement)
+    ? statement.declarationList.declarations[0]?.initializer : undefined;
+  while (expression && (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression))) expression = expression.expression;
+  return expression && ts.isStringLiteralLike(expression) ? expression.text : undefined;
+}
+
+function substituteParameterizedCapability(
+  effect: Effect,
+  calleeParameters: readonly string[],
+  edgeArguments: readonly string[],
+  callerParameters: readonly string[],
+): Effect {
+  if (effect.kind !== "capability") return effect;
+  let changed = false;
+  const arguments_ = effect.arguments.map((argument) => {
+    if (argument.kind !== "unknown") return argument;
+    const parameterized = parseParameterizedCapabilityScope(argument.reason);
+    if (!parameterized) return argument;
+    changed = true;
+    const index = parameterized.parameterIndex, edgeArgument = edgeArguments[index];
+    if (edgeArgument === undefined || calleeParameters[index] === undefined) {
+      return { kind: "unknown" as const, reason: parameterized.scope === "filesystem-path" ? "dynamic-filesystem-path" : "dynamic-program" };
+    }
+    const literal = staticStringArgument(edgeArgument);
+    if (literal !== undefined) {
+      const instantiated = parseEffectExpression(`${effect.name}<${JSON.stringify(literal)}>`);
+      if (instantiated.kind === "capability" && instantiated.arguments.length === 1) return instantiated.arguments[0]!;
+    }
+    const callerIndex = callerParameters.indexOf(edgeArgument);
+    return callerIndex >= 0
+      ? { kind: "unknown" as const, reason: `parameter-${parameterized.scope}-${callerIndex}` }
+      : { kind: "all" as const };
+  });
+  return changed ? { ...effect, arguments: arguments_ } : effect;
+}
+
+function substitute(effect: Effect, callee: FunctionInfo, edge: CallEdge, caller: FunctionInfo): Effect | undefined {
+  if (effect.kind === "capability") {
+    return substituteParameterizedCapability(effect, callee.parameters, edge.arguments, caller.parameters);
+  }
   if (effect.kind !== "mutate") return effect;
   const region = effect.region;
   for (let index = 0; index < callee.parameters.length; index++) {
@@ -750,6 +887,32 @@ function instantiateExternalEffect(
   call: ts.CallExpression,
   checker: ts.TypeChecker,
 ): Effect | undefined {
+  if (effect.kind === "capability") {
+    let changed = false;
+    const arguments_ = effect.arguments.map((argument) => {
+      if (argument.kind !== "unknown") return argument;
+      const parameterized = parseParameterizedCapabilityScope(argument.reason);
+      if (!parameterized) return argument;
+      changed = true;
+      const value = call.arguments[parameterized.parameterIndex];
+      if (!value || ts.isSpreadElement(value)) return {
+        kind: "unknown" as const,
+        reason: parameterized.scope === "filesystem-path" ? "dynamic-filesystem-path" : "dynamic-program",
+      };
+      let expression: ts.Expression = value;
+      while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+      if (ts.isStringLiteralLike(expression)) {
+        const instantiated = parseEffectExpression(`${effect.name}<${JSON.stringify(expression.text)}>`);
+        if (instantiated.kind === "capability" && instantiated.arguments.length === 1) return instantiated.arguments[0]!;
+      }
+      const callerIndex = parameterIndexForExpression(expression, checker);
+      return callerIndex === undefined
+        ? { kind: "all" as const }
+        : { kind: "unknown" as const, reason: `parameter-${parameterized.scope}-${callerIndex}` };
+    });
+    return changed ? { ...effect, arguments: arguments_ } : effect;
+  }
   if (effect.kind !== "mutate") return effect;
   for (const [index, parameter] of (contract.parameters ?? []).entries()) {
     if (effect.region !== parameter && !effect.region.startsWith(`${parameter}.`) && !effect.region.startsWith(`${parameter}[`)) continue;
@@ -973,24 +1136,20 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
         if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
       }
-      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForEffectProperty(node, adapter) ?? []) addEffect(info.direct, effect);
       if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {
         if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
       }
       if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
         && processEnvEffects(checker, node.left) === undefined
-        && effectsForEffectProperty(node.left, adapter) === undefined) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
+        && effectsForDomProperty(node.left, adapter) === undefined) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if (ts.isCallExpression(node)) {
-        const builtinOperation = adapter.resolveCall(node)?.operation;
+        const resolvedBuiltin = adapter.resolveCall(node);
         for (const effect of primitiveEffects(node, adapter, checker)) if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
-        const callbackIndex = builtinOperation?.kind === "timer" ? builtinOperation.callbackArgument
-          : builtinOperation?.kind === "scheduler-post-task" ? builtinOperation.callbackArgument
-          : builtinOperation?.kind === "fs" && builtinOperation.callbackArgumentFromEnd
-            ? node.arguments.length - builtinOperation.callbackArgumentFromEnd
-            : builtinOperation?.kind === "deferred-callback"
-              ? node.arguments.length - builtinOperation.callbackArgumentFromEnd : undefined;
-        const callback = callbackIndex === undefined ? undefined : node.arguments[callbackIndex];
+        const semanticCallback = projectBuiltinCallbacks(resolvedBuiltin, node, checker)
+          .find((event) => event.timing === "deferred" && event.target.status === "resolved");
+        const semanticCallbackExpression = semanticCallback?.target.status === "resolved" ? semanticCallback.target.expression : undefined;
+        const callback = semanticCallbackExpression;
         if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
           visit(callback.body, false, true);
         } else if (callback && ts.isIdentifier(callback) && functions.has(callback.text)) {
@@ -1017,7 +1176,9 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
     };
     visit(info.node.body!, false);
   }
-  const inferred = new Map([...functions].map(([name, info]) => [name, [...info.direct]]));
+  const inferred = new Map([...functions].map(([name, info]) => [
+    name, info.direct.map((effect) => closeCapabilityScope(effect, info.declared)),
+  ]));
   let changed = true;
   while (changed) {
     changed = false;
@@ -1026,7 +1187,8 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       for (const rawEffect of inferred.get(edge.target) ?? []) {
         if (rawEffect.kind === "throw" && isAsyncFunction(info.node)) continue;
         if (edge.dischargesThrow && rawEffect.kind === "throw") continue;
-        const effect = substitute(rawEffect, callee, edge), own = inferred.get(info.name)!;
+        const substituted = substitute(rawEffect, callee, edge, info);
+        const effect = substituted && closeCapabilityScope(substituted, info.declared), own = inferred.get(info.name)!;
         if (effect === undefined) continue;
         if (!own.some((item) => formatEffect(item) === formatEffect(effect))) { own.push(effect); changed = true; }
       }
@@ -1041,21 +1203,26 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
   for (const info of functions.values()) {
     const line = source.getLineAndCharacterOfPosition(info.node.getStart(source)).line + 1;
     const actual = inferred.get(info.name)!;
+    const checkedActual = actual.map(widenDiagnosticCapability);
+    for (const effect of actual) for (const reason of unresolvedGenericScopeReasons(effect)) diagnostics.push({
+      fileName, functionName: info.name, effect: formatEffect(effect), kind: "unknown", severity: "error", line,
+      message: `${info.name} uses an unresolved effect scope: ${reason}`,
+    });
     for (const effect of info.declared) if (!isKnownEffect(effect)) diagnostics.push({
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "unknown",
       severity: options.mode === "strict" ? "error" : "warning", line,
       message: `${info.name} declares unknown effect ${formatEffect(effect)}`,
       notes: unknownEffectNotes(info.declared, effect),
     });
-    for (const effect of actual) if (!permits(info.declared, effect) && (info.declaredPresent || options.requireAnnotations !== false)) diagnostics.push({
+    for (const effect of checkedActual) if (!permits(info.declared, effect) && (info.declaredPresent || options.requireAnnotations !== false)) diagnostics.push({
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "missing", severity: "error", line,
       message: `${info.name} requires /* uneffect:capability effect ${formatEffect(effect)} */`,
       notes: missingEffectNotes(info.declared, effect),
     });
-    for (const effect of info.declared) if (![...actual].some((item) => permits([effect], item))) diagnostics.push({
+    for (const effect of info.declared) if (!checkedActual.some((item) => permits([effect], item))) diagnostics.push({
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line,
       message: `${info.name} declares unused effect ${formatEffect(effect)}`,
-      notes: unusedEffectNotes(info.name, info.declared, actual, effect),
+      notes: unusedEffectNotes(info.name, info.declared, checkedActual, effect),
     });
   }
   const summaries = [...functions.values()].map((info): EffectSummary => {
@@ -1120,7 +1287,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       externalIteratorEffects.set(key, { key, parameters: contract.iteratorEffectParameters! });
     }
   }
-  const graph = buildProgramCallGraph(program, { externalIteratorEffects }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
+  const graph = buildProgramCallGraph(program, { externalIteratorEffects, builtinRegistry: registry }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
   const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
   for (const source of program.getSourceFiles()) if (!source.isDeclarationFile) {
     const problems = validateUneffectAnnotations(source.text);
@@ -1232,14 +1399,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child)) for (const effect of effectsForDomProperty(child, adapter) ?? []) {
         if (observableMutation(effect, locals)) observe(effect, child);
       }
-      if (ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child)) for (const effect of effectsForEffectProperty(child, adapter) ?? []) observe(effect, child);
       if (ts.isElementAccessExpression(child)) for (const effect of effectsForDynamicDomProperty(child, adapter)) {
         if (observableMutation(effect, locals)) observe(effect, child);
       }
       if (ts.isBinaryExpression(child) && isAssignmentOperator(child.operatorToken.kind)
         && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))
         && processEnvEffects(checker, child.left) === undefined
-        && effectsForEffectProperty(child.left, adapter) === undefined) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
+        && effectsForDomProperty(child.left, adapter) === undefined) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
       if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand))) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
@@ -1282,7 +1448,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       name: bound.name, effects: [...bound.effects],
     }])));
   }
-  const inferred = new Map([...direct].map(([id, effects]) => [id, [...effects]]));
+  const inferred = new Map([...direct].map(([id, effects]) => [
+    id, effects.map((effect) => closeCapabilityScope(effect, declared.get(id) ?? [])),
+  ]));
   const inferredNetworkBoundaries = new Map([...directNetworkBoundaries].map(([id, boundaries]) => [id, [...boundaries]]));
   const unknownTiming = new Set<string>(), unknownGeneratorEvidence = new Set<string>(), unknownGeneratorParameterEvidence = new Set<string>();
   const unknownMutationAliasEvidence = new Set<string>();
@@ -1317,7 +1485,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       for (const raw of inferred.get(edge.callee)!) {
         if (raw.kind === "throw" && asyncOwners.has(edge.caller)) continue;
         if (edge.dischargesThrow && raw.kind === "throw") continue;
-        const effect = raw.kind === "mutate" ? (() => {
+        const effect = raw.kind === "capability"
+          ? substituteParameterizedCapability(raw, calleeParams, edge.arguments, parameters.get(edge.caller) ?? [])
+          : raw.kind === "mutate" ? (() => {
           for (let index = 0; index < calleeParams.length; index++) {
             const parameter = calleeParams[index]!;
             if (raw.region === parameter || raw.region.startsWith(`${parameter}.`) || raw.region.startsWith(`${parameter}[`)) {
@@ -1329,10 +1499,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           return raw;
         })() : raw;
         if (effect === undefined) continue;
-        if (!observableMutation(effect, localsById.get(edge.caller) ?? new Set())) continue;
-        const own = inferred.get(edge.caller)!, key = formatEffect(effect);
+        const closedEffect = closeCapabilityScope(effect, declared.get(edge.caller) ?? []);
+        if (!observableMutation(closedEffect, localsById.get(edge.caller) ?? new Set())) continue;
+        const own = inferred.get(edge.caller)!, key = formatEffect(closedEffect);
         if (!own.some((item) => formatEffect(item) === key)) {
-          own.push(effect);
+          own.push(closedEffect);
           changed = true;
           const inherited = propagation.get(edge.caller) ?? new Map<string, EffectPropagation>();
           propagation.set(edge.caller, inherited);
@@ -1498,7 +1669,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   }
   for (const graphNode of graph.nodes) {
     const actual = inferred.get(graphNode.id)!, allowed = declared.get(graphNode.id)!, source = nodes.get(graphNode.id)!.getSourceFile();
+    const checkedActual = actual.map(widenDiagnosticCapability);
     const line = source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1;
+    const unresolvedScopes = actual.flatMap((effect) => unresolvedGenericScopeReasons(effect));
     if (unknownMutationAliasEvidence.has(graphNode.id)) {
       const span = unknownMutationAliasSpans.get(graphNode.id) ?? graphNode.span;
       diagnostics.push({
@@ -1513,7 +1686,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       });
     }
     for (const effect of allowed) if (!isKnown(effect)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: options.mode === "strict" ? "error" : "warning", line, message: `${graphNode.name} declares unknown effect ${formatEffect(effect)}`, notes: unknownEffectNotes(allowed, effect) });
-    for (const effect of actual) if (!permits(allowed, effect) && (declaredPresent.has(graphNode.id) || options.requireAnnotations !== false)) {
+    for (const effect of actual) for (const reason of unresolvedGenericScopeReasons(effect)) diagnostics.push({
+      fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: "error", line,
+      message: `${graphNode.name} uses an unresolved effect scope: ${reason}`,
+    });
+    for (const effect of checkedActual) if (!permits(allowed, effect) && (declaredPresent.has(graphNode.id) || options.requireAnnotations !== false)) {
       const key = formatEffect(effect);
       diagnostics.push({
         fileName: source.fileName, functionName: graphNode.name, effect: key, kind: "missing", severity: "error", line,
@@ -1521,7 +1698,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         notes: missingEffectNotes(allowed, effect, origin(graphNode.id, key, source.fileName)),
       });
     }
-    for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: unusedEffectNotes(graphNode.name, allowed, actual, effect) });
+    for (const effect of allowed) if (!checkedActual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: unusedEffectNotes(graphNode.name, allowed, checkedActual, effect) });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
     const polymorphicIterator = graphNode.iteratorEffectParameters.length > 0;
     const bounds = iteratorEffectBounds.get(graphNode.id) ?? new Map();
@@ -1539,6 +1716,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (invalidIteratorInstantiationCallers.has(graphNode.id)) addUnknownReason("invalid-iterator-instantiation", "an iterator effect argument exceeds or cannot satisfy its declared bound");
     if (unknownExternalEvidence.has(graphNode.id)) addUnknownReason("unknown-external-evidence", "a resolved external effect contract is unknown or cannot be instantiated at this call site");
     if (unknownMutationAliasEvidence.has(graphNode.id)) addUnknownReason("unresolved-mutation-alias", "a mutable object alias cannot be reduced to one non-escaping addressable root");
+    if (unresolvedScopes.length > 0) addUnknownReason("unresolved-effect-scope", `effect authority scope is unresolved: ${[...new Set(unresolvedScopes)].join(", ")}`);
     if (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator) addUnknownReason("unbounded-iterator-effect-parameter", "a declared function consumes caller-supplied iterator effects without an effect_parameter upper bound");
     const evidence: EvidenceStatus = invalidSources.has(source.fileName) || invalidAnnotationSources.has(source.fileName)
       || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id)
@@ -1547,6 +1725,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       || invalidIteratorInstantiationCallers.has(graphNode.id)
       || unknownExternalEvidence.has(graphNode.id)
       || unknownMutationAliasEvidence.has(graphNode.id)
+      || unresolvedScopes.length > 0
       || (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator)
       ? "unknown" : fullyBoundIterator ? (own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified")
         : !declaredPresent.has(graphNode.id) ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
@@ -1781,13 +1960,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
-      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForEffectProperty(node, adapter) ?? []) addEffect(effects, effect);
       if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
       if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind)
         && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
-        && effectsForEffectProperty(node.left, adapter) === undefined) {
+        && effectsForDomProperty(node.left, adapter) === undefined) {
         const effect = mutateEffect(node.left);
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
@@ -1825,46 +2003,35 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           if (!inferred.has(targetId) && primitive.length === 0 && !resolvedBuiltin && !external) markUnknown("unresolved-call", "a top-level call target has no analyzed effect summary or reviewed contract");
         } else if (!resolvedDynamicDependency && primitive.length === 0 && !resolvedBuiltin && !external) markUnknown("unresolved-call", "a top-level call target cannot be resolved by TypeChecker identity or a reviewed contract");
         const callbackIndices = new Set(graphNodesById.get(targetId ?? "")?.effectParameters.map((parameter) => parameter.index) ?? []);
-        const operation = resolvedBuiltin?.operation;
-        const builtinCallbacks = operation?.kind === "inline-callback"
-          ? operation.callbackArguments
-          : operation?.kind === "timer" || operation?.kind === "scheduler-post-task"
-          ? [operation.callbackArgument]
-          : operation?.kind === "fs" && operation.callbackArgumentFromEnd
-            ? [node.arguments.length - operation.callbackArgumentFromEnd]
-            : operation?.kind === "deferred-callback"
-              ? [node.arguments.length - operation.callbackArgumentFromEnd] : [];
+        const semanticCallbackEvents = projectBuiltinCallbacks(resolvedBuiltin, node, checker);
+        const semanticCallbackIndices = semanticCallbackEvents.flatMap((event) => {
+          if (event.target.status !== "resolved") return [];
+          const expression = event.target.expression;
+          const index = node.arguments.findIndex((argument) => argument === expression);
+          return index < 0 ? [] : [index];
+        });
+        const builtinCallbacks = semanticCallbackIndices;
         for (const builtinCallback of builtinCallbacks) callbackIndices.add(builtinCallback);
         for (const index of callbackIndices) {
           const callback = node.arguments[index];
-          if (!callback) {
-            if (operation?.kind !== "inline-callback" || !operation.optionalCallbackArguments?.includes(index)) {
-              markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument");
-            }
-            continue;
-          }
+          if (!callback) { markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument"); continue; }
           const callbackEffects = resolveStableFunctionEffects(callback);
           if (!callbackEffects) { markUnknown("unresolved-callback", "a callback argument is mutable, dynamic, or lacks an analyzed function body"); continue; }
           for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         }
-        if (operation?.kind === "inline-callback") for (const index of operation.callbackArrayArguments ?? []) {
-          const argument = node.arguments[index];
-          if (!argument || !ts.isArrayLiteralExpression(argument)) {
-            markUnknown("unresolved-callback", "a reviewed callback-array argument is not an array literal");
+        const semanticEvents = resolvedBuiltin?.semantics
+          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, node, { symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span }) : [];
+        for (const event of semanticEvents) {
+          if (event.kind === "unknown" && event.primitive.kind === "callback" && event.primitive.callable !== "optional") {
+            markUnknown("unresolved-callback", event.reason);
+          }
+          if (event.kind !== "callback" || event.returnDepth === undefined || event.target.status !== "resolved") continue;
+          const callbackEffects = resolveStableFunctionChainEffects(event.target.expression, event.returnDepth);
+          if (!callbackEffects) {
+            markUnknown("unresolved-callback", "a callback collection element or its invoked return is mutable, dynamic, or lacks an analyzed function body");
             continue;
           }
-          for (const element of argument.elements) {
-            if (!ts.isExpression(element)) {
-              markUnknown("unresolved-callback", "a reviewed callback array contains a spread or omitted element");
-              continue;
-            }
-            const callbackEffects = resolveStableFunctionChainEffects(element, operation.callbackArrayReturnDepth ?? 0);
-            if (!callbackEffects) {
-              markUnknown("unresolved-callback", "a callback-array element or its invoked return is mutable, dynamic, or lacks an analyzed function body");
-              continue;
-            }
-            for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
-          }
+          for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         }
         for (const callback of resolvedBuiltin?.capturedCallbacks ?? []) {
           const callbackEffects = resolveStableFunctionEffects(callback);

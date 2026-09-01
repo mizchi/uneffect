@@ -123,7 +123,7 @@ export const toU32 = u32;
 
 export { analyzeEffectSummariesInProgram, analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "./effects.js";
 export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus, ExternalFunctionEffectContract, ExternalModuleEffectContract } from "./effects.js";
-export { capabilityPermits, effectSchema, formatEffect, parseEffectExpression, parseEffectSet, registerEffectSchema, unknownCapabilityReasons } from "./capabilities.js";
+export { capabilityPermits, effectSchema, formatEffect, parseEffectExpression, parseEffectSet, parseParameterizedCapabilityScope, registerEffectSchema, unknownCapabilityReasons, unresolvedCapabilityReasons } from "./capabilities.js";
 export type { AtomDomain, CapabilityAtom, CapabilityComparisonOptions, CapabilityEffect, CapabilitySet, Effect, EffectSchema } from "./capabilities.js";
 export { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "./instrument.js";
 export type { CachedVerifiedOwnershipBuildResult, OwnershipAssertionInsertion, OwnershipInstrumentResult, VerifiedOwnershipBuildResult } from "./instrument.js";
@@ -208,6 +208,19 @@ export type { ClockConformanceDiagnostic, ClockConformancePolicy, ClockConforman
 export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js";
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
 export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract } from "./builtin-contracts.js";
+export { stableSerializeBuiltinSemantics, validateBuiltinSemantics } from "./builtin-semantic-schema.js";
+export type {
+  BuiltinSemantics,
+  CallbackCardinality as BuiltinCallbackCardinality,
+  CallbackQueue as BuiltinCallbackQueue,
+  CallbackTiming as BuiltinCallbackTiming,
+  ResultRefinement as BuiltinResultSemanticRefinement,
+  ScopeProjector,
+  SemanticPrimitive,
+  ValueProjector,
+} from "./builtin-semantic-schema.js";
+export { interpretBuiltinCallSemantics, projectBuiltinCallbacks } from "./builtin-semantic-interpreter.js";
+export type { BuiltinCallbackEvent, BuiltinSemanticEvent, BuiltinSemanticSource, ProjectedScope, ProjectedValue, SemanticEventSource } from "./builtin-semantic-interpreter.js";
 export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "./registry-config.js";
 export { installUneffectModules, loadUneffectModules, parseUneffectModuleManifest, uneffectModuleSchema, UneffectModuleError } from "./modules.js";
 export type { UneffectModuleLedgerEntry, UneffectModuleManifest } from "./modules.js";
@@ -231,25 +244,13 @@ export { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-r
 export type { CheckJsonReport, CheckReportEffect, CheckWorkspaceJsonReport, WorkspaceCheckAssurance, WorkspaceCheckBlocker } from "./check-report.js";
 export type {
   BuiltinContract,
-  BuiltinOperation,
   BuiltinContractRegistry,
   BuiltinContractRegistryExtension,
   ModuleInitializationContract,
   ModuleInitializationEnvironment,
   BuiltinSymbolKey,
   PathResultRefinement,
-  FsBuiltinOperation,
-  FetchBuiltinOperation,
-  TimerBuiltinOperation,
-  DeferredCallbackBuiltinOperation,
-  TimerClearBuiltinOperation,
   PromiseCombinator,
-  PromiseCombinatorBuiltinOperation,
-  StaticEffectBuiltinOperation,
-  MutationBuiltinOperation,
-  CloneBuiltinOperation,
-  DomBuiltinOperation,
-  DomOperation,
   DeclarationFingerprint,
 } from "./builtin-contracts.js";
 export { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements, TypeScriptFrontendAdapter } from "./frontend-adapter.js";

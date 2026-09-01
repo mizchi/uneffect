@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { builtinSemanticCatalog, materializeBuiltinSemanticDefinitions } from "./builtin-semantic-catalog.js";
+import type { BuiltinSemantics } from "./builtin-semantic-schema.js";
 
 export interface BuiltinSymbolKey {
   module: string;
@@ -16,81 +17,11 @@ export interface PathResultRefinement {
 export interface FreshResultRefinement { kind: "fresh" }
 export type BuiltinResultRefinement = PathResultRefinement | FreshResultRefinement;
 
-export interface FsBuiltinOperation {
-  kind: "fs";
-  read: boolean;
-  write: boolean;
-  readPathArgument?: number;
-  writePathArgument?: number;
-  mutateArgument?: number;
-  callbackArgumentFromEnd?: number;
-  callbackMinimumArguments?: number;
-  callbackMustBeCallable?: boolean;
-  callbackQueue?: "poll";
-  callbackRepeats?: boolean;
-}
-
-export interface StaticEffectBuiltinOperation { kind: "effect"; effect: string }
-export interface ScopedEffectBuiltinOperation { kind: "scoped-effect"; effect: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "run-program" }
-export interface MutationBuiltinOperation { kind: "mutation" }
-export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
-export interface FetchBuiltinOperation { kind: "fetch" }
-export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" | "animation-frame" | "next-tick" | "check" }
-export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean; queue: "next-tick" | "poll" | "close"; repeats?: boolean; resultHandleFamily?: "server"; closesReceiverFamily?: "server"; effect?: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "net-connect" | "http-request" | "run-program"; effectDefaultPort?: number }
-export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument?: number; handleReceiver?: boolean; family: "timeout" | "immediate" | "animation-frame" | "watcher"; effect?: string }
-export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgument: number }
-export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
-export interface AbortAnyBuiltinOperation { kind: "abort-any"; signalsArgument: number }
-export interface SchedulerPostTaskBuiltinOperation { kind: "scheduler-post-task"; callbackArgument: number; optionsArgument: number }
-export interface SchedulerYieldBuiltinOperation { kind: "scheduler-yield" }
-export interface InlineCallbackBuiltinOperation {
-  kind: "inline-callback";
-  /** Arguments that are themselves invoked synchronously. */
-  callbackArguments: readonly number[];
-  /** Callback positions that may be omitted by the selected overload. */
-  optionalCallbackArguments?: readonly number[];
-  /** Array-literal arguments whose function elements are invoked synchronously. */
-  callbackArrayArguments?: readonly number[];
-  /** Number of callable-return layers synchronously invoked for each callback-array element. */
-  callbackArrayReturnDepth?: number;
-}
 export type PromiseCombinator = "all" | "allSettled" | "race" | "any";
-export interface PromiseCombinatorBuiltinOperation { kind: "promise-combinator"; combinator: PromiseCombinator; iterableArgument: number }
-export type DomOperation =
-  | "AttributeRead" | "AttributeWrite"
-  | "NodeRead" | "NodeWrite"
-  | "TextRead" | "TextWrite"
-  | "PropertyRead" | "PropertyWrite"
-  | "LayoutRead" | "Create" | "Listen" | "Dispatch" | "Parse";
-export interface DomBuiltinOperation {
-  kind: "dom";
-  operations: readonly [DomOperation, ...DomOperation[]];
-  mutatesReceiver?: boolean;
-  mutatesArguments?: readonly number[];
-  invokesUserCode?: boolean;
-  queryArgument?: number;
-}
-export interface DomPropertyBuiltinOperation {
-  kind: "dom-property";
-  readOperations: readonly DomOperation[];
-  writeOperations: readonly DomOperation[];
-  resultRegion?: "receiver";
-  writeRegion?: "parentNode";
-  mutatesReceiverOnWrite?: boolean;
-  mutatesWriteRegionOnWrite?: boolean;
-  invokesUserCodeOnWrite?: boolean;
-}
-export interface EffectPropertyBuiltinOperation {
-  kind: "effect-property";
-  readEffect?: string;
-  writeEffect?: string;
-}
-
-export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | InlineCallbackBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | DomPropertyBuiltinOperation | EffectPropertyBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
 export interface CallableResultContract {
-  /** Operation performed when the returned function is called. Omission means zero reviewed authority. */
-  operation?: BuiltinOperation;
+  /** Generic semantics performed when the returned function is called. */
+  semantics?: BuiltinSemantics;
   /** Factory argument positions captured and synchronously invoked by the returned function. */
   capturedCallbackArguments?: readonly number[];
 }
@@ -103,10 +34,8 @@ export interface BuiltinContract {
   trustReason?: string;
   trustOwner?: string;
   trustExpiresOn?: string;
-  result?: BuiltinResultRefinement;
-  /** Orthogonal projection: the call mutates its receiver in addition to its primary operation. */
-  receiverMutation?: boolean;
-  operation?: BuiltinOperation;
+  /** Versioned generic semantics interpreted by every participating domain. */
+  semantics?: BuiltinSemantics;
   callableResult?: CallableResultContract;
 }
 
@@ -127,10 +56,6 @@ export interface ModuleInitializationContract {
 export interface ModuleInitializationEnvironment {
   packageVersion?: string;
   nodeMajor?: number;
-}
-
-function trusted(contract: Omit<BuiltinContract, "evidence">): BuiltinContract {
-  return { ...contract, evidence: "trusted" };
 }
 
 export interface BuiltinContractRegistry {
@@ -284,55 +209,5 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: "reviewed package module initialization boundary", trustOwner: "@mizchi/uneffect",
     })),
   ],
-  contracts: [
-    trusted({
-      symbol: { module: "corsa-oxlint", export: "OxlintUtils#RuleCreator" },
-      runtime: { kind: "package", version: "1.12.4" },
-      callableResult: { capturedCallbackArguments: [0] },
-      trustReason: "Corsa 1.12.4 RuleCreator returns a synchronous decorator that invokes its captured URL creator",
-      trustOwner: "@mizchi/uneffect",
-    }),
-    trusted({
-      symbol: { module: "corsa-oxlint", export: "definePlugin" },
-      runtime: { kind: "package", version: "1.12.4" },
-      trustReason: "Corsa 1.12.4 definePlugin constructs plugin metadata without executing rule code",
-      trustOwner: "@mizchi/uneffect",
-    }),
-    ...(["pipe", "number", "safeInteger", "brand", "minValue", "maxValue", "finite"] as const).map((name): BuiltinContract => trusted({
-      symbol: { module: "valibot", export: name },
-      runtime: { kind: "package", version: "1.4.2" },
-      trustReason: `Valibot 1.4.2 ${name} constructs schema metadata without executing validation`,
-      trustOwner: "@mizchi/uneffect",
-    })),
-    ...materializeBuiltinSemanticDefinitions(builtinSemanticCatalog.definitions),
-    trusted({
-      symbol: { module: "typescript", export: "Program#emit" },
-      runtime: { kind: "package", version: "6.0.3" },
-      operation: { kind: "inline-callback", callbackArguments: [1] },
-      trustReason: "TypeScript Program.emit invokes writeFile during the synchronous emit operation",
-      trustOwner: "@mizchi/uneffect",
-    }),
-    ...([
-      ["Node#forEachChild", [0, 1], [1]],
-      ["forEachChild", [1, 2], [2]],
-      ["visitNode", [1]],
-      ["visitEachChild", [1]],
-    ] as const).map(([name, callbackArguments, optionalCallbackArguments]): BuiltinContract => trusted({
-      symbol: { module: "typescript", export: name },
-      runtime: { kind: "package", version: "6.0.3" },
-      operation: { kind: "inline-callback", callbackArguments, ...(optionalCallbackArguments ? { optionalCallbackArguments } : {}) },
-      trustReason: `TypeScript 6.0.3 ${name} invokes its visitor callbacks synchronously`,
-      trustOwner: "@mizchi/uneffect",
-    })),
-    trusted({
-      symbol: { module: "typescript", export: "transform" },
-      runtime: { kind: "package", version: "6.0.3" },
-      operation: { kind: "inline-callback", callbackArguments: [], callbackArrayArguments: [1], callbackArrayReturnDepth: 1 },
-      trustReason: "TypeScript 6.0.3 transform synchronously invokes each array-literal TransformerFactory and its returned Transformer",
-      trustOwner: "@mizchi/uneffect",
-    }),
-    ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete"].map((name): BuiltinContract => ({
-      ...trusted({ symbol: { module: "lib.es", export: name }, operation: { kind: "mutation" } }),
-    })),
-  ],
+  contracts: materializeBuiltinSemanticDefinitions(builtinSemanticCatalog.definitions),
 };

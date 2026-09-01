@@ -4,6 +4,8 @@ import { analyzeAsyncSafetyInProgram, type AsyncSafetyDiagnostic, type AsyncSafe
 import { analyzeAsyncPatternsInProgram, generateNodeEventLoopQuint, generateWebEventLoopQuint, type AsyncPatternModel, type TimerPattern } from "./async-patterns.js";
 import { analyzeCallableSummaries, type CallbackCardinality, type CallableSummary, type CallableSummaryDiagnostic } from "./callable-summary.js";
 import type { PromiseChainModel, PromiseExecutorSettlement } from "./promise-chains.js";
+import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js";
 
 export type HostNeutralLane = "inline" | "microtask" | "host-task" | "external" | "unknown";
 export type HostNeutralCompletion = "normal" | "propagate-throw" | "throw" | "reject" | "host-report-throw" | "unknown";
@@ -185,6 +187,7 @@ function synchronousFunctionExecution(node: ts.Node): boolean {
 
 export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.SourceFile): AbortSignalAnalysis {
   const checker = program.getTypeChecker();
+  const adapter = new TypeScriptFrontendAdapter(program);
   const controllers: AbortControllerSummary[] = [];
   const controllerSymbols = new Map<ts.Symbol, AbortControllerSummary>();
   const collectControllers = (node: ts.Node): void => {
@@ -213,18 +216,22 @@ export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.Sou
   collectControllers(source);
   const events: AbortSignalEvent[] = [];
   const collectEvents = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === "abort" && ts.isIdentifier(node.expression.expression)) {
-      const receiver = resolvedSymbol(checker, node.expression.expression);
+    if (ts.isCallExpression(node)) {
+      const resolved = adapter.resolveCall(node);
+      const protocol = resolved?.semantics
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span })
+          .find((event) => event.kind === "protocol" && event.name === "abort-controller" && event.transition === "abort")
+        : undefined;
+      const controllerInput = protocol?.kind === "protocol" ? protocol.inputs.controller : undefined;
+      const receiver = controllerInput?.status === "resolved" && ts.isIdentifier(controllerInput.expression)
+        ? resolvedSymbol(checker, controllerInput.expression) : undefined;
       const controller = receiver ? controllerSymbols.get(receiver) : undefined;
-      const method = resolvedSymbol(checker, node.expression.name);
-      const builtin = method?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())
-        && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "AbortController");
-      if (controller && builtin) events.push({
+      const reasonInput = protocol?.kind === "protocol" ? protocol.inputs.reason : undefined;
+      if (controller && protocol) events.push({
         controllerIndex: controller.index,
         controller: controller.binding,
         owner: lexicalOwner(node),
-        reason: node.arguments[0]?.getText(source) ?? "AbortError",
+        reason: reasonInput?.status === "resolved" ? reasonInput.expression.getText(source) : "AbortError",
         conditional: conditionalExecution(node),
         synchronous: synchronousFunctionExecution(node),
         span: { start: node.getStart(source), end: node.getEnd() },

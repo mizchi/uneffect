@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateResourceProtocolCfg, type ResourceProtocolModel } from "../src/resource-protocol.js";
 import { analyzeCallableSummaries } from "../src/callable-summary.js";
 import { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "../src/resource-callable-typescript.js";
-import { collectCallableExceptionalTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "../src/resource-protocol-typescript.js";
+import { collectBuiltinResourceTransitionSites, collectCallableExceptionalTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "../src/resource-protocol-typescript.js";
 
 function fixture(text: string): { source: ts.SourceFile; fn: ts.FunctionDeclaration; sites: ResourceTransitionSite[] } {
   const source = ts.createSourceFile("/entry.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -33,6 +33,33 @@ const model: ResourceProtocolModel = {
 };
 
 describe("TypeScript resource protocol CFG lowering", () => {
+  it("lowers generic builtin stream acquire/release semantics without API-specific CFG logic", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-builtin-resource-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        function read(stream: ReadableStream<Uint8Array>) {
+          const reader = stream.getReader()
+          const alias = reader
+          alias.releaseLock()
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, lib: ["lib.esnext.d.ts", "lib.dom.d.ts"], noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const fn = source.statements.find(ts.isFunctionDeclaration)!;
+      const collected = collectBuiltinResourceTransitionSites(program, fn);
+      expect(collected.resources).toEqual([expect.objectContaining({ id: "reader", kind: "stream-reader", initialState: "absent" })]);
+      expect(collected.sites.flatMap((site) => site.transitions)).toMatchObject([
+        { kind: "acquire", resource: "reader", evidence: "trusted" },
+        { kind: "release", resource: "reader", evidence: "trusted" },
+      ]);
+      const lowered = lowerResourceProtocolCfgInFunction(source, fn, {
+        schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],
+      }, collected.sites);
+      expect(lowered.status).toBe("exact");
+      if (lowered.status === "exact") expect(evaluateResourceProtocolCfg(lowered.cfg).status).toBe("satisfied");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
   it("extracts and instantiates declared resource boundaries by symbol identity", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-boundary-"));
     try {

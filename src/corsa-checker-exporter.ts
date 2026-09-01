@@ -344,12 +344,14 @@ export const corsaCheckerFactRule = createRule({
             });
           }
         }
-        const inferred = directSymbol ? checkerBuiltinEffect(
+        const inferred = directSymbol ? checkerBuiltinEffects(
           checker, node, directSymbol, callee, text, rootFiles, importedBuiltinBindings.get(directSymbol.id),
-        ) : undefined;
-        if (inferred && !caller.inferredEffects.some((item) => item.effect === inferred.effect
-          && item.symbolIdentity === inferred.symbolIdentity && item.start === inferred.start)) {
-          caller.inferredEffects.push(inferred);
+        ) : [];
+        for (const effect of inferred) {
+          if (!caller.inferredEffects.some((item) => item.effect === effect.effect
+            && item.symbolIdentity === effect.symbolIdentity && item.start === effect.start)) {
+            caller.inferredEffects.push(effect);
+          }
         }
         calls.push({
           callerSymbolId: caller.symbolId,
@@ -572,7 +574,7 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
 interface CheckerBuiltinIdentity {
   readonly module: string;
   readonly export: string;
-  readonly effect: string;
+  readonly effect: string | readonly string[];
 }
 
 interface CheckerBuiltinContract extends CheckerBuiltinIdentity {
@@ -595,14 +597,14 @@ const checkerImportedBuiltinContracts = new Map<string, CheckerBuiltinIdentity>(
 ]);
 
 const checkerIdentifierBuiltinContracts = new Map<string, CheckerBuiltinContract>([
-  ["fetch", { module: "global", export: "fetch", effect: "Fetch", declaration: /[\\/]lib[\\/]lib\.(?:dom|webworker)\.d\.ts$/ }],
+  ["fetch", { module: "global", export: "fetch", effect: ["Fetch", "Net"], declaration: /[\\/]lib[\\/]lib\.(?:dom|webworker)\.d\.ts$/ }],
 ]);
 
 const checkerMemberBuiltinContracts = new Map<string, CheckerBuiltinContract>([
   ["console\0console.log", { module: "global", export: "console.log", effect: "Console", declaration: /[\\/]lib[\\/]lib\.dom\.d\.ts$/ }],
 ]);
 
-function checkerBuiltinEffect(
+function checkerBuiltinEffects(
   checker: CorsaTypeCheckerShape,
   call: any,
   directCallee: CorsaSymbol,
@@ -610,7 +612,7 @@ function checkerBuiltinEffect(
   sourceText: string,
   rootFiles: ReadonlySet<string>,
   importedBinding?: ImportedCheckerBuiltinBinding,
-): PendingInferredEffect | undefined {
+): PendingInferredEffect[] {
   let contract: CheckerBuiltinIdentity | CheckerBuiltinContract | undefined;
   let receiver: CorsaSymbol | undefined;
   if (call.callee?.type === "Identifier") {
@@ -622,7 +624,7 @@ function checkerBuiltinEffect(
     const key = `${receiver?.name ?? ""}\0${receiver?.name ?? ""}.${directCallee.name}`;
     contract = checkerMemberBuiltinContracts.get(key);
   }
-  if (!contract) return undefined;
+  if (!contract) return [];
   const declarations = resolvedCallee.declarations
     .map((handle) => checker.getNode(handle))
     .filter((node): node is NonNullable<ReturnType<CorsaTypeCheckerShape["getNode"]>> => node !== undefined);
@@ -634,15 +636,16 @@ function checkerBuiltinEffect(
     Boolean(declarationPattern?.test(node.fileName)) && !rootFiles.has(node.fileName.toLowerCase());
   const checkerDeclaration = declarations.find(isBuiltinDeclaration)
     ?? directDeclarations.find(isBuiltinDeclaration);
-  if (!importedBinding && !checkerDeclaration) return undefined;
+  if (!importedBinding && !checkerDeclaration) return [];
   if (receiver) {
     const receiverDeclarations = receiver.declarations
       .map((handle) => checker.getNode(handle))
       .filter((node): node is NonNullable<ReturnType<CorsaTypeCheckerShape["getNode"]>> => node !== undefined);
-    if (!receiverDeclarations.some(isBuiltinDeclaration)) return undefined;
+    if (!receiverDeclarations.some(isBuiltinDeclaration)) return [];
   }
-  return {
-    effect: contract.effect,
+  const effects = typeof contract.effect === "string" ? [contract.effect] : contract.effect;
+  return effects.map((effect) => ({
+    effect,
     builtin: { module: contract.module, export: contract.export },
     symbolIdentity: importedBinding?.symbolIdentity ?? resolvedCallee.id,
     declaration: importedBinding?.declaration ?? {
@@ -652,7 +655,7 @@ function checkerBuiltinEffect(
     },
     start: byteOffset(sourceText, call.range[0]),
     end: byteOffset(sourceText, call.range[1]),
-  };
+  }));
 }
 
 function safeWorkspacePath(workspace: string, fileName: string): string {
@@ -730,20 +733,25 @@ function isExplicitCorsaPromiseType(checker: CorsaTypeCheckerShape, expression: 
 }
 
 function isExplicitCorsaPromiseReturn(checker: CorsaTypeCheckerShape, type: CorsaType, call: any): boolean {
-  const argumentTypeTexts = (call.arguments ?? []).map((argument: Node) => {
+  const argumentTypeTexts: string[][] = [];
+  for (const argument of (call.arguments ?? []) as Node[]) {
     const argumentType = checker.getTypeAtLocation(argument);
-    if (!argumentType) return ["unknown"];
+    if (!argumentType) {
+      argumentTypeTexts.push(["unknown"]);
+      continue;
+    }
     const base = checker.getBaseTypeOfLiteralType(argumentType);
-    return [...new Set([
+    argumentTypeTexts.push([...new Set([
       checker.typeToString(argumentType),
       ...(base ? [checker.typeToString(base)] : []),
       ...checker.getTypesOfType(argumentType).map((item) => checker.typeToString(item)),
-    ])];
-  });
-  const explicitTypeArgumentTexts = (call.typeArguments ?? []).map((argument: Node) => {
+    ])]);
+  }
+  const explicitTypeArgumentTexts: string[] = [];
+  for (const argument of (call.typeArguments ?? []) as Node[]) {
     const argumentType = checker.getTypeAtLocation(argument);
-    return argumentType ? checker.typeToString(argumentType) : "unknown";
-  });
+    explicitTypeArgumentTexts.push(argumentType ? checker.typeToString(argumentType) : "unknown");
+  }
   const signature = checker.getCallSignatureFacts(
     type, SignatureKind.Call, argumentTypeTexts, explicitTypeArgumentTexts,
   ).signature;
@@ -775,20 +783,25 @@ function overloadFacts(checker: CorsaTypeCheckerShape, type: CorsaType): Array<{
 }
 
 function selectedCallSignatureId(checker: CorsaTypeCheckerShape, type: CorsaType, node: any): string | null {
-  const argumentTypeTexts = (node.arguments ?? []).map((argument: Node) => {
+  const argumentTypeTexts: string[][] = [];
+  for (const argument of (node.arguments ?? []) as Node[]) {
     const argumentType = checker.getTypeAtLocation(argument);
-    if (!argumentType) return ["unknown"];
+    if (!argumentType) {
+      argumentTypeTexts.push(["unknown"]);
+      continue;
+    }
     const base = checker.getBaseTypeOfLiteralType(argumentType);
-    return [...new Set([
+    argumentTypeTexts.push([...new Set([
       checker.typeToString(argumentType),
       ...(base ? [checker.typeToString(base)] : []),
       ...checker.getTypesOfType(argumentType).map((item) => checker.typeToString(item)),
-    ])];
-  });
-  const explicitTypeArgumentTexts = (node.typeArguments ?? []).map((argument: Node) => {
+    ])]);
+  }
+  const explicitTypeArgumentTexts: string[] = [];
+  for (const argument of (node.typeArguments ?? []) as Node[]) {
     const argumentType = checker.getTypeAtLocation(argument);
-    return argumentType ? checker.typeToString(argumentType) : "unknown";
-  });
+    explicitTypeArgumentTexts.push(argumentType ? checker.typeToString(argumentType) : "unknown");
+  }
   return checker.getCallSignatureFacts(type, SignatureKind.Call, argumentTypeTexts, explicitTypeArgumentTexts).signature?.id ?? null;
 }
 

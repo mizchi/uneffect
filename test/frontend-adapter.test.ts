@@ -97,7 +97,7 @@ describe("TypeChecker symbol adapter", () => {
       const registry = (version: string) => extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
         symbol: { module: "@datadog/browser-rum", export: "datadogRum#addAction" },
         runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
-        operation: { kind: "effect" as const, effect: "Fetch<POST, \"https://browser-intake-datadoghq.com/api/v2/**\">" },
+        semantics: { schema: "uneffect-semantic-primitives/v1" as const, primitives: [{ kind: "effect" as const, capability: "Fetch<POST, \"https://browser-intake-datadoghq.com/api/v2/**\">" }] },
         trustReason: "reviewed Datadog wrapper delivery authority", trustOwner: "telemetry-platform",
       }] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "report"))
@@ -285,7 +285,7 @@ describe("TypeChecker symbol adapter", () => {
       const registry = (version: string) => extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
         symbol: { module: "reviewed-values", export: "keys" },
         runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
-        result: { kind: "fresh" as const },
+        semantics: { schema: "uneffect-semantic-primitives/v1" as const, primitives: [{ kind: "result" as const, refinement: { kind: "fresh" as const } }] },
         trustReason: "reviewed allocation contract", trustOwner: "test",
       }] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("1.0.0") }).summaries.find((item) => item.functionName === "sorted"))
@@ -375,7 +375,7 @@ describe("TypeChecker symbol adapter", () => {
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"] });
     const source = program.getSourceFile(fileName)!;
-    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.operation?.kind === "deferred-callback"))
+    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.semantics?.primitives.some((primitive) => primitive.kind === "callback")))
       .toEqual([expect.objectContaining({ symbol: { module: "node:net", export: "Socket#connect" } })]);
   });
 

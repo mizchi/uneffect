@@ -27,17 +27,12 @@ Remaining volume and estimate assumptions are maintained in
 
 ## Current implementation snapshot
 
-The first `uneffect-builtin-semantics/v1` catalog slice is complete. It
-separates reviewed JavaScript, Node.js, and DOM definitions from registry
-assembly, rejects duplicate symbol identities, and compiles them into the
-existing trusted TypeChecker-backed contracts. Array/Object copying semantics,
-Node module/path/process helpers, and DOM Storage permissions are the initial
-migrated groups; remaining handwritten builtins migrate incrementally with
-negative semantic tests.
-The first orthogonal projection is complete: `Array#sort` combines its inline
-callback operation with `receiverMutation` in one catalog definition. Remaining
-argument mutation, conditional throw, alias/result, and resource projections
-should extend this model rather than reintroducing duplicate symbol contracts.
+The `uneffect-builtin-semantics/v1` catalog now owns reviewed JavaScript, Node.js,
+DOM, and selected package definitions. It rejects duplicate symbol identities
+and compiles generic semantic primitives into trusted TypeChecker-backed
+contracts. Mutation, capability scopes, callbacks, conditional throw,
+alias/result, ownership/resource, and directional property projections share
+one interpreter rather than API-family operation branches.
 The Node filesystem contract generator has also moved into the catalog,
 preserving read/write path positions, callback scheduling, watcher repetition,
 and read-buffer mutation across callback, synchronous, and Promise variants.
@@ -50,12 +45,27 @@ DOM method definitions are also migrated with operation granularity, selector
 scope, mutation regions, and possible user-code invocation preserved. Directional
 DOM property semantics, including Cookie and Storage permission properties, are
 now migrated with access-direction and mutation-region metadata preserved.
-The next catalog cycle is organized in `docs/generic-builtin-semantics.md`.
-It introduces a versioned generic primitive schema and shared interpreter, then
-migrates mutation, scoped capabilities, callbacks, ownership/resources,
-directional properties, and stateful protocols in that dependency order. Each
-stage deletes its legacy fields and analyzer branches before the next stage;
-registry/plugin exposure and full dogfood are the final acceptance boundary.
+The catalog migration is specified in `docs/generic-builtin-semantics.md`.
+Its schema, validation, stable serialization, shared interpreter, and public
+registry/semantics-module path are implemented. Effect inference, frontend
+parity, callback/async extraction, mutation, result, ownership/resource, and
+property consumers use the shared events.
+Node filesystem is also fully catalog-migrated, including `node:fs/promises`,
+path scopes, compound permissions, buffer mutation, callback completion, and
+watcher resources; its legacy fs operation has been removed. Direct path and
+program parameters now produce parameterized summaries, with literal and
+forwarded call-site substitution. Other resolved runtime expressions widen to
+the broad capability, which a narrow declaration cannot cover; invalid
+projectors retain explicit unknown evidence.
+Crypto and child-process effects plus Node DNS/socket/HTTP/server callbacks are
+catalog-migrated. Fetch, Promise combinators, timers, cancellation, Abort,
+Scheduler, streams, and disposal publish generic protocol transitions consumed
+by bounded specialized machines. Superseded builtin operation fields and
+branches have been removed. Repository-wide CI, parity, benchmarks, and
+no-unknown dogfood remain the final acceptance boundary for this worktree. The
+no-unknown self-dogfood now passes after parameterized capability composition;
+the remaining acceptance work is to rerun the full repository gates after this
+refactoring.
 
 [#20](https://github.com/mizchi/uneffect/issues/20) completed the supported
 cross-project scalar-refinement fragment on `main`, including direct

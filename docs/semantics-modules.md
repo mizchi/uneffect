@@ -28,11 +28,13 @@ This feature is experimental. A loaded module contributes **trusted assumptions*
       "evidence": "trusted",
       "trustOwner": "security-platform",
       "trustReason": "reviewed emit boundary",
-      "operation": {
-        "kind": "scoped-effect",
-        "effect": "Acme.Audit.Emit",
-        "effectScopeArgument": 0,
-        "effectScopeKind": "literal"
+      "semantics": {
+        "schema": "uneffect-semantic-primitives/v1",
+        "primitives": [{
+          "kind": "effect",
+          "capability": "Acme.Audit.Emit",
+          "scope": { "kind": "value", "target": { "kind": "argument", "index": 0 } }
+        }]
       }
     }]
   }
@@ -68,13 +70,16 @@ mutation of library or caller state:
   "evidence": "trusted",
   "trustOwner": "platform-runtime",
   "trustReason": "reviewed implementation always allocates a new Array",
-  "result": { "kind": "fresh" }
+  "semantics": {
+    "schema": "uneffect-semantic-primitives/v1",
+    "primitives": [{ "kind": "result", "refinement": { "kind": "fresh" } }]
+  }
 }
 ```
 
 `fresh` is an aliasing/ownership claim only. It does not imply that calling the
-API is pure; declare `operation` separately when the call performs a capability
-effect. It also does not prove the external implementation. The result remains
+API is pure; compose `effect`, `callback`, `throw`, or other primitives in the
+same ordered `primitives` array when applicable. It also does not prove the external implementation. The result remains
 conditional on the reviewed manifest, exact package version, TypeChecker symbol
 resolution, and module-initialization assumptions. Do not use `fresh` for a
 cache, singleton, pooled object, input alias, view into input memory, or an
@@ -86,6 +91,8 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
 
 - namespaced capability schemas using the existing finite-set atom domains;
 - reviewed builtin function contracts;
+- the complete validated `uneffect-semantic-primitives/v1` data model,
+  including callbacks, ownership, directional properties, and named protocols;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.
@@ -94,6 +101,6 @@ It does not yet load JavaScript, native, or Wasm analyzer plugins. It also canno
 
 The intended later tiers are:
 
-1. declarative modules (implemented here);
+1. declarative, distributable package-summary modules (implemented here);
 2. proof-producing modules that emit core-validated obligations and source mappings;
 3. isolated executable adapters whose output remains `trusted` unless checked by a supported verifier.

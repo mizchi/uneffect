@@ -5,6 +5,8 @@ import { bindingIdentityKey, symbolIdentityKey } from "./binding-identity.js";
 import { analyzeAbortSignalsInProgram } from "./host-neutral-transitions.js";
 import { lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
 import { evaluateResourceProtocol, evaluateResourceProtocolCfg, resourceProtocolSchema, type ResourceProtocolCfg, type ResourceProtocolEvaluation, type ResourceProtocolModel } from "./resource-protocol.js";
+import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js";
 
 export interface AbortableFetch {
   readonly owner: string;
@@ -63,6 +65,7 @@ function ownerName(node: ts.Node): string {
 
 export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts.SourceFile): AbortableFetchAnalysis {
   const checker = program.getTypeChecker();
+  const adapter = new TypeScriptFrontendAdapter(program);
   const bodyStatusFromProtocol = (evaluation: ResourceProtocolEvaluation): AbortableFetch["responseBodyStatus"] =>
     evaluation.status === "satisfied" ? "consumed" : evaluation.status === "unsatisfied" ? "unconsumed" : "unknown";
   const aborts = analyzeAbortSignalsInProgram(program, source);
@@ -132,12 +135,19 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
     return undefined;
   };
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fetch") {
-      const symbol = resolvedSymbol(checker, node.expression);
-      const builtin = symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
-      if (!builtin) { ts.forEachChild(node, visit); return; }
+    if (ts.isCallExpression(node)) {
+      const resolved = adapter.resolveCall(node);
+      const protocol = resolved?.semantics
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span })
+          .find((event) => event.kind === "protocol" && event.name === "fetch" && event.transition === "start")
+        : undefined;
+      if (!protocol || protocol.kind !== "protocol" || protocol.inputs.input?.status !== "resolved") {
+        ts.forEachChild(node, visit); return;
+      }
       const owner = ownerName(node);
-      const options = resolveOptions(node.arguments[1], owner);
+      const optionsInput = protocol.inputs.options;
+      const optionsExpression = optionsInput?.status === "resolved" ? optionsInput.expression : undefined;
+      const options = resolveOptions(optionsExpression, owner);
       const target = options ? resolveSignal(options.signal, owner) : undefined;
       const controller = target?.controllerIndex === undefined ? undefined : aborts.controllers[target.controllerIndex];
       const composition = target?.composition === undefined ? undefined : asyncPatterns.abortCompositions[target.composition];
@@ -161,7 +171,7 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
         const promise = asyncSafety.promiseBindings.find((item) => item.owner === owner && item.binding === binding);
         const fetchIndex = fetches.length;
         fetches.push({
-          owner, binding, url: node.arguments[0]?.getText(source) ?? "<missing>",
+          owner, binding, url: protocol.inputs.input.expression.getText(source),
           controller: controller?.binding ?? "<AbortSignal.any>",
           signalKind: composition ? "abort-any" : target!.alias ? "controller-alias" : "controller-direct",
           optionsKind: options!.kind,

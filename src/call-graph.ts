@@ -4,6 +4,8 @@ import type { EvidenceStatus } from "./effects.js";
 import { extractAnnotations } from "./annotations.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import { resolveStableRegion } from "./region-alias.js";
+import { interpretBuiltinCallSemantics, projectBuiltinCallbacks } from "./builtin-semantic-interpreter.js";
+import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export type CallableKind = "function" | "method" | "arrow" | "function-expression";
 export type InvocationTiming = "inline" | "deferred" | "unknown";
@@ -58,19 +60,17 @@ function stableId(node: ts.FunctionLikeDeclaration): string { return `${node.get
 function isFunctionParameter(checker: ts.TypeChecker, parameter: ts.ParameterDeclaration): boolean { return checker.getTypeAtLocation(parameter).getCallSignatures().length > 0; }
 
 function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker, adapter: FrontendSymbolAdapter, argumentIndex?: number): InvocationTiming {
-  const operation = adapter.resolveCall(call)?.operation;
-  if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task" || operation?.kind === "scheduler-yield") return "deferred";
-  if (operation?.kind === "fs" && operation.callbackQueue === "poll") return "deferred";
-  if (operation?.kind === "deferred-callback") return "deferred";
-  if (operation?.kind === "inline-callback") return argumentIndex !== undefined && operation.callbackArguments.includes(argumentIndex) ? "inline" : "unknown";
-  const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
-  const symbol = resolvedSymbol(checker, lookup);
-  if (symbol?.name === "catchAll" && symbol.declarations?.some((declaration) => declaration.getSourceFile().fileName.includes("/node_modules/effect/"))) return "deferred";
-  const text = call.expression.getText();
-  if (["setTimeout", "setInterval", "queueMicrotask"].includes(text)) return "deferred";
-  if (text === "Array.from" || text === "JSON.stringify") return "inline";
-  if (ts.isPropertyAccessExpression(call.expression) && ["map", "flatMap", "filter", "forEach", "reduce", "reduceRight", "some", "every", "find", "findIndex", "sort"].includes(call.expression.name.text)) return "inline";
-  if (ts.isPropertyAccessExpression(call.expression) && ["then", "catch", "finally"].includes(call.expression.name.text)) return "deferred";
+  const resolved = adapter.resolveCall(call);
+  const semanticCallbacks = projectBuiltinCallbacks(resolved, call, checker);
+  if (argumentIndex !== undefined) {
+    const argument = call.arguments[argumentIndex];
+    const callback = semanticCallbacks.find((event) => event.target.status === "resolved" && event.target.expression === argument);
+    if (callback) return callback.timing === "sync" ? "inline" : "deferred";
+  }
+  if (resolved?.semantics) {
+    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
+    if (events.some((event) => event.kind === "protocol" && event.name === "scheduler")) return "deferred";
+  }
   return "unknown";
 }
 
@@ -92,9 +92,9 @@ function externalIteratorContractForCall(
 
 export function buildProgramCallGraph(
   program: ts.Program,
-  options: { externalIteratorEffects?: ReadonlyMap<string, ExternalIteratorEffectContract> } = {},
+  options: { externalIteratorEffects?: ReadonlyMap<string, ExternalIteratorEffectContract>; builtinRegistry?: BuiltinContractRegistry } = {},
 ): ProgramCallGraph {
-  const checker = program.getTypeChecker(), adapter = new TypeScriptFrontendAdapter(program), declarations: ts.FunctionLikeDeclaration[] = [];
+  const checker = program.getTypeChecker(), adapter = new TypeScriptFrontendAdapter(program, options.builtinRegistry), declarations: ts.FunctionLikeDeclaration[] = [];
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const visit = (node: ts.Node): void => {
@@ -545,28 +545,25 @@ export function buildProgramCallGraph(
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [], dischargesThrow: catchesThrow && timing === "inline" });
           }
         });
-        if (resolvedBuiltin?.operation?.kind === "inline-callback") {
-          for (const index of resolvedBuiltin.operation.callbackArrayArguments ?? []) {
-            const argument = node.arguments[index];
-            const elements = argument && ts.isArrayLiteralExpression(argument)
-              ? argument.elements.filter(ts.isExpression) : undefined;
-            if (!elements) {
-              edges.push({ caller, kind: "callback-argument", unresolvedName: argument?.getText() ?? `<argument ${index}>`, timing: "unknown", span: { start: argument?.getStart() ?? node.getStart(), end: argument?.getEnd() ?? node.getEnd() }, arguments: [] });
-              continue;
-            }
-            for (const element of elements) {
-              const callbackDeclaration = (ts.isArrowFunction(element) || ts.isFunctionExpression(element)) ? element
-                : ts.isIdentifier(element) ? symbolNodes.get(resolvedSymbol(checker, element)!) : undefined;
-              if (!callbackDeclaration) {
-                edges.push({ caller, kind: "callback-argument", unresolvedName: element.getText(), timing: "unknown", span: { start: element.getStart(), end: element.getEnd() }, arguments: [] });
-                continue;
-              }
-              let invoked: ts.FunctionLikeDeclaration | undefined = callbackDeclaration;
-              for (let depth = 0; invoked && depth <= (resolvedBuiltin.operation.callbackArrayReturnDepth ?? 0); depth += 1) {
-                edges.push({ caller, callee: stableId(invoked), kind: "callback-argument", timing: "inline", span: { start: element.getStart(), end: element.getEnd() }, arguments: [], dischargesThrow: catchesThrow });
-                invoked = directlyReturnedCallable(invoked);
-              }
-            }
+        const semanticEvents = resolvedBuiltin?.semantics
+          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, node, { symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span }) : [];
+        for (const event of semanticEvents) {
+          if (event.kind === "unknown" && event.primitive.kind === "callback" && event.primitive.target.kind === "array-elements") {
+            edges.push({ caller, kind: "callback-argument", unresolvedName: node.arguments[event.primitive.target.target.kind === "argument" ? event.primitive.target.target.index : 0]?.getText() ?? "<callback collection>", timing: "unknown", span: { start: node.getStart(), end: node.getEnd() }, arguments: [] });
+            continue;
+          }
+          if (event.kind !== "callback" || event.returnDepth === undefined || event.target.status !== "resolved") continue;
+          const element = event.target.expression;
+          const callbackDeclaration = (ts.isArrowFunction(element) || ts.isFunctionExpression(element)) ? element
+            : ts.isIdentifier(element) ? symbolNodes.get(resolvedSymbol(checker, element)!) : undefined;
+          if (!callbackDeclaration) {
+            edges.push({ caller, kind: "callback-argument", unresolvedName: element.getText(), timing: "unknown", span: { start: element.getStart(), end: element.getEnd() }, arguments: [] });
+            continue;
+          }
+          let invoked: ts.FunctionLikeDeclaration | undefined = callbackDeclaration;
+          for (let depth = 0; invoked && depth <= event.returnDepth; depth += 1) {
+            edges.push({ caller, callee: stableId(invoked), kind: "callback-argument", timing: event.timing === "sync" ? "inline" : "deferred", span: { start: element.getStart(), end: element.getEnd() }, arguments: [], dischargesThrow: catchesThrow && event.timing === "sync" });
+            invoked = directlyReturnedCallable(invoked);
           }
         }
         for (const callback of resolvedBuiltin?.capturedCallbacks ?? []) {

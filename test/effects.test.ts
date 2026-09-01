@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeEffects } from "../src/effects.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 describe("effect checker", () => {
   it("reports an invalid effect-set annotation without crashing the checker", () => {
@@ -123,6 +124,59 @@ describe("effect checker", () => {
     expect(analyzeEffects("fs.ts", source)).toEqual([]);
   });
 
+  it("uses the same scoped permission primitives for node:fs/promises", () => {
+    const source = `
+      import { readFile as read, writeFile as write } from "node:fs/promises";
+      /* uneffect:capability effect FsRead<"input.txt"> | FsWrite<"output.txt"> */
+      async function copy() { await write("output.txt", await read("input.txt")) }
+    `;
+    expect(analyzeEffects("fs-promises.ts", source)).toEqual([]);
+
+    const dynamic = `
+      import { readFile } from "node:fs/promises";
+      /* uneffect:capability effect FsRead */
+      async function load(path: string) { return readFile(path) }
+    `;
+    expect(analyzeEffects("fs-promises-dynamic.ts", dynamic)).toEqual([]);
+
+    const instantiated = `
+      import { readFile } from "node:fs/promises";
+      /* uneffect:capability effect FsRead */
+      async function load(path: string) { return readFile(path) }
+      /* uneffect:capability effect FsRead<"input.txt"> */
+      async function main() { return load("input.txt") }
+    `;
+    expect(analyzeEffects("fs-promises-instantiated.ts", instantiated)).toEqual([]);
+    expect(analyzeEffects("fs-promises-instantiated.ts", instantiated.replace('FsRead<"input.txt">', 'FsRead<"other.txt">')))
+      .toContainEqual(expect.objectContaining({ functionName: "main", effect: 'FsRead<"input.txt">', kind: "missing" }));
+
+    const forwarded = `
+      import { readFile } from "node:fs/promises";
+      /* uneffect:capability effect FsRead */
+      function load(path: string) { return readFile(path) }
+      /* uneffect:capability effect FsRead */
+      function wrapper(input: string) { return load(input) }
+    `;
+    expect(analyzeEffects("fs-promises-forwarded.ts", forwarded)).toEqual([]);
+
+    const unresolvedExpression = dynamic.replace("readFile(path)", "readFile(path + '.json')");
+    expect(analyzeEffects("fs-promises-expression.ts", unresolvedExpression)).toEqual([]);
+    expect(analyzeEffects("fs-promises-expression-narrow.ts", unresolvedExpression.replace("effect FsRead", 'effect FsRead<"$CWD/**">'))).toContainEqual(expect.objectContaining({
+      functionName: "load", effect: "FsRead", kind: "missing",
+    }));
+
+    const promiseSpecific = `
+      import { mkdtemp, opendir, statfs } from "node:fs/promises";
+      /* uneffect:capability effect FsRead<"input"> | FsWrite<"tmp-"> */
+      async function inspect() {
+        await opendir("input");
+        await statfs("input");
+        await mkdtemp("tmp-");
+      }
+    `;
+    expect(analyzeEffects("fs-promises-specific.ts", promiseSpecific)).toEqual([]);
+  });
+
   it("propagates capabilities from TypeChecker-resolved deferred callbacks", () => {
     const source = `
       import type { Server } from "node:net";
@@ -141,6 +195,16 @@ describe("effect checker", () => {
       /* uneffect:capability effect Console */ function afterClose() { console.log("closed") }
       /* uneffect:capability effect Console */ function shutdown(server: Server) { server.close(afterClose) }
     `)).toEqual([]);
+  });
+
+  it("propagates deferred disposal callbacks from generic disposal-stack semantics", () => {
+    const source = `
+      /* uneffect:capability effect Console */
+      function cleanup(stack: DisposableStack) { stack.defer(() => console.log("disposed")) }
+      class LocalStack { defer(callback: () => void) { callback() } }
+      function shadow(stack: LocalStack) { stack.defer(() => {}) }
+    `;
+    expect(analyzeEffects("disposal-stack.ts", source)).toEqual([]);
   });
 
   it("tracks Node DNS authority and callback capabilities through aliases", () => {
@@ -234,6 +298,8 @@ describe("effect checker", () => {
       /* uneffect:capability effect Run */ function shell() { exec("git status", () => undefined); execSync("git status") }
       /* uneffect:capability effect Run<"git"> */ function files() { runFile("git", ["status"], () => undefined); execFileSync("git", ["status"]); spawn("git"); spawnSync("git") }
       /* uneffect:capability effect Run */ function module() { fork("worker.js") }
+      /* uneffect:capability effect Run */ function launch(program: string) { spawn(program) }
+      /* uneffect:capability effect Run<"git"> */ function status() { launch("git") }
       function execFile(_file: string, callback: () => void) { callback() }
       function local() { execFile("git", () => undefined) }
     `;
@@ -360,6 +426,23 @@ describe("effect checker", () => {
       function user(queue: Queue) { queue.push(1) }
     `;
     expect(analyzeEffects("mutation-symbol.ts", source)).toEqual([]);
+  });
+
+  it("consumes generic effect and mutation primitives without a legacy operation", () => {
+    const builtinRegistry = extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
+      symbol: { module: "global", export: "console.log" }, evidence: "trusted",
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console" }, { kind: "throw", error: "TypeError" }] },
+    }, {
+      symbol: { module: "lib.es", export: "Array#push" }, evidence: "trusted",
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "mutate", target: { kind: "receiver" } }] },
+    }] });
+    const source = `
+      /* uneffect:capability effect Console | Mutate<typeof values> | Throw<TypeError> */
+      function reviewed(values: number[]) { console.log(values); values.push(1) }
+      class Queue { push(_value: number) {} }
+      function shadows(console: { log(value: unknown): void }, queue: Queue) { console.log(queue); queue.push(1) }
+    `;
+    expect(analyzeEffects("generic-builtins.ts", source, { builtinRegistry })).toEqual([]);
   });
 
   it("does not leak mutations of freshly allocated locals into the function summary", () => {

@@ -7,6 +7,8 @@ export const ciTestTiers = {
     "test/binding-identity.test.ts",
     "test/binding-rename-invariance.test.ts",
     "test/builtin-contracts.test.ts",
+    "test/builtin-semantic-interpreter.test.ts",
+    "test/builtin-semantic-schema.test.ts",
     "test/call-graph.test.ts",
     "test/callable-summary.test.ts",
     "test/capability-dsl.test.ts",

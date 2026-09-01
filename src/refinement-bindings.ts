@@ -1525,6 +1525,23 @@ function validateRefinementActionBodiesInSource(
     });
   };
   let runtimeIdentityFailure: string | undefined;
+  const isManifestRuntimeArgument = (argument: ts.Expression): boolean => {
+    const local = manifest.runtimeIdentity;
+    if (!local) {
+      runtimeIdentityFailure = "runtime identity is missing on the consumer adapter";
+      return false;
+    }
+    const valid = local.kind === "ambient"
+      ? isSameRealmGlobalThis(argument)
+      : local.host === "node" && local.root === "global" && local.realm === "main"
+        && isNodeCurrentRealmGlobal(argument, local.version);
+    if (!valid) runtimeIdentityFailure = local.kind === "ambient"
+      ? "runtime identity ecmascript:realm.globalThis is not backed by the TypeChecker-resolved builtin globalThis"
+      : local.realm !== "main"
+        ? `runtime identity mismatch: ${local.identity} is not the current Node realm`
+        : `runtime identity ${local.identity} is not backed by the TypeChecker-resolved current-realm @types/node major ${local.version} ambient global`;
+    return valid;
+  };
   const sameRuntimeIdentity = (
     external: ExternalRefinementActionContract,
     argument: ts.Expression,
@@ -1538,13 +1555,7 @@ function validateRefinementActionBodiesInSource(
       runtimeIdentityFailure = `runtime identity mismatch: consumer ${local.identity}, producer ${external.runtimeIdentity.identity}`;
       return false;
     }
-    const valid = local.kind === "ambient"
-      ? isSameRealmGlobalThis(argument)
-      : local.host === "node" && local.root === "global" && isNodeCurrentRealmGlobal(argument, local.version);
-    if (!valid) runtimeIdentityFailure = local.kind === "ambient"
-      ? "runtime identity ecmascript:realm.globalThis is not backed by the TypeChecker-resolved builtin globalThis"
-      : `runtime identity ${local.identity} is not backed by the TypeChecker-resolved @types/node major ${local.version} ambient global`;
-    return valid;
+    return isManifestRuntimeArgument(argument);
   };
   const earlyReturnGuard = (body: ts.Block, receiver: string): { guard?: TemporalExpression; updates: ts.Block } => {
     const first = body.statements[0];
@@ -4193,7 +4204,11 @@ function validateRefinementActionBodiesInSource(
         if (!helper?.body || activeCalls.has(callKey) || helper.parameters.length !== node.arguments.length
           || helper.parameters.length === 0 || helper.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) return undefined;
         const receiverArgument = node.arguments[0]!;
-        const aliasRegion = localAliasRegion(node, receiverArgument, receiver, substitutions, helper);
+        const runtimeReceiver = ts.isIdentifier(receiverArgument)
+          && (receiverArgument.text === "global" || receiverArgument.text === "globalThis")
+          && isManifestRuntimeArgument(receiverArgument);
+        const aliasRegion = runtimeReceiver ? undefined
+          : localAliasRegion(node, receiverArgument, receiver, substitutions, helper);
         if (aliasRegion === "unsupported") return undefined;
         if (aliasRegion && traceSink && currentModelName) {
           if (traceSink.aliasRegions.some((region) => region.modelName === currentModelName)) return undefined;
@@ -4203,7 +4218,8 @@ function validateRefinementActionBodiesInSource(
         const receiverMatches = receiverArgument.kind === ts.SyntaxKind.ThisKeyword
           || ts.isIdentifier(receiverArgument) && (receiverArgument.text === receiver
             || (substitutedReceiver !== undefined && ts.isIdentifier(substitutedReceiver) && substitutedReceiver.text === receiver));
-        if (!receiverMatches && !(external && sameRuntimeIdentity(external, receiverArgument))) return undefined;
+        if (!receiverMatches && !runtimeReceiver
+          && !(external ? sameRuntimeIdentity(external, receiverArgument) : isManifestRuntimeArgument(receiverArgument))) return undefined;
         const helperLocals = new Map<string, TemporalExpression>();
         for (let index = 1; index < helper.parameters.length; index++) {
           const argument = normalizeRefinementExpression(node.arguments[index]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);

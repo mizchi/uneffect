@@ -7,54 +7,67 @@ import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinCont
 import { builtinSemanticCatalog, compileBuiltinSemanticCatalog } from "../src/builtin-semantic-catalog.js";
 
 describe("builtin semantic overlays", () => {
-  it("compiles versioned JavaScript, Node, and DOM semantic definitions", () => {
+  it("compiles versioned JavaScript, Node, DOM, and package semantic definitions", () => {
     expect(builtinSemanticCatalog.schema).toBe("uneffect-builtin-semantics/v1");
-    expect(new Set(builtinSemanticCatalog.definitions.map((item) => item.platform))).toEqual(new Set(["javascript", "node", "dom"]));
+    expect(new Set(builtinSemanticCatalog.definitions.map((item) => item.platform))).toEqual(new Set(["javascript", "node", "dom", "package"]));
     const contracts = compileBuiltinSemanticCatalog(builtinSemanticCatalog);
     expect(contracts).toHaveLength(builtinSemanticCatalog.definitions.length);
     expect(contracts.every((item) => item.evidence === "trusted")).toBe(true);
+    expect(builtinContractRegistry.contracts).toHaveLength(contracts.length);
     expect(builtinSemanticCatalog.definitions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
-      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#sort" }, operation: expect.objectContaining({ kind: "inline-callback", callbackArguments: [0] }), receiverMutation: true }),
-      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "PromiseConstructor#all" }, operation: { kind: "promise-combinator", combinator: "all", iterableArgument: 0 } }),
-      expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "Math.random" }, operation: { kind: "effect", effect: "Random" } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "readFile" }, operation: expect.objectContaining({ kind: "fs", read: true, write: false, readPathArgument: 0 }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:fs/promises", export: "writeFile" }, operation: expect.objectContaining({ kind: "fs", read: false, write: true, writePathArgument: 0 }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "copyFileSync" }, operation: expect.objectContaining({ kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1 }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "read" }, operation: expect.objectContaining({ kind: "fs", read: true, write: false, mutateArgument: 1 }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:os", export: "tmpdir" }, result: { kind: "path", pattern: "$TEMP" } }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:os", export: "cpus" }, operation: { kind: "effect", effect: "Sys<cpus>" } }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:crypto", export: "randomBytes" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Random", queue: "poll" }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:crypto", export: "randomUUID" }, operation: { kind: "effect", effect: "Random" } }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "execFile" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "spawnSync" }, operation: { kind: "scoped-effect", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" } }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:net", export: "Server#listen" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Net", effectScopeKind: "net-connect" }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:https", export: "request" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Net", effectScopeKind: "http-request", effectDefaultPort: 443 }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:dns", export: "lookup" }, operation: expect.objectContaining({ kind: "deferred-callback", effect: "Net", queue: "poll" }) }),
-      expect.objectContaining({ platform: "node", symbol: { module: "lib.node", export: "Process#nextTick" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "next-tick" } }),
-      expect.objectContaining({ platform: "node", symbol: { module: "node:timers", export: "setImmediate" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "check" } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
-      expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "console.error" }, operation: { kind: "effect", effect: "Console" } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "setTimeout" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: false, queue: "timer" } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Scheduler#postTask" }, operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Crypto#getRandomValues" }, operation: { kind: "effect", effect: "Random" } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Worker#postMessage" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, operation: { kind: "dom", operations: ["NodeRead"], queryArgument: 0 } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Element#setAttribute" }, operation: { kind: "dom", operations: ["AttributeWrite"], mutatesReceiver: true, invokesUserCode: true } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: { kind: "dom", operations: ["NodeWrite"], mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "EventTarget#dispatchEvent" }, operation: { kind: "dom", operations: ["Dispatch"], invokesUserCode: true } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "DOMParser#parseFromString" }, operation: { kind: "dom", operations: ["Parse"] } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Node#textContent" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite", "NodeWrite"], mutatesReceiverOnWrite: true }) }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Element#innerHTML" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"] }) }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "HTMLScriptElement#src" }, operation: { kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"], mutatesReceiverOnWrite: true } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Document#cookie" }, operation: { kind: "effect-property", readEffect: "CookieRead", writeEffect: "CookieWrite" } }),
-      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Storage#length" }, operation: { kind: "effect-property", readEffect: "LocalStorageRead" } }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync" })] }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#sort" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([{ kind: "mutate", target: { kind: "receiver" } }, expect.objectContaining({ kind: "callback", timing: "sync" })]) }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "PromiseConstructor#all" }, semantics: expect.objectContaining({ primitives: [
+        expect.objectContaining({ kind: "protocol", name: "promise-combinator", transition: "all", inputs: { iterable: { kind: "argument", index: 0 } } }),
+      ] }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "Math.random" }, semantics: expect.objectContaining({ primitives: [{ kind: "effect", capability: "Random" }] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "structuredClone" }, semantics: expect.objectContaining({ primitives: [{ kind: "clone", target: { kind: "argument", index: 0 } }, expect.objectContaining({ kind: "transfer", optional: true })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "ReadableStream#getReader" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "acquire", resource: "stream-reader" }), expect.objectContaining({ kind: "protocol", name: "stream", transition: "lock-readable" })]) }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "DisposableStack#defer" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "deferred" }), expect.objectContaining({ kind: "protocol", name: "disposal-stack", transition: "register" })]) }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "readFile" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "FsRead" }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs/promises", export: "writeFile" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "effect", capability: "FsWrite", scope: expect.objectContaining({ kind: "filesystem-path" }) })] }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "copyFileSync" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ capability: "FsRead" }), expect.objectContaining({ capability: "FsWrite" })] }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "read" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ capability: "FsRead" }), expect.objectContaining({ kind: "mutate", target: { kind: "argument", index: 1 } }), expect.anything()] }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:os", export: "tmpdir" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "path", pattern: "$TEMP" } }] }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:os", export: "cpus" }, semantics: expect.objectContaining({ primitives: [{ kind: "effect", capability: "Sys<cpus>" }] }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:crypto", export: "randomBytes" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Random" }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:crypto", export: "randomUUID" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Random" }] } }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "execFile" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Run", scope: expect.objectContaining({ kind: "run-program" }) }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:child_process", export: "spawnSync" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "effect", capability: "Run", scope: expect.objectContaining({ kind: "run-program" }) })] }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:net", export: "Server#listen" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Net", scope: expect.objectContaining({ kind: "network", format: "connect" }) }), expect.objectContaining({ kind: "callback", queue: "next-tick" })]) }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:https", export: "request" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Net", scope: expect.objectContaining({ kind: "network", format: "http-request", defaultPort: 443 }) }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:dns", export: "lookup" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Net", scope: expect.objectContaining({ kind: "network", format: "host" }) }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "lib.node", export: "Process#nextTick" }, semantics: expect.objectContaining({ schema: "uneffect-semantic-primitives/v1" }) }),
+      expect.objectContaining({ platform: "node", symbol: { module: "node:timers", export: "setImmediate" }, semantics: expect.objectContaining({ schema: "uneffect-semantic-primitives/v1" }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "fetch" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Fetch", scope: expect.objectContaining({ kind: "url" }) }), expect.objectContaining({ kind: "effect", capability: "Net" }), expect.objectContaining({ kind: "protocol", name: "fetch" })]) }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "console.error" }, semantics: expect.objectContaining({ primitives: [{ kind: "effect", capability: "Console" }] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "setTimeout" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", queue: "timer" }), expect.objectContaining({ kind: "protocol", name: "timer", transition: "schedule" })]) }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "AbortSignal.any" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "protocol", name: "abort-signal", transition: "any" })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Scheduler#postTask" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", queue: "scheduler-task" }), expect.objectContaining({ kind: "protocol", name: "scheduler", transition: "post-task" })]) }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Crypto#getRandomValues" }, semantics: expect.objectContaining({ primitives: [{ kind: "effect", capability: "Random" }] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Worker#postMessage" }, semantics: expect.objectContaining({ primitives: [{ kind: "clone", target: { kind: "argument", index: 0 } }, expect.objectContaining({ kind: "transfer", optional: true })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", scope: expect.objectContaining({ member: "NodeRead" }) }), expect.objectContaining({ kind: "result", refinement: expect.objectContaining({ kind: "css-selector" }) })]) }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Element#setAttribute" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", scope: expect.objectContaining({ member: "AttributeWrite" }) }), expect.objectContaining({ kind: "mutate" }), { kind: "invoke-user-code" }]) }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Node#appendChild" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", scope: expect.objectContaining({ member: "NodeWrite" }) }), expect.objectContaining({ kind: "mutate", target: { kind: "argument", index: 0 } })]) }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "EventTarget#dispatchEvent" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", scope: expect.objectContaining({ member: "Dispatch" }) }), { kind: "invoke-user-code" }]) }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "DOMParser#parseFromString" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "effect", scope: expect.objectContaining({ member: "Parse" }) })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Node#textContent" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property", read: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Dom" })]), write: expect.arrayContaining([expect.objectContaining({ kind: "mutate", target: { kind: "receiver" } })]) })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Element#innerHTML" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "HTMLScriptElement#src" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Document#cookie" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property", read: [{ kind: "effect", capability: "CookieRead" }], write: [{ kind: "effect", capability: "CookieWrite" }] })] }) }),
+      expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "Storage#length" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property", read: [{ kind: "effect", capability: "LocalStorageRead" }], write: [] })] }) }),
     ]));
     expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [
       builtinSemanticCatalog.definitions[0]!, builtinSemanticCatalog.definitions[0]!,
     ] })).toThrow("duplicate builtin semantic definition");
+    expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [{
+      platform: "javascript", stability: "reviewed", symbol: { module: "global", export: "audit" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Audit" }] },
+    }] })).not.toThrow();
+    expect(() => compileBuiltinSemanticCatalog({ ...builtinSemanticCatalog, definitions: [{
+      platform: "javascript", stability: "reviewed", symbol: { module: "global", export: "audit" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "mutate", target: { kind: "argument", index: -1 } }] },
+    }] })).toThrow("non-negative integer");
   });
   it("binds reviewed module initialization to the observed runtime version", () => {
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.22.1" }))
@@ -131,63 +144,57 @@ describe("builtin semantic overlays", () => {
   });
 
   it("refines node:os tmpdir as the symbolic temporary root", () => {
-    expect(builtinContractRegistry.contracts).toContainEqual({
+    expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:os", export: "tmpdir" },
-      result: { kind: "path", pattern: "$TEMP" },
+      semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "path", pattern: "$TEMP" } }] }),
       evidence: "trusted",
-    });
+    }));
   });
 
   it("classifies every initial DOM operation kind", () => {
-    const kinds = builtinContractRegistry.contracts.flatMap((contract) => contract.operation?.kind === "dom" ? contract.operation.operations : []);
-    expect(new Set(kinds)).toEqual(new Set(["AttributeRead", "AttributeWrite", "NodeRead", "NodeWrite", "TextRead", "TextWrite", "LayoutRead", "Create", "Listen", "Dispatch", "Parse"]));
+    const members = (primitives: readonly import("../src/builtin-semantic-schema.js").SemanticPrimitive[]): string[] => primitives.flatMap((primitive) =>
+      primitive.kind === "effect" && primitive.capability === "Dom" && primitive.scope?.kind === "region" ? [primitive.scope.member]
+      : primitive.kind === "property" ? [...members(primitive.read), ...members(primitive.write)] : []);
+    const kinds = builtinContractRegistry.contracts.flatMap((contract) => members(contract.semantics?.primitives ?? []));
+    expect(new Set(kinds)).toEqual(new Set(["AttributeRead", "AttributeWrite", "NodeRead", "NodeWrite", "TextRead", "TextWrite", "PropertyRead", "PropertyWrite", "LayoutRead", "Create", "Listen", "Dispatch", "Parse"]));
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#getAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeRead"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#setAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeWrite"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeRead"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeWrite"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#attributes" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["AttributeRead"], writeOperations: [] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#parentNode" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead"], writeOperations: [] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#children" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead"], writeOperations: [] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "CharacterData#data" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#hasAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeRead"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#toggleAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeWrite"], mutatesReceiver: true, invokesUserCode: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#insertBefore" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeWrite"], mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "CharacterData#replaceData" }, operation: expect.objectContaining({ kind: "dom", operations: ["TextWrite"], mutatesReceiver: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#cloneNode" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeRead", "Create"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#normalize" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeWrite", "TextWrite"], mutatesReceiver: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#insertAdjacentHTML" }, operation: expect.objectContaining({ kind: "dom", operations: ["Parse", "NodeWrite"], mutatesReceiver: true, invokesUserCode: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "NamedNodeMap#getNamedItem" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeRead"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "NamedNodeMap#setNamedItem" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeWrite"], mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#innerHTML" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"], mutatesReceiverOnWrite: true, invokesUserCodeOnWrite: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "HTMLElement#offsetWidth" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["LayoutRead"], writeOperations: [] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#outerHTML" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"], writeRegion: "parentNode", mutatesReceiverOnWrite: true, mutatesWriteRegionOnWrite: true, invokesUserCodeOnWrite: true }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#getAttribute" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Dom", scope: expect.objectContaining({ member: "AttributeRead" }) })]) }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#setAttribute" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", scope: expect.objectContaining({ member: "AttributeWrite" }) }), expect.objectContaining({ kind: "mutate", target: { kind: "receiver" } }), { kind: "invoke-user-code" }]) }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "result", refinement: expect.objectContaining({ kind: "css-selector" }) })]) }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#appendChild" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", scope: expect.objectContaining({ member: "NodeWrite" }) }), expect.objectContaining({ kind: "mutate", target: { kind: "receiver" } }), expect.objectContaining({ kind: "mutate", target: { kind: "argument", index: 0 } })]) }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#attributes" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#parentNode" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#children" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "CharacterData#data" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#innerHTML" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "HTMLElement#offsetWidth" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#outerHTML" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "property", write: expect.arrayContaining([expect.objectContaining({ kind: "mutate", target: expect.objectContaining({ kind: "region", region: "parentNode" }) })]) })] }) }),
     ]));
   });
 
   it("registers AbortSignal composition by builtin symbol identity", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "global", export: "AbortSignal.abort" }, operation: { kind: "abort-static", reasonArgument: 0 } }),
-      expect.objectContaining({ symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),
+      expect.objectContaining({ symbol: { module: "global", export: "AbortSignal.abort" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "protocol", name: "abort-signal", transition: "abort" })] }) }),
+      expect.objectContaining({ symbol: { module: "global", export: "AbortSignal.any" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "protocol", name: "abort-signal", transition: "any" })] }) }),
     ]));
   });
 
   it("registers prioritized scheduler tasks by builtin symbol identity", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "lib.dom", export: "Scheduler#postTask" },
-      operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 },
+      semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", queue: "scheduler-task" }), expect.objectContaining({ kind: "protocol", transition: "post-task" })]) }),
     }));
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "lib.dom", export: "Scheduler#yield" },
-      operation: { kind: "scheduler-yield" },
+      semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "protocol", transition: "yield" })]) }),
     }));
   });
 
   it("registers synchronous collection callbacks and pure host helpers", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#map" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
-      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#flatMap" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
-      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toSorted" }, operation: expect.objectContaining({ kind: "inline-callback", callbackArguments: [0] }), result: { kind: "fresh" } }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#flatMap" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toSorted" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([{ kind: "result", refinement: { kind: "fresh" } }, expect.objectContaining({ kind: "callback" })]) }) }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#slice" } }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#join" } }),
       expect.objectContaining({ symbol: { module: "node:module", export: "createRequire" } }),
@@ -195,17 +202,17 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ symbol: { module: "lib.node", export: "Process#cwd" } }),
     ]));
     for (const [module, name] of [["lib.es", "Array#slice"], ["lib.es", "Array#join"], ["node:module", "createRequire"], ["node:path", "join"], ["lib.node", "Process#cwd"]]) {
-      expect(builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.operation).toBeUndefined();
+      expect(builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.semantics).toBeUndefined();
     }
   });
 
   it("pins reviewed synchronous TypeScript traversal callback shapes", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "typescript", export: "Node#forEachChild" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [0, 1], optionalCallbackArguments: [1] } }),
-      expect.objectContaining({ symbol: { module: "typescript", export: "forEachChild" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [1, 2], optionalCallbackArguments: [2] } }),
-      expect.objectContaining({ symbol: { module: "typescript", export: "visitNode" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [1] } }),
-      expect.objectContaining({ symbol: { module: "typescript", export: "visitEachChild" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [1] } }),
-      expect.objectContaining({ symbol: { module: "typescript", export: "transform" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [], callbackArrayArguments: [1], callbackArrayReturnDepth: 1 } }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "Node#forEachChild" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 0 } }), expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 1 }, callable: "optional" })]) }) }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "forEachChild" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 1 } }), expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 2 }, callable: "optional" })]) }) }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "visitNode" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 1 } })] }) }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "visitEachChild" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 1 } })] }) }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "transform" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", target: expect.objectContaining({ kind: "array-elements" }), returnDepth: 1 })] }) }),
     ]));
   });
 
@@ -220,48 +227,59 @@ describe("builtin semantic overlays", () => {
 
   it("registers Node next-tick and check-phase scheduling by builtin identity", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "lib.node", export: "Process#nextTick" }, operation: expect.objectContaining({ kind: "timer", queue: "next-tick" }) }),
-      expect.objectContaining({ symbol: { module: "global", export: "setImmediate" }, operation: expect.objectContaining({ kind: "timer", queue: "check" }) }),
+      expect.objectContaining({ symbol: { module: "lib.node", export: "Process#nextTick" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", queue: "next-tick" })]) }) }),
+      expect.objectContaining({ symbol: { module: "global", export: "setImmediate" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", queue: "check" })]) }) }),
     ]));
   });
 
   it("marks one-shot node:fs completion callbacks without changing sync or Promise APIs", () => {
-    const lookup = (module: string, name: string) => builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.operation;
+    const lookup = (module: string, name: string) => builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.semantics?.primitives ?? [];
     for (const name of ["access", "readFile", "writeFile", "copyFile", "read", "write", "rename", "rm"]) {
-      expect(lookup("node:fs", name)).toMatchObject({ kind: "fs", callbackArgumentFromEnd: 1, callbackQueue: "poll" });
+      expect(lookup("node:fs", name)).toContainEqual(expect.objectContaining({
+        kind: "callback", target: expect.objectContaining({ kind: "argument-from-end", offset: 1 }), queue: "poll", cardinality: "0..1",
+      }));
     }
-    expect(lookup("node:fs", "readFileSync")).not.toHaveProperty("callbackQueue");
-    expect(lookup("node:fs/promises", "readFile")).not.toHaveProperty("callbackQueue");
+    expect(lookup("node:fs", "readFileSync")).not.toContainEqual(expect.objectContaining({ kind: "callback" }));
+    expect(lookup("node:fs/promises", "readFile")).not.toContainEqual(expect.objectContaining({ kind: "callback" }));
+    expect(lookup("node:fs/promises", "readFileSync")).toEqual([]);
+    expect(lookup("node:fs/promises", "opendir")).toContainEqual(expect.objectContaining({ kind: "effect", capability: "FsRead" }));
+    expect(lookup("node:fs/promises", "mkdtemp")).toContainEqual(expect.objectContaining({ kind: "effect", capability: "FsWrite" }));
+    expect(lookup("node:fs/promises", "statfs")).toContainEqual(expect.objectContaining({ kind: "effect", capability: "FsRead" }));
     for (const name of ["watch", "watchFile"]) {
-      expect(lookup("node:fs", name)).toMatchObject({
-        kind: "fs", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-        callbackMustBeCallable: true, callbackQueue: "poll", callbackRepeats: true,
-      });
+      expect(lookup("node:fs", name)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "callback", target: { kind: "argument-from-end", offset: 1, minimumArguments: 2 }, queue: "poll", cardinality: "0..n" }),
+        expect.objectContaining({ kind: "result", refinement: { kind: "resource", family: "watcher" } }),
+      ]));
     }
   });
 
   it("registers node:net Server.close as an externally completed close-phase callback", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:net", export: "Server#close" },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close", closesReceiverFamily: "server" },
+      semantics: expect.objectContaining({ primitives: expect.arrayContaining([
+        expect.objectContaining({ kind: "callback", queue: "close" }),
+        { kind: "release", resource: "server", target: { kind: "receiver" } },
+        { kind: "protocol", name: "server", transition: "close" },
+      ]) }),
     }));
   });
 
   it("registers node:fs FSWatcher.close as receiver-handle cancellation", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:fs", export: "FSWatcher#close" },
-      operation: { kind: "timer-clear", handleReceiver: true, family: "watcher" },
+      semantics: expect.objectContaining({ primitives: expect.arrayContaining([
+        expect.objectContaining({ kind: "protocol", name: "watcher", transition: "cancel" }),
+      ]) }),
     }));
   });
 
   it("registers node:net Server.listen as scoped next-tick work", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
         symbol: { module: "node:net", export: "Server#listen" },
-        operation: {
-          kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-          callbackMustBeCallable: true, queue: "next-tick", effect: "Net",
-          effectScopeArgument: 0, effectScopeKind: "net-connect",
-        },
+        semantics: expect.objectContaining({ primitives: expect.arrayContaining([
+          expect.objectContaining({ kind: "effect", capability: "Net", scope: { kind: "network", format: "connect", target: { kind: "argument", index: 0 }, hostArgument: 1 } }),
+          expect.objectContaining({ kind: "callback", queue: "next-tick", callable: "optional" }),
+        ]) }),
       }));
   });
 
@@ -269,23 +287,26 @@ describe("builtin semantic overlays", () => {
     for (const name of ["connect", "createConnection"]) {
       expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
         symbol: { module: "node:net", export: name },
-        operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },
+        semantics: expect.objectContaining({ primitives: expect.arrayContaining([
+          expect.objectContaining({ kind: "effect", capability: "Net", scope: expect.objectContaining({ kind: "network", format: "connect" }) }),
+          expect.objectContaining({ kind: "callback", queue: "poll" }),
+        ]) }),
       }));
     }
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:net", export: "Socket#connect" },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },
+      semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Net" }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }),
     }));
   });
 
   it("registers Node DNS callbacks as Net-capable poll work", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:dns", export: "lookup" },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0 },
+      semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Net" }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }),
     }));
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:dns", export: "lookupService" },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" },
+      semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Net" }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }),
     }));
   });
 
@@ -306,7 +327,7 @@ describe("builtin semantic overlays", () => {
     for (const [name, effect] of expected) {
       expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
         symbol: { module: "node:os", export: name },
-        operation: { kind: "effect", effect },
+        semantics: expect.objectContaining({ primitives: [{ kind: "effect", capability: effect }] }),
       }));
     }
   });
@@ -314,7 +335,10 @@ describe("builtin semantic overlays", () => {
   it("registers node:crypto randomBytes as Random-capable poll work when a callback is supplied", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:crypto", export: "randomBytes" },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, queue: "poll", effect: "Random" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "effect", capability: "Random" },
+        { kind: "callback", target: { kind: "argument-from-end", offset: 1, minimumArguments: 2 }, timing: "deferred", queue: "poll", cardinality: "0..1", callable: "optional" },
+      ] },
     }));
   });
 
@@ -322,11 +346,10 @@ describe("builtin semantic overlays", () => {
     for (const module of ["node:http", "node:https"]) for (const name of ["request", "get"]) {
       expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
         symbol: { module, export: name },
-        operation: {
-          kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
-          callbackMustBeCallable: true, queue: "poll", effect: "Net", effectScopeArgument: 0,
-          effectScopeKind: "http-request", effectDefaultPort: module === "node:https" ? 443 : 80,
-        },
+        semantics: expect.objectContaining({ primitives: expect.arrayContaining([
+          expect.objectContaining({ kind: "effect", capability: "Net", scope: expect.objectContaining({ kind: "network", format: "http-request", defaultPort: module === "node:https" ? 443 : 80 }) }),
+          expect.objectContaining({ kind: "callback", queue: "poll" }),
+        ]) }),
       }));
     }
   });
@@ -335,20 +358,21 @@ describe("builtin semantic overlays", () => {
     for (const module of ["node:net", "node:http", "node:https"]) {
       expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
         symbol: { module, export: "createServer" },
-        operation: {
-          kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 1,
-          callbackMustBeCallable: true, queue: "poll", repeats: true, resultHandleFamily: "server",
-        },
+        semantics: expect.objectContaining({ primitives: expect.arrayContaining([
+          expect.objectContaining({ kind: "callback", queue: "poll", cardinality: "0..n" }),
+          { kind: "result", refinement: { kind: "resource", family: "server" } },
+          { kind: "acquire", resource: "server", target: { kind: "result" } },
+        ]) }),
       }));
     }
   });
 
   it("registers child_process authority without confusing process lifetime with completion callbacks", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "node:child_process", export: "exec" }, operation: expect.objectContaining({ kind: "deferred-callback", queue: "poll", effect: "Run" }) }),
-      expect.objectContaining({ symbol: { module: "node:child_process", export: "execFile" }, operation: expect.objectContaining({ kind: "deferred-callback", queue: "poll", effect: "Run", effectScopeKind: "run-program" }) }),
+      expect.objectContaining({ symbol: { module: "node:child_process", export: "exec" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Run" }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),
+      expect.objectContaining({ symbol: { module: "node:child_process", export: "execFile" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Run", scope: expect.objectContaining({ kind: "run-program" }) }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),
       ...["execSync", "execFileSync", "spawn", "spawnSync", "fork"].map((name) => expect.objectContaining({
-        symbol: { module: "node:child_process", export: name }, operation: expect.objectContaining({ kind: "scoped-effect", effect: "Run" }),
+        symbol: { module: "node:child_process", export: name }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "Run" })]) }),
       })),
     ]));
   });

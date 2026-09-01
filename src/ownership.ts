@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { resolvedSymbol, symbolIdentityKey } from "./binding-identity.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import { interpretBuiltinCallSemantics, projectedArrayElements } from "./builtin-semantic-interpreter.js";
 import { resolveStableRegion } from "./region-alias.js";
 import { evaluateResourceProtocol, type ResourceProtocolModel, type ResourceProtocolTransition } from "./resource-protocol.js";
 
@@ -101,15 +102,6 @@ export function checkOwnership(events: readonly OwnershipEvent[]): OwnershipDiag
   return diagnostics;
 }
 
-function transferList(call: ts.CallExpression, index: number): readonly ts.Expression[] {
-  const value = call.arguments[index];
-  if (value && ts.isArrayLiteralExpression(value)) return value.elements.filter(ts.isExpression);
-  if (value && ts.isObjectLiteralExpression(value)) for (const property of value.properties) {
-    if (ts.isPropertyAssignment(property) && property.name.getText().replace(/["']/g, "") === "transfer" && ts.isArrayLiteralExpression(property.initializer)) return property.initializer.elements.filter(ts.isExpression);
-  }
-  return [];
-}
-
 export function collectOwnershipEvents(program: ts.Program, source: ts.SourceFile): OwnershipEvent[] {
   const adapter = new TypeScriptFrontendAdapter(program);
   const checker = program.getTypeChecker();
@@ -123,11 +115,14 @@ export function collectOwnershipEvents(program: ts.Program, source: ts.SourceFil
       if (builtin && ts.isIdentifier(buffer)) events.push({ operation: "read", resource: buffer.text, expression: buffer, span: { start: buffer.getStart(source), end: buffer.getEnd() } });
     }
     if (ts.isCallExpression(node)) {
-      const operation = adapter.resolveCall(node)?.operation;
-      if (operation?.kind === "clone") {
-        const value = node.arguments[operation.valueArgument];
-        if (value) events.push({ operation: "clone", resource: value.getText(source), expression: value, span: { start: value.getStart(source), end: value.getEnd() } });
-        for (const item of transferList(node, operation.transferArgument)) {
+      const resolved = adapter.resolveCall(node);
+      const semanticEvents = resolved?.semantics
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }) : [];
+      for (const event of semanticEvents) {
+        if (event.kind === "clone" && event.target.status === "resolved") {
+          const value = event.target.expression;
+          events.push({ operation: "clone", resource: value.getText(source), expression: value, span: { start: value.getStart(source), end: value.getEnd() } });
+        } else if (event.kind === "transfer") for (const item of projectedArrayElements(event.target) ?? []) {
           events.push({ operation: "transfer", resource: item.getText(source), expression: item, transferState: adapter.ownershipKind(item), span: { start: item.getStart(source), end: item.getEnd() } });
           transferSpans.push({ start: item.getStart(source), end: item.getEnd() });
         }

@@ -1,5 +1,5 @@
 import type { VerifyUneffectProjectResult } from "./project-verification.js";
-import { formatEffect, unknownCapabilityReasons } from "./capabilities.js";
+import { formatEffect, unresolvedCapabilityReasons } from "./capabilities.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 
 export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "instrument" | "assumption" | "temporal" | "module-initialization" | "coverage";
@@ -87,7 +87,7 @@ export function assessProjectVerification(
         `${summary.functionName}: effect evidence is unknown${summary.unknownReasons?.length
           ? ` (${summary.unknownReasons.map((reason) => `${reason.code}: ${reason.message}`).join("; ")})` : ""}`);
     }
-    for (const effect of summary.effects) for (const reason of unknownCapabilityReasons(effect)) {
+    for (const effect of summary.effects) for (const reason of unresolvedCapabilityReasons(effect)) {
       add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName,
         `${summary.functionName}: ${formatEffect(effect)} has unknown capability scope (${reason})`);
     }

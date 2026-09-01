@@ -2,11 +2,12 @@ import ts from "typescript";
 import { symbolIdentityKey } from "./binding-identity.js";
 import { basename, dirname } from "node:path";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
-import type { DeferredCallbackBuiltinOperation, FsBuiltinOperation, PromiseCombinator } from "./builtin-contracts.js";
+import type { BuiltinContractRegistry, PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
 import type { TemporalComposition } from "./temporal-compose.js";
 import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
+import { interpretBuiltinCallSemantics, projectBuiltinCallbacks, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
 
 export interface TimerPattern {
   owner: string;
@@ -116,8 +117,8 @@ function functionName(node: ts.FunctionLikeDeclaration | ts.SourceFile): string 
   return "<anonymous>";
 }
 
-export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.SourceFile): AsyncPatternModel {
-  const adapter = new TypeScriptFrontendAdapter(program);
+export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.SourceFile, options: { builtinRegistry?: BuiltinContractRegistry } = {}): AsyncPatternModel {
+  const adapter = new TypeScriptFrontendAdapter(program, options.builtinRegistry);
   const checker = program.getTypeChecker();
   const printer = ts.createPrinter({ removeComments: true });
   const defaultLibDirectory = dirname(ts.getDefaultLibFilePath(program.getCompilerOptions()));
@@ -961,43 +962,146 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const invokedSignalFactories = new Set<ts.FunctionLikeDeclaration>();
   const inlineAbortTimeoutTargets = new Map<ts.CallExpression, number>();
   const inlineAbortCompositionTargets = new Map<ts.CallExpression, AbortTarget>();
-  const trailingCallbackArgument = (
-    call: ts.CallExpression,
-    operation: { callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean },
-  ): ts.Expression | undefined => {
-    if (call.arguments.length < (operation.callbackMinimumArguments ?? operation.callbackArgumentFromEnd)) return undefined;
-    const callback = call.arguments[call.arguments.length - operation.callbackArgumentFromEnd];
-    if (!callback || !operation.callbackMustBeCallable) return callback;
-    const type = checker.getTypeAtLocation(callback);
-    return type.getCallSignatures().length > 0 || Boolean(type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))
-      ? callback : undefined;
+  const semanticCallbacks = (call: ts.CallExpression): BuiltinCallbackEvent[] =>
+    projectBuiltinCallbacks(adapter.resolveCall(call), call, checker);
+  const semanticTimer = (call: ts.CallExpression): {
+    callback: ts.Expression; delay?: ts.Expression; repeats: boolean; queue: TimerPattern["queue"];
+  } | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
+    const protocol = events.find((event) => event.kind === "protocol" && event.name === "timer" && event.transition === "schedule");
+    const callback = semanticCallbacks(call).find((event) => event.timing === "deferred" && event.target.status === "resolved");
+    if (!protocol || protocol.kind !== "protocol" || !callback || callback.target.status !== "resolved" || callback.queue === "current") return undefined;
+    const delay = protocol.inputs.delay;
+    if (delay && delay.status !== "resolved") return undefined;
+    return {
+      callback: callback.target.expression,
+      ...(delay?.status === "resolved" ? { delay: delay.expression } : {}),
+      repeats: callback.cardinality === "0..n" || callback.cardinality === "1..n",
+      queue: callback.queue,
+    };
   };
-  const deferredCallbackArgument = (call: ts.CallExpression, operation: DeferredCallbackBuiltinOperation): ts.Expression | undefined =>
-    trailingCallbackArgument(call, operation);
-  const fsCallbackArgument = (call: ts.CallExpression, operation: FsBuiltinOperation): ts.Expression | undefined =>
-    operation.callbackArgumentFromEnd === undefined ? undefined : trailingCallbackArgument(call, {
-      callbackArgumentFromEnd: operation.callbackArgumentFromEnd,
-      callbackMinimumArguments: operation.callbackMinimumArguments,
-      callbackMustBeCallable: operation.callbackMustBeCallable,
-    });
+  const semanticDeferredJob = (call: ts.CallExpression): {
+    callback: ts.Expression; repeats: boolean; queue: TimerPattern["queue"]; handleFamily?: TimerPattern["handleFamily"];
+    release?: { resource: string; target: ts.Expression };
+  } | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
+    if (events.some((event) => event.kind === "protocol" && event.name === "timer" && event.transition === "schedule")) return undefined;
+    if (events.some((event) => event.kind === "protocol" && event.name === "scheduler")) return undefined;
+    // Promise reactions are emitted by the Promise state model. Adding the
+    // callback primitive as an independent host job would duplicate them.
+    if (events.some((event) => event.kind === "protocol" && event.name === "promise-handler")) return undefined;
+    const callback = semanticCallbacks(call).find((event) => event.timing === "deferred" && event.target.status === "resolved");
+    if (!callback || callback.kind !== "callback" || callback.target.status !== "resolved" || callback.queue === "current") return undefined;
+    const resource = events.find((event) => event.kind === "result" && event.refinement.kind === "resource");
+    const family = resource?.kind === "result" && resource.refinement.kind === "resource" ? resource.refinement.family : undefined;
+    const handleFamily = family === "watcher" || family === "server" ? family : undefined;
+    const release = events.find((event) => event.kind === "release" && event.target?.status === "resolved");
+    return {
+      callback: callback.target.expression,
+      repeats: callback.cardinality === "0..n" || callback.cardinality === "1..n",
+      queue: callback.queue,
+      ...(handleFamily ? { handleFamily } : {}),
+      ...(release?.kind === "release" && release.target?.status === "resolved"
+        ? { release: { resource: release.resource, target: release.target.expression } } : {}),
+    };
+  };
+  const semanticRelease = (call: ts.CallExpression): { resource: string; target: ts.Expression } | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const release = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+      .find((event) => event.kind === "release" && event.target?.status === "resolved");
+    return release?.kind === "release" && release.target?.status === "resolved"
+      ? { resource: release.resource, target: release.target.expression } : undefined;
+  };
+  const semanticCancellation = (call: ts.CallExpression): {
+    family: "timeout" | "immediate" | "animation-frame" | "watcher";
+    handle: ts.Expression;
+  } | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const cancellation = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+      .find((event) => event.kind === "protocol" && event.transition === "cancel"
+        && ["timeout", "immediate", "animation-frame", "watcher"].includes(event.name));
+    if (!cancellation || cancellation.kind !== "protocol") return undefined;
+    const handle = cancellation.inputs.handle;
+    if (handle?.status !== "resolved") return undefined;
+    return { family: cancellation.name as "timeout" | "immediate" | "animation-frame" | "watcher", handle: handle.expression };
+  };
+  const semanticPromiseCombinator = (call: ts.CallExpression): {
+    combinator: PromiseCombinator;
+    iterable: ts.Expression;
+  } | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+      .find((event) => event.kind === "protocol" && event.name === "promise-combinator"
+        && ["all", "allSettled", "race", "any"].includes(event.transition));
+    if (!protocol || protocol.kind !== "protocol" || protocol.inputs.iterable?.status !== "resolved") return undefined;
+    return { combinator: protocol.transition as PromiseCombinator, iterable: protocol.inputs.iterable.expression };
+  };
+  const semanticAbortSignal = (call: ts.CallExpression):
+    | { transition: "timeout"; delay: ts.Expression }
+    | { transition: "abort"; reason?: ts.Expression }
+    | { transition: "any"; signals: ts.Expression }
+    | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+      .find((event) => event.kind === "protocol" && event.name === "abort-signal");
+    if (!protocol || protocol.kind !== "protocol") return undefined;
+    if (protocol.transition === "timeout" && protocol.inputs.delay?.status === "resolved") {
+      return { transition: "timeout", delay: protocol.inputs.delay.expression };
+    }
+    if (protocol.transition === "abort") {
+      const reason = protocol.inputs.reason;
+      if (reason?.status === "resolved") return { transition: "abort", reason: reason.expression };
+      if (reason?.status === "absent") return { transition: "abort" };
+    }
+    if (protocol.transition === "any" && protocol.inputs.signals?.status === "resolved") {
+      return { transition: "any", signals: protocol.inputs.signals.expression };
+    }
+    return undefined;
+  };
+  const semanticScheduler = (call: ts.CallExpression):
+    | { transition: "post-task"; callback: ts.Expression; options?: ts.Expression }
+    | { transition: "yield" }
+    | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+      .find((event) => event.kind === "protocol" && event.name === "scheduler");
+    if (!protocol || protocol.kind !== "protocol") return undefined;
+    if (protocol.transition === "yield") return { transition: "yield" };
+    const callback = semanticCallbacks(call).find((event) => event.queue === "scheduler-task" && event.target.status === "resolved");
+    if (protocol.transition !== "post-task" || !callback || callback.target.status !== "resolved") return undefined;
+    const options = protocol.inputs.options;
+    if (options?.status === "resolved") return { transition: "post-task", callback: callback.target.expression, options: options.expression };
+    return options?.status === "absent" ? { transition: "post-task", callback: callback.target.expression } : undefined;
+  };
   const collectScheduledCallbacks = (node: ts.Node, owner?: ts.FunctionLikeDeclaration): void => {
     const currentOwner = ts.isFunctionLike(node) && "body" in node && node.body ? node as ts.FunctionLikeDeclaration : owner;
     if (ts.isCallExpression(node)) {
-      const operation = adapter.resolveCall(node)?.operation;
-      if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") {
-        for (const callback of resolveCallbacks(node.arguments[operation.callbackArgument])) {
+      const resolvedBuiltin = adapter.resolveCall(node);
+      const genericTimer = semanticTimer(node);
+      if (genericTimer) {
+        for (const callback of resolveCallbacks(genericTimer.callback)) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
-      } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue) {
-        for (const callback of resolveCallbacks(fsCallbackArgument(node, operation))) {
+      } else if (semanticDeferredJob(node)) {
+        for (const callback of resolveCallbacks(semanticDeferredJob(node)!.callback)) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
-      } else if (operation?.kind === "deferred-callback" && deferredCallbackArgument(node, operation)) {
-        for (const callback of resolveCallbacks(deferredCallbackArgument(node, operation))) {
+      } else if (semanticScheduler(node)?.transition === "post-task") {
+        const scheduler = semanticScheduler(node)!;
+        if (scheduler.transition === "post-task") for (const callback of resolveCallbacks(scheduler.callback)) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
       }
-      if (!operation) {
+      if (!resolvedBuiltin) {
         const type = checker.getTypeAtLocation(node);
         const abortProperty = checker.getPropertyOfType(type, "aborted");
         const isAbortSignal = abortProperty?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
@@ -1115,15 +1219,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         return bound ? abortTarget(bound, seen, bindings) : abortSignalTargets.get(bindingKey(expression));
       }
       if (!ts.isCallExpression(expression)) return undefined;
-      const operation = adapter.resolveCall(expression)?.operation;
-      if (operation?.kind === "abort-static") return {
+      const abort = semanticAbortSignal(expression);
+      if (abort?.transition === "abort") return {
         alreadyAborted: true,
-        reason: expression.arguments[operation.reasonArgument]?.getText(source) ?? "AbortError",
+        reason: abort.reason?.getText(source) ?? "AbortError",
       };
-      if (operation?.kind === "abort-any") {
+      if (abort?.transition === "any") {
         const existing = bindings.size === 0 ? inlineAbortCompositionTargets.get(expression) : undefined;
         if (existing !== undefined) return existing;
-        const argument = expression.arguments[operation.signalsArgument];
+        const argument = abort.signals;
         let normalizedArgument = argument && (stableConstInitializerAtUse(argument, expression) ?? argument);
         while (normalizedArgument && ts.isParenthesizedExpression(normalizedArgument)) normalizedArgument = normalizedArgument.expression;
         const conditionalPaths = normalizedArgument && ts.isConditionalExpression(normalizedArgument)
@@ -1163,7 +1267,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         if (bindings.size === 0) inlineAbortCompositionTargets.set(expression, target);
         return target;
       }
-      if (operation?.kind !== "abort-timeout") {
+      if (abort?.transition !== "timeout") {
         const factory = resolvedSymbol(expression.expression);
         if (!factory || seen.has(factory)) return undefined;
         seen.add(factory);
@@ -1186,7 +1290,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
       const existing = bindings.size === 0 ? inlineAbortTimeoutTargets.get(expression) : undefined;
       if (existing !== undefined) return { timer: existing, reason: "TimeoutError" };
-      const delayNode = expression.arguments[0];
+      const delayNode = abort.delay;
       const timer = timers.length;
       timers.push({
         owner: ownerName,
@@ -1274,57 +1378,63 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const scan = (node: ts.Node): void => {
           if (node !== callback && ts.isFunctionLike(node)) return;
           if (ts.isCallExpression(node)) {
-            const operation = adapter.resolveCall(node)?.operation;
-            if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick" || operation.queue === "timer" || operation.queue === "check")) {
-              if (operation.queue === "timer" && node.getStart(node.getSourceFile()) === timers[parent]!.span.start) return;
+            const genericTimer = semanticTimer(node);
+            const genericScheduler = semanticScheduler(node);
+            if (genericTimer && (genericTimer.queue === "microtask" || genericTimer.queue === "next-tick" || genericTimer.queue === "timer" || genericTimer.queue === "check")) {
+              if (genericTimer.queue === "timer" && node.getStart(node.getSourceFile()) === timers[parent]!.span.start) return;
               const child = timers.length;
-              const callbackNode = node.arguments[operation.callbackArgument];
-              const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
+              const callbackNode = genericTimer.callback;
               const childSource = node.getSourceFile();
-              timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode), recursive: false, repeats: operation.repeats, queue: operation.queue, enqueuedBy: parent, ...(callbacks.length > 1 ? { parentAlternative } : {}), handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
+              timers.push({ owner: ownerName, callback: callbackNode.getText(childSource), delay: genericTimer.delay === undefined ? 0 : staticNumber(genericTimer.delay), recursive: false, repeats: genericTimer.repeats, queue: genericTimer.queue, enqueuedBy: parent, ...(callbacks.length > 1 ? { parentAlternative } : {}), handleFamily: genericTimer.queue === "timer" ? "timeout" : genericTimer.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
               collectNestedJobs(callbackNode, child, visited);
               return;
-            } else if (operation?.kind === "fs" && operation.callbackQueue) {
-              const callbackNode = fsCallbackArgument(node, operation);
-              if (callbackNode) {
-                const child = timers.length;
-                const childSource = node.getSourceFile();
-                timers.push({
-                  owner: ownerName, callback: callbackNode.getText(childSource), delay: 0,
-                  recursive: false, repeats: operation.callbackRepeats ?? false,
-                  queue: operation.callbackQueue, enqueuedBy: parent, externallyReady: true,
-                  ...(callbacks.length > 1 ? { parentAlternative } : {}),
-                  span: { start: node.getStart(childSource), end: node.getEnd() },
-                });
-                collectNestedJobs(callbackNode, child, visited);
-                return;
+            } else if (semanticDeferredJob(node)) {
+              const job = semanticDeferredJob(node)!;
+              const closesSource = job.release && ts.isIdentifier(job.release.target)
+                ? handleTargets.get(bindingKey(job.release.target)) : undefined;
+              const definiteClose = closesSource !== undefined
+                && timers[closesSource]?.handleFamily === job.release?.resource
+                && definitelyExecutedWithin(node, callback.body!);
+              const child = timers.length;
+              const childSource = node.getSourceFile();
+              timers.push({
+                owner: ownerName, callback: job.callback.getText(childSource), delay: 0,
+                recursive: false, repeats: job.repeats, queue: job.queue, enqueuedBy: parent,
+                externallyReady: job.queue === "poll" || job.queue === "close",
+                ...(definiteClose ? { closesSource } : {}),
+                ...(callbacks.length > 1 ? { parentAlternative } : {}),
+                ...(job.handleFamily ? { handleFamily: job.handleFamily } : {}),
+                span: { start: node.getStart(childSource), end: node.getEnd() },
+              });
+              collectNestedJobs(job.callback, child, visited);
+              return;
+            } else if (semanticRelease(node)) {
+              const release = semanticRelease(node)!;
+              const closesSource = ts.isIdentifier(release.target) ? handleTargets.get(bindingKey(release.target)) : undefined;
+              if (closesSource !== undefined && timers[closesSource]?.handleFamily === release.resource
+                && definitelyExecutedWithin(node, callback.body!)) {
+                (timers[parent]!.closesSources ??= []).push(closesSource);
               }
-            } else if (operation?.kind === "deferred-callback") {
-              const callbackNode = deferredCallbackArgument(node, operation);
-              const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
-                ? node.expression.expression : undefined;
-              const closesSource = operation.closesReceiverFamily && receiver && ts.isIdentifier(receiver)
-                ? handleTargets.get(bindingKey(receiver)) : undefined;
-              const compatibleClose = closesSource !== undefined
-                && timers[closesSource]?.handleFamily === operation.closesReceiverFamily;
-              const definiteClose = compatibleClose && definitelyExecutedWithin(node, callback.body!);
-              if (!callbackNode && definiteClose) (timers[parent]!.closesSources ??= []).push(closesSource);
-              if (callbackNode) {
-                const child = timers.length;
-                const childSource = node.getSourceFile();
-                timers.push({
-                  owner: ownerName, callback: callbackNode.getText(childSource), delay: 0,
-                  recursive: false, repeats: operation.repeats ?? false,
-                  queue: operation.queue, enqueuedBy: parent,
-                  externallyReady: operation.queue === "poll" || operation.queue === "close",
-                  ...(definiteClose ? { closesSource } : {}),
-                  ...(callbacks.length > 1 ? { parentAlternative } : {}),
-                  span: { start: node.getStart(childSource), end: node.getEnd() },
-                });
-                collectNestedJobs(callbackNode, child, visited);
-                return;
-              }
-            } else if (operation?.kind === "scheduler-yield") {
+            } else if (genericScheduler?.transition === "post-task") {
+              const optionsNode = genericScheduler.options;
+              const priorityNode = staticObjectOption(optionsNode, "priority");
+              const signalNode = staticObjectOption(optionsNode, "signal");
+              const delayNode = staticObjectOption(optionsNode, "delay");
+              const signal = signalNode ? abortTarget(signalNode) : undefined;
+              const child = timers.length;
+              const childSource = node.getSourceFile();
+              timers.push({
+                owner: ownerName, callback: genericScheduler.callback.getText(childSource),
+                delay: delayNode && ts.isNumericLiteral(delayNode) ? Number(delayNode.text) : delayNode ? undefined : 0,
+                recursive: false, repeats: false, queue: "scheduler-task", enqueuedBy: parent,
+                ...(callbacks.length > 1 ? { parentAlternative } : {}), kind: "scheduler-post-task",
+                priority: staticPriority(priorityNode) ?? "user-visible",
+                initiallyCancelled: signal?.alreadyAborted, abortTimer: signal?.timer, abortComposition: signal?.composition,
+                span: { start: node.getStart(childSource), end: node.getEnd() },
+              });
+              collectNestedJobs(genericScheduler.callback, child, visited);
+              return;
+            } else if (genericScheduler?.transition === "yield") {
               const childSource = node.getSourceFile();
               timers.push({
                 owner: ownerName,
@@ -1381,8 +1491,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) recordEscapesInValue(node.right, "property", node);
       if (ts.isReturnStatement(node) && node.expression) recordEscapesInValue(node.expression, "return", node);
       if (ts.isCallExpression(node)) {
-        const operation = adapter.resolveCall(node)?.operation;
-        if (!operation && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "setPriority"
+        const resolvedBuiltin = adapter.resolveCall(node);
+        if (!resolvedBuiltin && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "setPriority"
           && ts.isIdentifier(node.expression.expression)) {
           const controller = taskControllers.get(bindingKey(node.expression.expression));
           const priority = staticPriority(node.arguments[0]);
@@ -1392,23 +1502,22 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             for (const task of controller.tasks) (timers[task]!.priorityChanges ??= []).push(priority);
           }
         }
-        if (operation?.kind !== "timer-clear") for (const argument of node.arguments) recordEscapesInValue(argument, "argument", node);
-        if (operation?.kind === "timer") {
-          const callbackNode = node.arguments[operation.callbackArgument];
-          const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
-          const callback = callbackNode?.getText(source) ?? "<unknown>";
+        const genericCancellation = semanticCancellation(node);
+        const genericCombinator = semanticPromiseCombinator(node);
+        const genericAbort = semanticAbortSignal(node);
+        const genericScheduler = semanticScheduler(node);
+        if (!genericCancellation) for (const argument of node.arguments) recordEscapesInValue(argument, "argument", node);
+        const genericTimer = semanticTimer(node);
+        if (genericTimer) {
+          const callbackNode = genericTimer.callback;
+          const callback = callbackNode.getText(source);
           const declaration = assignedBinding(node);
           const timerIndex = timers.length;
           timers.push({
-            owner: ownerName,
-            callback,
-            delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode),
-            recursive: callback === ownerName,
-            repeats: operation.repeats,
-            queue: operation.queue,
-            handle: declaration,
-            handleKind: timerHandleKind(node),
-            handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : operation.queue === "animation-frame" ? "animation-frame" : undefined,
+            owner: ownerName, callback, delay: genericTimer.delay === undefined ? 0 : staticNumber(genericTimer.delay),
+            recursive: callback === ownerName, repeats: genericTimer.repeats, queue: genericTimer.queue,
+            handle: declaration, handleKind: timerHandleKind(node),
+            handleFamily: genericTimer.queue === "timer" ? "timeout" : genericTimer.queue === "check" ? "immediate" : genericTimer.queue === "animation-frame" ? "animation-frame" : undefined,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           const declarationNode = assignedBindingNode(node);
@@ -1418,71 +1527,39 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             handleNames.set(key, declarationNode.text);
           }
           collectNestedJobs(callbackNode, timerIndex);
-        } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue && fsCallbackArgument(node, operation)) {
-          const callbackNode = fsCallbackArgument(node, operation)!;
+        } else if (semanticDeferredJob(node)) {
+          const job = semanticDeferredJob(node)!;
           const declaration = assignedBinding(node);
+          const closesSource = job.release && ts.isIdentifier(job.release.target)
+            ? handleTargets.get(bindingKey(job.release.target)) : undefined;
+          const definiteClose = closesSource !== undefined
+            && timers[closesSource]?.handleFamily === job.release?.resource
+            && definitelyExecutedWithin(node, ownerBody);
           const timerIndex = timers.length;
           timers.push({
-            owner: ownerName,
-            callback: callbackNode?.getText(source) ?? "<unknown>",
-            delay: 0,
-            recursive: false,
-            repeats: operation.callbackRepeats ?? false,
-            queue: operation.callbackQueue,
-            handle: operation.callbackRepeats ? declaration : undefined,
-            handleKind: operation.callbackRepeats ? "object" : undefined,
-            handleFamily: operation.callbackRepeats ? "watcher" : undefined,
-            externallyReady: true,
+            owner: ownerName, callback: job.callback.getText(source), delay: 0,
+            recursive: false, repeats: job.repeats, queue: job.queue,
+            handle: job.handleFamily ? declaration : undefined,
+            handleKind: job.handleFamily ? "object" : undefined,
+            handleFamily: job.handleFamily,
+            externallyReady: job.queue === "poll" || job.queue === "close",
+            ...(definiteClose ? { closesSource } : {}),
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           const declarationNode = assignedBindingNode(node);
-          if (operation.callbackRepeats && declarationNode) {
+          if (job.handleFamily && declarationNode) {
             const key = bindingKey(declarationNode);
             handleTargets.set(key, timerIndex);
             handleNames.set(key, declarationNode.text);
           }
-          collectNestedJobs(callbackNode, timerIndex);
-        } else if (operation?.kind === "deferred-callback" && deferredCallbackArgument(node, operation)) {
-          const callbackNode = deferredCallbackArgument(node, operation)!;
-          const declaration = assignedBinding(node);
-          const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
-            ? node.expression.expression : undefined;
-          const closesSource = operation.closesReceiverFamily && receiver && ts.isIdentifier(receiver)
-            ? handleTargets.get(bindingKey(receiver)) : undefined;
-          const definiteClose = closesSource !== undefined && definitelyExecutedWithin(node, ownerBody);
-          const timerIndex = timers.length;
-          timers.push({
-            owner: ownerName,
-            callback: callbackNode?.getText(source) ?? "<unknown>",
-            delay: 0,
-            recursive: false,
-            repeats: operation.repeats ?? false,
-            queue: operation.queue,
-            handle: operation.resultHandleFamily ? declaration : undefined,
-            handleKind: operation.resultHandleFamily ? "object" : undefined,
-            handleFamily: operation.resultHandleFamily,
-            ...(definiteClose && timers[closesSource]?.handleFamily === operation.closesReceiverFamily ? { closesSource } : {}),
-            externallyReady: operation.queue === "poll" || operation.queue === "close",
-            span: { start: node.getStart(source), end: node.getEnd() },
-          });
-          const declarationNode = assignedBindingNode(node);
-          if (operation.resultHandleFamily && declarationNode) {
-            const key = bindingKey(declarationNode);
-            handleTargets.set(key, timerIndex);
-            handleNames.set(key, declarationNode.text);
-          }
-          collectNestedJobs(callbackNode, timerIndex);
-        } else if (operation?.kind === "deferred-callback" && operation.closesReceiverFamily) {
-          const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
-            ? node.expression.expression : undefined;
-          const closesSource = receiver && ts.isIdentifier(receiver)
-            ? handleTargets.get(bindingKey(receiver)) : undefined;
-          if (closesSource !== undefined && definitelyExecutedWithin(node, ownerBody)
-            && timers[closesSource]?.handleFamily === operation.closesReceiverFamily) {
-            timers[closesSource]!.initiallyCancelled = true;
-          }
-        } else if (operation?.kind === "abort-timeout") {
-          const delayNode = node.arguments[operation.delayArgument];
+          collectNestedJobs(job.callback, timerIndex);
+        } else if (semanticRelease(node) && !genericCancellation) {
+          const release = semanticRelease(node)!;
+          const closesSource = ts.isIdentifier(release.target) ? handleTargets.get(bindingKey(release.target)) : undefined;
+          if (closesSource !== undefined && timers[closesSource]?.handleFamily === release.resource
+            && definitelyExecutedWithin(node, ownerBody)) timers[closesSource]!.initiallyCancelled = true;
+        } else if (genericAbort?.transition === "timeout") {
+          const delayNode = genericAbort.delay;
           const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
           const existing = inlineAbortTimeoutTargets.get(node);
           const timer = existing ?? timers.length;
@@ -1501,11 +1578,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           inlineAbortTimeoutTargets.set(node, timer);
           if (declaration && timers[timer]) timers[timer]!.handle = declaration;
           if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) abortSignalTargets.set(bindingKey(node.parent.name), { timer, reason: "TimeoutError" });
-        } else if (operation?.kind === "abort-static") {
+        } else if (genericAbort?.transition === "abort") {
           const declaration = assignedBinding(node);
           const declarationNode = assignedBindingNode(node);
-          if (declarationNode) abortSignalTargets.set(bindingKey(declarationNode), { alreadyAborted: true, reason: node.arguments[operation.reasonArgument]?.getText(source) ?? "AbortError" });
-        } else if (operation?.kind === "abort-any") {
+          if (declarationNode) abortSignalTargets.set(bindingKey(declarationNode), { alreadyAborted: true, reason: genericAbort.reason?.getText(source) ?? "AbortError" });
+        } else if (genericAbort?.transition === "any") {
           const declaration = assignedBinding(node);
           const target = abortTarget(node);
           if (target?.composition !== undefined && declaration) {
@@ -1513,9 +1590,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             const declarationNode = assignedBindingNode(node);
             if (declarationNode) abortSignalTargets.set(bindingKey(declarationNode), target);
           }
-        } else if (operation?.kind === "scheduler-post-task") {
-          const callbackNode = node.arguments[operation.callbackArgument];
-          const optionsNode = node.arguments[operation.optionsArgument];
+        } else if (genericScheduler?.transition === "post-task") {
+          const callbackNode = genericScheduler.callback;
+          const optionsNode = genericScheduler.options;
           const option = (name: string): ts.Expression | undefined => staticObjectOption(optionsNode, name);
           const priorityNode = option("priority");
           const signalNode = option("signal");
@@ -1554,7 +1631,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           });
           if (taskController) taskController.state.tasks.push(timerIndex);
           collectNestedJobs(callbackNode, timerIndex);
-        } else if (operation?.kind === "scheduler-yield") {
+        } else if (genericScheduler?.transition === "yield") {
           timers.push({
             owner: ownerName,
             callback: "<continuation>",
@@ -1566,10 +1643,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             priority: "user-visible",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
-        } else if (operation?.kind === "timer-clear") {
-          const handleNode = operation.handleReceiver && ts.isPropertyAccessExpression(node.expression)
-            ? node.expression.expression
-            : operation.handleArgument === undefined ? undefined : node.arguments[operation.handleArgument];
+        } else if (genericCancellation) {
+          const handleNode = genericCancellation.handle;
           const handleKey = handleNode && ts.isIdentifier(handleNode) ? bindingKey(handleNode) : undefined;
           const handle = handleKey ? handleNames.get(handleKey) ?? handleNode!.getText(source) : handleNode?.getText(source) ?? "<unknown>";
           let current: ts.Node = node;
@@ -1580,10 +1655,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               || ts.isWhileStatement(current) || ts.isDoStatement(current) || ts.isTryStatement(current) || ts.isConditionalExpression(current)) definite = false;
           }
           const candidate = handleKey ? handleTargets.get(handleKey) : undefined;
-          const compatible = candidate !== undefined && timers[candidate]?.handleFamily === operation.family;
-          cancellations.push({ owner: ownerName, handle, timer: compatible ? candidate : undefined, definite, clearFamily: operation.family, compatible, span: { start: node.getStart(source), end: node.getEnd() } });
-        } else if (operation?.kind === "promise-combinator") {
-          const iterable = node.arguments[operation.iterableArgument];
+          const compatible = candidate !== undefined && timers[candidate]?.handleFamily === genericCancellation.family;
+          cancellations.push({ owner: ownerName, handle, timer: compatible ? candidate : undefined, definite, clearFamily: genericCancellation.family, compatible, span: { start: node.getStart(source), end: node.getEnd() } });
+        } else if (genericCombinator) {
+          const iterable = genericCombinator.iterable;
           const arrayEvidence: StaticArrayExpansionEvidence = { invokesUserCode: false };
           const array = iterable ? expandStaticArray(iterable, new Set(), arrayEvidence) : undefined;
           const set = iterable ? expandStaticSet(iterable) : undefined;
@@ -1644,16 +1719,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             ...(path.failure ? { iteratorFailure: path.failure } : {}),
           })) : undefined;
           const pathFailure = expressionPaths?.find((path) => path.failure)?.failure;
-          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives, branchPresence } : {}), ...(iterablePaths ? { iterablePaths } : {}), staticIterable,
+          combinators.push({ owner: ownerName, combinator: genericCombinator.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives, branchPresence } : {}), ...(iterablePaths ? { iterablePaths } : {}), staticIterable,
             iteratorKind: set ? "set" : array || boundedConditionalArrays ? "array" : local && !local.unsupportedReason ? "local" : "dynamic",
             iteratorEffects: boundedElements ? arrayEvidence.invokesUserCode ? ["InvokeUserCode"] : [] : ["InvokeUserCode"],
             iteratorFailure: pathFailure ?? arrayEvidence.failure ?? local?.failure,
             iteratorFailurePresence: arrayEvidence.failurePresence ?? local?.failurePresence,
             unsupportedReason: staticIterable ? undefined : finiteElementLimitExceeded ? "finite-element-limit" : arrayEvidence.unsupportedReason ?? local?.unsupportedReason ?? "dynamic-cardinality",
-            aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
-            aggregateErrorReasons: operation.combinator === "any" && !expressionPaths && !finiteElementLimitExceeded && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
+            aggregateErrorOrder: genericCombinator.combinator === "any" ? branches.map((_, index) => index) : undefined,
+            aggregateErrorReasons: genericCombinator.combinator === "any" && !expressionPaths && !finiteElementLimitExceeded && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
               ? (array ?? set ?? branchNodes)!.map(rejectionReason) : undefined,
-            aggregateErrorReasonPaths: operation.combinator === "any" && expressionPaths
+            aggregateErrorReasonPaths: genericCombinator.combinator === "any" && expressionPaths
               ? expressionPaths.map((path) => path.branches.map(rejectionReason)) : undefined,
             awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
@@ -1664,13 +1739,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   };
   const visit = (node: ts.Node): void => {
     if (ts.isFunctionLike(node) && "body" in node && node.body) {
-      const parentCall = ts.isCallExpression(node.parent) ? node.parent : undefined;
-      const operation = parentCall ? adapter.resolveCall(parentCall)?.operation : undefined;
-      const scheduledCallback = Boolean(parentCall && (
-        ((operation?.kind === "timer" || operation?.kind === "scheduler-post-task") && parentCall.arguments[operation.callbackArgument] === node)
-        || (operation?.kind === "fs" && fsCallbackArgument(parentCall, operation) === node)
-      ));
-      if (!scheduledCallback && !scheduledCallbacks.has(node as ts.FunctionLikeDeclaration) && !invokedSignalFactories.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
+      if (!scheduledCallbacks.has(node as ts.FunctionLikeDeclaration) && !invokedSignalFactories.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
     }
     ts.forEachChild(node, visit);
   };
@@ -1694,12 +1763,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   return { timers, combinators, cancellations, abortCompositions, timerEscapes };
 }
 
-export function analyzeAsyncPatterns(fileName: string, text: string): AsyncPatternModel {
-  const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true };
-  const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+export function analyzeAsyncPatterns(fileName: string, text: string, analysisOptions: { builtinRegistry?: BuiltinContractRegistry } = {}): AsyncPatternModel {
+  const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true };
+  const host = ts.createCompilerHost(compilerOptions), original = host.getSourceFile.bind(host);
   host.getSourceFile = (name, version, onError, fresh) => name === fileName ? ts.createSourceFile(fileName, text, version, true, ts.ScriptKind.TS) : original(name, version, onError, fresh);
-  const program = ts.createProgram([fileName], options, host);
-  return analyzeAsyncPatternsInProgram(program, program.getSourceFile(fileName)!);
+  const program = ts.createProgram([fileName], compilerOptions, host);
+  return analyzeAsyncPatternsInProgram(program, program.getSourceFile(fileName)!, analysisOptions);
 }
 
 function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/g, "_"); }

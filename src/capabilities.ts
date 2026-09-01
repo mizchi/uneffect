@@ -63,6 +63,22 @@ export function unknownCapabilityReasons(effect: Effect): string[] {
     : [];
 }
 
+export interface ParameterizedCapabilityScope {
+  scope: "filesystem-path" | "run-program";
+  parameterIndex: number;
+}
+
+/** Internal summary variable carried until a call site supplies the authority value. */
+export function parseParameterizedCapabilityScope(reason: string): ParameterizedCapabilityScope | undefined {
+  const match = /^parameter-(filesystem-path|run-program)-(\d+)$/.exec(reason);
+  return match ? { scope: match[1] as ParameterizedCapabilityScope["scope"], parameterIndex: Number(match[2]) } : undefined;
+}
+
+/** Unknown scopes that are not well-formed, declaration-bound summary variables. */
+export function unresolvedCapabilityReasons(effect: Effect): string[] {
+  return unknownCapabilityReasons(effect).filter((reason) => parseParameterizedCapabilityScope(reason) === undefined);
+}
+
 export function registerEffectSchema(schema: EffectSchema): void {
   schemas.set(schema.name, { name: schema.name, version: schema.version, arguments: [...schema.arguments] });
 }

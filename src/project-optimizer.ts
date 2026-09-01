@@ -1,4 +1,4 @@
-/* uneffect:capability module_effect none */
+/* uneffect:capability module_effect Throw<Error> */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
