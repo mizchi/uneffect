@@ -358,6 +358,43 @@ not `verified`. The same extension is available to `check` and `evidence` with
 versions, unknown keys, duplicate identities, malformed effects, and runtime
 version drift fail closed.
 
+For a third-party singleton API, identify the exact exported root separately
+from its static member path:
+
+```json
+{
+  "$schema": "./node_modules/@mizchi/uneffect/schemas/uneffect-registry-v1.schema.json",
+  "schema": "uneffect-registry/v1",
+  "builtinRegistryVersion": 2,
+  "contracts": [{
+    "symbol": {
+      "module": "@acme/telemetry",
+      "export": "telemetry",
+      "path": ["client", "send"]
+    },
+    "runtime": { "kind": "package", "version": "4.2.1" },
+    "evidence": "trusted",
+    "trustReason": "reviewed intake authority",
+    "trustOwner": "observability-platform",
+    "semantics": {
+      "schema": "uneffect-semantic-primitives/v1",
+      "primitives": [{
+        "kind": "effect",
+        "capability": "Net<\"intake.example.com:443\">"
+      }]
+    }
+  }]
+}
+```
+
+Then run `npx uneffect check --project tsconfig.json --config
+uneffect.registry.json --assurance no-unknown`. Direct access, literal bracket
+access, immutable aliases, and statically named `const` destructuring retain
+the root identity. Dynamic keys and same-shaped values from another root stay
+unknown. Add a separate `moduleInitializations` entry if importing the package
+itself has effects; a function/member contract does not silently authorize
+module initialization.
+
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:
 
