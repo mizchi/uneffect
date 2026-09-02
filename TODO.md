@@ -939,6 +939,9 @@ introducing another domain-local control-flow or alias model.
        - [x] Feed rooted `acquire`/`use`/`release` primitives into the existing
          resource CFG and assumption ledger; cover both satisfied release and
          leak results through an installed semantic module.
+       - [x] Feed rooted callback primitives into the common callable summary
+         and host-neutral temporal transition, preserving deferred queue,
+         completion, cardinality, and the full `root.path` API display name.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

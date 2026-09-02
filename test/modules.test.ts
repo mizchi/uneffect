@@ -124,6 +124,7 @@ describe("declarative Uneffect modules", () => {
           inspect(handle: Handle): void
           close(handle: Handle): void
         }
+        export declare const timers: { schedule(callback: () => void): void }
       `);
       const module = {
         ...auditModule,
@@ -151,6 +152,7 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "handles", path: ["open"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted acquisition", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "acquire", resource: "Acme.Handle", target: { kind: "result" } }] } },
             { symbol: { module: "reviewed-handle", export: "handles", path: ["inspect"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted use", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "use", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
             { symbol: { module: "reviewed-handle", export: "handles", path: ["close"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
+            { symbol: { module: "reviewed-handle", export: "timers", path: ["schedule"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted callback scheduling", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..1", completion: "host-report-throw" }] } },
           ],
         },
       } as const;
@@ -159,13 +161,14 @@ describe("declarative Uneffect modules", () => {
       writeFileSync(facade, `export { schedule as later } from "reviewed-handle"`);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler, send, handles } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler, send, handles, timers } from "reviewed-handle"
         const scheduleAlias = schedule
         const aliasedCallback = () => {}
         export function valid() { const handle = open(); inspect(handle); close(handle) }
         export function leaked() { const handle = open(); inspect(handle) }
         export function rootedValid() { const handle = handles.open(); handles.inspect(handle); handles.close(handle) }
         export function rootedLeaked() { const handle = handles.open(); handles.inspect(handle) }
+        export function rootedScheduled() { timers.schedule(aliasedCallback) }
         export async function asyncValid() { const handle = await openAsync(); inspect(handle); await closeAsync(handle) }
         export function scheduled() { schedule(() => {}) }
         export function aliasScheduled() { scheduleAlias(aliasedCallback) }
@@ -252,6 +255,10 @@ describe("declarative Uneffect modules", () => {
       }));
       expect(temporal.transitions).toContainEqual(expect.objectContaining({
         kind: "invoke-callback", callback: "aliasedCallback", api: "schedule",
+        cardinality: "0..1", lane: "external", completion: "host-report-throw",
+      }));
+      expect(temporal.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", callback: "aliasedCallback", api: "timers.schedule",
         cardinality: "0..1", lane: "external", completion: "host-report-throw",
       }));
       const barrelEntry = join(directory, "barrel-entry.ts");

@@ -165,6 +165,11 @@ external package can describe `handles.open/inspect/close`, and the ordinary
 resource CFG reports a satisfied release or a leak while the assumption ledger
 retains the reviewed owner and reason.
 
+Rooted callback primitives also enter the shared async/temporal projection.
+Timing, queue, completion, and cardinality are unchanged; diagnostic and model
+events use the full display name such as `timers.schedule`, not the ambiguous
+root export `timers`.
+
 A contract may declare `result({ kind: "fresh" })` in `semantics.primitives` when every call returns a
 new caller-owned object with no pre-existing aliases. In-place mutation of that
 direct result is then local rather than a `Mutate` capability. This is separate

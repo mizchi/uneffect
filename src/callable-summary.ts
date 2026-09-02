@@ -5,7 +5,7 @@ import { analyzeProgramEffects, type EffectAnalysisResult, type EvidenceStatus }
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics, projectBuiltinCallbacks, projectedExpression, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
 import { classifyLexicalExecution } from "./lexical-execution.js";
-import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
+import { builtinContractRegistry, builtinSymbolDisplayName, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { callableAnnotationOwner } from "./callable-annotation-owner.js";
 
 export type CallbackCardinality = "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
@@ -237,7 +237,7 @@ function builtinInvocation(
       if (argument >= 0) {
         const microtask = event.timing === "deferred" && event.queue === "microtask";
         return {
-          api: resolved.symbol.export,
+          api: builtinSymbolDisplayName(resolved.symbol),
           argument,
           cardinality: event.cardinality === "1" ? "exactly-1"
             : event.cardinality === "1..n" ? "0..n" : event.cardinality,
@@ -284,7 +284,7 @@ function builtinInvocation(
     if (argument >= 0) {
       const microtask = event.timing === "deferred" && event.queue === "microtask";
       return {
-        api: resolved.symbol.export,
+        api: builtinSymbolDisplayName(resolved.symbol),
         argument,
         cardinality: event.cardinality === "1" ? "exactly-1"
           : event.cardinality === "1..n" ? "0..n" : event.cardinality,

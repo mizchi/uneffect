@@ -117,6 +117,10 @@ export function builtinSymbolId(symbol: BuiltinSymbolKey): string {
   return `${symbol.module}#${symbol.export}${symbol.path?.length ? `#${symbol.path.join("#")}` : ""}`;
 }
 
+export function builtinSymbolDisplayName(symbol: BuiltinSymbolKey): string {
+  return [symbol.export, ...(symbol.path ?? [])].join(".");
+}
+
 export function findBuiltinContract(registry: BuiltinContractRegistry, symbol: BuiltinSymbolKey): BuiltinContract | undefined {
   const id = builtinSymbolId(symbol);
   return registry.contracts.find((contract) => builtinSymbolId(contract.symbol) === id);
