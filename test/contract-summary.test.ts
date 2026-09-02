@@ -1662,6 +1662,16 @@ describe("persisted contract summary bundles", () => {
           return value + 1
         }
       }
+      /* uneffect:ensures result === value + 1 */
+      export function assigned(value: number): number {
+        let result = 0
+        try {
+          result = api.dangerousAdd(value)
+        } catch {
+          result = value + 1
+        }
+        return result
+      }
     `;
     writeFileSync(scalarFile, scalarSource);
     const scalarProgram = ts.createProgram([scalarFile], {
@@ -1680,13 +1690,17 @@ describe("persisted contract summary bundles", () => {
       });
     expect(scalarVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "bound"
       && artifact.controlFlow?.exceptionFlow?.discharged.length)).toMatchObject({ status: "verified" });
+    expect(scalarVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "assigned"
+      && artifact.controlFlow?.exceptionFlow?.discharged.length)).toMatchObject({ status: "verified" });
     const nestedFile = join(directory, "nested.ts");
     const nestedSource = `
       import { api } from "@example/danger-api"
       function authorize(value: number): void { api.danger(value) }
       /* uneffect:ensures result === value + 2 */
       export function nested(value: number): number {
-        return api.dangerousAdd(value) + 1
+        let result = 0
+        result = api.dangerousAdd(value) + 1
+        return result
       }
     `;
     writeFileSync(nestedFile, nestedSource);

@@ -2459,11 +2459,14 @@ export function lowerInvariantProgram(
         } else {
           const nullableSource = unsafeNullableScalarCopy(right);
           if (nullableSource) throw new Error(`scalar assignment would erase nullable presence: ${name} = ${nullableSource}`);
-          paths = paths.flatMap((path) => evaluateScalar(right, path).map(({ path: branch, value }) => {
+          const incoming = paths;
+          const valueThrow = directValueThrowCompletion(right);
+          paths = incoming.flatMap((path) => evaluateScalar(right, path, Boolean(valueThrow)).map(({ path: branch, value }) => {
             const nextEnv = new Map(branch.env);
             nextEnv.set(name, value);
             return { ...branch, env: nextEnv };
           }));
+          if (valueThrow) paths.push(...synchronousThrowCompletions(valueThrow.call, valueThrow.fact, incoming));
         }
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
         && (statement.expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken

@@ -44,8 +44,8 @@ successful verification.
 Persisted `Throw<E>` call statements authorized by the package root-provenance
 binder enter the Hoare exception CFG as trusted may-throw completions. Catch,
 finally, discharge, and unhandled escape evidence are covered; structural
-lookalikes fail closed. A direct scalar return or initialized binding composes a
-contracted value with its synchronous Throw path; nested arithmetic/value
+lookalikes fail closed. A direct scalar return, initialized binding, or
+identifier assignment composes a contracted value with its synchronous Throw path; nested arithmetic/value
 expressions remain unsupported until expression-level value/abrupt lowering is
 unified.
 
