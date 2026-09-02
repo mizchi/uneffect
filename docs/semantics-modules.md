@@ -93,11 +93,18 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
 - reviewed builtin function contracts;
 - the complete validated `uneffect-semantic-primitives/v1` data model,
   including callbacks, ownership, directional properties, and named protocols;
+- `acquire`, `use`, and `release` resource primitives connected to the same
+  TypeScript CFG lifecycle checker used by the built-in catalog, in both the
+  direct checker and project verification APIs;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.
 
 It does not yet load JavaScript, native, or Wasm analyzer plugins. It also cannot add arbitrary AST rules, Z3 encodings, Quint transition systems, runtime assertions, or proof certificates. Those require a versioned neutral obligation IR and a proof-producing protocol; accepting an executable plugin's boolean answer would create false assurance.
+
+Resource primitives remain reviewed assumptions. Their package symbol and exact
+runtime version are authenticated by the registry, but Uneffect does not inspect
+the dependency implementation to prove that the declared transition is complete.
 
 The intended later tiers are:
 

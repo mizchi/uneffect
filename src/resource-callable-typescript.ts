@@ -13,6 +13,7 @@ import {
 } from "./resource-protocol.js";
 import { collectAwaitedRejectionTransitionSites, collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, resolveAwaitedResourceBinding, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
 import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
+import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 
 type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.MethodSignature
   | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
@@ -750,6 +751,7 @@ export function analyzeResourceLifecyclesInSource(
   source: ts.SourceFile,
   analysis: ResourceCallableSummaryAnalysis = analyzeResourceCallableSummaries(program),
   sourceValid = true,
+  builtinRegistry?: BuiltinContractRegistry,
 ): ResourceLifecycleProgramAnalysis {
   const evidence: ResourceLifecycleEvidence[] = [];
   const diagnostics: ResourceLifecycleDiagnostic[] = analysis.diagnostics
@@ -761,7 +763,7 @@ export function analyzeResourceLifecyclesInSource(
   const visit = (node: ts.Node): void => {
     if (isFunctionWithBody(node)) {
       const declared = collectResourceCallableTransitionSites(program, node, analysis.summaries);
-      const builtin = collectBuiltinResourceTransitionSites(program, node);
+      const builtin = collectBuiltinResourceTransitionSites(program, node, builtinRegistry);
       const resourceSites = [...declared.sites, ...builtin.sites];
       const sites = auditAcquiredResourceReferences(program, node, [
         ...resourceSites,

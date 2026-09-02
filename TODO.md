@@ -626,6 +626,9 @@ introducing another domain-local control-flow or alias model.
        mutation/escape screen and accounting for the originating stored value.
      - [x] Apply the same aggregate identity and audit accounting to
        authenticated method receivers such as `holder.handle.close()`.
+     - [x] Route semantics-module `acquire | use | release` primitives through
+       the same `checkFiles` and project resource CFG as the built-in catalog,
+       and keep their authority classified as trusted catalog evidence.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

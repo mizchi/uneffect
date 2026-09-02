@@ -188,7 +188,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
       asyncIterators.push(...iterator.evidence);
       diagnostics.push(...iterator.diagnostics);
       iteratorAssumptions.push(...iterator.assumptions);
-      const lifecycle = analyzeResourceLifecyclesInSource(program, sourceFile, resourceCallableAnalysis, !invalidSources.has(fileName));
+      const lifecycle = analyzeResourceLifecyclesInSource(program, sourceFile, resourceCallableAnalysis, !invalidSources.has(fileName), options.builtinRegistry);
       resourceProtocols.push(...lifecycle.evidence);
       resourceAssumptions.push(...lifecycle.evidence.filter((item) => item.evidence === "trusted").flatMap((item): AssumptionEntry[] => [
         ...(item.authority !== "builtin-catalog" ? [{

@@ -5,6 +5,7 @@ import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourcePro
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics, type ProjectedValue } from "./builtin-semantic-interpreter.js";
 import { resolveStableCallableSymbol } from "./stable-callable.js";
+import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export interface ResourceTransitionSite {
   readonly node: ts.Node;
@@ -95,9 +96,10 @@ export function resolveAwaitedResourceBinding(
 export function collectBuiltinResourceTransitionSites(
   program: ts.Program,
   fn: ts.FunctionLikeDeclaration,
+  registry: BuiltinContractRegistry = builtinContractRegistry,
 ): BuiltinResourceTransitionCollection {
   if (!fn.body) return { resources: [], sites: [], unknown: [] };
-  const adapter = new TypeScriptFrontendAdapter(program);
+  const adapter = new TypeScriptFrontendAdapter(program, registry);
   const checker = program.getTypeChecker();
   const resources = new Map<string, ResourceProtocolResource>();
   const sites: ResourceTransitionSite[] = [];

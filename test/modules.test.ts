@@ -1,9 +1,13 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { builtinContractRegistry, findBuiltinContract } from "../src/builtin-contracts.js";
 import { effectSchema, parseEffectExpression } from "../src/capabilities.js";
 import { installUneffectModules, parseUneffectModuleManifest } from "../src/modules.js";
 import { createEvidenceArtifact, validateEvidenceArtifact } from "../src/evidence.js";
+import { checkFiles } from "../src/check.js";
+import { verifyUneffectProject } from "../src/project-verification.js";
 import ts from "typescript";
 
 const auditModule = {
@@ -35,6 +39,14 @@ describe("declarative Uneffect modules", () => {
     const schema = JSON.parse(readFileSync("schemas/uneffect-module-v1.schema.json", "utf8")) as any;
     expect(schema.properties.schema.const).toBe("uneffect-module/v1");
     expect(schema.properties.evidence.const).toBe("trusted");
+  });
+
+  it("publishes every lifecycle primitive accepted by module manifests", () => {
+    const schema = JSON.parse(readFileSync("schemas/uneffect-registry-v1.schema.json", "utf8")) as any;
+    const lifecycle = schema.$defs.semanticPrimitive.oneOf.find((item: any) =>
+      item.properties?.kind?.enum?.includes("acquire"));
+    expect(lifecycle.properties.kind.enum).toEqual(["acquire", "use", "release"]);
+    expect(lifecycle.properties.completion.enum).toEqual(["call", "fulfillment"]);
   });
 
   it("installs namespaced schemas and reviewed contracts with a digest ledger", () => {
@@ -81,5 +93,59 @@ describe("declarative Uneffect modules", () => {
     };
     expect(() => installUneffectModules([broken], builtinContractRegistry)).toThrow(/unknown key/);
     expect(effectSchema("Acme.Broken.Emit")).toBeUndefined();
+  });
+
+  it("connects module acquire/use/release primitives to lifecycle checking", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-resource-"));
+    try {
+      const packageDirectory = join(directory, "node_modules", "reviewed-handle");
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+        name: "reviewed-handle", version: "1.0.0", types: "index.d.ts",
+      }));
+      writeFileSync(join(packageDirectory, "index.d.ts"), `
+        export interface Handle { readonly id: number }
+        export declare function open(): Handle
+        export declare function inspect(handle: Handle): void
+        export declare function close(handle: Handle): void
+      `);
+      const module = {
+        ...auditModule,
+        name: "@acme/handle-semantics",
+        namespace: "Acme.Handle",
+        effectSchemas: [],
+        trustReason: "reviewed handle lifecycle",
+        registry: {
+          schema: "uneffect-registry/v1",
+          builtinRegistryVersion: 2,
+          contracts: [
+            { symbol: { module: "reviewed-handle", export: "open" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed acquisition", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "acquire", resource: "Acme.Handle", target: { kind: "result" } }] } },
+            { symbol: { module: "reviewed-handle", export: "inspect" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed use", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "use", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
+            { symbol: { module: "reviewed-handle", export: "close" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
+          ],
+        },
+      } as const;
+      const installed = installUneffectModules([module], builtinContractRegistry);
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        import { open, inspect, close } from "reviewed-handle"
+        export function valid() { const handle = open(); inspect(handle); close(handle) }
+        export function leaked() { const handle = open(); inspect(handle) }
+      `);
+      const result = await checkFiles([entry], { builtinRegistry: installed.registry });
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "valid", status: "satisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
+      ]));
+      const project = await verifyUneffectProject({
+        files: { [entry]: readFileSync(entry, "utf8") }, builtinRegistry: installed.registry,
+      });
+      expect(project.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "valid", status: "satisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
+      ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
