@@ -112,6 +112,14 @@ Missing argument or return identities produce an explicit `unknown` result and
 a list of unresolved references. The API does not infer the contract from a
 function name or accept an executable plugin predicate as proof.
 
+Direct exported functions may distribute these operations in
+`uneffect-contract-summary/v1`. The producer records the lifecycle payload as
+`trusted`, not verified: parsing an annotation does not prove its implementation.
+The consumer authenticates the package name, exact installed version,
+TypeScript version, declaration bytes, export symbol, and signature before
+rebinding operations to the installed declaration identity. Unmatched,
+ambiguous, stale, or tampered summaries do not contribute lifecycle evidence.
+
 The first TypeScript frontend accepts declarations such as:
 
 ```ts

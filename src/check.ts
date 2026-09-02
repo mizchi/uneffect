@@ -15,7 +15,7 @@ import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { analyzeCallableSummaries } from "./callable-summary.js";
 import { invalidateTransferredTypedArrayEvidence } from "./project-verification.js";
 import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
-import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
+import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, boundContractSummaryResourceContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
 import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, type ResourceLifecycleEvidence } from "./resource-callable-typescript.js";
 
 export interface CheckOptions {
@@ -149,7 +149,11 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   const asyncIterators: IteratorCheckEvidence[] = [];
   const resourceProtocols: ResourceLifecycleEvidence[] = [];
   const resourceAssumptions: AssumptionEntry[] = [];
-  const resourceCallableAnalysis = analyzeResourceCallableSummaries(program);
+  const localResourceCallableAnalysis = analyzeResourceCallableSummaries(program);
+  const resourceCallableAnalysis = {
+    summaries: [...localResourceCallableAnalysis.summaries, ...boundContractSummaryResourceContracts(contractSummaryBindings)],
+    diagnostics: localResourceCallableAnalysis.diagnostics,
+  };
   const iteratorAssumptions: AssumptionEntry[] = [];
   for (const fileName of fileNames) {
     if (fileName.endsWith(".uneffect.ts")) continue;

@@ -423,6 +423,9 @@ introducing another domain-local control-flow or alias model.
        `acquire return`, `use parameter`, and `release parameter` operations;
        create call-result resources and check leaks and post-release use in the
        shared CFG evaluator through immutable aliases.
+     - [x] Persist direct exported lifecycle operations in the authenticated
+       package contract summary, retain them as trusted evidence, and bind them
+       to exact installed declaration identities in CLI/project consumers.
      - [x] Accept trusted resource contracts on ambient functions/methods only
        from explicit root `.d.ts` overlays; reject automatic trust from
        transitively imported declaration files.

@@ -101,6 +101,14 @@
                 "items": { "$ref": "#/$defs/callback" }
               }
             }
+          },
+          "resource": {
+            "type": "object", "additionalProperties": false,
+            "required": ["evidence", "operations"],
+            "properties": {
+              "evidence": { "const": "trusted" },
+              "operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/resourceOperation" } }
+            }
           }
         }
       }
@@ -136,6 +144,23 @@
         "schedulingSource": { "enum": ["setTimeout", "setInterval", "requestAnimationFrame", "EventTarget.prototype.addEventListener"] },
         "schedulingDelay": { "type": "number", "minimum": 0 },
         "effectBound": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "resourceReference": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "return" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "index"], "properties": {
+          "kind": { "const": "parameter" }, "index": { "type": "integer", "minimum": 0 }, "name": { "type": "string" }
+        } }
+      ]
+    },
+    "resourceOperation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "subject"],
+      "properties": {
+        "kind": { "enum": ["acquire", "use", "borrow", "consume", "release", "transfer", "escape"] },
+        "subject": { "$ref": "#/$defs/resourceReference" },
+        "target": { "$ref": "#/$defs/resourceReference" }
       }
     }
   }

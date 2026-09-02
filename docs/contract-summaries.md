@@ -1,7 +1,8 @@
 # Persisted contract summaries
 
 `uneffect-contract-summary/v1` is the shared package envelope for publishing
-verified scalar Hoare contracts and Effect summaries. A direct named function
+verified scalar Hoare contracts, Effect summaries, and trusted resource
+lifecycle declarations. A direct named function
 export, or a single immutable exported `const` initialized by an arrow/function
 expression, is included when at least one of those domains is explicitly declared and
 verified. Hoare entries require every local obligation and transitive
@@ -50,6 +51,8 @@ The bundle binds:
 - optional verified Effect atoms and declaration-order parameter names;
 - direct callback timing, cardinality, completion mode, and optional Effect
   upper bound.
+- optional parameter/return resource operations (`acquire`, `use`/`borrow`,
+  `consume`, `release`, `transfer`, and `escape`) retained as trusted evidence.
 
 Changing any covered value invalidates the bundle content digest. Validation
 also recomputes compiler, source, declaration, and signature evidence instead
@@ -125,8 +128,18 @@ its declaration and the external call. The selected leaf may be an inline
 function or immutable symbol-resolved function identifier. A repeated use
 without the borrow evidence described below, mutation, alias, capture, spread,
 computed/dynamic selection, or unresolved leaf fails closed. Returned
-callables, reentrancy/concurrency, external settlement internals, and resource ownership
-remain outside this first consumer fragment.
+callables, reentrancy/concurrency, and external settlement internals remain
+outside this first callback fragment. Direct exported resource lifecycle
+contracts are composed separately through the shared resource CFG.
+
+A resource-only export can be published without inventing an Effect or Hoare
+contract. The producer validates its annotation syntax, but records the payload
+as `trusted`, because the declaration is not an implementation proof. At the
+consumer, package/version/compiler/signature binding must succeed before the
+resource operations are rebound to installed declaration identities. The
+ordinary `checkFiles` and project verifier then detect leaks, duplicate release,
+and post-release use and expose the result in `resourceProtocols`. Factory
+returned-member resource protocols are not yet part of v1.
 
 A literal wrapped by the exact standard-library `Object.freeze` symbol may be
 reused across calls. This is a shallow rule: the selected callback property is

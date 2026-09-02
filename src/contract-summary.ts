@@ -8,6 +8,8 @@ import type { VerificationArtifact } from "./contracts.js";
 import { formatEffect, parseEffectSet } from "./capabilities.js";
 import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract } from "./effects.js";
 import { analyzeCallableSummaries, type CallableSummary } from "./callable-summary.js";
+import { analyzeResourceCallableSummaries } from "./resource-callable-typescript.js";
+import type { ResourceCallableOperation, ResourceCallableSummary } from "./resource-protocol.js";
 
 export interface ContractCallbackSummaryV1 {
   index: number;
@@ -54,6 +56,8 @@ export interface ContractSummaryExportV1 {
     returnMembers?: ContractReturnedMemberV1[];
     callbacks?: ContractCallbackSummaryV1[];
   };
+  /** Reviewed lifecycle declaration; linkage is authenticated but implementation semantics remain trusted. */
+  resource?: { evidence: "trusted"; operations: ResourceCallableOperation[] };
 }
 
 export interface ContractSummaryBundleV1 {
@@ -148,6 +152,18 @@ export function boundContractSummaryEffectContracts(
   return contracts;
 }
 
+/** Project package lifecycle contracts onto installed TypeChecker declaration identities. */
+export function boundContractSummaryResourceContracts(
+  bindings: readonly BoundContractSummaryBundleV1[],
+): ResourceCallableSummary[] {
+  return bindings.flatMap((binding) => binding.exports.flatMap((item): ResourceCallableSummary[] => item.summary.resource ? [{
+    schema: "uneffect-resource-callable-summary/v1",
+    id: `${item.declarationFileName}:${item.declarationSpan.start}`,
+    evidence: "trusted",
+    operations: item.summary.resource.operations,
+  }] : []));
+}
+
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 function ordered(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(ordered);
@@ -190,6 +206,19 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
           && Number.isFinite(callback.schedulingDelay) && callback.schedulingDelay >= 0))
         && (callback.effectBound === undefined || (Array.isArray(callback.effectBound)
           && callback.effectBound.every((entry) => typeof entry === "string"))));
+    const validResourceReference = (reference: unknown): boolean => Boolean(reference && typeof reference === "object"
+      && ((reference as { kind?: unknown }).kind === "return"
+        || ((reference as { kind?: unknown }).kind === "parameter"
+          && Number.isInteger((reference as { index?: unknown }).index)
+          && ((reference as { index: number }).index >= 0))));
+    const validResourceOperation = (operation: ResourceCallableOperation): boolean => {
+      if (!operation || typeof operation !== "object"
+        || !["acquire", "use", "borrow", "consume", "release", "transfer", "escape"].includes(operation.kind)
+        || !validResourceReference(operation.subject)) return false;
+      if (operation.kind === "acquire") return operation.subject.kind === "return" && operation.target === undefined;
+      if (operation.kind === "transfer") return validResourceReference(operation.target);
+      return operation.target === undefined;
+    };
     if (!item || typeof item !== "object" || !item.symbol
       || typeof item.symbol.module !== "string" || typeof item.symbol.export !== "string"
       || typeof item.functionName !== "string" || item.evidence !== "verified"
@@ -223,7 +252,9 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
             && (member.rejects === undefined || (Array.isArray(member.rejects)
               && member.rejects.every((entry) => typeof entry === "string"))))))
         || (item.effect.callbacks !== undefined && (!Array.isArray(item.effect.callbacks)
-          || !item.effect.callbacks.every(validCallback)))))) {
+          || !item.effect.callbacks.every(validCallback)))))
+      || (item.resource !== undefined && (!item.resource || item.resource.evidence !== "trusted"
+        || !Array.isArray(item.resource.operations) || !item.resource.operations.every(validResourceOperation)))) {
       throw new Error(`malformed contract summary export ${index} in ${fileName}`);
     }
   }
@@ -426,13 +457,14 @@ function describeExport(
   artifacts: readonly VerificationArtifact[],
   effectSummary?: EffectSummary,
   callableSummary?: CallableSummary,
+  resourceSummary?: ResourceCallableSummary,
 ): ContractSummaryExportV1 | undefined {
   const { node, owner, exportName } = exported;
   if (!node.body) return undefined;
   const comments = source.text.slice(owner.getFullStart(), owner.getStart(source));
   const ensures = extractAnnotations(comments, "ensures");
   const effectDeclared = extractAnnotations(comments, "effect").length > 0;
-  if (ensures.length === 0 && !effectDeclared) return undefined;
+  if (ensures.length === 0 && !effectDeclared && !resourceSummary?.operations.length) return undefined;
   const requires = extractAnnotations(comments, "requires");
   const span = { start: node.getStart(source), end: node.getEnd() };
   const candidates = artifacts.filter((artifact) => artifact.source.fileName === source.fileName
@@ -493,6 +525,9 @@ function describeExport(
         ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
       })) } : {}),
     } } : {}),
+    ...(resourceSummary?.operations.length ? { resource: {
+      evidence: "trusted" as const, operations: resourceSummary.operations.map((operation) => ({ ...operation })),
+    } } : {}),
   };
 }
 
@@ -501,13 +536,16 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
   const source = checkedSource(options);
   const effectSummaries = analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries;
   const callableSummaries = analyzeCallableSummaries(options.program).summaries;
+  const resourceSummaries = analyzeResourceCallableSummaries(options.program);
+  if (resourceSummaries.diagnostics.length > 0) throw new Error(`contract summary has invalid resource annotations: ${resourceSummaries.diagnostics.map(({ message }) => message).join("; ")}`);
   const exports = source.statements.flatMap((statement) => directExportCallables(statement).flatMap((exported) => {
     const node = exported.node;
     return [describeExport(options.program, source, exported, options.packageName, options.artifacts,
       effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
         && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
       callableSummaries.find((summary) => summary.fileName === source.fileName
-        && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()))]
+        && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
+      resourceSummaries.summaries.find((summary) => summary.id === `${source.fileName}:${node.getStart(source)}`))]
       .filter((item): item is ContractSummaryExportV1 => item !== undefined);
   }));
   if (exports.length === 0) throw new Error("contract summary has no fully verified exported function contracts");
@@ -536,6 +574,8 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   try { source = checkedSource(options); } catch (cause) { errors.push(cause instanceof Error ? cause.message : String(cause)); }
   const effectSummaries = source ? analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries : [];
   const callableSummaries = source ? analyzeCallableSummaries(options.program).summaries : [];
+  const resourceSummaries = source ? analyzeResourceCallableSummaries(options.program) : { summaries: [], diagnostics: [] };
+  for (const diagnostic of resourceSummaries.diagnostics) errors.push(`invalid resource annotation: ${diagnostic.message}`);
   if (source) for (const item of bundle.exports) {
     const exported = source.statements.flatMap(directExportCallables).find(({ node, exportName }) =>
       exportName === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
@@ -548,6 +588,9 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest) errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
     const leading = source.text.slice(exported.owner.getFullStart(), exported.owner.getStart(source));
     const declaresEffect = extractAnnotations(leading, "effect").length > 0;
+    const resource = resourceSummaries.summaries.find((summary) => summary.id === `${source.fileName}:${declaration.getStart(source)}`);
+    const expectedResource = resource?.operations.length ? { evidence: "trusted" as const, operations: resource.operations } : undefined;
+    if (canonical(expectedResource) !== canonical(item.resource)) errors.push(`contract summary resource payload for ${item.symbol.export} does not match producer declaration`);
     if (declaresEffect !== Boolean(item.effect)) {
       errors.push(`contract summary Effect payload for ${item.symbol.export} does not match its declaration`);
     } else if (item.effect) {

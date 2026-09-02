@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
-import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
+import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, boundContractSummaryResourceContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { analyzeCallableSummaries } from "./callable-summary.js";
@@ -424,7 +424,11 @@ async function verifyUneffectProjectFiles(
   const asyncIterators: IteratorCheckEvidence[] = [];
   const resourceProtocols: ResourceLifecycleEvidence[] = [];
   const resourceAssumptions: AssumptionEntry[] = [];
-  const resourceCallableAnalysis = analyzeResourceCallableSummaries(program);
+  const localResourceCallableAnalysis = analyzeResourceCallableSummaries(program);
+  const resourceCallableAnalysis = {
+    summaries: [...localResourceCallableAnalysis.summaries, ...boundContractSummaryResourceContracts(contractSummaryBindings)],
+    diagnostics: localResourceCallableAnalysis.diagnostics,
+  };
   const iteratorAssumptions: AssumptionEntry[] = [];
   for (const fileName of Object.keys(options.files)) {
     const sourceFile = program.getSourceFile(fileName);

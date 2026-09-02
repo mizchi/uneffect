@@ -391,8 +391,10 @@ same property is proved for arbitrary TypeScript.
   TypeScript frontend extracts trusted same-Program declarations, resolves
   direct calls by declaration identity, and substitutes supported argument and
   direct-`const` return identities. This is declared evidence rather than an
-  implementation proof; external summary authentication and dynamic resource
-  identity remain unsupported.
+  implementation proof. Direct exported lifecycle declarations can now travel
+  through the authenticated package contract envelope and bind to exact
+  installed declaration identities; returned-member contracts and dynamic
+  resource identity remain unsupported.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
