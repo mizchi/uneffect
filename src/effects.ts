@@ -70,6 +70,14 @@ export interface ExternalFunctionEffectContract {
   iteratorEffectParameters?: readonly IteratorEffectParameter[];
   iteratorEffectBounds?: ReadonlyArray<{ index: number; name: string; effects: readonly Effect[] }>;
   mutationRoots?: readonly ExternalMutationRoot[];
+  callbackParameters?: readonly {
+    index: number;
+    name: string;
+    timing: "inline" | "deferred" | "unknown";
+    cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
+    completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
+    effectBound?: readonly Effect[];
+  }[];
   reason?: string;
 }
 export type ExternalModuleEffectContract = ExternalFunctionEffectContract;
@@ -1429,7 +1437,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       externalIteratorEffects.set(key, { key, parameters: contract.iteratorEffectParameters! });
     }
   }
-  const graph = buildProgramCallGraph(program, { externalIteratorEffects, builtinRegistry: registry }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
+  const externalCallableEffects = new Map([...options.externalFunctionEffects ?? []].flatMap(([key, contract]) =>
+    contract.callbackParameters?.length ? [[key, {
+      key,
+      parameters: contract.callbackParameters.map(({ index, name, timing }) => ({ index, name, timing })),
+    }] as const] : []));
+  const graph = buildProgramCallGraph(program, { externalIteratorEffects, externalCallableEffects, builtinRegistry: registry }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
   const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
   for (const source of program.getSourceFiles()) if (!source.isDeclarationFile) {
     const problems = validateUneffectAnnotations(source.text);

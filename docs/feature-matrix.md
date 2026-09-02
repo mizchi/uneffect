@@ -46,10 +46,12 @@ compact Hoare row above: repeatable CLI `--contract-summary` inputs and the
 programmatic binder follow TypeChecker-resolved calls through named aliases,
 namespace imports, and source re-exports, require exact root-package export,
 installed package version, and signature, and
-record the selected declaration bytes. Calls remain `trusted`, not `verified`,
+record the selected declaration bytes. Verified Effect-only exports also lower
+through the existing external Effect contract IR, including scoped
+capabilities, parameter-rooted `Mutate`, and `Throw<E>`. Calls remain `trusted`, not `verified`,
 because persisted producer authority is not authenticated. Producer-to-emitted `.d.ts` build
 linkage, installed tarball/runtime identity, publisher authenticity, and
-persisted Effect/resource/callable summaries remain unsupported.
+persisted callback/resource/callable semantics beyond those Effect atoms remain unsupported.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

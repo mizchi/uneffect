@@ -301,8 +301,9 @@ to a TypeChecker-resolved call only after exact content, TypeScript, installed
 package-version, and signature checks, and records the selected declaration
 bytes. The resulting call relation remains `trusted`; it is not promoted to
 authenticated producer proof. This does not authenticate producer-to-`.d.ts` emission, the installed
-tarball/runtime JavaScript, or the publisher; Effect/resource/callable summary
-consumption is also still outside this claim.
+tarball/runtime JavaScript, or the publisher. Verified Effect atoms are
+consumed through the ordinary external Effect IR, but callback timing and
+resource/callable summaries remain outside this claim.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

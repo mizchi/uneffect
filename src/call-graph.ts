@@ -13,6 +13,7 @@ export interface EffectParameter { index: number; name: string; timing: Invocati
 export interface IteratorEffectParameter { index: number; name: string; convertsThrowToRejection: boolean }
 export interface IteratorEffectInstantiation { consumer: string; parameterIndex: number }
 export interface ExternalIteratorEffectContract { key: string; parameters: readonly IteratorEffectParameter[] }
+export interface ExternalCallableEffectContract { key: string; parameters: readonly EffectParameter[] }
 export interface CallGraphNode {
   id: string;
   name: string;
@@ -104,9 +105,29 @@ function externalIteratorContractForCall(
   return undefined;
 }
 
+function externalCallableContractForCall(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  contracts: ReadonlyMap<string, ExternalCallableEffectContract> | undefined,
+): ExternalCallableEffectContract | undefined {
+  if (!contracts) return undefined;
+  const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+  const symbol = resolvedSymbol(checker, lookup);
+  for (const declaration of symbol?.declarations ?? []) {
+    const source = declaration.getSourceFile();
+    const contract = contracts.get(`${source.fileName}:${declaration.getStart(source)}`);
+    if (contract) return contract;
+  }
+  return undefined;
+}
+
 export function buildProgramCallGraph(
   program: ts.Program,
-  options: { externalIteratorEffects?: ReadonlyMap<string, ExternalIteratorEffectContract>; builtinRegistry?: BuiltinContractRegistry } = {},
+  options: {
+    externalIteratorEffects?: ReadonlyMap<string, ExternalIteratorEffectContract>;
+    externalCallableEffects?: ReadonlyMap<string, ExternalCallableEffectContract>;
+    builtinRegistry?: BuiltinContractRegistry;
+  } = {},
 ): ProgramCallGraph {
   const checker = program.getTypeChecker(), adapter = new TypeScriptFrontendAdapter(program, options.builtinRegistry), declarations: ts.FunctionLikeDeclaration[] = [];
   for (const source of program.getSourceFiles()) {
@@ -1156,6 +1177,8 @@ export function buildProgramCallGraph(
           && isOpaqueIteratorCall(node);
         const externalIterator = targetDeclaration ? undefined
           : externalIteratorContractForCall(checker, node, options.externalIteratorEffects);
+        const externalCallable = targetDeclaration ? undefined
+          : externalCallableContractForCall(checker, node, options.externalCallableEffects);
         const iteratorContracts = targetDeclaration ? iteratorParametersOf(targetDeclaration) : externalIterator?.parameters ?? [];
         const iteratorConsumer = targetDeclaration ? stableId(targetDeclaration) : externalIterator?.key;
         const dischargesUnknownGeneratorParameters = iteratorContracts.length > 0
@@ -1189,7 +1212,8 @@ export function buildProgramCallGraph(
               ? previous ?? "unknown"
               : targetDeclaration
                 ? byId.get(stableId(targetDeclaration))?.effectParameters.find((item) => item.index === index)?.timing ?? "unknown"
-                : builtinTiming(node, checker, adapter, index);
+                : externalCallable?.parameters.find((item) => item.index === index)?.timing
+                  ?? builtinTiming(node, checker, adapter, index);
             const joined: InvocationTiming = previous === "unknown" || timing === "unknown" ? "unknown" : previous === "deferred" || timing === "deferred" ? "deferred" : "inline";
             timings.set(parameterIndex, joined);
             edges.push({ caller, kind: "callback-argument", unresolvedName: argument.getText(), timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
@@ -1198,7 +1222,9 @@ export function buildProgramCallGraph(
             : ts.isIdentifier(argument) ? symbolNodes.get(resolvedSymbol(checker, argument)!) : undefined;
           if (callbackDeclaration) {
             const calleeNode = targetDeclaration ? byId.get(stableId(targetDeclaration)) : undefined;
-            const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing ?? builtinTiming(node, checker, adapter, index);
+            const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing
+              ?? externalCallable?.parameters.find((item) => item.index === index)?.timing
+              ?? builtinTiming(node, checker, adapter, index);
             const projectedCallback = projectedCallbacks.find((event) =>
               event.target.status === "resolved" && event.target.expression === argument);
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing,

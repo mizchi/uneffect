@@ -78,6 +78,55 @@ describe("persisted contract summary bundles", () => {
     })).toThrow(/not fully verified/);
   });
 
+  it("publishes a verified Effect-only export in the shared package envelope", () => {
+    const fileName = "/src/report.ts";
+    const source = `
+      /* uneffect:effect Console */
+      export function report(message: string): void { console.log(message) }
+      /* uneffect:effect Mutate<typeof target.value> | Throw<RangeError> */
+      export function update(target: { value: number }): void {
+        target.value += 1
+        if (target.value < 0) throw new RangeError("invalid")
+      }
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter callback extends Console */
+      export function once(callback: () => void): void { callback() }
+    `;
+    const program = programFor(fileName, source);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/report", packageVersion: "1.0.0", fileName, source, program, artifacts: [],
+    });
+
+    expect(bundle.exports).toEqual(expect.arrayContaining([expect.objectContaining({
+      symbol: { module: "@example/report", export: "report" },
+      functionName: "report",
+      effect: { effects: ["Console"], parameters: ["message"] },
+      requires: [],
+      ensures: [],
+      artifactIds: [],
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "update" },
+      effect: {
+        effects: expect.arrayContaining(["Mutate<typeof target.value>", "Throw<RangeError>"]),
+        parameters: ["target"],
+      },
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "once" },
+      effect: {
+        effects: [],
+        parameters: ["callback"],
+        callbacks: [expect.objectContaining({
+          index: 0,
+          name: "callback",
+          cardinality: "exactly-1",
+          timing: "inline",
+          completion: "propagate-throw",
+          effectBound: ["Console"],
+        })],
+      },
+    })]));
+  });
+
   it("binds a producer summary to an installed package export by TypeChecker identity", async () => {
     const producerFile = "/src/index.ts";
     const producerSource = `

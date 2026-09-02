@@ -15,7 +15,7 @@ import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { analyzeCallableSummaries } from "./callable-summary.js";
 import { invalidateTransferredTypedArrayEvidence } from "./project-verification.js";
 import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
-import { bindContractSummaryBundleToProgram, type ContractSummaryBundleV1 } from "./contract-summary.js";
+import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -89,10 +89,13 @@ export function createCheckProgram(fileNames: readonly string[], options: CheckO
 /** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
   const program = options.program ?? createCheckProgram(fileNames, options);
+  const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
+    bindContractSummaryBundleToProgram(bundle, program));
+  const packageEffects = boundContractSummaryEffectContracts(contractSummaryBindings);
   const analyzedEffects = analyzeProgramEffects(program, {
     mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
     builtinRegistry: options.builtinRegistry,
-    externalFunctionEffects: options.externalFunctionEffects,
+    externalFunctionEffects: new Map([...(options.externalFunctionEffects ?? []), ...packageEffects]),
     externalModuleEffects: options.externalModuleEffects,
   });
   const effects = {
@@ -116,8 +119,6 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   for (const summary of effects.summaries) if (summary.fileName && invalidSources.has(summary.fileName)) summary.evidence = "unknown";
   diagnostics.push(...effects.diagnostics);
   const sources = new Map<string, string>(), artifacts: VerificationArtifact[] = [];
-  const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
-    bindContractSummaryBundleToProgram(bundle, program));
   const contractSummaryAssumptions: AssumptionEntry[] = contractSummaryBindings.flatMap((binding) => binding.exports.flatMap((item) =>
     item.callSites.map((call) => ({
       id: `package-contract:${binding.package.name}@${binding.package.version}:${call.fileName}:${call.span.start}`,

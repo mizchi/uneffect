@@ -5,6 +5,9 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { VerificationArtifact } from "./contracts.js";
+import { formatEffect, parseEffectSet } from "./capabilities.js";
+import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract } from "./effects.js";
+import { analyzeCallableSummaries, type CallableSummary } from "./callable-summary.js";
 
 export interface ContractSummaryExportV1 {
   symbol: { module: string; export: string };
@@ -18,6 +21,19 @@ export interface ContractSummaryExportV1 {
   requires: string[];
   ensures: string[];
   artifactIds: string[];
+  effect?: {
+    effects: string[];
+    parameters: string[];
+    callbacks?: Array<{
+      index: number;
+      name: string;
+      path?: readonly (string | number)[];
+      cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
+      timing: "inline" | "deferred" | "promise-reaction" | "unknown";
+      completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
+      effectBound?: readonly string[];
+    }>;
+  };
 }
 
 export interface ContractSummaryBundleV1 {
@@ -67,6 +83,33 @@ export interface BoundContractSummaryBundleV1 {
   blockers: string[];
 }
 
+/** Project verified declaration bindings into the existing Effect analyzer IR. */
+export function boundContractSummaryEffectContracts(
+  bindings: readonly BoundContractSummaryBundleV1[],
+): Map<string, ExternalFunctionEffectContract> {
+  const contracts = new Map<string, ExternalFunctionEffectContract>();
+  for (const binding of bindings) for (const item of binding.exports) if (item.summary.effect) {
+    contracts.set(`${item.declarationFileName}:${item.declarationSpan.start}`, {
+      effects: item.summary.effect.effects.flatMap((effect) => parseEffectSet(effect)),
+      parameters: item.summary.effect.parameters,
+      ...(item.summary.effect.callbacks ? { callbackParameters: item.summary.effect.callbacks.map((callback) => {
+        const { effectBound, timing, ...rest } = callback;
+        return {
+          ...rest,
+          timing: timing === "promise-reaction" ? "deferred" as const : timing,
+          ...(effectBound ? { effectBound: effectBound.flatMap((effect) => parseEffectSet(effect)) } : {}),
+        };
+      }) } : {}),
+      functionName: item.exportName,
+      // Linkage is verified structurally. The persisted producer authority is
+      // retained separately in the package-contract assumption ledger.
+      evidence: "verified",
+      reason: `persisted package contract ${binding.package.name}@${binding.package.version}`,
+    });
+  }
+  return contracts;
+}
+
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 function ordered(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(ordered);
@@ -103,7 +146,10 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
       || !item.parameters.every((entry) => typeof entry === "string")
       || !Array.isArray(item.requires) || !item.requires.every((entry) => typeof entry === "string")
       || !Array.isArray(item.ensures) || !item.ensures.every((entry) => typeof entry === "string")
-      || !Array.isArray(item.artifactIds) || !item.artifactIds.every((entry) => typeof entry === "string")) {
+      || !Array.isArray(item.artifactIds) || !item.artifactIds.every((entry) => typeof entry === "string")
+      || (item.effect !== undefined && (!item.effect || typeof item.effect !== "object"
+        || !Array.isArray(item.effect.effects) || !item.effect.effects.every((entry) => typeof entry === "string")
+        || !Array.isArray(item.effect.parameters) || !item.effect.parameters.every((entry) => typeof entry === "string")))) {
       throw new Error(`malformed contract summary export ${index} in ${fileName}`);
     }
   }
@@ -271,12 +317,21 @@ function directExportName(node: ts.FunctionDeclaration): string | undefined {
   return node.name.text;
 }
 
-function describeExport(program: ts.Program, source: ts.SourceFile, node: ts.FunctionDeclaration, packageName: string, artifacts: readonly VerificationArtifact[]): ContractSummaryExportV1 | undefined {
+function describeExport(
+  program: ts.Program,
+  source: ts.SourceFile,
+  node: ts.FunctionDeclaration,
+  packageName: string,
+  artifacts: readonly VerificationArtifact[],
+  effectSummary?: EffectSummary,
+  callableSummary?: CallableSummary,
+): ContractSummaryExportV1 | undefined {
   const exportName = directExportName(node);
   if (!exportName || !node.body) return undefined;
   const comments = source.text.slice(node.getFullStart(), node.getStart(source));
   const ensures = extractAnnotations(comments, "ensures");
-  if (ensures.length === 0) return undefined;
+  const effectDeclared = extractAnnotations(comments, "effect").length > 0;
+  if (ensures.length === 0 && !effectDeclared) return undefined;
   const requires = extractAnnotations(comments, "requires");
   const span = { start: node.getStart(source), end: node.getEnd() };
   const candidates = artifacts.filter((artifact) => artifact.source.fileName === source.fileName
@@ -284,7 +339,12 @@ function describeExport(program: ts.Program, source: ts.SourceFile, node: ts.Fun
   const covered = ensures.every((clause) => candidates.some((artifact) => artifact.obligation?.clause === "ensures" && artifact.obligation.source === clause));
   const verified = candidates.length > 0 && covered && candidates.every((artifact) => artifact.status === "verified"
     && (artifact.controlFlow?.relationalCalls?.every(({ evidence }) => evidence === "verified") ?? true));
-  if (!verified) throw new Error(`${exportName} is not fully verified and cannot be published as a contract summary`);
+  if (ensures.length > 0 && !verified) throw new Error(`${exportName} is not fully verified and cannot be published as a contract summary`);
+  const callableEffectFallback = callableSummary && callableSummary.evidence !== "unknown"
+    && callableSummary.unknownReasons.length === 0 && callableSummary.callbackParameters.length > 0;
+  if (effectDeclared && effectSummary?.evidence !== "verified" && !callableEffectFallback) {
+    throw new Error(`${exportName} Effect summary is not verified and cannot be published`);
+  }
   const checker = program.getTypeChecker(), signature = checker.getSignatureFromDeclaration(node);
   if (!signature) throw new Error(`${exportName} has no TypeChecker signature`);
   const signatureText = checker.signatureToString(signature, node, ts.TypeFormatFlags.NoTruncation);
@@ -298,14 +358,34 @@ function describeExport(program: ts.Program, source: ts.SourceFile, node: ts.Fun
       return parameter.name.text;
     }),
     requires, ensures, artifactIds: candidates.map(({ obligationId }) => obligationId).sort(),
+    ...(effectDeclared && (effectSummary || callableSummary) ? { effect: {
+      effects: (effectSummary?.evidence === "verified" ? effectSummary.effects : callableSummary!.effects).map(formatEffect).sort(),
+      parameters: node.parameters.map((parameter) => (parameter.name as ts.Identifier).text),
+      ...(callableSummary?.callbackParameters.length ? { callbacks: callableSummary.callbackParameters.map((callback) => ({
+        index: callback.index,
+        name: callback.name,
+        ...(callback.path ? { path: callback.path } : {}),
+        cardinality: callback.cardinality,
+        timing: callback.timing,
+        completion: callback.completion,
+        ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
+      })) } : {}),
+    } } : {}),
   };
 }
 
 export function createContractSummaryBundle(options: CreateContractSummaryBundleOptions): ContractSummaryBundleV1 {
   if (!options.packageName || !options.packageVersion) throw new Error("contract summary requires package name and version");
   const source = checkedSource(options);
+  const effectSummaries = analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries;
+  const callableSummaries = analyzeCallableSummaries(options.program).summaries;
   const exports = source.statements.flatMap((node) => ts.isFunctionDeclaration(node)
-    ? [describeExport(options.program, source, node, options.packageName, options.artifacts)].filter((item): item is ContractSummaryExportV1 => item !== undefined) : []);
+    ? [describeExport(options.program, source, node, options.packageName, options.artifacts,
+      effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
+        && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
+      callableSummaries.find((summary) => summary.fileName === source.fileName
+        && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()))]
+      .filter((item): item is ContractSummaryExportV1 => item !== undefined) : []);
   if (exports.length === 0) throw new Error("contract summary has no fully verified exported function contracts");
   const unsigned: Omit<ContractSummaryBundleV1, "contentDigest"> = {
     schema: "uneffect-contract-summary/v1",
@@ -330,6 +410,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   if (bundle.producer.sourceDigest !== sha256(options.source)) errors.push("contract summary source digest does not match producer source");
   let source: ts.SourceFile | undefined;
   try { source = checkedSource(options); } catch (cause) { errors.push(cause instanceof Error ? cause.message : String(cause)); }
+  const effectSummaries = source ? analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries : [];
   if (source) for (const item of bundle.exports) {
     const declaration = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node)
       && directExportName(node) === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
@@ -339,6 +420,21 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     const signature = options.program.getTypeChecker().getSignatureFromDeclaration(declaration);
     const signatureText = signature ? options.program.getTypeChecker().signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation) : undefined;
     if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest) errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
+    const leading = source.text.slice(declaration.getFullStart(), declaration.getStart(source));
+    const declaresEffect = extractAnnotations(leading, "effect").length > 0;
+    if (declaresEffect !== Boolean(item.effect)) {
+      errors.push(`contract summary Effect payload for ${item.symbol.export} does not match its declaration`);
+    } else if (item.effect) {
+      const actual = effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
+        && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
+      const effects = actual?.effects.map(formatEffect).sort();
+      const parameters = declaration.parameters.every((parameter) => ts.isIdentifier(parameter.name))
+        ? declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text) : undefined;
+      if (actual?.evidence !== "verified" || !effects || canonical(effects) !== canonical(item.effect.effects)
+        || !parameters || canonical(parameters) !== canonical(item.effect.parameters)) {
+        errors.push(`contract summary Effect payload for ${item.symbol.export} does not match verified producer evidence`);
+      }
+    }
   }
   return { valid: errors.length === 0, errors };
 }

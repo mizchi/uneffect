@@ -629,8 +629,12 @@ introducing another domain-local control-flow or alias model.
      signature; retain resolved declaration bytes and fail closed on drift.
      Expose the path programmatically and through repeatable CLI
      `--contract-summary` inputs.
+   - [x] Publish verified Effect-only exports in the same envelope and lower
+     accepted bindings into the existing external Effect contract IR. Preserve
+     declaration-order parameter substitution for `Mutate`, synchronous
+     `Throw`, scoped capabilities, and the package-contract assumption ledger.
    - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Bind producer evidence to emitted declaration/build artifacts, consume
-     Effect/callable/resource summaries, and add publisher/tarball authenticity.
+     callback/callable/resource summaries, and add publisher/tarball authenticity.
 6. [x] [#25](https://github.com/mizchi/uneffect/issues/25) Expand common expression semantics in measured frequency order:
    optional chaining and nullish coalescing, destructuring/default initializers,
    stable method receivers and `this`, iterator-based `for...of`, then reviewed

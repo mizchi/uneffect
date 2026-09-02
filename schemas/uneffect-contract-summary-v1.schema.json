@@ -59,8 +59,17 @@
           "signatureDigest": { "$ref": "#/$defs/sha256" },
           "parameters": { "type": "array", "items": { "type": "string" } },
           "requires": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-          "ensures": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
-          "artifactIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+          "ensures": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "artifactIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "effect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["effects", "parameters"],
+            "properties": {
+              "effects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "parameters": { "type": "array", "items": { "type": "string" } }
+            }
+          }
         }
       }
     },

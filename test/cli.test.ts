@@ -146,12 +146,30 @@ describe("uneffect command line", () => {
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result === value + 1 */
       export async function addOne(value: number): Promise<number> { return value + 1 }
+      /* uneffect:effect Console */
+      export function report(message: string): void { console.log(message) }
+      /* uneffect:effect Mutate<typeof target.value> | Throw<RangeError> */
+      export function update(target: { value: number }): void {
+        target.value += 1
+        if (target.value < 0) throw new RangeError("invalid")
+      }
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter callback extends Console */
+      export function once(callback: () => void): void { callback() }
     `;
     const consumerSource = `
-      import { addOne } from "@example/math"
+      import { addOne, once, report, update } from "@example/math"
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result === value + 1 */
       export async function run(value: number): Promise<number> { return await addOne(value) }
+      /* uneffect:effect Console */
+      export function reportIt(message: string): void { report(message) }
+      /* uneffect:effect Mutate<typeof state.value> | Throw<RangeError> */
+      export function updateIt(state: { value: number }): void { update(state) }
+      /* uneffect:effect Console */
+      function logOnce(): void { console.log("once") }
+      /* uneffect:effect Console */
+      export function runOnce(): void { once(logOnce) }
     `;
     try {
       mkdirSync(packageDirectory, { recursive: true });
@@ -160,7 +178,13 @@ describe("uneffect command line", () => {
       writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
         name: "@example/math", version: "1.2.3", types: "index.d.ts",
       }));
-      writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function addOne(value: number): Promise<number>;\n");
+      writeFileSync(join(packageDirectory, "index.d.ts"), [
+        "export declare function addOne(value: number): Promise<number>;",
+        "export declare function report(message: string): void;",
+        "export declare function update(target: { value: number }): void;",
+        "export declare function once(callback: () => void): void;",
+        "",
+      ].join("\n"));
       const producerProgram = ts.createProgram([producerFile], {
         strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -172,8 +196,11 @@ describe("uneffect command line", () => {
       })));
 
       const checked = capture();
-      expect(await runCli(["check", "--contract-summary", summaryFile, "--evidence", consumerFile], checked)).toBe(exitCode.success);
+      expect(await runCli(["check", "--contract-summary", summaryFile, "--evidence", consumerFile], checked), checked.stderr).toBe(exitCode.success);
       expect(checked.stderr).toContain("proved run: ensures result === value + 1");
+      expect(checked.stderr).toContain("effects reportIt: Console");
+      expect(checked.stderr).toContain("effects updateIt: Mutate<typeof state.value> | Throw<RangeError>");
+      expect(checked.stderr).toContain("effects runOnce: Console");
       const reported = capture();
       expect(await runCli(["check", "--contract-summary", summaryFile, "--json", consumerFile], reported)).toBe(exitCode.success);
       expect((JSON.parse(reported.stdout) as { assumptions: { entries: Array<{ domain: string }> } }).assumptions.entries)

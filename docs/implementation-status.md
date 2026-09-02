@@ -883,8 +883,12 @@ same property is proved for arbitrary TypeScript.
   TypeScript version, exact installed package version, export signature, and
   record the resolved `.d.ts` bytes. Named aliases, namespace imports, and source re-exports are
   resolved by TypeChecker call identity. Producer-to-emitted-declaration build
-  linkage, tarball/bundled-runtime identity, publisher authenticity, and Effect
-  summary consumption remain open.
+  linkage, tarball/bundled-runtime identity, and publisher authenticity remain
+  open. Verified Effect-only exports use the same envelope and lower into the
+  existing external Effect contract IR. Parameter-rooted `Mutate`, scoped
+  capabilities, and `Throw<E>` therefore compose without a package-specific
+  analyzer. Callback timing/effect polymorphism and resource ownership remain
+  open.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint

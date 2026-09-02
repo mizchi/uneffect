@@ -1,9 +1,11 @@
 # Persisted contract summaries
 
-`uneffect-contract-summary/v1` is the initial producer envelope for publishing
-verified scalar Hoare contracts with a package. It is generated only for direct
-named exported function declarations whose local obligations and transitive
-relational dependencies are all `verified`.
+`uneffect-contract-summary/v1` is the shared package envelope for publishing
+verified scalar Hoare contracts and Effect summaries. A direct named export is
+included when at least one of those domains is explicitly declared and
+verified. Hoare entries require every local obligation and transitive
+relational dependency to be `verified`; Effect entries require the declared
+upper bound to match the analyzed implementation.
 
 ```ts
 import {
@@ -44,6 +46,7 @@ The bundle binds:
 - TypeChecker-rendered signature and SHA-256;
 - parameter names, `requires`, and `ensures` clauses;
 - every solver artifact ID supporting the export.
+- optional verified Effect atoms and declaration-order parameter names.
 
 Changing any covered value invalidates the bundle content digest. Validation
 also recomputes compiler, source, declaration, and signature evidence instead
@@ -68,6 +71,12 @@ Repeat `--contract-summary` to compose packages. A content, TypeScript,
 installed-version, or signature mismatch is a blocking `unknown`; an unused
 summary is `not-applicable` rather than a proof.
 
+Effect-only exports are supported. Scoped capabilities, `Throw<E>`, and
+parameter-rooted `Mutate<typeof parameter.member>` use the same parser and
+call-site substitution as same-workspace summaries. The binding is supplied to
+the ordinary Effect analyzer rather than interpreted by a package-specific
+walker.
+
 This does not yet prove that the installed declaration bytes were emitted from
 the summarized producer source, or that bundled/runtime JavaScript corresponds
 to that declaration. Export-map selection is inherited from TypeScript module
@@ -78,3 +87,6 @@ signature, transparency log, or trusted publishing identity in v1. A
 successfully bound scalar call carries `trusted` relational evidence: the
 declaration binding is checked, while the persisted producer authority is not
 silently upgraded to an authenticated proof.
+
+Callback timing/effect polymorphism and resource ownership are not part of this
+first Effect payload yet.

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
-import { bindContractSummaryBundleToProgram, type ContractSummaryBundleV1 } from "./contract-summary.js";
+import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { analyzeCallableSummaries } from "./callable-summary.js";
@@ -328,6 +328,7 @@ async function verifyUneffectProjectFiles(
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
   const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
     bindContractSummaryBundleToProgram(bundle, program));
+  const packageEffects = boundContractSummaryEffectContracts(contractSummaryBindings);
   const contractSummaryAssumptions: AssumptionEntry[] = contractSummaryBindings.flatMap((binding) => binding.exports.flatMap((item) =>
     item.callSites.map((call) => ({
       id: `package-contract:${binding.package.name}@${binding.package.version}:${call.fileName}:${call.span.start}`,
@@ -407,7 +408,7 @@ async function verifyUneffectProjectFiles(
   }
   const analyzedEffects = analyzeProgramEffects(effectProgram, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
-    externalFunctionEffects: compilerContext?.externalFunctionEffects,
+    externalFunctionEffects: new Map([...(compilerContext?.externalFunctionEffects ?? []), ...packageEffects]),
     externalModuleEffects: compilerContext?.externalModuleEffects,
     effectSchemas: preparedEffects.schemas,
   });
