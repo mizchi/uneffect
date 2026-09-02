@@ -813,14 +813,18 @@ same property is proved for arbitrary TypeScript.
   `const` arrow, or `const` function expression with identifier-only parameters
   and exactly one pure scalar return expression closed over those parameters
   may also provide a verified fulfillment relation. Arrow expression bodies
-  and block bodies containing one return share this rule. One Boolean
+  and block bodies containing one return share this rule. A leading sequence
+  of single-binding `const identifier = pureScalarExpression` declarations is
+  composed in order into the same symbolic environment; mutable/destructured,
+  multi-declaration, call-valued, or otherwise unsupported initializers remain
+  unknown. One Boolean
   `if (condition) return a; return b` or exhaustive `if/else` split is lowered
   into two path-conditioned fulfillment clauses when both values share the
   awaited scalar domain. A top-level scalar conditional return expression,
   including an expression-bodied async arrow, uses the same lowering. Its
   condition must be Boolean rather than generic JavaScript truthiness. Common
-  `if (bad) throw new StandardError(...); return
-  value`, inverse `if (valid) return value; throw`, and exhaustive `if/else`
+  `if (bad) throw new StandardError(...); return value`, inverse
+  `if (valid) return value; throw`, and exhaustive `if/else`
   return/throw guards become verified `Reject<Error>` on the rejected edge and
   add the selected Boolean guard to the normal fulfillment relation. Only the reviewed standard Error
   constructors with zero or one static string argument enter this inference;
@@ -829,8 +833,9 @@ same property is proved for arbitrary TypeScript.
   be free of reassignment. Direct immutable safe-integer and Boolean literal
   `const` captures are substituted into the relation by TypeChecker symbol
   identity. Mutable captures, computed initializers, and object/property state,
-  parameter initializers/rest/destructuring, other multiple-statement shapes, and a
-  Promise/thenable-valued return remain unknown. Other unannotated Promise-producing calls,
+  parameter initializers/rest/destructuring, other multiple-statement shapes,
+  and a Promise/thenable-valued return remain unknown. Other unannotated
+  Promise-producing calls,
   opaque catch payloads, and general exception fixed points are not accepted. A scalar
   Promise-returning callee may expose a trusted
   `contract ensures` relation. One direct `const value = await call()`,

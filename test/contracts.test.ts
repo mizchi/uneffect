@@ -3227,6 +3227,71 @@ describe("Hoare contract checker", () => {
     expect(invalid.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
   });
 
+  it("composes a pure const prelude into a local async fulfillment summary", async () => {
+    const fileName = "/local-async-const-prelude.ts";
+    const source = `
+      type Int = number
+      async function transform(value: Int): Promise<Int> {
+        const incremented = value + 1
+        const doubled = incremented * 2
+        return doubled
+      }
+      /* uneffect:ensures result === (value + 1) * 2 */
+      async function caller(value: Int): Promise<Int> {
+        return await transform(value)
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ relationalCalls: [expect.objectContaining({
+        evidence: "verified",
+        functionName: "transform",
+        clauses: ["result === doubled"],
+      })] }),
+    }));
+  });
+
+  it("keeps mutable, destructured, or call-valued async preludes fail-closed", async () => {
+    const cases = [
+      `
+        type Int = number
+        async function transform(value: Int): Promise<Int> {
+          let next = value + 1
+          return next
+        }
+        /* uneffect:ensures result === value + 1 */
+        async function caller(value: Int): Promise<Int> { return await transform(value) }
+      `,
+      `
+        type Int = number
+        async function transform(value: Int): Promise<Int> {
+          const [next] = [value + 1]
+          return next
+        }
+        /* uneffect:ensures result === value + 1 */
+        async function caller(value: Int): Promise<Int> { return await transform(value) }
+      `,
+      `
+        type Int = number
+        declare function increment(value: Int): Int
+        async function transform(value: Int): Promise<Int> {
+          const next = increment(value)
+          return next
+        }
+        /* uneffect:ensures result === value + 1 */
+        async function caller(value: Int): Promise<Int> { return await transform(value) }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/local-async-prelude-unsupported-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
   it("connects a guarded local async throw to Promise rejection and normal fulfillment", async () => {
     const fileName = "/local-async-guarded-rejection.ts";
     const source = `

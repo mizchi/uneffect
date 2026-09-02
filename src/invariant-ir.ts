@@ -1168,6 +1168,16 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
       || !declaration.body || (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) === 0) return undefined;
     const identity = callableIdentity(declaration);
     if (!identity || !stableCallable(call, identity.symbol)) return undefined;
+    const statements = ts.isBlock(declaration.body) ? [...declaration.body.statements] : undefined;
+    const localDeclarations: ts.VariableDeclaration[] = [];
+    while (statements?.[0] && ts.isVariableStatement(statements[0])) {
+      const statement = statements.shift()! as ts.VariableStatement;
+      if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0
+        || statement.declarationList.declarations.length !== 1) return undefined;
+      const local = statement.declarationList.declarations[0]!;
+      if (!ts.isIdentifier(local.name) || !local.initializer) return undefined;
+      localDeclarations.push(local);
+    }
     const returnExpression = (statement: ts.Statement): ts.Expression | undefined => {
       if (ts.isReturnStatement(statement)) return statement.expression;
       return ts.isBlock(statement) && statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0])
@@ -1185,43 +1195,43 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
     let rejectionExpression: ts.Expression | undefined;
     if (!ts.isBlock(declaration.body)) {
       whenTrue = declaration.body;
-    } else if (declaration.body.statements.length === 1 && ts.isReturnStatement(declaration.body.statements[0])) {
-      whenTrue = declaration.body.statements[0].expression;
-    } else if (declaration.body.statements.length === 1 && ts.isIfStatement(declaration.body.statements[0])
-      && declaration.body.statements[0].elseStatement) {
-      const thenReturn = returnExpression(declaration.body.statements[0].thenStatement);
-      const elseReturn = returnExpression(declaration.body.statements[0].elseStatement);
-      const thenThrow = throwExpression(declaration.body.statements[0].thenStatement);
-      const elseThrow = throwExpression(declaration.body.statements[0].elseStatement);
+    } else if (statements!.length === 1 && ts.isReturnStatement(statements![0])) {
+      whenTrue = statements![0].expression;
+    } else if (statements!.length === 1 && ts.isIfStatement(statements![0])
+      && statements![0].elseStatement) {
+      const thenReturn = returnExpression(statements![0].thenStatement);
+      const elseReturn = returnExpression(statements![0].elseStatement);
+      const thenThrow = throwExpression(statements![0].thenStatement);
+      const elseThrow = throwExpression(statements![0].elseStatement);
       if (thenReturn && elseReturn) {
-        condition = declaration.body.statements[0].expression;
+        condition = statements![0].expression;
         whenTrue = thenReturn;
         whenFalse = elseReturn;
       } else if (thenThrow && elseReturn) {
-        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: false };
+        requiredNormalGuard = { expression: statements![0].expression, truth: false };
         rejectionExpression = thenThrow;
         whenTrue = elseReturn;
       } else if (thenReturn && elseThrow) {
-        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: true };
+        requiredNormalGuard = { expression: statements![0].expression, truth: true };
         rejectionExpression = elseThrow;
         whenTrue = thenReturn;
       }
-    } else if (declaration.body.statements.length === 2 && ts.isIfStatement(declaration.body.statements[0])
-      && !declaration.body.statements[0].elseStatement) {
-      const guardedReturn = returnExpression(declaration.body.statements[0].thenStatement);
-      const guardedThrow = throwExpression(declaration.body.statements[0].thenStatement);
-      const trailingReturn = returnExpression(declaration.body.statements[1]);
-      const trailingThrow = throwExpression(declaration.body.statements[1]);
+    } else if (statements!.length === 2 && ts.isIfStatement(statements![0])
+      && !statements![0].elseStatement) {
+      const guardedReturn = returnExpression(statements![0].thenStatement);
+      const guardedThrow = throwExpression(statements![0].thenStatement);
+      const trailingReturn = returnExpression(statements![1]);
+      const trailingThrow = throwExpression(statements![1]);
       if (guardedReturn && trailingReturn) {
-        condition = declaration.body.statements[0].expression;
+        condition = statements![0].expression;
         whenTrue = guardedReturn;
         whenFalse = trailingReturn;
       } else if (guardedThrow && trailingReturn) {
-        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: false };
+        requiredNormalGuard = { expression: statements![0].expression, truth: false };
         rejectionExpression = guardedThrow;
         whenTrue = trailingReturn;
       } else if (guardedReturn && trailingThrow) {
-        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: true };
+        requiredNormalGuard = { expression: statements![0].expression, truth: true };
         rejectionExpression = trailingThrow;
         whenTrue = guardedReturn;
       }
@@ -1252,6 +1262,14 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
       }
       ts.forEachChild(node, inspect);
     };
+    for (const local of localDeclarations) {
+      inspect(local.initializer!);
+      if (!closed || !scalarDomain(checker.getTypeAtLocation(local.initializer!))) return undefined;
+      let value: LogicExpression;
+      try { value = substitute(parseLogicExpression(local.initializer!.getText(source)), captured); } catch { return undefined; }
+      captured.set((local.name as ts.Identifier).text, value);
+      allowed.add((local.name as ts.Identifier).text);
+    }
     inspect(whenTrue);
     if (condition) inspect(condition);
     if (whenFalse) inspect(whenFalse);

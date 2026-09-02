@@ -2565,6 +2565,12 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Normalize a top-level scalar conditional return expression (including
     an expression-bodied async arrow) into the same two branch clauses.
     TypeChecker-rejected/non-Boolean truthiness remains fail-closed.
+  - [x] Compose a leading sequence of single-binding
+    `const identifier = pureScalarExpression` declarations into the inferred
+    local async summary. Each initializer is substituted through the preceding
+    symbolic environment before return/branch/throw normalization. `let`/`var`,
+    destructuring, multi-declaration statements, calls, and unsupported scalar
+    operators remain fail-closed.
   - [x] Infer the common local async guard shape
     `if (bad) throw new StandardError(staticMessage); return value`, its
     `if (valid) return value; throw` inverse, and exhaustive `if/else`

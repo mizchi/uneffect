@@ -381,7 +381,10 @@ expression closed over those parameters supplies a verified fulfillment
 relation to direct calls and immutable callable aliases. Arrow expression
 bodies and single-return block bodies share this rule. Direct immutable
 safe-integer/Boolean literal `const` captures are substituted by TypeChecker
-symbol identity. One Boolean `if-return + return` or exhaustive `if/else`
+symbol identity. Leading single-binding pure scalar `const` declarations are
+composed in order before the return/branch/throw normalization; mutable,
+destructured, multi-declaration, and call-valued preludes remain unknown. One
+Boolean `if-return + return` or exhaustive `if/else`
 return split becomes two path-conditioned fulfillment clauses. A top-level
 scalar ternary return, including an expression-bodied async arrow, is normalized
 to the same clauses; its condition must be Boolean.
