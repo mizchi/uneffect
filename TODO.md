@@ -2541,7 +2541,38 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     the normal edge only, while rejection and synchronous throw retain the
     incoming state. Shared immutable aliases and presence-only object targets
     remain fail-closed.
-  - [ ] Add inferred Promise producers, presence-only object fulfillment, ([#25](https://github.com/mizchi/uneffect/issues/25))
+  - [x] Infer verified scalar fulfillment for the exact standard-library
+    `Promise.resolve(value)` identity when `value` itself is numeric or Boolean.
+    Shadowed members, omitted arguments, Promise/thenable assimilation, and
+    non-scalar payloads remain fail-closed.
+  - [x] Resolve standard `Promise.resolve` and `Promise.reject` producers by
+    TypeChecker signature declaration identity rather than callee spelling, so
+    immutable callable aliases share the builtin semantics without admitting
+    same-named user implementations.
+  - [x] Infer a verified scalar fulfillment relation from a local `async`
+    function declaration, `const` arrow, or `const` function expression whose
+    implementation is exactly one pure scalar `return` expression closed over
+    identifier parameters and direct immutable safe-integer/Boolean literal
+    `const` captures. Direct calls and immutable callable aliases are supported;
+    mutable or computed/object captures, default/rest or destructured
+    parameters, mutable callables, multi-statement bodies, and Promise/thenable
+    returns remain fail-closed.
+  - [x] Extend that implementation-derived fulfillment to one Boolean
+    `if (condition) return a; return b` or exhaustive `if/else` return split.
+    Lower the branches as two path-conditioned scalar clauses rather than
+    assuming one return globally; non-Boolean truthiness and non-returning
+    branches remain fail-closed.
+  - [x] Normalize a top-level scalar conditional return expression (including
+    an expression-bodied async arrow) into the same two branch clauses.
+    TypeChecker-rejected/non-Boolean truthiness remains fail-closed.
+  - [x] Infer the common local async guard shape
+    `if (bad) throw new StandardError(staticMessage); return value`, its
+    `if (valid) return value; throw` inverse, and exhaustive `if/else`
+    return/throw forms as one product of verified `Reject<Error>` and normal
+    fulfillment. The selected guard is a normal-path clause, so catch discharge
+    and the returned refinement remain correlated. Calls/computed error
+    producers remain fail-closed.
+  - [ ] Add general inferred Promise producers, presence-only object fulfillment, ([#25](https://github.com/mizchi/uneffect/issues/25))
     property/destructured targets, opaque catch payloads, persisted consumer
     linkage/authenticity, and interprocedural heap state.
 

@@ -802,8 +802,36 @@ same property is proved for arbitrary TypeScript.
   TypeChecker-resolved Promise-returning call may instead use a trusted
   `temporal_contract rejects E` declaration; it branches into fulfilled and
   rejected completion, while `temporal_contract throws E` declarations produce
-  separate synchronous edges. Unannotated Promise-producing calls, opaque catch
-  payloads, and general exception fixed points are not accepted. A scalar
+  separate synchronous edges. The exact TypeChecker-identified standard
+  `Promise.resolve(value)` additionally supplies a verified `result === value`
+  fulfillment relation when the argument itself is numeric or Boolean.
+  Both `resolve` and `reject` use the resolved standard-library signature
+  declaration identity, so immutable callable aliases do not depend on their
+  local variable names while same-spelled user implementations remain unknown.
+  Shadowed members, Promise/thenable assimilation, and non-scalar payloads are
+  not generalized into that rule. A local `async` function declaration,
+  `const` arrow, or `const` function expression with identifier-only parameters
+  and exactly one pure scalar return expression closed over those parameters
+  may also provide a verified fulfillment relation. Arrow expression bodies
+  and block bodies containing one return share this rule. One Boolean
+  `if (condition) return a; return b` or exhaustive `if/else` split is lowered
+  into two path-conditioned fulfillment clauses when both values share the
+  awaited scalar domain. A top-level scalar conditional return expression,
+  including an expression-bodied async arrow, uses the same lowering. Its
+  condition must be Boolean rather than generic JavaScript truthiness. Common
+  `if (bad) throw new StandardError(...); return
+  value`, inverse `if (valid) return value; throw`, and exhaustive `if/else`
+  return/throw guards become verified `Reject<Error>` on the rejected edge and
+  add the selected Boolean guard to the normal fulfillment relation. Only the reviewed standard Error
+  constructors with zero or one static string argument enter this inference;
+  calls and computed error producers remain unknown. The callable must be
+  direct or an immutable alias, and both the callable and source binding must
+  be free of reassignment. Direct immutable safe-integer and Boolean literal
+  `const` captures are substituted into the relation by TypeChecker symbol
+  identity. Mutable captures, computed initializers, and object/property state,
+  parameter initializers/rest/destructuring, other multiple-statement shapes, and a
+  Promise/thenable-valued return remain unknown. Other unannotated Promise-producing calls,
+  opaque catch payloads, and general exception fixed points are not accepted. A scalar
   Promise-returning callee may expose a trusted
   `contract ensures` relation. One direct `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar

@@ -1082,23 +1082,276 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
     .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
   if (errors.length > 0) return facts;
   const checker = program.getTypeChecker(), adapter = new TypeScriptFrontendAdapter(program);
+  const reviewedPresentObjects = typeCheckerPresentObjectExpressions(program, fileName, text);
+  const standardPromiseMember = (call: ts.CallExpression, name: string): boolean => {
+    const declaration = checker.getResolvedSignature(call)?.declaration;
+    if (!declaration || !("name" in declaration) || !declaration.name) return false;
+    const declarationName = ts.isIdentifier(declaration.name) || ts.isStringLiteral(declaration.name)
+      ? declaration.name.text : undefined;
+    const declarationFileName = declaration.getSourceFile().fileName.replaceAll("\\", "/");
+    return declarationName === name
+      && declaration.getSourceFile().isDeclarationFile
+      && /(?:^|\/)lib\..*\.promise\.d\.ts$/.test(declarationFileName);
+  };
+  const scalarDomain = (type: ts.Type): NumericDomain | undefined => (type.flags & ts.TypeFlags.BooleanLike) !== 0 ? "bool"
+    : (type.flags & ts.TypeFlags.NumberLike) !== 0 ? "int" : undefined;
+  const symbolIsWritten = (symbol: ts.Symbol): boolean => {
+    let written = false;
+    const scan = (node: ts.Node): void => {
+      if (written) return;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+        && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment && ts.isIdentifier(node.left)
+        && checker.getSymbolAtLocation(node.left) === symbol) {
+        written = true;
+        return;
+      }
+      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && ts.isIdentifier(node.operand)
+        && checker.getSymbolAtLocation(node.operand) === symbol) {
+        written = true;
+        return;
+      }
+      ts.forEachChild(node, scan);
+    };
+    scan(source);
+    return written;
+  };
+  type LocalAsyncCallable = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
+  const callableIdentity = (declaration: LocalAsyncCallable): { name: string; symbol: ts.Symbol } | undefined => {
+    if (ts.isFunctionDeclaration(declaration) && declaration.name) {
+      const symbol = checker.getSymbolAtLocation(declaration.name);
+      return symbol ? { name: declaration.name.text, symbol } : undefined;
+    }
+    const variable = declaration.parent;
+    if (!ts.isVariableDeclaration(variable) || variable.initializer !== declaration || !ts.isIdentifier(variable.name)
+      || !ts.isVariableDeclarationList(variable.parent) || (variable.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+    const symbol = checker.getSymbolAtLocation(variable.name);
+    return symbol ? { name: variable.name.text, symbol } : undefined;
+  };
+  const stableCallable = (call: ts.CallExpression, targetSymbol: ts.Symbol): boolean => {
+    if (!ts.isIdentifier(call.expression)) return false;
+    const callSymbol = checker.getSymbolAtLocation(call.expression);
+    if (!callSymbol || !targetSymbol || symbolIsWritten(callSymbol) || symbolIsWritten(targetSymbol)) return false;
+    return callSymbol.declarations?.every((candidate) => ts.isFunctionDeclaration(candidate)
+      || (ts.isVariableDeclaration(candidate) && ts.isVariableDeclarationList(candidate.parent)
+        && (candidate.parent.flags & ts.NodeFlags.Const) !== 0)) === true;
+  };
+  const immutableScalarLiteral = (identifier: ts.Identifier): LogicExpression | undefined => {
+    const symbol = checker.getSymbolAtLocation(identifier);
+    if (!symbol || symbol.declarations?.length !== 1) return undefined;
+    const declaration = symbol.declarations[0];
+    if (!declaration || !ts.isVariableDeclaration(declaration) || !ts.isIdentifier(declaration.name)
+      || !declaration.initializer || !ts.isVariableDeclarationList(declaration.parent)
+      || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+    const initializer = declaration.initializer;
+    if (initializer.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
+    if (initializer.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
+    if (ts.isNumericLiteral(initializer)) {
+      const value = Number(initializer.text);
+      return Number.isSafeInteger(value) ? { kind: "integer", value: String(value) } : undefined;
+    }
+    if (ts.isPrefixUnaryExpression(initializer)
+      && (initializer.operator === ts.SyntaxKind.MinusToken || initializer.operator === ts.SyntaxKind.PlusToken)
+      && ts.isNumericLiteral(initializer.operand)) {
+      const magnitude = Number(initializer.operand.text);
+      if (!Number.isSafeInteger(magnitude)) return undefined;
+      const value = initializer.operator === ts.SyntaxKind.MinusToken ? -magnitude : magnitude;
+      return { kind: "integer", value: String(value) };
+    }
+    return undefined;
+  };
+  const inferredLocalFulfillment = (
+    call: ts.CallExpression,
+    signature: ts.Signature,
+    declaration: ts.SignatureDeclaration | ts.JSDocSignature,
+  ): { fulfillment: AwaitFulfillmentFact; rejectionEffect?: string } | undefined => {
+    if (!(ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration))
+      || !declaration.body || (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) === 0) return undefined;
+    const identity = callableIdentity(declaration);
+    if (!identity || !stableCallable(call, identity.symbol)) return undefined;
+    const returnExpression = (statement: ts.Statement): ts.Expression | undefined => {
+      if (ts.isReturnStatement(statement)) return statement.expression;
+      return ts.isBlock(statement) && statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0])
+        ? statement.statements[0].expression : undefined;
+    };
+    const throwExpression = (statement: ts.Statement): ts.Expression | undefined => {
+      if (ts.isThrowStatement(statement)) return statement.expression;
+      return ts.isBlock(statement) && statement.statements.length === 1 && ts.isThrowStatement(statement.statements[0])
+        ? statement.statements[0].expression : undefined;
+    };
+    let condition: ts.Expression | undefined;
+    let whenTrue: ts.Expression | undefined;
+    let whenFalse: ts.Expression | undefined;
+    let requiredNormalGuard: { expression: ts.Expression; truth: boolean } | undefined;
+    let rejectionExpression: ts.Expression | undefined;
+    if (!ts.isBlock(declaration.body)) {
+      whenTrue = declaration.body;
+    } else if (declaration.body.statements.length === 1 && ts.isReturnStatement(declaration.body.statements[0])) {
+      whenTrue = declaration.body.statements[0].expression;
+    } else if (declaration.body.statements.length === 1 && ts.isIfStatement(declaration.body.statements[0])
+      && declaration.body.statements[0].elseStatement) {
+      const thenReturn = returnExpression(declaration.body.statements[0].thenStatement);
+      const elseReturn = returnExpression(declaration.body.statements[0].elseStatement);
+      const thenThrow = throwExpression(declaration.body.statements[0].thenStatement);
+      const elseThrow = throwExpression(declaration.body.statements[0].elseStatement);
+      if (thenReturn && elseReturn) {
+        condition = declaration.body.statements[0].expression;
+        whenTrue = thenReturn;
+        whenFalse = elseReturn;
+      } else if (thenThrow && elseReturn) {
+        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: false };
+        rejectionExpression = thenThrow;
+        whenTrue = elseReturn;
+      } else if (thenReturn && elseThrow) {
+        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: true };
+        rejectionExpression = elseThrow;
+        whenTrue = thenReturn;
+      }
+    } else if (declaration.body.statements.length === 2 && ts.isIfStatement(declaration.body.statements[0])
+      && !declaration.body.statements[0].elseStatement) {
+      const guardedReturn = returnExpression(declaration.body.statements[0].thenStatement);
+      const guardedThrow = throwExpression(declaration.body.statements[0].thenStatement);
+      const trailingReturn = returnExpression(declaration.body.statements[1]);
+      const trailingThrow = throwExpression(declaration.body.statements[1]);
+      if (guardedReturn && trailingReturn) {
+        condition = declaration.body.statements[0].expression;
+        whenTrue = guardedReturn;
+        whenFalse = trailingReturn;
+      } else if (guardedThrow && trailingReturn) {
+        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: false };
+        rejectionExpression = guardedThrow;
+        whenTrue = trailingReturn;
+      } else if (guardedReturn && trailingThrow) {
+        requiredNormalGuard = { expression: declaration.body.statements[0].expression, truth: true };
+        rejectionExpression = trailingThrow;
+        whenTrue = guardedReturn;
+      }
+    }
+    if (!condition && !requiredNormalGuard && whenTrue) {
+      let returned = whenTrue;
+      while (ts.isParenthesizedExpression(returned)) returned = returned.expression;
+      if (ts.isConditionalExpression(returned)) {
+        condition = returned.condition;
+        whenTrue = returned.whenTrue;
+        whenFalse = returned.whenFalse;
+      }
+    }
+    if (!whenTrue || Boolean(condition) !== Boolean(whenFalse)) return undefined;
+    if (declaration.parameters.some((parameter) => !ts.isIdentifier(parameter.name)
+      || parameter.initializer !== undefined || parameter.dotDotDotToken !== undefined)) return undefined;
+    const parameters = declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
+    const allowed = new Set(parameters);
+    const captured: Environment = new Map();
+    let closed = true;
+    const inspect = (node: ts.Node): void => {
+      if (!closed) return;
+      if (ts.isIdentifier(node) && !allowed.has(node.text)) {
+        const literal = immutableScalarLiteral(node);
+        if (literal) captured.set(node.text, literal);
+        else closed = false;
+        return;
+      }
+      ts.forEachChild(node, inspect);
+    };
+    inspect(whenTrue);
+    if (condition) inspect(condition);
+    if (whenFalse) inspect(whenFalse);
+    if (requiredNormalGuard) inspect(requiredNormalGuard.expression);
+    const awaitedType = checker.getAwaitedType(checker.getReturnTypeOfSignature(signature));
+    const domain = awaitedType ? scalarDomain(awaitedType) : undefined;
+    if (!closed || !domain || scalarDomain(checker.getTypeAtLocation(whenTrue)) !== domain
+      || (whenFalse && scalarDomain(checker.getTypeAtLocation(whenFalse)) !== domain)
+      || (condition && scalarDomain(checker.getTypeAtLocation(condition)) !== "bool")
+      || (requiredNormalGuard && scalarDomain(checker.getTypeAtLocation(requiredNormalGuard.expression)) !== "bool")) return undefined;
+    const reviewedRejection = rejectionExpression && ts.isNewExpression(rejectionExpression)
+      && reviewedPresentObjects.has(`${rejectionExpression.getStart(source)}:${rejectionExpression.getEnd()}`);
+    const rejectionType = reviewedRejection ? adapter.thrownErrorType(rejectionExpression!) : undefined;
+    if (rejectionExpression && (!reviewedRejection || rejectionType === "unknown")) return undefined;
+    let clauses: AwaitFulfillmentFact["clauses"];
+    try {
+      const trueValue = substitute(parseLogicExpression(whenTrue.getText(source)), captured);
+      if (!condition || !whenFalse) {
+        clauses = [{
+          source: `result === ${whenTrue.getText(source)}`,
+          expression: { kind: "binary", operator: "eq", left: variable("result"), right: trueValue },
+        }];
+      } else {
+        const guard = substitute(parseLogicExpression(condition.getText(source)), captured);
+        const falseValue = substitute(parseLogicExpression(whenFalse.getText(source)), captured);
+        clauses = [
+          {
+            source: `!(${condition.getText(source)}) || result === ${whenTrue.getText(source)}`,
+            expression: {
+              kind: "binary", operator: "or", left: { kind: "unary", operator: "not", operand: guard },
+              right: { kind: "binary", operator: "eq", left: variable("result"), right: trueValue },
+            },
+          },
+          {
+            source: `${condition.getText(source)} || result === ${whenFalse.getText(source)}`,
+            expression: {
+              kind: "binary", operator: "or", left: guard,
+              right: { kind: "binary", operator: "eq", left: variable("result"), right: falseValue },
+            },
+          },
+        ];
+      }
+      if (requiredNormalGuard) {
+        const guard = substitute(parseLogicExpression(requiredNormalGuard.expression.getText(source)), captured);
+        const normalGuard = requiredNormalGuard.truth ? guard : { kind: "unary", operator: "not", operand: guard } satisfies LogicExpression;
+        clauses.unshift({
+          source: requiredNormalGuard.truth
+            ? requiredNormalGuard.expression.getText(source) : `!(${requiredNormalGuard.expression.getText(source)})`,
+          expression: normalGuard,
+        });
+      }
+    } catch { return undefined; }
+    const declarationSource = declaration.getSourceFile();
+    return {
+      fulfillment: {
+        domain,
+        functionName: identity.name,
+        parameters,
+        clauses,
+        preconditions: [],
+        declarationFileName: declarationSource.fileName,
+        declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
+        declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+      },
+      ...(rejectionType ? { rejectionEffect: `Reject<${rejectionType}>` } : {}),
+    };
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression)
-      && ts.isPropertyAccessExpression(node.expression.expression)
-      && node.expression.expression.name.text === "reject" && node.expression.arguments[0]) {
-      const receiver = node.expression.expression.expression;
-      const receiverSymbol = checker.getSymbolAtLocation(receiver);
-      const memberSymbol = checker.getSymbolAtLocation(node.expression.expression.name);
-      const fromStandardDeclarations = (symbol: ts.Symbol | undefined): boolean => Boolean(symbol?.declarations?.length)
-        && symbol!.declarations!.every((declaration) => declaration.getSourceFile().isDeclarationFile)
-        && symbol!.declarations!.some((declaration) => /(?:^|\/)lib\..*\.promise\.d\.ts$/.test(declaration.getSourceFile().fileName.replaceAll("\\", "/")));
-      const builtin = ts.isIdentifier(receiver) && receiver.text === "Promise" && fromStandardDeclarations(receiverSymbol) && fromStandardDeclarations(memberSymbol);
-      if (builtin) {
-        const argument = node.expression.arguments[0]!;
-        const errorType = adapter.thrownErrorType(argument);
-        const rejectionType = errorType === "unknown" ? checker.typeToString(checker.getTypeAtLocation(argument)) : errorType;
+      && standardPromiseMember(node.expression, "reject") && node.expression.arguments[0]) {
+      const argument = node.expression.arguments[0]!;
+      const errorType = adapter.thrownErrorType(argument);
+      const rejectionType = errorType === "unknown" ? checker.typeToString(checker.getTypeAtLocation(argument)) : errorType;
+      facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
+        effect: `Reject<${rejectionType}>`, definitelyRejects: true, synchronousThrows: [], evidence: "verified", payloadFromFirstArgument: true,
+      });
+    } else if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression)
+      && standardPromiseMember(node.expression, "resolve") && node.expression.arguments.length === 1) {
+      const argument = node.expression.arguments[0]!;
+      const argumentType = checker.getTypeAtLocation(argument);
+      const domain: NumericDomain | undefined = (argumentType.flags & ts.TypeFlags.BooleanLike) !== 0 ? "bool"
+        : (argumentType.flags & ts.TypeFlags.NumberLike) !== 0 ? "int" : undefined;
+      const signature = checker.getResolvedSignature(node.expression), declaration = signature?.declaration;
+      if (domain && declaration) {
+        const declarationSource = declaration.getSourceFile();
         facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
-          effect: `Reject<${rejectionType}>`, definitelyRejects: true, synchronousThrows: [], evidence: "verified", payloadFromFirstArgument: true,
+          definitelyRejects: false,
+          synchronousThrows: [],
+          evidence: "verified",
+          payloadFromFirstArgument: false,
+          fulfillment: {
+            domain,
+            functionName: "Promise.resolve",
+            parameters: ["value"],
+            clauses: [{ source: "result === value", expression: { kind: "binary", operator: "eq", left: variable("result"), right: variable("value") } }],
+            preconditions: [],
+            declarationFileName: declarationSource.fileName,
+            declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
+            declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+          },
         });
       }
     } else if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression)) {
@@ -1112,13 +1365,12 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
         const contractEnsures = extractAnnotations(comments, "ensures");
         const contractRequires = extractAnnotations(comments, "requires");
         const awaitedType = checker.getAwaitedType(checker.getReturnTypeOfSignature(signature));
-        const awaitedDomain: NumericDomain | undefined = awaitedType && (awaitedType.flags & ts.TypeFlags.BooleanLike) !== 0 ? "bool"
-          : awaitedType && (awaitedType.flags & ts.TypeFlags.NumberLike) !== 0 ? "int" : undefined;
+        const awaitedDomain = awaitedType ? scalarDomain(awaitedType) : undefined;
         const declarationName = "name" in declaration ? declaration.name : undefined;
         const named = declarationName && ts.isIdentifier(declarationName) ? declarationName.text : undefined;
         const parameters = declaration.parameters.every((parameter) => ts.isIdentifier(parameter.name))
           ? declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text) : undefined;
-        const fulfillment = contractEnsures.length > 0 && awaitedDomain && named && parameters ? {
+        const declaredFulfillment = contractEnsures.length > 0 && awaitedDomain && named && parameters ? {
           domain: awaitedDomain,
           functionName: named,
           parameters,
@@ -1128,9 +1380,14 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
           declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
           declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
         } satisfies AwaitFulfillmentFact : undefined;
-        if (rejected.length === 1 || fulfillment) facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
-          ...(rejected.length === 1 ? { effect: `Reject<${rejected[0]}>` } : {}), definitelyRejects: false,
-          synchronousThrows: [...new Set(thrown.map((errorType) => `Throw<${errorType}>`))].sort(), evidence: "trusted",
+        const inferred = contractEnsures.length === 0 && rejected.length === 0 && thrown.length === 0
+          ? inferredLocalFulfillment(node.expression, signature, declaration) : undefined;
+        const fulfillment = declaredFulfillment ?? inferred?.fulfillment;
+        const rejectionEffect = rejected.length === 1 ? `Reject<${rejected[0]}>` : inferred?.rejectionEffect;
+        if (rejectionEffect || fulfillment) facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
+          ...(rejectionEffect ? { effect: rejectionEffect } : {}), definitelyRejects: false,
+          synchronousThrows: [...new Set(thrown.map((errorType) => `Throw<${errorType}>`))].sort(),
+          evidence: declaredFulfillment || rejected.length === 1 || thrown.length > 0 ? "trusted" : "verified",
           payloadFromFirstArgument: false, ...(fulfillment ? { fulfillment } : {}),
         });
       }
@@ -1502,7 +1759,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
           if (target.binding) nextEnv.set(target.binding, variable(fresh));
           if (target.nullableGuard) nextEnv.set(target.nullableGuard.variable, { kind: "boolean", value: true });
           const evidence: ContractRelationalCallEvidence = {
-            schema: "uneffect-contract-relational-call/v1", evidence: "trusted", typescriptVersion: ts.version,
+            schema: "uneffect-contract-relational-call/v1", evidence: fact.evidence, typescriptVersion: ts.version,
             functionName: fact.fulfillment!.functionName,
             clauses: fact.fulfillment!.clauses.map(({ source: clause }) => clause), callSpan: originSpan,
             ...(fact.fulfillment!.preconditions.length === 0 ? {} : { preconditions: fact.fulfillment!.preconditions.map(({ source: clause }) => clause) }),
