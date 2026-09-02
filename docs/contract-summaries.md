@@ -202,6 +202,11 @@ method declaration before the ordinary callback call graph is built. This
 supports `client.run(callback)` through immutable receiver aliases without a
 wrapper or runtime marker. Reentrant/concurrent callback protocols and callbacks
 stored for later opaque invocation remain outside this fragment.
+The same authenticated member callback is visible to the host-neutral temporal
+collector. `inline` and Promise-reaction lanes retain their defined projection.
+A generic `deferred` member callback remains an unknown Web/Node queue until a
+future contract carries reviewed queue provenance; Uneffect does not infer a
+timer merely from deferred execution.
 One narrow fluent form is receiver-preserving: an explicit object-literal
 method whose only return is a final direct `return this`. A call such as
 `client.chain().report()` retains the original factory receiver, composes both

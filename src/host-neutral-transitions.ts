@@ -8,7 +8,7 @@ import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js";
 import { classifyLexicalExecution } from "./lexical-execution.js";
 import { expressionAtExclusiveConstArgumentPath } from "./call-graph.js";
-import { analyzeProgramEffects, type ExternalFunctionEffectContract } from "./effects.js";
+import { analyzeProgramEffects, externalContractForCall, type ExternalFunctionEffectContract } from "./effects.js";
 
 export type HostNeutralLane = "inline" | "microtask" | "host-task" | "external" | "unknown";
 export type HostNeutralCompletion = "normal" | "propagate-throw" | "throw" | "reject" | "host-report-throw" | "unknown";
@@ -319,10 +319,7 @@ export function lowerExternalCallableTransitions(
   };
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
-      const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
-      const symbol = resolvedSymbol(checker, lookup);
-      const contract = symbol?.declarations?.map((declaration) =>
-        contracts.get(`${declaration.getSourceFile().fileName}:${declaration.getStart(declaration.getSourceFile())}`)).find(Boolean);
+      const contract = externalContractForCall(checker, node, contracts);
       if (contract?.evidence === "verified") {
         const callbacks = contract.callbackParameters ?? [];
         const target = promiseTarget(node);

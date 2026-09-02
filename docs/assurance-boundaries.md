@@ -363,6 +363,9 @@ Direct member callback parameters may additionally carry the same bounded
 cardinality, timing, completion, and Effect-bound evidence as top-level package
 functions. This is not evidence for reentrant, concurrent, retained, or
 dynamically selected callbacks.
+These member callbacks enter the host-neutral transition model. A deferred
+callback without reviewed host-queue provenance is retained in `scheduled` as
+unknown and is not inserted into an executable timer/event/poll queue.
 An authenticated direct-final `return this` method may preserve the receiver
 through a fluent call. This is a syntactic identity proof, not a general
 return-value or polymorphic fluent API proof; conditional/multiple returns and

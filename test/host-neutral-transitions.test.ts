@@ -464,6 +464,56 @@ describe("host-neutral async transitions", () => {
     }
   });
 
+  it("lowers a callback on an immutable factory-returned client member", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-external-client-callback-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Client { schedule(callback: () => void): void }
+        declare function createClient(): Client
+        const client = createClient()
+        const alias = client
+        function work() {}
+        export function run() { alias.schedule(work) }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "createClient")!;
+      const externalFunctionEffects = new Map([[`${fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, functionName: "createClient",
+        returnMembers: [{
+          key: "schedule", effects: [],
+          callbackParameters: [{
+            index: 0, name: "callback", timing: "deferred" as const,
+            cardinality: "0..1" as const, completion: "host-report-throw" as const,
+          }],
+        }],
+      }]]);
+
+      const analysis = analyzeHostNeutralTransitions(program, source, { externalFunctionEffects });
+      expect(analysis.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", api: "createClient.schedule", callback: "work",
+        cardinality: "0..1", lane: "host-task", completion: "host-report-throw",
+      }));
+      const model = generateHostTransitionModel(program, source, {
+        profile: "web", moduleName: "ExternalClientCallback", externalFunctionEffects,
+      });
+      expect(model.transitionAnalysis.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", api: "createClient.schedule", lane: "host-task",
+      }));
+      expect(model.scheduled).toContainEqual(expect.objectContaining({
+        queue: "unknown", evidence: "unknown",
+        reason: expect.stringContaining("no reviewed web queue mapping"),
+      }));
+      expect(model.quint).not.toContain("webTimers");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed when an external callback path is not a finite literal", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-external-reaction-unknown-"));
     try {

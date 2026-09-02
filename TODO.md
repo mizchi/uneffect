@@ -554,6 +554,10 @@ introducing another domain-local control-flow or alias model.
    - [x] [#63](https://github.com/mizchi/uneffect/issues/63) Project external
      settlement transitions into executable generated Quint rather than only
      the shared host-neutral artifact; retain opaque pending/divergence choices.
+   - [x] Lower authenticated callbacks on factory-returned client members
+     through the same host-neutral transition collector, including immutable
+     receiver aliases and fluent identity. Preserve an unqualified deferred
+     callback as an unknown host queue rather than inventing Web/Node timing.
    - [x] Add a versioned backend-neutral callable-summary API for direct
      functions and immutable local callable aliases, including may-effects,
      synchronous throws, direct Promise rejections, and mutated regions.
@@ -635,6 +639,9 @@ introducing another domain-local control-flow or alias model.
      constraints over the generated Web/Node state tuple, including external
      poll/close completion and finite callback alternatives; Quint typechecks
      both host projections.
+   - [ ] [#10](https://github.com/mizchi/uneffect/issues/10) Persist reviewed host-queue provenance for package callbacks so a
+     deferred client member may enter a specific timer/event/poll/close queue;
+     timing=`deferred` alone remains insufficient authority.
    - [x] Preserve compatible conditional `clearTimeout` as a nondeterministic
      cancellation-versus-execution race in both Web and Node queue-state
      models; do not impose fairness on the optional cancellation branch.
