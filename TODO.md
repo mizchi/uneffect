@@ -458,6 +458,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Resolve a non-escaping immutable Promise acquisition through exactly
        one later `await` binding by TypeChecker identity; reject extra uses,
        mutation, multiple awaits, and escape as unknown.
+     - [x] Share that Promise-to-resource binding across builtin, local
+       annotated, and authenticated package resource contracts.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

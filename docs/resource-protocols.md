@@ -418,6 +418,9 @@ An immutable Promise binding followed by exactly one direct acquisition,
 handle declaration by TypeChecker symbol identity. Extra uses, multiple awaits,
 mutation, storage, or escape of `pending` remain unknown rather than treating
 the Promise object itself as a file handle.
+The binding rule is shared by builtin catalog entries, local
+`uneffect:acquire return` declarations, and authenticated package resource
+summaries; it is not a FileHandle-specific name heuristic.
 
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:

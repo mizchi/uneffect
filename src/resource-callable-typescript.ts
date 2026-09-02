@@ -11,7 +11,7 @@ import {
   type ResourceProtocolState,
   type ResourceProtocolTransition,
 } from "./resource-protocol.js";
-import { collectAwaitedRejectionTransitionSites, collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
+import { collectAwaitedRejectionTransitionSites, collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, resolveAwaitedResourceBinding, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
 
 type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.MethodSignature
   | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
@@ -198,11 +198,13 @@ export function collectResourceCallableTransitionSites(
   const sites: ResourceTransitionSite[] = [];
   const resources = new Map<string, ResourceProtocolResource>();
   const diagnostics: ResourceCallableDiagnostic[] = [];
-  const directlyAwaited = (call: ts.CallExpression): boolean => {
-    let expression: ts.Expression = call;
-    while (ts.isParenthesizedExpression(expression.parent) || ts.isAsExpression(expression.parent)
-      || ts.isTypeAssertionExpression(expression.parent) || ts.isNonNullExpression(expression.parent)) expression = expression.parent;
-    return ts.isAwaitExpression(expression.parent) && expression.parent.expression === expression;
+  const fulfilledAliases = new Map<ts.Symbol, string>();
+  const resourceIdentity = (expression: ts.Expression): string | undefined => {
+    let target = expression;
+    while (ts.isParenthesizedExpression(target) || ts.isNonNullExpression(target)
+      || ts.isAsExpression(target) || ts.isTypeAssertionExpression(target)) target = target.expression;
+    const symbol = ts.isIdentifier(target) ? resolvedSymbol(checker, target) : undefined;
+    return symbol ? fulfilledAliases.get(symbol) ?? resourceArgumentId(checker, expression) : resourceArgumentId(checker, expression);
   };
   const summaryForDeclarationSymbol = (symbol: ts.Symbol | undefined): ResourceCallableSummary | undefined => {
     const declarations = symbol?.declarations ?? (symbol?.valueDeclaration ? [symbol.valueDeclaration] : []);
@@ -245,20 +247,27 @@ export function collectResourceCallableTransitionSites(
       if (summary) {
           const parameters = new Map<number, string>();
           node.arguments.forEach((argument, index) => {
-            const identity = resourceArgumentId(checker, argument);
+            const identity = resourceIdentity(argument);
             if (identity) parameters.set(index, identity);
           });
+          const returnType = checker.getTypeAtLocation(node);
+          const promiseLike = checker.getPropertyOfType(returnType, "then") !== undefined;
+          const awaitedBinding = promiseLike ? resolveAwaitedResourceBinding(program, fn, node) : undefined;
           const instantiated = instantiateResourceCallableSummary(summary, {
             parameters,
             receiverResource: ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
-              ? resourceArgumentId(checker, node.expression.expression) : undefined,
-            returnResource: returnedResourceId(node),
+              ? resourceIdentity(node.expression.expression) : undefined,
+            returnResource: awaitedBinding?.id ?? returnedResourceId(node),
             at: node.getStart(),
           });
           const hasAcquire = instantiated.transitions.some((transition) => transition.kind === "acquire");
-          const returnType = checker.getTypeAtLocation(node);
-          const promiseLike = checker.getPropertyOfType(returnType, "then") !== undefined;
-          const unsupportedAsyncAcquire = hasAcquire && promiseLike && !directlyAwaited(node);
+          const unsupportedAsyncAcquire = hasAcquire && promiseLike && !awaitedBinding;
+          if (hasAcquire && awaitedBinding && ts.isAwaitExpression(awaitedBinding.node)) {
+            const declaration = awaitedBinding.node.parent;
+            const symbol = ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)
+              ? resolvedSymbol(checker, declaration.name) : undefined;
+            if (symbol) fulfilledAliases.set(symbol, awaitedBinding.id);
+          }
           if (!unsupportedAsyncAcquire) for (const resource of instantiated.resources) resources.set(resource.id, resource);
           else diagnostics.push({
             code: "unresolved-resource-binding", fileName: node.getSourceFile().fileName,
@@ -272,11 +281,15 @@ export function collectResourceCallableTransitionSites(
               ts.forEachChild(node, visit);
               return;
             }
-            const fulfilled = directlyAwaited(node)
+            const fulfilled = awaitedBinding
               ? instantiated.transitions.filter((transition) => transition.kind === "acquire") : [];
             const immediate = fulfilled.length > 0
               ? instantiated.transitions.filter((transition) => transition.kind !== "acquire") : instantiated.transitions;
-            sites.push({ node, transitions: immediate, ...(fulfilled.length > 0 ? { fulfillmentTransitions: fulfilled } : {}) });
+            const siteNode = fulfilled.length > 0 ? awaitedBinding!.node : node;
+            sites.push({ node: siteNode, transitions: immediate,
+              ...(fulfilled.length > 0 ? { fulfillmentTransitions: fulfilled.map((transition) => ({ ...transition, at: siteNode.getStart() })) } : {}),
+              ...(fulfilled.length > 0 && siteNode !== node ? { exceptionalCompletion: "throw" as const } : {}),
+            });
           }
           for (const missing of instantiated.missing) diagnostics.push({
             code: "unresolved-resource-binding",

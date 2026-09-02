@@ -43,6 +43,50 @@ export interface BuiltinResourceTransitionCollection {
   readonly unknown: readonly { readonly node: ts.CallExpression | ts.NewExpression; readonly reason: string }[];
 }
 
+export interface AwaitedResourceBinding {
+  readonly id: string;
+  readonly label: string;
+  /** Call for direct await, or the later AwaitExpression for a Promise alias. */
+  readonly node: ts.Node;
+}
+
+/** Resolve direct await or one immutable, non-escaping Promise binding. */
+export function resolveAwaitedResourceBinding(
+  program: ts.Program,
+  fn: ts.FunctionLikeDeclaration,
+  call: ts.CallExpression,
+): AwaitedResourceBinding | undefined {
+  if (!fn.body) return undefined;
+  const checker = program.getTypeChecker();
+  const bindingOf = (expression: ts.Expression, node: ts.Node): AwaitedResourceBinding | undefined => {
+    let result = expression;
+    while ((ts.isParenthesizedExpression(result.parent) || ts.isNonNullExpression(result.parent)
+      || ts.isAsExpression(result.parent) || ts.isTypeAssertionExpression(result.parent)
+      || ts.isAwaitExpression(result.parent)) && result.parent.expression === result) result = result.parent;
+    const parent = result.parent;
+    return ts.isVariableDeclaration(parent) && parent.initializer === result && ts.isIdentifier(parent.name)
+      ? { id: `region:${parent.getSourceFile().fileName}:${parent.getStart()}`, label: parent.name.text, node }
+      : undefined;
+  };
+  if (directlyAwaited(call)) return bindingOf(call, call);
+  const declaration = call.parent;
+  if (!ts.isVariableDeclaration(declaration) || declaration.initializer !== call || !ts.isIdentifier(declaration.name)
+    || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+  const symbol = resolvedSymbol(checker, declaration.name);
+  if (!symbol) return undefined;
+  const references: ts.Identifier[] = [];
+  const find = (node: ts.Node): void => {
+    if (node !== fn.body && ts.isFunctionLike(node)) return;
+    if (ts.isIdentifier(node) && node !== declaration.name && resolvedSymbol(checker, node) === symbol) references.push(node);
+    ts.forEachChild(node, find);
+  };
+  find(fn.body);
+  if (references.length !== 1) return undefined;
+  const reference = references[0]!;
+  if (!ts.isAwaitExpression(reference.parent) || reference.parent.expression !== reference) return undefined;
+  return bindingOf(reference.parent, reference.parent);
+}
+
 /** Projects generic builtin acquire/release events into the shared resource CFG. */
 export function collectBuiltinResourceTransitionSites(
   program: ts.Program,
@@ -62,35 +106,6 @@ export function collectBuiltinResourceTransitionSites(
     const parent = result.parent;
     return ts.isVariableDeclaration(parent) && parent.initializer === result && ts.isIdentifier(parent.name)
       ? { id: `region:${parent.getSourceFile().fileName}:${parent.getStart()}`, label: parent.name.text } : undefined;
-  };
-  const fulfilledResultBinding = (call: ts.CallExpression): { id: string; label: string; node: ts.Node } | undefined => {
-    if (directlyAwaited(call)) {
-      const binding = resultBinding(call);
-      return binding ? { ...binding, node: call } : undefined;
-    }
-    const declaration = call.parent;
-    if (!ts.isVariableDeclaration(declaration) || declaration.initializer !== call || !ts.isIdentifier(declaration.name)
-      || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
-    const symbol = resolvedSymbol(checker, declaration.name);
-    if (!symbol) return undefined;
-    const references: ts.Identifier[] = [];
-    const find = (node: ts.Node): void => {
-      if (node !== fn.body && ts.isFunctionLike(node)) return;
-      if (ts.isIdentifier(node) && node !== declaration.name && resolvedSymbol(checker, node) === symbol) references.push(node);
-      ts.forEachChild(node, find);
-    };
-    find(fn.body!);
-    if (references.length !== 1) return undefined;
-    const reference = references[0]!;
-    if (!ts.isAwaitExpression(reference.parent) || reference.parent.expression !== reference) return undefined;
-    const awaitExpression = reference.parent;
-    const target = awaitExpression.parent;
-    if (!ts.isVariableDeclaration(target) || target.initializer !== awaitExpression || !ts.isIdentifier(target.name)) return undefined;
-    return {
-      id: `region:${target.getSourceFile().fileName}:${target.getStart()}`,
-      label: target.name.text,
-      node: awaitExpression,
-    };
   };
   const stableRoot = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
     if (!ts.isIdentifier(expression)) return expression;
@@ -128,7 +143,7 @@ export function collectBuiltinResourceTransitionSites(
       for (const event of events) {
         if ((event.kind !== "acquire" && event.kind !== "use" && event.kind !== "release") || !event.target) continue;
         const fulfilledBinding = event.completion === "fulfillment" && event.target.status === "result" && ts.isCallExpression(node)
-          ? fulfilledResultBinding(node) : undefined;
+          ? resolveAwaitedResourceBinding(program, fn, node) : undefined;
         if (event.completion === "fulfillment" && event.target.status === "result" && !fulfilledBinding) {
           unknown.push({ node, reason: `${event.kind}(${event.resource}) occurs on fulfillment but the Promise-to-resource binding is not stable` });
           continue;

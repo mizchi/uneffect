@@ -83,6 +83,7 @@ describe("general resource lifecycle check", () => {
     const producerSource = `
       export interface Handle { readonly fd: number }
       /* uneffect:acquire return */ export function open(): Handle { return { fd: 1 } }
+      /* uneffect:acquire return */ export async function openAsync(): Promise<Handle> { return { fd: 2 } }
       /* uneffect:use handle */ export function inspect(handle: Handle): void { void handle.fd }
       /* uneffect:release handle */ export function close(handle: Handle): void { void handle.fd }
     `;
@@ -92,7 +93,7 @@ describe("general resource lifecycle check", () => {
       source: producerSource, program: producerProgram, artifacts: [],
     });
     expect(bundle.exports.map((item) => [item.symbol.export, item.resource?.operations[0]?.kind])).toEqual([
-      ["close", "release"], ["inspect", "use"], ["open", "acquire"],
+      ["close", "release"], ["inspect", "use"], ["open", "acquire"], ["openAsync", "acquire"],
     ]);
 
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-package-"));
@@ -103,16 +104,21 @@ describe("general resource lifecycle check", () => {
       writeFileSync(join(packageDirectory, "index.d.ts"), `
         export interface Handle { readonly fd: number }
         export declare function open(): Handle
+        export declare function openAsync(): Promise<Handle>
         export declare function inspect(handle: Handle): void
         export declare function close(handle: Handle): void
       `);
       const consumer = join(directory, "consumer.ts");
       writeFileSync(consumer, `
-        import { open, inspect, close } from "@example/handles"
+        import { open, openAsync, inspect, close } from "@example/handles"
         export function main() { const handle = open(); inspect(handle); close(handle) }
+        export async function asyncMain() { const pending = openAsync(); const handle = await pending; inspect(handle); close(handle) }
       `);
       const result = await checkFiles([consumer], { contractSummaryBundles: [bundle] });
-      expect(result.resourceProtocols).toMatchObject([{ owner: "main", status: "satisfied", evidence: "trusted" }]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "main", status: "satisfied", evidence: "trusted" }),
+        expect.objectContaining({ owner: "asyncMain", status: "satisfied", evidence: "trusted", state: "absent-or-released" }),
+      ]));
       const tampered = {
         ...bundle,
         exports: bundle.exports.map((item) => item.symbol.export === "open"
@@ -335,11 +341,17 @@ describe("general resource lifecycle check", () => {
           const handle = await open()
           close(handle)
         }
+        export async function aliased() {
+          const pending = open()
+          const renamed = await pending
+          close(renamed)
+        }
       `);
       const result = await checkFiles([fileName]);
-      expect(result.resourceProtocols).toMatchObject([
-        { owner: "main", status: "satisfied", state: "absent-or-released" },
-      ]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "main", status: "satisfied", state: "absent-or-released" }),
+        expect.objectContaining({ owner: "aliased", status: "satisfied", state: "absent-or-released" }),
+      ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
