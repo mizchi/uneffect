@@ -942,6 +942,9 @@ introducing another domain-local control-flow or alias model.
        - [x] Feed rooted callback primitives into the common callable summary
          and host-neutral temporal transition, preserving deferred queue,
          completion, cardinality, and the full `root.path` API display name.
+       - [x] Feed rooted synchronous `throw` and Promise `reject` primitives
+         through the shared exception CFG: synchronous catch discharges only
+         Throw, while return/await/catch preserve or discharge rejection.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

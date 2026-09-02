@@ -170,6 +170,12 @@ Timing, queue, completion, and cardinality are unchanged; diagnostic and model
 events use the full display name such as `timers.schedule`, not the ambiguous
 root export `timers`.
 
+Synchronous `throw` and Promise `reject` primitives follow the same route.
+A rooted synchronous failure participates in ordinary `try/catch` discharge;
+a rooted asynchronous failure remains a Promise rejection through return and
+`await`, and is discharged only by a supported rejection handler. These are
+not converted into one another at the package boundary.
+
 A contract may declare `result({ kind: "fresh" })` in `semantics.primitives` when every call returns a
 new caller-owned object with no pre-existing aliases. In-place mutation of that
 direct result is then local rather than a `Mutate` capability. This is separate

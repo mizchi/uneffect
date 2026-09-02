@@ -3,13 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { builtinContractRegistry, findBuiltinContract } from "../src/builtin-contracts.js";
-import { effectSchema, parseEffectExpression } from "../src/capabilities.js";
+import { effectSchema, formatEffect, parseEffectExpression } from "../src/capabilities.js";
 import { installUneffectModules, parseUneffectModuleManifest } from "../src/modules.js";
 import { createEvidenceArtifact, validateEvidenceArtifact } from "../src/evidence.js";
 import { checkFiles, createCheckProgram } from "../src/check.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
 import { analyzeCallableSummaries } from "../src/callable-summary.js";
+import { analyzeProgramEffects } from "../src/effects.js";
 import ts from "typescript";
 
 const auditModule = {
@@ -125,6 +126,7 @@ describe("declarative Uneffect modules", () => {
           close(handle: Handle): void
         }
         export declare const timers: { schedule(callback: () => void): void }
+        export declare const errors: { risky(): void; riskyAsync(): Promise<void> }
       `);
       const module = {
         ...auditModule,
@@ -153,6 +155,8 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "handles", path: ["inspect"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted use", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "use", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
             { symbol: { module: "reviewed-handle", export: "handles", path: ["close"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
             { symbol: { module: "reviewed-handle", export: "timers", path: ["schedule"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted callback scheduling", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..1", completion: "host-report-throw" }] } },
+            { symbol: { module: "reviewed-handle", export: "errors", path: ["risky"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted synchronous failure", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "Error" }] } },
+            { symbol: { module: "reviewed-handle", export: "errors", path: ["riskyAsync"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted Promise rejection", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "reject", error: "RangeError" }] } },
           ],
         },
       } as const;
@@ -161,7 +165,7 @@ describe("declarative Uneffect modules", () => {
       writeFileSync(facade, `export { schedule as later } from "reviewed-handle"`);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler, send, handles, timers } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler, send, handles, timers, errors } from "reviewed-handle"
         const scheduleAlias = schedule
         const aliasedCallback = () => {}
         export function valid() { const handle = open(); inspect(handle); close(handle) }
@@ -169,6 +173,11 @@ describe("declarative Uneffect modules", () => {
         export function rootedValid() { const handle = handles.open(); handles.inspect(handle); handles.close(handle) }
         export function rootedLeaked() { const handle = handles.open(); handles.inspect(handle) }
         export function rootedScheduled() { timers.schedule(aliasedCallback) }
+        export function rootedThrows() { errors.risky() }
+        export function rootedCatches() { try { errors.risky() } catch {} }
+        export function rootedReturnsRisky() { return errors.riskyAsync() }
+        export async function rootedAwaitsRisky() { await errors.riskyAsync() }
+        export async function rootedCatchesRisky() { try { await errors.riskyAsync() } catch {} }
         export async function asyncValid() { const handle = await openAsync(); inspect(handle); await closeAsync(handle) }
         export function scheduled() { schedule(() => {}) }
         export function aliasScheduled() { scheduleAlias(aliasedCallback) }
@@ -240,11 +249,17 @@ describe("declarative Uneffect modules", () => {
       const source = program.getSourceFile(entry)!;
       const temporal = analyzeHostNeutralTransitions(program, source, { builtinRegistry: installed.registry });
       const callable = analyzeCallableSummaries(program, undefined, installed.registry);
+      const effects = analyzeProgramEffects(program, { builtinRegistry: installed.registry });
+      expect(effects.summaries.find((summary) => summary.functionName === "rootedThrows")?.effects.map(formatEffect)).toEqual(["Throw<Error>"]);
+      expect(effects.summaries.find((summary) => summary.functionName === "rootedCatches")?.effects.map(formatEffect)).toEqual([]);
       expect(callable.summaries.find((summary) => summary.name === "returnsRisky")?.rejects).toEqual(["RangeError"]);
       expect(callable.summaries.find((summary) => summary.name === "awaitsRisky")?.rejects).toEqual(["RangeError"]);
       expect(callable.summaries.find((summary) => summary.name === "catchesRisky")?.rejects).toEqual([]);
       expect(callable.summaries.find((summary) => summary.name === "rethrowsRisky")?.rejects).toEqual(["RangeError"]);
       expect(callable.summaries.find((summary) => summary.name === "floatsRisky")?.rejects).toEqual([]);
+      expect(callable.summaries.find((summary) => summary.name === "rootedReturnsRisky")?.rejects).toEqual(["RangeError"]);
+      expect(callable.summaries.find((summary) => summary.name === "rootedAwaitsRisky")?.rejects).toEqual(["RangeError"]);
+      expect(callable.summaries.find((summary) => summary.name === "rootedCatchesRisky")?.rejects).toEqual([]);
       expect(temporal.transitions).toContainEqual(expect.objectContaining({
         kind: "invoke-callback", callback: "() => {}", api: "schedule",
         cardinality: "0..1", lane: "external", completion: "host-report-throw",
