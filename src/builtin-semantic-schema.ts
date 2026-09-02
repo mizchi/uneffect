@@ -61,6 +61,7 @@ export type SemanticPrimitive =
   | { kind: "use"; resource: string; target: ValueProjector; completion?: "call" | "fulfillment" }
   | { kind: "release"; resource: string; target?: ValueProjector; completion?: "call" | "fulfillment" }
   | { kind: "throw"; error: string; condition?: string }
+  | { kind: "reject"; error: string }
   | { kind: "property"; read: readonly SemanticPrimitive[]; write: readonly SemanticPrimitive[] }
   | { kind: "protocol"; name: string; transition: string; inputs?: Readonly<Record<string, ValueProjector>> };
 
@@ -217,6 +218,10 @@ function validatePrimitive(value: unknown, context: string, depth = 0): Semantic
       fields(item, ["kind", "error", "condition"], context);
       text(item.error, `${context}.error`);
       if (item.condition !== undefined) text(item.condition, `${context}.condition`);
+      break;
+    case "reject":
+      fields(item, ["kind", "error"], context);
+      text(item.error, `${context}.error`);
       break;
     case "property":
       fields(item, ["kind", "read", "write"], context);

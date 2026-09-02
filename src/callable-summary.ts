@@ -3,7 +3,7 @@ import { extractAnnotations } from "./annotations.js";
 import { effectPermits, formatEffect, parseEffectSet, type Effect } from "./capabilities.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EvidenceStatus } from "./effects.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
-import { projectBuiltinCallbacks, projectedExpression, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
+import { interpretBuiltinCallSemantics, projectBuiltinCallbacks, projectedExpression, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
 import { classifyLexicalExecution } from "./lexical-execution.js";
 import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
 
@@ -308,6 +308,34 @@ function directPromiseRejectType(program: ts.Program, checker: ts.TypeChecker, c
   return libraryDeclaration(program, symbol) ? checker.typeToString(checker.getTypeAtLocation(call.arguments[0]!)) : undefined;
 }
 
+function callRejectionEscapes(call: ts.CallExpression, boundary: SupportedFunction): boolean {
+  const explicitlyThrows = (block: ts.Block): boolean => {
+    let found = false;
+    const visit = (node: ts.Node): void => {
+      if (found || node !== block && ts.isFunctionLike(node)) return;
+      if (ts.isThrowStatement(node)) { found = true; return; }
+      ts.forEachChild(node, visit);
+    };
+    visit(block);
+    return found;
+  };
+  let current: ts.Node = call;
+  while (ts.isParenthesizedExpression(current.parent) || ts.isAsExpression(current.parent)
+    || ts.isTypeAssertionExpression(current.parent) || ts.isNonNullExpression(current.parent)) current = current.parent;
+  if (ts.isAwaitExpression(current.parent) && current.parent.expression === current) {
+    current = current.parent;
+    for (let ancestor = current.parent; ancestor && ancestor !== boundary; ancestor = ancestor.parent) {
+      if (ts.isTryStatement(ancestor) && ancestor.catchClause
+        && current.getStart() >= ancestor.tryBlock.getStart()
+        && current.getEnd() <= ancestor.tryBlock.getEnd()) return explicitlyThrows(ancestor.catchClause.block);
+      current = ancestor;
+    }
+    return true;
+  }
+  return ts.isReturnStatement(current.parent) && current.parent.expression === current
+    || ts.isArrowFunction(boundary) && boundary.body === current;
+}
+
 export function analyzeCallableSummaries(
   program: ts.Program,
   effectAnalysis: EffectAnalysisResult = analyzeProgramEffects(program, { requireAnnotations: false }),
@@ -487,6 +515,15 @@ export function analyzeCallableSummaries(
         }
         const rejection = directPromiseRejectType(program, checker, node);
         if (rejection) rejects.add(rejection);
+        const resolvedBuiltin = adapter.resolveCall(node);
+        const catalogRejections = resolvedBuiltin?.semantics
+          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, node, {
+              symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span,
+            }).flatMap((event) => event.kind === "reject" ? [event.error] : [])
+          : [];
+        if (catalogRejections.length && callRejectionEscapes(node, declaration)) {
+          for (const error of catalogRejections) rejects.add(error);
+        }
       }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
         && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment && ts.isIdentifier(node.left)

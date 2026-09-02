@@ -37,6 +37,7 @@ export type BuiltinSemanticEvent =
   | { kind: "result"; refinement: Extract<SemanticPrimitive, { kind: "result" }>["refinement"]; source: SemanticEventSource }
   | { kind: "acquire" | "use" | "release"; resource: string; target?: ProjectedValue; completion: "call" | "fulfillment"; source: SemanticEventSource }
   | { kind: "throw"; error: string; condition?: string; source: SemanticEventSource }
+  | { kind: "reject"; error: string; source: SemanticEventSource }
   | { kind: "protocol"; name: string; transition: string; inputs: Readonly<Record<string, ProjectedValue>>; source: SemanticEventSource }
   | { kind: "unknown"; reason: string; primitive: SemanticPrimitive; source: SemanticEventSource };
 
@@ -175,6 +176,7 @@ function interpretPrimitive(
         : [{ kind: primitive.kind, resource: primitive.resource, ...(target ? { target } : {}), completion: primitive.completion ?? "call", source }];
     }
     case "throw": return [{ kind: "throw", error: primitive.error, ...(primitive.condition ? { condition: primitive.condition } : {}), source }];
+    case "reject": return [{ kind: "reject", error: primitive.error, source }];
     case "property": {
       if (!access) return [{ kind: "unknown", reason: "property primitive requires an access direction", primitive, source }];
       return primitive[access].flatMap((nested, index) => interpretPrimitive(nested, context, {

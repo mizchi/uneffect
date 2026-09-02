@@ -9,6 +9,7 @@ import { createEvidenceArtifact, validateEvidenceArtifact } from "../src/evidenc
 import { checkFiles, createCheckProgram } from "../src/check.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
+import { analyzeCallableSummaries } from "../src/callable-summary.js";
 import ts from "typescript";
 
 const auditModule = {
@@ -114,6 +115,7 @@ describe("declarative Uneffect modules", () => {
         export declare function schedule(callback: () => void): void
         export declare function risky(): void
         export declare function riskyWhen(flag: boolean): void
+        export declare function riskyAsync(): Promise<void>
       `);
       const module = {
         ...auditModule,
@@ -133,6 +135,7 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "schedule" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed callback scheduling", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..1", completion: "host-report-throw" }] } },
             { symbol: { module: "reviewed-handle", export: "risky" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed synchronous failure", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "Error" }] } },
             { symbol: { module: "reviewed-handle", export: "riskyWhen" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed conditional failure", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "Error", condition: "flag" }] } },
+            { symbol: { module: "reviewed-handle", export: "riskyAsync" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed Promise rejection", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "reject", error: "RangeError" }] } },
           ],
         },
       } as const;
@@ -141,7 +144,7 @@ describe("declarative Uneffect modules", () => {
       writeFileSync(facade, `export { schedule as later } from "reviewed-handle"`);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync } from "reviewed-handle"
         const scheduleAlias = schedule
         const aliasedCallback = () => {}
         export function valid() { const handle = open(); inspect(handle); close(handle) }
@@ -159,6 +162,16 @@ describe("declarative Uneffect modules", () => {
           try { riskyWhen(false); close(handle) }
           catch { close(handle); close(handle) }
         }
+        export async function rejectionCleanup() {
+          const handle = open()
+          try { await riskyAsync(); close(handle) }
+          catch { close(handle); close(handle) }
+        }
+        export function returnsRisky() { return riskyAsync() }
+        export async function awaitsRisky() { await riskyAsync() }
+        export async function catchesRisky() { try { await riskyAsync() } catch {} }
+        export async function rethrowsRisky() { try { await riskyAsync() } catch (error) { throw error } }
+        export function floatsRisky() { void riskyAsync() }
       `);
       const result = await checkFiles([entry], { builtinRegistry: installed.registry });
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
@@ -167,6 +180,7 @@ describe("declarative Uneffect modules", () => {
         expect.objectContaining({ owner: "asyncValid", status: "satisfied", authority: "builtin-catalog", state: "absent-or-released" }),
         expect.objectContaining({ owner: "exceptional", status: "unknown", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "conservativeCondition", status: "unknown", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "rejectionCleanup", status: "unknown", authority: "builtin-catalog" }),
       ]));
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         domain: "resource", kind: "invalid-transition", functionName: "exceptional",
@@ -188,6 +202,12 @@ describe("declarative Uneffect modules", () => {
       const program = createCheckProgram([entry]);
       const source = program.getSourceFile(entry)!;
       const temporal = analyzeHostNeutralTransitions(program, source, { builtinRegistry: installed.registry });
+      const callable = analyzeCallableSummaries(program, undefined, installed.registry);
+      expect(callable.summaries.find((summary) => summary.name === "returnsRisky")?.rejects).toEqual(["RangeError"]);
+      expect(callable.summaries.find((summary) => summary.name === "awaitsRisky")?.rejects).toEqual(["RangeError"]);
+      expect(callable.summaries.find((summary) => summary.name === "catchesRisky")?.rejects).toEqual([]);
+      expect(callable.summaries.find((summary) => summary.name === "rethrowsRisky")?.rejects).toEqual(["RangeError"]);
+      expect(callable.summaries.find((summary) => summary.name === "floatsRisky")?.rejects).toEqual([]);
       expect(temporal.transitions).toContainEqual(expect.objectContaining({
         kind: "invoke-callback", callback: "() => {}", api: "schedule",
         cardinality: "0..1", lane: "external", completion: "host-report-throw",

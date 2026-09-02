@@ -109,6 +109,10 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
   CFG, so `try`/`catch`/`finally` cleanup is checked together with catalog
   acquire/use/release transitions. A declared condition is conservatively a
   may-throw edge unless a participating checker proves it false;
+- `reject` primitives retain reviewed Promise rejection payload types across a
+  direct return or uncaught direct await. A swallowing catch and a floating
+  Promise do not attribute that rejection to the wrapper, while an explicit
+  rethrow remains rejecting;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.

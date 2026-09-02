@@ -642,6 +642,10 @@ introducing another domain-local control-flow or alias model.
      - [x] Lower trusted catalog `throw` primitives into the shared exceptional
        resource CFG, including catch/finally cleanup and invalid-transition
        detection; treat unresolved declared conditions as may-throw.
+     - [x] Add a data-only catalog `reject` primitive and propagate its reviewed
+       error type through direct Promise return and uncaught direct await into
+       callable summaries; exclude floating calls and swallowing catches while
+       retaining explicit rethrow.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

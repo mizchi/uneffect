@@ -40,6 +40,10 @@ API-family-specific operation:
   capability effect.
 - `acquire(resource)` and `release(resource)` update resource protocols.
 - `throw(error, condition?)` adds a synchronous exceptional completion.
+- `reject(error)` declares a Promise rejection payload. Directly returned and
+  uncaught directly awaited calls propagate it into callable summaries;
+  floating calls do not become caller rejection effects, and a swallowing
+  catch discharges the propagation.
 - `property(read, write)` selects primitives by access direction.
 - `protocol(name, transition)` connects stateful host models such as Promise,
   AbortSignal, timers, streams, and disposal.
