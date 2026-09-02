@@ -27,6 +27,8 @@ const bundle = createContractSummaryBundle({
   runtimeArtifacts: [
     { packagePath: "dist/index.js", fileName: emittedJavaScriptFile },
   ],
+  // Stronger option for an untransformed TypeScript distribution:
+  typescriptEmit: { packageRoot },
 })
 
 const validation = validateContractSummaryBundle(bundle, {
@@ -123,6 +125,18 @@ is authentic.
 
 Export-map selection is inherited from TypeScript module resolution; Uneffect
 does not independently choose or authenticate all conditional runtime targets.
+
+For packages that execute the exact TypeScript output, `typescriptEmit` is the
+stronger producer option. Uneffect invokes the existing exact-output checker:
+the supplied Program is re-emitted in memory by the recorded TypeScript
+version, and every emitted declaration/runtime file on disk must match those
+bytes. All outputs must be inside `packageRoot`; their kind, relative path, and
+digest enter the package envelope. Validation repeats the emit comparison, and
+consumer binding checks every listed installed output before exposing any
+contract. This establishes source/Program-to-plain-TypeScript-emit integrity
+conditional on the TypeScript compiler. It intentionally rejects `noEmit`,
+`emitDeclarationOnly`, missing output, and post-emit or bundler-transformed
+files; those need a separate authenticated transformation pipeline.
 
 The content SHA-256 provides integrity, not publisher authenticity. There is no
 signature, transparency log, or trusted publishing identity in v1. A

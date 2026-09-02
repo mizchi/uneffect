@@ -885,10 +885,12 @@ introducing another domain-local control-flow or alias model.
      - [x] Add an opt-in package-relative runtime artifact digest ledger and
        block consumer binding when any explicitly listed installed file is
        missing or byte-different. This does not claim source-to-emit provenance.
-     - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Bind declarations
-       and runtime files to reproducible source-to-emit evidence, then add
-       publisher and complete tarball authenticity. Explicit file digests alone
-       do not satisfy this boundary.
+     - [x] Bind exact untransformed TypeScript declaration/runtime outputs to a
+       same-compiler in-memory re-emit of the producer Program and require every
+       output to match the installed package before exposing contracts.
+     - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
+       bundler/post-transform provenance plus publisher and complete tarball
+       authenticity. Plain TypeScript emit evidence does not satisfy this boundary.
 6. [x] [#25](https://github.com/mizchi/uneffect/issues/25) Expand common expression semantics in measured frequency order:
    optional chaining and nullish coalescing, destructuring/default initializers,
    stable method receivers and `this`, iterator-based `for...of`, then reviewed

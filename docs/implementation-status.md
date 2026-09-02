@@ -398,8 +398,11 @@ same property is proved for arbitrary TypeScript.
   installed declaration identities. Package summaries may also carry an opt-in
   package-relative runtime artifact ledger; consumer binding checks every listed
   installed file byte-for-byte before exposing any contract. This is artifact
-  integrity, not source-to-emit or publisher authenticity. Dynamic resource
-  identity remains unsupported.
+  integrity, not publisher authenticity. The stronger TypeScript-emit mode
+  re-emits the exact producer Program, requires every declaration/runtime output
+  to match disk, and carries that complete output ledger to the installed
+  package check. Bundler/post-transform provenance and compiler correctness are
+  not claimed. Dynamic resource identity remains unsupported.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks

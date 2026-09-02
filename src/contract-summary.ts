@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { VerificationArtifact } from "./contracts.js";
@@ -11,6 +11,7 @@ import { analyzeCallableSummaries, type CallableSummary } from "./callable-summa
 import { analyzeResourceCallableSummaries } from "./resource-callable-typescript.js";
 import type { ResourceCallableOperation, ResourceCallableSummary } from "./resource-protocol.js";
 import { builtinContractRegistry, type BuiltinContractRegistry, type SemanticModuleLedgerEntry } from "./builtin-contracts.js";
+import { inspectBuildOutputs } from "./build-output-integrity.js";
 
 export interface ContractCallbackSummaryV1 {
   index: number;
@@ -74,6 +75,10 @@ export interface ContractSummaryBundleV1 {
   modules?: readonly SemanticModuleLedgerEntry[];
   /** Package-relative runtime files whose exact bytes were reviewed with this summary. */
   runtimeArtifacts?: readonly { packagePath: string; digest: string }[];
+  /** Exact same-compiler outputs re-emitted from the producer Program. */
+  typescriptEmit?: {
+    outputs: readonly { kind: "declaration" | "runtime"; packagePath: string; digest: string }[];
+  };
   exports: ContractSummaryExportV1[];
   contentDigest: string;
 }
@@ -87,6 +92,7 @@ export interface CreateContractSummaryBundleOptions {
   artifacts: readonly VerificationArtifact[];
   builtinRegistry?: BuiltinContractRegistry;
   runtimeArtifacts?: readonly { packagePath: string; fileName: string }[];
+  typescriptEmit?: { packageRoot: string; projectFile?: string };
 }
 
 export interface ValidateContractSummaryBundleOptions {
@@ -97,6 +103,7 @@ export interface ValidateContractSummaryBundleOptions {
   program: ts.Program;
   builtinRegistry?: BuiltinContractRegistry;
   runtimeArtifacts?: readonly { packagePath: string; fileName: string }[];
+  typescriptEmit?: { packageRoot: string; projectFile?: string };
 }
 
 export interface BoundContractSummaryExportV1 {
@@ -197,6 +204,29 @@ function runtimeArtifactLedger(
     return { packagePath, digest: sha256File(fileName) };
   });
 }
+function typescriptEmitLedger(
+  program: ts.Program,
+  options: { packageRoot: string; projectFile?: string } | undefined,
+): ContractSummaryBundleV1["typescriptEmit"] {
+  if (!options) return undefined;
+  const integrity = inspectBuildOutputs(program, options.projectFile);
+  if (integrity.status !== "verified") {
+    throw new Error(`contract summary TypeScript emit is not exact: ${integrity.message ?? integrity.status}`);
+  }
+  const packageRoot = resolve(options.packageRoot);
+  const outputs = integrity.outputs.map((output) => {
+    const packagePath = relative(packageRoot, resolve(output.fileName)).replaceAll("\\", "/");
+    if (!validPackagePath(packagePath)) {
+      throw new Error(`TypeScript emit output is outside package root: ${output.fileName}`);
+    }
+    return { kind: output.kind, packagePath, digest: output.expectedDigest };
+  }).sort((left, right) => left.packagePath.localeCompare(right.packagePath));
+  if (outputs.length === 0) throw new Error("contract summary TypeScript emit produced no declaration or runtime outputs");
+  if (new Set(outputs.map(({ packagePath }) => packagePath)).size !== outputs.length) {
+    throw new Error("contract summary TypeScript emit output paths must be unique");
+  }
+  return { outputs };
+}
 function ordered(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(ordered);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, ordered(item)]));
@@ -238,6 +268,15 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
       || typeof artifact.digest !== "string" || !/^[0-9a-f]{64}$/u.test(artifact.digest))
     || new Set(bundle.runtimeArtifacts.map(({ packagePath }) => packagePath)).size !== bundle.runtimeArtifacts.length)) {
     throw new Error(`malformed contract summary runtime artifact ledger ${fileName}`);
+  }
+  if (bundle.typescriptEmit !== undefined && (!bundle.typescriptEmit || typeof bundle.typescriptEmit !== "object"
+    || !Array.isArray(bundle.typescriptEmit.outputs) || bundle.typescriptEmit.outputs.length === 0
+    || bundle.typescriptEmit.outputs.some((output) => !output || typeof output !== "object"
+      || (output.kind !== "declaration" && output.kind !== "runtime")
+      || typeof output.packagePath !== "string" || !validPackagePath(output.packagePath)
+      || typeof output.digest !== "string" || !/^[0-9a-f]{64}$/u.test(output.digest))
+    || new Set(bundle.typescriptEmit.outputs.map(({ packagePath }) => packagePath)).size !== bundle.typescriptEmit.outputs.length)) {
+    throw new Error(`malformed contract summary TypeScript emit ledger ${fileName}`);
   }
   for (const [index, item] of bundle.exports.entries()) {
     const validCallback = (callback: ContractCallbackSummaryV1): boolean =>
@@ -360,6 +399,15 @@ export function bindContractSummaryBundleToProgram(
     || new Set(bundle.runtimeArtifacts.map(({ packagePath }) => packagePath)).size !== bundle.runtimeArtifacts.length)) {
     blockers.push("contract summary runtime artifact ledger is malformed");
   }
+  if (bundle.typescriptEmit !== undefined && (!bundle.typescriptEmit || typeof bundle.typescriptEmit !== "object"
+    || !Array.isArray(bundle.typescriptEmit.outputs) || bundle.typescriptEmit.outputs.length === 0
+    || bundle.typescriptEmit.outputs.some((output) => !output || typeof output !== "object"
+      || (output.kind !== "declaration" && output.kind !== "runtime")
+      || typeof output.packagePath !== "string" || !validPackagePath(output.packagePath)
+      || typeof output.digest !== "string" || !/^[0-9a-f]{64}$/u.test(output.digest))
+    || new Set(bundle.typescriptEmit.outputs.map(({ packagePath }) => packagePath)).size !== bundle.typescriptEmit.outputs.length)) {
+    blockers.push("contract summary TypeScript emit ledger is malformed");
+  }
   if (bundle.compiler.typescriptVersion !== ts.version) {
     blockers.push(`contract summary TypeScript ${bundle.compiler.typescriptVersion} does not match consumer ${ts.version}`);
   }
@@ -445,6 +493,14 @@ export function bindContractSummaryBundleToProgram(
       const installedFile = join(installed.directory, ...artifact.packagePath.split("/"));
       if (!existsSync(installedFile) || sha256File(installedFile) !== artifact.digest) {
         const message = `installed ${bundle.package.name} runtime artifact ${artifact.packagePath} does not match summary digest`;
+        if (!blockers.includes(message)) blockers.push(message);
+        runtimeMatches = false;
+      }
+    }
+    for (const output of bundle.typescriptEmit?.outputs ?? []) {
+      const installedFile = join(installed.directory, ...output.packagePath.split("/"));
+      if (!existsSync(installedFile) || sha256File(installedFile) !== output.digest) {
+        const message = `installed ${bundle.package.name} TypeScript ${output.kind} output ${output.packagePath} does not match summary digest`;
         if (!blockers.includes(message)) blockers.push(message);
         runtimeMatches = false;
       }
@@ -638,6 +694,7 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
   }));
   if (exports.length === 0) throw new Error("contract summary has no fully verified exported function contracts");
   const runtimeArtifacts = runtimeArtifactLedger(options.runtimeArtifacts);
+  const typescriptEmit = typescriptEmitLedger(options.program, options.typescriptEmit);
   const unsigned: Omit<ContractSummaryBundleV1, "contentDigest"> = {
     schema: "uneffect-contract-summary/v1",
     package: { name: options.packageName, version: options.packageVersion },
@@ -647,6 +704,7 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
       ? { modules: options.builtinRegistry.modules.map((module) => ({ ...module })) }
       : {}),
     ...(runtimeArtifacts ? { runtimeArtifacts } : {}),
+    ...(typescriptEmit ? { typescriptEmit } : {}),
     exports: exports.sort((left, right) => left.symbol.export.localeCompare(right.symbol.export)),
   };
   return { ...unsigned, contentDigest: bundleDigest(unsigned) };
@@ -663,6 +721,13 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   try {
     if (canonical(bundle.runtimeArtifacts ?? []) !== canonical(runtimeArtifactLedger(options.runtimeArtifacts) ?? [])) {
       errors.push("contract summary runtime artifact ledger does not match validation artifacts");
+    }
+  } catch (cause) {
+    errors.push(cause instanceof Error ? cause.message : String(cause));
+  }
+  try {
+    if (canonical(bundle.typescriptEmit) !== canonical(typescriptEmitLedger(options.program, options.typescriptEmit))) {
+      errors.push("contract summary TypeScript emit ledger does not match validation emit");
     }
   } catch (cause) {
     errors.push(cause instanceof Error ? cause.message : String(cause));

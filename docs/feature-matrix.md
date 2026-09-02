@@ -53,7 +53,10 @@ because persisted producer authority is not authenticated. Producer-to-emitted `
 linkage and publisher/tarball authenticity remain unsupported. An opt-in runtime
 artifact ledger binds explicitly listed package-relative emitted files to exact
 installed SHA-256 bytes; unlisted conditional exports and provenance from source
-to emitted output remain outside that claim. Direct callback parameters now preserve timing and Effect bounds
+to emitted output remain outside that claim. A stronger opt-in TypeScript-emit
+ledger re-emits the producer Program and byte-compares every declaration/runtime
+output, then checks the same installed bytes; bundler/post-emit provenance remains
+outside that claim. Direct callback parameters now preserve timing and Effect bounds
 for inline or immutable symbol-resolved arguments. Finite object/tuple paths
 compose through inline literals and exclusive single-use `const` literal
 containers; mutation, capture, repeated use, spreads, computed/dynamic leaves,

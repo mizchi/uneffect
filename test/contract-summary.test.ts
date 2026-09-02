@@ -25,13 +25,16 @@ describe("persisted contract summary bundles", () => {
     const schema = JSON.parse(readFileSync("schemas/uneffect-contract-summary-v1.schema.json", "utf8")) as {
       $id: string; properties: {
         schema: { const: string }; modules: { items: { $ref: string } };
-        runtimeArtifacts: { items: { required: string[] } }; exports: { items: { required: string[] } };
+        runtimeArtifacts: { items: { required: string[] } };
+        typescriptEmit: { properties: { outputs: { items: { required: string[] } } } };
+        exports: { items: { required: string[] } };
       };
     };
     expect(schema.$id).toBe("https://github.com/mizchi/uneffect/schemas/uneffect-contract-summary-v1.schema.json");
     expect(schema.properties.schema.const).toBe("uneffect-contract-summary/v1");
     expect(schema.properties.modules.items.$ref).toBe("#/$defs/semanticModule");
     expect(schema.properties.runtimeArtifacts.items.required).toEqual(["packagePath", "digest"]);
+    expect(schema.properties.typescriptEmit.properties.outputs.items.required).toEqual(["kind", "packagePath", "digest"]);
     expect(schema.properties.exports.items.required).toEqual(expect.arrayContaining(["symbol", "signatureDigest", "artifactIds"]));
   });
 
@@ -650,6 +653,64 @@ describe("persisted contract summary bundles", () => {
     expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
       status: "unknown", exports: [],
       blockers: [expect.stringContaining("runtime artifact index.js")],
+    });
+  });
+
+  it("binds exact TypeScript emit outputs to producer source and installed bytes", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-ts-emit-"));
+    const producerPackage = join(directory, "producer-package");
+    const sourceDirectory = join(producerPackage, "src");
+    const outputDirectory = join(producerPackage, "dist");
+    mkdirSync(sourceDirectory, { recursive: true });
+    const producerFile = join(sourceDirectory, "index.ts");
+    const producerSource = `/* uneffect:effect none */ export function value(): number { return 1 }`;
+    writeFileSync(producerFile, producerSource);
+    const compilerOptions: ts.CompilerOptions = {
+      strict: true, declaration: true, rootDir: sourceDirectory, outDir: outputDirectory,
+      target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+    };
+    const producerProgram = ts.createProgram([producerFile], compilerOptions);
+    expect(producerProgram.emit().emitSkipped).toBe(false);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/ts-emit", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+      typescriptEmit: { packageRoot: producerPackage },
+    });
+    expect(bundle.typescriptEmit?.outputs).toEqual(expect.arrayContaining([
+      { kind: "runtime", packagePath: "dist/index.js", digest: expect.stringMatching(/^[0-9a-f]{64}$/u) },
+      { kind: "declaration", packagePath: "dist/index.d.ts", digest: expect.stringMatching(/^[0-9a-f]{64}$/u) },
+    ]));
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/ts-emit", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram,
+      typescriptEmit: { packageRoot: producerPackage },
+    })).toEqual({ valid: true, errors: [] });
+    const emittedRuntime = readFileSync(join(outputDirectory, "index.js"));
+    writeFileSync(join(outputDirectory, "index.js"), "export function value() { return 2 }\n");
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/ts-emit", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram,
+      typescriptEmit: { packageRoot: producerPackage },
+    })).toMatchObject({ valid: false, errors: [expect.stringContaining("TypeScript emit is not exact")] });
+    writeFileSync(join(outputDirectory, "index.js"), emittedRuntime);
+
+    const installedPackage = join(directory, "node_modules", "@example", "ts-emit");
+    mkdirSync(join(installedPackage, "dist"), { recursive: true });
+    writeFileSync(join(installedPackage, "package.json"), JSON.stringify({
+      name: "@example/ts-emit", version: "1.0.0", types: "dist/index.d.ts", module: "dist/index.js",
+    }));
+    writeFileSync(join(installedPackage, "dist", "index.d.ts"), readFileSync(join(outputDirectory, "index.d.ts")));
+    writeFileSync(join(installedPackage, "dist", "index.js"), emittedRuntime);
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `import { value } from "@example/ts-emit"; value()`);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram).status).toBe("verified");
+    writeFileSync(join(installedPackage, "dist", "index.js"), "export function value() { return 2 }\n");
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
+      status: "unknown", exports: [], blockers: [expect.stringContaining("TypeScript runtime output dist/index.js")],
     });
   });
 });
