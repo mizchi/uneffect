@@ -186,6 +186,7 @@ interface AwaitRejectionFact {
   synchronousThrows: string[];
   evidence: "verified" | "trusted";
   payloadFromFirstArgument: boolean;
+  synchronousFulfillment?: boolean;
   fulfillment?: AwaitFulfillmentFact;
 }
 
@@ -1453,6 +1454,32 @@ function typeCheckerAwaitRejections(
           evidence: external?.evidence ?? (declaredFulfillment || rejected.length === 1 || thrown.length > 0 ? "trusted" : "verified"),
           payloadFromFirstArgument: false, ...(fulfillment ? { fulfillment } : {}),
         });
+      } else if (signature && declaration) {
+        const declarationSource = declaration.getSourceFile();
+        const external = options.externalContractBindings?.find((binding) =>
+          binding.declarationFileName === declarationSource.fileName
+          && binding.declarationSpan.start === declaration.getStart(declarationSource)
+          && binding.declarationSpan.end === declaration.getEnd());
+        const resultDomain = scalarDomain(checker.getReturnTypeOfSignature(signature));
+        if (external && resultDomain && external.summary.ensures.length > 0) {
+          facts.set(key, {
+            definitelyRejects: false,
+            synchronousThrows: [],
+            evidence: external.evidence,
+            payloadFromFirstArgument: false,
+            synchronousFulfillment: true,
+            fulfillment: {
+              domain: resultDomain,
+              functionName: external.summary.functionName,
+              parameters: external.summary.parameters,
+              clauses: external.summary.ensures.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
+              preconditions: external.summary.requires.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
+              declarationFileName: declarationSource.fileName,
+              declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
+              declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+            },
+          });
+        }
       }
     }
   };
@@ -2016,6 +2043,45 @@ export function lowerInvariantProgram(
       }
       const mathFact = ts.isCallExpression(unwrapped)
         ? mathScalarCalls.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
+      const externalFact = ts.isCallExpression(unwrapped)
+        ? awaitRejections.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
+      if (ts.isCallExpression(unwrapped) && externalFact?.synchronousFulfillment && externalFact.fulfillment) {
+        const fulfillment = externalFact.fulfillment;
+        let argumentsByPath: Array<{ path: PathState; values: LogicExpression[] }> = [{ path, values: [] }];
+        for (const argument of unwrapped.arguments) {
+          argumentsByPath = argumentsByPath.flatMap((current) =>
+            evaluateScalar(argument, current.path).map(({ path: branch, value }) => ({ path: branch, values: [...current.values, value] })));
+        }
+        if (argumentsByPath.some(({ values }) => values.length !== fulfillment.parameters.length)) {
+          throw new Error(`contract arguments require scalar snapshots matching ${fulfillment.functionName}`);
+        }
+        const fresh = `${fn}_call_result_${unwrapped.getStart(source)}`;
+        if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: fulfillment.domain, sort: sort(fulfillment.domain) });
+        return argumentsByPath.map(({ path: branch, values }) => {
+          const summaryEnv: Environment = new Map([["result", variable(fresh)]]);
+          fulfillment.parameters.forEach((name, index) => summaryEnv.set(name, values[index]!));
+          const evidence: ContractRelationalCallEvidence = {
+            schema: "uneffect-contract-relational-call/v1", evidence: externalFact.evidence, typescriptVersion: ts.version,
+            functionName: fulfillment.functionName,
+            clauses: fulfillment.clauses.map(({ source: clause }) => clause), callSpan: { start: unwrapped.getStart(source), end: unwrapped.getEnd() },
+            ...(fulfillment.preconditions.length === 0 ? {} : { preconditions: fulfillment.preconditions.map(({ source: clause }) => clause) }),
+            declarationFileName: fulfillment.declarationFileName,
+            declarationDigest: fulfillment.declarationDigest,
+            declarationSpan: fulfillment.declarationSpan,
+          };
+          for (const precondition of fulfillment.preconditions) {
+            add("call-precondition", unwrapped, branch.assumptions, substitute(precondition.expression, summaryEnv), precondition.source, branch.env, branch.dischargedThrows, [...branch.relationalCalls, evidence]);
+          }
+          return {
+            path: {
+              ...branch,
+              assumptions: [...branch.assumptions, ...fulfillment.clauses.map(({ expression }) => substitute(expression, summaryEnv))],
+              relationalCalls: [...branch.relationalCalls, evidence],
+            },
+            value: variable(fresh),
+          };
+        });
+      }
       if (ts.isCallExpression(unwrapped) && mathFact) {
         const fact = mathFact;
         let argumentsByPath: Array<{ path: PathState; values: LogicExpression[] }> = [{ path, values: [] }];

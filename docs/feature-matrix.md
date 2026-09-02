@@ -49,8 +49,9 @@ installed package version, and signature. Callable members already protected
 at every traversed object level by builtin `Object.freeze({ ... })` retain a static member path and
 compose through direct or immutable-alias calls. Identifier-named object-literal
 members may also publish verified scalar Hoare clauses; a direct consumer `await`
-instantiates their pre/postconditions through the same declaration binding and
-source-span evidence. Mutable objects and lookalike
+or synchronous scalar call instantiates their pre/postconditions through the
+same declaration binding and source-span evidence. Synchronous callee
+preconditions are emitted as separate call-site obligations. Mutable objects and lookalike
 freeze functions fail closed. Uneffect does not insert or recommend freezing. The binder
 records the selected declaration bytes. Verified Effect-only exports also lower
 through the existing external Effect contract IR, including scoped

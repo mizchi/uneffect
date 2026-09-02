@@ -157,8 +157,9 @@ aliases, and statically named `const` object destructuring must retain the root 
 installed member declaration, and then use the ordinary
 external Effect/resource IR. A scalar Hoare contract on an identifier-named
 member is verified against that method's own source span and can be instantiated
-after a direct `await` at the consumer; same-named sibling methods cannot lend it
-evidence. An ordinary or nested mutable object, computed key, getter,
+at a synchronous scalar call or after a direct `await` at the consumer;
+callee preconditions become call-site obligations rather than assumptions, and
+same-named sibling methods cannot lend evidence. An ordinary or nested mutable object, computed key, getter,
 spread-built object, or a same-named user implementation of `Object.freeze`
 is rejected. A structurally compatible value with the same imported member
 type is not the exported receiver: its call remains explicit `unknown` rather

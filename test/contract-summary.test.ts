@@ -1324,6 +1324,7 @@ describe("persisted contract summary bundles", () => {
     const consumerVerification = await verifyContractObligations(consumerFile, consumerSource, undefined, consumerProgram, {
       externalContractBindings: binding.exports,
     });
+    expect(consumerVerification.diagnostics).toEqual([]);
     expect(consumerVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "run"))
       .toMatchObject({ status: "verified" });
   });
@@ -1348,5 +1349,75 @@ describe("persisted contract summary bundles", () => {
       packageName: "@example/math-apis", packageVersion: "1.0.0", fileName,
       source, program, artifacts: verification.artifacts,
     })).toThrow(/bad is not fully verified/u);
+  });
+
+  it("composes a synchronous frozen member Hoare contract at a consumer return", async () => {
+    const producerFile = "/src/sync-math-api.ts";
+    const producerSource = `
+      export const math = Object.freeze({
+        /* uneffect:requires value >= 0 */
+        /* uneffect:ensures result === value + 1 */
+        addOne(value: number): number { return value + 1 }
+      })
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const producerVerification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/sync-math-api", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: producerVerification.artifacts,
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-sync-member-hoare-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "sync-math-api");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/sync-math-api", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare const math: Readonly<{ addOne(value: number): number }>
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    const consumerSource = `
+      import { math } from "@example/sync-math-api"
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      export function run(value: number): number {
+        return math.addOne(value)
+      }
+    `;
+    writeFileSync(consumerFile, consumerSource);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding).toMatchObject({ status: "verified", blockers: [] });
+    const consumerVerification = await verifyContractObligations(consumerFile, consumerSource, undefined, consumerProgram, {
+      externalContractBindings: binding.exports,
+    });
+    expect(consumerVerification.diagnostics).toEqual([]);
+    expect(consumerVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "run"))
+      .toMatchObject({ status: "verified" });
+
+    const invalidFile = join(directory, "invalid.ts");
+    const invalidSource = `
+      import { math } from "@example/sync-math-api"
+      /* uneffect:ensures result >= 0 */
+      export function invalid(): number {
+        return math.addOne(-1)
+      }
+    `;
+    writeFileSync(invalidFile, invalidSource);
+    const invalidProgram = ts.createProgram([invalidFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const invalidBinding = bindContractSummaryBundleToProgram(bundle, invalidProgram);
+    const invalidVerification = await verifyContractObligations(invalidFile, invalidSource, undefined, invalidProgram, {
+      externalContractBindings: invalidBinding.exports,
+    });
+    expect(invalidVerification.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: "counterexample", obligation: expect.objectContaining({ clause: "requires" }) }),
+    ]));
   });
 });
