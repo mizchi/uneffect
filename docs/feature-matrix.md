@@ -76,7 +76,9 @@ recommendation. A producer-certified `borrow-readonly` destructured parameter
 also permits repeated zero-runtime use when all consumer references target the
 same verified callable and argument position; any other use fails closed.
 Direct immutable exported arrow/function-expression callables use the same
-package export-symbol and resolved-signature binding. Mutable or compound
+package export-symbol and resolved-signature binding. Named default functions
+and directly authored static default callable expressions bind through the
+root package's `default` symbol; indirect/mutable default values stay excluded. Mutable or compound
 export declarations remain unsupported. Persisted rejection types and
 synchronous `Throw` effects feed the shared resource CFG only after exact
 declaration binding; a direct `await` admits rejection, floating Promises do

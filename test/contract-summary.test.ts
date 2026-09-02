@@ -713,4 +713,74 @@ describe("persisted contract summary bundles", () => {
       status: "unknown", exports: [], blockers: [expect.stringContaining("TypeScript runtime output dist/index.js")],
     });
   });
+
+  it("publishes and binds a default-exported callable by export identity", async () => {
+    const producerFile = "/src/default.ts";
+    const producerSource = `
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      /* uneffect:effect none */
+      export default function increment(value: number): number { return value + 1 }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const verification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/default", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: verification.artifacts,
+    });
+    expect(bundle.exports).toContainEqual(expect.objectContaining({
+      symbol: { module: "@example/default", export: "default" }, functionName: "increment",
+      effect: expect.objectContaining({ effects: [] }),
+      ensures: ["result === value + 1"],
+    }));
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-default-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "default");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/default", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"),
+      "export default function increment(value: number): number\n");
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import clean from "@example/default"
+      export const value = clean(1)
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, esModuleInterop: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
+      status: "verified", blockers: [],
+      exports: [expect.objectContaining({ exportName: "default" })],
+    });
+
+    const expressionFile = "/src/default-expression.ts";
+    const expressionSource = `
+      /* uneffect:effect none */
+      /* uneffect:acquire return */
+      export default ((value: number): number => value + 1)
+    `;
+    const expressionProgram = programFor(expressionFile, expressionSource);
+    const expressionBundle = createContractSummaryBundle({
+      packageName: "@example/default-expression", packageVersion: "1.0.0",
+      fileName: expressionFile, source: expressionSource, program: expressionProgram, artifacts: [],
+    });
+    expect(expressionBundle.exports).toContainEqual(expect.objectContaining({
+      symbol: { module: "@example/default-expression", export: "default" }, functionName: "default",
+      resource: expect.objectContaining({ operations: [expect.objectContaining({ kind: "acquire" })] }),
+    }));
+
+    const indirectFile = "/src/indirect-default.ts";
+    const indirectSource = `
+      const normalize = (value: string): string => value.trim()
+      /* uneffect:effect none */
+      export default normalize
+    `;
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/indirect", packageVersion: "1.0.0", fileName: indirectFile,
+      source: indirectSource, program: programFor(indirectFile, indirectSource), artifacts: [],
+    })).toThrow(/no fully verified exported function contracts/u);
+  });
 });

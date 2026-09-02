@@ -690,6 +690,10 @@ introducing another domain-local control-flow or alias model.
    - [x] Publish and consume single immutable exported arrow/function-expression
      callables by root-package export symbol plus resolved signature; exclude
      mutable and compound variable exports.
+   - [x] Publish and consume named default functions and directly authored
+     default arrow/function expressions through the root-package `default`
+     symbol. Share annotation ownership across Effect, callable, and resource
+     summaries; reject indirect or dynamic default values.
    - [x] Preserve reviewed callback forwarding through Promise reactions and
      lower authenticated package callbacks to the shared host-neutral
      microtask/reject transition without leaking callback `Throw` into the

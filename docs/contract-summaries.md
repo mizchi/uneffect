@@ -2,8 +2,8 @@
 
 `uneffect-contract-summary/v1` is the shared package envelope for publishing
 verified scalar Hoare contracts, Effect summaries, and trusted resource
-lifecycle declarations. A direct named function
-export, or a single immutable exported `const` initialized by an arrow/function
+lifecycle declarations. A direct named/default function export, a static
+default-exported arrow/function expression, or a single immutable exported `const` initialized by an arrow/function
 expression, is included when at least one of those domains is explicitly declared and
 verified. Hoare entries require every local obligation and transitive
 relational dependency to be `verified`; Effect entries require the declared
@@ -156,6 +156,14 @@ Exported `const` callables are joined by the root package export symbol and the
 resolved call signature, not by a guessed variable name. Mutable `let`/`var`,
 multi-declaration export statements, reassigned aliases, and non-callable
 exports are not published.
+
+Default imports and namespace `.default` calls bind through the TypeChecker's
+root-package `default` export symbol. A named default function retains its local
+function name for Hoare obligation matching; the package identity remains
+`default`. A directly authored default arrow/function expression uses the
+export assignment as its annotation owner. Indirect forms such as
+`export default someCallable`, mutable bindings, calls, and conditional
+expressions are rejected rather than followed speculatively.
 
 Finite object/tuple callback paths are supported for an inline literal or a
 single-use `const` literal container whose TypeChecker symbol appears only at

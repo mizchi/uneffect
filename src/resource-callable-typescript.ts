@@ -14,6 +14,7 @@ import {
 import { collectAwaitedRejectionTransitionSites, collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, resolveAwaitedResourceBinding, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
 import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
+import { callableAnnotationOwner } from "./callable-annotation-owner.js";
 
 type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.MethodSignature
   | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
@@ -76,15 +77,6 @@ function resourceValueSymbol(checker: ts.TypeChecker, node: ts.Identifier): ts.S
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
 }
 
-function annotationOwner(node: SupportedFunction): ts.Node {
-  const parent = node.parent;
-  if (!(ts.isArrowFunction(node) || ts.isFunctionExpression(node)) || !parent || !ts.isVariableDeclaration(parent)) return node;
-  const declarationList = parent.parent;
-  const statement = declarationList?.parent;
-  return declarationList && ts.isVariableDeclarationList(declarationList) && statement && ts.isVariableStatement(statement)
-    ? statement : node;
-}
-
 function reference(text: string, declaration: SupportedFunction): ResourceCallableReference | undefined {
   if (text === "return") return { kind: "return" };
   if (text === "this") return { kind: "receiver" };
@@ -103,7 +95,7 @@ export function analyzeResourceCallableSummaries(program: ts.Program): ResourceC
     const visit = (node: ts.Node): void => {
       if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isMethodSignature(node)
         || ts.isCallSignatureDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
-        const owner = annotationOwner(node);
+        const owner = callableAnnotationOwner(node);
         const leadingStart = owner.getFullStart();
         const leading = source.text.slice(leadingStart, owner.getStart(source));
         const operations: ResourceCallableOperation[] = [];

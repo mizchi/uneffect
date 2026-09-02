@@ -552,16 +552,27 @@ function checkedSource(options: Pick<CreateContractSummaryBundleOptions, "fileNa
 
 type DirectExportCallable = {
   node: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
-  owner: ts.FunctionDeclaration | ts.VariableStatement;
+  owner: ts.FunctionDeclaration | ts.VariableStatement | ts.ExportAssignment;
   exportName: string;
+  functionName: string;
 };
 
 function directExportCallables(statement: ts.Statement): DirectExportCallable[] {
   if (ts.isFunctionDeclaration(statement)) {
-    if (!statement.name || !statement.body
-      || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)
-      || statement.modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword)) return [];
-    return [{ node: statement, owner: statement, exportName: statement.name.text }];
+    if (!statement.body || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)) return [];
+    const isDefault = statement.modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword);
+    if (!isDefault && !statement.name) return [];
+    return [{ node: statement, owner: statement, exportName: isDefault ? "default" : statement.name!.text,
+      functionName: statement.name?.text ?? "default" }];
+  }
+  if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+    let expression = statement.expression;
+    while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+      || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)) expression = expression.expression;
+    if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) return [{
+      node: expression, owner: statement, exportName: "default", functionName: expression.name?.text ?? "default",
+    }];
+    return [];
   }
   if (!ts.isVariableStatement(statement)
     || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)
@@ -573,7 +584,7 @@ function directExportCallables(statement: ts.Statement): DirectExportCallable[] 
   while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
     || ts.isTypeAssertionExpression(initializer) || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
   return ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)
-    ? [{ node: initializer, owner: statement, exportName: declaration.name.text }] : [];
+    ? [{ node: initializer, owner: statement, exportName: declaration.name.text, functionName: declaration.name.text }] : [];
 }
 
 function summaryParameterNames(node: DirectExportCallable["node"]): string[] {
@@ -591,7 +602,7 @@ function describeExport(
   resourceSummary?: ResourceCallableSummary,
   resourceReturnMembers: readonly { readonly key: string; readonly operations: readonly ResourceCallableOperation[] }[] = [],
 ): ContractSummaryExportV1 | undefined {
-  const { node, owner, exportName } = exported;
+  const { node, owner, exportName, functionName } = exported;
   if (!node.body) return undefined;
   const comments = source.text.slice(owner.getFullStart(), owner.getStart(source));
   const ensures = extractAnnotations(comments, "ensures");
@@ -600,7 +611,7 @@ function describeExport(
   const requires = extractAnnotations(comments, "requires");
   const span = { start: node.getStart(source), end: node.getEnd() };
   const candidates = artifacts.filter((artifact) => artifact.source.fileName === source.fileName
-    && artifact.obligation?.functionName === exportName && artifact.source.span.start >= span.start && artifact.source.span.end <= span.end);
+    && artifact.obligation?.functionName === functionName && artifact.source.span.start >= span.start && artifact.source.span.end <= span.end);
   const covered = ensures.every((clause) => candidates.some((artifact) => artifact.obligation?.clause === "ensures" && artifact.obligation.source === clause));
   const verified = candidates.length > 0 && covered && candidates.every((artifact) => artifact.status === "verified"
     && (artifact.controlFlow?.relationalCalls?.every(({ evidence }) => evidence === "verified") ?? true));
@@ -615,7 +626,7 @@ function describeExport(
   const signatureText = checker.signatureToString(signature, node, ts.TypeFormatFlags.NoTruncation);
   const declarationText = source.text.slice(span.start, span.end);
   return {
-    symbol: { module: packageName, export: exportName }, functionName: exportName, evidence: "verified",
+    symbol: { module: packageName, export: exportName }, functionName, evidence: "verified",
     declarationSpan: span, declarationDigest: sha256(declarationText),
     signature: signatureText, signatureDigest: sha256(signatureText),
     parameters: summaryParameterNames(node),

@@ -10,6 +10,7 @@ import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { SameRealmGlobalThisIdentity } from "./runtime-identities.js";
 import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics, projectedArrayElements, projectBuiltinCallbacks, type ProjectedScope, type ProjectedValue } from "./builtin-semantic-interpreter.js";
+import { callableAnnotationOwner } from "./callable-annotation-owner.js";
 
 export interface EffectDiagnostic {
   fileName: string;
@@ -260,7 +261,7 @@ function effectDeclaration(source: ts.SourceFile, node: ts.Node, localSchemas?: 
   const variable = ts.isVariableDeclaration(node) ? node
     : (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) ? node.parent : undefined;
   const owner = variable && ts.isVariableDeclarationList(variable.parent) && ts.isVariableStatement(variable.parent.parent)
-    ? variable.parent.parent : node;
+    ? variable.parent.parent : ts.isFunctionLike(node) ? callableAnnotationOwner(node) : node;
   return parseEffectDeclarations(leadingText(source, owner), "effect", owner.getFullStart(), localSchemas);
 }
 
@@ -277,8 +278,7 @@ interface EffectParameterAnnotation {
 }
 
 function effectParameterAnnotations(source: ts.SourceFile, node: ts.Node, localSchemas?: ReadonlyMap<string, EffectSchema>): EffectParameterAnnotation[] {
-  const owner = (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isVariableDeclarationList(node.parent.parent) && ts.isVariableStatement(node.parent.parent.parent)
-    ? node.parent.parent.parent : node;
+  const owner = callableAnnotationOwner(node);
   const leading = leadingText(source, owner), baseOffset = owner.getFullStart();
   return extractLocatedAnnotations(leading, "effect_parameter", baseOffset).map(({ value: payload, span }) => {
     const match = /^([A-Za-z_$][\w$]*)\s+extends\s+(.+)$/u.exec(payload);

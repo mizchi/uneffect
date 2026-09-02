@@ -6,6 +6,7 @@ import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./fronten
 import { interpretBuiltinCallSemantics, projectBuiltinCallbacks, projectedExpression, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
 import { classifyLexicalExecution } from "./lexical-execution.js";
 import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
+import { callableAnnotationOwner } from "./callable-annotation-owner.js";
 
 export type CallbackCardinality = "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
 export type CallbackTiming = "inline" | "deferred" | "promise-reaction" | "unknown";
@@ -138,12 +139,6 @@ function functionName(node: SupportedFunction): string {
     return `${node.parent.name?.getText() ?? "<anonymous-class>"}.constructor`;
   }
   return ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name) ? node.parent.name.text : "<anonymous>";
-}
-
-function annotationOwner(node: SupportedFunction): ts.Node {
-  return (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent)
-    && ts.isVariableDeclarationList(node.parent.parent) && ts.isVariableStatement(node.parent.parent.parent)
-    ? node.parent.parent.parent : node;
 }
 
 function unwrap(expression: ts.Expression): ts.Expression {
@@ -413,7 +408,7 @@ export function analyzeCallableSummaries(
     const rejects = new Set<string>();
 
     const bounds = new Map<string, string[]>();
-    const owner = annotationOwner(declaration);
+    const owner = callableAnnotationOwner(declaration);
     const leading = source.text.slice(owner.getFullStart(), owner.getStart(source));
     for (const annotation of extractAnnotations(leading, "effect_parameter")) {
       const match = /^([A-Za-z_$][\w$]*)\s+extends\s+(.+)$/u.exec(annotation.trim());
