@@ -259,6 +259,9 @@ describe("TypeScript resource protocol CFG lowering", () => {
         declare function inspect(value: unknown): void
         /* uneffect:acquire return */ function escapedSlotReturned(): Handle { const handle = connect(); const holder = { handle }; inspect(holder); return holder.handle }
         /* uneffect:acquire return */ function mutableContainerReturned(): Handle { const handle = connect(); let holder = { handle }; return holder.handle }
+        /* uneffect:acquire return */ function objectDestructuredReturned(): Handle { const handle = connect(); const { handle: alias } = { handle }; return alias }
+        /* uneffect:acquire return */ function tupleDestructuredReturned(): Handle { const handle = connect(); const [alias] = [handle] as const; return alias }
+        /* uneffect:acquire return */ function mutableDestructuredReturned(): Handle { const handle = connect(); let { handle: alias } = { handle }; return alias }
         /* uneffect:acquire return */ function selectedResource(flag: boolean): Handle { const left = connect(); const right = connect(); return flag ? left : right }
         /* uneffect:acquire return */ function mutableReturned(): Handle { let handle = connect(); return handle }
         function direct() { connect().close() }
@@ -300,6 +303,9 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(evaluate("mutatedSlotReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("escapedSlotReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("mutableContainerReturned")).toMatchObject({ status: "unsatisfied" });
+      expect(evaluate("objectDestructuredReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("tupleDestructuredReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("mutableDestructuredReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("selectedResource")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("mutableReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("nestedArgument")).toMatchObject({ status: "satisfied" });

@@ -69,6 +69,7 @@ function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | und
 }
 
 function resourceValueSymbol(checker: ts.TypeChecker, node: ts.Identifier): ts.Symbol | undefined {
+  if (ts.isBindingElement(node.parent) && node.parent.propertyName === node) return undefined;
   const symbol = ts.isShorthandPropertyAssignment(node.parent) && node.parent.name === node
     ? checker.getShorthandAssignmentValueSymbol(node.parent) : resolvedSymbol(checker, node);
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
@@ -178,6 +179,8 @@ function resourceArgumentId(checker: ts.TypeChecker, input: ts.Expression): stri
     while (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
       || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) expression = expression.expression;
     if (ts.isIdentifier(expression)) {
+      const destructured = destructuredResourceValue(checker, expression);
+      if (destructured) return visit(destructured, seen);
       const symbol = resourceValueSymbol(checker, expression);
       const declaration = symbol?.declarations?.find((candidate): candidate is ts.VariableDeclaration =>
         ts.isVariableDeclaration(candidate) && ts.isIdentifier(candidate.name));
@@ -213,6 +216,45 @@ function unwrapResourceExpression(expression: ts.Expression): ts.Expression {
   return expression;
 }
 
+function aggregateLiteralValue(initializer: ts.Expression, key: string): ts.Expression | undefined {
+  initializer = unwrapResourceExpression(initializer);
+  if (ts.isObjectLiteralExpression(initializer)) {
+    for (const property of initializer.properties) {
+      if (ts.isShorthandPropertyAssignment(property) && property.name.text === key) return property.name;
+      if (ts.isPropertyAssignment(property)) {
+        const name = property.name;
+        const propertyKey = ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name) ? name.text : undefined;
+        if (propertyKey === key) return property.initializer;
+      }
+    }
+  } else if (ts.isArrayLiteralExpression(initializer) && /^\d+$/u.test(key)) {
+    const element = initializer.elements[Number(key)];
+    if (element && !ts.isOmittedExpression(element) && !ts.isSpreadElement(element)) return element;
+  }
+  return undefined;
+}
+
+function destructuredResourceValue(checker: ts.TypeChecker, identifier: ts.Identifier): ts.Expression | undefined {
+  const declaration = resourceValueSymbol(checker, identifier)?.valueDeclaration;
+  if (!declaration || !ts.isBindingElement(declaration) || !ts.isIdentifier(declaration.name)
+    || declaration.dotDotDotToken || declaration.initializer) return undefined;
+  const pattern = declaration.parent;
+  if (!ts.isObjectBindingPattern(pattern) && !ts.isArrayBindingPattern(pattern)) return undefined;
+  const variable = pattern.parent;
+  if (!ts.isVariableDeclaration(variable) || variable.name !== pattern || !variable.initializer
+    || !ts.isVariableDeclarationList(variable.parent)
+    || (ts.getCombinedNodeFlags(variable.parent) & ts.NodeFlags.Const) === 0) return undefined;
+  let key: string | undefined;
+  if (ts.isObjectBindingPattern(pattern)) {
+    const name = declaration.propertyName ?? declaration.name;
+    key = ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name) ? name.text : undefined;
+  } else {
+    const index = pattern.elements.indexOf(declaration);
+    if (index >= 0) key = String(index);
+  }
+  return key === undefined ? undefined : aggregateLiteralValue(variable.initializer, key);
+}
+
 /** Resolve a shallow local aggregate slot only when its container has no other observable use. */
 function stableAggregateResourceSlot(
   checker: ts.TypeChecker,
@@ -236,21 +278,7 @@ function stableAggregateResourceSlot(
     || !ts.isVariableDeclarationList(declaration.parent)
     || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0
     || !declaration.initializer) return undefined;
-  const initializer = unwrapResourceExpression(declaration.initializer);
-  let storedExpression: ts.Expression | undefined;
-  if (ts.isObjectLiteralExpression(initializer)) {
-    for (const property of initializer.properties) {
-      if (ts.isShorthandPropertyAssignment(property) && property.name.text === key) storedExpression = property.name;
-      else if (ts.isPropertyAssignment(property)) {
-        const name = property.name;
-        const propertyKey = ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name) ? name.text : undefined;
-        if (propertyKey === key) storedExpression = property.initializer;
-      }
-    }
-  } else if (ts.isArrayLiteralExpression(initializer) && /^\d+$/u.test(key)) {
-    const element = initializer.elements[Number(key)];
-    if (element && !ts.isOmittedExpression(element) && !ts.isSpreadElement(element)) storedExpression = element;
-  }
+  const storedExpression = aggregateLiteralValue(declaration.initializer, key);
   if (!storedExpression) return undefined;
   let stable = true;
   const visit = (node: ts.Node): void => {
@@ -422,6 +450,7 @@ export function collectResourceCallableTransitionSites(
     }
     if (!ts.isIdentifier(expression)) return stableAggregateResourceSlot(checker, fn, expression, resourceIdentity)?.resource;
     const declaration = resolvedSymbol(checker, expression)?.valueDeclaration;
+    if (declaration && ts.isBindingElement(declaration)) return resourceIdentity(expression);
     return declaration && ts.isVariableDeclaration(declaration)
       && declaration.initializer && ts.isIdentifier(declaration.initializer)
       ? resourceIdentity(expression) : undefined;
@@ -476,6 +505,25 @@ function auditAcquiredResourceReferences(
     changed = false;
     const discover = (node: ts.Node): void => {
       if (node !== fn.body && ts.isFunctionLike(node)) return;
+      if (ts.isVariableDeclaration(node) && (ts.isObjectBindingPattern(node.name) || ts.isArrayBindingPattern(node.name))
+        && ts.isVariableDeclarationList(node.parent)
+        && (ts.getCombinedNodeFlags(node.parent) & ts.NodeFlags.Const) !== 0) {
+        const visitBinding = (binding: ts.BindingName): void => {
+          if (ts.isIdentifier(binding)) {
+            const stored = destructuredResourceValue(checker, binding);
+            const storedTarget = stored && unwrapResourceExpression(stored);
+            const sourceSymbol = storedTarget && ts.isIdentifier(storedTarget) ? resourceValueSymbol(checker, storedTarget) : undefined;
+            const targetSymbol = resourceValueSymbol(checker, binding);
+            const resource = sourceSymbol ? aliases.get(sourceSymbol) : undefined;
+            if (stored && resource && targetSymbol && !aliases.has(targetSymbol)) {
+              aliases.set(targetSymbol, resource); allowed.add(binding); allowed.add(storedTarget!); changed = true;
+            }
+            return;
+          }
+          for (const element of binding.elements) if (ts.isBindingElement(element)) visitBinding(element.name);
+        };
+        visitBinding(node.name);
+      }
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
         && ts.isVariableDeclarationList(node.parent)) {
         const flags = ts.getCombinedNodeFlags(node.parent);
@@ -555,8 +603,13 @@ function auditAcquiredResourceReferences(
         while ((ts.isParenthesizedExpression(expression.parent) || ts.isNonNullExpression(expression.parent)
           || ts.isAsExpression(expression.parent) || ts.isTypeAssertionExpression(expression.parent))
           && expression.parent.expression === expression) expression = expression.parent;
-        sites.push(ts.isReturnStatement(expression.parent) && expression.parent.expression === expression
-          ? { node: expression.parent, transitions: [{ kind: "escape", resource, at: expression.parent.getStart(), evidence: "exact" }] }
+        const returned = ts.isReturnStatement(expression.parent) && expression.parent.expression === expression
+          ? expression.parent : undefined;
+        const alreadyEscaped = returned && inputSites.some((site) => allTransitions(site).some((transition) =>
+          transition.kind === "escape" && transition.resource === resource
+          && transition.at >= returned.getStart() && transition.at <= returned.getEnd()));
+        if (!alreadyEscaped) sites.push(returned
+          ? { node: returned, transitions: [{ kind: "escape", resource, at: returned.getStart(), evidence: "exact" }] }
           : { node, transitions: [{ kind: "escape", resource, at: node.getStart(), evidence: "unknown", conditional: true }] });
         allowed.add(node);
       }

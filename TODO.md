@@ -486,8 +486,12 @@ introducing another domain-local control-flow or alias model.
        of an otherwise unused local `const` aggregate, including object
        shorthand value-symbol resolution; reject mutation, reassignment,
        container escape, and dynamic keys.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend returned-resource identity through destructuring, nested
-       aggregate slots, and conditionals selecting different resources.
+     - [x] Resolve flat `const` object/tuple destructuring from direct literals,
+       including renamed and shorthand object bindings, into the originating
+       resource identity; keep mutable/default/rest/computed forms fail-closed.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend returned-resource identity through nested aggregate slots,
+       non-literal destructuring sources, and conditionals selecting different
+       resources.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only
