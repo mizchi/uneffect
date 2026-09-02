@@ -363,6 +363,10 @@ Direct member callback parameters may additionally carry the same bounded
 cardinality, timing, completion, and Effect-bound evidence as top-level package
 functions. This is not evidence for reentrant, concurrent, retained, or
 dynamically selected callbacks.
+An authenticated direct-final `return this` method may preserve the receiver
+through a fluent call. This is a syntactic identity proof, not a general
+return-value or polymorphic fluent API proof; conditional/multiple returns and
+replacement values are outside it.
 `this`-rooted member mutation effects are substituted with the proven receiver
 region; this does not imply general method binding or relational `this`
 semantics.

@@ -121,6 +121,9 @@ describe("backend-neutral callable summaries", () => {
             audit: (message: string) => console.log(message),
             /* uneffect:effect_parameter callback extends Console */
             run(callback: () => void) { callback() },
+            chain() { console.log("chain"); return this },
+            replace() { return {} },
+            maybeChain(ok: boolean) { if (ok) return this; return this },
             label: "client",
           }
         }
@@ -247,6 +250,9 @@ describe("backend-neutral callable summaries", () => {
             effectBound: ["Console"],
           })],
         }),
+        expect.objectContaining({ key: "chain", returnsReceiver: true }),
+        expect.objectContaining({ key: "replace", returnsReceiver: false }),
+        expect.objectContaining({ key: "maybeChain", returnsReceiver: false }),
       ]);
       expect(analysis.summaries.find(({ name }) => name === "spreadClient")?.returnMembers).toBeUndefined();
       expect(analysis.summaries.find(({ name }) => name === "accessorClient")?.returnMembers).toBeUndefined();

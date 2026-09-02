@@ -100,6 +100,9 @@ Direct callback parameters on those returned members retain bounded Effect,
 cardinality, timing, and completion evidence across an authenticated package
 boundary; retained, reentrant, concurrent, and dynamically selected callbacks
 remain unknown.
+One direct-final `return this` object-literal member preserves receiver identity
+through a fluent chain. Conditional/multiple returns, replacement results, and
+polymorphic fluent APIs remain unknown.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

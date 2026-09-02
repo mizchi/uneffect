@@ -202,6 +202,12 @@ method declaration before the ordinary callback call graph is built. This
 supports `client.run(callback)` through immutable receiver aliases without a
 wrapper or runtime marker. Reentrant/concurrent callback protocols and callbacks
 stored for later opaque invocation remain outside this fragment.
+One narrow fluent form is receiver-preserving: an explicit object-literal
+method whose only return is a final direct `return this`. A call such as
+`client.chain().report()` retains the original factory receiver, composes both
+member effects/exceptions, and keeps `this`-rooted mutation attached to that
+receiver. Conditional or multiple returns, replacement objects, arrow lexical
+`this`, computed selection, and general fluent result types fail closed.
 Member mutation effects rooted at `this` are instantiated against the concrete
 static receiver, so `Mutate<typeof this.value>` becomes
 `Mutate<typeof client.value>`. If the receiver has no stable addressable region,

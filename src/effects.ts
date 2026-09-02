@@ -81,6 +81,7 @@ export interface ExternalFunctionEffectContract {
     contractEvidence?: "trusted" | "verified";
     parameters?: readonly string[];
     callbackParameters?: ExternalFunctionEffectContract["callbackParameters"];
+    returnsReceiver?: boolean;
   }[];
   /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
   parameters?: readonly string[];
@@ -934,7 +935,10 @@ export function externalContractForCall(
       || ts.isSatisfiesExpression(current)) current = current.expression;
     let producer: ExternalFunctionEffectContract | undefined;
     let receiverRegion: string | undefined;
-    if (ts.isCallExpression(current)) producer = externalContractForCall(checker, current, contracts, visited);
+    if (ts.isCallExpression(current)) {
+      producer = externalContractForCall(checker, current, contracts, visited);
+      receiverRegion = producer?.receiverRegion;
+    }
     else if (ts.isIdentifier(current)) {
       const bindings: { symbol: ts.Symbol; declaration: ts.VariableDeclaration }[] = [];
       const resolveReceiver = (identifier: ts.Identifier, aliasSeen: Set<ts.Symbol>): ExternalFunctionEffectContract | undefined => {
@@ -1021,6 +1025,7 @@ export function externalContractForCall(
       effects: member.effects, rejects: member.rejects, evidence: producer!.evidence,
       parameters: member.parameters,
       callbackParameters: member.callbackParameters,
+      ...(member.returnsReceiver ? { returnMembers: producer!.returnMembers } : {}),
       contractEvidence: member.contractEvidence ?? producer!.contractEvidence,
       functionName: `${producer!.functionName ?? "factory"}.${key}`,
       receiverBound: true,

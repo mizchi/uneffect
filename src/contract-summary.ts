@@ -29,6 +29,7 @@ export interface ContractReturnedMemberV1 extends ContractReturnedCallableV1 {
   key: string;
   parameters?: string[];
   callbacks?: ContractCallbackSummaryV1[];
+  returnsReceiver?: boolean;
 }
 
 export interface ContractSummaryExportV1 {
@@ -121,6 +122,7 @@ export function boundContractSummaryEffectContracts(
         effects: member.effects.flatMap((effect) => parseEffectSet(effect)),
         rejects: member.rejects ?? [],
         parameters: member.parameters,
+        returnsReceiver: member.returnsReceiver,
         ...(member.callbacks ? { callbackParameters: member.callbacks.map((callback) => {
           const { effectBound, ...rest } = callback;
           return { ...rest, ...(effectBound ? { effectBound: effectBound.flatMap((effect) => parseEffectSet(effect)) } : {}) };
@@ -212,6 +214,7 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
               && member.parameters.every((entry) => typeof entry === "string")))
             && (member.callbacks === undefined || (Array.isArray(member.callbacks)
               && member.callbacks.every(validCallback)))
+            && (member.returnsReceiver === undefined || typeof member.returnsReceiver === "boolean")
             && (member.rejects === undefined || (Array.isArray(member.rejects)
               && member.rejects.every((entry) => typeof entry === "string"))))))
         || (item.effect.callbacks !== undefined && (!Array.isArray(item.effect.callbacks)
@@ -460,6 +463,7 @@ function describeExport(
       ...(callableSummary?.returnMembers?.length ? { returnMembers: callableSummary.returnMembers.map((member) => ({
         key: member.key, effects: member.effects.map(formatEffect).sort(),
         parameters: [...member.parameters],
+        ...(member.returnsReceiver ? { returnsReceiver: true } : {}),
         ...(member.callbackParameters.length ? { callbacks: member.callbackParameters.map((callback) => ({
           index: callback.index, name: callback.name,
           ...(callback.path ? { path: callback.path } : {}),
@@ -556,6 +560,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
       const returnMembers = callable?.returnMembers?.length ? callable.returnMembers.map((member) => ({
         key: member.key, effects: member.effects.map(formatEffect).sort(),
         parameters: [...member.parameters],
+        ...(member.returnsReceiver ? { returnsReceiver: true } : {}),
         ...(member.callbackParameters.length ? { callbacks: member.callbackParameters.map((callback) => ({
           index: callback.index, name: callback.name,
           ...(callback.path ? { path: callback.path } : {}),

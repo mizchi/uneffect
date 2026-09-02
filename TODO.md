@@ -603,6 +603,11 @@ introducing another domain-local control-flow or alias model.
        authenticated member contract onto the consumer's TypeChecker-resolved
        method symbol so the existing callback call graph composes it through
        immutable receiver aliases and package boundaries.
+     - [x] Authenticate one receiver-preserving fluent shape: an object-literal
+       method with exactly one direct final `return this`. Compose nested member
+       Effect/Throw/rejection and `this` mutation against the original factory
+       receiver; reject conditional/multiple returns, replacement objects,
+       arrow lexical `this`, and unsupported dynamic chains.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.

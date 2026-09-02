@@ -59,6 +59,7 @@ export interface CallableSummary {
     readonly rejects: readonly string[];
     readonly parameters: readonly string[];
     readonly callbackParameters: readonly CallbackParameterSummary[];
+    readonly returnsReceiver: boolean;
     readonly evidence: Exclude<EvidenceStatus, "unknown">;
   }[];
   readonly evidence: EvidenceStatus;
@@ -539,11 +540,25 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       if (new Set(keys).size !== keys.length || targets.length === 0) return summary;
       const members = targets.flatMap(({ key, target }) => {
         const returned = byId.get(`${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`);
+        let returnsReceiver = false;
+        if (ts.isMethodDeclaration(target) && target.body) {
+          const last = target.body.statements[target.body.statements.length - 1];
+          const methodReturns: ts.ReturnStatement[] = [];
+          const visitReturn = (node: ts.Node): void => {
+            if (node !== target.body && ts.isFunctionLike(node)) return;
+            if (ts.isReturnStatement(node)) methodReturns.push(node);
+            ts.forEachChild(node, visitReturn);
+          };
+          visitReturn(target.body);
+          returnsReceiver = Boolean(methodReturns.length === 1 && last === methodReturns[0]
+            && methodReturns[0]!.expression?.kind === ts.SyntaxKind.ThisKeyword);
+        }
         return !returned || returned.evidence === "unknown" ? [] : [{
           key, effects: returned.effects, throws: returned.throws, rejects: returned.rejects,
           parameters: target.parameters.map((parameter, index) =>
             ts.isIdentifier(parameter.name) ? parameter.name.text : `arg${index}`),
           callbackParameters: returned.callbackParameters,
+          returnsReceiver,
           evidence: returned.evidence as Exclude<EvidenceStatus, "unknown">,
         }];
       });

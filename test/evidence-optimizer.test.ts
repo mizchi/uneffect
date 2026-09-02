@@ -1234,11 +1234,18 @@ describe("evidence and optimizer obligations", () => {
 
   it("tracks a write-screened returned client object and rejects unstable receivers", () => {
     const { program, source } = programOf(`
-      declare function createClient(): { value: number; report(message: string): void; update(): void; run(callback: () => void): void }
+      interface Client {
+        value: number
+        report(message: string): void
+        update(): void
+        run(callback: () => void): void
+        chain(): Client
+      }
+      declare function createClient(): Client
       const sharedClient = createClient()
       /* uneffect:effect Fetch<GET, "https://example.com/audit"> */
       function noisy() { fetch("https://example.com/audit") }
-      /* uneffect:effect Console | Fetch<GET, "https://example.com/audit"> | Net<"example.com:443"> | Mutate<typeof sharedClient.value> */
+      /* uneffect:effect Console | Fetch<GET, "https://example.com/audit"> | Net<"example.com:443"> | Random | Mutate<typeof sharedClient.value> */
       export function stable() {
         const clientAlias = sharedClient
         const secondAlias = clientAlias
@@ -1246,6 +1253,7 @@ describe("evidence and optimizer obligations", () => {
         secondAlias["report"]("again")
         secondAlias.update()
         secondAlias.run(noisy)
+        secondAlias.chain().update()
       }
       /* uneffect:effect Console */
       export function mutated() {
@@ -1301,6 +1309,9 @@ describe("evidence and optimizer obligations", () => {
               { kind: "capability", name: "Net", arguments: [{ kind: "all" }] },
             ],
           }],
+        }, {
+          key: "chain", effects: [{ kind: "capability", name: "Random", arguments: [] }],
+          returnsReceiver: true, contractEvidence: "trusted" as const,
         }],
       },
     ]]) });
@@ -1309,6 +1320,7 @@ describe("evidence and optimizer obligations", () => {
       effects: expect.arrayContaining([
         { kind: "capability", name: "Console", arguments: [] },
         expect.objectContaining({ kind: "capability", name: "Fetch" }),
+        { kind: "capability", name: "Random", arguments: [] },
         { kind: "mutate", region: "sharedClient.value" },
       ]), evidence: "verified",
     });

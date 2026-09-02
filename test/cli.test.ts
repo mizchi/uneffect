@@ -178,12 +178,18 @@ describe("uneffect command line", () => {
       export function makeReporter(): (message: string) => void {
         return (message: string) => console.log(message)
       }
+      export interface Client {
+        report(message: string): void
+        run(callback: () => void): void
+        chain(): Client
+      }
       /* uneffect:effect none */
-      export function createClient(): { report(message: string): void; run(callback: () => void): void } {
+      export function createClient(): Client {
         return {
           report(message: string): void { console.log(message) },
           /* uneffect:effect_parameter callback extends Console */
           run(callback: () => void): void { callback() },
+          chain(): Client { return this },
         }
       }
     `;
@@ -220,7 +226,7 @@ describe("uneffect command line", () => {
       /* uneffect:effect Console */
       export function runMadeReporter(message: string): void { madeReporter(message) }
       /* uneffect:effect Console */
-      export function runClient(message: string): void { clientAlias.report(message) }
+      export function runClient(message: string): void { clientAlias.chain().report(message) }
       /* uneffect:effect Console */
       export function runClientCallback(): void { clientAlias.run(logOnce) }
     `;
@@ -246,7 +252,8 @@ describe("uneffect command line", () => {
         "export declare function choose(callback: () => void, ok: boolean): void;",
         "export declare function chooseLater(left: Promise<void>, right: Promise<void>, callback: () => void, first: boolean): Promise<void>;",
         "export declare function makeReporter(): (message: string) => void;",
-        "export declare function createClient(): { report(message: string): void; run(callback: () => void): void };",
+        "export interface Client { report(message: string): void; run(callback: () => void): void; chain(): Client }",
+        "export declare function createClient(): Client;",
         "",
       ].join("\n"));
       const producerProgram = ts.createProgram([producerFile], {
@@ -254,10 +261,13 @@ describe("uneffect command line", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext,
       });
       const verification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
-      writeFileSync(summaryFile, JSON.stringify(createContractSummaryBundle({
+      const contractBundle = createContractSummaryBundle({
         packageName: "@example/math", packageVersion: "1.2.3", fileName: producerFile,
         source: producerSource, program: producerProgram, artifacts: verification.artifacts,
-      })));
+      });
+      expect(contractBundle.exports.find(({ functionName }) => functionName === "createClient")?.effect?.returnMembers)
+        .toContainEqual(expect.objectContaining({ key: "chain", returnsReceiver: true }));
+      writeFileSync(summaryFile, JSON.stringify(contractBundle));
 
       const checked = capture();
       expect(await runCli(["check", "--contract-summary", summaryFile, "--evidence", consumerFile], checked), checked.stderr).toBe(exitCode.success);
