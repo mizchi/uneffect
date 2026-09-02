@@ -18,11 +18,14 @@ function implementation(value: number): number { return value + 1 }
 export { implementation as increment, implementation as default }
 ```
 
-The producer resolves each `ExportSpecifier` to its local declaration through
-the TypeChecker and retains the local function name for Hoare evidence. Mutable
-bindings and `export { value } from "./other.js"` remain unsupported; the latter
-requires a multi-source producer evidence format rather than pretending the
-barrel source contains the implementation.
+The producer resolves each `ExportSpecifier` to its declaration through the
+TypeChecker and retains the implementation function name for Hoare evidence.
+This includes a static relative re-export such as
+`export { value } from "./implementation.js"` when the implementation source is
+in the same Program. Each cross-file export records the implementation file and
+full source digest in addition to the public entry source. Validation resolves
+the barrel again and checks both identities and bytes. Mutable bindings and
+external-package re-exports remain unsupported.
 
 ```ts
 import {

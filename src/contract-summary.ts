@@ -50,6 +50,8 @@ export interface ContractSummaryExportV1 {
   requires: string[];
   ensures: string[];
   artifactIds: string[];
+  /** Present when the public entry re-exports a callable implemented in another Program source. */
+  implementation?: { fileName: string; sourceDigest: string };
   effect?: {
     effects: string[];
     parameters: string[];
@@ -330,6 +332,9 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
       || !Array.isArray(item.requires) || !item.requires.every((entry) => typeof entry === "string")
       || !Array.isArray(item.ensures) || !item.ensures.every((entry) => typeof entry === "string")
       || !Array.isArray(item.artifactIds) || !item.artifactIds.every((entry) => typeof entry === "string")
+      || (item.implementation !== undefined && (!item.implementation || typeof item.implementation !== "object"
+        || typeof item.implementation.fileName !== "string" || item.implementation.fileName.length === 0
+        || typeof item.implementation.sourceDigest !== "string" || !/^[0-9a-f]{64}$/u.test(item.implementation.sourceDigest)))
       || (item.effect !== undefined && (!item.effect || typeof item.effect !== "object"
         || !Array.isArray(item.effect.effects) || !item.effect.effects.every((entry) => typeof entry === "string")
         || !Array.isArray(item.effect.parameters) || !item.effect.parameters.every((entry) => typeof entry === "string")
@@ -590,12 +595,16 @@ function directExportCallables(statement: ts.Statement, checker: ts.TypeChecker)
     }];
     return [];
   }
-  if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier
-    && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+  if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+    const external = statement.moduleSpecifier && ts.isStringLiteralLike(statement.moduleSpecifier)
+      ? statement.moduleSpecifier.text : undefined;
+    if (external !== undefined && !external.startsWith(".")) return [];
     return statement.exportClause.elements.flatMap((specifier): DirectExportCallable[] => {
-      const symbol = checker.getExportSpecifierLocalTargetSymbol(specifier);
+      let symbol = external === undefined
+        ? checker.getExportSpecifierLocalTargetSymbol(specifier) : checker.getSymbolAtLocation(specifier.name);
+      if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
       const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
-      if (!declaration || declaration.getSourceFile() !== statement.getSourceFile()) return [];
+      if (!declaration || declaration.getSourceFile().isDeclarationFile) return [];
       if (ts.isFunctionDeclaration(declaration) && declaration.body && declaration.name) return [{
         node: declaration, owner: declaration, exportName: specifier.name.text, functionName: declaration.name.text,
       }];
@@ -642,13 +651,17 @@ function describeExport(
 ): ContractSummaryExportV1 | undefined {
   const { node, owner, exportName, functionName } = exported;
   if (!node.body) return undefined;
-  const comments = source.text.slice(owner.getFullStart(), owner.getStart(source));
+  const implementationSource = node.getSourceFile();
+  const implementationErrors = [...program.getSyntacticDiagnostics(implementationSource), ...program.getSemanticDiagnostics(implementationSource)]
+    .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (implementationErrors.length > 0) throw new Error(`contract summary cannot use a Program with TypeScript errors in ${implementationSource.fileName}`);
+  const comments = implementationSource.text.slice(owner.getFullStart(), owner.getStart(implementationSource));
   const ensures = extractAnnotations(comments, "ensures");
   const effectDeclared = extractAnnotations(comments, "effect").length > 0;
   if (ensures.length === 0 && !effectDeclared && !resourceSummary?.operations.length && resourceReturnMembers.length === 0) return undefined;
   const requires = extractAnnotations(comments, "requires");
-  const span = { start: node.getStart(source), end: node.getEnd() };
-  const candidates = artifacts.filter((artifact) => artifact.source.fileName === source.fileName
+  const span = { start: node.getStart(implementationSource), end: node.getEnd() };
+  const candidates = artifacts.filter((artifact) => artifact.source.fileName === implementationSource.fileName
     && artifact.obligation?.functionName === functionName && artifact.source.span.start >= span.start && artifact.source.span.end <= span.end);
   const covered = ensures.every((clause) => candidates.some((artifact) => artifact.obligation?.clause === "ensures" && artifact.obligation.source === clause));
   const verified = candidates.length > 0 && covered && candidates.every((artifact) => artifact.status === "verified"
@@ -662,13 +675,16 @@ function describeExport(
   const checker = program.getTypeChecker(), signature = checker.getSignatureFromDeclaration(node);
   if (!signature) throw new Error(`${exportName} has no TypeChecker signature`);
   const signatureText = checker.signatureToString(signature, node, ts.TypeFormatFlags.NoTruncation);
-  const declarationText = source.text.slice(span.start, span.end);
+  const declarationText = implementationSource.text.slice(span.start, span.end);
   return {
     symbol: { module: moduleSpecifier, export: exportName }, functionName, evidence: "verified",
     declarationSpan: span, declarationDigest: sha256(declarationText),
     signature: signatureText, signatureDigest: sha256(signatureText),
     parameters: summaryParameterNames(node),
     requires, ensures, artifactIds: candidates.map(({ obligationId }) => obligationId).sort(),
+    ...(implementationSource.fileName !== source.fileName ? { implementation: {
+      fileName: implementationSource.fileName, sourceDigest: sha256(implementationSource.text),
+    } } : {}),
     ...(effectDeclared && (effectSummary || callableSummary) ? { effect: {
       effects: (effectSummary?.evidence === "verified" ? effectSummary.effects : callableSummary!.effects).map(formatEffect).sort(),
       parameters: summaryParameterNames(node),
@@ -729,17 +745,18 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
   const checker = options.program.getTypeChecker();
   const exports = source.statements.flatMap((statement) => directExportCallables(statement, checker).flatMap((exported) => {
     const node = exported.node;
-    const callable = callableSummaries.find((summary) => summary.fileName === source.fileName
-      && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd());
+    const implementationSource = node.getSourceFile();
+    const callable = callableSummaries.find((summary) => summary.fileName === implementationSource.fileName
+      && summary.span.start === node.getStart(implementationSource) && summary.span.end === node.getEnd());
     const resourceReturnMembers = callable?.returnMembers?.flatMap((member) => {
       const resource = resourceSummaries.summaries.find((summary) => summary.id === member.declarationId);
       return resource?.operations.length ? [{ key: member.key, operations: resource.operations }] : [];
     }) ?? [];
     return [describeExport(options.program, source, exported, moduleSpecifier, options.artifacts,
-      effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
-        && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
+      effectSummaries.find((summary) => summary.fileName === implementationSource.fileName && summary.span
+        && summary.span.start === node.getStart(implementationSource) && summary.span.end === node.getEnd()),
       callable,
-      resourceSummaries.summaries.find((summary) => summary.id === `${source.fileName}:${node.getStart(source)}`),
+      resourceSummaries.summaries.find((summary) => summary.id === `${implementationSource.fileName}:${node.getStart(implementationSource)}`),
       resourceReturnMembers)]
       .filter((item): item is ContractSummaryExportV1 => item !== undefined);
   }));
@@ -805,19 +822,28 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     if (item.symbol.module !== moduleSpecifier) errors.push(`contract summary module ${item.symbol.module} does not match ${moduleSpecifier}`);
     const checker = options.program.getTypeChecker();
     const exported = source.statements.flatMap((statement) => directExportCallables(statement, checker)).find(({ node, exportName }) =>
-      exportName === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
+      exportName === item.symbol.export
+      && node.getSourceFile().fileName === (item.implementation?.fileName ?? source.fileName)
+      && node.getStart(node.getSourceFile()) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
     if (!exported) { errors.push(`contract summary export ${item.symbol.export} does not match a direct exported callable declaration`); continue; }
     const declaration = exported.node;
-    const declarationText = source.text.slice(item.declarationSpan.start, item.declarationSpan.end);
+    const implementationSource = declaration.getSourceFile();
+    if (item.implementation && item.implementation.sourceDigest !== sha256(implementationSource.text)) {
+      errors.push(`contract summary implementation source digest for ${item.symbol.export} does not match Program source`);
+    }
+    if (!item.implementation && implementationSource.fileName !== source.fileName) {
+      errors.push(`contract summary export ${item.symbol.export} is missing cross-file implementation evidence`);
+    }
+    const declarationText = implementationSource.text.slice(item.declarationSpan.start, item.declarationSpan.end);
     if (sha256(declarationText) !== item.declarationDigest) errors.push(`contract summary declaration digest for ${item.symbol.export} does not match source`);
     const signature = options.program.getTypeChecker().getSignatureFromDeclaration(declaration);
     const signatureText = signature ? options.program.getTypeChecker().signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation) : undefined;
     if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest) errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
-    const leading = source.text.slice(exported.owner.getFullStart(), exported.owner.getStart(source));
+    const leading = implementationSource.text.slice(exported.owner.getFullStart(), exported.owner.getStart(implementationSource));
     const declaresEffect = extractAnnotations(leading, "effect").length > 0;
-    const callable = callableSummaries.find((summary) => summary.fileName === source.fileName
-      && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
-    const resource = resourceSummaries.summaries.find((summary) => summary.id === `${source.fileName}:${declaration.getStart(source)}`);
+    const callable = callableSummaries.find((summary) => summary.fileName === implementationSource.fileName
+      && summary.span.start === declaration.getStart(implementationSource) && summary.span.end === declaration.getEnd());
+    const resource = resourceSummaries.summaries.find((summary) => summary.id === `${implementationSource.fileName}:${declaration.getStart(implementationSource)}`);
     const resourceReturnMembers = callable?.returnMembers?.flatMap((member) => {
       const memberResource = resourceSummaries.summaries.find((summary) => summary.id === member.declarationId);
       return memberResource?.operations.length ? [{ key: member.key, operations: memberResource.operations }] : [];
@@ -830,8 +856,8 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     if (declaresEffect !== Boolean(item.effect)) {
       errors.push(`contract summary Effect payload for ${item.symbol.export} does not match its declaration`);
     } else if (item.effect) {
-      const actual = effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
-        && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
+      const actual = effectSummaries.find((summary) => summary.fileName === implementationSource.fileName && summary.span
+        && summary.span.start === declaration.getStart(implementationSource) && summary.span.end === declaration.getEnd());
       const callableFallback = callable && callable.evidence !== "unknown"
         && callable.unknownReasons.length === 0 && callable.callbackParameters.length > 0;
       const effects = (actual?.evidence === "verified" ? actual.effects : callableFallback ? callable.effects : undefined)

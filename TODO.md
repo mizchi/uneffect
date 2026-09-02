@@ -696,8 +696,11 @@ introducing another domain-local control-flow or alias model.
      summaries; reject indirect or dynamic default values.
    - [x] Resolve same-file static export-list aliases to local functions and
      immutable callable `const` declarations by TypeChecker ExportSpecifier
-     identity, including rename and `as default`; retain cross-file re-export
-     producers as unsupported until summaries carry multi-source evidence.
+     identity, including rename and `as default`.
+   - [x] Resolve static relative re-exports into another source in the producer
+     Program, recording export-level implementation file/source digests and
+     collecting Hoare artifacts across all CLI-selected project sources.
+     External-package re-export producers remain unsupported.
    - [x] Preserve reviewed callback forwarding through Promise reactions and
      lower authenticated package callbacks to the shared host-neutral
      microtask/reject transition without leaking callback `Throw` into the

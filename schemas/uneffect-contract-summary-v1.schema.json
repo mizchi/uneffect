@@ -99,6 +99,15 @@
           "requires": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "ensures": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "artifactIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "implementation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fileName", "sourceDigest"],
+            "properties": {
+              "fileName": { "type": "string", "minLength": 1 },
+              "sourceDigest": { "$ref": "#/$defs/sha256" }
+            }
+          },
           "effect": {
             "type": "object",
             "additionalProperties": false,

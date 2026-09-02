@@ -86,6 +86,10 @@ are not plain TypeScript output. `--config` and repeatable `--semantics-module`
 use the same trusted registry inputs as `check`.
 Omit `--module-specifier` for the package root. When present it must be that
 package's own static subpath and becomes part of the TypeChecker binding key.
+`--entry` may be a barrel containing static relative re-exports. The command
+verifies Hoare artifacts for every selected project source and records each
+resolved implementation source digest; it does not follow re-exports into an
+external package.
 `--resource-contract <resource.json>` binds one reviewed resource lifecycle
 artifact to the exact installed package/Node version and declaration bytes;
 repeat it for multiple exports. Accepted contracts remain trusted assumptions,

@@ -54,7 +54,13 @@ describe("uneffect command line", () => {
     const outputDirectory = join(directory, "dist");
     mkdirSync(sourceDirectory, { recursive: true });
     const sourceFile = join(sourceDirectory, "index.ts");
-    writeFileSync(sourceFile, `/* uneffect:effect none */ export function value(): number { return 1 }`);
+    const implementationFile = join(sourceDirectory, "implementation.ts");
+    writeFileSync(implementationFile, `
+      /* uneffect:ensures result === value + 1 */
+      /* uneffect:effect none */
+      export function internal(value: number): number { return value + 1 }
+    `);
+    writeFileSync(sourceFile, `export { internal as value } from "./implementation.js"`);
     const projectFile = join(directory, "tsconfig.json");
     writeFileSync(projectFile, JSON.stringify({ compilerOptions: {
       strict: true, declaration: true, rootDir: "src", outDir: "dist",
@@ -72,15 +78,20 @@ describe("uneffect command line", () => {
       "--typescript-emit-root", directory, "--out", outputFile,
     ], io), io.stderr).toBe(exitCode.success);
     const summary = JSON.parse(readFileSync(outputFile, "utf8")) as {
-      package: { name: string }; exports: Array<{ symbol: { module: string } }>;
+      package: { name: string }; exports: Array<{
+        symbol: { module: string }; implementation?: { fileName: string; sourceDigest: string };
+      }>;
       typescriptEmit: { outputs: Array<{ packagePath: string }> };
     };
     expect(summary.package.name).toBe("@example/value");
     expect(summary.exports[0]?.symbol.module).toBe("@example/value/node");
+    expect(summary.exports[0]?.implementation).toMatchObject({
+      fileName: implementationFile, sourceDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
     expect(summary.typescriptEmit.outputs.map(({ packagePath }) => packagePath).sort())
-      .toEqual(["dist/index.d.ts", "dist/index.js"]);
+      .toEqual(["dist/implementation.d.ts", "dist/implementation.js", "dist/index.d.ts", "dist/index.js"]);
 
-    writeFileSync(join(outputDirectory, "index.js"), "export function value() { return 2 }\n");
+    writeFileSync(join(outputDirectory, "index.js"), "export { internal as value } from './other.js';\n");
     const drifted = capture();
     expect(await runCli([
       "contract-summary", "--project", projectFile, "--entry", sourceFile,

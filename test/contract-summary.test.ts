@@ -27,7 +27,7 @@ describe("persisted contract summary bundles", () => {
         schema: { const: string }; modules: { items: { $ref: string } };
         runtimeArtifacts: { items: { required: string[] } };
         typescriptEmit: { properties: { outputs: { items: { required: string[] } } } };
-        exports: { items: { required: string[] } };
+        exports: { items: { required: string[]; properties: { implementation: { required: string[] } } } };
       };
     };
     expect(schema.$id).toBe("https://github.com/mizchi/uneffect/schemas/uneffect-contract-summary-v1.schema.json");
@@ -36,6 +36,7 @@ describe("persisted contract summary bundles", () => {
     expect(schema.properties.runtimeArtifacts.items.required).toEqual(["packagePath", "digest"]);
     expect(schema.properties.typescriptEmit.properties.outputs.items.required).toEqual(["kind", "packagePath", "digest"]);
     expect(schema.properties.exports.items.required).toEqual(expect.arrayContaining(["symbol", "signatureDigest", "artifactIds"]));
+    expect(schema.properties.exports.items.properties.implementation.required).toEqual(["fileName", "sourceDigest"]);
   });
 
   it("binds verified exported contracts to package, compiler, source, signature, and artifacts", async () => {
@@ -898,9 +899,43 @@ describe("persisted contract summary bundles", () => {
       strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
     });
-    expect(() => createContractSummaryBundle({
+    const reexportBundle = createContractSummaryBundle({
       packageName: "@example/reexport", packageVersion: "1.0.0", fileName: barrelFile,
       source: barrelSource, program: reexportProgram, artifacts: [],
+    });
+    expect(reexportBundle.exports).toContainEqual(expect.objectContaining({
+      symbol: { module: "@example/reexport", export: "normalize" }, functionName: "internal",
+      implementation: {
+        fileName: implementationFile, sourceDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      },
+    }));
+    expect(validateContractSummaryBundle(reexportBundle, {
+      packageName: "@example/reexport", packageVersion: "1.0.0", fileName: barrelFile,
+      source: barrelSource, program: reexportProgram,
+    })).toEqual({ valid: true, errors: [] });
+    writeFileSync(implementationFile,
+      `/* uneffect:effect none */ export function internal(value: number): number { return value + 2 }`);
+    const driftedProgram = ts.createProgram([barrelFile, implementationFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(validateContractSummaryBundle(reexportBundle, {
+      packageName: "@example/reexport", packageVersion: "1.0.0", fileName: barrelFile,
+      source: barrelSource, program: driftedProgram,
+    })).toMatchObject({
+      valid: false, errors: expect.arrayContaining([expect.stringContaining("implementation source digest")]),
+    });
+
+    const externalFile = join(reexportDirectory, "external.ts");
+    const externalSource = `export { readFile as load } from "node:fs/promises"`;
+    writeFileSync(externalFile, externalSource);
+    const externalProgram = ts.createProgram([externalFile], {
+      strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/external", packageVersion: "1.0.0", fileName: externalFile,
+      source: externalSource, program: externalProgram, artifacts: [],
     })).toThrow(/no fully verified exported function contracts/u);
   });
 });

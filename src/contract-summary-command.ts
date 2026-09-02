@@ -66,11 +66,15 @@ export const contractSummaryCommand: CliCommand = {
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
     try { if (values["semantics-module"] !== undefined) registry = (await loadUneffectModules(values["semantics-module"] as string[], registry)).registry; }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    const verification = await verifyContractObligations(entry, source, undefined, program);
+    const projectSources = new Set(project.fileNames.map((fileName) => resolve(fileName)));
+    const artifacts = (await Promise.all(program.getSourceFiles()
+      .filter((candidate) => !candidate.isDeclarationFile && projectSources.has(resolve(candidate.fileName)))
+      .map((candidate) => verifyContractObligations(candidate.fileName, candidate.text, undefined, program))))
+      .flatMap((result) => result.artifacts);
     const bundle = createContractSummaryBundle({
       packageName, packageVersion,
       ...(values["module-specifier"] !== undefined ? { moduleSpecifier: String(values["module-specifier"]) } : {}),
-      fileName: entry, source, program, artifacts: verification.artifacts,
+      fileName: entry, source, program, artifacts,
       builtinRegistry: registry,
       runtimeArtifacts: parseRuntimeArtifacts(values),
       ...(values["typescript-emit-root"] !== undefined
