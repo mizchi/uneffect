@@ -32,6 +32,15 @@ function staticElementKey(expression: ts.ElementAccessExpression): string | unde
   return key && (ts.isStringLiteralLike(key) || ts.isNumericLiteral(key)) ? key.text : undefined;
 }
 
+function staticPropertyKey(name: ts.PropertyName): string | undefined {
+  return ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name) ? name.text : undefined;
+}
+
+function objectProperty(object: ts.ObjectLiteralExpression, key: string): ts.PropertyAssignment | ts.ShorthandPropertyAssignment | undefined {
+  return object.properties.find((candidate): candidate is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
+    (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate)) && staticPropertyKey(candidate.name) === key);
+}
+
 function frozenLiteralForReceiver(
   checker: ts.TypeChecker,
   input: ts.Expression,
@@ -74,13 +83,10 @@ export function resolveStableCallableSymbol(
     if (propertySymbol?.declarations?.some((declaration) => ts.isMethodDeclaration(declaration)
       || ts.isMethodSignature(declaration))) return propertySymbol;
     const key = ts.isPropertyAccessExpression(expression) ? expression.name.text : staticElementKey(expression);
-    const object = key === undefined ? undefined : frozenLiteralForReceiver(checker, expression.expression, seen);
+    if (key === undefined) return undefined;
+    const object = frozenLiteralForReceiver(checker, expression.expression, seen);
     if (!object) return undefined;
-    const property = object.properties.find((candidate) => {
-      if (!ts.isPropertyAssignment(candidate) && !ts.isShorthandPropertyAssignment(candidate)) return false;
-      const name = candidate.name;
-      return (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) && name.text === key;
-    });
+    const property = objectProperty(object, key);
     if (!property) return undefined;
     if (ts.isPropertyAssignment(property)) return resolveStableCallableSymbol(checker, property.initializer, seen);
     const value = checker.getShorthandAssignmentValueSymbol(property);
@@ -110,6 +116,29 @@ export function resolveStableCallableSymbol(
       if (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer)) {
         const target = resolveStableCallableSymbol(checker, initializer, nextSeen);
         if (target) return target;
+      }
+    }
+    if (ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent)) {
+      const variable = declaration.parent.parent;
+      if (!ts.isVariableDeclaration(variable) || !isConstVariable(variable) || !variable.initializer) continue;
+      const key = declaration.propertyName ? staticPropertyKey(declaration.propertyName)
+        : ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
+      const object = key === undefined ? undefined : frozenLiteralForReceiver(checker, variable.initializer, nextSeen);
+      const property = object && objectProperty(object, key!);
+      if (!property) continue;
+      if (ts.isPropertyAssignment(property)) {
+        const target = resolveStableCallableSymbol(checker, property.initializer, nextSeen);
+        if (target) return target;
+      } else {
+        const value = checker.getShorthandAssignmentValueSymbol(property);
+        if (!value || nextSeen.has(value)) continue;
+        for (const valueDeclaration of value.declarations ?? []) {
+          if (ts.isFunctionDeclaration(valueDeclaration) || ts.isMethodDeclaration(valueDeclaration)) return value;
+          if (ts.isVariableDeclaration(valueDeclaration) && isConstVariable(valueDeclaration) && valueDeclaration.initializer) {
+            const target = resolveStableCallableSymbol(checker, valueDeclaration.initializer, new Set(nextSeen).add(value));
+            if (target) return target;
+          }
+        }
       }
     }
   }

@@ -511,6 +511,7 @@ describe("TypeScript resource protocol CFG lowering", () => {
         const syncAlias = riskySync
         const asyncAlias = riskyAsync
         const frozen = Object.freeze({ riskyAsync })
+        const { riskyAsync: destructuredAsync } = frozen
         let mutableAlias = riskySync
         function main() {
           riskySync()
@@ -521,6 +522,7 @@ describe("TypeScript resource protocol CFG lowering", () => {
         function aliasedSync() { syncAlias() }
         async function aliasedAsync() { await asyncAlias() }
         async function frozenAsync() { await frozen.riskyAsync() }
+        async function destructured() { await destructuredAsync() }
         function mutable() { mutableAlias() }
         function floating() {
           riskyAsync()
@@ -566,6 +568,9 @@ describe("TypeScript resource protocol CFG lowering", () => {
         exceptionEvidence: { completion: "awaited-reject", errorTypes: ["Error"] },
       });
       expect(collectCallableExceptionalTransitionSites(program, functions.get("frozenAsync")!, summaries)[0]).toMatchObject({
+        exceptionEvidence: { completion: "awaited-reject", errorTypes: ["Error"] },
+      });
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("destructured")!, summaries)[0]).toMatchObject({
         exceptionEvidence: { completion: "awaited-reject", errorTypes: ["Error"] },
       });
       expect(collectCallableExceptionalTransitionSites(program, functions.get("mutable")!, summaries)).toEqual([]);

@@ -34,6 +34,7 @@ describe("general resource lifecycle check", () => {
         const inspectAlias = inspectHandle
         const releaseAlias = releaseHandle
         const api = Object.freeze({ inspect: inspectHandle, release: releaseHandle })
+        const { inspect, release } = api
         const mutableApi = { release: releaseHandle }
         export function valid() {
           const handle = acquireHandle()
@@ -41,6 +42,7 @@ describe("general resource lifecycle check", () => {
           releaseAlias(handle)
         }
         export function validObject() { const handle = acquireHandle(); api.inspect(handle); api.release(handle) }
+        export function validDestructured() { const handle = acquireHandle(); inspect(handle); release(handle) }
         export function unknownObject() { const handle = acquireHandle(); mutableApi.release(handle) }
         export function leaked() { const handle = acquireHandle(); inspectHandle(handle) }
         export function invalid() { const handle = acquireHandle(); releaseHandle(handle); inspectHandle(handle) }
@@ -49,6 +51,7 @@ describe("general resource lifecycle check", () => {
       expect(result.resourceProtocols).toMatchObject([
         { owner: "valid", status: "satisfied", evidence: "trusted" },
         { owner: "validObject", status: "satisfied", evidence: "trusted" },
+        { owner: "validDestructured", status: "satisfied", evidence: "trusted" },
         { owner: "unknownObject", status: "unknown", evidence: "unknown" },
         { owner: "leaked", status: "unsatisfied", evidence: "trusted" },
         { owner: "invalid", status: "unknown", evidence: "trusted" },
@@ -57,7 +60,7 @@ describe("general resource lifecycle check", () => {
         expect.objectContaining({ domain: "resource", kind: "unclosed", functionName: "leaked", severity: "error" }),
         expect.objectContaining({ domain: "resource", kind: "invalid-transition", functionName: "invalid", severity: "error" }),
       ]));
-      expect(result.assumptions.entries.filter((entry) => entry.domain === "resource-callable")).toHaveLength(4);
+      expect(result.assumptions.entries.filter((entry) => entry.domain === "resource-callable")).toHaveLength(5);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

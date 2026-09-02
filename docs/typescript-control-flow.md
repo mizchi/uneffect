@@ -55,7 +55,9 @@ literal computed name is static, while a dynamic computed name is unknown.
 Immutable callable alias chains resolve through nested lexical scopes and
 TypeChecker symbol identity across imports and re-exports. Direct properties of
 a builtin-`Object.freeze` static object literal are also stable when their value
-resolves to a source callable. Project lowering relocates the contract to that
+resolves to a source callable. A `const` object destructuring binding preserves
+that identity through immutable aliases of the frozen container. Project
+lowering relocates the contract to that
 source declaration instead of introducing an identity- or `this`-changing
 wrapper. Mutable aliases, unfrozen objects, getters, dynamic properties, and
 targets outside the selected source project remain unsupported. Linked

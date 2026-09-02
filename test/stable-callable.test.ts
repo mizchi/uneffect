@@ -15,10 +15,14 @@ describe("stable callable identity", () => {
         function source() {}
         const alias = source
         const table = Object.freeze({ source, renamed: alias })
+        const tableAlias = table
+        const { source: destructured, renamed } = tableAlias
         let mutable = source
         alias()
         table.source()
         table["renamed"]()
+        destructured()
+        renamed()
         mutable()
       `);
       const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
@@ -29,10 +33,10 @@ describe("stable callable identity", () => {
       const expected = checker.getSymbolAtLocation(declaration.name!)!;
       const calls = source.statements.filter(ts.isExpressionStatement)
         .map((statement) => statement.expression).filter(ts.isCallExpression);
-      expect(calls.slice(0, 3).map((call) => resolveStableCallableSymbol(checker, call.expression))).toEqual([
-        expected, expected, expected,
+      expect(calls.slice(0, 5).map((call) => resolveStableCallableSymbol(checker, call.expression))).toEqual([
+        expected, expected, expected, expected, expected,
       ]);
-      expect(resolveStableCallableSymbol(checker, calls[3]!.expression)).toBeUndefined();
+      expect(resolveStableCallableSymbol(checker, calls[5]!.expression)).toBeUndefined();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

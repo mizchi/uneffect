@@ -1087,8 +1087,10 @@ introducing another domain-local control-flow or alias model.
       dynamic computed names, and mutable alias chains.
     - [x] Extend callable aliases through nested lexical scopes,
       TypeChecker-resolved imports/re-exports, and direct properties of builtin
-      `Object.freeze` static object literals. Relocate project contracts to the
-      source callable instead of generating identity- or `this`-changing wrappers.
+      `Object.freeze` static object literals, including `const` object
+      destructuring through immutable container aliases. Relocate project
+      contracts to the source callable instead of generating identity- or
+      `this`-changing wrappers.
     - [ ] Extend stable callable containers beyond direct builtin-frozen object ([#64](https://github.com/mizchi/uneffect/issues/64))
       literals while retaining mutation, getter, proxy, and dispatch-sealing
       negative controls.
