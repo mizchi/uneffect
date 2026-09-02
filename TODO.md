@@ -656,6 +656,9 @@ introducing another domain-local control-flow or alias model.
      - [x] [#24](https://github.com/mizchi/uneffect/issues/24) Bind semantics-module ledger identities and digests into producer
        contract-summary bundles before allowing their persisted summaries to
        depend on a caller-owned registry.
+       - [x] Reuse the registry-aware Effect analysis when deriving callable
+         metadata, and persist module-derived callback and Promise rejection
+         summaries with source revalidation under the same ledger.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

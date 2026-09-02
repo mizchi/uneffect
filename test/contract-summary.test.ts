@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
 import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
-import { builtinContractRegistry } from "../src/builtin-contracts.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
@@ -92,6 +92,99 @@ describe("persisted contract summary bundles", () => {
     })).toMatchObject({ valid: false, errors: [expect.stringContaining("semantics-module ledger")] });
     expect(bindContractSummaryBundleToProgram(bundle, program, builtinContractRegistry)).toMatchObject({
       status: "unknown", blockers: [expect.stringContaining("semantics-module ledger")],
+    });
+  });
+
+  it("persists callback and rejection semantics derived from a module registry", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-module-producer-"));
+    const packageDirectory = join(directory, "node_modules", "reviewed-async");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "reviewed-async", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"),
+      "export declare function later(callback: () => void): Promise<void>\n");
+    const fileName = join(directory, "index.ts");
+    const source = `
+      import { later } from "reviewed-async"
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter callback extends none */
+      export function wrap(callback: () => void): Promise<void> { return later(callback) }
+    `;
+    writeFileSync(fileName, source);
+    const compilerOptions: ts.CompilerOptions = {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    };
+    const program = ts.createProgram([fileName], compilerOptions);
+    const module = {
+      name: "@acme/async-semantics", version: "1.0.0", namespace: "Acme.Async",
+      evidence: "trusted" as const, trustOwner: "security-platform", trustReason: "reviewed async API",
+      digest: "b".repeat(64),
+    };
+    const registry = {
+      ...extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
+        symbol: { module: "reviewed-async", export: "later" },
+        runtime: { kind: "package" as const, version: "1.0.0" }, evidence: "trusted" as const,
+        trustOwner: "security-platform", trustReason: "reviewed later",
+        semantics: { schema: "uneffect-semantic-primitives/v1" as const, primitives: [
+          { kind: "callback" as const, target: { kind: "argument" as const, index: 0 }, timing: "deferred" as const, queue: "microtask" as const, cardinality: "0..1" as const, completion: "convert-throw-to-rejection" as const },
+          { kind: "reject" as const, error: "RangeError" },
+        ] },
+      }] }),
+      modules: [module],
+    };
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/wrapper", packageVersion: "1.0.0", fileName, source, program,
+      artifacts: [], builtinRegistry: registry,
+    });
+    expect(bundle.exports).toContainEqual(expect.objectContaining({
+      symbol: { module: "@example/wrapper", export: "wrap" },
+      effect: expect.objectContaining({
+        rejects: ["RangeError"],
+        callbacks: [expect.objectContaining({
+          name: "callback", cardinality: "0..1", timing: "promise-reaction",
+          completion: "convert-throw-to-rejection", effectBound: [],
+        })],
+      }),
+    }));
+    expect(bundle.modules).toEqual([module]);
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/wrapper", packageVersion: "1.0.0", fileName, source, program,
+      builtinRegistry: registry,
+    })).toEqual({ valid: true, errors: [] });
+
+    const wrapperDirectory = join(directory, "node_modules", "@example", "wrapper");
+    mkdirSync(wrapperDirectory, { recursive: true });
+    writeFileSync(join(wrapperDirectory, "package.json"), JSON.stringify({
+      name: "@example/wrapper", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(wrapperDirectory, "index.d.ts"),
+      "export declare function wrap(callback: () => void): Promise<void>\n");
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { wrap } from "@example/wrapper"
+      function callback(): void {}
+      export function run(): Promise<void> { return wrap(callback) }
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], compilerOptions);
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram, registry);
+    expect(binding).toMatchObject({
+      status: "verified",
+      exports: [expect.objectContaining({
+        summary: expect.objectContaining({
+          effect: expect.objectContaining({
+            rejects: ["RangeError"],
+            callbacks: [expect.objectContaining({
+              timing: "promise-reaction", completion: "convert-throw-to-rejection",
+            })],
+          }),
+        }),
+      })],
+    });
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
+      status: "unknown",
+      blockers: [expect.stringContaining("semantics-module ledger")],
     });
   });
 

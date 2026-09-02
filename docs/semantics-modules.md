@@ -138,6 +138,10 @@ copy of the exact ordered module ledger, includes it in `contentDigest`, and
 requires byte-equivalent ledger metadata and digests during source validation
 and consumer Program binding. Omitting that registry, changing module order, or
 changing any review/digest field makes the binding `unknown`.
+Producer Effect and callable analysis use that same registry instance: callback
+timing/cardinality/completion and `reject` payloads derived from a reviewed
+dependency are serialized into the package summary, then recomputed under the
+same ledger during source validation.
 
 The intended later tiers are:
 

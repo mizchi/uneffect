@@ -565,10 +565,11 @@ function describeExport(
 export function createContractSummaryBundle(options: CreateContractSummaryBundleOptions): ContractSummaryBundleV1 {
   if (!options.packageName || !options.packageVersion) throw new Error("contract summary requires package name and version");
   const source = checkedSource(options);
-  const effectSummaries = analyzeProgramEffects(options.program, {
+  const effectAnalysis = analyzeProgramEffects(options.program, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
-  }).summaries;
-  const callableSummaries = analyzeCallableSummaries(options.program, undefined, options.builtinRegistry).summaries;
+  });
+  const effectSummaries = effectAnalysis.summaries;
+  const callableSummaries = analyzeCallableSummaries(options.program, effectAnalysis, options.builtinRegistry).summaries;
   const resourceSummaries = analyzeResourceCallableSummaries(options.program);
   if (resourceSummaries.diagnostics.length > 0) throw new Error(`contract summary has invalid resource annotations: ${resourceSummaries.diagnostics.map(({ message }) => message).join("; ")}`);
   const exports = source.statements.flatMap((statement) => directExportCallables(statement).flatMap((exported) => {
@@ -617,10 +618,11 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   if (bundle.producer.sourceDigest !== sha256(options.source)) errors.push("contract summary source digest does not match producer source");
   let source: ts.SourceFile | undefined;
   try { source = checkedSource(options); } catch (cause) { errors.push(cause instanceof Error ? cause.message : String(cause)); }
-  const effectSummaries = source ? analyzeProgramEffects(options.program, {
+  const effectAnalysis = source ? analyzeProgramEffects(options.program, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
-  }).summaries : [];
-  const callableSummaries = source ? analyzeCallableSummaries(options.program, undefined, options.builtinRegistry).summaries : [];
+  }) : undefined;
+  const effectSummaries = effectAnalysis?.summaries ?? [];
+  const callableSummaries = source ? analyzeCallableSummaries(options.program, effectAnalysis, options.builtinRegistry).summaries : [];
   const resourceSummaries = source ? analyzeResourceCallableSummaries(options.program) : { summaries: [], diagnostics: [] };
   for (const diagnostic of resourceSummaries.diagnostics) errors.push(`invalid resource annotation: ${diagnostic.message}`);
   if (source) for (const item of bundle.exports) {
