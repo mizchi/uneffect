@@ -94,6 +94,18 @@ describe("backend-neutral callable summaries", () => {
             default: callback()
           }
         }
+        function deferredEither(left: Promise<number>, right: Promise<number>, callback: (value: number) => void, first: boolean) {
+          if (first) left.then(callback)
+          else right.then(callback)
+        }
+        function microtaskEither(callback: () => void, first: boolean) {
+          if (first) queueMicrotask(callback)
+          else queueMicrotask(callback)
+        }
+        function mixedLane(callback: () => void, promise: Promise<void>, deferred: boolean) {
+          if (deferred) promise.then(callback)
+          else callback()
+        }
         function unsupportedCallbackRest({ ...callbacks }: Record<string, () => void>) {
           return callbacks
         }
@@ -190,6 +202,12 @@ describe("backend-neutral callable summaries", () => {
         .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "exactly-1", timing: "inline" }));
       expect(analysis.summaries.find(({ name }) => name === "fallthroughSwitch")?.callbackParameters)
         .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "unknown", timing: "unknown" }));
+      expect(analysis.summaries.find(({ name }) => name === "deferredEither")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "0..1", timing: "promise-reaction", completion: "convert-throw-to-rejection" }));
+      expect(analysis.summaries.find(({ name }) => name === "microtaskEither")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "exactly-1", timing: "deferred", completion: "host-report-throw" }));
+      expect(analysis.summaries.find(({ name }) => name === "mixedLane")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "unknown", timing: "unknown", completion: "unknown" }));
       expect(analysis.summaries.find(({ name }) => name === "unsupportedCallbackRest")).toMatchObject({
         evidence: "unknown", unknownReasons: ["unsupported-callback-binding"],
       });

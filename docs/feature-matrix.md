@@ -80,6 +80,8 @@ One structurally exclusive `if/else` or non-fallthrough explicit-default
 `switch` also joins per-arm callback calls without losing enclosing
 conditional/loop multiplicity. Independent conditions and internal branch
 optionality remain unknown.
+Reviewed builtin forwarding uses the same join with composed inner
+cardinality, but only when timing and completion agree across every arm.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

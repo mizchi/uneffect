@@ -175,6 +175,23 @@ function exclusiveControlCardinality(
   return undefined;
 }
 
+function composeCardinality(outer: CallbackCardinality, inner: CallbackCardinality): CallbackCardinality {
+  if (outer === "unknown" || inner === "unknown") return "unknown";
+  if (outer === "0" || inner === "0") return "0";
+  if (outer === "0..n" || inner === "0..n") return "0..n";
+  if (outer === "0..1" || inner === "0..1") return "0..1";
+  return "exactly-1";
+}
+
+function alternativeCardinality(values: readonly CallbackCardinality[]): CallbackCardinality {
+  if (values.length === 0) return "0";
+  if (values.includes("unknown")) return "unknown";
+  if (values.includes("0..n")) return "0..n";
+  const unique = new Set(values);
+  if (unique.size === 1) return values[0]!;
+  return "0..1";
+}
+
 function libraryDeclaration(program: ts.Program, symbol: ts.Symbol | undefined): boolean {
   return symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
 }
@@ -414,21 +431,26 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       const forwardings = callbackForwardings.get(parameter.key) ?? [];
       let cardinality: CallbackCardinality = "0";
       let timing: CallbackTiming = "inline", completion: CallbackCompletion = "propagate-throw";
-      if (calls.length === 1 && forwardings.length === 0) cardinality = executionCardinality(calls[0]!, declaration);
-      else if (calls.length === 0 && forwardings.length === 1) {
-        const forwarded = forwardings[0]!;
-        const outer = executionCardinality(forwarded.call, declaration);
-        const inner = forwarded.invocation.cardinality;
-        cardinality = inner === "0" ? "0" : inner === "unknown" || outer === "unknown" ? "unknown"
-          : inner === "0..n" || outer === "0..n" ? "0..n"
-          : inner === "0..1" || outer === "0..1" ? "0..1" : "exactly-1";
-        timing = forwarded.invocation.timing;
-        completion = forwarded.invocation.completion;
-      } else if (calls.length > 1 && forwardings.length === 0) {
-        cardinality = exclusiveControlCardinality(calls, declaration) ?? "unknown";
-        if (cardinality === "unknown") { timing = "unknown"; completion = "unknown"; }
-      } else if (calls.length + forwardings.length > 1) {
-        cardinality = "unknown"; timing = "unknown"; completion = "unknown";
+      const sites = [
+        ...calls.map((call) => ({ call, cardinality: "exactly-1" as const, timing: "inline" as const, completion: "propagate-throw" as const })),
+        ...forwardings.map(({ call, invocation }) => ({ call, cardinality: invocation.cardinality, timing: invocation.timing, completion: invocation.completion })),
+      ];
+      if (sites.length === 1) {
+        const site = sites[0]!;
+        cardinality = composeCardinality(executionCardinality(site.call, declaration), site.cardinality);
+        timing = site.timing;
+        completion = site.completion;
+      } else if (sites.length > 1) {
+        const outer = exclusiveControlCardinality(sites.map(({ call }) => call), declaration);
+        const timings = new Set(sites.map((site) => site.timing));
+        const completions = new Set(sites.map((site) => site.completion));
+        if (!outer || timings.size !== 1 || completions.size !== 1) {
+          cardinality = "unknown"; timing = "unknown"; completion = "unknown";
+        } else {
+          cardinality = composeCardinality(outer, alternativeCardinality(sites.map((site) => site.cardinality)));
+          timing = sites[0]!.timing;
+          completion = sites[0]!.completion;
+        }
       }
       if (unknownReasons.has("callback-escape") || unknownReasons.has("dynamic-callback-dispatch")) cardinality = "unknown";
       return {

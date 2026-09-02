@@ -160,3 +160,8 @@ is preserved. A `switch` receives the same treatment only with an explicit
 default, one unconditional callback call per clause, and no fallthrough.
 Independent conditions, fallthrough, or nested conditional calls remain
 `unknown` rather than being added as if they were exclusive.
+The same join applies when every arm forwards the callback to a reviewed
+builtin. Outer branch multiplicity is composed with the builtin's own
+cardinality—for example, either of two `Promise.then` registrations remains
+`0..1`. Timing and completion must agree across all arms; mixing an inline call
+with a Promise reaction or host task stays `unknown`.

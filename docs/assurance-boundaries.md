@@ -338,6 +338,9 @@ The callable-summary cardinality join recognizes one mutually exclusive
 `if/else` or closed explicit-default `switch`. It is a structural control proof,
 not a general path-condition solver: fallthrough, independent predicates, and
 conditional calls inside an arm stay unknown.
+Reviewed builtin forwarding shares this structural join only when every arm
+has the same timing and completion semantics. Different async lanes are never
+collapsed into one callback guarantee.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

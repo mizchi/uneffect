@@ -926,6 +926,9 @@ same property is proved for arbitrary TypeScript.
   clause of one explicit-default `switch`, join to a single cardinality while
   retaining any enclosing conditional or loop multiplicity. Independent or
   internally conditional sites remain unknown.
+  Reviewed builtin callback forwardings use the same exclusive join, composing
+  outer and inner cardinality only when timing and completion match; mixed
+  async lanes remain unknown.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

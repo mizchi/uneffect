@@ -570,6 +570,10 @@ introducing another domain-local control-flow or alias model.
      closed explicit-default `switch`: preserve exactly-once versus enclosing
      conditional/repeated multiplicity, and reject fallthrough, nested
      conditional calls, or independent branches as unknown.
+   - [x] Apply the same exclusive-site join to reviewed builtin callback
+     forwarding. Compose outer control multiplicity with inner callback
+     cardinality, preserve a common timing/completion lane, and reject mixed
+     inline/Promise/host-task alternatives as unknown.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.
