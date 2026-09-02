@@ -913,6 +913,13 @@ introducing another domain-local control-flow or alias model.
      - [x] Separate root package/version identity from static package subpath
        import identity. Bind consumers by `(module specifier, export)` so equal
        export names at the root and a subpath cannot collide.
+     - [x] Preserve same-file export aliases, relative re-exports, transitive
+       `export *` barrels, default callables, and ordered public overload sets;
+       reject ambiguous barrels and any installed declaration-set drift.
+     - [x] Preserve generic arity and the exact public generic signature, then
+       accept TypeChecker-resolved concrete instantiations only after the full
+       installed declaration has matched. Constraint and type-parameter drift
+       remain blocking unknowns.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

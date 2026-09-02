@@ -28,7 +28,10 @@ describe("persisted contract summary bundles", () => {
         runtimeArtifacts: { items: { required: string[] } };
         typescriptEmit: { properties: { outputs: { items: { required: string[] } } } };
         exports: { items: { required: string[]; properties: {
-          implementation: { required: string[] }; overloads: { items: { required: string[] } };
+          genericArity: { minimum: number };
+          implementation: { required: string[] }; overloads: { items: { required: string[]; properties: {
+            genericArity: { minimum: number };
+          } } };
         } } };
       };
     };
@@ -40,6 +43,8 @@ describe("persisted contract summary bundles", () => {
     expect(schema.properties.exports.items.required).toEqual(expect.arrayContaining(["symbol", "signatureDigest", "artifactIds"]));
     expect(schema.properties.exports.items.properties.implementation.required).toEqual(["fileName", "sourceDigest"]);
     expect(schema.properties.exports.items.properties.overloads.items.required).toEqual(["signature", "digest"]);
+    expect(schema.properties.exports.items.properties.genericArity.minimum).toBe(1);
+    expect(schema.properties.exports.items.properties.overloads.items.properties.genericArity.minimum).toBe(1);
   });
 
   it("binds verified exported contracts to package, compiler, source, signature, and artifacts", async () => {
@@ -1056,6 +1061,55 @@ describe("persisted contract summary bundles", () => {
       strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
     });
+    expect(bindContractSummaryBundleToProgram(bundle, driftedProgram)).toMatchObject({
+      status: "unknown", exports: [], blockers: [expect.stringContaining("signature")],
+    });
+  });
+
+  it("binds TypeChecker-resolved instantiations of an exact generic declaration", () => {
+    const producerFile = "/src/generic.ts";
+    const producerSource = `
+      /* uneffect:effect none */
+      export function identity<T extends string | number>(value: T): T { return value }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/generic", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+    });
+    expect(bundle.exports[0]).toMatchObject({
+      signature: "<T extends string | number>(value: T): T", genericArity: 1,
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-generic-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "generic");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/generic", version: "1.0.0", types: "index.d.ts",
+    }));
+    const declarationFile = join(packageDirectory, "index.d.ts");
+    writeFileSync(declarationFile,
+      "export declare function identity<T extends string | number>(value: T): T\n");
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { identity } from "@example/generic"
+      identity("value")
+      identity(1)
+    `);
+    const options: ts.CompilerOptions = {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    };
+    const consumerProgram = ts.createProgram([consumerFile], options);
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
+      status: "verified", blockers: [], exports: [expect.objectContaining({
+        exportName: "identity", callSites: [expect.anything(), expect.anything()],
+      })],
+    });
+
+    writeFileSync(declarationFile,
+      "export declare function identity<T extends string>(value: T): T\n");
+    const driftedProgram = ts.createProgram([consumerFile], options);
     expect(bindContractSummaryBundleToProgram(bundle, driftedProgram)).toMatchObject({
       status: "unknown", exports: [], blockers: [expect.stringContaining("signature")],
     });

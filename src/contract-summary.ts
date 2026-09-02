@@ -46,8 +46,10 @@ export interface ContractSummaryExportV1 {
   declarationDigest: string;
   signature: string;
   signatureDigest: string;
+  /** Number of type parameters on the primary public signature. */
+  genericArity?: number;
   /** Ordered public overloads; the implementation signature is not exported. */
-  overloads?: Array<{ signature: string; digest: string }>;
+  overloads?: Array<{ signature: string; digest: string; genericArity?: number }>;
   parameters: string[];
   requires: string[];
   ensures: string[];
@@ -330,9 +332,12 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
       || !item.declarationSpan || !Number.isInteger(item.declarationSpan.start) || !Number.isInteger(item.declarationSpan.end)
       || typeof item.declarationDigest !== "string" || typeof item.signature !== "string"
       || typeof item.signatureDigest !== "string" || !Array.isArray(item.parameters)
+      || (item.genericArity !== undefined && (!Number.isInteger(item.genericArity) || item.genericArity <= 0))
       || (item.overloads !== undefined && (!Array.isArray(item.overloads) || item.overloads.length < 2
         || item.overloads.some((overload) => !overload || typeof overload.signature !== "string"
           || typeof overload.digest !== "string" || !/^[0-9a-f]{64}$/u.test(overload.digest)
+          || (overload.genericArity !== undefined
+            && (!Number.isInteger(overload.genericArity) || overload.genericArity <= 0))
           || sha256(overload.signature) !== overload.digest)
         || new Set(item.overloads.map(({ signature }) => signature)).size !== item.overloads.length
         || item.overloads[0]?.signature !== item.signature))
@@ -541,12 +546,14 @@ export function bindContractSummaryBundleToProgram(
     }
     if (!runtimeMatches) continue;
     const signatures = [...new Set(uses.map((use) => use.signature))];
-    const acceptedSignatures = summary.overloads ?? [{ signature: summary.signature, digest: summary.signatureDigest }];
+    const acceptedSignatures = summary.overloads
+      ?? [{ signature: summary.signature, digest: summary.signatureDigest, genericArity: summary.genericArity }];
     const accepted = new Set(acceptedSignatures
       .filter(({ signature, digest }) => sha256(signature) === digest)
       .map(({ signature }) => signature));
     const availableSets = [...new Set(uses.map(({ availableSignatures }) => canonical(availableSignatures)))];
-    if (signatures.length === 0 || signatures.some((signature) => !accepted.has(signature))
+    const hasGenericSignature = acceptedSignatures.some(({ genericArity }) => (genericArity ?? 0) > 0);
+    if (signatures.length === 0 || (!hasGenericSignature && signatures.some((signature) => !accepted.has(signature)))
       || availableSets.length !== 1
       || availableSets[0] !== canonical(acceptedSignatures.map(({ signature }) => signature))) {
       blockers.push(`contract summary signature for ${summary.symbol.export} does not match the installed declaration`);
@@ -687,7 +694,9 @@ function summaryParameterNames(node: DirectExportCallable["node"]): string[] {
   return node.parameters.map((parameter, index) => ts.isIdentifier(parameter.name) ? parameter.name.text : `$arg${index}`);
 }
 
-function publicSignatures(program: ts.Program, node: DirectExportCallable["node"]): Array<{ signature: string; digest: string }> {
+function publicSignatures(program: ts.Program, node: DirectExportCallable["node"]): Array<{
+  signature: string; digest: string; genericArity?: number;
+}> {
   const checker = program.getTypeChecker();
   const name = ts.isFunctionDeclaration(node) && node.name ? node.name
     : (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent)
@@ -696,10 +705,11 @@ function publicSignatures(program: ts.Program, node: DirectExportCallable["node"
   const signatures = symbol ? checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(symbol, node), ts.SignatureKind.Call) : [];
   const fallback = checker.getSignatureFromDeclaration(node);
   const selected = signatures.length > 0 ? signatures : fallback ? [fallback] : [];
-  const unique = new Map<string, { signature: string; digest: string }>();
+  const unique = new Map<string, { signature: string; digest: string; genericArity?: number }>();
   for (const signature of selected) {
     const text = checker.signatureToString(signature, node, ts.TypeFormatFlags.NoTruncation);
-    unique.set(text, { signature: text, digest: sha256(text) });
+    const genericArity = signature.typeParameters?.length ?? 0;
+    unique.set(text, { signature: text, digest: sha256(text), ...(genericArity > 0 ? { genericArity } : {}) });
   }
   return [...unique.values()];
 }
@@ -746,6 +756,7 @@ function describeExport(
     symbol: { module: moduleSpecifier, export: exportName }, functionName, evidence: "verified",
     declarationSpan: span, declarationDigest: sha256(declarationText),
     signature: signatureText, signatureDigest: sha256(signatureText),
+    ...(signatures[0]?.genericArity ? { genericArity: signatures[0].genericArity } : {}),
     ...(signatures.length > 1 ? { overloads: signatures } : {}),
     parameters: summaryParameterNames(node),
     requires, ensures, artifactIds: candidates.map(({ obligationId }) => obligationId).sort(),
@@ -906,6 +917,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     const signatures = publicSignatures(options.program, declaration);
     const signatureText = signatures[0]?.signature;
     if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest
+      || signatures[0]?.genericArity !== item.genericArity
       || canonical(signatures.length > 1 ? signatures : undefined) !== canonical(item.overloads)) {
       errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
     }

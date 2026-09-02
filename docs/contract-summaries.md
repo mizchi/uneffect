@@ -138,6 +138,14 @@ the installed declaration's complete ordered overload set to match. Added,
 removed, reordered, or changed overloads therefore fail closed even when the
 consumer happens to call only an unchanged overload.
 
+Generic exports retain their public type-parameter arity together with the
+complete TypeChecker-rendered declaration signature. Consumer calls may use
+different inferred instantiations only after the installed declaration's full
+signature set has matched exactly; changing a constraint, default, overload,
+or type-parameter list blocks the binding. This authenticates the declaration
+that TypeScript instantiated. It does not prove TypeScript's type system or
+infer a contract for an opaque dynamically selected callable.
+
 Effect-only exports are supported. Scoped capabilities, `Throw<E>`, and
 parameter-rooted `Mutate<typeof parameter.member>` use the same parser and
 call-site substitution as same-workspace summaries. The binding is supplied to
