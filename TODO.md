@@ -924,7 +924,7 @@ introducing another domain-local control-flow or alias model.
      - [x] Publish a one-level callable member of an exported builtin
        `Object.freeze({ ... })` literal with an explicit symbol path, and bind
        direct or immutable-alias consumer calls to the installed member
-       declaration. Mutable objects and shadowed freeze lookalikes fail closed;
+       declaration, including statically named `const` destructuring. Mutable objects and shadowed freeze lookalikes fail closed;
        structurally compatible non-export receivers remain `unknown`. This is
        recognition of existing code, not a runtime-freezing recommendation.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated

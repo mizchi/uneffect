@@ -12,7 +12,7 @@ import { analyzeResourceCallableSummaries } from "./resource-callable-typescript
 import type { ResourceCallableOperation, ResourceCallableSummary } from "./resource-protocol.js";
 import { builtinContractRegistry, type BuiltinContractRegistry, type SemanticModuleLedgerEntry } from "./builtin-contracts.js";
 import { inspectBuildOutputs } from "./build-output-integrity.js";
-import { resolveFrozenObjectLiteral, resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
+import { resolveFrozenObjectLiteral, stableCallableDeclaration } from "./stable-callable.js";
 
 export interface ContractCallbackSummaryV1 {
   index: number;
@@ -536,6 +536,17 @@ export function bindContractSummaryBundleToProgram(
         && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
         return hasRootPath(declaration.initializer, roots, path, new Set(seen).add(symbol));
       }
+      if (declaration && ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent)
+        && path.length > 0) {
+        const variable = declaration.parent.parent;
+        const keyNode = declaration.propertyName ?? (ts.isIdentifier(declaration.name) ? declaration.name : undefined);
+        const key = keyNode && (ts.isIdentifier(keyNode) || ts.isStringLiteralLike(keyNode)
+          || ts.isNumericLiteral(keyNode)) ? keyNode.text : undefined;
+        if (key === path[path.length - 1] && ts.isVariableDeclaration(variable) && variable.initializer
+          && ts.isVariableDeclarationList(variable.parent) && (variable.parent.flags & ts.NodeFlags.Const) !== 0) {
+          return hasRootPath(variable.initializer, roots, path.slice(0, -1), new Set(seen).add(symbol));
+        }
+      }
     }
     if (path.length === 0) return false;
     const expected = path[path.length - 1];
@@ -553,17 +564,16 @@ export function bindContractSummaryBundleToProgram(
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
         const signature = checker.getResolvedSignature(node);
-        const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
-        let symbol = resolveStableCallableSymbol(checker, node.expression) ?? checker.getSymbolAtLocation(lookup);
-        if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-        const declaration = symbol?.declarations?.[0];
-        if (declaration && signature && symbol) for (const [key, symbols] of allowedSymbols) if (symbols.has(symbol)) {
+        if (signature) for (const [key, symbols] of allowedSymbols) {
           const summary = bundle.exports.find((item) => key === bindingKey(item.symbol.module, item.symbol.export, item.symbol.path));
           const roots = allowedRoots.get(key);
           if (!summary || !roots || !hasRootPath(node.expression, roots, summary.symbol.path ?? [])) continue;
+          const symbol = [...symbols][0];
+          const declaration = symbol?.declarations?.[0];
+          if (!symbol || !declaration) continue;
           candidates.set(key, [...(candidates.get(key) ?? []), {
             declaration, signature: checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation),
-            availableSignatures: checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(symbol, lookup), ts.SignatureKind.Call)
+            availableSignatures: checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(symbol, declaration), ts.SignatureKind.Call)
               .map((available) => checker.signatureToString(available, declaration, ts.TypeFormatFlags.NoTruncation)),
             typeScriptValid: !semanticErrors.some((diagnostic) => diagnostic.start! < node.getEnd()
               && diagnostic.start! + diagnostic.length! > node.getStart(source)),

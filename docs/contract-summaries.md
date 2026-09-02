@@ -150,8 +150,8 @@ infer a contract for an opaque dynamically selected callable.
 
 One-level callable members of an exported builtin
 `Object.freeze({ ... })` literal can be published as an export plus a static
-symbol path, for example `telemetry.track`. Direct calls and immutable local
-aliases must retain the root exported receiver identity, resolve to the
+symbol path, for example `telemetry.track`. Direct calls, immutable local
+aliases, and statically named `const` object destructuring must retain the root exported receiver identity, resolve to the
 installed member declaration, and then use the ordinary
 external Effect/resource IR. An ordinary mutable object, computed key, getter,
 spread-built object, or a same-named user implementation of `Object.freeze`
@@ -161,6 +161,11 @@ than inheriting the package authority. Uneffect does not insert or recommend `Ob
 only consumes an immutability decision already present in the package. As with
 function exports, the producer claim remains trusted unless the optional exact
 emit/runtime evidence is supplied.
+
+The bound contract carries the exact accepted consumer call-site spans into
+Effect analysis. This is intentional: a declaration-compatible receiver that
+did not pass root-provenance checking cannot regain authority merely because
+TypeScript reports the same structural member declaration.
 
 Effect-only exports are supported. Scoped capabilities, `Throw<E>`, and
 parameter-rooted `Mutate<typeof parameter.member>` use the same parser and

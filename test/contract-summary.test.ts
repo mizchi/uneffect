@@ -1168,6 +1168,8 @@ describe("persisted contract summary bundles", () => {
       export function run(): void { telemetry.track("event") }
       const track = telemetry.track
       export function runAlias(): void { track("aliased") }
+      const { track: destructuredTrack } = telemetry
+      export function runDestructured(): void { destructuredTrack("destructured") }
       declare const fake: typeof telemetry
       export function runFake(): void { fake.track("not-the-export") }
     `);
@@ -1178,7 +1180,7 @@ describe("persisted contract summary bundles", () => {
     const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
     expect(binding).toMatchObject({
       status: "verified", blockers: [], exports: [expect.objectContaining({
-        exportName: "telemetry", callSites: [expect.anything(), expect.anything()],
+        exportName: "telemetry", callSites: [expect.anything(), expect.anything(), expect.anything()],
       })],
     });
     const analysis = analyzeProgramEffects(consumerProgram, {
@@ -1186,6 +1188,7 @@ describe("persisted contract summary bundles", () => {
     });
     expect(analysis.summaries.find(({ functionName }) => functionName === "run")?.effects.map(formatEffect)).toEqual(["Console"]);
     expect(analysis.summaries.find(({ functionName }) => functionName === "runAlias")?.effects.map(formatEffect)).toEqual(["Console"]);
+    expect(analysis.summaries.find(({ functionName }) => functionName === "runDestructured")?.effects.map(formatEffect)).toEqual(["Console"]);
     expect(analysis.summaries.find(({ functionName }) => functionName === "runFake")).toMatchObject({
       evidence: "unknown", effects: [], unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })],
     });

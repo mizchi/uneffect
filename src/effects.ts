@@ -1739,6 +1739,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   }));
   const returnedMemberFactories = new Map([...options.externalFunctionEffects ?? []].filter(([, contract]) =>
     contract.returnMembers?.some((member) => member.callbackParameters?.length)));
+  const authorizedExternalCalls = new Map<string, ExternalFunctionEffectContract>();
+  for (const contract of options.externalFunctionEffects?.values() ?? []) {
+    for (const callSite of contract.authorizedCallSites ?? []) authorizedExternalCalls.set(callSite, contract);
+  }
   if (returnedMemberFactories.size > 0) for (const source of program.getSourceFiles()) {
     const visitFactoryDeclarations = (node: ts.Node): void => {
       const key = `${source.fileName}:${node.getStart(source)}`;
@@ -1765,7 +1769,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const externalCallContracts = new Map<ts.CallExpression, ExternalFunctionEffectContract | undefined>();
   const resolveExternalCall = (call: ts.CallExpression): ExternalFunctionEffectContract | undefined => {
     if (externalCallContracts.has(call)) return externalCallContracts.get(call);
-    const contract = externalContractForCall(checker, call, options.externalFunctionEffects);
+    const source = call.getSourceFile();
+    const callSiteKey = `${source.fileName}:${call.getStart(source)}:${call.getEnd()}`;
+    const contract = externalContractForCall(checker, call, options.externalFunctionEffects)
+      ?? authorizedExternalCalls.get(callSiteKey);
     externalCallContracts.set(call, contract);
     return contract;
   };
