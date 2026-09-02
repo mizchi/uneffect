@@ -172,7 +172,11 @@ Static nested object/array paths may mix property and literal-index segments.
 Matching nested `const` object/tuple destructuring from a direct
 literal also preserves the stored resource identity, including renamed object
 bindings and object shorthand. Mutable bindings, defaults, rest elements,
-computed names, spreads, and non-literal destructuring sources are not admitted.
+computed names, and spreads are not admitted. A nested destructuring source may
+instead be a local `const` aggregate initialized from the same supported literal
+fragment, provided the source binding's only observation is that destructuring.
+Any other read, alias, call argument, mutation, or escape makes the handoff
+unknown.
 Equivalent optional terminal states exist for consume, release, and transfer.
 Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions

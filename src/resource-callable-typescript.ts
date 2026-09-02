@@ -257,7 +257,12 @@ function staticAggregateAccessPath(expression: ts.Expression): { root: ts.Identi
   return ts.isIdentifier(current) && keys.length > 0 ? { root: current, keys } : undefined;
 }
 
-function destructuredResourceValue(checker: ts.TypeChecker, identifier: ts.Identifier): ts.Expression | undefined {
+interface DestructuredResourcePath {
+  readonly source: ts.Expression;
+  readonly keys: readonly string[];
+}
+
+function destructuredResourcePath(checker: ts.TypeChecker, identifier: ts.Identifier): DestructuredResourcePath | undefined {
   const first = resourceValueSymbol(checker, identifier)?.valueDeclaration;
   if (!first || !ts.isBindingElement(first) || !ts.isIdentifier(first.name)) return undefined;
   let element: ts.BindingElement = first;
@@ -284,26 +289,30 @@ function destructuredResourceValue(checker: ts.TypeChecker, identifier: ts.Ident
   if (!variable || variable.name !== element.parent || !variable.initializer
     || !ts.isVariableDeclarationList(variable.parent)
     || (ts.getCombinedNodeFlags(variable.parent) & ts.NodeFlags.Const) === 0) return undefined;
-  return aggregateLiteralPathValue(variable.initializer, keys);
+  return { source: variable.initializer, keys };
 }
 
-/** Resolve a local aggregate path only when its container has no other observable use. */
-function stableAggregateResourceSlot(
+function destructuredResourceValue(checker: ts.TypeChecker, identifier: ts.Identifier): ts.Expression | undefined {
+  const path = destructuredResourcePath(checker, identifier);
+  return path && aggregateLiteralPathValue(path.source, path.keys);
+}
+
+function stableAggregatePathSlot(
   checker: ts.TypeChecker,
   fn: ts.FunctionLikeDeclaration,
-  expression: ts.Expression,
+  rootExpression: ts.Expression,
+  keys: readonly string[],
   resourceIdentity: (value: ts.Expression) => string | undefined,
 ): StableAggregateResourceSlot | undefined {
-  const path = staticAggregateAccessPath(expression);
-  if (!path) return undefined;
-  const root = path.root;
+  const root = unwrapResourceExpression(rootExpression);
+  if (!ts.isIdentifier(root)) return undefined;
   const rootSymbol = resolvedSymbol(checker, root);
   const declaration = rootSymbol?.valueDeclaration;
   if (!rootSymbol || !declaration || !ts.isVariableDeclaration(declaration) || !ts.isIdentifier(declaration.name)
     || !ts.isVariableDeclarationList(declaration.parent)
     || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0
     || !declaration.initializer) return undefined;
-  const storedExpression = aggregateLiteralPathValue(declaration.initializer, path.keys);
+  const storedExpression = aggregateLiteralPathValue(declaration.initializer, keys);
   if (!storedExpression) return undefined;
   let stable = true;
   const visit = (node: ts.Node): void => {
@@ -315,6 +324,18 @@ function stableAggregateResourceSlot(
   if (fn.body) visit(fn.body);
   const resource = stable ? resourceIdentity(storedExpression) : undefined;
   return resource ? { resource, storedExpression } : undefined;
+}
+
+/** Resolve a local aggregate path only when its container has no other observable use. */
+function stableAggregateResourceSlot(
+  checker: ts.TypeChecker,
+  fn: ts.FunctionLikeDeclaration,
+  expression: ts.Expression,
+  resourceIdentity: (value: ts.Expression) => string | undefined,
+): StableAggregateResourceSlot | undefined {
+  const path = staticAggregateAccessPath(expression);
+  if (!path) return undefined;
+  return stableAggregatePathSlot(checker, fn, path.root, path.keys, resourceIdentity);
 }
 
 /** Instantiates authenticated callable contracts at calls within one function owner. */
@@ -337,6 +358,13 @@ export function collectResourceCallableTransitionSites(
       || ts.isAsExpression(target) || ts.isTypeAssertionExpression(target)) target = target.expression;
     if (ts.isCallExpression(target) && acquisitionCalls.has(target)) {
       return `region:${target.getSourceFile().fileName}:${target.getStart()}`;
+    }
+    if (ts.isIdentifier(target)) {
+      const destructuredPath = destructuredResourcePath(checker, target);
+      if (destructuredPath && !aggregateLiteralPathValue(destructuredPath.source, destructuredPath.keys)) {
+        const slot = stableAggregatePathSlot(checker, fn, destructuredPath.source, destructuredPath.keys, resourceIdentity);
+        if (slot) return slot.resource;
+      }
     }
     const symbol = ts.isIdentifier(target) ? resourceValueSymbol(checker, target) : undefined;
     return symbol ? fulfilledAliases.get(symbol) ?? resourceArgumentId(checker, expression) : resourceArgumentId(checker, expression);
@@ -535,7 +563,14 @@ function auditAcquiredResourceReferences(
         && (ts.getCombinedNodeFlags(node.parent) & ts.NodeFlags.Const) !== 0) {
         const visitBinding = (binding: ts.BindingName): void => {
           if (ts.isIdentifier(binding)) {
-            const stored = destructuredResourceValue(checker, binding);
+            const path = destructuredResourcePath(checker, binding);
+            const direct = path && aggregateLiteralPathValue(path.source, path.keys);
+            const indirect = path && !direct ? stableAggregatePathSlot(checker, fn, path.source, path.keys, (value) => {
+              const target = unwrapResourceExpression(value);
+              const symbol = ts.isIdentifier(target) ? resourceValueSymbol(checker, target) : undefined;
+              return symbol ? aliases.get(symbol) : undefined;
+            }) : undefined;
+            const stored = direct ?? indirect?.storedExpression;
             const storedTarget = stored && unwrapResourceExpression(stored);
             const sourceSymbol = storedTarget && ts.isIdentifier(storedTarget) ? resourceValueSymbol(checker, storedTarget) : undefined;
             const targetSymbol = resourceValueSymbol(checker, binding);

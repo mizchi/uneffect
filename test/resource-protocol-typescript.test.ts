@@ -266,6 +266,8 @@ describe("TypeScript resource protocol CFG lowering", () => {
         /* uneffect:acquire return */ function tupleDestructuredReturned(): Handle { const handle = connect(); const [alias] = [handle] as const; return alias }
         /* uneffect:acquire return */ function nestedObjectDestructuredReturned(): Handle { const handle = connect(); const { nested: { handle: alias } } = { nested: { handle } }; return alias }
         /* uneffect:acquire return */ function nestedTupleDestructuredReturned(): Handle { const handle = connect(); const [[alias]] = [[handle]] as const; return alias }
+        /* uneffect:acquire return */ function stableSourceDestructuredReturned(): Handle { const handle = connect(); const holder = { nested: [{ handle }] } as const; const { nested: [{ handle: alias }] } = holder; return alias }
+        /* uneffect:acquire return */ function reusedSourceDestructuredReturned(): Handle { const handle = connect(); const holder = { handle }; inspect(holder); const { handle: alias } = holder; return alias }
         /* uneffect:acquire return */ function mutableDestructuredReturned(): Handle { const handle = connect(); let { handle: alias } = { handle }; return alias }
         /* uneffect:acquire return */ function selectedResource(flag: boolean): Handle { const left = connect(); const right = connect(); return flag ? left : right }
         /* uneffect:acquire return */ function mutableReturned(): Handle { let handle = connect(); return handle }
@@ -315,6 +317,8 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(evaluate("tupleDestructuredReturned")).toMatchObject({ status: "satisfied" });
       expect(evaluate("nestedObjectDestructuredReturned")).toMatchObject({ status: "satisfied" });
       expect(evaluate("nestedTupleDestructuredReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("stableSourceDestructuredReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("reusedSourceDestructuredReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("mutableDestructuredReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("selectedResource")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("mutableReturned")).toMatchObject({ status: "unsatisfied" });
