@@ -135,6 +135,11 @@ imports/re-exports, and direct properties of builtin-frozen static object
 literals. Runtime project lowering moves an alias contract to the resolved
 source callable rather than wrapping it.
 
+Builtin `Object.freeze` recognition is compatibility support for existing
+code, not an optimization or usage recommendation. Prefer the zero-runtime
+inline, immutable-alias, and statically screened local-container forms when
+they are sufficient.
+
 ## Temporal ownership and resource API placement
 
 `/* uneffect: ... */`, async diagnostics, and the high-level analyzers are

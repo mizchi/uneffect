@@ -74,6 +74,12 @@ export interface ExternalFunctionEffectContract {
     rejects?: readonly string[];
     contractEvidence?: "trusted" | "verified";
   };
+  returnMembers?: readonly {
+    key: string;
+    effects: readonly Effect[];
+    rejects?: readonly string[];
+    contractEvidence?: "trusted" | "verified";
+  }[];
   /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
   parameters?: readonly string[];
   functionName?: string;
@@ -91,6 +97,8 @@ export interface ExternalFunctionEffectContract {
     effectBound?: readonly Effect[];
   }[];
   reason?: string;
+  /** Internal instantiated member contract: substitute `this` with the concrete call receiver. */
+  receiverBound?: boolean;
 }
 export type ExternalModuleEffectContract = ExternalFunctionEffectContract;
 export type NetworkTransport = "fetch" | "script" | "beacon" | "websocket";
@@ -911,6 +919,73 @@ export function externalContractForCall(
   seen: Set<ts.Symbol> = new Set(),
 ): ExternalFunctionEffectContract | undefined {
   if (!contracts) return undefined;
+  const returnedMember = (
+    receiver: ts.Expression,
+    key: string,
+    visited: Set<ts.Symbol>,
+  ): ExternalFunctionEffectContract | undefined => {
+    let current = receiver;
+    while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+      || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)
+      || ts.isSatisfiesExpression(current)) current = current.expression;
+    let producer: ExternalFunctionEffectContract | undefined;
+    if (ts.isCallExpression(current)) producer = externalContractForCall(checker, current, contracts, visited);
+    else if (ts.isIdentifier(current)) {
+      let receiverSymbol = checker.getSymbolAtLocation(current);
+      if (receiverSymbol && (receiverSymbol.flags & ts.SymbolFlags.Alias) !== 0) receiverSymbol = checker.getAliasedSymbol(receiverSymbol);
+      if (!receiverSymbol || visited.has(receiverSymbol)) return undefined;
+      const declaration = receiverSymbol.valueDeclaration;
+      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+        || !ts.isIdentifier(declaration.name)) return undefined;
+      const nextVisited = new Set(visited).add(receiverSymbol);
+      let initializer = declaration.initializer;
+      while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+        || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)
+        || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+      producer = ts.isCallExpression(initializer)
+        ? externalContractForCall(checker, initializer, contracts, nextVisited) : undefined;
+      if (producer && producer.returnMembers) {
+        let references = 0, safe = true;
+        const allowed = new Set(producer.returnMembers.map((member) => member.key));
+        const screen = (node: ts.Node): void => {
+          let symbol = ts.isIdentifier(node) ? checker.getSymbolAtLocation(node) : undefined;
+          if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+          if (symbol === receiverSymbol) {
+            references++;
+            if (node === declaration.name) return;
+            const access = node.parent;
+            const member = ts.isPropertyAccessExpression(access) && access.expression === node ? access.name.text
+              : ts.isElementAccessExpression(access) && access.expression === node && access.argumentExpression
+                && (ts.isStringLiteralLike(access.argumentExpression) || ts.isNumericLiteral(access.argumentExpression))
+                ? access.argumentExpression.text : undefined;
+            if (!member || !allowed.has(member) || !ts.isCallExpression(access.parent) || access.parent.expression !== access) safe = false;
+            return;
+          }
+          ts.forEachChild(node, screen);
+        };
+        screen(declaration.getSourceFile());
+        if (!safe || references < 2) return undefined;
+      }
+    }
+    const member = producer?.returnMembers?.find((candidate) => candidate.key === key);
+    return member ? {
+      effects: member.effects, rejects: member.rejects, evidence: producer!.evidence,
+      contractEvidence: member.contractEvidence ?? producer!.contractEvidence,
+      functionName: `${producer!.functionName ?? "factory"}.${key}`,
+      receiverBound: true,
+    } : undefined;
+  };
+  const memberAccess = ts.isPropertyAccessExpression(call.expression) ? {
+    receiver: call.expression.expression, key: call.expression.name.text,
+  } : ts.isElementAccessExpression(call.expression) && call.expression.argumentExpression
+    && (ts.isStringLiteralLike(call.expression.argumentExpression) || ts.isNumericLiteral(call.expression.argumentExpression)) ? {
+      receiver: call.expression.expression, key: call.expression.argumentExpression.text,
+    } : undefined;
+  if (memberAccess) {
+    const member = returnedMember(memberAccess.receiver, memberAccess.key, seen);
+    if (member) return member;
+  }
   const location = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
   let symbol = ts.isElementAccessExpression(call.expression) && call.expression.argumentExpression
     && (ts.isStringLiteralLike(call.expression.argumentExpression) || ts.isNumericLiteral(call.expression.argumentExpression))
@@ -1033,7 +1108,8 @@ function hasExternalReturnedCallableCandidate(
       if (target && (target.flags & ts.SymbolFlags.Alias) !== 0) target = checker.getAliasedSymbol(target);
       for (const candidate of target?.declarations ?? []) {
         const source = candidate.getSourceFile();
-        if (contracts.get(`${source.fileName}:${candidate.getStart(source)}`)?.returnCallable) return true;
+        const contract = contracts.get(`${source.fileName}:${candidate.getStart(source)}`);
+        if (contract?.returnCallable || contract?.returnMembers?.length) return true;
       }
     }
     let found = false;
@@ -1130,6 +1206,11 @@ function instantiateExternalEffect(
     return region === undefined ? undefined : { kind: "mutate", region: `${region}${effect.region.slice(parameter.length)}` };
   }
   const root = regionRoot(effect.region);
+  if (root === "this" && contract.receiverBound
+    && (ts.isPropertyAccessExpression(call.expression) || ts.isElementAccessExpression(call.expression))) {
+    const receiver = addressableMutationArgumentRegion(call.expression.expression);
+    return receiver === undefined ? undefined : { kind: "mutate", region: `${receiver}${effect.region.slice("this".length)}` };
+  }
   const stable = contract.mutationRoots?.find((item) => item.root === root);
   if (stable) {
     if (stable.kind === "ambient") return effect;

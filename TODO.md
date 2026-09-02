@@ -585,6 +585,15 @@ introducing another domain-local control-flow or alias model.
      direct static dot/string-literal property call. Support multiple explicit
      properties; reject mutation, escape, computed keys, spreads, accessors,
      methods, and duplicate keys.
+   - [x] Persist callable members of one directly returned static object literal
+     and compose `const client = factory(); client.method()` by TypeChecker
+     identity plus a whole-file receiver-use screen. Preserve each member's
+     Effect, synchronous `Throw`, and awaited rejection; reject receiver
+     mutation/escape, dynamic selection, spread, accessor, computed/duplicate
+     producer members, and unresolved authority.
+     - [x] Instantiate a returned member's `Mutate<typeof this.path>` against
+       the concrete static receiver region while retaining unsupported receiver
+       identity as unknown.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.

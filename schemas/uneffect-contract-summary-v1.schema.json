@@ -79,6 +79,20 @@
                   "evidence": { "enum": ["inferred", "trusted", "verified"] }
                 }
               },
+              "returnMembers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["key", "effects", "evidence"],
+                  "properties": {
+                    "key": { "type": "string", "minLength": 1 },
+                    "effects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                    "rejects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                    "evidence": { "enum": ["inferred", "trusted", "verified"] }
+                  }
+                }
+              },
               "callbacks": {
                 "type": "array",
                 "items": { "$ref": "#/$defs/callback" }

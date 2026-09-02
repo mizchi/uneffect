@@ -352,6 +352,14 @@ One source-local plain `const` object registry is accepted without
 `Object.freeze` only under a whole-file use screen: every use must directly call
 an explicit static property. Mutation, escape, spread, getter/method syntax,
 duplicate keys, and dynamic lookup remain unknown.
+Factory-returned client objects are supported only for one direct static object
+literal and a direct write-screened `const` receiver. Explicit callable members
+carry may-effects and exception metadata; general classes, prototype methods,
+`this`-dependent refinements, fluent chains, and escaped clients are outside
+the claim.
+`this`-rooted member mutation effects are substituted with the proven receiver
+region; this does not imply general method binding or relational `this`
+semantics.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

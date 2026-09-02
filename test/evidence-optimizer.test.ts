@@ -1232,6 +1232,64 @@ describe("evidence and optimizer obligations", () => {
     }
   });
 
+  it("tracks a write-screened returned client object and rejects unstable receivers", () => {
+    const { program, source } = programOf(`
+      declare function createClient(): { value: number; report(message: string): void; update(): void }
+      const sharedClient = createClient()
+      /* uneffect:effect Console | Mutate<typeof sharedClient.value> */
+      export function stable() {
+        sharedClient.report("ok")
+        sharedClient["report"]("again")
+        sharedClient.update()
+      }
+      /* uneffect:effect Console */
+      export function mutated() {
+        const client = createClient()
+        client.report = () => undefined
+        client.report("unknown")
+      }
+      declare function retain(value: unknown): void
+      /* uneffect:effect Console */
+      export function escaped() {
+        const client = createClient()
+        retain(client)
+        client.report("unknown")
+      }
+      declare const key: "report"
+      /* uneffect:effect Console */
+      export function computed() {
+        const client = createClient()
+        client[key]("unknown")
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "createClient")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, contractEvidence: "trusted" as const,
+        functionName: "createClient", returnMembers: [{
+          key: "report", effects: [{ kind: "capability", name: "Console", arguments: [] }],
+          contractEvidence: "trusted" as const,
+        }, {
+          key: "update", effects: [{ kind: "mutate", region: "this.value" }],
+          contractEvidence: "trusted" as const,
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "stable")).toMatchObject({
+      effects: expect.arrayContaining([
+        { kind: "capability", name: "Console", arguments: [] },
+        { kind: "mutate", region: "sharedClient.value" },
+      ]), evidence: "verified",
+    });
+    for (const name of ["mutated", "escaped", "computed"]) {
+      expect(result.summaries.find((summary) => summary.functionName === name)).toMatchObject({
+        evidence: "unknown", unknownReasons: [{ code: "unknown-external-evidence" }],
+      });
+    }
+  });
+
   it("binds persisted evidence to the caller-owned builtin registry", () => {
     const { program, source } = programOf("export function identity(value: number) { return value }");
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;

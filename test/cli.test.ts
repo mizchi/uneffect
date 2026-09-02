@@ -178,10 +178,15 @@ describe("uneffect command line", () => {
       export function makeReporter(): (message: string) => void {
         return (message: string) => console.log(message)
       }
+      /* uneffect:effect none */
+      export function createClient(): { report(message: string): void } {
+        return { report(message: string): void { console.log(message) } }
+      }
     `;
     const consumerSource = `
-      import { addOne, choose, chooseLater, configure, once, report, reportArrow, update } from "@example/math"
+      import { addOne, choose, chooseLater, configure, createClient, once, report, reportArrow, update } from "@example/math"
       import { madeReporter } from "./reporter.js"
+      const client = createClient()
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result === value + 1 */
       export async function run(value: number): Promise<number> { return await addOne(value) }
@@ -209,6 +214,8 @@ describe("uneffect command line", () => {
       }
       /* uneffect:effect Console */
       export function runMadeReporter(message: string): void { madeReporter(message) }
+      /* uneffect:effect Console */
+      export function runClient(message: string): void { client.report(message) }
     `;
     try {
       mkdirSync(packageDirectory, { recursive: true });
@@ -232,6 +239,7 @@ describe("uneffect command line", () => {
         "export declare function choose(callback: () => void, ok: boolean): void;",
         "export declare function chooseLater(left: Promise<void>, right: Promise<void>, callback: () => void, first: boolean): Promise<void>;",
         "export declare function makeReporter(): (message: string) => void;",
+        "export declare function createClient(): { report(message: string): void };",
         "",
       ].join("\n"));
       const producerProgram = ts.createProgram([producerFile], {
@@ -255,6 +263,7 @@ describe("uneffect command line", () => {
       expect(checked.stderr).toContain("effects runChosen: Console");
       expect(checked.stderr).toContain("effects runChosenLater: Console");
       expect(checked.stderr).toContain("effects runMadeReporter: Console");
+      expect(checked.stderr).toContain("effects runClient: Console");
       const reported = capture();
       expect(await runCli(["check", "--contract-summary", summaryFile, "--json", consumerFile], reported)).toBe(exitCode.success);
       expect((JSON.parse(reported.stdout) as { assumptions: { entries: Array<{ domain: string }> } }).assumptions.entries)

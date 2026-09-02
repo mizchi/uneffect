@@ -184,3 +184,17 @@ literal property. Multiple explicit property assignments are supported.
 Mutation, passing or returning the container, computed keys, spreads,
 accessors, methods, and duplicate keys invalidate the proof and produce
 unknown external evidence.
+
+A factory may instead return one static object literal. Its explicit method and
+function-valued property bodies are persisted independently as
+`returnMembers`; non-callable data properties are allowed. A consumer's direct
+`const client = factory()` may call those members through static dot or literal
+keys when every receiver reference is such a call. Each member retains its own
+Effect, synchronous `Throw`, and awaited rejection. Producer spreads,
+accessors, computed or duplicate keys, and consumer mutation, escape, or
+dynamic selection fail closed. Stateful method effects are tracked, but
+general `this`-dependent relational contracts are not yet modeled.
+Member mutation effects rooted at `this` are instantiated against the concrete
+static receiver, so `Mutate<typeof this.value>` becomes
+`Mutate<typeof client.value>`. If the receiver has no stable addressable region,
+the mutation contract cannot be instantiated and evidence becomes unknown.

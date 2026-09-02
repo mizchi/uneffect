@@ -52,6 +52,13 @@ export interface CallableSummary {
     readonly rejects: readonly string[];
     readonly evidence: Exclude<EvidenceStatus, "unknown">;
   };
+  readonly returnMembers?: readonly {
+    readonly key: string;
+    readonly effects: readonly Effect[];
+    readonly throws: readonly string[];
+    readonly rejects: readonly string[];
+    readonly evidence: Exclude<EvidenceStatus, "unknown">;
+  }[];
   readonly evidence: EvidenceStatus;
   readonly unknownReasons: readonly string[];
 }
@@ -500,18 +507,44 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
     collectReturns(declaration.body!);
     if (returns.length !== 1 || !returns[0]!.expression) return summary;
     const expression = unwrap(returns[0]!.expression!);
-    let target: SupportedFunction | undefined;
-    if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) target = expression;
-    else if (ts.isIdentifier(expression)) {
+    const resolveReturned = (value: ts.Expression): SupportedFunction | undefined => {
+      const expression = unwrap(value);
+      if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) return expression;
+      if (!ts.isIdentifier(expression)) return undefined;
       const symbol = resolvedSymbol(checker, expression);
-      const value = symbol?.valueDeclaration;
-      if (value && ts.isFunctionDeclaration(value)) target = value;
-      else if (value && ts.isVariableDeclaration(value) && value.initializer
-        && ts.isVariableDeclarationList(value.parent) && (value.parent.flags & ts.NodeFlags.Const) !== 0) {
-        const initializer = unwrap(value.initializer);
-        if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) target = initializer;
+      const declarationValue = symbol?.valueDeclaration;
+      if (declarationValue && ts.isFunctionDeclaration(declarationValue)) return declarationValue;
+      else if (declarationValue && ts.isVariableDeclaration(declarationValue) && declarationValue.initializer
+        && ts.isVariableDeclarationList(declarationValue.parent) && (declarationValue.parent.flags & ts.NodeFlags.Const) !== 0) {
+        const initializer = unwrap(declarationValue.initializer);
+        if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) return initializer;
       }
+      return undefined;
+    };
+    if (ts.isObjectLiteralExpression(expression)) {
+      const keys: string[] = [];
+      const targets: Array<{ key: string; target: SupportedFunction }> = [];
+      for (const member of expression.properties) {
+        if ((ts.isPropertyAssignment(member) || ts.isMethodDeclaration(member)) && !ts.isComputedPropertyName(member.name)) {
+          const key = member.name.text;
+          keys.push(key);
+          const target = ts.isMethodDeclaration(member) ? member : resolveReturned(member.initializer);
+          if (target) targets.push({ key, target });
+          continue;
+        }
+        return summary;
+      }
+      if (new Set(keys).size !== keys.length || targets.length === 0) return summary;
+      const members = targets.flatMap(({ key, target }) => {
+        const returned = byId.get(`${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`);
+        return !returned || returned.evidence === "unknown" ? [] : [{
+          key, effects: returned.effects, throws: returned.throws, rejects: returned.rejects,
+          evidence: returned.evidence as Exclude<EvidenceStatus, "unknown">,
+        }];
+      });
+      return members.length === targets.length ? { ...summary, returnMembers: members } : summary;
     }
+    const target = resolveReturned(expression);
     if (!target) return summary;
     const returned = byId.get(`${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`);
     if (!returned || returned.evidence === "unknown") return summary;

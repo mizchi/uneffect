@@ -115,6 +115,19 @@ describe("backend-neutral callable summaries", () => {
           let callback = () => console.log("mutable")
           return callback
         }
+        function createClient() {
+          return {
+            report(message: string) { console.log(message) },
+            audit: (message: string) => console.log(message),
+            label: "client",
+          }
+        }
+        function spreadClient(extra: object) {
+          return { ...extra, report() { console.log("report") } }
+        }
+        function accessorClient() {
+          return { get report() { return () => console.log("report") } }
+        }
         function unsupportedCallbackRest({ ...callbacks }: Record<string, () => void>) {
           return callbacks
         }
@@ -222,6 +235,12 @@ describe("backend-neutral callable summaries", () => {
       });
       expect(analysis.summaries.find(({ name }) => name === "chooseCallback")?.returnCallable).toBeUndefined();
       expect(analysis.summaries.find(({ name }) => name === "mutableCallback")?.returnCallable).toBeUndefined();
+      expect(analysis.summaries.find(({ name }) => name === "createClient")?.returnMembers).toEqual([
+        expect.objectContaining({ key: "report", effects: [expect.objectContaining({ name: "Console" })] }),
+        expect.objectContaining({ key: "audit", effects: [expect.objectContaining({ name: "Console" })] }),
+      ]);
+      expect(analysis.summaries.find(({ name }) => name === "spreadClient")?.returnMembers).toBeUndefined();
+      expect(analysis.summaries.find(({ name }) => name === "accessorClient")?.returnMembers).toBeUndefined();
       expect(analysis.summaries.find(({ name }) => name === "unsupportedCallbackRest")).toMatchObject({
         evidence: "unknown", unknownReasons: ["unsupported-callback-binding"],
       });

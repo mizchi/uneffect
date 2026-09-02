@@ -236,7 +236,9 @@ Mutable destructuring, an unstable source container, rest patterns, and
 computed property patterns retain all candidate resources as
 `unstable-iterator-alias` rather than dropping the relationship.
 This is shallow local-slot provenance, not a general heap or deep immutability
-proof.
+proof. Recognition of `Object.freeze` exists for code that already uses it; it
+is not a recommendation to add a runtime freeze. The ordinary local-container
+write/escape proof is the preferred zero-runtime path.
 
 Local mutable identifier aliases use assignment-generation semantics rather
 than spelling. A straight-line `let active = first; active = second` resolves
