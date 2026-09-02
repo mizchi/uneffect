@@ -202,6 +202,18 @@ describe("effect checker", () => {
     expect(analyzeEffects("fs-promises-specific.ts", promiseSpecific)).toEqual([]);
   });
 
+  it("derives open read/write authority from literal flags and widens dynamic flags", () => {
+    const source = `
+      import { openSync } from "node:fs"
+      import { open } from "node:fs/promises"
+      /* uneffect:effect FsRead<"read.txt"> */ function readOnly() { return openSync("read.txt", "r") }
+      /* uneffect:effect FsWrite<"write.txt"> */ function writeOnly() { return openSync("write.txt", "w") }
+      /* uneffect:effect FsRead<"update.txt"> | FsWrite<"update.txt"> */ async function update() { return open("update.txt", "r+") }
+      /* uneffect:effect FsRead | FsWrite */ async function dynamic(path: string, flags: string) { return open(path, flags) }
+    `;
+    expect(analyzeEffects("fs-open-flags.ts", source)).toEqual([]);
+  });
+
   it("propagates capabilities from TypeChecker-resolved deferred callbacks", () => {
     const source = `
       import type { Server } from "node:net";

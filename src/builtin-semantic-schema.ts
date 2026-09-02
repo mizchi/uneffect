@@ -43,8 +43,14 @@ export type ResultRefinement =
   | { kind: "resource"; family: string }
   | { kind: "css-selector"; target: ValueProjector };
 
+export type SemanticCondition = {
+  readonly kind: "argument-literal-in";
+  readonly index: number;
+  readonly values: readonly string[];
+};
+
 export type SemanticPrimitive =
-  | { kind: "effect"; capability: string; scope?: ScopeProjector }
+  | { kind: "effect"; capability: string; scope?: ScopeProjector; when?: SemanticCondition }
   | { kind: "mutate"; target: ValueProjector }
   | { kind: "callback"; target: ValueProjector; timing: CallbackTiming; queue: CallbackQueue; cardinality: CallbackCardinality; completion?: CallbackCompletion; callable?: "required" | "optional"; returnDepth?: number; once?: ValueProjector; abortSignal?: ValueProjector; invocationArguments?: readonly ValueProjector[]; invocationRestArguments?: { from: number }; thisArgument?: ValueProjector }
   | { kind: "invoke-user-code" }
@@ -147,9 +153,17 @@ function validatePrimitive(value: unknown, context: string, depth = 0): Semantic
   const item = record(value, context);
   switch (item.kind) {
     case "effect":
-      fields(item, ["kind", "capability", "scope"], context);
+      fields(item, ["kind", "capability", "scope", "when"], context);
       text(item.capability, `${context} has a non-empty capability`);
       if (item.scope !== undefined) validateScope(item.scope, `${context}.scope`);
+      if (item.when !== undefined) {
+        const condition = record(item.when, `${context}.when`);
+        fields(condition, ["kind", "index", "values"], `${context}.when`);
+        oneOf(condition.kind, ["argument-literal-in"] as const, `${context}.when.kind`);
+        index(condition.index, `${context}.when.index`);
+        if (!Array.isArray(condition.values) || condition.values.length === 0) throw new Error(`${context}.when.values must be a non-empty array`);
+        condition.values.forEach((entry, conditionIndex) => text(entry, `${context}.when.values[${conditionIndex}]`));
+      }
       break;
     case "mutate": case "clone": fields(item, ["kind", "target"], context); validateTarget(item.target, `${context}.target`); break;
     case "transfer":

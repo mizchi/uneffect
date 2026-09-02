@@ -126,6 +126,8 @@ const deferredNetworkSemantics = (options: {
 
 const fsReadNames = ["access", "accessSync", "exists", "existsSync", "readFile", "readFileSync", "readdir", "readdirSync", "readlink", "readlinkSync", "realpath", "realpathSync", "stat", "statSync", "lstat", "lstatSync", "open", "openSync", "watch", "watchFile", "createReadStream"] as const;
 const fsWriteNames = ["appendFile", "appendFileSync", "chmod", "chmodSync", "chown", "chownSync", "link", "linkSync", "mkdir", "mkdirSync", "rename", "renameSync", "rm", "rmSync", "rmdir", "rmdirSync", "symlink", "symlinkSync", "truncate", "truncateSync", "unlink", "unlinkSync", "utimes", "utimesSync", "writeFile", "writeFileSync", "createWriteStream"] as const;
+const openReadFlags = ["r", "rs", "sr", "r+", "rs+", "sr+", "w+", "wx+", "xw+", "a+", "ax+", "xa+", "as+"] as const;
+const openWriteFlags = ["r+", "rs+", "sr+", "w", "wx", "xw", "w+", "wx+", "xw+", "a", "ax", "xa", "a+", "ax+", "xa+", "as", "as+"] as const;
 
 function nodeFsDefinitions(module: "node:fs" | "node:fs/promises"): ReviewedBuiltinSemantic[] {
   const callbacks = new Set(["access", "exists", "readFile", "readdir", "readlink", "realpath", "stat", "lstat", "open", "appendFile", "chmod", "chown", "link", "mkdir", "rename", "rm", "rmdir", "symlink", "truncate", "unlink", "utimes", "writeFile", "copyFile", "cp", "read", "write"]);
@@ -133,13 +135,16 @@ function nodeFsDefinitions(module: "node:fs" | "node:fs/promises"): ReviewedBuil
     read?: boolean; write?: boolean; readPathArgument?: number; writePathArgument?: number; mutateArgument?: number;
   }): BuiltinSemantics => {
     const primitives: SemanticPrimitive[] = [];
+    const openLike = name === "open" || name === "openSync";
     if (options.read) primitives.push({
       kind: "effect", capability: "FsRead",
       ...(options.readPathArgument === undefined ? {} : { scope: { kind: "filesystem-path", target: { kind: "argument", index: options.readPathArgument } } }),
+      ...(openLike ? { when: { kind: "argument-literal-in", index: 1, values: openReadFlags } as const } : {}),
     });
     if (options.write) primitives.push({
       kind: "effect", capability: "FsWrite",
       ...(options.writePathArgument === undefined ? {} : { scope: { kind: "filesystem-path", target: { kind: "argument", index: options.writePathArgument } } }),
+      ...(openLike ? { when: { kind: "argument-literal-in", index: 1, values: openWriteFlags } as const } : {}),
     });
     if (options.mutateArgument !== undefined) primitives.push({ kind: "mutate", target: { kind: "argument", index: options.mutateArgument } });
     if (module === "node:fs" && (callbacks.has(name) || name === "watch" || name === "watchFile")) {
@@ -170,7 +175,7 @@ function nodeFsDefinitions(module: "node:fs" | "node:fs/promises"): ReviewedBuil
   const descriptorReads = module === "node:fs" ? ["read", "readSync"] : [];
   const descriptorWrites = module === "node:fs" ? ["write", "writeSync"] : [];
   return [
-    ...reads.map((name) => reviewed("node", { symbol: { module, export: name }, semantics: semantics(name, { read: true, write: name === "open", readPathArgument: 0, writePathArgument: 0 }) })),
+    ...reads.map((name) => reviewed("node", { symbol: { module, export: name }, semantics: semantics(name, { read: true, write: name === "open" || name === "openSync", readPathArgument: 0, writePathArgument: 0 }) })),
     ...writes.map((name) => reviewed("node", { symbol: { module, export: name }, semantics: semantics(name, { write: true, writePathArgument: name === "symlink" ? 1 : 0 }) })),
     ...copies.map((name) => reviewed("node", { symbol: { module, export: name }, semantics: semantics(name, { read: true, write: true, readPathArgument: 0, writePathArgument: 1 }) })),
     ...descriptorReads.map((name) => reviewed("node", { symbol: { module, export: name }, semantics: semantics(name, { read: true, mutateArgument: 1 }) })),

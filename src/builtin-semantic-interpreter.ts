@@ -119,7 +119,13 @@ function interpretPrimitive(
   access: "read" | "write" | undefined,
 ): BuiltinSemanticEvent[] {
   switch (primitive.kind) {
-    case "effect": return [{ kind: "effect", capability: primitive.capability, ...(primitive.scope ? { scope: projectScope(primitive.scope, context) } : {}), source }];
+    case "effect": {
+      if (primitive.when?.kind === "argument-literal-in") {
+        const argument = context.arguments?.[primitive.when.index];
+        if (argument && ts.isStringLiteralLike(argument) && !primitive.when.values.includes(argument.text)) return [];
+      }
+      return [{ kind: "effect", capability: primitive.capability, ...(primitive.scope ? { scope: projectScope(primitive.scope, context) } : {}), source }];
+    }
     case "mutate": case "clone": case "transfer": {
       const target = projectValue(primitive.target, context);
       return target.status === "unknown"

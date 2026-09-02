@@ -69,6 +69,12 @@ and are substituted at call sites. Literal callers recover exact path
 authority; other resolved expressions conservatively require broad filesystem
 authority, while an invalid projector remains unknown.
 
+Effect primitives can carry an `argument-literal-in` condition. Node `open` and
+`openSync` use it to distinguish read-only, write-only, and read/write flag
+strings without an API-specific analyzer branch. A statically visible `"r"`
+therefore requires only `FsRead`, `"w"` only `FsWrite`, and `"r+"` both.
+Dynamic or numeric flags conservatively retain both capabilities.
+
 Node DNS, socket, HTTP, and server lifecycle definitions use generic network
 scope, callback, result, acquire, release, and protocol primitives. Host,
 connect-options, and HTTP URL/options projections are selected by typed catalog

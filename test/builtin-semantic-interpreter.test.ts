@@ -102,6 +102,17 @@ describe("generic builtin semantic interpreter", () => {
     }]);
   });
 
+  it("filters effects by literal arguments and keeps dynamic arguments conservative", () => {
+    const semantics: BuiltinSemantics = { schema: "uneffect-semantic-primitives/v1", primitives: [{
+      kind: "effect", capability: "FsWrite",
+      when: { kind: "argument-literal-in", index: 0, values: ["w", "r+"] },
+    }] };
+    const source = { symbol: { module: "test", export: "open" }, span: { start: 0, end: 10 } };
+    expect(interpretBuiltinCallSemantics(semantics, callOf('open("r")'), source)).toEqual([]);
+    expect(interpretBuiltinCallSemantics(semantics, callOf('open("w")'), source)).toMatchObject([{ kind: "effect", capability: "FsWrite" }]);
+    expect(interpretBuiltinCallSemantics(semantics, callOf("open(flags)"), source)).toMatchObject([{ kind: "effect", capability: "FsWrite" }]);
+  });
+
   it("keeps unsupported dynamic inputs as attributed unknown projections", () => {
     const call = callOf("run()"), semantics: BuiltinSemantics = {
       schema: "uneffect-semantic-primitives/v1",

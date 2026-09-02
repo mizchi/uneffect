@@ -57,6 +57,7 @@ describe("generic builtin semantic schema", () => {
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "sync", queue: "current", cardinality: "1", invocationRestArguments: { from: -1 } }] }, "non-negative integer"],
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "sync", queue: "current", cardinality: "1", completion: "swallow" }] }, "completion is unsupported"],
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "handle", target: { kind: "receiver" }, completion: "settlement" }] }, "completion is unsupported"],
+    [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "FsRead", when: { kind: "argument-literal-in", index: 1, values: [] } }] }, "non-empty array"],
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console" }, { capability: "Console", kind: "effect" }] }, "duplicate semantic primitive"],
   ])("fails closed for invalid semantic data %#", (value, message) => {
     expect(() => validateBuiltinSemantics(value)).toThrow(message);

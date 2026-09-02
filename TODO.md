@@ -460,6 +460,9 @@ introducing another domain-local control-flow or alias model.
        mutation, multiple awaits, and escape as unknown.
      - [x] Share that Promise-to-resource binding across builtin, local
        annotated, and authenticated package resource contracts.
+     - [x] Add generic literal-argument conditions to effect primitives and use
+       them for Node `open`/`openSync` flag-sensitive `FsRead`/`FsWrite`, while
+       retaining both permissions for dynamic and numeric flags.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only
