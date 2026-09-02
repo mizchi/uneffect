@@ -442,6 +442,46 @@ describe("TypeScript resource protocol CFG lowering", () => {
     expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({ status: "satisfied" });
   });
 
+  it.each([
+    "enabled && consume(body)",
+    "enabled ? consume(body) : undefined",
+    "consume?.(body)",
+    "void consume?.(body)",
+  ])("preserves expression-level conditional resource transitions: %s", (expression) => {
+    const { source, fn, sites } = fixture(`
+      function main(enabled: boolean) {
+        ${expression}
+      }
+    `);
+    const lowered = lowerResourceProtocolCfgInFunction(source, fn, model, sites);
+    expect(lowered.status).toBe("exact");
+    if (lowered.status !== "exact") return;
+    expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({ status: "unknown" });
+  });
+
+  it("fails closed when a conditional resource call is nested in an unsupported expression", () => {
+    const { source, fn, sites } = fixture(`
+      function main() {
+        identity(consume?.(body))
+      }
+    `);
+    expect(lowerResourceProtocolCfgInFunction(source, fn, model, sites)).toMatchObject({
+      status: "unknown", reason: "unsupported-control-flow",
+    });
+  });
+
+  it("proves a resource transition covered by both conditional-expression arms", () => {
+    const { source, fn, sites } = fixture(`
+      function main(enabled: boolean) {
+        enabled ? consume(body) : consume(body)
+      }
+    `);
+    const lowered = lowerResourceProtocolCfgInFunction(source, fn, model, sites);
+    expect(lowered.status).toBe("exact");
+    if (lowered.status !== "exact") return;
+    expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({ status: "satisfied" });
+  });
+
   it("routes normal and explicit throw paths through mandatory finally", () => {
     const { source, fn, sites } = fixture(`
       function main(fail: boolean) {

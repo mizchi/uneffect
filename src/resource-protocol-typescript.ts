@@ -288,6 +288,39 @@ function nearestStatement(node: ts.Node, boundary: ts.Node): ts.Statement | unde
   return undefined;
 }
 
+function hasConditionalExpressionPlacement(node: ts.Node, statement: ts.Statement): boolean {
+  for (let current: ts.Node | undefined = node; current && current !== statement; current = current.parent) {
+    if ((ts.isCallExpression(current) || ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current))
+      && current.questionDotToken) return true;
+    if (ts.isConditionalExpression(current)) return true;
+    if (ts.isBinaryExpression(current) && [
+      ts.SyntaxKind.AmpersandAmpersandToken,
+      ts.SyntaxKind.BarBarToken,
+      ts.SyntaxKind.QuestionQuestionToken,
+      ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+      ts.SyntaxKind.BarBarEqualsToken,
+      ts.SyntaxKind.QuestionQuestionEqualsToken,
+    ].includes(current.operatorToken.kind)) return true;
+  }
+  return false;
+}
+
+function supportsConditionalExpressionPlacement(node: ts.Node, statement: ts.ExpressionStatement): boolean {
+  for (let current: ts.Node = node; current.parent && current.parent !== statement; current = current.parent) {
+    const parent = current.parent;
+    if (ts.isParenthesizedExpression(parent) || ts.isNonNullExpression(parent) || ts.isAsExpression(parent)
+      || ts.isTypeAssertionExpression(parent) || ts.isAwaitExpression(parent)
+      || ts.isVoidExpression(parent)) continue;
+    if (ts.isConditionalExpression(parent)) continue;
+    if (ts.isBinaryExpression(parent) && [ts.SyntaxKind.AmpersandAmpersandToken,
+      ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken,
+      ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.BarBarEqualsToken,
+      ts.SyntaxKind.QuestionQuestionEqualsToken].includes(parent.operatorToken.kind)) continue;
+    return false;
+  }
+  return true;
+}
+
 /**
  * Lowers a deliberately small public-AST control-flow fragment. Operation
  * recognition stays in the caller; this function only places authenticated
@@ -309,6 +342,10 @@ export function lowerResourceProtocolCfgInFunction(
     }
     const statement = nearestStatement(site.node, body);
     if (!statement) return { status: "unknown", reason: "unplaced-transition", node: site.node.getText(source) };
+    if (hasConditionalExpressionPlacement(site.node, statement)
+      && (!ts.isExpressionStatement(statement) || !supportsConditionalExpressionPlacement(site.node, statement))) {
+      return { status: "unknown", reason: "unsupported-control-flow", node: site.node.getText(source) };
+    }
     siteStatements.set(site, statement);
   }
   const blocks = new Map<string, ResourceProtocolBlock>();
@@ -321,18 +358,28 @@ export function lowerResourceProtocolCfgInFunction(
     for (const site of selected) used.add(site);
     return selected;
   };
+  const sitesWithin = (node: ts.Expression): readonly ResourceTransitionSite[] => {
+    const selected = sites.filter((site) => !used.has(site) && siteStatements.get(site) === nearestStatement(node, body)
+      && site.node.getStart(source) >= node.getStart(source) && site.node.getEnd() <= node.getEnd())
+      .sort((left, right) => left.node.getStart(source) - right.node.getStart(source));
+    for (const site of selected) used.add(site);
+    return selected;
+  };
   const transitionsFor = (statement: ts.Statement): readonly ResourceProtocolTransition[] => sitesFor(statement).flatMap((site) => site.transitions);
-  const successorsFor = (statement: ts.Statement, normal: readonly string[], context: Context): readonly string[] => {
-    const selected = sitesFor(statement);
+  const successorsForSites = (selected: readonly ResourceTransitionSite[], normal: readonly string[], context: Context, anchor: ts.Node): readonly string[] => {
     const fulfillment = selected.flatMap((site) => site.fulfillmentTransitions ?? []);
     let normalSuccessors = normal;
     if (fulfillment.length > 0) {
-      const completion = id("fulfillment", statement);
+      const completion = id("fulfillment", anchor);
       blocks.set(completion, { id: completion, transitions: fulfillment, successors: normal });
       normalSuccessors = [completion];
     }
     return selected.some((site) => site.exceptionalCompletion === "throw")
       ? [...normalSuccessors, context.throwTarget] : normalSuccessors;
+  };
+  const successorsFor = (statement: ts.Statement, normal: readonly string[], context: Context): readonly string[] => {
+    const selected = sitesFor(statement);
+    return successorsForSites(selected, normal, context, statement);
   };
   const exit = id("exit");
   blocks.set(exit, { id: exit, transitions: [], successors: [] });
@@ -384,6 +431,43 @@ export function lowerResourceProtocolCfgInFunction(
     }
     return next;
   };
+  const lowerExpression = (input: ts.Expression, continuation: string, context: Context): string => {
+    let expression = input;
+    while (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
+      || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)
+      || ts.isAwaitExpression(expression)
+      || ts.isVoidExpression(expression)) expression = expression.expression;
+    if (ts.isConditionalExpression(expression)) {
+      const whenTrue = lowerExpression(expression.whenTrue, continuation, context);
+      const whenFalse = lowerExpression(expression.whenFalse, continuation, context);
+      const branch = id("conditional-expression", expression);
+      blocks.set(branch, { id: branch, transitions: [], successors: [whenTrue, whenFalse] });
+      return lowerExpression(expression.condition, branch, context);
+    }
+    if (ts.isBinaryExpression(expression) && [ts.SyntaxKind.AmpersandAmpersandToken,
+      ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken,
+      ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.BarBarEqualsToken,
+      ts.SyntaxKind.QuestionQuestionEqualsToken].includes(expression.operatorToken.kind)) {
+      const right = lowerExpression(expression.right, continuation, context);
+      const branch = id("short-circuit", expression);
+      blocks.set(branch, { id: branch, transitions: [], successors: [right, continuation] });
+      return lowerExpression(expression.left, branch, context);
+    }
+    const selected = sitesWithin(expression);
+    if (selected.length === 0) return continuation;
+    const execute = id("expression", expression);
+    blocks.set(execute, {
+      id: execute,
+      transitions: selected.flatMap((site) => site.transitions),
+      successors: successorsForSites(selected, [continuation], context, expression),
+    });
+    const optional = ts.isCallExpression(expression) && (ts.isOptionalChain(expression)
+      || ts.isOptionalChain(expression.expression));
+    if (!optional) return execute;
+    const branch = id("optional-chain", expression);
+    blocks.set(branch, { id: branch, transitions: [], successors: [execute, continuation] });
+    return branch;
+  };
   const lowerLoop = (statement: ts.IterationStatement, continuation: string, context: Context, label?: string): string => {
     const header = id("loop", statement);
     const labels = new Map(context.labels);
@@ -397,6 +481,10 @@ export function lowerResourceProtocolCfgInFunction(
   };
   const lowerStatement = (statement: ts.Statement, continuation: string, context: Context): string => {
     if (ts.isBlock(statement)) return lowerSequence(statement.statements, continuation, context);
+    if (ts.isExpressionStatement(statement) && sites.some((site) => siteStatements.get(site) === statement
+      && hasConditionalExpressionPlacement(site.node, statement))) {
+      return lowerExpression(statement.expression, continuation, context);
+    }
     if (ts.isIfStatement(statement)) {
       const whenTrue = lowerStatement(statement.thenStatement, continuation, context);
       const whenFalse = statement.elseStatement ? lowerStatement(statement.elseStatement, continuation, context) : continuation;

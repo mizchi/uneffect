@@ -541,6 +541,9 @@ introducing another domain-local control-flow or alias model.
      switch fallthrough/break, labeled break/continue, opaque nested
      declarations, and try/catch/finally. Mandatory finally preserves normal,
      explicit throw, return, break, and continue continuations.
+   - [x] Lower expression-statement short circuit, conditional expressions, and
+     optional calls as resource CFG choices; preserve wrappers and fail closed
+     when a conditional transition is nested in an unsupported expression.
    - [x] Add implicit synchronous-throw and directly awaited Promise-rejection edges from trusted or
      verified callable summaries; arbitrary calls must not enter catch merely
      because they may throw at runtime.

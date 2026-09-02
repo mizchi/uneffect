@@ -51,6 +51,14 @@ public-AST lowering handles blocks, sequential statements, `if`/`else`, direct
 opaque nested declarations, and try/catch/finally. Transition recognition
 remains in the reviewed frontend.
 
+Expression statements preserve short-circuit `&&`, `||`, and `??`, conditional
+expressions, and optional calls as explicit CFG choices. A transition present
+on only one executable expression path therefore joins to `unknown`; matching
+transitions in both conditional arms remain provable. Parenthesized, asserted,
+awaited, and `void`-wrapped forms retain this behavior. Conditional calls nested
+inside other unsupported expression shapes fail closed instead of being
+flattened into unconditional cleanup.
+
 Loops are nondeterministic zero-or-more resource-state paths; this proves
 neither termination nor fairness. Switch selection is conservatively branched
 across clauses while preserving fallthrough. Nested declarations do not execute

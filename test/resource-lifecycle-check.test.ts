@@ -19,6 +19,26 @@ function programFor(fileName: string, source: string): ts.Program {
 }
 
 describe("general resource lifecycle check", () => {
+  it("does not treat a short-circuited builtin release as unconditional cleanup", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-conditional-release-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function conditional(stream: ReadableStream<Uint8Array>, enabled: boolean) {
+          const reader = stream.getReader()
+          enabled && reader.releaseLock()
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toMatchObject([{
+        owner: "conditional", status: "unknown", evidence: "trusted",
+      }]);
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("surfaces valid, leaked, and post-release user-defined lifecycles through checkFiles", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-check-"));
     try {
