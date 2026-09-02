@@ -148,6 +148,8 @@ describe("uneffect command line", () => {
       export async function addOne(value: number): Promise<number> { return value + 1 }
       /* uneffect:effect Console */
       export function report(message: string): void { console.log(message) }
+      /* uneffect:effect Console */
+      export const reportArrow = (message: string): void => { console.log(message) }
       /* uneffect:effect Mutate<typeof target.value> | Throw<RangeError> */
       export function update(target: { value: number }): void {
         target.value += 1
@@ -161,12 +163,14 @@ describe("uneffect command line", () => {
       export function configure({ onDone }: { onDone: () => void }): void { onDone() }
     `;
     const consumerSource = `
-      import { addOne, configure, once, report, update } from "@example/math"
+      import { addOne, configure, once, report, reportArrow, update } from "@example/math"
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result === value + 1 */
       export async function run(value: number): Promise<number> { return await addOne(value) }
       /* uneffect:effect Console */
       export function reportIt(message: string): void { report(message) }
+      /* uneffect:effect Console */
+      export function reportArrowIt(message: string): void { reportArrow(message) }
       /* uneffect:effect Mutate<typeof state.value> | Throw<RangeError> */
       export function updateIt(state: { value: number }): void { update(state) }
       /* uneffect:effect Console */
@@ -186,6 +190,7 @@ describe("uneffect command line", () => {
       writeFileSync(join(packageDirectory, "index.d.ts"), [
         "export declare function addOne(value: number): Promise<number>;",
         "export declare function report(message: string): void;",
+        "export declare const reportArrow: (message: string) => void;",
         "export declare function update(target: { value: number }): void;",
         "export declare function once(callback: () => void): void;",
         "export declare function configure({ onDone }: { onDone: () => void }): void;",
@@ -205,6 +210,7 @@ describe("uneffect command line", () => {
       expect(await runCli(["check", "--contract-summary", summaryFile, "--evidence", consumerFile], checked), checked.stderr).toBe(exitCode.success);
       expect(checked.stderr).toContain("proved run: ensures result === value + 1");
       expect(checked.stderr).toContain("effects reportIt: Console");
+      expect(checked.stderr).toContain("effects reportArrowIt: Console");
       expect(checked.stderr).toContain("effects updateIt: Mutate<typeof state.value> | Throw<RangeError>");
       expect(checked.stderr).toContain("effects runOnce: Console");
       expect(checked.stderr).toContain("effects runConfigured: Console");

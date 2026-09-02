@@ -878,6 +878,11 @@ same property is proved for arbitrary TypeScript.
   `uneffect-contract-summary/v1` producer/validator now emits package/version,
   TypeScript/compiler-options, source/declaration/signature digests, clauses,
   and supporting artifact IDs only for fully verified direct named exports.
+  A single immutable exported `const` initialized by an arrow or function
+  expression follows the same path as a function declaration. The binder uses
+  the root export symbol and resolved signature, so declaration-form changes in
+  emitted `.d.ts` do not erase the contract; mutable and compound variable
+  exports are excluded.
   It validates integrity against the producer Program. The consumer binder and
   repeatable CLI `--contract-summary` option require matching summary content,
   TypeScript version, exact installed package version, export signature, and

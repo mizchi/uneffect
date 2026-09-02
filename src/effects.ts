@@ -231,8 +231,10 @@ function annotationProblemDiagnostic(source: ts.SourceFile, problem: AnnotationD
 }
 
 function effectDeclaration(source: ts.SourceFile, node: ts.Node, localSchemas?: ReadonlyMap<string, EffectSchema>): ParsedEffectDeclaration {
-  const owner = (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isVariableDeclarationList(node.parent.parent) && ts.isVariableStatement(node.parent.parent.parent)
-    ? node.parent.parent.parent : node;
+  const variable = ts.isVariableDeclaration(node) ? node
+    : (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) ? node.parent : undefined;
+  const owner = variable && ts.isVariableDeclarationList(variable.parent) && ts.isVariableStatement(variable.parent.parent)
+    ? variable.parent.parent : node;
   return parseEffectDeclarations(leadingText(source, owner), "effect", owner.getFullStart(), localSchemas);
 }
 

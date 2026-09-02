@@ -221,7 +221,7 @@ export function bindContractSummaryBundleToProgram(
     blockers,
   };
   const checker = program.getTypeChecker();
-  const allowedDeclarations = new Map<string, Set<ts.Declaration>>();
+  const allowedSymbols = new Map<string, Set<ts.Symbol>>();
   const rememberModuleExports = (moduleSpecifier: ts.StringLiteralLike): void => {
     if (moduleSpecifier.text !== bundle.package.name) return;
     const moduleSymbol = checker.getSymbolAtLocation(moduleSpecifier);
@@ -229,9 +229,9 @@ export function bindContractSummaryBundleToProgram(
     for (const exported of checker.getExportsOfModule(moduleSymbol)) {
       const target = (exported.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(exported) : exported;
       if (!target.declarations?.length) continue;
-      const selected = allowedDeclarations.get(exported.getName()) ?? new Set<ts.Declaration>();
-      for (const declaration of target.declarations) selected.add(declaration);
-      allowedDeclarations.set(exported.getName(), selected);
+      const selected = allowedSymbols.get(exported.getName()) ?? new Set<ts.Symbol>();
+      selected.add(target);
+      allowedSymbols.set(exported.getName(), selected);
     }
   };
   for (const source of program.getSourceFiles()) {
@@ -245,17 +245,20 @@ export function bindContractSummaryBundleToProgram(
     };
     visit(source);
   }
-  const candidates = new Map<string, Array<{ declaration: ts.Declaration; call: ts.CallExpression }>>();
+  const candidates = new Map<string, Array<{ declaration: ts.Declaration; signature: string; call: ts.CallExpression }>>();
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
-        const declaration = checker.getResolvedSignature(node)?.declaration;
-        const name = declaration && "name" in declaration && declaration.name
-          && (ts.isIdentifier(declaration.name) || ts.isStringLiteral(declaration.name))
-          ? declaration.name.text : undefined;
-        if (declaration && name && allowedDeclarations.get(name)?.has(declaration)) {
-          candidates.set(name, [...(candidates.get(name) ?? []), { declaration, call: node }]);
+        const signature = checker.getResolvedSignature(node);
+        const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
+        let symbol = checker.getSymbolAtLocation(lookup);
+        if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+        const declaration = symbol?.declarations?.[0];
+        if (declaration && signature && symbol) for (const [exportName, symbols] of allowedSymbols) if (symbols.has(symbol)) {
+          candidates.set(exportName, [...(candidates.get(exportName) ?? []), {
+            declaration, signature: checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation), call: node,
+          }]);
         }
       }
       ts.forEachChild(node, visit);
@@ -288,8 +291,8 @@ export function bindContractSummaryBundleToProgram(
       blockers.push(`installed ${bundle.package.name} version ${installed.version} does not match summary ${bundle.package.version}`);
       continue;
     }
-    const signature = ts.isFunctionLike(declaration) ? checker.getSignatureFromDeclaration(declaration) : undefined;
-    const signatureText = signature ? checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation) : undefined;
+    const signatures = [...new Set(uses.map((use) => use.signature))];
+    const signatureText = signatures.length === 1 ? signatures[0] : undefined;
     if (!signatureText || signatureText !== summary.signature || sha256(signatureText) !== summary.signatureDigest) {
       blockers.push(`contract summary signature for ${summary.symbol.export} does not match the installed declaration`);
       continue;
@@ -332,28 +335,48 @@ function checkedSource(options: Pick<CreateContractSummaryBundleOptions, "fileNa
   return source;
 }
 
-function directExportName(node: ts.FunctionDeclaration): string | undefined {
-  if (!node.name || !node.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)
-    || node.modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword)) return undefined;
-  return node.name.text;
+type DirectExportCallable = {
+  node: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+  owner: ts.FunctionDeclaration | ts.VariableStatement;
+  exportName: string;
+};
+
+function directExportCallables(statement: ts.Statement): DirectExportCallable[] {
+  if (ts.isFunctionDeclaration(statement)) {
+    if (!statement.name || !statement.body
+      || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)
+      || statement.modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword)) return [];
+    return [{ node: statement, owner: statement, exportName: statement.name.text }];
+  }
+  if (!ts.isVariableStatement(statement)
+    || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)
+    || statement.declarationList.declarations.length !== 1
+    || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) return [];
+  const declaration = statement.declarationList.declarations[0]!;
+  if (!ts.isIdentifier(declaration.name) || !declaration.initializer) return [];
+  let initializer = declaration.initializer;
+  while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+    || ts.isTypeAssertionExpression(initializer) || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+  return ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)
+    ? [{ node: initializer, owner: statement, exportName: declaration.name.text }] : [];
 }
 
-function summaryParameterNames(node: ts.FunctionDeclaration): string[] {
+function summaryParameterNames(node: DirectExportCallable["node"]): string[] {
   return node.parameters.map((parameter, index) => ts.isIdentifier(parameter.name) ? parameter.name.text : `$arg${index}`);
 }
 
 function describeExport(
   program: ts.Program,
   source: ts.SourceFile,
-  node: ts.FunctionDeclaration,
+  exported: DirectExportCallable,
   packageName: string,
   artifacts: readonly VerificationArtifact[],
   effectSummary?: EffectSummary,
   callableSummary?: CallableSummary,
 ): ContractSummaryExportV1 | undefined {
-  const exportName = directExportName(node);
-  if (!exportName || !node.body) return undefined;
-  const comments = source.text.slice(node.getFullStart(), node.getStart(source));
+  const { node, owner, exportName } = exported;
+  if (!node.body) return undefined;
+  const comments = source.text.slice(owner.getFullStart(), owner.getStart(source));
   const ensures = extractAnnotations(comments, "ensures");
   const effectDeclared = extractAnnotations(comments, "effect").length > 0;
   if (ensures.length === 0 && !effectDeclared) return undefined;
@@ -401,13 +424,15 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
   const source = checkedSource(options);
   const effectSummaries = analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries;
   const callableSummaries = analyzeCallableSummaries(options.program).summaries;
-  const exports = source.statements.flatMap((node) => ts.isFunctionDeclaration(node)
-    ? [describeExport(options.program, source, node, options.packageName, options.artifacts,
+  const exports = source.statements.flatMap((statement) => directExportCallables(statement).flatMap((exported) => {
+    const node = exported.node;
+    return [describeExport(options.program, source, exported, options.packageName, options.artifacts,
       effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
         && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
       callableSummaries.find((summary) => summary.fileName === source.fileName
         && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()))]
-      .filter((item): item is ContractSummaryExportV1 => item !== undefined) : []);
+      .filter((item): item is ContractSummaryExportV1 => item !== undefined);
+  }));
   if (exports.length === 0) throw new Error("contract summary has no fully verified exported function contracts");
   const unsigned: Omit<ContractSummaryBundleV1, "contentDigest"> = {
     schema: "uneffect-contract-summary/v1",
@@ -435,15 +460,16 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   const effectSummaries = source ? analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries : [];
   const callableSummaries = source ? analyzeCallableSummaries(options.program).summaries : [];
   if (source) for (const item of bundle.exports) {
-    const declaration = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node)
-      && directExportName(node) === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
-    if (!declaration) { errors.push(`contract summary export ${item.symbol.export} does not match a direct exported function declaration`); continue; }
+    const exported = source.statements.flatMap(directExportCallables).find(({ node, exportName }) =>
+      exportName === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
+    if (!exported) { errors.push(`contract summary export ${item.symbol.export} does not match a direct exported callable declaration`); continue; }
+    const declaration = exported.node;
     const declarationText = source.text.slice(item.declarationSpan.start, item.declarationSpan.end);
     if (sha256(declarationText) !== item.declarationDigest) errors.push(`contract summary declaration digest for ${item.symbol.export} does not match source`);
     const signature = options.program.getTypeChecker().getSignatureFromDeclaration(declaration);
     const signatureText = signature ? options.program.getTypeChecker().signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation) : undefined;
     if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest) errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
-    const leading = source.text.slice(declaration.getFullStart(), declaration.getStart(source));
+    const leading = source.text.slice(exported.owner.getFullStart(), exported.owner.getStart(source));
     const declaresEffect = extractAnnotations(leading, "effect").length > 0;
     if (declaresEffect !== Boolean(item.effect)) {
       errors.push(`contract summary Effect payload for ${item.symbol.export} does not match its declaration`);

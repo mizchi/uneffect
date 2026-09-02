@@ -83,6 +83,12 @@ describe("persisted contract summary bundles", () => {
     const source = `
       /* uneffect:effect Console */
       export function report(message: string): void { console.log(message) }
+      /* uneffect:effect Console */
+      export const reportArrow = (message: string): void => { console.log(message) }
+      /* uneffect:effect Console */
+      export const reportFunction = function (message: string): void { console.log(message) }
+      /* uneffect:effect Console */
+      export let mutableReport = (message: string): void => { console.log(message) }
       /* uneffect:effect Mutate<typeof target.value> | Throw<RangeError> */
       export function update(target: { value: number }): void {
         target.value += 1
@@ -107,6 +113,14 @@ describe("persisted contract summary bundles", () => {
       requires: [],
       ensures: [],
       artifactIds: [],
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "reportArrow" },
+      functionName: "reportArrow",
+      effect: { effects: ["Console"], parameters: ["message"] },
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "reportFunction" },
+      functionName: "reportFunction",
+      effect: { effects: ["Console"], parameters: ["message"] },
     }), expect.objectContaining({
       symbol: { module: "@example/report", export: "update" },
       effect: {
@@ -138,6 +152,7 @@ describe("persisted contract summary bundles", () => {
         })],
       },
     })]));
+    expect(bundle.exports.some(({ symbol }) => symbol.export === "mutableReport")).toBe(false);
     expect(validateContractSummaryBundle(bundle, {
       packageName: "@example/report", packageVersion: "1.0.0", fileName, source, program,
     })).toEqual({ valid: true, errors: [] });

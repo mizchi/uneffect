@@ -1,8 +1,9 @@
 # Persisted contract summaries
 
 `uneffect-contract-summary/v1` is the shared package envelope for publishing
-verified scalar Hoare contracts and Effect summaries. A direct named export is
-included when at least one of those domains is explicitly declared and
+verified scalar Hoare contracts and Effect summaries. A direct named function
+export, or a single immutable exported `const` initialized by an arrow/function
+expression, is included when at least one of those domains is explicitly declared and
 verified. Hoare entries require every local obligation and transitive
 relational dependency to be `verified`; Effect entries require the declared
 upper bound to match the analyzed implementation.
@@ -98,6 +99,11 @@ signature, transparency log, or trusted publishing identity in v1. A
 successfully bound scalar call carries `trusted` relational evidence: the
 declaration binding is checked, while the persisted producer authority is not
 silently upgraded to an authenticated proof.
+
+Exported `const` callables are joined by the root package export symbol and the
+resolved call signature, not by a guessed variable name. Mutable `let`/`var`,
+multi-declaration export statements, reassigned aliases, and non-callable
+exports are not published.
 
 Finite object/tuple callback paths are supported when the consumer supplies an
 inline object/array literal whose selected leaf is an inline function or an

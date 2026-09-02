@@ -58,6 +58,9 @@ and container aliases fail closed. Persisted cardinality, non-synchronous
 completion modes, returned callables, and resource semantics remain
 unsupported. Unsupported persisted callback semantics block binding rather
 than being approximated.
+Direct immutable exported arrow/function-expression callables use the same
+package export-symbol and resolved-signature binding. Mutable or compound
+export declarations remain unsupported.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

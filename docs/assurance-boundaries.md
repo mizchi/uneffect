@@ -299,7 +299,9 @@ Update to the compact Hoare row: persisted scalar package contracts now have a
 consumer authorization fragment. `--contract-summary` binds a producer bundle
 to a TypeChecker-resolved call only after exact content, TypeScript, installed
 package-version, and signature checks, and records the selected declaration
-bytes. The resulting call relation remains `trusted`; it is not promoted to
+bytes. Direct function declarations and single immutable exported
+arrow/function-expression `const` bindings share this symbol-identity path;
+mutable or compound exports are excluded. The resulting call relation remains `trusted`; it is not promoted to
 authenticated producer proof. This does not authenticate producer-to-`.d.ts` emission, the installed
 tarball/runtime JavaScript, or the publisher. Verified Effect atoms are
 consumed through the ordinary external Effect IR. Direct callback timing and

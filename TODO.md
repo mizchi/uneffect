@@ -524,6 +524,9 @@ introducing another domain-local control-flow or alias model.
    - [x] Compose finite object/tuple callback paths through inline literal
      arguments; reject spread, dynamic, unresolved, and aliased containers as
      unknown instead of flattening them into a direct callback.
+   - [x] Publish and consume single immutable exported arrow/function-expression
+     callables by root-package export symbol plus resolved signature; exclude
+     mutable and compound variable exports.
    - [x] Add a versioned backend-neutral callable-summary API for direct
      functions and immutable local callable aliases, including may-effects,
      synchronous throws, direct Promise rejections, and mutated regions.
