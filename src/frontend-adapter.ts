@@ -3,10 +3,12 @@ import { createHash } from "node:crypto";
 import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinResultRefinement, type BuiltinSymbolKey } from "./builtin-contracts.js";
 import type { SourceSpan } from "./annotations.js";
 import type { BuiltinSemantics } from "./builtin-semantic-schema.js";
+import { hasStableRootPath } from "./stable-callable.js";
 
 export interface ResolvedCallSite {
   symbol: BuiltinSymbolKey;
   span: SourceSpan;
+  evidence?: "trusted" | "unknown";
   result?: BuiltinResultRefinement;
   semantics?: BuiltinSemantics;
   callableResult?: BuiltinContract["callableResult"];
@@ -64,6 +66,7 @@ export function isAuthenticatedProxyExpression(checker: ts.TypeChecker, expressi
 export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   readonly #checker: ts.TypeChecker;
   readonly #contracts: Map<ts.Symbol, BuiltinContract>;
+  readonly #rootedContracts: Map<ts.Symbol, Array<{ contract: BuiltinContract; root: ts.Symbol; path: readonly string[] }>>;
   readonly #declarationContracts: Map<ts.Declaration, BuiltinContract>;
   readonly #globalContracts: Map<string, BuiltinContract>;
   readonly #memberContracts: Map<string, BuiltinContract>;
@@ -76,6 +79,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   constructor(program: ts.Program, registry: BuiltinContractRegistry = builtinContractRegistry) {
     this.#checker = program.getTypeChecker();
     this.#contracts = new Map();
+    this.#rootedContracts = new Map();
     this.#declarationContracts = new Map();
     this.#globalContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module === "global").map((contract) => [contract.symbol.export, contract]));
     this.#memberContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module.startsWith("lib.")).map((contract) => [contract.symbol.export, contract]));
@@ -116,7 +120,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         const [exportName, memberName] = contract.symbol.export.split("#");
         const exported = exportName ? exports.get(exportName) : undefined;
         const exportedTarget = exported && (exported.flags & ts.SymbolFlags.Alias) !== 0 ? this.#checker.getAliasedSymbol(exported) : exported;
-        const symbol = memberName && exportedTarget
+        let symbol = memberName && exportedTarget
           ? this.#checker.getPropertyOfType(
               (exportedTarget.flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Interface)) !== 0
                 ? this.#checker.getDeclaredTypeOfSymbol(exportedTarget)
@@ -126,9 +130,22 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
               memberName,
             )
           : exportedTarget;
+        if (symbol && contract.symbol.path) for (const member of contract.symbol.path) {
+          const location: ts.Declaration | undefined = symbol.valueDeclaration ?? symbol.declarations?.[0];
+          symbol = location ? this.#checker.getPropertyOfType(
+            this.#checker.getTypeOfSymbolAtLocation(symbol, location), member,
+          ) : undefined;
+          if (!symbol) break;
+        }
         if (symbol) {
-          this.#contracts.set(symbol, contract);
-          for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
+          if (contract.symbol.path && exportedTarget) {
+            const rooted = this.#rootedContracts.get(symbol) ?? [];
+            rooted.push({ contract, root: exportedTarget, path: contract.symbol.path });
+            this.#rootedContracts.set(symbol, rooted);
+          } else {
+            this.#contracts.set(symbol, contract);
+            for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
+          }
         }
       }
     };
@@ -264,6 +281,24 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
     const symbol = targetSymbol(this.#checker, lookup);
     let contract = symbol ? this.#resolveMemberContract(lookup) : undefined;
+    if (!contract) {
+      const rooted = [...this.#rootedContracts.values()].flat().filter(({ root, path }) =>
+        hasStableRootPath(this.#checker, call.expression, new Set([root]), path));
+      if (rooted.length === 1) contract = rooted[0]!.contract;
+      else if (rooted.length > 1) return {
+        symbol: rooted[0]!.contract.symbol,
+        span: { start: call.getStart(), end: call.getEnd() },
+        evidence: "unknown",
+      };
+      else if (symbol) {
+        const candidates = this.#rootedContracts.get(symbol) ?? [];
+        if (candidates.length > 0) return {
+          symbol: candidates[0]!.contract.symbol,
+          span: { start: call.getStart(), end: call.getEnd() },
+          evidence: "unknown",
+        };
+      }
+    }
     if (!contract && ts.isPropertyAccessExpression(call.expression)) {
       const receiverType = this.#checker.getTypeAtLocation(call.expression.expression);
       if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0) {
@@ -313,6 +348,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     return {
       symbol: contract.symbol,
       span: { start: call.getStart(), end: call.getEnd() },
+      evidence: "trusted",
       result: (() => {
         const result = contract.semantics?.primitives.find((primitive) => primitive.kind === "result"
           && (primitive.refinement.kind === "fresh" || primitive.refinement.kind === "path"));

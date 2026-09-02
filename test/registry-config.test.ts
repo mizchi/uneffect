@@ -9,12 +9,17 @@ describe("versioned caller-owned registry configuration", () => {
   it("publishes a JSON Schema matching the runtime schema discriminator", () => {
     const schema = JSON.parse(readFileSync("schemas/uneffect-registry-v1.schema.json", "utf8")) as {
       $id: string; properties: { schema: { const: string }; builtinRegistryVersion: { const: number } };
-      $defs: { builtinContract: { properties: { semantics: { $ref: string } } }; builtinSemantics: { properties: { schema: { const: string } } } };
+      $defs: {
+        symbol: { properties: { path: { minItems: number } } };
+        builtinContract: { properties: { semantics: { $ref: string } } };
+        builtinSemantics: { properties: { schema: { const: string } } };
+      };
     };
     expect(schema.$id).toBe("https://github.com/mizchi/uneffect/schemas/uneffect-registry-v1.schema.json");
     expect(schema.properties.schema.const).toBe("uneffect-registry/v1");
     expect(schema.properties.builtinRegistryVersion.const).toBe(builtinContractRegistry.version);
     expect(schema.$defs.builtinContract.properties.semantics.$ref).toBe("#/$defs/builtinSemantics");
+    expect(schema.$defs.symbol.properties.path.minItems).toBe(1);
     expect(schema.$defs.builtinSemantics.properties.schema.const).toBe("uneffect-semantic-primitives/v1");
     const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { files: string[] };
     expect(manifest.files).toContain("schemas");
@@ -65,6 +70,11 @@ describe("versioned caller-owned registry configuration", () => {
           semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console" }] },
           capturedCallbackArguments: [0],
         },
+      }, {
+        symbol: { module: "@acme/telemetry", export: "telemetry", path: ["client", "send"] },
+        runtime: { kind: "package", version: "4.2.1" }, evidence: "trusted",
+        trustReason: "reviewed rooted member", trustOwner: "observability-platform",
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console" }] },
       }],
     }, builtinContractRegistry);
 
@@ -86,6 +96,9 @@ describe("versioned caller-owned registry configuration", () => {
       semantics: { primitives: [{ kind: "mutate", target: { kind: "argument", index: 0 } }, { kind: "result", refinement: { kind: "fresh" } }] },
       callableResult: { semantics: { primitives: [{ kind: "effect", capability: "Console" }] }, capturedCallbackArguments: [0] },
     });
+    expect(registry.contracts[3]).toMatchObject({
+      symbol: { module: "@acme/telemetry", export: "telemetry", path: ["client", "send"] },
+    });
   });
 
   it.each([
@@ -100,6 +113,15 @@ describe("versioned caller-owned registry configuration", () => {
       symbol: { module: "x", export: "f" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "verified",
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console" }] },
     }] }, "evidence must be trusted"],
+    [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
+      symbol: { module: "x", export: "f", path: [] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
+      trustReason: "reviewed", trustOwner: "platform",
+    }] }, "expected at least one member"],
+    [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
+      symbol: { module: "x", export: "api", path: ["value"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
+      trustReason: "reviewed", trustOwner: "platform",
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "property", read: [], write: [] }] },
+    }] }, "callable semantics, not property primitives"],
     [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
       symbol: { module: "x", export: "f" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Fetch<" }] },

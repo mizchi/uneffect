@@ -103,6 +103,20 @@ const builtinRegistry = extendBuiltinContractRegistry(builtinContractRegistry, {
     evidence: "trusted",
     trustReason: "reviewed pure envelope factory",
     trustOwner: "observability-platform",
+  }, {
+    symbol: {
+      module: "@acme/telemetry",
+      export: "telemetry",
+      path: ["client", "send"],
+    },
+    runtime: { kind: "package", version: "4.2.1" },
+    evidence: "trusted",
+    trustReason: "reviewed rooted client send authority",
+    trustOwner: "observability-platform",
+    semantics: {
+      schema: "uneffect-semantic-primitives/v1",
+      primitives: [{ kind: "effect", capability: 'Net<"intake.example.com:443">' }],
+    },
   }],
 })
 
@@ -128,6 +142,17 @@ package function contract must carry an exact package runtime. A missing or
 mismatched version leaves the call unresolved and records no builtin
 assumption. Omitting `semantics` explicitly reviews a zero-authority call; it
 does not prove arbitrary functions in that package pure.
+
+For package singleton/namespace APIs, `symbol.path` is a static path from the
+exact module export. Calls through direct access, immutable aliases, and
+statically named `const` destructuring retain that root provenance. A different
+export or value with the same structural TypeScript member type does not inherit
+the contract and is reported as unknown. Paths can be nested. This is distinct
+from the existing `Type#member` spelling used for reviewed instance protocols:
+the latter describes a receiver type, while `path` identifies one exported
+runtime object. Path contracts currently apply to calls; property-read/write
+primitives are rejected by the config loader until their root-provenance path
+is connected.
 
 A contract may declare `result({ kind: "fresh" })` in `semantics.primitives` when every call returns a
 new caller-owned object with no pre-existing aliases. In-place mutation of that

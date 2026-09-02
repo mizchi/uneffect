@@ -81,7 +81,12 @@
       "required": ["module", "export"],
       "properties": {
         "module": { "$ref": "#/$defs/nonEmptyString" },
-        "export": { "$ref": "#/$defs/nonEmptyString" }
+        "export": { "$ref": "#/$defs/nonEmptyString" },
+        "path": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
       }
     },
     "callableResult": {

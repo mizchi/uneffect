@@ -85,23 +85,35 @@ describe("TypeChecker symbol adapter", () => {
       }));
       writeFileSync(join(packageRoot, "index.d.ts"), `
         export declare const datadogRum: { addAction(name: string, context?: object): void };
+        export declare const fake: typeof datadogRum;
       `);
       writeFileSync(fileName, `
-        import { datadogRum } from "@datadog/browser-rum";
+        import { datadogRum, fake } from "@datadog/browser-rum";
         export function report() { datadogRum.addAction("critical_failure"); }
+        const addAction = datadogRum.addAction;
+        export function reportAlias() { addAction("aliased"); }
+        const { addAction: destructuredAction } = datadogRum;
+        export function reportDestructured() { destructuredAction("destructured"); }
+        export function reportFake() { fake.addAction("not_datadog"); }
       `);
       const program = ts.createProgram([fileName], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       const registry = (version: string) => extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
-        symbol: { module: "@datadog/browser-rum", export: "datadogRum#addAction" },
+        symbol: { module: "@datadog/browser-rum", export: "datadogRum", path: ["addAction"] },
         runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
         semantics: { schema: "uneffect-semantic-primitives/v1" as const, primitives: [{ kind: "effect" as const, capability: "Fetch<POST, \"https://browser-intake-datadoghq.com/api/v2/**\">" }] },
         trustReason: "reviewed Datadog wrapper delivery authority", trustOwner: "telemetry-platform",
       }] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "report"))
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportAlias"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportDestructured"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportFake"))
+        .toMatchObject({ evidence: "unknown", effects: [], unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.1") }).summaries.find((item) => item.functionName === "report"))
         .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
     } finally { rmSync(directory, { recursive: true, force: true }); }

@@ -6,6 +6,8 @@ import type { BuiltinSemantics } from "./builtin-semantic-schema.js";
 export interface BuiltinSymbolKey {
   module: string;
   export: string;
+  /** Static path from an exact module export; unlike legacy `Type#member`, this preserves receiver provenance. */
+  path?: readonly string[];
 }
 
 export interface PathResultRefinement {
@@ -112,7 +114,7 @@ export function extendBuiltinContractRegistry(
 export interface DeclarationFingerprint { library: string; compilerVersion: string; sha256: string }
 
 export function builtinSymbolId(symbol: BuiltinSymbolKey): string {
-  return `${symbol.module}#${symbol.export}`;
+  return `${symbol.module}#${symbol.export}${symbol.path?.length ? `#${symbol.path.join("#")}` : ""}`;
 }
 
 export function findBuiltinContract(registry: BuiltinContractRegistry, symbol: BuiltinSymbolKey): BuiltinContract | undefined {

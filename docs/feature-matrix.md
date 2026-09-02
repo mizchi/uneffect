@@ -51,7 +51,10 @@ compose through direct or immutable-alias calls; mutable objects and lookalike
 freeze functions fail closed. Uneffect does not insert or recommend freezing. The binder
 records the selected declaration bytes. Verified Effect-only exports also lower
 through the existing external Effect contract IR, including scoped
-capabilities, parameter-rooted `Mutate`, and `Throw<E>`. Calls remain `trusted`, not `verified`,
+capabilities, parameter-rooted `Mutate`, and `Throw<E>`. Caller-owned exact-version
+registry contracts may identify a nested callable by root export plus static
+`path`; direct/const-alias/destructured calls preserve receiver provenance and
+same-shaped values remain unknown. Calls remain `trusted`, not `verified`,
 because persisted producer authority is not authenticated. Producer-to-emitted `.d.ts` build
 linkage and publisher/tarball authenticity remain unsupported. An opt-in runtime
 artifact ledger binds explicitly listed package-relative emitted files to exact

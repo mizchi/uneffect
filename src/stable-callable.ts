@@ -101,6 +101,46 @@ export function resolveFrozenObjectLiteral(
   return frozenLiteralForReceiver(checker, input, new Set());
 }
 
+/** Verify that an expression reaches a specific exported root through const-only static member edges. */
+export function hasStableRootPath(
+  checker: ts.TypeChecker,
+  input: ts.Expression,
+  roots: ReadonlySet<ts.Symbol>,
+  path: readonly string[],
+  seen: ReadonlySet<ts.Symbol> = new Set(),
+): boolean {
+  const expression = unwrap(input);
+  const location = ts.isPropertyAccessExpression(expression) ? expression.name
+    : ts.isElementAccessExpression(expression) ? expression.argumentExpression : expression;
+  const symbol = location ? resolvedSymbol(checker, location) : undefined;
+  if (path.length === 0 && symbol && roots.has(symbol)) return true;
+  if (ts.isIdentifier(expression) && symbol && !seen.has(symbol)) {
+    const declaration = symbol.valueDeclaration;
+    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+      && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
+      return hasStableRootPath(checker, declaration.initializer, roots, path, new Set(seen).add(symbol));
+    }
+    if (declaration && ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent)
+      && path.length > 0) {
+      const variable = declaration.parent.parent;
+      const keyNode = declaration.propertyName ?? (ts.isIdentifier(declaration.name) ? declaration.name : undefined);
+      const key = keyNode && (ts.isIdentifier(keyNode) || ts.isStringLiteralLike(keyNode)
+        || ts.isNumericLiteral(keyNode)) ? keyNode.text : undefined;
+      if (key === path[path.length - 1] && ts.isVariableDeclaration(variable) && variable.initializer
+        && ts.isVariableDeclarationList(variable.parent) && (variable.parent.flags & ts.NodeFlags.Const) !== 0) {
+        return hasStableRootPath(checker, variable.initializer, roots, path.slice(0, -1), new Set(seen).add(symbol));
+      }
+    }
+  }
+  if (path.length === 0) return false;
+  const expected = path[path.length - 1];
+  const access = ts.isPropertyAccessExpression(expression) ? { receiver: expression.expression, key: expression.name.text }
+    : ts.isElementAccessExpression(expression) && expression.argumentExpression
+      && (ts.isStringLiteralLike(expression.argumentExpression) || ts.isNumericLiteral(expression.argumentExpression))
+      ? { receiver: expression.expression, key: expression.argumentExpression.text } : undefined;
+  return access?.key === expected && hasStableRootPath(checker, access.receiver, roots, path.slice(0, -1), seen);
+}
+
 /**
  * Resolves the declaration identity of a callable through references whose
  * target cannot change: import aliases, const alias chains, and own properties

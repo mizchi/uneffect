@@ -1213,7 +1213,10 @@ function hasConfiguredExternalContractCandidate(
   else if (ts.isImportClause(declaration)) members.unshift("default");
   const exportName = members.length > 1 ? `${members[0]}#${members.slice(1).join("#")}` : members[0];
   return registry.contracts.some((contract) => contract.symbol.module === moduleName
-    && contract.symbol.export === exportName);
+    && (contract.symbol.export === exportName
+      || contract.symbol.export === members[0]
+        && contract.symbol.path?.length === members.length - 1
+        && contract.symbol.path.every((member, index) => member === members[index + 1])));
 }
 
 function addressableMutationArgumentRegion(expression: ts.Expression): string | undefined {
@@ -1904,6 +1907,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand)) && globalVariableEffects(checker, child.operand) === undefined) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
+        if (resolvedBuiltin?.evidence === "unknown") unknownExternalEvidence.add(graphNode.id);
         const primitive = primitiveEffects(child, adapter, checker);
         for (const effect of primitive) {
           if (effect.kind === "throw" && (catches || asyncOwners.has(graphNode.id))) continue;
@@ -2565,6 +2569,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (ts.isCallExpression(node)) {
         if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !resolvedDynamicDependency) markUnknown("unresolved-dynamic-import", "a dynamic import specifier does not resolve to a selected relative source module");
         const resolvedBuiltin = adapter.resolveCall(node), primitive = primitiveEffects(node, adapter, checker);
+        if (resolvedBuiltin?.evidence === "unknown") markUnknown("unknown-external-evidence", "a reviewed member contract does not match this receiver root");
         for (const effect of primitive) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         const external = resolveExternalCall(node);
         if (external) {

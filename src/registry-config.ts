@@ -5,6 +5,7 @@ import { validateBuiltinSemantics } from "./builtin-semantic-schema.js";
 import type { BuiltinSemantics, SemanticPrimitive } from "./builtin-semantic-schema.js";
 import {
   builtinContractRegistry,
+  builtinSymbolId,
   extendBuiltinContractRegistry,
   type BuiltinContract,
   type BuiltinContractRegistry,
@@ -137,8 +138,11 @@ function builtin(value: unknown, path: string): BuiltinContract {
   const input = record(value, path);
   keys(input, ["symbol", "runtime", "evidence", "trustReason", "trustOwner", "trustExpiresOn", "semantics", "callableResult"], path);
   const symbol = record(input.symbol, `${path}.symbol`);
-  keys(symbol, ["module", "export"], `${path}.symbol`);
+  keys(symbol, ["module", "export", "path"], `${path}.symbol`);
   const module = string(symbol.module, `${path}.symbol.module`);
+  const memberPath = symbol.path === undefined ? undefined
+    : array(symbol.path, `${path}.symbol.path`).map((item, index) => string(item, `${path}.symbol.path[${index}]`));
+  if (memberPath?.length === 0) fail(`${path}.symbol.path`, "expected at least one member");
   const runtime = input.runtime === undefined ? undefined : record(input.runtime, `${path}.runtime`);
   if (runtime) keys(runtime, ["kind", runtime.kind === "node" ? "major" : "version"], `${path}.runtime`);
   const runtimeValue = runtime?.kind === "node"
@@ -153,6 +157,9 @@ function builtin(value: unknown, path: string): BuiltinContract {
   if (input.semantics !== undefined) {
     semanticsValue = registrySemantics(input.semantics, `${path}.semantics`);
   }
+  if (memberPath && semanticsValue?.primitives.some((primitive) => primitive.kind === "property")) {
+    fail(`${path}.semantics`, "symbol.path currently supports callable semantics, not property primitives");
+  }
   const callableResult = input.callableResult === undefined ? undefined : record(input.callableResult, `${path}.callableResult`);
   if (callableResult) keys(callableResult, ["semantics", "capturedCallbackArguments"], `${path}.callableResult`);
   const callableResultValue: BuiltinContract["callableResult"] = callableResult ? {
@@ -163,7 +170,7 @@ function builtin(value: unknown, path: string): BuiltinContract {
     }),
   } : undefined;
   return {
-    symbol: { module, export: string(symbol.export, `${path}.symbol.export`) },
+    symbol: { module, export: string(symbol.export, `${path}.symbol.export`), ...(memberPath ? { path: memberPath } : {}) },
     ...(runtimeValue === undefined ? {} : { runtime: runtimeValue }),
     evidence: trusted(input.evidence, `${path}.evidence`),
     trustReason: string(input.trustReason, `${path}.trustReason`),
@@ -206,7 +213,7 @@ export function parseBuiltinRegistryConfig(value: unknown, base: BuiltinContract
     declarations: input.declarations === undefined ? [] : array(input.declarations, "registry.declarations")
       .map((item, index) => declaration(item, `registry.declarations[${index}]`)),
   };
-  unique(extension.contracts!, (item) => `${item.symbol.module}#${item.symbol.export}`, "registry.contracts");
+  unique(extension.contracts!, (item) => builtinSymbolId(item.symbol), "registry.contracts");
   unique(extension.moduleInitializations!, (item) => item.module, "registry.moduleInitializations");
   unique(extension.declarations!, (item) => item.library, "registry.declarations");
   return extendBuiltinContractRegistry(base, extension);

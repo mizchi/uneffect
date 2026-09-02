@@ -12,7 +12,7 @@ import { analyzeResourceCallableSummaries } from "./resource-callable-typescript
 import type { ResourceCallableOperation, ResourceCallableSummary } from "./resource-protocol.js";
 import { builtinContractRegistry, type BuiltinContractRegistry, type SemanticModuleLedgerEntry } from "./builtin-contracts.js";
 import { inspectBuildOutputs } from "./build-output-integrity.js";
-import { resolveFrozenObjectLiteral, stableCallableDeclaration } from "./stable-callable.js";
+import { hasStableRootPath, resolveFrozenObjectLiteral, stableCallableDeclaration } from "./stable-callable.js";
 
 export interface ContractCallbackSummaryV1 {
   index: number;
@@ -511,51 +511,6 @@ export function bindContractSummaryBundleToProgram(
     declaration: ts.Declaration; signature: string; availableSignatures: string[]; call: ts.CallExpression;
     typeScriptValid: boolean;
   }>>();
-  const unwrap = (input: ts.Expression): ts.Expression => {
-    let expression = input;
-    while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-      || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)
-      || ts.isSatisfiesExpression(expression)) expression = expression.expression;
-    return expression;
-  };
-  const hasRootPath = (
-    input: ts.Expression,
-    roots: ReadonlySet<ts.Symbol>,
-    path: readonly string[],
-    seen: ReadonlySet<ts.Symbol> = new Set(),
-  ): boolean => {
-    const expression = unwrap(input);
-    const location = ts.isPropertyAccessExpression(expression) ? expression.name
-      : ts.isElementAccessExpression(expression) ? expression.argumentExpression : expression;
-    let symbol = location ? checker.getSymbolAtLocation(location) : undefined;
-    if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    if (path.length === 0 && symbol && roots.has(symbol)) return true;
-    if (ts.isIdentifier(expression) && symbol && !seen.has(symbol)) {
-      const declaration = symbol.valueDeclaration;
-      if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
-        && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
-        return hasRootPath(declaration.initializer, roots, path, new Set(seen).add(symbol));
-      }
-      if (declaration && ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent)
-        && path.length > 0) {
-        const variable = declaration.parent.parent;
-        const keyNode = declaration.propertyName ?? (ts.isIdentifier(declaration.name) ? declaration.name : undefined);
-        const key = keyNode && (ts.isIdentifier(keyNode) || ts.isStringLiteralLike(keyNode)
-          || ts.isNumericLiteral(keyNode)) ? keyNode.text : undefined;
-        if (key === path[path.length - 1] && ts.isVariableDeclaration(variable) && variable.initializer
-          && ts.isVariableDeclarationList(variable.parent) && (variable.parent.flags & ts.NodeFlags.Const) !== 0) {
-          return hasRootPath(variable.initializer, roots, path.slice(0, -1), new Set(seen).add(symbol));
-        }
-      }
-    }
-    if (path.length === 0) return false;
-    const expected = path[path.length - 1];
-    const access = ts.isPropertyAccessExpression(expression) ? { receiver: expression.expression, key: expression.name.text }
-      : ts.isElementAccessExpression(expression) && expression.argumentExpression
-        && (ts.isStringLiteralLike(expression.argumentExpression) || ts.isNumericLiteral(expression.argumentExpression))
-        ? { receiver: expression.expression, key: expression.argumentExpression.text } : undefined;
-    return access?.key === expected && hasRootPath(access.receiver, roots, path.slice(0, -1), seen);
-  };
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const semanticErrors = program.getSemanticDiagnostics(source)
@@ -567,7 +522,7 @@ export function bindContractSummaryBundleToProgram(
         if (signature) for (const [key, symbols] of allowedSymbols) {
           const summary = bundle.exports.find((item) => key === bindingKey(item.symbol.module, item.symbol.export, item.symbol.path));
           const roots = allowedRoots.get(key);
-          if (!summary || !roots || !hasRootPath(node.expression, roots, summary.symbol.path ?? [])) continue;
+          if (!summary || !roots || !hasStableRootPath(checker, node.expression, roots, summary.symbol.path ?? [])) continue;
           const symbol = [...symbols][0];
           const declaration = symbol?.declarations?.[0];
           if (!symbol || !declaration) continue;
