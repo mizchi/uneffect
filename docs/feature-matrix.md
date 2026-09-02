@@ -51,7 +51,9 @@ compose through direct or immutable-alias calls. Identifier-named object-literal
 members may also publish verified scalar Hoare clauses; a direct consumer `await`
 or synchronous scalar call instantiates their pre/postconditions through the
 same declaration binding and source-span evidence. Synchronous callee
-preconditions are emitted as separate call-site obligations. Mutable objects and lookalike
+preconditions are emitted as separate call-site obligations. Both synchronous
+and awaited Hoare composition require a root-provenance-authenticated call-site
+span; a structural lookalike or type assertion remains unsupported. Mutable objects and lookalike
 freeze functions fail closed. Uneffect does not insert or recommend freezing. The binder
 records the selected declaration bytes. Verified Effect-only exports also lower
 through the existing external Effect contract IR, including scoped

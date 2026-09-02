@@ -169,6 +169,7 @@ export interface ExternalContractBinding {
   declarationSpan: { start: number; end: number };
   declarationDigest: string;
   signature: string;
+  callSites: readonly { fileName: string; span: { start: number; end: number } }[];
   summary: {
     functionName: string;
     parameters: string[];
@@ -1421,7 +1422,9 @@ function typeCheckerAwaitRejections(
         const external = options.externalContractBindings?.find((binding) =>
           binding.declarationFileName === declarationSource.fileName
           && binding.declarationSpan.start === declaration.getStart(declarationSource)
-          && binding.declarationSpan.end === declaration.getEnd());
+          && binding.declarationSpan.end === declaration.getEnd()
+          && binding.callSites.some((site) => site.fileName === source.fileName
+            && site.span.start === call.getStart(source) && site.span.end === call.getEnd()));
         const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
         const rejected = extractAnnotations(comments, "temporal_rejects");
         const thrown = extractAnnotations(comments, "temporal_throws");
@@ -1459,7 +1462,9 @@ function typeCheckerAwaitRejections(
         const external = options.externalContractBindings?.find((binding) =>
           binding.declarationFileName === declarationSource.fileName
           && binding.declarationSpan.start === declaration.getStart(declarationSource)
-          && binding.declarationSpan.end === declaration.getEnd());
+          && binding.declarationSpan.end === declaration.getEnd()
+          && binding.callSites.some((site) => site.fileName === source.fileName
+            && site.span.start === call.getStart(source) && site.span.end === call.getEnd()));
         const resultDomain = scalarDomain(checker.getReturnTypeOfSignature(signature));
         if (external && resultDomain && external.summary.ensures.length > 0) {
           facts.set(key, {

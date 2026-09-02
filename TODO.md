@@ -895,6 +895,7 @@ introducing another domain-local control-flow or alias model.
   signature; retain resolved declaration bytes and fail closed on drift.
   - [x] Publish identifier-named members of recursively builtin-frozen object literals and compose their scalar Hoare clauses through direct consumer `await`, with declaration-span isolation for same-named siblings.
   - [x] Instantiate authenticated persisted scalar Hoare contracts at synchronous calls, including explicit call-precondition obligations and relational evidence.
+  - [x] Require root-provenance-authenticated call-site spans for persisted Hoare composition so structural lookalikes and `typeof` casts fail closed.
      Expose the path programmatically and through repeatable CLI
      `--contract-summary` inputs.
    - [x] Publish verified Effect-only exports in the same envelope and lower

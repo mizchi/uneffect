@@ -1419,5 +1419,29 @@ describe("persisted contract summary bundles", () => {
     expect(invalidVerification.artifacts).toEqual(expect.arrayContaining([
       expect.objectContaining({ status: "counterexample", obligation: expect.objectContaining({ clause: "requires" }) }),
     ]));
+
+    const lookalikeFile = join(directory, "lookalike.ts");
+    const lookalikeSource = `
+      import { math } from "@example/sync-math-api"
+      function authorized(value: number): number { return math.addOne(value) }
+      const fake = { addOne(value: number): number { return value + 2 } } as typeof math
+      /* uneffect:ensures result === value + 1 */
+      export function lookalike(value: number): number {
+        return fake.addOne(value)
+      }
+    `;
+    writeFileSync(lookalikeFile, lookalikeSource);
+    const lookalikeProgram = ts.createProgram([lookalikeFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const lookalikeBinding = bindContractSummaryBundleToProgram(bundle, lookalikeProgram);
+    expect(lookalikeBinding).toMatchObject({ status: "verified", exports: [{ callSites: [expect.anything()] }] });
+    const lookalikeVerification = await verifyContractObligations(lookalikeFile, lookalikeSource, undefined, lookalikeProgram, {
+      externalContractBindings: lookalikeBinding.exports,
+    });
+    expect(lookalikeVerification.artifacts).toEqual([
+      expect.objectContaining({ status: "unsupported", message: expect.stringContaining("fake.addOne(value)") }),
+    ]);
   });
 });

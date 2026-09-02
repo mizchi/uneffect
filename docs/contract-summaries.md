@@ -159,7 +159,10 @@ external Effect/resource IR. A scalar Hoare contract on an identifier-named
 member is verified against that method's own source span and can be instantiated
 at a synchronous scalar call or after a direct `await` at the consumer;
 callee preconditions become call-site obligations rather than assumptions, and
-same-named sibling methods cannot lend evidence. An ordinary or nested mutable object, computed key, getter,
+same-named sibling methods cannot lend evidence. Hoare lowering accepts only the
+call-site spans authenticated by the root-provenance binder, so a structural
+lookalike or `as typeof exportedRoot` cast cannot recover the member contract.
+An ordinary or nested mutable object, computed key, getter,
 spread-built object, or a same-named user implementation of `Object.freeze`
 is rejected. A structurally compatible value with the same imported member
 type is not the exported receiver: its call remains explicit `unknown` rather
