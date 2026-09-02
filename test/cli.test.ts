@@ -68,12 +68,15 @@ describe("uneffect command line", () => {
     expect(await runCli([
       "contract-summary", "--project", projectFile, "--entry", sourceFile,
       "--package-name", "@example/value", "--package-version", "1.0.0",
+      "--module-specifier", "@example/value/node",
       "--typescript-emit-root", directory, "--out", outputFile,
     ], io), io.stderr).toBe(exitCode.success);
     const summary = JSON.parse(readFileSync(outputFile, "utf8")) as {
-      package: { name: string }; typescriptEmit: { outputs: Array<{ packagePath: string }> };
+      package: { name: string }; exports: Array<{ symbol: { module: string } }>;
+      typescriptEmit: { outputs: Array<{ packagePath: string }> };
     };
     expect(summary.package.name).toBe("@example/value");
+    expect(summary.exports[0]?.symbol.module).toBe("@example/value/node");
     expect(summary.typescriptEmit.outputs.map(({ packagePath }) => packagePath).sort())
       .toEqual(["dist/index.d.ts", "dist/index.js"]);
 
@@ -82,6 +85,7 @@ describe("uneffect command line", () => {
     expect(await runCli([
       "contract-summary", "--project", projectFile, "--entry", sourceFile,
       "--package-name", "@example/value", "--package-version", "1.0.0",
+      "--module-specifier", "@example/value/node",
       "--typescript-emit-root", directory, "--out", outputFile,
     ], drifted)).toBe(exitCode.failed);
     expect(drifted.stderr).toContain("TypeScript emit is not exact");

@@ -73,6 +73,7 @@ npx uneffect contract-summary \
   --entry src/index.ts \
   --package-name @example/library \
   --package-version 1.2.3 \
+  --module-specifier @example/library/node \
   --typescript-emit-root . \
   --out uneffect-contract.json
 ```
@@ -83,6 +84,8 @@ root to match disk, and records all output digests. Use repeatable
 `--runtime-artifact package/path=file` only for additional reviewed files that
 are not plain TypeScript output. `--config` and repeatable `--semantics-module`
 use the same trusted registry inputs as `check`.
+Omit `--module-specifier` for the package root. When present it must be that
+package's own static subpath and becomes part of the TypeChecker binding key.
 `--resource-contract <resource.json>` binds one reviewed resource lifecycle
 artifact to the exact installed package/Node version and declaration bytes;
 repeat it for multiple exports. Accepted contracts remain trusted assumptions,

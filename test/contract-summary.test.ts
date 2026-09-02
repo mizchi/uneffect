@@ -783,4 +783,46 @@ describe("persisted contract summary bundles", () => {
       source: indirectSource, program: programFor(indirectFile, indirectSource), artifacts: [],
     })).toThrow(/no fully verified exported function contracts/u);
   });
+
+  it("binds a package subpath export without colliding with the root export", () => {
+    const producerFile = "/src/client.ts";
+    const producerSource = `/* uneffect:effect none */ export function connect(): string { return "client" }`;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/sdk", packageVersion: "1.0.0", moduleSpecifier: "@example/sdk/client",
+      fileName: producerFile, source: producerSource, program: producerProgram, artifacts: [],
+    });
+    expect(bundle.exports[0]?.symbol).toEqual({ module: "@example/sdk/client", export: "connect" });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-subpath-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "sdk");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/sdk", version: "1.0.0", exports: {
+        ".": { types: "./index.d.ts" }, "./client": { types: "./client.d.ts" },
+      },
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function connect(): number\n");
+    writeFileSync(join(packageDirectory, "client.d.ts"), "export declare function connect(): string\n");
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { connect as rootConnect } from "@example/sdk"
+      import { connect as clientConnect } from "@example/sdk/client"
+      rootConnect()
+      clientConnect()
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding).toMatchObject({ status: "verified", blockers: [] });
+    expect(binding.exports[0]?.callSites).toHaveLength(1);
+    expect(binding.exports[0]?.signature).toBe("(): string");
+
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/sdk", packageVersion: "1.0.0", moduleSpecifier: "@other/client",
+      fileName: producerFile, source: producerSource, program: producerProgram, artifacts: [],
+    })).toThrow(/module specifier must be the package root or a subpath/u);
+  });
 });

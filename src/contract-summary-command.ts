@@ -34,6 +34,7 @@ export const contractSummaryCommand: CliCommand = {
   arguments: "--project <tsconfig.json> --entry <file.ts> --package-name <name> --package-version <version> [options]",
   details: [
     "--out <file>  write JSON to a file; otherwise print it to stdout",
+    "--module-specifier <name/subpath>  publish this package root or subpath import identity",
     "--typescript-emit-root <dir>  require exact same-compiler .js/.d.ts output under this package root",
     "--runtime-artifact <package-path>=<file>  bind an additional reviewed runtime file; repeatable",
     "--config <registry.json>  load a caller-owned semantic registry",
@@ -43,6 +44,7 @@ export const contractSummaryCommand: CliCommand = {
     const { values, positionals } = parseCommandArgs(args, {
       project: { type: "string" }, entry: { type: "string" },
       "package-name": { type: "string" }, "package-version": { type: "string" },
+      "module-specifier": { type: "string" },
       out: { type: "string" }, "typescript-emit-root": { type: "string" },
       "runtime-artifact": { type: "string", multiple: true }, config: { type: "string" },
       "semantics-module": { type: "string", multiple: true },
@@ -66,7 +68,9 @@ export const contractSummaryCommand: CliCommand = {
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
     const verification = await verifyContractObligations(entry, source, undefined, program);
     const bundle = createContractSummaryBundle({
-      packageName, packageVersion, fileName: entry, source, program, artifacts: verification.artifacts,
+      packageName, packageVersion,
+      ...(values["module-specifier"] !== undefined ? { moduleSpecifier: String(values["module-specifier"]) } : {}),
+      fileName: entry, source, program, artifacts: verification.artifacts,
       builtinRegistry: registry,
       runtimeArtifacts: parseRuntimeArtifacts(values),
       ...(values["typescript-emit-root"] !== undefined

@@ -20,6 +20,8 @@ import {
 const bundle = createContractSummaryBundle({
   packageName: "@example/math",
   packageVersion: "1.2.3",
+  // Optional: publish one package subpath rather than the root import.
+  moduleSpecifier: "@example/math/scalar",
   fileName,
   source,
   program,
@@ -48,6 +50,7 @@ The equivalent package-facing CLI is:
 ```sh
 npx uneffect contract-summary --project tsconfig.build.json --entry src/index.ts \
   --package-name @example/math --package-version 1.2.3 \
+  --module-specifier @example/math/scalar \
   --typescript-emit-root . --out uneffect-contract.json
 ```
 
@@ -79,7 +82,17 @@ aliases, namespace imports, and source re-exports. It accepts a contract only wh
 declaration belongs to an installed package with the exact summarized name and
 version, exact root-package export identity, and its TypeChecker signature matches the producer signature. Evidence
 records the resolved declaration file, span, and SHA-256. The CLI exposes the
-same path:
+same path. The identities are checked separately:
+
+The root package identity (`package.name`) is distinct from the callable import
+identity (`symbol.module`). A summary may target the root or a normalized
+subpath such as `@example/math/scalar`; the latter must remain beneath the same
+package name. Binder keys include both module specifier and export name, so a
+root `connect` and `@example/math/client`'s `connect` cannot authorize each
+other. Absolute, empty, backslash, `.`/`..`, and unrelated package specifiers
+are rejected.
+
+Consume the summary with:
 
 ```sh
 npx uneffect check --project tsconfig.json \

@@ -895,6 +895,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Expose package summary publication as a strict CLI command with
        project/entry/package identity, exact TypeScript emit, optional reviewed
        runtime files, registry/module inputs, and deterministic JSON output.
+     - [x] Separate root package/version identity from static package subpath
+       import identity. Bind consumers by `(module specifier, export)` so equal
+       export names at the root and a subpath cannot collide.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

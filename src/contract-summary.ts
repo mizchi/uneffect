@@ -86,6 +86,8 @@ export interface ContractSummaryBundleV1 {
 export interface CreateContractSummaryBundleOptions {
   packageName: string;
   packageVersion: string;
+  /** Root package import or one of its explicit subpath import specifiers. */
+  moduleSpecifier?: string;
   fileName: string;
   source: string;
   program: ts.Program;
@@ -98,6 +100,7 @@ export interface CreateContractSummaryBundleOptions {
 export interface ValidateContractSummaryBundleOptions {
   packageName: string;
   packageVersion: string;
+  moduleSpecifier?: string;
   fileName: string;
   source: string;
   program: ts.Program;
@@ -191,6 +194,14 @@ function validPackagePath(packagePath: string): boolean {
   return packagePath.length > 0 && !packagePath.startsWith("/") && !packagePath.includes("\\")
     && packagePath.split("/").every((part) => part.length > 0 && part !== "." && part !== "..");
 }
+function packageModuleSpecifier(packageName: string, requested?: string): string {
+  const moduleSpecifier = requested ?? packageName;
+  const suffix = moduleSpecifier.startsWith(`${packageName}/`) ? moduleSpecifier.slice(packageName.length + 1) : undefined;
+  if (moduleSpecifier !== packageName && (suffix === undefined || !validPackagePath(suffix))) {
+    throw new Error(`contract summary module specifier must be the package root or a subpath of ${packageName}`);
+  }
+  return moduleSpecifier;
+}
 function runtimeArtifactLedger(
   artifacts: readonly { packagePath: string; fileName: string }[] | undefined,
 ): readonly { packagePath: string; digest: string }[] | undefined {
@@ -279,6 +290,8 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
     throw new Error(`malformed contract summary TypeScript emit ledger ${fileName}`);
   }
   for (const [index, item] of bundle.exports.entries()) {
+    try { packageModuleSpecifier(bundle.package.name, item?.symbol?.module); }
+    catch { throw new Error(`malformed contract summary export ${index} in ${fileName}`); }
     const validCallback = (callback: ContractCallbackSummaryV1): boolean =>
       Boolean(callback && typeof callback === "object"
         && Number.isInteger(callback.index) && callback.index >= 0
@@ -425,16 +438,19 @@ export function bindContractSummaryBundleToProgram(
   };
   const checker = program.getTypeChecker();
   const allowedSymbols = new Map<string, Set<ts.Symbol>>();
+  const bindingKey = (moduleSpecifier: string, exportName: string): string => `${moduleSpecifier}\0${exportName}`;
+  const summarizedModules = new Set(bundle.exports.map((item) => item.symbol.module));
   const rememberModuleExports = (moduleSpecifier: ts.StringLiteralLike): void => {
-    if (moduleSpecifier.text !== bundle.package.name) return;
+    if (!summarizedModules.has(moduleSpecifier.text)) return;
     const moduleSymbol = checker.getSymbolAtLocation(moduleSpecifier);
     if (!moduleSymbol) return;
     for (const exported of checker.getExportsOfModule(moduleSymbol)) {
       const target = (exported.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(exported) : exported;
       if (!target.declarations?.length) continue;
-      const selected = allowedSymbols.get(exported.getName()) ?? new Set<ts.Symbol>();
+      const key = bindingKey(moduleSpecifier.text, exported.getName());
+      const selected = allowedSymbols.get(key) ?? new Set<ts.Symbol>();
       selected.add(target);
-      allowedSymbols.set(exported.getName(), selected);
+      allowedSymbols.set(key, selected);
     }
   };
   for (const source of program.getSourceFiles()) {
@@ -458,8 +474,8 @@ export function bindContractSummaryBundleToProgram(
         let symbol = checker.getSymbolAtLocation(lookup);
         if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
         const declaration = symbol?.declarations?.[0];
-        if (declaration && signature && symbol) for (const [exportName, symbols] of allowedSymbols) if (symbols.has(symbol)) {
-          candidates.set(exportName, [...(candidates.get(exportName) ?? []), {
+        if (declaration && signature && symbol) for (const [key, symbols] of allowedSymbols) if (symbols.has(symbol)) {
+          candidates.set(key, [...(candidates.get(key) ?? []), {
             declaration, signature: checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation), call: node,
           }]);
         }
@@ -470,7 +486,7 @@ export function bindContractSummaryBundleToProgram(
   }
   const exports: BoundContractSummaryExportV1[] = [];
   for (const summary of bundle.exports) {
-    const uses = candidates.get(summary.symbol.export) ?? [];
+    const uses = candidates.get(bindingKey(summary.symbol.module, summary.symbol.export)) ?? [];
     const declarations = [...new Set(uses.map(({ declaration }) => declaration))];
     if (declarations.length === 0) continue;
     if (declarations.length !== 1) {
@@ -595,7 +611,7 @@ function describeExport(
   program: ts.Program,
   source: ts.SourceFile,
   exported: DirectExportCallable,
-  packageName: string,
+  moduleSpecifier: string,
   artifacts: readonly VerificationArtifact[],
   effectSummary?: EffectSummary,
   callableSummary?: CallableSummary,
@@ -626,7 +642,7 @@ function describeExport(
   const signatureText = checker.signatureToString(signature, node, ts.TypeFormatFlags.NoTruncation);
   const declarationText = source.text.slice(span.start, span.end);
   return {
-    symbol: { module: packageName, export: exportName }, functionName, evidence: "verified",
+    symbol: { module: moduleSpecifier, export: exportName }, functionName, evidence: "verified",
     declarationSpan: span, declarationDigest: sha256(declarationText),
     signature: signatureText, signatureDigest: sha256(signatureText),
     parameters: summaryParameterNames(node),
@@ -679,6 +695,7 @@ function describeExport(
 
 export function createContractSummaryBundle(options: CreateContractSummaryBundleOptions): ContractSummaryBundleV1 {
   if (!options.packageName || !options.packageVersion) throw new Error("contract summary requires package name and version");
+  const moduleSpecifier = packageModuleSpecifier(options.packageName, options.moduleSpecifier);
   const source = checkedSource(options);
   const effectAnalysis = analyzeProgramEffects(options.program, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
@@ -695,7 +712,7 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
       const resource = resourceSummaries.summaries.find((summary) => summary.id === member.declarationId);
       return resource?.operations.length ? [{ key: member.key, operations: resource.operations }] : [];
     }) ?? [];
-    return [describeExport(options.program, source, exported, options.packageName, options.artifacts,
+    return [describeExport(options.program, source, exported, moduleSpecifier, options.artifacts,
       effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
         && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
       callable,
@@ -723,6 +740,9 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
 
 export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, options: ValidateContractSummaryBundleOptions): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
+  let moduleSpecifier = options.packageName;
+  try { moduleSpecifier = packageModuleSpecifier(options.packageName, options.moduleSpecifier); }
+  catch (cause) { errors.push(cause instanceof Error ? cause.message : String(cause)); }
   const { contentDigest, ...unsigned } = bundle;
   if (bundle.schema !== "uneffect-contract-summary/v1") errors.push(`unsupported contract summary schema ${bundle.schema}`);
   if (bundleDigest(unsigned) !== contentDigest) errors.push("contract summary content digest does not match its payload");
@@ -759,6 +779,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   const resourceSummaries = source ? analyzeResourceCallableSummaries(options.program) : { summaries: [], diagnostics: [] };
   for (const diagnostic of resourceSummaries.diagnostics) errors.push(`invalid resource annotation: ${diagnostic.message}`);
   if (source) for (const item of bundle.exports) {
+    if (item.symbol.module !== moduleSpecifier) errors.push(`contract summary module ${item.symbol.module} does not match ${moduleSpecifier}`);
     const exported = source.statements.flatMap(directExportCallables).find(({ node, exportName }) =>
       exportName === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
     if (!exported) { errors.push(`contract summary export ${item.symbol.export} does not match a direct exported callable declaration`); continue; }
