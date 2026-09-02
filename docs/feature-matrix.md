@@ -391,6 +391,13 @@ to the same clauses; its condition must be Boolean.
 Guarded throw/return, return/throw, and exhaustive `if/else` return/throw
 producers emit verified `Reject<Error>` plus the selected normal guard; computed
 or call-produced errors do not enter this rule.
+One scalar Promise-producing call may be stored in a `const` identifier and
+observed later through immutable identifier aliases. Call arguments and
+synchronous throws are snapshotted at creation, fulfillment/rejection occurs at
+await, and callee preconditions use only the call-time path. Repeated await is
+allowed; a Promise leaving lexical/function scope without observation is
+`unknown`. Conditional, mutable, property, destructured, and escaping Promise
+aliases remain unsupported.
 Mutable/computed/object captures, mutable callables,
 default/rest/destructured parameters, multi-statement bodies, and
 Promise/thenable-valued returns remain `unknown`.

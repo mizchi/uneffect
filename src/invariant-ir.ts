@@ -96,8 +96,16 @@ export class InvariantLoweringError extends Error {
 }
 
 type Environment = Map<string, LogicExpression>;
+interface PendingPromiseState {
+  fact: AwaitRejectionFact;
+  argumentValues: Array<LogicExpression | undefined>;
+  originSpan: { start: number; end: number };
+  observed: boolean;
+  preconditionsChecked: boolean;
+}
 interface PathState {
   env: Environment;
+  pendingPromises: Map<string, PendingPromiseState>;
   assumptions: LogicExpression[];
   completion: "normal" | "return" | "throw" | "reject" | "break" | "continue";
   breakTarget?: number;
@@ -1337,25 +1345,24 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
       ...(rejectionType ? { rejectionEffect: `Reject<${rejectionType}>` } : {}),
     };
   };
-  const visit = (node: ts.Node): void => {
-    if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression)
-      && standardPromiseMember(node.expression, "reject") && node.expression.arguments[0]) {
-      const argument = node.expression.arguments[0]!;
+  const analyzeCall = (call: ts.CallExpression, keyNode: ts.Node): void => {
+    const key = `${keyNode.getStart(source)}:${keyNode.getEnd()}`;
+    if (standardPromiseMember(call, "reject") && call.arguments[0]) {
+      const argument = call.arguments[0]!;
       const errorType = adapter.thrownErrorType(argument);
       const rejectionType = errorType === "unknown" ? checker.typeToString(checker.getTypeAtLocation(argument)) : errorType;
-      facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
+      facts.set(key, {
         effect: `Reject<${rejectionType}>`, definitelyRejects: true, synchronousThrows: [], evidence: "verified", payloadFromFirstArgument: true,
       });
-    } else if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression)
-      && standardPromiseMember(node.expression, "resolve") && node.expression.arguments.length === 1) {
-      const argument = node.expression.arguments[0]!;
+    } else if (standardPromiseMember(call, "resolve") && call.arguments.length === 1) {
+      const argument = call.arguments[0]!;
       const argumentType = checker.getTypeAtLocation(argument);
       const domain: NumericDomain | undefined = (argumentType.flags & ts.TypeFlags.BooleanLike) !== 0 ? "bool"
         : (argumentType.flags & ts.TypeFlags.NumberLike) !== 0 ? "int" : undefined;
-      const signature = checker.getResolvedSignature(node.expression), declaration = signature?.declaration;
+      const signature = checker.getResolvedSignature(call), declaration = signature?.declaration;
       if (domain && declaration) {
         const declarationSource = declaration.getSourceFile();
-        facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
+        facts.set(key, {
           definitelyRejects: false,
           synchronousThrows: [],
           evidence: "verified",
@@ -1372,8 +1379,8 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
           },
         });
       }
-    } else if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression)) {
-      const signature = checker.getResolvedSignature(node.expression);
+    } else {
+      const signature = checker.getResolvedSignature(call);
       const declaration = signature?.declaration;
       if (signature && declaration && checker.getPropertyOfType(checker.getReturnTypeOfSignature(signature), "then")) {
         const declarationSource = declaration.getSourceFile();
@@ -1399,10 +1406,10 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
           declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
         } satisfies AwaitFulfillmentFact : undefined;
         const inferred = contractEnsures.length === 0 && rejected.length === 0 && thrown.length === 0
-          ? inferredLocalFulfillment(node.expression, signature, declaration) : undefined;
+          ? inferredLocalFulfillment(call, signature, declaration) : undefined;
         const fulfillment = declaredFulfillment ?? inferred?.fulfillment;
         const rejectionEffect = rejected.length === 1 ? `Reject<${rejected[0]}>` : inferred?.rejectionEffect;
-        if (rejectionEffect || fulfillment) facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
+        if (rejectionEffect || fulfillment) facts.set(key, {
           ...(rejectionEffect ? { effect: rejectionEffect } : {}), definitelyRejects: false,
           synchronousThrows: [...new Set(thrown.map((errorType) => `Throw<${errorType}>`))].sort(),
           evidence: declaredFulfillment || rejected.length === 1 || thrown.length > 0 ? "trusted" : "verified",
@@ -1410,6 +1417,10 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
         });
       }
     }
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isAwaitExpression(node) && ts.isCallExpression(node.expression)) analyzeCall(node.expression, node);
+    if (ts.isCallExpression(node)) analyzeCall(node, node);
     ts.forEachChild(node, visit);
   };
   visit(source);
@@ -1750,61 +1761,73 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       incoming: PathState[],
       target?: { binding?: string; nullableGuard?: SemanticGuardFact; returnStatement?: ts.ReturnStatement },
     ): PathState[] => {
-      const fact = awaitRejections.get(`${awaited.getStart(source)}:${awaited.getEnd()}`);
-      if (!fact) throw new Error(`await requires a verified rejection or fulfillment summary: ${awaited.expression.getText(source)}`);
-      const call = ts.isCallExpression(awaited.expression) ? awaited.expression : undefined;
-      const originSpan = { start: awaited.getStart(source), end: awaited.getEnd() };
-      let fulfilled = incoming.map((path): PathState => ({ ...path, env: new Map(path.env) }));
-      if (target?.binding || target?.returnStatement) {
-        if (!fact.fulfillment || !call) throw new Error(`awaited value requires a scalar contract ensures summary: ${awaited.expression.getText(source)}`);
-        if (call.arguments.length !== fact.fulfillment.parameters.length) throw new Error(`awaited contract argument count does not match ${fact.fulfillment.functionName}`);
-        const fresh = `${fn}_await_result_${awaited.getStart(source)}`;
-        if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: fact.fulfillment.domain, sort: sort(fact.fulfillment.domain) });
-        if (target.nullableGuard) {
-          if (!target.binding || !target.nullableGuard.valueVariable) {
-            throw new Error(`awaited scalar fulfillment requires a scalar nullable target: ${awaited.expression.getText(source)}`);
-          }
-          if (sort(fact.fulfillment.domain) !== scalarExpressionSort(variable(target.nullableGuard.valueVariable))) {
-            throw new Error(`awaited scalar fulfillment does not match nullable target: ${target.binding} = ${awaited.expression.getText(source)}`);
-          }
+      const directCall = ts.isCallExpression(awaited.expression) ? awaited.expression : undefined;
+      const directFact = directCall ? awaitRejections.get(`${awaited.getStart(source)}:${awaited.getEnd()}`) : undefined;
+      const binding = ts.isIdentifier(awaited.expression) ? awaited.expression.text : undefined;
+      const settle = (path: PathState): PathState[] => {
+        const pending = binding ? path.pendingPromises.get(binding) : undefined;
+        const fact = directFact ?? pending?.fact;
+        if (!fact) throw new Error(`await requires a verified rejection or fulfillment summary: ${awaited.expression.getText(source)}`);
+        const originSpan = pending?.originSpan ?? { start: awaited.getStart(source), end: awaited.getEnd() };
+        const argumentValues = pending?.argumentValues ?? directCall?.arguments.map((argument) => {
+          try { return substitute(logic(argument, pipeBindings, semanticGuards, semanticValues), path.env); } catch { return undefined; }
+        }) ?? [];
+        const pendingPromises = new Map(path.pendingPromises);
+        if (pending) {
+          const observed: PendingPromiseState = { ...pending, observed: true };
+          for (const [name, candidate] of pendingPromises) if (candidate === pending) pendingPromises.set(name, observed);
         }
-        fulfilled = fulfilled.map((path): PathState => {
-          const summaryEnv: Environment = new Map([["result", variable(fresh)]]);
-          for (let index = 0; index < fact.fulfillment!.parameters.length; index++) {
-            summaryEnv.set(fact.fulfillment!.parameters[index]!, substitute(logic(call.arguments[index]!, pipeBindings, semanticGuards, semanticValues), path.env));
-          }
-          const nextEnv = new Map(path.env);
-          if (target.binding) nextEnv.set(target.binding, variable(fresh));
-          if (target.nullableGuard) nextEnv.set(target.nullableGuard.variable, { kind: "boolean", value: true });
-          const evidence: ContractRelationalCallEvidence = {
-            schema: "uneffect-contract-relational-call/v1", evidence: fact.evidence, typescriptVersion: ts.version,
-            functionName: fact.fulfillment!.functionName,
-            clauses: fact.fulfillment!.clauses.map(({ source: clause }) => clause), callSpan: originSpan,
-            ...(fact.fulfillment!.preconditions.length === 0 ? {} : { preconditions: fact.fulfillment!.preconditions.map(({ source: clause }) => clause) }),
-            declarationFileName: fact.fulfillment!.declarationFileName,
-            declarationDigest: fact.fulfillment!.declarationDigest,
-            declarationSpan: fact.fulfillment!.declarationSpan,
-          };
-          for (const precondition of fact.fulfillment!.preconditions) {
-            add("call-precondition", awaited, path.assumptions, substitute(precondition.expression, summaryEnv), precondition.source, path.env, path.dischargedThrows, [...path.relationalCalls, evidence]);
-          }
-          const assumptions = [...path.assumptions, ...fact.fulfillment!.clauses.map(({ expression }) => substitute(expression, summaryEnv))];
-          if (!target.returnStatement) return { ...path, env: nextEnv, assumptions, relationalCalls: [...path.relationalCalls, evidence] };
-          const returnEnv = new Map(nextEnv); returnEnv.set("result", variable(fresh));
-          return { ...path, env: nextEnv, assumptions, completion: "return", returnEnv, returnStatement: target.returnStatement, relationalCalls: [...path.relationalCalls, evidence] };
-        });
-      }
-      const rejectionArgument = fact.payloadFromFirstArgument && call ? call.arguments[0] : undefined;
-      const rejected = fact.effect ? incoming.map((path): PathState => {
-        let payload: LogicExpression | undefined;
-        try { if (rejectionArgument) payload = substitute(logic(rejectionArgument, pipeBindings, semanticGuards, semanticValues), path.env); } catch { /* opaque reasons remain effect-only evidence */ }
-        return { ...path, env: new Map(path.env), completion: "reject", thrown: { kind: "promise-rejection", evidence: fact.evidence, effect: fact.effect!, originSpan, ...(payload ? { payload } : {}) } };
-      }) : [];
-      const synchronousThrows = incoming.flatMap((path) => fact.synchronousThrows.map((effect): PathState => ({
-        ...path, env: new Map(path.env), completion: "throw",
-        thrown: { kind: "synchronous-throw", evidence: fact.evidence, effect, originSpan },
-      })));
-      return [...(fact.definitelyRejects ? [] : fulfilled), ...rejected, ...synchronousThrows];
+        const base: PathState = { ...path, env: new Map(path.env), pendingPromises };
+        const fulfilled: PathState[] = [];
+        if (!fact.definitelyRejects) {
+          if (target?.binding || target?.returnStatement) {
+            if (!fact.fulfillment) throw new Error(`awaited value requires a scalar contract ensures summary: ${awaited.expression.getText(source)}`);
+            if (argumentValues.length !== fact.fulfillment.parameters.length || argumentValues.some((value) => value === undefined)) {
+              throw new Error(`awaited contract arguments require scalar snapshots matching ${fact.fulfillment.functionName}`);
+            }
+            const fresh = `${fn}_await_result_${awaited.getStart(source)}`;
+            if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: fact.fulfillment.domain, sort: sort(fact.fulfillment.domain) });
+            if (target.nullableGuard) {
+              if (!target.binding || !target.nullableGuard.valueVariable) throw new Error(`awaited scalar fulfillment requires a scalar nullable target: ${awaited.expression.getText(source)}`);
+              if (sort(fact.fulfillment.domain) !== scalarExpressionSort(variable(target.nullableGuard.valueVariable))) {
+                throw new Error(`awaited scalar fulfillment does not match nullable target: ${target.binding} = ${awaited.expression.getText(source)}`);
+              }
+            }
+            const summaryEnv: Environment = new Map([["result", variable(fresh)]]);
+            fact.fulfillment.parameters.forEach((name, index) => summaryEnv.set(name, argumentValues[index]!));
+            const nextEnv = new Map(base.env);
+            if (target.binding) nextEnv.set(target.binding, variable(fresh));
+            if (target.nullableGuard) nextEnv.set(target.nullableGuard.variable, { kind: "boolean", value: true });
+            const evidence: ContractRelationalCallEvidence = {
+              schema: "uneffect-contract-relational-call/v1", evidence: fact.evidence, typescriptVersion: ts.version,
+              functionName: fact.fulfillment.functionName,
+              clauses: fact.fulfillment.clauses.map(({ source: clause }) => clause), callSpan: originSpan,
+              ...(fact.fulfillment.preconditions.length === 0 ? {} : { preconditions: fact.fulfillment.preconditions.map(({ source: clause }) => clause) }),
+              declarationFileName: fact.fulfillment.declarationFileName,
+              declarationDigest: fact.fulfillment.declarationDigest,
+              declarationSpan: fact.fulfillment.declarationSpan,
+            };
+            if (!pending?.preconditionsChecked) for (const precondition of fact.fulfillment.preconditions) {
+              add("call-precondition", awaited, base.assumptions, substitute(precondition.expression, summaryEnv), precondition.source, base.env, base.dischargedThrows, [...base.relationalCalls, evidence]);
+            }
+            const assumptions = [...base.assumptions, ...fact.fulfillment.clauses.map(({ expression }) => substitute(expression, summaryEnv))];
+            if (!target.returnStatement) fulfilled.push({ ...base, env: nextEnv, assumptions, relationalCalls: [...base.relationalCalls, evidence] });
+            else {
+              const returnEnv = new Map(nextEnv); returnEnv.set("result", variable(fresh));
+              fulfilled.push({ ...base, env: nextEnv, assumptions, completion: "return", returnEnv, returnStatement: target.returnStatement, relationalCalls: [...base.relationalCalls, evidence] });
+            }
+          } else fulfilled.push(base);
+        }
+        const rejected: PathState[] = fact.effect ? [{
+          ...base, completion: "reject",
+          thrown: { kind: "promise-rejection", evidence: fact.evidence, effect: fact.effect, originSpan, ...(argumentValues[0] ? { payload: argumentValues[0] } : {}) },
+        }] : [];
+        const synchronousThrows = pending ? [] : fact.synchronousThrows.map((effect): PathState => ({
+          ...base, completion: "throw", thrown: { kind: "synchronous-throw", evidence: fact.evidence, effect, originSpan },
+        }));
+        return [...fulfilled, ...rejected, ...synchronousThrows];
+      };
+      return incoming.flatMap(settle);
     };
     const scalarExpressionSort = (expression: LogicExpression): LogicSort | undefined => {
       if (expression.kind === "boolean") return "Bool";
@@ -2123,13 +2146,20 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         }
       }
       if (new Set(lexicalNames).size !== lexicalNames.length) throw new Error("duplicate lexical bindings in a block are unsupported");
-      const shadowed = lexicalNames.find((name) => initial.some((path) => path.env.has(name)));
+      const shadowed = lexicalNames.find((name) => initial.some((path) => path.env.has(name) || path.pendingPromises.has(name)));
       if (shadowed) throw new Error(`block lexical binding shadows a tracked scalar: ${shadowed}`);
       const retained = new Set([...initial.flatMap((path) => [...path.env.keys()]), ...functionNames]);
       return execute(block.statements, initial, context).map((exit): PathState => {
         const env = new Map([...exit.env].filter(([name]) => retained.has(name)));
+        for (const [name, pending] of exit.pendingPromises) {
+          if (lexicalNames.includes(name) && !pending.observed
+            && ![...exit.pendingPromises].some(([other, candidate]) => retained.has(other) && candidate === pending)) {
+            throw new Error(`unobserved Promise binding left its lexical scope: ${name}`);
+          }
+        }
+        const pendingPromises = new Map([...exit.pendingPromises].filter(([name]) => retained.has(name)));
         const returnEnv = exit.returnEnv && new Map([...exit.returnEnv].filter(([name]) => name === "result" || retained.has(name)));
-        return { ...exit, env, ...(returnEnv ? { returnEnv } : {}) };
+        return { ...exit, env, pendingPromises, ...(returnEnv ? { returnEnv } : {}) };
       });
     };
     /** One statement of the verified subset; anything else is rejected with its own location. */
@@ -2143,6 +2173,50 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         && ts.isAwaitExpression(statement.declarationList.declarations[0]!.initializer)) {
         const declaration = statement.declarationList.declarations[0]!;
         paths = executeAwait(declaration.initializer as ts.AwaitExpression, paths, { binding: (declaration.name as ts.Identifier).text });
+      } else if (ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1
+        && ts.isIdentifier(statement.declarationList.declarations[0]!.name)
+        && statement.declarationList.declarations[0]!.initializer
+        && ts.isCallExpression(statement.declarationList.declarations[0]!.initializer)
+        && awaitRejections.has(`${statement.declarationList.declarations[0]!.initializer.getStart(source)}:${statement.declarationList.declarations[0]!.initializer.getEnd()}`)) {
+        const declaration = statement.declarationList.declarations[0]!;
+        const call = declaration.initializer as ts.CallExpression;
+        const fact = awaitRejections.get(`${call.getStart(source)}:${call.getEnd()}`);
+        if (!fact) throw new Error(`Promise binding requires a verified rejection or fulfillment summary: ${call.getText(source)}`);
+        if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) throw new Error(`Promise-producing binding must be const: ${declaration.getText(source)}`);
+        const name = (declaration.name as ts.Identifier).text;
+        const originSpan = { start: call.getStart(source), end: call.getEnd() };
+        paths = paths.flatMap((path): PathState[] => {
+          const argumentValues = call.arguments.map((argument): LogicExpression | undefined => {
+            try { return substitute(logic(argument, pipeBindings, semanticGuards, semanticValues), path.env); } catch { return undefined; }
+          });
+          if (fact.fulfillment && (argumentValues.length !== fact.fulfillment.parameters.length || argumentValues.some((value) => value === undefined))) {
+            throw new Error(`Promise-producing call arguments require scalar snapshots matching ${fact.fulfillment.functionName}`);
+          }
+          if (fact.fulfillment?.preconditions.length) {
+            const summaryEnv: Environment = new Map();
+            fact.fulfillment.parameters.forEach((parameter, index) => summaryEnv.set(parameter, argumentValues[index]!));
+            const evidence: ContractRelationalCallEvidence = {
+              schema: "uneffect-contract-relational-call/v1", evidence: fact.evidence, typescriptVersion: ts.version,
+              functionName: fact.fulfillment.functionName,
+              clauses: fact.fulfillment.clauses.map(({ source: clause }) => clause), callSpan: originSpan,
+              preconditions: fact.fulfillment.preconditions.map(({ source: clause }) => clause),
+              declarationFileName: fact.fulfillment.declarationFileName,
+              declarationDigest: fact.fulfillment.declarationDigest,
+              declarationSpan: fact.fulfillment.declarationSpan,
+            };
+            for (const precondition of fact.fulfillment.preconditions) {
+              add("call-precondition", call, path.assumptions, substitute(precondition.expression, summaryEnv), precondition.source, path.env, path.dischargedThrows, [...path.relationalCalls, evidence]);
+            }
+          }
+          const pending: PendingPromiseState = { fact, argumentValues, originSpan, observed: false, preconditionsChecked: true };
+          const pendingPromises = new Map(path.pendingPromises); pendingPromises.set(name, pending);
+          const normal: PathState = { ...path, env: new Map(path.env), pendingPromises };
+          const synchronous = fact.synchronousThrows.map((effect): PathState => ({
+            ...path, env: new Map(path.env), pendingPromises: new Map(path.pendingPromises), completion: "throw",
+            thrown: { kind: "synchronous-throw", evidence: fact.evidence, effect, originSpan },
+          }));
+          return [normal, ...synchronous];
+        });
       } else if (ts.isVariableStatement(statement)) {
         for (const declaration of statement.declarationList.declarations) {
           if (objectAliasDeclarations.has(`${declaration.getStart(source)}:${declaration.getEnd()}`)) continue;
@@ -2162,6 +2236,20 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
             continue;
           }
           if (!ts.isIdentifier(declaration.name) || !declaration.initializer) throw new Error(`only initialized identifier variables are supported: ${declaration.getText(source)}`);
+          const pendingAliasSource = ts.isIdentifier(declaration.initializer) ? declaration.initializer.text : undefined;
+          if (pendingAliasSource && paths.some((path) => path.pendingPromises.has(pendingAliasSource))) {
+            if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0
+              || !paths.every((path) => path.pendingPromises.has(pendingAliasSource))) {
+              throw new Error(`Promise alias must be an unconditional const binding: ${declaration.getText(source)}`);
+            }
+            const alias = declaration.name.text;
+            paths = paths.map((path): PathState => {
+              const pendingPromises = new Map(path.pendingPromises);
+              pendingPromises.set(alias, pendingPromises.get(pendingAliasSource)!);
+              return { ...path, env: new Map(path.env), pendingPromises };
+            });
+            continue;
+          }
           const nullableSource = unsafeNullableScalarCopy(declaration.initializer);
           if (nullableSource) throw new Error(`mutable scalar alias would erase nullable presence: ${declaration.name.text} = ${nullableSource}`);
           const name = declaration.name.text;
@@ -2619,8 +2707,10 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       return paths;
     };
     try {
-      const exits = execute(node.body.statements, [{ env, assumptions: baseAssumptions, completion: "normal", dischargedThrows: [], relationalCalls: [] }]);
+      const exits = execute(node.body.statements, [{ env, pendingPromises: new Map(), assumptions: baseAssumptions, completion: "normal", dischargedThrows: [], relationalCalls: [] }]);
       if (exits.some((path) => path.completion === "break" || path.completion === "continue")) throw new Error("loop control escaped its supported owner");
+      const unobserved = exits.flatMap((path) => [...path.pendingPromises].filter(([, pending]) => !pending.observed).map(([name]) => name));
+      if (unobserved.length > 0) throw new Error(`unobserved Promise binding at function exit: ${[...new Set(unobserved)].sort().join(", ")}`);
       for (const path of exits.filter((item) => item.completion === "return" && item.returnEnv && item.returnStatement)) {
         for (const ensure of ensures) add("postcondition", path.returnStatement!, path.assumptions, substitute(ensure.expression, path.returnEnv!), ensure.source, path.returnEnv!, path.dischargedThrows, path.relationalCalls);
       }

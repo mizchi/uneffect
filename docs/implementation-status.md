@@ -834,9 +834,16 @@ same property is proved for arbitrary TypeScript.
   `const` captures are substituted into the relation by TypeChecker symbol
   identity. Mutable captures, computed initializers, and object/property state,
   parameter initializers/rest/destructuring, other multiple-statement shapes,
-  and a Promise/thenable-valued return remain unknown. Other unannotated
-  Promise-producing calls,
-  opaque catch payloads, and general exception fixed points are not accepted. A scalar
+  and a Promise/thenable-valued return remain unknown. A scalar producer call
+  may be stored as `const pending = producer(args)` and awaited later through
+  immutable identifier aliases. Its argument values and synchronous throw
+  edges are captured at creation; fulfillment and rejection occur at await.
+  Callee preconditions are proved from the call-time path, not conditions learned
+  later. Repeated observation is allowed, while a Promise that leaves lexical
+  or function scope without any observation is fail-closed. Conditional,
+  mutable, property, destructured, and escaping Promise aliases remain unknown.
+  Other unannotated Promise-producing calls, opaque catch payloads, and general
+  exception fixed points are not accepted. A scalar
   Promise-returning callee may expose a trusted
   `contract ensures` relation. One direct `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar
@@ -849,7 +856,7 @@ same property is proved for arbitrary TypeScript.
   numeric or Boolean identifier target updates its scalar payload and presence
   bit together on fulfillment; rejection and synchronous throw retain the
   incoming state. Shared immutable aliases, presence-only object targets,
-  property/destructuring targets, and arbitrary awaited expressions remain
+  property/destructuring targets and other arbitrary awaited expressions remain
   fail-closed. For same-file
   implementations, a post-solver fixed point promotes relational edges only
   when every callee obligation and every transitive relational dependency is

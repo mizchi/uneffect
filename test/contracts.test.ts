@@ -3588,6 +3588,165 @@ describe("Hoare contract checker", () => {
       .some((edge) => edge.kind === "promise-rejection" && edge.effect === "Reject<RangeError>"))).toBe(true);
   });
 
+  it("snapshots a Promise-producing call and settles it through an immutable binding alias", async () => {
+    const fileName = "/awaited-promise-binding.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value */
+      /* uneffect:temporal_contract rejects RangeError */
+      declare function readRemote(value: Int): Promise<Int>
+      /* uneffect:ensures result === true */
+      async function caller(value: Int): Promise<boolean> {
+        const original = value
+        try {
+          const pending = readRemote(value)
+          const same = pending
+          value = 0
+          const loaded = await same
+          return loaded === original
+        } catch {
+          return true
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ relationalCalls: [expect.objectContaining({
+        functionName: "readRemote",
+        clauses: ["result === value"],
+      })] }),
+    }));
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ kind: "promise-rejection", effect: "Reject<RangeError>" })],
+      }) }),
+    }));
+  });
+
+  it("keeps an unobserved Promise binding fail-closed in contract CFG", async () => {
+    const fileName = "/floating-contract-promise-binding.ts";
+    const source = `
+      /* uneffect:ensures result === value */
+      declare function readRemote(value: number): Promise<number>
+      /* uneffect:ensures result === value */
+      async function caller(value: number): Promise<number> {
+        const pending = readRemote(value)
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown", message: expect.stringContaining("unobserved Promise") });
+  });
+
+  it("separates stored Promise call-time throw from await-time rejection", async () => {
+    const fileName = "/stored-promise-completion-timing.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result >= 0 */
+      /* uneffect:temporal_contract rejects RangeError */
+      /* uneffect:temporal_contract throws URIError */
+      declare function readRemote(value: Int): Promise<Int>
+      /* uneffect:ensures result >= 0 */
+      async function caller(value: Int): Promise<Int> {
+        try {
+          const pending = readRemote(value)
+          return await pending
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    const callStart = source.indexOf("readRemote(value)", source.indexOf("async function caller"));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({ discharged: [expect.objectContaining({
+        kind: "synchronous-throw",
+        effect: "Throw<URIError>",
+        originSpan: expect.objectContaining({ start: callStart }),
+      })] }) }),
+    }));
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({ discharged: [expect.objectContaining({
+        kind: "promise-rejection",
+        effect: "Reject<RangeError>",
+        originSpan: expect.objectContaining({ start: callStart }),
+      })] }) }),
+    }));
+  });
+
+  it("proves a stored Promise callee precondition at call time", async () => {
+    const fileName = "/stored-promise-call-precondition.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= value */
+      declare function readRemote(value: Int): Promise<Int>
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= 0 */
+      async function caller(value: Int): Promise<Int> {
+        const pending = readRemote(value)
+        return await pending
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      status: "verified",
+      obligation: expect.objectContaining({ clause: "requires", source: "value >= 0" }),
+    }));
+
+    const unsafe = source.replace("/* uneffect:requires value >= 0 */\n      /* uneffect:ensures result >= 0 */\n      async function caller", "/* uneffect:ensures result >= 0 */\n      async function caller");
+    const invalid = await verifyContractObligations(fileName, unsafe, undefined, programFor(fileName, unsafe));
+    expect(invalid.artifacts).toContainEqual(expect.objectContaining({
+      status: "counterexample",
+      obligation: expect.objectContaining({ clause: "requires" }),
+    }));
+  });
+
+  it("allows repeated observation of the same settled Promise summary", async () => {
+    const fileName = "/stored-promise-repeated-observation.ts";
+    const source = `
+      /* uneffect:ensures result === value */
+      declare function readRemote(value: number): Promise<number>
+      /* uneffect:ensures result === true */
+      async function caller(value: number): Promise<boolean> {
+        const pending = readRemote(value)
+        const first = await pending
+        const second = await pending
+        return first === second
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("keeps an unobserved lexical Promise escape fail-closed", async () => {
+    const fileName = "/stored-promise-lexical-escape.ts";
+    const source = `
+      /* uneffect:ensures result === value */
+      declare function readRemote(value: number): Promise<number>
+      /* uneffect:ensures result === value */
+      async function caller(value: number): Promise<number> {
+        { const pending = readRemote(value) }
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown", message: expect.stringContaining("unobserved Promise") });
+  });
+
   it("composes scalar fulfillment into nullable state without mutating rejected paths", async () => {
     const fileName = "/awaited-nullable-fulfillment-assignment.ts";
     const source = `

@@ -2578,6 +2578,12 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     fulfillment. The selected guard is a normal-path clause, so catch discharge
     and the returned refinement remain correlated. Calls/computed error
     producers remain fail-closed.
+  - [x] Track `const pending = producer(args); await pending` in the contract
+    PathState. Snapshot scalar arguments and synchronous throws at creation,
+    settle fulfillment/rejection at await, propagate immutable identifier
+    aliases, and prove callee preconditions from the call-time path. Repeated
+    observation is allowed; a pending Promise that leaves its lexical/function
+    scope without any observation is fail-closed.
   - [ ] Add general inferred Promise producers, presence-only object fulfillment, ([#25](https://github.com/mizchi/uneffect/issues/25))
     property/destructured targets, opaque catch payloads, persisted consumer
     linkage/authenticity, and interprocedural heap state.
