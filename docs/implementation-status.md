@@ -384,7 +384,8 @@ same property is proved for arbitrary TypeScript.
   rejections, unknown calls, and unauthenticated persisted/external summaries
   do not create such an edge.
   A separate public `uneffect-resource-callable-summary/v1` contract represents
-  parameter/return `borrow`, `consume`, `transfer`, and `escape` operations.
+  parameter/return `acquire`, `use`, `borrow`, `consume`, `release`, `transfer`,
+  and `escape` operations.
   It instantiates caller-provided stable identities into the same resource IR
   and reports missing bindings as unknown. The first `uneffect:temporal`
   TypeScript frontend extracts trusted same-Program declarations, resolves
@@ -505,7 +506,7 @@ same property is proved for arbitrary TypeScript.
   evaluator. Direct return and returned immutable closure/simple-aggregate
   capture are exact ownership escape; an uncontracted call argument remains
   unknown. Symbol-resolved local resource callable contracts can classify that
-  boundary as trusted borrow/consume/transfer/escape without upgrading it to
+  boundary as a trusted lifecycle operation without upgrading it to
   verified evidence. Explicit root `.d.ts` overlays may provide the same trusted
   function/method contract; transitively imported declarations are not trusted
   automatically. Conditional ordering, mutable/escaping aliases, and `yield*`

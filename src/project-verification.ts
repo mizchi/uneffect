@@ -22,8 +22,9 @@ import { resolveRefinementDslLink } from "./refinement-dsl.js";
 import type { RefinementBindingManifest } from "./refinement-bindings.js";
 import { hasProjectCallableAliasContracts, instrumentContractPredicates, relocateProjectCallableAliasContracts } from "./contract-runtime.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
-import { fromTypeScriptDiagnostic, type AsyncIteratorCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
+import { fromTypeScriptDiagnostic, type AsyncIteratorCheckerDiagnostic, type ResourceCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
+import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, type ResourceLifecycleEvidence } from "./resource-callable-typescript.js";
 import {
   assessProjectVerification,
   PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION,
@@ -90,11 +91,12 @@ export interface ProjectVerificationObligation extends VerificationArtifact {
 
 export interface VerifyUneffectProjectResult {
   obligations: ProjectVerificationObligation[];
-  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AsyncIteratorCheckerDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic>;
+  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic>;
   emittedFiles: Record<string, string>;
   typedArrays: TypedArrayProgramSafetyResult;
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
   asyncIterators: IteratorCheckEvidence[];
+  resourceProtocols: ResourceLifecycleEvidence[];
   assumptions: AssumptionLedger;
   effects: EffectAnalysisResult;
   refinements: ProjectRefinementVerification;
@@ -321,7 +323,7 @@ async function verifyUneffectProjectFiles(
 ): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
   const pendingContractObligations: ProjectVerificationObligation[] = [];
-  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic | AsyncIteratorCheckerDiagnostic> = [];
+  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
@@ -420,6 +422,9 @@ async function verifyUneffectProjectFiles(
   const callableSummaries = analyzeCallableSummaries(program, effectProgram === program ? analyzedEffects : undefined).summaries;
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   const asyncIterators: IteratorCheckEvidence[] = [];
+  const resourceProtocols: ResourceLifecycleEvidence[] = [];
+  const resourceAssumptions: AssumptionEntry[] = [];
+  const resourceCallableAnalysis = analyzeResourceCallableSummaries(program);
   const iteratorAssumptions: AssumptionEntry[] = [];
   for (const fileName of Object.keys(options.files)) {
     const sourceFile = program.getSourceFile(fileName);
@@ -430,6 +435,20 @@ async function verifyUneffectProjectFiles(
     asyncIterators.push(...iterator.evidence);
     diagnostics.push(...iterator.diagnostics);
     iteratorAssumptions.push(...iterator.assumptions);
+    const lifecycle = analyzeResourceLifecyclesInSource(program, sourceFile, resourceCallableAnalysis, !invalidSources.has(fileName));
+    resourceProtocols.push(...lifecycle.evidence);
+    resourceAssumptions.push(...lifecycle.evidence.filter((item) => item.evidence === "trusted").map((item) => ({
+      id: `resource-callable:${item.fileName}:${item.span.start}:${item.resource}`,
+      evidence: "trusted" as const, domain: "resource-callable" as const,
+      reason: "trusted resource callable contract used by general lifecycle analysis", owner: "source declaration",
+      scope: { fileName: item.fileName, functionName: item.owner, span: item.span },
+    })));
+    diagnostics.push(...lifecycle.diagnostics.map((diagnostic): ResourceCheckerDiagnostic => ({
+      domain: "resource", kind: diagnostic.kind, severity: "error", fileName: diagnostic.fileName,
+      line: sourceFile.getLineAndCharacterOfPosition(diagnostic.span.start).line + 1,
+      functionName: diagnostic.functionName, message: diagnostic.message,
+      notes: [{ label: "resource", detail: diagnostic.resource }, { label: "state", detail: diagnostic.state }],
+    })));
   }
   invalidateTransferredTypedArrayEvidence(program, options.files, typedArrays, ownershipDiagnostics);
   for (const [fileName, result] of Object.entries(typedArrays.files)) if (invalidSources.has(fileName)) {
@@ -439,7 +458,7 @@ async function verifyUneffectProjectFiles(
   typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
   diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
   const baseAssumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry, options.assumptionRegistry);
-  const assumptions = mergeAssumptionLedger(program, baseAssumptions.ledger, [...iteratorAssumptions, ...contractSummaryAssumptions], options.assumptionPolicy);
+  const assumptions = mergeAssumptionLedger(program, baseAssumptions.ledger, [...iteratorAssumptions, ...resourceAssumptions, ...contractSummaryAssumptions], options.assumptionPolicy);
   diagnostics.push(...assumptions.diagnostics);
   const runtimeInputs = Object.fromEntries(Object.entries(options.files).map(([fileName, source]) => {
     const contractSource = runtimeContractFiles[fileName] ?? source;
@@ -501,7 +520,7 @@ async function verifyUneffectProjectFiles(
   const moduleInitialization = options.moduleInitializationEntry === undefined
     ? undefined : analyzeModuleInitializationOrder(program, options.moduleInitializationEntry);
   const partial = {
-    obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, asyncIterators, assumptions: assumptions.ledger, effects,
+    obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, asyncIterators, resourceProtocols, assumptions: assumptions.ledger, effects,
     refinements: { manifests: refinementManifests, links: refinementLinks },
     ...(temporal ? { temporal } : {}), ...(moduleInitialization ? { moduleInitialization } : {}),
   };

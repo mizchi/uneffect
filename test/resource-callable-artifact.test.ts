@@ -53,6 +53,24 @@ describe("resource callable contract artifacts", () => {
     const wrongIdentity = { ...base(), summary: { ...base().summary, id: "other#consume" } };
     expect(authenticateResourceCallableContractArtifact(wrongIdentity, environment))
       .toMatchObject({ status: "blocked", reasons: expect.arrayContaining(["summary symbol identity mismatch", "artifact digest mismatch"]) });
+    const invalidAcquire = createResourceCallableContractArtifact({
+      symbol: environment.symbol, runtime: environment.runtime, declarationText,
+      summary: { ...base().summary, operations: [{ kind: "acquire", subject: { kind: "parameter", index: 0 } }] },
+      trust: base().trust,
+    });
+    expect(authenticateResourceCallableContractArtifact(invalidAcquire, environment))
+      .toMatchObject({ status: "blocked", reasons: expect.arrayContaining(["invalid resource summary"]) });
+  });
+
+  it.each(["acquire", "use", "release"] as const)("authenticates the %s lifecycle operation", (kind) => {
+    const subject = kind === "acquire" ? { kind: "return" as const } : { kind: "parameter" as const, index: 0 };
+    const artifact = createResourceCallableContractArtifact({
+      symbol: environment.symbol, runtime: environment.runtime, declarationText,
+      summary: { ...base().summary, operations: [{ kind, subject }] }, trust: base().trust,
+    });
+    expect(authenticateResourceCallableContractArtifact(artifact, environment)).toMatchObject({
+      status: "accepted", summary: { operations: [{ kind }] },
+    });
   });
 
   it("connects an authenticated package artifact to a TypeChecker-resolved call", () => {

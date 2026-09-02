@@ -8,6 +8,8 @@ describe("resource protocol IR", () => {
       id: "entry.ts:10",
       evidence: "verified",
       operations: [
+        { kind: "acquire", subject: { kind: "return" } },
+        { kind: "use", subject: { kind: "parameter", index: 0, name: "input" } },
         { kind: "borrow", subject: { kind: "parameter", index: 0, name: "input" } },
         { kind: "consume", subject: { kind: "parameter", index: 1, name: "body" } },
         { kind: "transfer", subject: { kind: "parameter", index: 2, name: "port" }, target: { kind: "return" } },
@@ -20,7 +22,13 @@ describe("resource protocol IR", () => {
       at: 42,
     })).toEqual({
       status: "exact",
+      resources: [{
+        id: "returned#1", label: "return of entry.ts:10", kind: "Resource",
+        initialState: "absent", requiredTerminalStates: ["released", "consumed", "transferred", "escaped"],
+      }],
       transitions: [
+        { kind: "acquire", resource: "returned#1", at: 42, evidence: "exact" },
+        { kind: "use", resource: "input#1", at: 42, evidence: "exact" },
         { kind: "use", resource: "input#1", at: 42, evidence: "exact" },
         { kind: "consume", resource: "body#1", at: 42, evidence: "exact" },
         { kind: "transfer", resource: "port#1", target: "returned#1", at: 42, evidence: "exact" },
@@ -36,7 +44,7 @@ describe("resource protocol IR", () => {
       operations: [{ kind: "transfer", subject: { kind: "parameter", index: 0, name: "port" }, target: { kind: "return" } }],
     };
     expect(instantiateResourceCallableSummary(summary, { parameters: new Map(), at: 7 })).toEqual({
-      status: "unknown", transitions: [], missing: [
+      status: "unknown", resources: [], transitions: [], missing: [
         { operation: 0, reference: { kind: "parameter", index: 0, name: "port" } },
         { operation: 0, reference: { kind: "return" } },
       ],

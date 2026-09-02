@@ -19,6 +19,9 @@ describe("Uneffect annotation marker", () => {
       "/* uneffect:loop_invariant i >= 0 */",
       "/* uneffect:always nonnegative: count >= 0 */",
       "/* uneffect:consumes_rejection 0 */",
+      "/* uneffect:acquire return */",
+      "/* uneffect:use handle */",
+      "/* uneffect:release handle */",
     ].join("\n");
 
     expect(extractAnnotations(source, "effect")).toEqual(["Console"]);
@@ -26,6 +29,9 @@ describe("Uneffect annotation marker", () => {
     expect(extractAnnotations(source, "invariant")).toEqual(["i >= 0"]);
     expect(extractAnnotations(source, "temporal")).toEqual(["nonnegative: count >= 0"]);
     expect(extractAnnotations(source, "consumes_rejection")).toEqual(["0"]);
+    expect(extractAnnotations(source, "acquire")).toEqual(["return"]);
+    expect(extractAnnotations(source, "use")).toEqual(["handle"]);
+    expect(extractAnnotations(source, "release")).toEqual(["handle"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
   it("extracts a refinement model attachment reference", () => {

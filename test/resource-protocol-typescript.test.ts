@@ -152,6 +152,56 @@ describe("TypeScript resource protocol CFG lowering", () => {
     }
   });
 
+  it("models user-defined acquire/use/release APIs and rejects leaks and use-after-release", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-lifecycle-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Handle { readonly fd: number }
+        /* uneffect:acquire return */
+        declare function open(): Handle
+        /* uneffect:use handle */
+        declare function inspect(handle: Handle): void
+        /* uneffect:release handle */
+        declare function close(handle: Handle): void
+        function valid() {
+          const handle = open()
+          const alias = handle
+          inspect(alias)
+          close(alias)
+        }
+        function leaked() { const handle = open(); inspect(handle) }
+        function invalid() { const handle = open(); close(handle); inspect(handle) }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const analysis = analyzeResourceCallableSummaries(program);
+      expect(analysis.diagnostics).toEqual([]);
+      expect(analysis.summaries.map((summary) => summary.operations[0]?.kind)).toEqual(["acquire", "use", "release"]);
+      const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).filter((fn) => fn.body).map((fn) => [fn.name!.text, fn]));
+      const evaluate = (name: string) => {
+        const fn = functions.get(name)!;
+        const collected = collectResourceCallableTransitionSites(program, fn, analysis.summaries);
+        expect(collected.diagnostics).toEqual([]);
+        expect(new Set(collected.sites.flatMap((site) => site.transitions).map((transition) => "resource" in transition ? transition.resource : "")))
+          .toEqual(new Set(collected.resources.map((resource) => resource.id)));
+        const lowered = lowerResourceProtocolCfgInFunction(source, fn, {
+          schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],
+        }, collected.sites);
+        expect(lowered.status).toBe("exact");
+        if (lowered.status !== "exact") throw new Error(lowered.reason);
+        return evaluateResourceProtocolCfg(lowered.cfg);
+      };
+      const valid = evaluate("valid");
+      expect(valid.diagnostics).toEqual([]);
+      expect(valid).toMatchObject({ status: "satisfied" });
+      expect(evaluate("leaked")).toMatchObject({ status: "unsatisfied" });
+      expect(evaluate("invalid")).toMatchObject({
+        status: "unknown", diagnostics: [expect.objectContaining({ transition: "use", state: "released" })],
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("extracts trusted method contracts from declaration files and imported aliases", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-declaration-"));
     try {
@@ -201,6 +251,8 @@ describe("TypeScript resource protocol CFG lowering", () => {
       writeFileSync(fileName, `
         /* uneffect: transfer value */
         function malformed(value: object): object { return value }
+        /* uneffect: acquire value */
+        function malformedAcquire(value: object): object { return value }
         /* uneffect: transfer value -> return */
         function moves(value: object): object { return value }
         function unbound(value: object) { moves(value) }
@@ -208,7 +260,10 @@ describe("TypeScript resource protocol CFG lowering", () => {
       const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
       const source = program.getSourceFile(fileName)!;
       const analysis = analyzeResourceCallableSummaries(program);
-      expect(analysis.diagnostics).toMatchObject([{ code: "invalid-resource-transfer" }]);
+      expect(analysis.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-resource-transfer" }),
+        expect.objectContaining({ code: "invalid-resource-acquire" }),
+      ]));
       const unbound = source.statements.filter(ts.isFunctionDeclaration).find((fn) => fn.name?.text === "unbound")!;
       expect(collectResourceCallableTransitionSites(program, unbound, analysis.summaries).diagnostics)
         .toMatchObject([{ code: "unresolved-resource-binding", message: expect.stringContaining("return resource") }]);

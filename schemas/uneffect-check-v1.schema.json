@@ -4,7 +4,7 @@
   "title": "Uneffect check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assumptions", "typedArrays", "ownership", "asyncIterators", "assurance", "project"],
+  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assumptions", "typedArrays", "ownership", "asyncIterators", "resourceProtocols", "assurance", "project"],
   "properties": {
     "schema": { "const": "uneffect-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
@@ -24,6 +24,7 @@
     "typedArrays": { "$ref": "#/$defs/typedArrays" },
     "ownership": { "type": "array", "items": { "$ref": "#/$defs/ownershipDiagnostic" } },
     "asyncIterators": { "type": "array", "items": { "$ref": "#/$defs/asyncIterator" } },
+    "resourceProtocols": { "type": "array", "items": { "$ref": "#/$defs/resourceProtocol" } },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] },
     "project": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/project" }] }
   },
@@ -104,6 +105,18 @@
         "scenarios": { "type": "array", "minItems": 1, "items": { "type": "object" } },
         "status": { "enum": ["satisfied", "unsatisfied", "unknown"] },
         "evidence": { "enum": ["exact", "trusted", "unknown"] }
+      }
+    },
+    "resourceProtocol": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fileName", "owner", "resource", "kind", "status", "evidence", "state", "transitionKinds"],
+      "properties": {
+        "fileName": { "type": "string" }, "owner": { "type": "string" },
+        "resource": { "type": "string" }, "kind": { "type": "string" },
+        "status": { "enum": ["satisfied", "unsatisfied", "unknown"] },
+        "evidence": { "enum": ["verified", "trusted", "unknown"] },
+        "state": { "type": "string" },
+        "transitionKinds": { "type": "array", "items": { "type": "string" } }
       }
     },
     "effect": {

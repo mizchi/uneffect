@@ -275,6 +275,8 @@ export { createResourceDisposalTemporalProduct, evaluateResourceTemporalProduct,
 export type { ResourceDisposalTemporalProductResult, ResourceTemporalLink, ResourceTemporalProduct, ResourceTemporalProductEvaluation } from "./resource-temporal-product.js";
 export { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "./resource-callable-typescript.js";
 export type { ResourceCallableDiagnostic, ResourceCallableSiteAnalysis, ResourceCallableSummaryAnalysis } from "./resource-callable-typescript.js";
+export { analyzeResourceLifecyclesInSource } from "./resource-callable-typescript.js";
+export type { ResourceLifecycleDiagnostic, ResourceLifecycleEvidence, ResourceLifecycleProgramAnalysis } from "./resource-callable-typescript.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";
 export { collectAssumptionLedger, evaluateAssumptionPolicy } from "./assumptions.js";
 export type { AssumptionDomain, AssumptionEntry, AssumptionLedger, AssumptionPolicy, AssumptionPolicyDiagnostic, AssumptionScope, AssumptionViolation } from "./assumptions.js";

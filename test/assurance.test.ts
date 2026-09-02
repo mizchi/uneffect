@@ -22,7 +22,7 @@ describe("assurance claim boundaries", () => {
     expect(assessment.exclusions).toContain("unannotated semantic domains are not checked by this profile");
     expect(assessment.coverage).toMatchObject({ effectSummaries: 1, contractArtifacts: 0 });
     expect(formatAssuranceAssessment(assessment)).toContain("excluded: unannotated semantic domains");
-    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 1 effect summary, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 assumptions");
+    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 1 effect summary, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 resource-protocol obligations, 0 assumptions");
   });
 
   it("does not claim declaration coverage for no-unknown", () => {
@@ -133,7 +133,7 @@ describe("assurance claim boundaries", () => {
       blockers: [{ kind: "coverage", classification: "unknown", message: expect.stringContaining("no effect summary or contract artifact") }],
     });
     expect(formatAssuranceAssessment(assessment)).not.toContain("claim:");
-    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 0 effect summaries, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 assumptions");
+    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 0 effect summaries, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 resource-protocol obligations, 0 assumptions");
   });
 
   it("rejects an effect error even when a stale summary is not unknown", () => {

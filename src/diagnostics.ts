@@ -52,6 +52,16 @@ export interface AsyncIteratorCheckerDiagnostic {
   message: string;
   notes?: DiagnosticNote[];
 }
+export interface ResourceCheckerDiagnostic {
+  domain: "resource";
+  kind: "invalid-contract" | "unclosed" | "invalid-transition" | "unknown-analysis";
+  severity: DiagnosticSeverity;
+  fileName: string;
+  line: number;
+  functionName: string;
+  message: string;
+  notes?: DiagnosticNote[];
+}
 
 /** Convert compiler failures into the same source-attributed diagnostic contract used by every frontend. */
 /* uneffect:effect none */
@@ -75,7 +85,7 @@ export function fromTypeScriptDiagnostic(
     ],
   };
 }
-export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TrustedTypesDiagnostic | TypeScriptCheckerDiagnostic | TypedArrayCheckerDiagnostic | OwnershipCheckerDiagnostic | AsyncIteratorCheckerDiagnostic;
+export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TrustedTypesDiagnostic | TypeScriptCheckerDiagnostic | TypedArrayCheckerDiagnostic | OwnershipCheckerDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic;
 
 export interface ReportedDiagnostic {
   code: string;
@@ -138,6 +148,10 @@ const hints: Readonly<Record<string, string>> = {
   "ownership/invalid-transition": "keep the resource available on every path before using it, or restructure transfer so ownership has one unambiguous successor",
   "async-iterator/unclosed": "call and await iterator.return(), exhaust the iterator, or explicitly transfer its ownership to a contracted boundary",
   "async-iterator/unknown-cleanup": "rewrite iterator ownership into a straight-line close/transfer, or add a reviewed resource callable contract at the boundary",
+  "resource/invalid-contract": "fix the acquire/use/release parameter name or transfer mapping in the Uneffect annotation",
+  "resource/unclosed": "release, consume, transfer, or explicitly escape the acquired resource on every function exit",
+  "resource/invalid-transition": "use or terminate the resource only while it is available; remove duplicate release or post-release use",
+  "resource/unknown-analysis": "rewrite the lifecycle into the supported CFG and immutable-alias subset, or keep this boundary outside strict assurance",
 };
 
 /* uneffect:effect none */
@@ -155,6 +169,7 @@ function codeOf(diagnostic: CheckerDiagnostic): string {
   if ("domain" in diagnostic && diagnostic.domain === "typed-array") return `typed-array/${diagnostic.kind}`;
   if ("domain" in diagnostic && diagnostic.domain === "ownership") return `ownership/${diagnostic.kind}`;
   if ("domain" in diagnostic && diagnostic.domain === "async-iterator") return `async-iterator/${diagnostic.kind}`;
+  if ("domain" in diagnostic && diagnostic.domain === "resource") return `resource/${diagnostic.kind}`;
   if ("component" in diagnostic) return `react/${diagnostic.kind}`;
   if ("effect" in diagnostic) return `effect/${diagnostic.kind}`;
   if ("clause" in diagnostic) return diagnostic.clause === "unsupported" ? "contract/unsupported" : `contract/${diagnostic.clause}`;
@@ -215,7 +230,7 @@ export function formatDiagnostics(diagnostics: readonly CheckerDiagnostic[], opt
 
 /** What a run established: the obligations that were proved and the inferred effect of every function. */
 /* uneffect:effect none */
-export function formatCheckEvidence(result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "typedArrays" | "ownership" | "asyncIterators">>): string {
+export function formatCheckEvidence(result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "typedArrays" | "ownership" | "asyncIterators" | "resourceProtocols">>): string {
   const lines = [
     ...result.artifacts.filter((artifact) => artifact.status === "verified" && artifact.obligation)
       .map((artifact) => `  proved ${artifact.obligation!.functionName}: ${artifact.obligation!.clause} ${artifact.obligation!.source}`),
@@ -224,6 +239,7 @@ export function formatCheckEvidence(result: Pick<CheckResult, "artifacts" | "sum
     ...(result.typedArrays?.windows.map((window) => `  typed-array-window ${window.functionName}: ${window.binding} ${window.backing} backing (${window.result})`) ?? []),
     ...(result.ownership?.map((diagnostic) => `  ownership ${diagnostic.resource}: ${diagnostic.operation} after ${diagnostic.state} (violation)`) ?? []),
     ...(result.asyncIterators?.map((iterator) => `  async-iterator ${iterator.owner}: ${iterator.iterable} ${iterator.status} (${iterator.evidence})`) ?? []),
+    ...(result.resourceProtocols?.map((resource) => `  resource ${resource.owner}: ${resource.resource} ${resource.status} (${resource.evidence})`) ?? []),
   ];
   return lines.length > 0 ? `\nevidence:\n${lines.join("\n")}\n` : "";
 }

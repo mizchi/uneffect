@@ -53,7 +53,7 @@ export type ResourceCallableReference =
   | { readonly kind: "return" };
 
 export interface ResourceCallableOperation {
-  readonly kind: "borrow" | "consume" | "transfer" | "escape";
+  readonly kind: "acquire" | "use" | "borrow" | "consume" | "release" | "transfer" | "escape";
   readonly subject: ResourceCallableReference;
   /** A transfer target, commonly the returned resource identity. */
   readonly target?: ResourceCallableReference;
@@ -75,6 +75,8 @@ export interface ResourceCallableBindings {
 
 export interface ResourceCallableInstantiation {
   readonly status: "exact" | "trusted" | "unknown";
+  /** Resources introduced by acquire operations at this call site. */
+  readonly resources: readonly ResourceProtocolResource[];
   readonly transitions: readonly ResourceProtocolTransition[];
   readonly missing: readonly { readonly operation: number; readonly reference: ResourceCallableReference }[];
 }
@@ -88,6 +90,7 @@ export function instantiateResourceCallableSummary(
   summary: ResourceCallableSummary,
   bindings: ResourceCallableBindings,
 ): ResourceCallableInstantiation {
+  const resources: ResourceProtocolResource[] = [];
   const transitions: ResourceProtocolTransition[] = [];
   const missing: { operation: number; reference: ResourceCallableReference }[] = [];
   const evidence = summary.evidence === "verified" ? "exact" as const : "trusted" as const;
@@ -99,12 +102,22 @@ export function instantiateResourceCallableSummary(
     if (operation.kind === "transfer" && operation.target && !target) missing.push({ operation: index, reference: operation.target });
     if (!resource || (operation.kind === "transfer" && operation.target && !target)) return;
     const base = { resource, at: bindings.at, evidence };
-    if (operation.kind === "borrow") transitions.push({ ...base, kind: "use" });
+    if (operation.kind === "acquire") {
+      resources.push({
+        id: resource,
+        label: `${operation.subject.kind === "return" ? "return" : operation.subject.name ?? `parameter ${operation.subject.index}`} of ${summary.id}`,
+        kind: "Resource",
+        initialState: "absent",
+        requiredTerminalStates: ["released", "consumed", "transferred", "escaped"],
+      });
+      transitions.push({ ...base, kind: "acquire" });
+    } else if (operation.kind === "borrow" || operation.kind === "use") transitions.push({ ...base, kind: "use" });
     else if (operation.kind === "transfer") transitions.push({ ...base, kind: "transfer", ...(target ? { target } : {}) });
     else transitions.push({ ...base, kind: operation.kind });
   });
   return {
     status: missing.length > 0 ? "unknown" : summary.evidence === "verified" ? "exact" : "trusted",
+    resources,
     transitions,
     missing,
   };

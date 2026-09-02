@@ -29,6 +29,17 @@ export interface CheckReportEffect {
   iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
 }
 
+export interface CheckReportResourceProtocol {
+  fileName: string;
+  owner: string;
+  resource: string;
+  kind: string;
+  status: "satisfied" | "unsatisfied" | "unknown";
+  evidence: "verified" | "trusted" | "unknown";
+  state: string;
+  transitionKinds: string[];
+}
+
 /** Stable CLI interchange shape. Internal TypeScript nodes and solver objects are never exposed. */
 export interface CheckJsonReport {
   schema: "uneffect-check/v1";
@@ -41,6 +52,7 @@ export interface CheckJsonReport {
   typedArrays: { obligations: TypedArrayObligation[]; windows: TypedArrayWindowProvenance[]; statistics: TypedArraySafetyStatistics };
   ownership: Array<OwnershipDiagnostic & { fileName: string }>;
   asyncIterators: IteratorCheckEvidence[];
+  resourceProtocols: CheckReportResourceProtocol[];
   assurance: AssuranceAssessment | null;
   project: TypeScriptProjectProvenance | null;
 }
@@ -130,6 +142,11 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
     },
     ownership: result.ownership,
     asyncIterators: result.asyncIterators,
+    resourceProtocols: result.resourceProtocols.map((resource) => ({
+      fileName: resource.fileName, owner: resource.owner, resource: resource.resource, kind: resource.kind,
+      status: resource.status, evidence: resource.evidence, state: resource.state,
+      transitionKinds: resource.transitions.map((transition) => transition.kind),
+    })),
     assurance: assurance ?? null,
     project: result.project ?? null,
   };

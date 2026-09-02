@@ -146,7 +146,11 @@ name covers both synchronous and asynchronous protocols) and contribute to
 `coverage.iteratorObligations`. An unclosed iterator is a violation; incomplete
 cleanup evidence is unknown. A trusted callable consumer contributes a
 `resource-callable` assumption and is governed by the same owner/expiration
-policy as every other trusted boundary. Consumers should gate on
+policy as every other trusted boundary. `result.resourceProtocols` exposes the
+same shared CFG decision for general user-defined lifecycle contracts. Its
+obligations contribute to `coverage.resourceProtocolObligations`; leaks are
+violations, unsupported flow is unknown, and trusted declarations remain
+explicit assumptions. Consumers should gate on
 `result.assurance.passed`, not `diagnostics.length`, one verified obligation,
 or a same-named temporal property. Its `claims`, `exclusions`, and per-domain
 `blockers` remain machine-readable. Inferred effects are accepted; explicit

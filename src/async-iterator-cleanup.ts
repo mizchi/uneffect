@@ -989,10 +989,16 @@ function analyzeIteratorProtocolCleanupInProgram(
           ? callableSummaries.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`) : undefined;
         const declared = summary?.operations.filter((operation) => operation.subject.kind === "parameter" && operation.subject.index === argumentIndex) ?? [];
         if (declared.length === 0) operations.push({ kind: "escape", node: argument, awaited: true, conditional: true, evidence: "unknown", uncontractedCall: true });
-        else for (const operation of declared) operations.push({
-          kind: operation.kind === "borrow" ? "use" : operation.kind,
-          node: argument, awaited: true, conditional: operation.kind === "borrow" ? false : conditionallyExecuted(node, binding.declaration), evidence: summary!.evidence === "verified" ? "exact" : "trusted",
-        });
+        else for (const operation of declared) {
+          if (operation.kind === "acquire") {
+            operations.push({ kind: "escape", node: argument, awaited: true, conditional: true, evidence: "unknown", uncontractedCall: true });
+            continue;
+          }
+          operations.push({
+            kind: operation.kind === "borrow" ? "use" : operation.kind,
+            node: argument, awaited: true, conditional: operation.kind === "borrow" ? false : conditionallyExecuted(node, binding.declaration), evidence: summary!.evidence === "verified" ? "exact" : "trusted",
+          });
+        }
       }
       ts.forEachChild(node, visit);
     };

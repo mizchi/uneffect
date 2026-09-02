@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import ts from "typescript";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { attachContractEffectBoundaries, verifyContractObligations, type VerificationArtifact } from "./contracts.js";
-import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type OwnershipCheckerDiagnostic, type TypedArrayCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
+import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type OwnershipCheckerDiagnostic, type ResourceCheckerDiagnostic, type TypedArrayCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
@@ -16,6 +16,7 @@ import { analyzeCallableSummaries } from "./callable-summary.js";
 import { invalidateTransferredTypedArrayEvidence } from "./project-verification.js";
 import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
 import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
+import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, type ResourceLifecycleEvidence } from "./resource-callable-typescript.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -56,6 +57,7 @@ export interface CheckResult {
   typedArrays: TypedArrayProgramSafetyResult;
   ownership: Array<OwnershipDiagnostic & { fileName: string }>;
   asyncIterators: IteratorCheckEvidence[];
+  resourceProtocols: ResourceLifecycleEvidence[];
   errors: number;
   warnings: number;
   project?: TypeScriptProjectProvenance;
@@ -145,6 +147,9 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     }
   }
   const asyncIterators: IteratorCheckEvidence[] = [];
+  const resourceProtocols: ResourceLifecycleEvidence[] = [];
+  const resourceAssumptions: AssumptionEntry[] = [];
+  const resourceCallableAnalysis = analyzeResourceCallableSummaries(program);
   const iteratorAssumptions: AssumptionEntry[] = [];
   for (const fileName of fileNames) {
     if (fileName.endsWith(".uneffect.ts")) continue;
@@ -164,6 +169,22 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
       asyncIterators.push(...iterator.evidence);
       diagnostics.push(...iterator.diagnostics);
       iteratorAssumptions.push(...iterator.assumptions);
+      const lifecycle = analyzeResourceLifecyclesInSource(program, sourceFile, resourceCallableAnalysis, !invalidSources.has(fileName));
+      resourceProtocols.push(...lifecycle.evidence);
+      resourceAssumptions.push(...lifecycle.evidence.filter((item) => item.evidence === "trusted").map((item) => ({
+        id: `resource-callable:${item.fileName}:${item.span.start}:${item.resource}`,
+        evidence: "trusted" as const, domain: "resource-callable" as const,
+        reason: "trusted resource callable contract used by general lifecycle analysis", owner: "source declaration",
+        scope: { fileName: item.fileName, functionName: item.owner, span: item.span },
+      })));
+      diagnostics.push(...lifecycle.diagnostics.map((diagnostic): ResourceCheckerDiagnostic => ({
+        domain: "resource", kind: diagnostic.kind,
+        severity: diagnostic.kind === "unknown-analysis" && options.mode !== "strict" ? "warning" : "error",
+        fileName: diagnostic.fileName,
+        line: sourceFile.getLineAndCharacterOfPosition(diagnostic.span.start).line + 1,
+        functionName: diagnostic.functionName, message: diagnostic.message,
+        notes: [{ label: "resource", detail: diagnostic.resource }, { label: "state", detail: diagnostic.state }],
+      })));
     }
   }
   const typedFiles: TypedArrayProgramSafetyResult["files"] = {};
@@ -234,9 +255,9 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   }
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
   const collectedAssumptions = collectAssumptionLedger(program, Object.fromEntries(sources), typedArrays, {}, options.builtinRegistry, options.assumptionRegistry).ledger;
-  const assumptions = mergeAssumptionLedger(program, collectedAssumptions, [...iteratorAssumptions, ...contractSummaryAssumptions]).ledger;
+  const assumptions = mergeAssumptionLedger(program, collectedAssumptions, [...iteratorAssumptions, ...resourceAssumptions, ...contractSummaryAssumptions]).ledger;
   return {
-    diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, typedArrays, ownership, asyncIterators, errors, warnings: diagnostics.length - errors,
+    diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, typedArrays, ownership, asyncIterators, resourceProtocols, errors, warnings: diagnostics.length - errors,
     ...(options.project === undefined ? {} : { project: options.project }),
   };
 }

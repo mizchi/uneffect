@@ -102,9 +102,10 @@ do not manufacture exceptional edges.
 
 `uneffect-resource-callable-summary/v1` is the backend-neutral function-boundary
 contract. It refers to resources by parameter index or return position and
-supports `borrow`, `consume`, `transfer`, and `escape`. Instantiation substitutes
-the caller's stable resource identities and lowers the operations to the shared
-`use`, `consume`, `transfer`, and `escape` transitions. Verified summaries emit
+supports `acquire`, `use`, `borrow`, `consume`, `release`, `transfer`, and
+`escape`. Instantiation substitutes the caller's stable resource identities,
+introduces resource declarations for acquired returns, and lowers the operations
+to the shared lifecycle transitions. Verified summaries emit
 exact evidence; reviewed external summaries retain trusted evidence.
 
 Missing argument or return identities produce an explicit `unknown` result and
@@ -275,7 +276,8 @@ the iterator, or an immutable inline/named closure or simple aggregate that
 captures it, is an exact ownership escape. Passing it to an uncontracted call is
 an unknown escape rather than an assumed transfer. A symbol-resolved local API
 with an authenticated resource callable annotation instead contributes its
-trusted `borrow`, `consume`, `transfer`, or `escape` transition; the trust level
+trusted `acquire`, `use`, `borrow`, `consume`, `release`, `transfer`, or
+`escape` transition; the trust level
 is retained and is not upgraded to verified evidence. This is a straight-line
 protocol fragment. A direct `yield*` from an async generator to a
 TypeChecker-resolved standard `AsyncIterable` additionally emits separate
@@ -289,6 +291,38 @@ consumer-throw case where the delegate has no `throw` method performs
 IteratorClose before raising `TypeError`, but proving method presence and every
 result shape remains future work. Proxies and general nested delegation
 composition remain unsupported.
+
+General user-defined lifecycle APIs use the unified annotation surface:
+
+```ts
+interface Handle { readonly fd: number }
+
+/* uneffect:acquire return */
+declare function open(): Handle
+
+/* uneffect:use handle */
+declare function inspect(handle: Handle): void
+
+/* uneffect:release handle */
+declare function close(handle: Handle): void
+
+function readMetadata() {
+  const handle = open()
+  const alias = handle
+  inspect(alias)
+  close(alias)
+}
+```
+
+`acquire return` introduces a fresh absent resource and moves it to available;
+it must eventually be released, consumed, transferred, or explicitly escaped.
+`use` and the compatibility spelling `borrow` require the resource to remain
+available. `release` terminates it, so a later use or second release is an
+invalid transition. Immutable local aliases are normalized to the declaration
+identity of the acquiring call, not to their variable spelling. Acquisition is
+currently restricted to a directly `const`-bound return value. Destructuring,
+mutable aliases, returned-member factory contracts, and contracts imported only
+through an unauthenticated transitive `.d.ts` remain unknown.
 
 The manual fragment recognizes one common exception-safe form: the iterator is
 acquired and the immediately following statement is a `try` whose unconditional

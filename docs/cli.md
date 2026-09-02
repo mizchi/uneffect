@@ -148,6 +148,13 @@ unknown` status, and `exact | trusted | unknown` evidence. Unclosed iterators
 are errors; incomplete control/alias coverage is a warning in gradual mode and
 an error in strict mode. A used trusted callable boundary is also recorded as a
 `resource-callable` assumption, so verified assurance cannot silently accept it.
+The separate `resourceProtocols` array records general user-defined
+`acquire`/`use`/`release` composition. Each entry names the owning function,
+resource kind and final state, ordered transition kinds, aggregate status, and
+evidence level. An unclosed lifecycle or invalid transition is an error. Source
+annotations are trusted contracts, so their use is also present in the
+assumption ledger; the CLI does not present declaration trust as implementation
+proof.
 When `--project` is present, `project.compiler` records the analyzer and
 consumer package paths, versions, and `exact | mismatch | unknown` parity.
 Assurance requires `exact`; resolution failure and even patch-version drift are

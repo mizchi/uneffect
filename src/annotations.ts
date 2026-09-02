@@ -12,7 +12,7 @@ export type UneffectDirective =
   | "temporal_stabilizes" | "temporal_response" | "temporal_fair"
   | "consumes_rejection" | "consumes_callback_rejection" | "consumes_rejection_when"
   | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when"
-  | "borrow" | "consume" | "transfer" | "escape";
+  | "acquire" | "use" | "borrow" | "consume" | "release" | "transfer" | "escape";
 export const uneffectDialects = [
   "unified", "trust", "react-component", "react-hook", "react-resource",
 ] as const;
@@ -32,7 +32,7 @@ const unifiedDirectives = new Set([
   "state", "clock", "init", "action", "action_when", "action_fair", "always", "eventually", "repeatedly", "stabilizes", "response", "fair", "temporal_from",
   "temporal_contract",
   "consumes_rejection", "consumes_callback_rejection", "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when",
-  "borrow", "consume", "transfer", "escape",
+  "acquire", "use", "borrow", "consume", "release", "transfer", "escape",
 ]);
 
 export function isCoreUneffectDirective(directive: string): boolean {

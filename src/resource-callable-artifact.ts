@@ -101,10 +101,14 @@ function validSummary(value: unknown): value is ResourceCallableSummary {
     && typeof summary.id === "string"
     && summary.evidence === "trusted"
     && Array.isArray(summary.operations)
-    && summary.operations.every((operation) => operation && typeof operation === "object"
-      && ["borrow", "consume", "transfer", "escape"].includes(operation.kind)
-      && validReference(operation.subject)
-      && (operation.target === undefined || validReference(operation.target)));
+    && summary.operations.every((operation) => {
+      if (!operation || typeof operation !== "object"
+        || !["acquire", "use", "borrow", "consume", "release", "transfer", "escape"].includes(operation.kind)
+        || !validReference(operation.subject)) return false;
+      if (operation.kind === "acquire") return operation.subject.kind === "return" && operation.target === undefined;
+      if (operation.kind === "transfer") return validReference(operation.target);
+      return operation.target === undefined;
+    });
 }
 
 /** Authenticates provenance and trust policy; it never upgrades external evidence to verified. */

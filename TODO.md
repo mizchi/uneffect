@@ -419,6 +419,10 @@ introducing another domain-local control-flow or alias model.
      - [x] Instantiate symbol-resolved local resource callable contracts at
        manual iterator call boundaries, preserving trusted versus verified
        transition evidence.
+     - [x] Generalize callable resource contracts with unified
+       `acquire return`, `use parameter`, and `release parameter` operations;
+       create call-result resources and check leaks and post-release use in the
+       shared CFG evaluator through immutable aliases.
      - [x] Accept trusted resource contracts on ambient functions/methods only
        from explicit root `.d.ts` overlays; reject automatic trust from
        transitively imported declaration files.

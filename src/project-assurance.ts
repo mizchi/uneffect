@@ -2,7 +2,7 @@ import type { VerifyUneffectProjectResult } from "./project-verification.js";
 import { formatEffect, unresolvedCapabilityReasons } from "./capabilities.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 
-export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "iterator" | "instrument" | "assumption" | "temporal" | "module-initialization" | "coverage";
+export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "iterator" | "resource" | "instrument" | "assumption" | "temporal" | "module-initialization" | "coverage";
 
 export interface ProjectAssuranceBlocker {
   domain: ProjectAssuranceDomain;
@@ -19,6 +19,7 @@ export interface ProjectAssuranceCoverage {
   typedArrayObligations: number;
   trustedTypedArrayObligations: number;
   iteratorObligations: number;
+  resourceProtocolObligations: number;
   temporalProperties: number;
   moduleInitializationModels: number;
 }
@@ -111,6 +112,12 @@ export function assessProjectVerification(
     else if (iterator.status === "unknown" || iterator.evidence === "unknown") add("iterator", "unknown", iterator.fileName, iterator.owner,
       `${iterator.owner}: iterator cleanup evidence is unknown (${iterator.unknownReasons.join(", ") || "resource transition"})`);
   }
+  for (const resource of result.resourceProtocols) {
+    if (resource.status === "unsatisfied") add("resource", "violation", resource.fileName, resource.owner,
+      `${resource.owner}: ${resource.resource} does not reach an accepted terminal state`);
+    else if (resource.status === "unknown" || resource.evidence === "unknown") add("resource", "unknown", resource.fileName, resource.owner,
+      `${resource.owner}: resource lifecycle evidence is unknown for ${resource.resource}`);
+  }
   for (const unknown of result.moduleInitialization?.unknowns ?? []) {
     add("module-initialization", "unknown", unknown.fileName, unknown.kind, unknown.detail);
   }
@@ -119,6 +126,7 @@ export function assessProjectVerification(
   for (const obligation of result.obligations) coveredFiles.add(obligation.source.fileName);
   for (const fileName of Object.keys(result.typedArrays.files)) coveredFiles.add(fileName);
   for (const iterator of result.asyncIterators) coveredFiles.add(iterator.fileName);
+  for (const resource of result.resourceProtocols) coveredFiles.add(resource.fileName);
   for (const fileName of checkedFiles) if (!coveredFiles.has(fileName)) {
     add("coverage", "unknown", fileName, "<coverage>", "no effect summary, contract obligation, or typed-array obligation was emitted for this file");
   }
@@ -132,6 +140,7 @@ export function assessProjectVerification(
     typedArrayObligations: typedArrayObligations.length,
     trustedTypedArrayObligations: typedArrayObligations.filter((item) => item.result === "trusted").length,
     iteratorObligations: result.asyncIterators.length,
+    resourceProtocolObligations: result.resourceProtocols.length,
     temporalProperties: result.temporal?.properties.length ?? 0,
     moduleInitializationModels: result.moduleInitialization ? 1 : 0,
   };
@@ -142,6 +151,7 @@ export function assessProjectVerification(
     "every emitted typed-array obligation is verified or explicitly trusted",
     "no modeled ownership violation was found",
     ...(result.asyncIterators.length > 0 ? ["every emitted iterator resource scenario reaches an accepted terminal state"] : []),
+    ...(result.resourceProtocols.length > 0 ? ["every emitted general resource protocol reaches an accepted terminal state"] : []),
     "runtime assertion generation emitted no unsupported-boundary diagnostic",
     "the configured assumption policy has no violation",
     ...(result.temporal ? ["every emitted temporal property is verified for its attributed source"] : []),
