@@ -302,9 +302,9 @@ function auditAcquiredResourceReferences(
   const allTransitions = (site: ResourceTransitionSite): readonly ResourceProtocolTransition[] =>
     [...site.transitions, ...(site.fulfillmentTransitions ?? [])];
   const acquiredBindings = new Map<ts.Symbol, string>();
-  for (const site of inputSites) if (ts.isCallExpression(site.node) || ts.isNewExpression(site.node)) {
+  for (const site of inputSites) {
     const acquired = allTransitions(site).find((transition) => transition.kind === "acquire");
-    if (!acquired || !("resource" in acquired) || !ts.isCallExpression(site.node) && !ts.isNewExpression(site.node)) continue;
+    if (!acquired || !("resource" in acquired) || !ts.isExpression(site.node)) continue;
     let current: ts.Expression = site.node;
     while ((ts.isParenthesizedExpression(current.parent) || ts.isNonNullExpression(current.parent)
       || ts.isAsExpression(current.parent) || ts.isTypeAssertionExpression(current.parent)
@@ -353,7 +353,11 @@ function auditAcquiredResourceReferences(
       candidates.push(site.node.expression.expression);
     }
     for (const candidate of candidates) {
-      const resource = resourceArgumentId(checker, candidate);
+      let base = candidate;
+      while (ts.isParenthesizedExpression(base) || ts.isNonNullExpression(base)
+        || ts.isAsExpression(base) || ts.isTypeAssertionExpression(base)) base = base.expression;
+      const candidateSymbol = ts.isIdentifier(base) ? resolvedSymbol(checker, base) : undefined;
+      const resource = candidateSymbol ? aliases.get(candidateSymbol) ?? resourceArgumentId(checker, candidate) : resourceArgumentId(checker, candidate);
       if (!resource || !resourcesAtSite.has(resource)) continue;
       const mark = (node: ts.Node): void => {
         if (ts.isIdentifier(node)) {

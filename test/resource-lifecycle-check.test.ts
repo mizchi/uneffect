@@ -406,18 +406,24 @@ describe("general resource lifecycle check", () => {
           const pending = open(path, "r")
           void pending
         }
+        export async function aliased(path: string) {
+          const pending = open(path, "r")
+          const handle = await pending
+          try { await handle.readFile() } finally { await handle.close() }
+        }
       `);
       const result = await checkFiles([fileName]);
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
         expect.objectContaining({ owner: "unsafe", kind: "file-handle", status: "unknown", state: "unknown" }),
         expect.objectContaining({ owner: "safe", kind: "file-handle", status: "satisfied", state: "absent-or-released" }),
+        expect.objectContaining({ owner: "aliased", kind: "file-handle", status: "satisfied", state: "absent-or-released" }),
       ]));
       expect(result.summaries.find((summary) => summary.functionName === "safe")?.effects).toEqual(expect.arrayContaining([
         expect.objectContaining({ kind: "capability", name: "FsRead" }),
       ]));
       expect(result.diagnostics).toEqual(expect.arrayContaining([
         expect.objectContaining({ domain: "resource", kind: "unknown-analysis", functionName: "floating",
-          message: expect.stringContaining("not directly awaited") }),
+          message: expect.stringContaining("Promise-to-resource binding is not stable") }),
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });

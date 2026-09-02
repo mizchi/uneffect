@@ -413,9 +413,11 @@ release operation was invoked, not that the OS operation was proved successful;
 close rejection remains an async/temporal outcome. A preceding awaited read or
 write can bypass a later close, so reliable ownership discharge still requires
 `try/finally` or `await using`.
-Binding the unresolved Promise first (`const pending = open(...)`) is currently
-reported as unknown rather than treating the Promise object as a file handle.
-Promise-to-resource aliasing across a later `await pending` is not yet proved.
+An immutable Promise binding followed by exactly one direct acquisition,
+`const pending = open(...); const handle = await pending`, is linked to the
+handle declaration by TypeChecker symbol identity. Extra uses, multiple awaits,
+mutation, storage, or escape of `pending` remain unknown rather than treating
+the Promise object itself as a file handle.
 
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:

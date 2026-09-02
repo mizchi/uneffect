@@ -455,6 +455,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Model `node:fs/promises.open()` as fulfilled `file-handle`
        acquisition, FileHandle I/O as use, and `close()` as responsibility
        release, with rejection-safe cleanup requiring `finally`.
+     - [x] Resolve a non-escaping immutable Promise acquisition through exactly
+       one later `await` binding by TypeChecker identity; reject extra uses,
+       mutation, multiple awaits, and escape as unknown.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

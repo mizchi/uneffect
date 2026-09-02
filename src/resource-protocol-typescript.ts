@@ -63,6 +63,35 @@ export function collectBuiltinResourceTransitionSites(
     return ts.isVariableDeclaration(parent) && parent.initializer === result && ts.isIdentifier(parent.name)
       ? { id: `region:${parent.getSourceFile().fileName}:${parent.getStart()}`, label: parent.name.text } : undefined;
   };
+  const fulfilledResultBinding = (call: ts.CallExpression): { id: string; label: string; node: ts.Node } | undefined => {
+    if (directlyAwaited(call)) {
+      const binding = resultBinding(call);
+      return binding ? { ...binding, node: call } : undefined;
+    }
+    const declaration = call.parent;
+    if (!ts.isVariableDeclaration(declaration) || declaration.initializer !== call || !ts.isIdentifier(declaration.name)
+      || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+    const symbol = resolvedSymbol(checker, declaration.name);
+    if (!symbol) return undefined;
+    const references: ts.Identifier[] = [];
+    const find = (node: ts.Node): void => {
+      if (node !== fn.body && ts.isFunctionLike(node)) return;
+      if (ts.isIdentifier(node) && node !== declaration.name && resolvedSymbol(checker, node) === symbol) references.push(node);
+      ts.forEachChild(node, find);
+    };
+    find(fn.body!);
+    if (references.length !== 1) return undefined;
+    const reference = references[0]!;
+    if (!ts.isAwaitExpression(reference.parent) || reference.parent.expression !== reference) return undefined;
+    const awaitExpression = reference.parent;
+    const target = awaitExpression.parent;
+    if (!ts.isVariableDeclaration(target) || target.initializer !== awaitExpression || !ts.isIdentifier(target.name)) return undefined;
+    return {
+      id: `region:${target.getSourceFile().fileName}:${target.getStart()}`,
+      label: target.name.text,
+      node: awaitExpression,
+    };
+  };
   const stableRoot = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
     if (!ts.isIdentifier(expression)) return expression;
     let symbol = checker.getSymbolAtLocation(expression);
@@ -94,27 +123,36 @@ export function collectBuiltinResourceTransitionSites(
         ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }) : [];
       const transitions: ResourceProtocolTransition[] = [];
       const fulfillmentTransitions: ResourceProtocolTransition[] = [];
+      let transitionNode: ts.Node = node;
+      let fulfillmentHasOwnRejectionEdge = false;
       for (const event of events) {
         if ((event.kind !== "acquire" && event.kind !== "use" && event.kind !== "release") || !event.target) continue;
-        if (event.completion === "fulfillment" && (!ts.isCallExpression(node) || !directlyAwaited(node))) {
-          unknown.push({ node, reason: `${event.kind}(${event.resource}) occurs on fulfillment but the result is not directly awaited` });
+        const fulfilledBinding = event.completion === "fulfillment" && event.target.status === "result" && ts.isCallExpression(node)
+          ? fulfilledResultBinding(node) : undefined;
+        if (event.completion === "fulfillment" && event.target.status === "result" && !fulfilledBinding) {
+          unknown.push({ node, reason: `${event.kind}(${event.resource}) occurs on fulfillment but the Promise-to-resource binding is not stable` });
           continue;
         }
-        const identityValue = identity(event.target, node);
+        const identityValue = fulfilledBinding ?? identity(event.target, node);
         if (!identityValue) {
           unknown.push({ node, reason: `${event.kind}(${event.resource}) has no stable projected resource identity` });
           continue;
+        }
+        if (fulfilledBinding) {
+          transitionNode = fulfilledBinding.node;
+          fulfillmentHasOwnRejectionEdge = fulfilledBinding.node !== node;
         }
         const resource = identityValue.id;
         if (!resources.has(resource)) resources.set(resource, {
           id: resource, label: identityValue.label, kind: event.resource,
           initialState: event.kind === "acquire" ? "absent" : "available", requiredTerminalStates: ["released"],
         });
-        const transition = { kind: event.kind, resource, at: node.getStart(node.getSourceFile()), evidence: "trusted" } as ResourceProtocolTransition;
+        const transition = { kind: event.kind, resource, at: transitionNode.getStart(node.getSourceFile()), evidence: "trusted" } as ResourceProtocolTransition;
         (event.completion === "fulfillment" ? fulfillmentTransitions : transitions).push(transition);
       }
       if (transitions.length || fulfillmentTransitions.length) sites.push({
-        node, transitions, ...(fulfillmentTransitions.length ? { fulfillmentTransitions } : {}),
+        node: transitionNode, transitions, ...(fulfillmentTransitions.length ? { fulfillmentTransitions } : {}),
+        ...(fulfillmentHasOwnRejectionEdge ? { exceptionalCompletion: "throw" as const } : {}),
       });
     }
     ts.forEachChild(node, visit);
