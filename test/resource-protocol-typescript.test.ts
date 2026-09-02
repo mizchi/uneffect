@@ -49,10 +49,10 @@ describe("TypeScript resource protocol CFG lowering", () => {
       const source = program.getSourceFile(fileName)!;
       const fn = source.statements.find(ts.isFunctionDeclaration)!;
       const collected = collectBuiltinResourceTransitionSites(program, fn);
-      expect(collected.resources).toEqual([expect.objectContaining({ id: "reader", kind: "stream-reader", initialState: "absent" })]);
+      expect(collected.resources).toEqual([expect.objectContaining({ label: "reader", kind: "stream-reader", initialState: "absent" })]);
       expect(collected.sites.flatMap((site) => site.transitions)).toMatchObject([
-        { kind: "acquire", resource: "reader", evidence: "trusted" },
-        { kind: "release", resource: "reader", evidence: "trusted" },
+        { kind: "acquire", evidence: "trusted" },
+        { kind: "release", evidence: "trusted" },
       ]);
       const lowered = lowerResourceProtocolCfgInFunction(source, fn, {
         schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],
@@ -83,11 +83,11 @@ describe("TypeScript resource protocol CFG lowering", () => {
       const fn = source.statements.find(ts.isFunctionDeclaration)!;
       const collected = collectBuiltinResourceTransitionSites(program, fn);
       expect(collected.unknown).toEqual([]);
-      expect(collected.resources).toEqual([expect.objectContaining({ id: "socket", kind: "websocket", initialState: "absent" })]);
+      expect(collected.resources).toEqual([expect.objectContaining({ label: "socket", kind: "websocket", initialState: "absent" })]);
       expect(collected.sites.flatMap((site) => site.transitions)).toMatchObject([
-        { kind: "acquire", resource: "socket", evidence: "trusted" },
-        { kind: "use", resource: "socket", evidence: "trusted" },
-        { kind: "release", resource: "socket", evidence: "trusted" },
+        { kind: "acquire", evidence: "trusted" },
+        { kind: "use", evidence: "trusted" },
+        { kind: "release", evidence: "trusted" },
       ]);
       const lowered = lowerResourceProtocolCfgInFunction(source, fn, {
         schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],

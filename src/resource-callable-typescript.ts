@@ -11,7 +11,7 @@ import {
   type ResourceProtocolState,
   type ResourceProtocolTransition,
 } from "./resource-protocol.js";
-import { lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
+import { collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
 
 type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.MethodSignature
   | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
@@ -42,6 +42,7 @@ export interface ResourceLifecycleEvidence {
   readonly span: { readonly start: number; readonly end: number };
   readonly status: "satisfied" | "unsatisfied" | "unknown";
   readonly evidence: "verified" | "trusted" | "unknown";
+  readonly authority: "callable-contract" | "builtin-catalog" | "mixed";
   readonly state: ResourceProtocolState;
   readonly transitions: readonly ResourceProtocolTransition[];
 }
@@ -173,7 +174,7 @@ function resourceArgumentId(checker: ts.TypeChecker, input: ts.Expression): stri
         while (ts.isParenthesizedExpression(initializer) || ts.isNonNullExpression(initializer)
           || ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer)
           || ts.isAwaitExpression(initializer)) initializer = initializer.expression;
-        if (ts.isCallExpression(initializer)) {
+        if (ts.isCallExpression(initializer) || ts.isNewExpression(initializer)) {
           return `region:${declaration.getSourceFile().fileName}:${declaration.getStart()}`;
         }
         return visit(initializer, new Set([...seen, symbol]));
@@ -196,7 +197,6 @@ export function collectResourceCallableTransitionSites(
   const byId = new Map(summaries.map((summary) => [summary.id, summary] as const));
   const sites: ResourceTransitionSite[] = [];
   const resources = new Map<string, ResourceProtocolResource>();
-  const acquiredBindings = new Map<ts.Symbol, string>();
   const diagnostics: ResourceCallableDiagnostic[] = [];
   const summaryForDeclarationSymbol = (symbol: ts.Symbol | undefined): ResourceCallableSummary | undefined => {
     const declarations = symbol?.declarations ?? (symbol?.valueDeclaration ? [symbol.valueDeclaration] : []);
@@ -250,11 +250,6 @@ export function collectResourceCallableTransitionSites(
             at: node.getStart(),
           });
           for (const resource of instantiated.resources) resources.set(resource.id, resource);
-          if (instantiated.resources.length > 0) {
-            const declaration = resultDeclaration(node);
-            const symbol = declaration && ts.isIdentifier(declaration.name) ? resolvedSymbol(checker, declaration.name) : undefined;
-            if (symbol) acquiredBindings.set(symbol, instantiated.resources[0]!.id);
-          }
           if (instantiated.transitions.length > 0) sites.push({ node, transitions: instantiated.transitions });
           for (const missing of instantiated.missing) diagnostics.push({
             code: "unresolved-resource-binding",
@@ -267,70 +262,99 @@ export function collectResourceCallableTransitionSites(
     ts.forEachChild(node, visit);
   };
   visit(fn.body);
-  if (acquiredBindings.size > 0) {
-    const allowed = new Set<ts.Node>();
-    const aliases = new Map(acquiredBindings);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      const discover = (node: ts.Node): void => {
-        if (node !== fn.body && ts.isFunctionLike(node)) return;
-        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
-          && ts.isVariableDeclarationList(node.parent)) {
-          const flags = ts.getCombinedNodeFlags(node.parent);
-          const immutable = (flags & ts.NodeFlags.Const) !== 0 || (flags & ts.NodeFlags.Using) === ts.NodeFlags.Using;
-          let initializer = node.initializer;
-          while (ts.isParenthesizedExpression(initializer) || ts.isNonNullExpression(initializer)
-            || ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer)) initializer = initializer.expression;
-          const sourceSymbol = immutable && ts.isIdentifier(initializer) ? resolvedSymbol(checker, initializer) : undefined;
-          const targetSymbol = resolvedSymbol(checker, node.name);
-          const resource = sourceSymbol ? aliases.get(sourceSymbol) : undefined;
-          if (resource && targetSymbol && !aliases.has(targetSymbol)) {
-            aliases.set(targetSymbol, resource); allowed.add(node.name); allowed.add(initializer); changed = true;
-          }
-        }
-        ts.forEachChild(node, discover);
-      };
-      discover(fn.body);
-    }
-    for (const symbol of acquiredBindings.keys()) for (const declaration of symbol.declarations ?? []) {
-      if (ts.isVariableDeclaration(declaration)) allowed.add(declaration.name);
-    }
-    for (const site of sites) if (ts.isCallExpression(site.node)) {
-      const resourcesAtSite = new Set(site.transitions.flatMap((transition) => "resource" in transition ? [transition.resource] : []));
-      const candidates: ts.Expression[] = [...site.node.arguments];
-      if (ts.isPropertyAccessExpression(site.node.expression) || ts.isElementAccessExpression(site.node.expression)) {
-        candidates.push(site.node.expression.expression);
-      }
-      for (const candidate of candidates) {
-        const resource = resourceArgumentId(checker, candidate);
-        if (!resource || !resourcesAtSite.has(resource)) continue;
-        const mark = (node: ts.Node): void => { if (ts.isIdentifier(node) && aliases.has(resolvedSymbol(checker, node)!)) allowed.add(node); ts.forEachChild(node, mark); };
-        mark(candidate);
-      }
-    }
-    const audit = (node: ts.Node): void => {
-      if (ts.isIdentifier(node)) {
-        const symbol = resolvedSymbol(checker, node);
-        const resource = symbol ? aliases.get(symbol) : undefined;
-        if (resource && !allowed.has(node)) {
-          let expression: ts.Expression = node;
-          while ((ts.isParenthesizedExpression(expression.parent) || ts.isNonNullExpression(expression.parent)
-            || ts.isAsExpression(expression.parent) || ts.isTypeAssertionExpression(expression.parent))
-            && expression.parent.expression === expression) expression = expression.parent;
-          if (ts.isReturnStatement(expression.parent) && expression.parent.expression === expression) {
-            sites.push({ node: expression.parent, transitions: [{ kind: "escape", resource, at: expression.parent.getStart(), evidence: "exact" }] });
-          } else {
-            sites.push({ node, transitions: [{ kind: "escape", resource, at: node.getStart(), evidence: "unknown", conditional: true }] });
-          }
-          allowed.add(node);
-        }
-      }
-      ts.forEachChild(node, audit);
-    };
-    audit(fn.body);
-  }
   return { resources: [...resources.values()], sites, diagnostics };
+}
+
+function auditAcquiredResourceReferences(
+  program: ts.Program,
+  fn: ts.FunctionLikeDeclaration,
+  inputSites: readonly ResourceTransitionSite[],
+): ResourceTransitionSite[] {
+  if (!fn.body) return [...inputSites];
+  const checker = program.getTypeChecker();
+  const acquiredBindings = new Map<ts.Symbol, string>();
+  for (const site of inputSites) if (ts.isCallExpression(site.node) || ts.isNewExpression(site.node)) {
+    const acquired = site.transitions.find((transition) => transition.kind === "acquire");
+    if (!acquired || !("resource" in acquired) || !ts.isCallExpression(site.node) && !ts.isNewExpression(site.node)) continue;
+    let current: ts.Expression = site.node;
+    while ((ts.isParenthesizedExpression(current.parent) || ts.isNonNullExpression(current.parent)
+      || ts.isAsExpression(current.parent) || ts.isTypeAssertionExpression(current.parent)
+      || ts.isAwaitExpression(current.parent)) && current.parent.expression === current) current = current.parent;
+    const declaration = current.parent;
+    const symbol = ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)
+      ? resolvedSymbol(checker, declaration.name) : undefined;
+    if (symbol) acquiredBindings.set(symbol, acquired.resource);
+  }
+  if (acquiredBindings.size === 0) return [...inputSites];
+
+  const sites = [...inputSites];
+  const allowed = new Set<ts.Node>();
+  const aliases = new Map(acquiredBindings);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const discover = (node: ts.Node): void => {
+      if (node !== fn.body && ts.isFunctionLike(node)) return;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+        && ts.isVariableDeclarationList(node.parent)) {
+        const flags = ts.getCombinedNodeFlags(node.parent);
+        const immutable = (flags & ts.NodeFlags.Const) !== 0 || (flags & ts.NodeFlags.Using) === ts.NodeFlags.Using;
+        let initializer = node.initializer;
+        while (ts.isParenthesizedExpression(initializer) || ts.isNonNullExpression(initializer)
+          || ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer)) initializer = initializer.expression;
+        const sourceSymbol = immutable && ts.isIdentifier(initializer) ? resolvedSymbol(checker, initializer) : undefined;
+        const targetSymbol = resolvedSymbol(checker, node.name);
+        const resource = sourceSymbol ? aliases.get(sourceSymbol) : undefined;
+        if (resource && targetSymbol && !aliases.has(targetSymbol)) {
+          aliases.set(targetSymbol, resource); allowed.add(node.name); allowed.add(initializer); changed = true;
+        }
+      }
+      ts.forEachChild(node, discover);
+    };
+    discover(fn.body);
+  }
+  for (const symbol of acquiredBindings.keys()) for (const declaration of symbol.declarations ?? []) {
+    if (ts.isVariableDeclaration(declaration)) allowed.add(declaration.name);
+  }
+  for (const site of inputSites) if (ts.isCallExpression(site.node) || ts.isNewExpression(site.node)) {
+    const resourcesAtSite = new Set(site.transitions.flatMap((transition) => "resource" in transition ? [transition.resource] : []));
+    const candidates: ts.Expression[] = [...(site.node.arguments ?? [])];
+    if (ts.isCallExpression(site.node)
+      && (ts.isPropertyAccessExpression(site.node.expression) || ts.isElementAccessExpression(site.node.expression))) {
+      candidates.push(site.node.expression.expression);
+    }
+    for (const candidate of candidates) {
+      const resource = resourceArgumentId(checker, candidate);
+      if (!resource || !resourcesAtSite.has(resource)) continue;
+      const mark = (node: ts.Node): void => {
+        if (ts.isIdentifier(node)) {
+          const symbol = resolvedSymbol(checker, node);
+          if (symbol && aliases.has(symbol)) allowed.add(node);
+        }
+        ts.forEachChild(node, mark);
+      };
+      mark(candidate);
+    }
+  }
+  const audit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) {
+      const symbol = resolvedSymbol(checker, node);
+      const resource = symbol ? aliases.get(symbol) : undefined;
+      if (resource && !allowed.has(node)) {
+        let expression: ts.Expression = node;
+        while ((ts.isParenthesizedExpression(expression.parent) || ts.isNonNullExpression(expression.parent)
+          || ts.isAsExpression(expression.parent) || ts.isTypeAssertionExpression(expression.parent))
+          && expression.parent.expression === expression) expression = expression.parent;
+        sites.push(ts.isReturnStatement(expression.parent) && expression.parent.expression === expression
+          ? { node: expression.parent, transitions: [{ kind: "escape", resource, at: expression.parent.getStart(), evidence: "exact" }] }
+          : { node, transitions: [{ kind: "escape", resource, at: node.getStart(), evidence: "unknown", conditional: true }] });
+        allowed.add(node);
+      }
+    }
+    ts.forEachChild(node, audit);
+  };
+  audit(fn.body);
+  return sites;
 }
 
 function lifecycleOwner(fn: ts.FunctionLikeDeclaration): string {
@@ -372,10 +396,26 @@ export function analyzeResourceLifecyclesInSource(
     }));
   const visit = (node: ts.Node): void => {
     if (isFunctionWithBody(node)) {
-      const collected = collectResourceCallableTransitionSites(program, node, analysis.summaries);
+      const declared = collectResourceCallableTransitionSites(program, node, analysis.summaries);
+      const builtin = collectBuiltinResourceTransitionSites(program, node);
+      const sites = auditAcquiredResourceReferences(program, node, [...declared.sites, ...builtin.sites]);
+      const collected = {
+        resources: [...new Map([...declared.resources, ...builtin.resources].map((resource) => [resource.id, resource] as const)).values()],
+        sites,
+        diagnostics: declared.diagnostics,
+      };
+      const declaredIds = new Set(declared.resources.map((resource) => resource.id));
+      const builtinIds = new Set(builtin.resources.map((resource) => resource.id));
+      const authorityFor = (id: string): ResourceLifecycleEvidence["authority"] => declaredIds.has(id) && builtinIds.has(id)
+        ? "mixed" : builtinIds.has(id) ? "builtin-catalog" : "callable-contract";
       for (const diagnostic of collected.diagnostics) diagnostics.push({
         kind: "unknown-analysis", fileName: diagnostic.fileName, functionName: lifecycleOwner(node), span: diagnostic.span,
         resource: "<binding>", state: "unknown", message: diagnostic.message,
+      });
+      for (const unknown of builtin.unknown) diagnostics.push({
+        kind: "unknown-analysis", fileName: source.fileName, functionName: lifecycleOwner(node),
+        span: { start: unknown.node.getStart(source), end: unknown.node.getEnd() },
+        resource: "<builtin>", state: "unknown", message: unknown.reason,
       });
       if (collected.resources.length > 0) {
         if (!sourceValid) diagnostics.push({
@@ -404,7 +444,7 @@ export function analyzeResourceLifecyclesInSource(
             resource: "<cfg>", state: "unknown", message: `resource CFG is unknown: ${lowered.reason}` });
           for (const resource of collected.resources) evidence.push({
             fileName: source.fileName, owner: lifecycleOwner(node), resource: resource.label, kind: resource.kind,
-            span, status: "unknown", evidence: "unknown", state: "unknown", transitions: collected.sites.flatMap((site) => site.transitions),
+            span, status: "unknown", evidence: "unknown", authority: authorityFor(resource.id), state: "unknown", transitions: collected.sites.flatMap((site) => site.transitions),
           });
         } else {
           const evaluated = evaluateResourceProtocolCfg(lowered.cfg);
@@ -416,7 +456,8 @@ export function analyzeResourceLifecyclesInSource(
             const status = !sourceValid || evaluated.status === "unknown" ? "unknown" as const
               : acceptedTerminal(resource, state) ? "satisfied" as const : "unsatisfied" as const;
             evidence.push({ fileName: source.fileName, owner: lifecycleOwner(node), resource: resource.label,
-              kind: resource.kind, span: { start: node.getStart(source), end: node.getEnd() }, status, evidence: trust, state, transitions });
+              kind: resource.kind, span: { start: node.getStart(source), end: node.getEnd() }, status, evidence: trust,
+              authority: authorityFor(resource.id), state, transitions });
             if (status === "unsatisfied") {
               const acquisition = transitions.find((transition) => "resource" in transition && transition.resource === resource.id && transition.kind === "acquire");
               const start = acquisition?.at ?? node.getStart(source);

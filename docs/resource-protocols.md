@@ -368,6 +368,19 @@ unannotated member, or otherwise using it outside a known transition adds an
 unknown escape transition. A later close therefore cannot manufacture a proof
 that the opaque operation preserved ownership.
 
+Reviewed lifecycle events from the versioned builtin semantic catalog enter
+this same checker. For example, `new WebSocket()` acquires a `websocket`,
+`send()` uses it, and `close()` releases it; stream-reader acquisition and
+release follow the same route. The resource id is the TypeScript declaration
+region, while the local variable spelling is display-only, so renaming a binding
+or calling through an immutable alias does not change the proof relation.
+Catalog gaps and unstable projected identities are unknown rather than silently
+treated as pure operations.
+Lifecycle evidence reports `authority` as `callable-contract`,
+`builtin-catalog`, or `mixed`. Trusted catalog transitions remain `builtin`
+assumptions in the assurance ledger; they are not mislabeled as user callable
+contracts or promoted to verified evidence.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 

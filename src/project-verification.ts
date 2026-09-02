@@ -441,12 +441,20 @@ async function verifyUneffectProjectFiles(
     iteratorAssumptions.push(...iterator.assumptions);
     const lifecycle = analyzeResourceLifecyclesInSource(program, sourceFile, resourceCallableAnalysis, !invalidSources.has(fileName));
     resourceProtocols.push(...lifecycle.evidence);
-    resourceAssumptions.push(...lifecycle.evidence.filter((item) => item.evidence === "trusted").map((item) => ({
-      id: `resource-callable:${item.fileName}:${item.span.start}:${item.resource}`,
-      evidence: "trusted" as const, domain: "resource-callable" as const,
-      reason: "trusted resource callable contract used by general lifecycle analysis", owner: "source declaration",
-      scope: { fileName: item.fileName, functionName: item.owner, span: item.span },
-    })));
+    resourceAssumptions.push(...lifecycle.evidence.filter((item) => item.evidence === "trusted").flatMap((item): AssumptionEntry[] => [
+      ...(item.authority !== "builtin-catalog" ? [{
+        id: `resource-callable:${item.fileName}:${item.span.start}:${item.resource}`,
+        evidence: "trusted" as const, domain: "resource-callable" as const,
+        reason: "trusted resource callable contract used by general lifecycle analysis", owner: "source declaration",
+        scope: { fileName: item.fileName, functionName: item.owner, span: item.span },
+      }] : []),
+      ...(item.authority !== "callable-contract" ? [{
+        id: `builtin-resource:${item.fileName}:${item.span.start}:${item.resource}`,
+        evidence: "trusted" as const, domain: "builtin" as const,
+        reason: "reviewed builtin resource lifecycle overlay", owner: "@mizchi/uneffect",
+        scope: { fileName: item.fileName, functionName: item.owner, span: item.span },
+      }] : []),
+    ]));
     diagnostics.push(...lifecycle.diagnostics.map((diagnostic): ResourceCheckerDiagnostic => ({
       domain: "resource", kind: diagnostic.kind, severity: "error", fileName: diagnostic.fileName,
       line: sourceFile.getLineAndCharacterOfPosition(diagnostic.span.start).line + 1,

@@ -109,12 +109,13 @@
     },
     "resourceProtocol": {
       "type": "object", "additionalProperties": false,
-      "required": ["fileName", "owner", "resource", "kind", "status", "evidence", "state", "transitionKinds"],
+      "required": ["fileName", "owner", "resource", "kind", "status", "evidence", "authority", "state", "transitionKinds"],
       "properties": {
         "fileName": { "type": "string" }, "owner": { "type": "string" },
         "resource": { "type": "string" }, "kind": { "type": "string" },
         "status": { "enum": ["satisfied", "unsatisfied", "unknown"] },
         "evidence": { "enum": ["verified", "trusted", "unknown"] },
+        "authority": { "enum": ["callable-contract", "builtin-catalog", "mixed"] },
         "state": { "type": "string" },
         "transitionKinds": { "type": "array", "items": { "type": "string" } }
       }

@@ -36,6 +36,7 @@ export interface CheckReportResourceProtocol {
   kind: string;
   status: "satisfied" | "unsatisfied" | "unknown";
   evidence: "verified" | "trusted" | "unknown";
+  authority: "callable-contract" | "builtin-catalog" | "mixed";
   state: string;
   transitionKinds: string[];
 }
@@ -144,7 +145,7 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
     asyncIterators: result.asyncIterators,
     resourceProtocols: result.resourceProtocols.map((resource) => ({
       fileName: resource.fileName, owner: resource.owner, resource: resource.resource, kind: resource.kind,
-      status: resource.status, evidence: resource.evidence, state: resource.state,
+      status: resource.status, evidence: resource.evidence, authority: resource.authority, state: resource.state,
       transitionKinds: resource.transitions.map((transition) => transition.kind),
     })),
     assurance: assurance ?? null,

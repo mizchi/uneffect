@@ -228,4 +228,33 @@ describe("general resource lifecycle check", () => {
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("surfaces catalog-driven WebSocket lifecycles through checkFiles", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-builtin-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        declare function opaque(socket: WebSocket): void
+        export function valid() { const socket = new WebSocket("wss://example.test"); socket.send("ping"); socket.close() }
+        export function leaked() { const socket = new WebSocket("wss://example.test"); socket.send("ping") }
+        export function invalid() { const socket = new WebSocket("wss://example.test"); socket.close(); socket.send("late") }
+        export function unknown() { const renamed = new WebSocket("wss://example.test"); opaque(renamed); renamed.close() }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "valid", kind: "websocket", status: "satisfied", state: "released", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "leaked", kind: "websocket", status: "unsatisfied" }),
+        expect.objectContaining({ owner: "invalid", kind: "websocket", status: "unknown" }),
+        expect.objectContaining({ owner: "unknown", kind: "websocket", status: "unknown", evidence: "unknown" }),
+      ]));
+      expect(result.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "resource", kind: "unclosed", functionName: "leaked" }),
+        expect.objectContaining({ domain: "resource", kind: "invalid-transition", functionName: "invalid" }),
+      ]));
+      expect(result.assumptions.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "builtin", reason: "reviewed builtin resource lifecycle overlay" }),
+      ]));
+      expect(result.assumptions.entries.filter((entry) => entry.domain === "resource-callable")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

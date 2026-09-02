@@ -52,10 +52,10 @@ export function collectBuiltinResourceTransitionSites(
   const resources = new Map<string, ResourceProtocolResource>();
   const sites: ResourceTransitionSite[] = [];
   const unknown: Array<{ node: ts.CallExpression | ts.NewExpression; reason: string }> = [];
-  const resultBinding = (call: ts.CallExpression | ts.NewExpression): string | undefined => {
+  const resultBinding = (call: ts.CallExpression | ts.NewExpression): { id: string; label: string } | undefined => {
     const parent = call.parent;
     return ts.isVariableDeclaration(parent) && parent.initializer === call && ts.isIdentifier(parent.name)
-      ? parent.name.text : undefined;
+      ? { id: `region:${parent.getSourceFile().fileName}:${parent.getStart()}`, label: parent.name.text } : undefined;
   };
   const stableRoot = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
     if (!ts.isIdentifier(expression)) return expression;
@@ -68,11 +68,17 @@ export function collectBuiltinResourceTransitionSites(
       || !ts.isIdentifier(declaration.initializer)) return expression;
     return stableRoot(declaration.initializer, new Set(seen).add(symbol));
   };
-  const identity = (target: ProjectedValue, call: ts.CallExpression | ts.NewExpression): string | undefined => {
+  const identity = (target: ProjectedValue, call: ts.CallExpression | ts.NewExpression): { id: string; label: string } | undefined => {
     if (target.status === "result") return resultBinding(call);
     if (target.status !== "resolved") return undefined;
     const root = stableRoot(target.expression);
-    return `${root.getText(root.getSourceFile())}${target.path.map((part) => `.${part}`).join("")}`;
+    const symbol = ts.isIdentifier(root) ? resolvedSymbol(checker, root) : undefined;
+    const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+    const suffix = target.path.map((part) => `.${part}`).join("");
+    return {
+      id: `${declaration ? `region:${declaration.getSourceFile().fileName}:${declaration.getStart()}` : `region:${root.getSourceFile().fileName}:${root.getStart()}`}${suffix}`,
+      label: `${root.getText(root.getSourceFile())}${suffix}`,
+    };
   };
   const visit = (node: ts.Node): void => {
     if (node !== fn && ts.isFunctionLike(node)) return;
@@ -83,13 +89,14 @@ export function collectBuiltinResourceTransitionSites(
       const transitions: ResourceProtocolTransition[] = [];
       for (const event of events) {
         if ((event.kind !== "acquire" && event.kind !== "use" && event.kind !== "release") || !event.target) continue;
-        const resource = identity(event.target, node);
-        if (!resource) {
+        const identityValue = identity(event.target, node);
+        if (!identityValue) {
           unknown.push({ node, reason: `${event.kind}(${event.resource}) has no stable projected resource identity` });
           continue;
         }
+        const resource = identityValue.id;
         if (!resources.has(resource)) resources.set(resource, {
-          id: resource, label: resource, kind: event.resource,
+          id: resource, label: identityValue.label, kind: event.resource,
           initialState: event.kind === "acquire" ? "absent" : "available", requiredTerminalStates: ["released"],
         });
         transitions.push({ kind: event.kind, resource, at: node.getStart(node.getSourceFile()), evidence: "trusted" });

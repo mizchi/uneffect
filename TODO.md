@@ -438,6 +438,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Audit every acquired-resource reference: accept known transitions,
        aliases, `using`, and direct return escape; fail closed on opaque calls,
        storage, capture, and unannotated use.
+     - [x] Route builtin semantic-catalog acquire/use/release events (including
+       WebSocket and stream readers) through the normal CLI/project resource
+       protocol output, using declaration-region ids instead of variable names.
      - [x] Accept trusted resource contracts on ambient functions/methods only
        from explicit root `.d.ts` overlays; reject automatic trust from
        transitively imported declaration files.
