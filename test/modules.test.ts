@@ -118,6 +118,7 @@ describe("declarative Uneffect modules", () => {
         export declare function riskyWhen(flag: boolean): void
         export declare function riskyAsync(): Promise<void>
         export declare function createScheduler(): Scheduler
+        export declare function send(transfer: ArrayBuffer[]): void
       `);
       const module = {
         ...auditModule,
@@ -141,6 +142,7 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "Handle#inspect" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed receiver use", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "use", resource: "Acme.Handle", target: { kind: "receiver" } }] } },
             { symbol: { module: "reviewed-handle", export: "Handle#close" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed receiver release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "receiver" } }] } },
             { symbol: { module: "reviewed-handle", export: "Scheduler#schedule" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed member callback", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..1", completion: "host-report-throw" }] } },
+            { symbol: { module: "reviewed-handle", export: "send" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed ownership transfer", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "transfer", target: { kind: "argument", index: 0 } }] } },
           ],
         },
       } as const;
@@ -149,7 +151,7 @@ describe("declarative Uneffect modules", () => {
       writeFileSync(facade, `export { schedule as later } from "reviewed-handle"`);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler, send } from "reviewed-handle"
         const scheduleAlias = schedule
         const aliasedCallback = () => {}
         export function valid() { const handle = open(); inspect(handle); close(handle) }
@@ -160,6 +162,7 @@ describe("declarative Uneffect modules", () => {
         export function memberValid() { const handle = open(); const alias = handle; alias.inspect(); alias.close() }
         export function extractedReceiver() { const handle = open(); const shutdown = handle.close; shutdown() }
         export function memberScheduled() { const scheduler = createScheduler(); scheduler.schedule(aliasedCallback) }
+        export function transferred() { const buffer = new ArrayBuffer(8); send([buffer]); return new DataView(buffer) }
         export function exceptional() {
           const handle = open()
           try { risky(); close(handle) }
@@ -195,6 +198,9 @@ describe("declarative Uneffect modules", () => {
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         domain: "resource", kind: "invalid-transition", functionName: "exceptional",
       }));
+      expect(result.ownership).toContainEqual(expect.objectContaining({
+        operation: "read", resource: "buffer", state: "detached",
+      }));
       expect(result.assumptions.entries).toEqual(expect.arrayContaining([
         expect.objectContaining({ domain: "builtin", owner: "security-platform", reason: "reviewed acquisition" }),
       ]));
@@ -209,6 +215,9 @@ describe("declarative Uneffect modules", () => {
         expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "asyncValid", status: "satisfied", authority: "builtin-catalog", state: "absent-or-released" }),
       ]));
+      expect(project.ownership.diagnostics).toContainEqual(expect.objectContaining({
+        operation: "read", resource: "buffer", state: "detached",
+      }));
       const program = createCheckProgram([entry]);
       const source = program.getSourceFile(entry)!;
       const temporal = analyzeHostNeutralTransitions(program, source, { builtinRegistry: installed.registry });

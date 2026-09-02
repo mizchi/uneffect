@@ -118,6 +118,10 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
   semantics through the same temporal IR. Immutable receiver aliases compose;
   an extracted unbound resource method has no receiver authority and fails
   closed instead of releasing the original object;
+- clone/transfer primitives are consumed by the same ownership analyzer in
+  `checkFiles` and project verification. For example, a reviewed transfer-list
+  API invalidates the concrete `ArrayBuffer` identity and a later `DataView`
+  construction is diagnosed as a detached read;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.
@@ -127,6 +131,11 @@ It does not yet load JavaScript, native, or Wasm analyzer plugins. It also canno
 Resource primitives remain reviewed assumptions. Their package symbol and exact
 runtime version are authenticated by the registry, but Uneffect does not inspect
 the dependency implementation to prove that the declared transition is complete.
+
+Producer contract-summary bundles currently use the built-in registry only. A
+bundle must not depend on a semantics module until the bundle schema records and
+authenticates the exact module ledger/digests used by its producer; otherwise a
+consumer could not reproduce the trusted inputs behind the persisted summary.
 
 The intended later tiers are:
 

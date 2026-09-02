@@ -9,6 +9,7 @@ import { lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from 
 import { collectCallableExceptionalTransitionSites } from "./resource-protocol-typescript.js";
 import type { ExternalFunctionEffectContract } from "./effects.js";
 import type { CallableSummary } from "./callable-summary.js";
+import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export type OwnershipState = "available" | "detached" | "transferred" | "locked" | "shared" | "unknown";
 export type OwnershipOperation = "clone" | "transfer" | "read" | "mutate";
@@ -160,8 +161,12 @@ export function checkOwnership(events: readonly OwnershipEvent[]): OwnershipDiag
 
 interface CollectedOwnershipEvent extends OwnershipEvent { readonly sourceNode: ts.Node }
 
-function collectOwnershipEventRecords(program: ts.Program, source: ts.SourceFile): CollectedOwnershipEvent[] {
-  const adapter = new TypeScriptFrontendAdapter(program);
+function collectOwnershipEventRecords(
+  program: ts.Program,
+  source: ts.SourceFile,
+  builtinRegistry?: BuiltinContractRegistry,
+): CollectedOwnershipEvent[] {
+  const adapter = new TypeScriptFrontendAdapter(program, builtinRegistry);
   const checker = program.getTypeChecker();
   const events: Array<OwnershipEvent & { expression?: ts.Expression }> = [];
   const transferSpans: Array<{ start: number; end: number }> = [];
@@ -398,8 +403,9 @@ export function analyzeOwnership(
   source: ts.SourceFile,
   callableSummaries: readonly CallableSummary[] = [],
   externalContracts: ReadonlyMap<string, ExternalFunctionEffectContract> = new Map(),
+  builtinRegistry?: BuiltinContractRegistry,
 ): OwnershipDiagnostic[] {
-  const records = collectOwnershipEventRecords(program, source);
+  const records = collectOwnershipEventRecords(program, source, builtinRegistry);
   const byFunction = new Map<ts.FunctionLikeDeclaration, CollectedOwnershipEvent[]>();
   const outside: CollectedOwnershipEvent[] = [];
   for (const record of records) {

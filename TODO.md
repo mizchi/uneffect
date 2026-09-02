@@ -650,6 +650,12 @@ introducing another domain-local control-flow or alias model.
        interface/class member symbols, retaining concrete receiver identity and
        callback queues through aliases; reject extracted unbound resource
        methods without inventing receiver authority.
+     - [x] Pass the caller-owned registry through `checkFiles` and project
+       callable/ownership analysis, and consume module `clone | transfer`
+       primitives with concrete buffer invalidation in both entry points.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Bind semantics-module ledger identities and digests into producer
+       contract-summary bundles before allowing their persisted summaries to
+       depend on a caller-owned registry.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

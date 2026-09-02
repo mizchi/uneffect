@@ -216,7 +216,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     const source = program.getSourceFile(fileName);
     return source ? ownershipCandidate(source.text) : false;
   });
-  const callableSummaries = needsOwnership ? analyzeCallableSummaries(program, analyzedEffects).summaries : [];
+  const callableSummaries = needsOwnership ? analyzeCallableSummaries(program, analyzedEffects, options.builtinRegistry).summaries : [];
   const functionAt = (source: ts.SourceFile, position: number): string => {
     let name = "<module>";
     const visit = (node: ts.Node): void => {
@@ -240,7 +240,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     }
     typedFiles[fileName] = typed;
     if (!invalidSources.has(fileName) && ownershipCandidate(sourceFile.text)) {
-      const found = analyzeOwnership(program, sourceFile, callableSummaries, externalFunctionEffects);
+      const found = analyzeOwnership(program, sourceFile, callableSummaries, externalFunctionEffects, options.builtinRegistry);
       ownership.push(...found.map((diagnostic) => ({ ...diagnostic, fileName })));
       diagnostics.push(...found.map((diagnostic): OwnershipCheckerDiagnostic => ({
         domain: "ownership", kind: "invalid-transition", severity: diagnostic.state === "unknown" && options.mode !== "strict" ? "warning" : "error", fileName,

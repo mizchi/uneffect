@@ -424,7 +424,7 @@ async function verifyUneffectProjectFiles(
     diagnostics: analyzedEffects.diagnostics.filter((diagnostic) => !diagnostic.fileName.endsWith(".uneffect.ts")),
   };
   diagnostics.push(...effects.diagnostics);
-  const callableSummaries = analyzeCallableSummaries(program, effectProgram === program ? analyzedEffects : undefined).summaries;
+  const callableSummaries = analyzeCallableSummaries(program, effectProgram === program ? analyzedEffects : undefined, options.builtinRegistry).summaries;
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   const asyncIterators: IteratorCheckEvidence[] = [];
   const resourceProtocols: ResourceLifecycleEvidence[] = [];
@@ -448,7 +448,8 @@ async function verifyUneffectProjectFiles(
   for (const fileName of Object.keys(options.files)) {
     const sourceFile = program.getSourceFile(fileName);
     if (!sourceFile) continue;
-    ownershipDiagnostics.push(...analyzeOwnership(program, sourceFile, callableSummaries).map((diagnostic) => ({ ...diagnostic, fileName, kind: "ownership" as const })));
+    ownershipDiagnostics.push(...analyzeOwnership(program, sourceFile, callableSummaries, new Map(), options.builtinRegistry)
+      .map((diagnostic) => ({ ...diagnostic, fileName, kind: "ownership" as const })));
     if (fileName.endsWith(".uneffect.ts")) continue;
     const iterator = collectIteratorChecks(program, sourceFile, "strict", !invalidSources.has(fileName));
     asyncIterators.push(...iterator.evidence);
