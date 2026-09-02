@@ -921,8 +921,9 @@ introducing another domain-local control-flow or alias model.
        installed declaration has matched. Constraint and type-parameter drift
        remain blocking unknowns; compiler recovery signatures at invalid call
        sites are never accepted as evidence.
-     - [x] Publish a one-level callable member of an exported builtin
-       `Object.freeze({ ... })` literal with an explicit symbol path, and bind
+     - [x] Publish a callable member of an exported builtin
+       `Object.freeze({ ... })` tree with an explicit symbol path, requiring an
+       independent builtin freeze at every traversed object level, and bind
        direct or immutable-alias consumer calls to the installed member
        declaration, including statically named `const` destructuring. Mutable objects and shadowed freeze lookalikes fail closed;
        structurally compatible non-export receivers remain `unknown`. This is

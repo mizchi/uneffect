@@ -1216,4 +1216,63 @@ describe("persisted contract summary bundles", () => {
       source: shadowedSource, program: programFor(producerFile, shadowedSource), artifacts: [],
     })).toThrow(/no fully verified exported function contracts/u);
   });
+
+  it("binds a callable nested beneath independently frozen namespace objects", () => {
+    const producerFile = "/src/api.ts";
+    const producerSource = `
+      export const api = Object.freeze({
+        users: Object.freeze({
+          /* uneffect:effect Console */
+          get(id: string): void { console.log(id) }
+        })
+      })
+    `;
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/api", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: programFor(producerFile, producerSource), artifacts: [],
+    });
+    expect(bundle.exports).toEqual([expect.objectContaining({
+      symbol: { module: "@example/api", export: "api", path: ["users", "get"] },
+      functionName: "api.users.get",
+    })]);
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-nested-member-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "api");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/api", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare const api: Readonly<{ users: Readonly<{ get(id: string): void }> }>
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { api } from "@example/api"
+      export function load(): void { api.users.get("id") }
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding).toMatchObject({ status: "verified", blockers: [], exports: [{
+      exportName: "api", callSites: [expect.anything()],
+    }] });
+    expect(analyzeProgramEffects(consumerProgram, {
+      externalFunctionEffects: boundContractSummaryEffectContracts([binding]),
+    }).summaries.find(({ functionName }) => functionName === "load")?.effects.map(formatEffect)).toEqual(["Console"]);
+
+    const shallowSource = `
+      export const api = Object.freeze({
+        users: {
+          /* uneffect:effect Console */
+          get(id: string): void { console.log(id) }
+        }
+      })
+    `;
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/api", packageVersion: "1.0.0", fileName: producerFile,
+      source: shallowSource, program: programFor(producerFile, shallowSource), artifacts: [],
+    })).toThrow(/no fully verified exported function contracts/u);
+  });
 });

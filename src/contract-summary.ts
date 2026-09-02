@@ -713,6 +713,37 @@ function callableFromSymbol(checker: ts.TypeChecker, symbol: ts.Symbol | undefin
   }] : [];
 }
 
+function frozenMemberCallables(
+  checker: ts.TypeChecker,
+  object: ts.ObjectLiteralExpression,
+  exportName: string,
+  prefix: readonly string[] = [],
+): DirectExportCallable[] {
+  return object.properties.flatMap((property): DirectExportCallable[] => {
+    const propertyName = property.name;
+    if (!propertyName || !(ts.isIdentifier(propertyName) || ts.isStringLiteralLike(propertyName)
+      || ts.isNumericLiteral(propertyName))) return [];
+    const key = propertyName.text;
+    const path = [...prefix, key];
+    const symbol = checker.getSymbolAtLocation(propertyName);
+    const callable = symbol && stableCallableDeclaration(symbol);
+    if (callable && !callable.getSourceFile().isDeclarationFile
+      && (ts.isFunctionDeclaration(callable) || ts.isMethodDeclaration(callable)
+        || ts.isArrowFunction(callable) || ts.isFunctionExpression(callable))
+      && callable.body) {
+      const owner = ts.isMethodDeclaration(callable) ? callable
+        : ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) ? property : undefined;
+      if (owner) return [{
+          node: callable, owner, exportName, memberPath: path,
+          functionName: [exportName, ...path].join("."),
+        }];
+    }
+    if (!ts.isPropertyAssignment(property)) return [];
+    const nested = resolveFrozenObjectLiteral(checker, property.initializer);
+    return nested ? frozenMemberCallables(checker, nested, exportName, path) : [];
+  });
+}
+
 function directExportCallables(statement: ts.Statement, checker: ts.TypeChecker): DirectExportCallable[] {
   if (ts.isFunctionDeclaration(statement)) {
     if (!statement.body || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)) return [];
@@ -760,26 +791,7 @@ function directExportCallables(statement: ts.Statement, checker: ts.TypeChecker)
   if (!ts.isIdentifier(declaration.name) || !declaration.initializer) return [];
   const exportName = declaration.name.text;
   const frozen = resolveFrozenObjectLiteral(checker, declaration.name);
-  if (frozen) return frozen.properties.flatMap((property): DirectExportCallable[] => {
-    const propertyName = property.name;
-    if (!propertyName || !(ts.isIdentifier(propertyName) || ts.isStringLiteralLike(propertyName)
-      || ts.isNumericLiteral(propertyName))) return [];
-    const key = propertyName.text;
-    const symbol = checker.getSymbolAtLocation(propertyName);
-    const callable = symbol && stableCallableDeclaration(symbol);
-    if (!callable || callable.getSourceFile().isDeclarationFile
-      || !(ts.isFunctionDeclaration(callable) || ts.isMethodDeclaration(callable)
-        || ts.isArrowFunction(callable) || ts.isFunctionExpression(callable))
-      || !callable.body) return [];
-    return [{
-      node: callable,
-      owner: ts.isMethodDeclaration(callable) ? callable
-        : ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) ? property : statement,
-      exportName,
-      memberPath: [key],
-      functionName: `${exportName}.${key}`,
-    }];
-  });
+  if (frozen) return frozenMemberCallables(checker, frozen, exportName);
   let initializer = declaration.initializer;
   while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
     || ts.isTypeAssertionExpression(initializer) || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;

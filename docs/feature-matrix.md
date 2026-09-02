@@ -45,8 +45,8 @@ Persisted scalar contract summaries now have a consumer fragment beyond the
 compact Hoare row above: repeatable CLI `--contract-summary` inputs and the
 programmatic binder follow TypeChecker-resolved calls through named aliases,
 namespace imports, and source re-exports, require exact root-package export,
-installed package version, and signature. One-level callable members already
-protected by builtin `Object.freeze({ ... })` retain a static member path and
+installed package version, and signature. Callable members already protected
+at every traversed object level by builtin `Object.freeze({ ... })` retain a static member path and
 compose through direct or immutable-alias calls; mutable objects and lookalike
 freeze functions fail closed. Uneffect does not insert or recommend freezing. The binder
 records the selected declaration bytes. Verified Effect-only exports also lower

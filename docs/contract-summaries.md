@@ -148,12 +148,14 @@ that TypeScript instantiated. A call site overlapping a TypeScript semantic
 error is rejected even when the compiler exposes a recovery signature. It does not prove TypeScript's type system or
 infer a contract for an opaque dynamically selected callable.
 
-One-level callable members of an exported builtin
-`Object.freeze({ ... })` literal can be published as an export plus a static
-symbol path, for example `telemetry.track`. Direct calls, immutable local
+Callable members of an exported builtin `Object.freeze({ ... })` literal can
+be published as an export plus a static symbol path, for example
+`telemetry.track` or `api.users.get`. Every object traversed below the root
+must have its own builtin freeze; a shallowly frozen root gives no authority to
+a nested mutable object. Direct calls, immutable local
 aliases, and statically named `const` object destructuring must retain the root exported receiver identity, resolve to the
 installed member declaration, and then use the ordinary
-external Effect/resource IR. An ordinary mutable object, computed key, getter,
+external Effect/resource IR. An ordinary or nested mutable object, computed key, getter,
 spread-built object, or a same-named user implementation of `Object.freeze`
 is rejected. A structurally compatible value with the same imported member
 type is not the exported receiver: its call remains explicit `unknown` rather

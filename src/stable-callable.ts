@@ -77,18 +77,18 @@ function frozenLiteralForReceiver(
   seen: ReadonlySet<ts.Symbol>,
 ): ts.ObjectLiteralExpression | undefined {
   const expression = unwrap(input);
+  if (ts.isCallExpression(expression) && isBuiltinObjectFreeze(checker, expression)
+    && expression.arguments.length === 1 && ts.isObjectLiteralExpression(expression.arguments[0])) {
+    return expression.arguments[0];
+  }
   if (!ts.isIdentifier(expression)) return undefined;
   const symbol = resolvedSymbol(checker, expression);
   if (!symbol || seen.has(symbol)) return undefined;
   for (const declaration of symbol.declarations ?? []) {
     if (!ts.isVariableDeclaration(declaration) || !isConstVariable(declaration) || !declaration.initializer) continue;
     const initializer = unwrap(declaration.initializer);
-    if (ts.isCallExpression(initializer) && isBuiltinObjectFreeze(checker, initializer)
-      && initializer.arguments.length === 1 && ts.isObjectLiteralExpression(initializer.arguments[0])) return initializer.arguments[0];
-    if (ts.isIdentifier(initializer)) {
-      const result = frozenLiteralForReceiver(checker, initializer, new Set(seen).add(symbol));
-      if (result) return result;
-    }
+    const frozen = frozenLiteralForReceiver(checker, initializer, new Set(seen).add(symbol));
+    if (frozen) return frozen;
   }
   return undefined;
 }
