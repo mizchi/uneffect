@@ -2322,6 +2322,7 @@ export function lowerInvariantProgram(
       const nullableSource = unsafeNullableScalarCopy(unwrapped);
       if (nullableSource) throw new Error(`scalar assignment would erase nullable presence: ${targetName} = ${nullableSource}`);
       return evaluateScalar(unwrapped, path).map(({ path: branch, value }) => {
+        if (branch.completion !== "normal") return branch;
         if (scalarExpressionSort(value) !== scalarExpressionSort(variable(target.valueVariable!))) {
           throw new Error(`nullable scalar assignment requires a matching right operand: ${targetName} = ${expression.getText(source)}`);
         }
@@ -2535,6 +2536,7 @@ export function lowerInvariantProgram(
           const whenTrue = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, previous] };
           const whenFalse = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(previous)] };
           const assignRight = (branch: PathState): PathState[] => evaluateScalar(operation.right, branch).map(({ path: evaluated, value }) => {
+            if (evaluated.completion !== "normal") return evaluated;
             const nextEnv = new Map(evaluated.env); nextEnv.set(name, value);
             return { ...evaluated, env: nextEnv };
           });
@@ -2586,6 +2588,7 @@ export function lowerInvariantProgram(
           const divisor = constantIntegerRemainders.get(`${operation.getStart(source)}:${operation.getEnd()}`);
           if (divisor === undefined) throw new Error(`unsupported invariant expression: ${operation.getText(source)}`);
           paths = paths.flatMap((path) => evaluateIntegerRemainder(operation.left, divisor, path).map(({ path: branch, value }) => {
+            if (branch.completion !== "normal") return branch;
             const nextEnv = new Map(branch.env);
             nextEnv.set(name, value);
             return { ...branch, env: nextEnv };
@@ -2599,6 +2602,7 @@ export function lowerInvariantProgram(
             throw new Error(`arithmetic compound assignment requires a numeric left operand: ${operation.left.getText(source)}`);
           }
           return evaluateScalar(operation.right, path).map(({ path: branch, value }) => {
+            if (branch.completion !== "normal") return branch;
             if (scalarExpressionSort(value) !== previousSort) {
               throw new Error(`arithmetic compound assignment requires matching numeric operands: ${operation.getText(source)}`);
             }

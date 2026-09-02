@@ -1799,6 +1799,36 @@ describe("persisted contract summary bundles", () => {
         } while (api.checkedFlag(value, repeat))
         return 1
       }
+      /* uneffect:ensures result === 5 */
+      export function compound(value: number): number {
+        let result = 5
+        try {
+          result += api.dangerousAdd(value)
+        } catch {
+          return result
+        }
+        return 5
+      }
+      /* uneffect:ensures result === false */
+      export function logical(value: number): boolean {
+        let result = false
+        try {
+          result ||= api.ensureNonnegative(value)
+        } catch {
+          return result
+        }
+        return false
+      }
+      /* uneffect:ensures result === true */
+      export function nullish(result: number | null, value: number): boolean {
+        if (result !== null) return true
+        try {
+          result ??= api.dangerousAdd(value)
+        } catch {
+          return result === null
+        }
+        return true
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -1809,6 +1839,7 @@ describe("persisted contract summary bundles", () => {
     const nestedVerification = await verifyContractObligations(nestedFile, nestedSource, undefined, nestedProgram, {
       externalContractBindings: nestedBinding.exports,
     });
+    expect(nestedVerification.diagnostics).toEqual([]);
     for (const functionName of ["nested", "conditional", "compared", "negated", "shortCircuitLeft", "shortCircuitRight", "conditionCall", "absolute", "ifCall", "switchCall", "whileCall", "forCall", "doCall"]) {
       expect(nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName))
         .toMatchObject({
@@ -1820,5 +1851,9 @@ describe("persisted contract summary bundles", () => {
     expect(twice).toMatchObject({ status: "verified" });
     expect(twice?.controlFlow?.exceptionFlow?.escapes).toHaveLength(2);
     expect(new Set(twice?.controlFlow?.exceptionFlow?.escapes.map(({ originSpan }) => `${originSpan.start}:${originSpan.end}`)).size).toBe(2);
+    for (const functionName of ["compound", "logical", "nullish"]) {
+      expect(nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName
+        && artifact.controlFlow?.exceptionFlow?.discharged.length)).toMatchObject({ status: "verified" });
+    }
   });
 });

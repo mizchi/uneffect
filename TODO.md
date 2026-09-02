@@ -2650,6 +2650,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     and the supported signed-remainder fragment retain their branches. Require
     matching numeric IR sorts; canonical loop-header updates remain deliberately
     single-path.
+  - [x] Commit compound, logical, nullable, and plain assignment mutations only
+    on normal RHS completion. Authenticated synchronous contract throws retain
+    the pre-assignment environment when routed through catch/discharge.
 - [x] Remove direct `/` and `%` from the Hoare expression lowering after a
   negative-control demonstrated that SMT `mod` could verify `result >= 0` for
   JavaScript's negative remainder. Reject manual unknown SMT operators too;
@@ -2711,13 +2714,16 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Reuse those Boolean short-circuit paths for identifier-only `&&=` and
   `||=` logical assignment. Read the prior binding once, preserve it on the
   skipped path, and evaluate/assign the right operand only on the selected
-  path; non-Boolean and call/effect-valued operands fail closed.
+  path. Authenticated scalar contract calls are admitted and mutate only on
+  normal completion; other effect-valued operands fail closed.
 - [x] Add identifier-only numeric or Boolean `??=` by splitting the
   TypeChecker-backed nullable presence state and evaluating the right side only
   on the nullish path. A scalar RHS establishes presence; a compatible nullable
   RHS copies its payload and presence, so subsequent coalescing and guards never
-  reuse stale evidence. Properties, mutable aliases, incompatible absence
-  domains, and call-valued right sides remain fail-closed. ([#25](https://github.com/mizchi/uneffect/issues/25))
+  reuse stale evidence. An authenticated scalar contract call establishes
+  presence only on normal completion and retains absence on its throw edge.
+  Properties, mutable aliases, incompatible absence domains, and other
+  call-valued right sides remain fail-closed. ([#25](https://github.com/mizchi/uneffect/issues/25))
 - [ ] Import sound TypeChecker narrowing facts into the contract logic IR; each ([#25](https://github.com/mizchi/uneffect/issues/25))
   admitted narrowing form needs a same-spelled/shadowed negative control.
   - [x] Admit one-to-sixteen-member safe-integer literal unions, including

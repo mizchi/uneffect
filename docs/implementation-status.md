@@ -608,8 +608,12 @@ same property is proved for arbitrary TypeScript.
   through the same path-sensitive scalar evaluator as returns and plain
   assignments. Conditional expressions, reviewed Math calls, and the supported
   signed-remainder fragment therefore preserve their branch assumptions before
-  updating the identifier once. Both operands must have the same numeric IR
-  sort. Canonical loop-header updates stay in the single-path updater.
+  updating the identifier once. Authenticated synchronous contract calls may
+  also produce separate normal and throw completions: only the normal completion
+  mutates the binding, while catch observes the pre-assignment state. The same
+  normal-completion gate applies to Boolean `&&=`/`||=` and nullable scalar
+  `??=`. Both arithmetic operands must have the same numeric IR sort. Canonical
+  loop-header updates stay in the single-path updater.
   Direct `/` and general `%` expressions now fail closed for the same reason. A
   regression demonstrates the prior unsound mapping: SMT `mod` could prove a
   non-negative result for a negative JavaScript remainder. Reintroduction
