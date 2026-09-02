@@ -346,12 +346,13 @@ operands, call-valued fallbacks, and non-nullable numbers remain `unknown`.
 TypeChecker-proven Boolean `&&` and `||` in those scalar positions additionally
 preserve left-to-right short-circuit paths, including nested expressions.
 Identifier-only Boolean `&&=` and `||=` reuse the same paths and update the
-binding only when the right operand is reached. Non-Boolean truthiness,
-and call/effect-valued operands remain `unknown`. Identifier-only scalar `??=`
+binding only when the right operand is reached. Non-Boolean truthiness and
+call/effect-valued operands remain `unknown`. Identifier-only scalar `??=`
 uses the TypeChecker-backed nullable presence state, evaluates its right side
-only on the nullish path, and marks the binding present afterward so later
-coalescing cannot reuse stale evidence. Property targets, mutable aliases, and
-call-valued right sides remain `unknown`.
+only on the nullish path, and passes that RHS through the shared nullable
+assignment evaluator. Scalar values establish presence; compatible nullable
+values propagate their payload and presence. Property targets, mutable aliases,
+incompatible absence domains, and call-valued right sides remain `unknown`.
 Exact `number | string` and `boolean | string` parameters also admit direct
 TypeChecker-bound `typeof` equality/inequality guards. Testing either the scalar
 type or the string complement selects the same Boolean fact; mixed scalar or
@@ -365,6 +366,24 @@ Nullable Boolean facts relate presence to truthiness with `!defined =>
 !payload`, so a true direct condition implies a present value. Ternary, `if`,
 loop, and reviewed assertion conditions share an explicit Boolean-sort gate;
 numeric and other coercive JavaScript truthiness remain `unknown`.
+Boolean-literal equality additionally requires presence plus a matching
+payload, and inequality is its complement; null/undefined therefore remain
+distinct from false for strict and loose comparisons. Mutable scalar copies of
+still-nullable values are `unknown` rather than dropping the presence bit.
+Copies after exact TypeChecker narrowing to a scalar are supported.
+Plain assignment of a matching non-nullish scalar to the nullable identifier
+updates payload and presence together. Nullable RHS copies, explicit nullish
+producers, mismatched sorts, and property targets remain `unknown` rather than
+reusing stale presence evidence. A direct `null` or exact-typed `undefined`
+value sets presence false when the target union admits that member; calls,
+and wrong-member nullish values are not generalized into this rule. Recursive
+conditional RHS values preserve their path assumptions. Compatible nullable
+identifiers copy payload and presence together only when the target absence
+domain contains the source; mutable aliases without presence state remain
+`unknown`.
+Read-only immutable nullable aliases preserve that evidence. Mutating the source
+or another name sharing its modeled state fails closed instead of implicitly
+mutating the alias; declaration-point snapshot semantics are not yet modeled.
 Supported bare, conditional, loop, try/catch, and finally blocks use one lexical
 scope join: outer writes and function-scoped `var` survive, while block-local
 `let`/`const` bindings do not escape. Shadowing a tracked scalar remains

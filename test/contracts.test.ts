@@ -339,6 +339,21 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("does not claim that a nullable RHS makes nullish assignment present", async () => {
+    const fileName = "/nullable-nullish-assignment-source.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function invalidContract(target: boolean | null, source: boolean | null): boolean {
+        target ??= source
+        return target != null
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts.some(({ status }) => status === "counterexample")).toBe(true);
+    expect(result.diagnostics.some(({ message }) => message.includes("can fail"))).toBe(true);
+  });
+
   it("tracks TypeChecker-backed nullable Boolean guards, coalescing, and assignment", async () => {
     const fileName = "/nullable-boolean.ts";
     const source = `
@@ -384,6 +399,254 @@ describe("Hoare contract checker", () => {
 
     expect(result.diagnostics).toEqual([]);
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("keeps nullable Boolean literal equality distinct from absence", async () => {
+    const fileName = "/nullable-boolean-literal-equality.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === 0 */
+      function absentIsNotFalse(value: boolean | null | undefined): Int {
+        if (value == null) {
+          if ((value as boolean | null | undefined) === false) return -1
+        }
+        return 0
+      }
+      /* uneffect:ensures result === 0 */
+      function absentIsDifferentFromFalse(value: boolean | null | undefined): Int {
+        if (value == null) {
+          if ((value as boolean | null | undefined) !== false) return 0
+          return -1
+        }
+        return 0
+      }
+      /* uneffect:ensures result === 0 */
+      function looseAbsentIsNotFalse(value: boolean | null): Int {
+        if (value == null) {
+          if ((value as boolean | null) == false) return -1
+        }
+        return 0
+      }
+      /* uneffect:ensures result === 0 */
+      function looseAbsentIsDifferentFromFalse(value: boolean | null): Int {
+        if (value == null) {
+          if ((value as boolean | null) != false) return 0
+          return -1
+        }
+        return 0
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not erase nullable presence through a mutable scalar alias", async () => {
+    const fileName = "/unsupported-nullable-boolean-mutable-alias.ts";
+    const source = `
+      /* uneffect:ensures result === false */
+      function invalidProof(value: boolean | null): boolean {
+        let current = value
+        if (value == null) return current !== false
+        return false
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("allows scalar copies after TypeChecker excludes nullish values", async () => {
+    const fileName = "/narrowed-nullable-scalar-copy.ts";
+    const source = `
+      /* uneffect:ensures result === true || result === false */
+      function initialized(value: boolean | null): boolean {
+        if (value == null) return false
+        let current = value
+        return current
+      }
+      /* uneffect:ensures result === true || result === false */
+      function assigned(value: boolean | undefined): boolean {
+        let current = false
+        if (value === undefined) return current
+        current = value
+        return current
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("updates nullable presence after a plain scalar assignment", async () => {
+    const fileName = "/nullable-plain-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === false */
+      function noStalePresence(value: boolean | null): boolean {
+        if (value == null) {
+          value = true
+          return value !== true
+        }
+        return false
+      }
+      /* uneffect:ensures result === 1 */
+      function numeric(value: number | undefined): number {
+        value = 1
+        return value ?? -1
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("fails closed when plain assignment cannot establish nullable presence", async () => {
+    const cases = [
+      `
+        /* uneffect:ensures result === false */
+        function nullableCopy(value: boolean | null, other: boolean | undefined): boolean {
+          value = other
+          return false
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === 0 */
+        function property(value: Int | undefined, box: { current?: Int }): Int {
+          box.current = value
+          return 0
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-nullable-plain-assignment-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("updates nullable absence after direct null or undefined assignment", async () => {
+    const fileName = "/nullable-nullish-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function clearedBoolean(value: boolean | null): boolean {
+        value = null
+        return value === null
+      }
+      /* uneffect:ensures result === 2 */
+      function clearedNumber(value: number | undefined): number {
+        value = undefined
+        return value ?? 2
+      }
+      /* uneffect:ensures result === 3 */
+      function clearedCombined(value: number | null | undefined): number {
+        value = null
+        return value ?? 3
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("composes conditional nullable assignment values", async () => {
+    const fileName = "/conditional-nullable-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === 1 || result === 2 */
+      function scalarOrNull(value: number | null, choose: boolean): number {
+        value = choose ? 1 : null
+        return value ?? 2
+      }
+      /* uneffect:ensures result === 3 */
+      function nullOrUndefined(value: number | null | undefined, choose: boolean): number {
+        value = choose ? null : undefined
+        return value ?? 3
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("copies compatible nullable identifier state without losing presence", async () => {
+    const fileName = "/nullable-state-copy.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function copy(target: boolean | undefined, source: boolean | undefined): boolean {
+        target = source
+        if (typeof source === "undefined") return typeof target === "undefined"
+        if (typeof target === "undefined") return false
+        return target === source
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not mutate an immutable alias through shared nullable state", async () => {
+    const cases = [
+      `
+        /* uneffect:ensures result === true */
+        function plain(value: boolean | null): boolean {
+          const old = value
+          value = true
+          return old != null
+        }
+      `,
+      `
+        /* uneffect:ensures result === true */
+        function nullish(value: boolean | undefined): boolean {
+          const old = value
+          value ??= true
+          return typeof old !== "undefined"
+        }
+      `,
+      `
+        /* uneffect:ensures result === true */
+        function cleared(value: boolean | null): boolean {
+          const old = value
+          value = null
+          return old == null
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-shared-nullable-alias-mutation-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("fails closed for unestablished nullish assignment values", async () => {
+    const cases = [
+      `
+        /* uneffect:ensures result === 0 */
+        function wrongKind(value: number | null): number {
+          value = undefined
+          return 0
+        }
+      `,
+      `
+        declare function absent(): undefined
+        /* uneffect:ensures result === 0 */
+        function called(value: number | undefined): number {
+          value = absent()
+          return 0
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-nullish-value-assignment-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
   });
 
   it("does not apply nullable Boolean truthiness semantics to numbers", async () => {
@@ -464,6 +727,13 @@ describe("Hoare contract checker", () => {
         function property(value: { current?: Int }): Int {
           value.current ??= 1
           return value.current
+        }
+      `,
+      `
+        /* uneffect:ensures result === false */
+        function incompatible(target: boolean | null, source: boolean | undefined): boolean {
+          target ??= source
+          return false
         }
       `,
     ];

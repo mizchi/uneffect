@@ -660,12 +660,13 @@ same property is proved for arbitrary TypeScript.
   conjunction or disjunction. Identifier-only Boolean `&&=` and `||=` share
   those paths: the left binding is read once, retained on the skipped path, and
   updated only after evaluating the selected right path. `??=` is also
-  supported for a TypeChecker-backed nullable numeric or Boolean identifier: it splits on
-  the prior presence value, evaluates the right side only when nullish, and
-  writes `true` to the path environment on both completion paths. Later
-  coalescing or nullish guards therefore consume the updated state instead of
-  stale TypeChecker evidence. Property targets, mutable aliases, call-valued
-  right sides, and mismatched scalar sorts remain unsupported.
+  supported for a TypeChecker-backed nullable numeric or Boolean identifier. It
+  splits on prior presence and evaluates the right side only when nullish. A
+  scalar RHS writes `defined=true`; a compatible nullable RHS copies payload
+  and presence through the shared assignment evaluator. Later coalescing or
+  nullish guards therefore consume the resulting state instead of stale
+  evidence. Property targets, mutable aliases, incompatible absence domains,
+  call-valued right sides, and mismatched scalar sorts remain unsupported.
   When verification receives the exact checked `ts.Program`, a parameter whose
   TypeChecker type is a union of one to sixteen safe-integer literals contributes
   its finite-set assumption. This works through imported type aliases. The
@@ -687,6 +688,28 @@ same property is proved for arbitrary TypeScript.
   conditions can therefore imply presence. A shared Boolean-sort gate covers
   ternaries, `if`, loop conditions, and reviewed assertion conditions; numeric
   or other coercive truthiness fails closed before reaching SMT.
+  Equality between a nullable Boolean and a Boolean literal is presence-aware:
+  equality requires both `defined` and the matching payload, while inequality
+  negates that conjunction. Strict and loose Boolean-literal comparisons share
+  this rule, so null and undefined are never collapsed into false. A direct
+  mutable scalar copy of a still-nullable value fails closed because it would
+  discard the presence bit; a copy whose exact TypeChecker use-site type has
+  already excluded nullish values is admitted.
+  A plain scalar assignment to the nullable identifier writes the payload and
+  `defined=true` atomically on each path, so subsequent nullish guards,
+  coalescing, and Boolean-literal comparisons see the new state. Nullable RHS
+  copies, mismatched sorts, and property targets do not establish presence and
+  remain unsupported. A direct `null` literal or identifier whose exact checked
+  type is `undefined` instead sets presence to false when that member belongs to
+  the target union; nullable Boolean payload becomes false to preserve
+  truthiness. Recursive conditional RHS values split through the shared CFG,
+  and compatible nullable identifiers copy payload and presence together when
+  the target contains the source absence domain. Calls, wrong-member nullish
+  assignments, and mutable aliases without their own presence state remain
+  unsupported.
+  Read-only immutable nullable aliases retain this evidence. Mutation through
+  any name sharing that state fails closed until declaration-time snapshots are
+  represented, rather than unsoundly changing the alias along with its source.
   shadowed values and locally redefined `undefined` do not match. A Boolean
   discriminator is explicit in SMT rather than pretending the inactive union
   member has an integer value. Direct numeric or Boolean `value ?? fallback`

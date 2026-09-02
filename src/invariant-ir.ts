@@ -119,6 +119,7 @@ interface SemanticGuardFact {
   spans: string[];
   switchSpans?: string[];
   coalesceSpans?: string[];
+  booleanComparisons?: Array<{ span: string; value: boolean }>;
   /** Scalar payload represented separately from this Boolean presence guard. */
   valueVariable?: string;
 }
@@ -342,6 +343,12 @@ function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: st
       collectAliases(node.body);
       const sameParameter = (candidate: ts.Expression): candidate is ts.Identifier =>
         ts.isIdentifier(candidate) && aliasSymbols.has(checker.getSymbolAtLocation(candidate)!);
+      const sameParameterThroughScalarWrapper = (candidate: ts.Expression): boolean => {
+        let current = candidate;
+        while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+          || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)) current = current.expression;
+        return sameParameter(current);
+      };
       const rootedPropertyPath = (candidate: ts.PropertyAccessExpression): {
         root: ts.Identifier;
         properties: ts.PropertyAccessExpression[];
@@ -611,6 +618,16 @@ function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: st
         if (ts.isBinaryExpression(current)) {
           const span = `${current.getStart(source)}:${current.getEnd()}`;
           for (const guard of fact.guards!) {
+            if (guard.kind === "defined" && fact.domain === "bool") {
+              const comparison = (left: ts.Expression, right: ts.Expression): boolean | undefined => {
+                if (!sameParameterThroughScalarWrapper(left)) return undefined;
+                if (right.kind === ts.SyntaxKind.TrueKeyword) return true;
+                if (right.kind === ts.SyntaxKind.FalseKeyword) return false;
+                return undefined;
+              };
+              const value = comparison(current.left, current.right) ?? comparison(current.right, current.left);
+              if (value !== undefined) (guard.booleanComparisons ??= []).push({ span, value });
+            }
             if ((current.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
               || current.operatorToken.kind === ts.SyntaxKind.QuestionQuestionEqualsToken)
               && guard.kind === "defined" && sameParameter(current.left)) {
@@ -675,6 +692,50 @@ function typeCheckerBooleanLogicalOperations(program: ts.Program | undefined, fi
   };
   visit(source);
   return expressions;
+}
+
+/** Identifier reads whose checked use-site type has already excluded null and undefined. */
+function typeCheckerNarrowedScalarReads(program: ts.Program | undefined, fileName: string, text: string): Set<string> {
+  const reads = new Set<string>();
+  if (!program) return reads;
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return reads;
+  const errors = [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)]
+    .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) return reads;
+  const checker = program.getTypeChecker();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) {
+      const type = checker.getTypeAtLocation(node);
+      const members = type.isUnion() ? type.types : [type];
+      const scalar = members.length > 0 && (members.every((member) => (member.flags & ts.TypeFlags.NumberLike) !== 0)
+        || members.every((member) => (member.flags & ts.TypeFlags.BooleanLike) !== 0));
+      if (scalar) reads.add(`${node.getStart(source)}:${node.getEnd()}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return reads;
+}
+
+/** Identifier expressions whose checked value is exactly undefined. */
+function typeCheckerUndefinedReads(program: ts.Program | undefined, fileName: string, text: string): Set<string> {
+  const reads = new Set<string>();
+  if (!program) return reads;
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return reads;
+  const errors = [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)]
+    .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) return reads;
+  const checker = program.getTypeChecker();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && (checker.getTypeAtLocation(node).flags & ts.TypeFlags.Undefined) !== 0) {
+      reads.add(`${node.getStart(source)}:${node.getEnd()}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return reads;
 }
 
 function boundedLiteralExponent(expression: ts.Expression): number | undefined {
@@ -1008,6 +1069,24 @@ function semanticGuardExpression(node: ts.Expression, guards: ReadonlyMap<string
   };
   const directNullish = identifierNullish(node.left, node.right) ?? identifierNullish(node.right, node.left);
   if (directNullish) return directNullish;
+  const nullableBooleanLiteral = (left: ts.Expression, right: ts.Expression): LogicExpression | undefined => {
+    let current = left;
+    while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+      || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)) current = current.expression;
+    if (!ts.isIdentifier(current)) return undefined;
+    const literal = right.kind === ts.SyntaxKind.TrueKeyword ? true
+      : right.kind === ts.SyntaxKind.FalseKeyword ? false : undefined;
+    if (literal === undefined) return undefined;
+    const fact = guards.get(current.text)?.find((candidate) => candidate.kind === "defined"
+      && candidate.valueVariable && candidate.booleanComparisons?.some((comparison) => comparison.span === span && comparison.value === literal));
+    if (!fact) return undefined;
+    const payload = variable(fact.valueVariable!);
+    const matchesPayload = literal ? payload : negate(payload);
+    const matches: LogicExpression = { kind: "binary", operator: "and", left: variable(fact.variable), right: matchesPayload };
+    return equality ? matches : negate(matches);
+  };
+  const directBoolean = nullableBooleanLiteral(node.left, node.right) ?? nullableBooleanLiteral(node.right, node.left);
+  if (directBoolean) return directBoolean;
   const typeofScalar = (left: ts.Expression, right: ts.Expression): LogicExpression | undefined => {
     if (!ts.isTypeOfExpression(left) || !ts.isIdentifier(left.expression) || !ts.isStringLiteral(right)) return undefined;
     if (right.text === "number") return guarded(left.expression.text, "typeof-number", equality);
@@ -1164,6 +1243,8 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const checkerFacts = typeCheckerParameterFacts(program, fileName, text);
   const booleanLogicalOperations = typeCheckerBooleanLogicalOperations(program, fileName, text);
+  const narrowedScalarReads = typeCheckerNarrowedScalarReads(program, fileName, text);
+  const undefinedReads = typeCheckerUndefinedReads(program, fileName, text);
   const boundedPowerExpressions = typeCheckerBoundedPowerExpressions(program, fileName, text);
   const constantIntegerRemainders = typeCheckerConstantIntegerRemainders(program, fileName, text);
   const mathScalarCalls = typeCheckerMathScalarCalls(program, fileName, text);
@@ -1350,10 +1431,32 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       }
       return condition;
     };
+    const unsafeNullableScalarCopy = (expression: ts.Expression): string | undefined => {
+      let current = expression;
+      while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+        || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)) current = current.expression;
+      if (!ts.isIdentifier(current) || !semanticGuards.get(current.text)?.some((guard) => guard.kind === "defined")) return undefined;
+      return narrowedScalarReads.has(`${current.getStart(source)}:${current.getEnd()}`) ? undefined : current.text;
+    };
+    const directNullishValue = (expression: ts.Expression): "null" | "undefined" | undefined => {
+      let current = expression;
+      while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+        || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)) current = current.expression;
+      if (current.kind === ts.SyntaxKind.NullKeyword) return "null";
+      return ts.isIdentifier(current) && undefinedReads.has(`${current.getStart(source)}:${current.getEnd()}`)
+        ? "undefined" : undefined;
+    };
+    const assertNoSharedNullableAliasMutation = (name: string, expression: ts.Expression): void => {
+      const state = semanticGuards.get(name);
+      if (state?.some((guard) => guard.kind === "defined")
+        && [...semanticGuards].some(([other, candidate]) => other !== name && candidate === state)) {
+        throw new Error(`nullable mutation would change shared immutable-alias state: ${expression.getText(source)}`);
+      }
+    };
     const evaluateScalar = (expression: ts.Expression, path: PathState): Array<{ path: PathState; value: LogicExpression }> => {
-      const unwrapped = ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)
-        ? expression.expression : expression;
+      let unwrapped = expression;
+      while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
+        || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
       if (ts.isConditionalExpression(unwrapped)) {
         const condition = evaluateCondition(unwrapped.condition, path.env);
         const whenTrue = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] };
@@ -1498,12 +1601,74 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       }
       return [{ path, value: substitute(logic(unwrapped, pipeBindings, semanticGuards, semanticValues), path.env) }];
     };
+    const evaluateNullableAssignment = (
+      expression: ts.Expression,
+      path: PathState,
+      targetName: string,
+      target: SemanticGuardFact,
+    ): PathState[] => {
+      let unwrapped = expression;
+      while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
+        || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
+      if (ts.isConditionalExpression(unwrapped)) {
+        const condition = evaluateCondition(unwrapped.condition, path.env);
+        return [
+          ...evaluateNullableAssignment(unwrapped.whenTrue, {
+            ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition],
+          }, targetName, target),
+          ...evaluateNullableAssignment(unwrapped.whenFalse, {
+            ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)],
+          }, targetName, target),
+        ];
+      }
+      const nullish = directNullishValue(unwrapped);
+      if (nullish) {
+        if (target.nullish !== nullish && target.nullish !== "nullish") {
+          throw new Error(`nullable target does not admit direct ${nullish} assignment: ${targetName} = ${expression.getText(source)}`);
+        }
+        const nextEnv = new Map(path.env);
+        nextEnv.set(target.variable, { kind: "boolean", value: false });
+        if (scalarExpressionSort(variable(target.valueVariable!)) === "Bool") {
+          nextEnv.set(targetName, { kind: "boolean", value: false });
+        }
+        return [{ ...path, env: nextEnv }];
+      }
+      if (ts.isIdentifier(unwrapped)) {
+        const sourceGuard = semanticGuards.get(unwrapped.text)?.find((guard) => guard.kind === "defined" && guard.valueVariable);
+        const sourceIsNarrowed = narrowedScalarReads.has(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`);
+        if (sourceGuard && !sourceIsNarrowed) {
+          if (target.nullish !== "nullish" && sourceGuard.nullish !== target.nullish) {
+            throw new Error(`nullable source absence is not admitted by target: ${targetName} = ${unwrapped.text}`);
+          }
+          const payload = substitute(variable(sourceGuard.valueVariable!), path.env);
+          if (scalarExpressionSort(payload) !== scalarExpressionSort(variable(target.valueVariable!))) {
+            throw new Error(`nullable scalar assignment requires matching payload sorts: ${targetName} = ${unwrapped.text}`);
+          }
+          const nextEnv = new Map(path.env);
+          nextEnv.set(targetName, payload);
+          nextEnv.set(target.variable, substitute(variable(sourceGuard.variable), path.env));
+          return [{ ...path, env: nextEnv }];
+        }
+      }
+      const nullableSource = unsafeNullableScalarCopy(unwrapped);
+      if (nullableSource) throw new Error(`scalar assignment would erase nullable presence: ${targetName} = ${nullableSource}`);
+      return evaluateScalar(unwrapped, path).map(({ path: branch, value }) => {
+        if (scalarExpressionSort(value) !== scalarExpressionSort(variable(target.valueVariable!))) {
+          throw new Error(`nullable scalar assignment requires a matching right operand: ${targetName} = ${expression.getText(source)}`);
+        }
+        const nextEnv = new Map(branch.env);
+        nextEnv.set(targetName, value);
+        nextEnv.set(target.variable, { kind: "boolean", value: true });
+        return { ...branch, env: nextEnv };
+      });
+    };
     const applyScalarUpdate = (update: ts.Expression | undefined, path: PathState): PathState => {
       if (!update) return path;
       const next = { ...path, env: new Map(path.env) };
       if ((ts.isPostfixUnaryExpression(update) || ts.isPrefixUnaryExpression(update))
         && (update.operator === ts.SyntaxKind.PlusPlusToken || update.operator === ts.SyntaxKind.MinusMinusToken)
         && ts.isIdentifier(update.operand)) {
+        assertNoSharedNullableAliasMutation(update.operand.text, update);
         const previous = next.env.get(update.operand.text) ?? variable(update.operand.text);
         next.env.set(update.operand.text, {
           kind: "binary", operator: update.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "sub",
@@ -1512,6 +1677,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         return next;
       }
       if (ts.isBinaryExpression(update) && update.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(update.left)) {
+        assertNoSharedNullableAliasMutation(update.left.text, update);
         next.env.set(update.left.text, substitute(logic(update.right, pipeBindings, semanticGuards, semanticValues), next.env));
         return next;
       }
@@ -1522,6 +1688,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         ]);
         const operator = operators.get(update.operatorToken.kind);
         if (operator) {
+          assertNoSharedNullableAliasMutation(update.left.text, update);
           const previous = next.env.get(update.left.text) ?? variable(update.left.text);
           next.env.set(update.left.text, { kind: "binary", operator, left: previous, right: substitute(logic(update.right, pipeBindings, semanticGuards, semanticValues), next.env) });
           return next;
@@ -1568,6 +1735,8 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         for (const declaration of statement.declarationList.declarations) {
           if (objectAliasDeclarations.has(`${declaration.getStart(source)}:${declaration.getEnd()}`)) continue;
           if (!ts.isIdentifier(declaration.name) || !declaration.initializer) throw new Error(`only initialized identifier variables are supported: ${declaration.getText(source)}`);
+          const nullableSource = unsafeNullableScalarCopy(declaration.initializer);
+          if (nullableSource) throw new Error(`mutable scalar alias would erase nullable presence: ${declaration.name.text} = ${nullableSource}`);
           const name = declaration.name.text;
           paths = paths.flatMap((path) => evaluateScalar(declaration.initializer!, path).map(({ path: branch, value }) => {
             const nextEnv = new Map(branch.env); nextEnv.set(name, value);
@@ -1578,10 +1747,19 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(statement.expression.left)) {
         const name = statement.expression.left.text;
         const right = statement.expression.right;
-        paths = paths.flatMap((path) => evaluateScalar(right, path).map(({ path: branch, value }) => {
-          const nextEnv = new Map(branch.env); nextEnv.set(name, value);
-          return { ...branch, env: nextEnv };
-        }));
+        const nullableTarget = semanticGuards.get(name)?.find((guard) => guard.kind === "defined" && guard.valueVariable);
+        if (nullableTarget) assertNoSharedNullableAliasMutation(name, statement.expression);
+        if (nullableTarget) {
+          paths = paths.flatMap((path) => evaluateNullableAssignment(right, path, name, nullableTarget));
+        } else {
+          const nullableSource = unsafeNullableScalarCopy(right);
+          if (nullableSource) throw new Error(`scalar assignment would erase nullable presence: ${name} = ${nullableSource}`);
+          paths = paths.flatMap((path) => evaluateScalar(right, path).map(({ path: branch, value }) => {
+            const nextEnv = new Map(branch.env);
+            nextEnv.set(name, value);
+            return { ...branch, env: nextEnv };
+          }));
+        }
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
         && (statement.expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken
           || statement.expression.operatorToken.kind === ts.SyntaxKind.BarBarEqualsToken)
@@ -1592,6 +1770,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
           throw new Error(`unsupported invariant expression: ${operation.getText(source)}`);
         }
         const name = (operation.left as ts.Identifier).text;
+        assertNoSharedNullableAliasMutation(name, operation);
         paths = paths.flatMap((path): PathState[] => {
           const previous = substitute(path.env.get(name) ?? variable(name), path.env);
           const whenTrue = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, previous] };
@@ -1613,6 +1792,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         const guard = semanticGuards.get(name)?.find((candidate) => candidate.kind === "defined"
           && candidate.valueVariable !== undefined && candidate.coalesceSpans?.includes(span));
         if (!guard) throw new Error(`unsupported invariant expression: ${operation.getText(source)}`);
+        assertNoSharedNullableAliasMutation(name, operation);
         paths = paths.flatMap((path): PathState[] => {
           const defined = substitute(variable(guard.variable), path.env);
           const alreadyDefinedEnv = new Map(path.env);
@@ -1627,15 +1807,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
             env: new Map(path.env),
             assumptions: [...path.assumptions, negate(defined)],
           };
-          const assigned = evaluateScalar(operation.right, nullish).map(({ path: branch, value }) => {
-            if (scalarExpressionSort(value) !== scalarExpressionSort(variable(guard.valueVariable!))) {
-              throw new Error(`nullish assignment requires a matching scalar right operand: ${operation.getText(source)}`);
-            }
-            const nextEnv = new Map(branch.env);
-            nextEnv.set(name, value);
-            nextEnv.set(guard.variable, { kind: "boolean", value: true });
-            return { ...branch, env: nextEnv };
-          });
+          const assigned = evaluateNullableAssignment(operation.right, nullish, name, guard);
           return [alreadyDefined, ...assigned];
         });
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
@@ -1649,6 +1821,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         ]);
         const operator = operators.get(operation.operatorToken.kind)!;
         const name = (operation.left as ts.Identifier).text;
+        assertNoSharedNullableAliasMutation(name, operation);
         paths = paths.flatMap((path) => {
           const previous = substitute(path.env.get(name) ?? variable(name), path.env);
           const previousSort = scalarExpressionSort(previous);

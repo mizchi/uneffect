@@ -2358,12 +2358,12 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   `||=` logical assignment. Read the prior binding once, preserve it on the
   skipped path, and evaluate/assign the right operand only on the selected
   path; non-Boolean and call/effect-valued operands fail closed.
-- [x] Add identifier-only numeric or Boolean `??=` by splitting the TypeChecker-backed
-  nullable presence state, evaluating the right side only on the nullish path,
-  and setting the presence fact to true on every completion path. Subsequent
-  coalescing and nullish guards read that updated state rather than a stale
-  TypeChecker guard; properties, mutable aliases, and call-valued right sides
-  remain fail-closed. ([#25](https://github.com/mizchi/uneffect/issues/25))
+- [x] Add identifier-only numeric or Boolean `??=` by splitting the
+  TypeChecker-backed nullable presence state and evaluating the right side only
+  on the nullish path. A scalar RHS establishes presence; a compatible nullable
+  RHS copies its payload and presence, so subsequent coalescing and guards never
+  reuse stale evidence. Properties, mutable aliases, incompatible absence
+  domains, and call-valued right sides remain fail-closed. ([#25](https://github.com/mizchi/uneffect/issues/25))
 - [ ] Import sound TypeChecker narrowing facts into the contract logic IR; each ([#25](https://github.com/mizchi/uneffect/issues/25))
   admitted narrowing form needs a same-spelled/shadowed negative control.
   - [x] Admit one-to-sixteen-member safe-integer literal unions, including
@@ -2373,7 +2373,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Admit TypeChecker-validated `typeof` guards for exact `number | string`
     and `boolean | string` unions, accepting either the scalar member or its
     string complement, plus nullish equality guards for nullable numeric or
-    Boolean scalars;
+    Boolean scalars; bind each guard to the exact parameter symbol and
+    comparison source span.
   - [x] Treat `typeof value ===/!== "undefined"` as the complement of the
     presence fact only for exact numeric or Boolean `T | undefined`. Keep
     `T | null | undefined` unsupported because one Boolean presence fact cannot
@@ -2383,7 +2384,27 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     pretending absent values may be true. Route ternary, `if`, loop, and
     reviewed assertion conditions through one Boolean-sort gate so nullable
     numeric and other JavaScript truthiness remain explicit non-proofs.
-    bind each guard to the exact parameter symbol and comparison source span.
+  - [x] Lower TypeChecker-bound nullable Boolean equality with `true`/`false`
+    as `defined && payloadMatches`, and inequality as its complement, for both
+    strict and loose operators. This keeps null/undefined distinct from false.
+    Reject a mutable direct scalar copy while its use-site type remains nullable;
+    permit the same initialization or assignment after TypeChecker narrowing
+    excludes nullish values.
+  - [x] Make a plain assignment to a nullable numeric or Boolean identifier
+    update its payload and set presence to true on every RHS path. Reject a
+    nullable RHS that cannot establish presence and property targets rather than
+    retaining stale pre-assignment evidence.
+  - [x] Accept a direct `null` or TypeChecker-exact `undefined` assignment when
+    that absent member belongs to the target union, set presence to false, and
+    set nullable Boolean payloads to false for truthiness. Reject the wrong
+    absent member and call/dynamic nullish producers.
+  - [x] Generalize nullable assignment RHS evaluation across recursive scalar
+    conditionals and compatible nullable identifiers. Copy payload and presence
+    together only when the source absence domain is contained by the target;
+    retain mutable local aliases without their own presence state as unsupported.
+  - [x] Fail closed when a nullable parameter is mutated while a tracked immutable
+    alias shares its presence state. Read-only aliases remain supported; precise
+    declaration-point snapshots after source mutation remain future work.
   - [x] Split direct numeric or Boolean `value ?? fallback` expressions using that same
     TypeChecker-validated presence fact, keeping the Boolean defined state and
     scalar payload separate through return, initialized binding, and plain
