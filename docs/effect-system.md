@@ -106,6 +106,88 @@ The program call graph carries this discharge fact on synchronous direct and
 inline-callback edges, so imported callees behave like local calls. Deferred or
 unknown-timing callbacks do not inherit the surrounding lexical `catch` because
 they may execute after that handler has returned.
+Local getter/setter access and reviewed implicit primitive conversion are also
+inline edges. A getter read, setter assignment, or local
+`Symbol.toPrimitive`/`valueOf`/`toString` candidate contributes its body Effect
+and receiver-rooted Mutation, while a surrounding synchronous catch discharges
+its `Throw<E>`. Opaque, external, or proxy-mediated conversion remains the
+coarser `InvokeUserCode` boundary; it is not reported as a verified hidden body.
+A same-Program standard `Symbol.hasInstance` override receives the same treatment
+for `instanceof`. Direct TypeChecker-authenticated Proxy values and immutable
+aliases retain `InvokeUserCode` for property access, `in`, and `delete`.
+Standard-identity `JSON.stringify` composes a same-Program `toJSON` method, or
+enumerable getters on a same-Program object literal when no `toJSON` property
+exists. Unknown values, Proxy aliases, and recursively typed containers whose
+values may expose serialization hooks require `InvokeUserCode`. This is not a
+proof of complete traversal of an arbitrary runtime object graph; nested
+dynamic hooks remain a conservative user-code boundary.
+Standard-identity `structuredClone` similarly composes own enumerable getters
+from same-Program object literals and finite nested object/array literals. It
+does not use `toJSON`, and prototype getters are excluded. Opaque/generic
+graphs that can reach an object-literal getter retain `InvokeUserCode`; direct
+Proxy input is modeled as a clone failure rather than a trap invocation. The
+builtin contract always includes `Throw<DOMException>` for `DataCloneError`
+and transfer-list failures, and synchronous `try/catch` discharges catalog
+throws through the same exception-aware path as source throws.
+Standard-identity `Object.assign` uses the same hidden-execution discipline for
+enumerable source reads and target writes. Same-Program object-literal getters
+and matching target setters are composed inline; class prototype accessors are
+excluded. Unknown/type-parameter or authenticated Proxy operands require
+`InvokeUserCode`. Arbitrary runtime descriptors and escaped Proxy identity are
+outside this exact fragment.
+Its direct target write is independently represented as
+`Mutate<typeof target>`, including when no getter or setter exists, and its
+return value is an alias of the target.
+`Object.values` and `Object.entries` reuse its enumerable source-read rule.
+`Object.keys` does not call ordinary value getters, but authenticated Proxy
+enumeration still requires `InvokeUserCode` for keys, values, and entries.
+Finite-key `Reflect.get`/`Reflect.set` operations reuse ordinary accessor call
+edges and preserve an explicit receiver as `this`; `Reflect.set` also emits
+target/receiver Mutation. Dynamic keys and Proxy traps remain
+`InvokeUserCode`. `Reflect.has` does not execute ordinary getters.
+`Reflect.deleteProperty` emits target Mutation without executing an ordinary
+getter/setter; Proxy traps remain a user-code boundary.
+Standard `call`, `apply`, and `Reflect.apply` wrappers recover a same-Program
+callable's normal inline edge, including explicit `this`, argument-rooted
+Mutation, and synchronous Throw discharge. Apply argument aliases must be
+immutable and single-use; otherwise callable execution is retained but
+argument Mutation identity is unknown and list evaluation requires
+`InvokeUserCode`.
+`bind` is deferred: creating a bound function is effect-free, and the target's
+effects appear only when the local bound callable is invoked. The checker
+preserves bound `this`, prefix arguments, immutable aliases, and repeated
+direct/call/apply invocations. A bound callable that escapes before invocation,
+or whose target is dynamic/Proxy-mediated, requires `InvokeUserCode`; returned
+bound callable summaries are not yet composed across package boundaries.
+`Reflect.construct` similarly recovers same-Program constructor and implicit
+instance-field execution for static argument lists. Writes to the newly
+allocated receiver remain local, while argument-rooted Mutation and Throw are
+composed normally. Dynamic constructor/list values and Proxy targets remain
+`InvokeUserCode` and unresolved where their identities cannot be established.
+Object descriptor/prototype/extensibility APIs are destructive even without a
+visible assignment expression. The builtin catalog emits target Mutation for
+`defineProperty`, `defineProperties`, `freeze`, `seal`, `preventExtensions`,
+and `setPrototypeOf` (and reviewed Reflect counterparts). Descriptor getters
+and descriptor-map getters are composed inline; dynamic or Proxy-mediated
+conversion remains `InvokeUserCode`.
+`Object.create` performs the same descriptor conversion but produces fresh
+state. Conversely, descriptor inspection and `Object.hasOwn` do not invoke an
+ordinary getter; only Proxy/unknown targets introduce the corresponding
+`InvokeUserCode` boundary.
+Static top-level object destructuring performs the same getter call even though
+no property-access expression appears in the AST. Variable bindings preserve an
+addressable source receiver; parameter destructuring runs before the body, so a
+body-local catch cannot discharge its getter Throw. Object spread and variable
+object-rest also compose same-Program object-literal enumerable getters; class
+prototype getters are correctly excluded. Static nested object paths recurse
+through getter Effect/Throw; their receiver Mutation remains unknown when the
+fetched identity cannot be named. Computed keys compose local coercion hooks,
+while dynamic property selection and parameter-rest body identity remain
+conservative outside this exact fragment.
+Likewise, `new` of a same-Program class is an inline call edge. Constructor
+defaults, non-static instance field initializers, the body, and a resolved
+inherited constructor contribute their may-effects and synchronous throws.
+Static field/block execution remains part of module initialization.
 For contracted scalar functions, the bounded Hoare frontend retains this
 decision per return path as `uneffect-contract-exception-flow/v1`. Direct
 throws and direct TypeChecker-resolved `never` callees with an explicit
@@ -114,12 +196,32 @@ is joined with the enclosing effect summary in
 `uneffect-contract-effect-boundary/v1`. This remains narrower than the general
 effect call graph: contract `finally`, catch payloads, async rejection, and
 relational non-`never` call summaries stay fail-closed.
-Reviewed ECMAScript collection operations such as `map`, `flatMap`, `filter`,
-`forEach`, and `reduce` are synchronous inline-callback edges: callback Effects
+Reviewed ECMAScript collection operations such as Array `map`, `flatMap`,
+`filter`, and `reduce`, plus Array/Map/Set `forEach`, are synchronous
+inline-callback edges: callback Effects
 are included in module initialization and function summaries. Pure helpers such
 as `slice`, `join`, Node `path.join`, `createRequire`, and `process.cwd` are
 reviewed contracts rather than an open-ended "standard library is pure" rule.
 Unknown or dynamically selected methods still fail closed.
+Reviewed callback edges also carry their runtime invocation shape. Promise
+fulfillment/rejection values and JSON holder/key/value inputs are explicit
+runtime aliases, while `Array.from` and collection `thisArg` values can project
+an addressable source region. Timer, immediate, and next-tick variadic callback
+arguments preserve their call-site expressions. When a catalog omits the
+shape, callback parameter Mutation becomes `Mutate<unknown-alias>` rather than
+leaking the callback's parameter name into its caller.
+Callable String replacements are synchronous (`replace` is `0..1`,
+`replaceAll` is `0..n`). `Object.groupBy` and `Map.groupBy` synchronously
+consume their iterable and invoke the classifier, so generator Effect/Throw and
+classifier Effect/Throw compose through one call. Their result is fresh, while
+the runtime element supplied to the classifier is not assigned a guessed heap
+identity. RegExp protocol hooks and capture-shape proofs remain outside this
+exact string-pattern fragment.
+The same callback invocation model is assigned to all standard TypedArray
+owners, including BigInt arrays. Callback receiver arguments and explicit
+`thisArg` regions compose, mutating methods emit receiver Mutation, and copying
+methods expose fresh results. Numeric bounds and backing-buffer safety remain
+separate obligations rather than being inferred from the Effect catalog.
 Implicit disposal calls introduced by `using` and `await using` carry the same
 lexical catch fact. A disposer `Throw<E>` therefore propagates from an uncaught
 scope and is discharged when completion of that scope is enclosed by a catch.
@@ -130,12 +232,30 @@ that owner boundary and leaves rejection observation to async-safety analysis.
 Generator bodies are delayed in the same spirit but retain synchronous step
 effects: constructing an iterator does not propagate its body summary, while a
 resolved direct `.next()`, `for..of`/`for await`, `yield*`, spread, destructuring,
-`Array.from`, `Object.fromEntries`, standard collection/typed-array construction,
+`Array.from`, `Array.fromAsync`, `Object.fromEntries`, `Object.groupBy`, `Map.groupBy`, standard collection/typed-array construction,
 or a standard Promise combinator consumption does. Built-ins are recognized by
 their TypeScript standard-library signature, so a shadowed API with the same text
 does not acquire these semantics. Promise combinators turn a generator-body
 `Throw<T>` during iteration into rejection; synchronous effects of evaluating the
 factory argument itself remain ordinary effects.
+`Array.fromAsync` uses that same rejection conversion for iterator-step failures
+and models its optional mapper as a deferred `0..n` microtask callback. Its
+awaited element and index are runtime-provided aliases, and an explicit `thisArg`
+is projected into the callback. Rejection type recovery across arbitrary
+`AsyncIterator` implementations is not yet a complete interprocedural proof.
+`Promise.try(callback, ...args)` is different from a Promise reaction: the
+callback runs synchronously, so its ordinary capability effects occur on the
+current lane, while an abrupt callback completion becomes rejection of the
+returned Promise and does not propagate as synchronous `Throw<T>` through the
+caller. The returned Promise remains subject to floating-Promise ownership
+checks. Direct callback try/catch/finally preserves synchronous throw identity
+until catch routing and applies ordinary finally override precedence before the
+result is lowered to Promise settlement. Same-spelled user APIs do not receive
+this rule.
+A same-Program custom iterable generator's standard `Symbol.iterator` method
+uses this same consumption edge for all of those syntaxes, rather than only
+`for...of`. An ordinary iterator factory contributes its acquisition effects
+but leaves opaque returned `next`/`return` execution explicitly unknown.
 The Program path follows imported generators and a directly stored local
 iterator binding by symbol identity. Acyclic factories whose sole terminal
 returns are resolved generator/factory calls are specialized at direct
@@ -379,31 +499,71 @@ scripts, and script execution order remain outside this first fragment.
 
 ## Browser storage permissions
 
-Browser persistence uses four zero-argument permissions in the initial
-fragment:
+Browser persistence uses four permissions over finite key/name sets:
 
 ```text
-CookieRead | CookieWrite | LocalStorageRead | LocalStorageWrite
+CookieRead<CookieNameSet> | CookieWrite<CookieNameSet>
+LocalStorageRead<KeySet> | LocalStorageWrite<KeySet>
 ```
 
 The TypeChecker adapter recognizes `Document.cookie` reads and writes, plus
 `Storage.getItem`, `key`, `length`, `setItem`, `removeItem`, and `clear` by
-their `lib.dom.d.ts` symbol identity. `localStorage` and `sessionStorage` share
-the `LocalStorage*` permission family for now because both expose the Web
-Storage API and origin-scoped persistent browser state. A same-named method on
-a user-defined interface does not acquire these effects.
+their `lib.dom.d.ts` symbol identity. A cookie read returns the entire visible
+cookie string and therefore requires broad `CookieRead`; a literal cookie
+assignment extracts the name before the first `=` for `CookieWrite<"name">`.
+Literal Web Storage keys and finite string-literal unions retain finite sets.
+Dynamic keys become `Unknown<dynamic-storage-key>`. `length`, `key(index)`,
+and `clear()` necessarily use the broad permission. Bare permission names
+remain the spelling of the `All` upper bound.
 
-Cookie name/path/domain attributes and storage key sets are not yet authority
-arguments. The current effects answer whether the boundary may read or write
-the store, not which individual record is accessible.
+`localStorage` and `sessionStorage` share the `LocalStorage*` permission family
+for now because both expose the Web Storage API and origin-scoped browser
+state. Cookie path/domain partitioning is not modeled, and the permission does
+not distinguish origins or storage areas. A same-named method on a user-defined
+interface does not acquire these effects.
+
+## Same-realm global variables
+
+```ts
+/* uneffect:effect GlobalVarsRead<"featureFlag"> | GlobalVarsWrite<"counter"> */
+function update() {
+  if (globalThis.featureFlag) globalThis.counter++
+}
+```
+
+`GlobalVarsRead<KeySet>` and `GlobalVarsWrite<KeySet>` are scoped to the current
+ECMAScript realm by definition. The frontend accepts only the TypeChecker
+global symbol for `globalThis`, reviewed host aliases (`window`, `self`, and the
+Node `global` declaration), and immutable local aliases of those identities.
+Dot access, literal element access, and finite string-literal unions retain a
+finite key set. Dynamic keys become `Unknown<dynamic-global-key>` and require a
+broad upper bound. Assignment is write-only; compound assignment and update
+are read+write. Same-spelled parameters, module objects, iframe globals, and
+arbitrary declaration merging are not equated with the current realm. A nested
+write such as `globalThis.state.value = 1` reads the global `state` binding and
+remains a separate `Mutate<typeof globalThis.state.value>` operation.
 
 ## Network transport evidence
 
 `Net<HostSet>` remains the common permission lattice. Program effect summaries
 add a separate `networkBoundaries` ledger whose entries retain `via`, target
 URL, normalized host authority, exact/unknown evidence, and source location.
-The implemented producers currently distinguish direct `fetch` and the static
-script-loader fragment. The schema reserves `beacon` and `websocket`, but their
-builtin producers are not implemented yet. This ledger is provenance for a
-permission; it is not a separate authority that could accidentally diverge
-from `Net` containment.
+The implemented producers currently distinguish direct `fetch`,
+TypeChecker-resolved `Navigator.sendBeacon`, TypeChecker-resolved global
+`new WebSocket(...)`, and the static script-loader fragment. Literal absolute
+beacon and `ws:`/`wss:` URLs produce exact host authority and targets; dynamic
+or unsupported targets require broad `Net` authority and stay `unknown` in the
+transport ledger even when that broad upper bound verifies. WebSocket message,
+error, reconnect, and event-loop lifecycle semantics are not implied by this
+connection-boundary evidence. Separately, the generic resource CFG collector
+maps construction, `send`, and `close` to acquire/use/release transitions and
+reports send-after-close as an invalid trusted transition, including through
+immutable aliases. This
+resource check is currently an explicit analysis API rather than an automatic
+whole-project temporal proof. TypeChecker-resolved `addEventListener` on the
+WebSocket does connect its callback to the Web external-completion/event-task
+model, including nested microtask checkpoints and optional fairness. That model
+does not yet correlate close with listener suppression or distinguish message,
+error, and close ordering. The ledger is provenance for a permission;
+it is not a separate authority that could accidentally diverge from `Net`
+containment.

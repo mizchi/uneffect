@@ -19,8 +19,19 @@ API-family-specific operation:
   argument, receiver, property region, URL, host, port, or filesystem path.
 - `mutate(target)` invalidates a receiver, argument, property region, or a
   region derived from another target.
-- `callback(target, timing, queue, cardinality)` records synchronous or deferred
-  invocation, host queue, and `0..1`, `1`, or repeated cardinality.
+- `callback(target, timing, queue, cardinality, invocationArguments?,
+  thisArgument?)` records synchronous or deferred invocation, host queue,
+  `0..1`, `1`, or repeated cardinality, and the runtime call shape. Source
+  expressions such as a collection receiver or explicit `thisArg` are
+  projected to stable regions. Engine-produced element/key/index values use a
+  named `runtime-value` projector and remain explicit unknown aliases when a
+  callback mutates them.
+  `invocationRestArguments` projects variadic suffixes such as the values passed
+  through `setTimeout`, `setInterval`, `setImmediate`, and `process.nextTick`.
+  Omitting invocation-shape metadata does not mean zero arguments: a known
+  callback's runtime parameters become unresolved aliases. An explicit empty
+  list is required for APIs such as `queueMicrotask`, `Promise.finally`, and
+  `scheduler.postTask` that invoke the callback without arguments.
 - `invokeUserCode()` records an invocation boundary not represented by an
   explicit callback argument.
 - `result(refinement)` records fresh, aliased, path-refined, or resource-bearing
@@ -46,7 +57,7 @@ may-effect; a narrow declaration does not cover that widening.
 | 2. Interpreter | Add one primitive interpreter shared by effect inference, async analysis, ownership, mutation invalidation, and frontend parity. | A primitive has one implementation and emits source-attributed evidence in every participating domain. |
 | 3. Mutation | Replace `operation: mutation`, `receiverMutation`, DOM mutation flags, and argument mutation flags with `mutate(target)`. | Array/Map/Set and DOM mutation tests pass; the old mutation fields and branches are removed. |
 | 4. Capability scopes | Replace `effect`, `scoped-effect`, and filesystem-specific effect projection with `effect(capability, scope)`. | Filesystem, network, Run, Sys, Fetch, Console, Random, Cookie, Storage, and DOM capabilities use the same scope interpreter. |
-| 5. Callbacks | Replace timer, deferred-callback, filesystem callback, inline-callback, and scheduler callback extraction with one callback primitive. | Timing, queue, optional callback, callable guard, and cardinality are represented without API-family branches. |
+| 5. Callbacks | Replace timer, deferred-callback, filesystem callback, inline-callback, and scheduler callback extraction with one callback primitive. | Timing, queue, completion handling, optional callback, callable guard, cardinality, invocation arguments, and explicit `this` binding are represented without API-family branches. `Promise.try` is the key non-derived case: synchronous invocation with throw-to-rejection completion. |
 | 6. Results and ownership | Move fresh/path results, clone/transfer, buffer mutation, and handle families to result, ownership, acquire, and release primitives. | Fresh-result suppression, transfer invalidation, watcher/server close, and resource evidence use the shared interpreter. |
 | 7. Directional properties | Lower DOM and effect properties to `property(read, write)` containing ordinary primitives. | Property reads and writes need no separate analyzer dispatch while retaining access-direction evidence. |
 | 8. Stateful protocols | Connect Fetch, Promise combinators, AbortSignal, timers, streams, and disposal through named protocol transitions. | Special behavior is isolated in protocol machines; symbol catalogs only assign inputs and transitions. |

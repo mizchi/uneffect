@@ -32,7 +32,7 @@ export interface ResourceProtocolTypeScriptLoweringOptions {
 export interface BuiltinResourceTransitionCollection {
   readonly resources: readonly ResourceProtocolResource[];
   readonly sites: readonly ResourceTransitionSite[];
-  readonly unknown: readonly { readonly node: ts.CallExpression; readonly reason: string }[];
+  readonly unknown: readonly { readonly node: ts.CallExpression | ts.NewExpression; readonly reason: string }[];
 }
 
 /** Projects generic builtin acquire/release events into the shared resource CFG. */
@@ -45,8 +45,8 @@ export function collectBuiltinResourceTransitionSites(
   const checker = program.getTypeChecker();
   const resources = new Map<string, ResourceProtocolResource>();
   const sites: ResourceTransitionSite[] = [];
-  const unknown: Array<{ node: ts.CallExpression; reason: string }> = [];
-  const resultBinding = (call: ts.CallExpression): string | undefined => {
+  const unknown: Array<{ node: ts.CallExpression | ts.NewExpression; reason: string }> = [];
+  const resultBinding = (call: ts.CallExpression | ts.NewExpression): string | undefined => {
     const parent = call.parent;
     return ts.isVariableDeclaration(parent) && parent.initializer === call && ts.isIdentifier(parent.name)
       ? parent.name.text : undefined;
@@ -62,7 +62,7 @@ export function collectBuiltinResourceTransitionSites(
       || !ts.isIdentifier(declaration.initializer)) return expression;
     return stableRoot(declaration.initializer, new Set(seen).add(symbol));
   };
-  const identity = (target: ProjectedValue, call: ts.CallExpression): string | undefined => {
+  const identity = (target: ProjectedValue, call: ts.CallExpression | ts.NewExpression): string | undefined => {
     if (target.status === "result") return resultBinding(call);
     if (target.status !== "resolved") return undefined;
     const root = stableRoot(target.expression);
@@ -70,13 +70,13 @@ export function collectBuiltinResourceTransitionSites(
   };
   const visit = (node: ts.Node): void => {
     if (node !== fn && ts.isFunctionLike(node)) return;
-    if (ts.isCallExpression(node)) {
-      const resolved = adapter.resolveCall(node);
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      const resolved = ts.isCallExpression(node) ? adapter.resolveCall(node) : adapter.resolveConstruct(node);
       const events = resolved?.semantics
         ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }) : [];
       const transitions: ResourceProtocolTransition[] = [];
       for (const event of events) {
-        if ((event.kind !== "acquire" && event.kind !== "release") || !event.target) continue;
+        if ((event.kind !== "acquire" && event.kind !== "use" && event.kind !== "release") || !event.target) continue;
         const resource = identity(event.target, node);
         if (!resource) {
           unknown.push({ node, reason: `${event.kind}(${event.resource}) has no stable projected resource identity` });

@@ -68,6 +68,36 @@ site retains summary, declaration, and call-site provenance. Unknown calls,
 same-named shadow functions, floating rejected Promises, and unauthenticated
 persisted/external summaries do not manufacture this edge.
 
+Transferable ownership sites now use this same CFG lowerer and fixed-point
+evaluator. A use invalid on every path is a definite diagnostic, while a use
+invalid on only some paths is reported with state `unknown`. Both arms
+transferring the same resource therefore remain definite; a one-arm transfer
+is not flattened into an unconditional transition. The older finite lexical
+path evaluator remains only as a fail-closed fallback when CFG lowering is not
+available.
+
+Events inside `for`, `for...in`, `for...of`, and `while` bodies are treated as
+zero-or-many. A post-loop use joins the zero-iteration and executed paths to
+`unknown`. A `do...while` body is modeled as one-or-many, so its first transfer
+definitely invalidates the resource. A transfer in any repeatable body also emits an explicit
+possible repeated-transfer diagnostic. This prevents a loop from being
+silently flattened to one unconditional iteration. Exact statically bounded
+iteration counts are not yet used to upgrade this result.
+
+`switch` is lowered as one finite multi-way choice rather than independent
+booleans. Case selection, fallthrough, direct `break`, absence of `default`,
+and lexically targeted conditional breaks participate in the path join. A
+transfer in only some selections is therefore `unknown`; transfers covering
+every selection make a later use definitely invalid. Dynamic case-value
+feasibility is not proved, so all clauses remain possible selections.
+
+Explicit `throw` routes ownership state to the matching `catch`, and mandatory
+`finally` blocks run on normal, return, throw, break, and continue exits through
+the shared lowerer. Authenticated callable `Throw` and directly awaited
+`Reject` summaries add may-throw edges by declaration identity, so catch-side
+ownership changes join with normal completion. Arbitrary or same-named calls
+do not manufacture exceptional edges.
+
 ## Callable resource boundaries
 
 `uneffect-resource-callable-summary/v1` is the backend-neutral function-boundary
@@ -101,8 +131,11 @@ and immutable import aliases remain identity-based and a same-named shadow does
 not inherit the contract. Arguments and a direct `const result = boundary(...)`
 return are substituted into transition sites. Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions
-produce diagnostics or remain outside the fragment. Package summaries require
-the explicit authenticated artifact path described below.
+produce diagnostics or remain outside the fragment. Ambient function and method
+signatures are accepted when their `.d.ts` overlay is an explicit TypeScript
+Program root. A declaration file reached only transitively through an import is
+not trusted automatically. Package summaries still require the explicit
+authenticated artifact path described below.
 
 Explicitly supplied package contracts can now use
 `uneffect-resource-callable-artifact/v1`. Authentication requires the exact
@@ -127,14 +160,19 @@ safety analysis. The projection separately retains whether disposal runs inline
 or in a microtask, whether failure throws or rejects, whether it is caught, and
 which completion exits trigger cleanup.
 
-Unconditional acquisition evidence is deliberately
-`exact-under-precondition`, with `all-listed-resources-acquired` as that
-precondition. A bounded non-loop conditional acquisition preserves
+Initializer failure is represented as prefix acquisition: failure at binding
+`i` skips later acquisitions and starts reverse cleanup, releasing only the
+already acquired prefix. This removes the former
+`all-listed-resources-acquired` precondition. A bounded non-loop conditional acquisition preserves
 `absent-or-available` and reaches `absent-or-released`: the generated host
 product chooses acquire-or-skip, and skips disposal only on the unacquired path.
-Repeated loop acquisition remains `unknown`. The existing detailed Quint
-resource model remains the stronger check for acquisition failure, async
-suspension, `SuppressedError`, and reverse-order counterexamples.
+One contiguous acquisition group owned by one source loop is represented with
+an explicit generation reset: the product chooses zero iterations or acquire,
+releases the complete generation, then chooses repeat or exit. Multiple loop
+IDs, nested/non-contiguous repeated groups, and a later acquisition that breaks
+stack order remain `unknown`. The existing detailed Quint resource model
+remains the stronger check for async initializer scheduling,
+`SuppressedError` payloads, and reverse-order counterexamples.
 
 ## Promise rejection ownership
 
@@ -146,8 +184,11 @@ fails the required `consumed | transferred` terminal set.
 
 This projection mirrors the supported binding-level async analysis. A reviewed
 immutable local alias shares the originating TypeChecker declaration identity
-and is normalized to one Promise ownership resource. Reassignment, dynamic or
-escaping aliases, and arbitrary thenables remain outside this identity proof.
+and is normalized to one Promise ownership resource. Each straight-line direct
+reassignment receives a distinct generation suffix and therefore a separate
+terminal obligation. Conditional/loop/try replacements retain the existing
+path-sensitive aggregate rather than claiming exact SSA generation identity.
+Dynamic or escaping aliases and arbitrary thenables remain outside this proof.
 
 For the selected root, `generateTemporalModel` now emits this projection as a
 `promise-ownership` model with the `promiseOwnershipSafe` property. Observed and
@@ -159,7 +200,52 @@ TypeChecker declaration identity and records that exact link in
 and unsupported aliases retain `promise-host-synchronization`; the link does not
 claim a general reaction-job ordering proof.
 
-## Async iterator cleanup
+## Iterator cleanup
+
+The unified Program analyzer reports `protocol: "sync" | "async"`. For a
+synchronous `for...of`, normal exhaustion consumes the iterator while explicit
+break, function return, and uncaught explicit throw synchronously perform the
+optional `IteratorClose` `return()` lookup/call. Property lookup may invoke user
+code and close failure is a synchronous throw. Nested/labeled loop ownership is
+preserved; an abrupt completion crossing a finally that can override it remains
+unknown.
+
+Manual synchronous `Iterator`/Generator bindings use the same TypeChecker-backed
+identity, immutable alias, ownership escape, callable-contract, and immediate
+`try/finally` dominance rules as manual async iterators. Their `.next()` and
+`.return()` calls complete inline and can throw, so they do not require `await`.
+Generator `.throw(value)` is conservatively a non-terminal protocol use because
+the generator may catch it and continue; the async form must be awaited and can
+reject, while the sync form completes or throws inline.
+Direct synchronous generator `yield*` also separates normal exhaustion from
+consumer-return propagation with inline optional-return semantics.
+
+Iterator identity can pass through a TypeChecker-resolved builtin
+`Object.freeze({ iterator })`, immutable aliases of that frozen object, static
+dot/string-element property reads, and `const` object destructuring. Returning
+the frozen aggregate is an exact ownership escape. A local object or array
+literal is also exact while a whole-owner write/escape screen proves that its
+static iterator slot is never replaced and the container does not escape;
+immutable aliases and returned closures retain that slot identity. Slot writes,
+dynamic keys, shadowed `freeze`, passing/storing the container externally, or
+returning a mutable aggregate are retained as `unstable-iterator-property`
+unknown evidence instead of silently disappearing. External calls and property
+assignments create an escape transition even when there is no later slot read.
+Static `const` object and array destructuring preserves exact slot identity.
+Mutable destructuring, an unstable source container, rest patterns, and
+computed property patterns retain all candidate resources as
+`unstable-iterator-alias` rather than dropping the relationship.
+This is shallow local-slot provenance, not a general heap or deep immutability
+proof.
+
+Local mutable identifier aliases use assignment-generation semantics rather
+than spelling. A straight-line `let active = first; active = second` resolves
+each use to the iterator installed at that source point, and a `const` snapshot
+retains the generation captured at its declaration. Reassignment under an
+`if`, loop, switch, catch, or other conditional region joins all possible
+iterator identities and emits `unstable-iterator-alias` unknown evidence for
+each candidate. Unsupported right-hand sides and alias cycles do not become
+trusted identities. This is local scalar flow, not general heap SSA.
 
 The reviewed `for await...of` fragment produces one resource scenario per
 observed completion. Normal exhaustion consumes the iterator. Explicit break,
@@ -171,10 +257,93 @@ The close metadata is deliberately precise about its uncertainty: property
 lookup for optional `return` is inline and may invoke user code; when present,
 its result is awaited and can reject on a microtask continuation. Generic async
 iterables therefore do not claim that `return` always exists. Abrupt completion
-crossing `finally` is rejected as unknown because the finalizer may override it.
-Coverage is `reviewed-explicit-completions`, not a complete implicit-exception
-model. Manual iterator calls, generator `yield*` close propagation, proxies,
-and implicit call/getter throws remain unsupported.
+through a normally completing `finally` preserves IteratorClose. A direct,
+unconditional `return`, `throw`, or loop-targeting `break` in the finalizer
+replaces the incoming completion; a possibly loop-resuming `continue` remains
+unknown. Calls, construction, tagged templates, and property/element reads in
+the loop body contribute an uncaught implicit-throw close scenario, while a
+locally caught operation does not. This is a reviewed syntactic may-throw
+model, not a proof of complete ECMAScript evaluation order. The Program-backed analyzer also recognizes direct local manual
+`AsyncIterator` bindings and immutable aliases by TypeChecker identity. Awaited
+`.next()` is a resource use and an explicit `.return()` is a release whose
+completion runs on the microtask lane. Missing close remains an unsatisfied
+terminal obligation, unawaited operations are reported as unknown, and use
+after close is retained for the shared resource evaluator to reject. Returning
+the iterator, or an immutable inline/named closure or simple aggregate that
+captures it, is an exact ownership escape. Passing it to an uncontracted call is
+an unknown escape rather than an assumed transfer. A symbol-resolved local API
+with an authenticated resource callable annotation instead contributes its
+trusted `borrow`, `consume`, `transfer`, or `escape` transition; the trust level
+is retained and is not upgraded to verified evidence. This is a straight-line
+protocol fragment. A direct `yield*` from an async generator to a
+TypeChecker-resolved standard `AsyncIterable` additionally emits separate
+normal-exhaustion and consumer-return propagation scenarios, retaining optional
+`return` lookup and awaited rejection. It also retains a
+`delegation-step-failure` scenario: failure of the delegate's `next`/`throw`
+lookup, call, await, or result access is propagated by ECMAScript without a
+general guarantee that `return` was invoked. That path is unknown rather than
+being hidden behind successful exhaustion or consumer return. The special
+consumer-throw case where the delegate has no `throw` method performs
+IteratorClose before raising `TypeError`, but proving method presence and every
+result shape remains future work. Proxies and general nested delegation
+composition remain unsupported.
+
+The manual fragment recognizes one common exception-safe form: the iterator is
+acquired and the immediately following statement is a `try` whose unconditional
+`finally` directly calls (and, for async iterators, awaits) `iterator.return()`.
+That release dominates normal
+completion, explicit return/throw, and rejection of an awaited `next()` inside
+the protected try. A close in the try/catch body, a conditional close inside
+finally, or any intervening statement between acquisition and the protected try
+remains unknown; this prevents a pre-try rejection from being mistaken for a
+guaranteed cleanup.
+
+Natural manual exhaustion is recognized for canonical `while` conditions that
+directly test the same TypeChecker-resolved iterator call as
+`!iterator.next().done`, `iterator.next().done === false`, or the awaited async
+equivalent. The loop projects repeated borrow/use followed by one `consume`
+terminal transition. A body-level break, return, or escaping throw disables
+that proof and leaves the close obligation unsatisfied; divergence is allowed
+under the fragment's partial-correctness interpretation and is not a liveness
+claim.
+
+The equivalent bound-result form is also supported for `while (true)`,
+`do...while (true)`, and `for (;;)`: a direct immutable `const step =
+iterator.next()` (or awaited async call), immediately followed by `if
+(step.done) break`, establishes `consume`. `const { done } = ...` and explicit
+`done === true` are accepted by symbol identity. Any intervening guard,
+reassignment, alternate loop-targeting break, function return, or escaping throw
+prevents the exhaustion claim.
+
+A canonical `for` generation is supported as the one reviewed mutable-result
+exception: `for (let step = iterator.next(); !step.done; step =
+iterator.next())`. The initializer and update calls must resolve to the same
+iterator resource, the loop condition must read that exact result symbol, and
+the body must have no alternate abrupt exit. Awaited async initializer/update
+forms are equivalent. This does not generalize arbitrary `let` reassignment;
+updating from another iterator leaves both resources unclosed.
+
+A direct manual `if/else` whose two branches each perform the same awaited
+`return()` is collapsed to one exact release at the join. Missing `else`, an
+unawaited async branch, nested conditional cleanup, and different ownership
+operations remain conditional/unknown; the rule does not pretend that a flat
+transition list is a general CFG.
+
+The reviewed join also recognizes guard exits: if an `if` branch, `switch`
+clause, or `catch` path directly closes the iterator before returning or
+throwing, and the continuing path reaches a later unconditional close, the two
+source releases are projected as one path-independent terminal release. A
+return/throw without the guard close downgrades that later close to conditional.
+Nested bypasses, loop exits, and possible double-close sequences are rejected
+as unknown. This closes a previous unsound gap where a lexically later
+`return()` could be mistaken for a post-dominator of an earlier function exit.
+
+Both the file checker and `verifyUneffectProject` use this same iterator
+decision layer. Project verification excludes `.uneffect.ts` specification
+modules, downgrades evidence from TypeScript-invalid implementation files to
+unknown, and reports iterator violations/unknowns through project assurance.
+Trusted resource-callable transitions are never promoted to exact evidence;
+their used boundary is recorded in the project assumption ledger.
 
 ## Resource/temporal product
 
@@ -186,17 +355,26 @@ disposal requires awaited microtask completion. The evaluator rejects dangling
 or duplicate links, lane mismatch, resource-identity mismatch, and any release
 without a host completion link.
 
-Unconditional results are labeled `exact-under-precondition` and retain
-`all-listed-resources-acquired`; bounded conditional results are `exact` only
-for the explicit acquire-or-skip paths admitted by the frontend. The same product now emits the bounded
+Straight-line and bounded conditional results are labeled `exact` for the
+resource lifecycle paths admitted by the frontend. Initializer failure uses a
+distinct fail-acquire transition that jumps to cleanup; source-conditional
+absence continues to use acquire-or-skip. The same product now emits the bounded
 acquire/release Quint model. The former dedicated using/host generator has been
-removed. Positive execution and a deliberately invalid
-resume outside the microtask checkpoint are both checked. Initializer failure
-outside the represented skip path and repeated acquisition remain unsupported.
+removed. A direct `await` in an initializer produces start, microtask
+fulfillment, and microtask rejection transitions, while synchronous evaluation
+failure remains an inline edge. Positive execution and a deliberately invalid
+resume outside the microtask checkpoint are both checked. The lifecycle model
+does not infer asynchronous initializer timing through wrappers, thenables, or
+other indirect forms.
+Only the single contiguous repeated group above is supported; broader repeated
+acquisition topologies remain unsupported.
 Supported disposal throw/reject paths increment a finite failure count; a second
-failure sets `suppressed_failure`, and a load-bearing broken generator proves
-that dropping this transition violates `disposalSuppressionSafe`. Exact
-`SuppressedError` payload identity, transitions other than acquire and release,
+failure sets `suppressed_failure`. The model also assigns a stable finite origin
+ID to a body, initializer, or disposer failure and records the previous active
+origin as each disposer failure's suppression parent. Dropping suppression or
+substituting an unrelated parent produces a Quint counterexample. This proves
+the modeled origin chain, not equality or object identity of runtime Error
+payload values. Transitions other than acquire and release,
 fairness, cancellation, and arbitrary callback interleavings remain future work
 and must not be inferred from a passing property.
 

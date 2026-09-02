@@ -182,11 +182,11 @@ describe("uneffect command line", () => {
 
       const empty = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", emptyFile], empty)).toBe(exitCode.success);
-      expect(empty.stderr).toContain("coverage: 1 effect summary, 0 contract artifacts, 0 assumptions, 1 selected file");
+      expect(empty.stderr).toContain("coverage: 1 effect summary, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 assumptions, 1 selected file");
 
       const mixed = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", inferredFile, emptyFile], mixed)).toBe(exitCode.success);
-      expect(mixed.stderr).toContain("coverage: 3 effect summaries, 0 contract artifacts, 0 assumptions, 2 selected files");
+      expect(mixed.stderr).toContain("coverage: 3 effect summaries, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 assumptions, 2 selected files");
 
       const invalid = capture();
       expect(await runCli(["check", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);
@@ -298,9 +298,13 @@ describe("uneffect command line", () => {
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-check/v1" } },
-        required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assumptions", "assurance", "project"]),
+        required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assumptions", "typedArrays", "ownership", "asyncIterators", "assurance", "project"]),
         $defs: {
           assurance: { allOf: [expect.objectContaining({ then: { properties: { claims: { maxItems: 0 } } } })] },
+          assumption: { properties: {
+            domain: { enum: expect.arrayContaining(["temporal-contract", "resource-callable"]) },
+            reviewDigest: { pattern: "^[a-f0-9]{64}$" },
+          } },
           z3Attempt: { required: expect.arrayContaining(["backend", "version", "status", "stdout", "stderr", "exitCode"]) },
         },
       });
@@ -324,6 +328,93 @@ describe("uneffect command line", () => {
         })],
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("runs typed-array and ownership checks through the default CLI pipeline", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-memory-safety-"));
+    const fileName = join(directory, "memory.ts");
+    try {
+      writeFileSync(fileName, `
+        type FixedArrayBuffer<N extends number> = ArrayBuffer
+        type BoundedArrayBuffer<N extends number> = ArrayBuffer
+        type BoundedDataView<N extends number> = DataView
+        type BoundedUint8Array<N extends number> = Uint8Array
+        function window(bytes: BoundedUint8Array<8>) { const shared = bytes.subarray(0, 4); return shared }
+        function broken(buffer: FixedArrayBuffer<16>): BoundedDataView<8> {
+          structuredClone({}, { transfer: [buffer] })
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+        function shrink(buffer: BoundedArrayBuffer<16>): BoundedDataView<8> {
+          buffer.resize(4)
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+        function staleView(buffer: BoundedArrayBuffer<16>) {
+          buffer.resize(16)
+          const bytes: BoundedUint8Array<8> = new Uint8Array(buffer, 0, 8)
+          buffer.resize(4)
+          return bytes[0]
+        }
+      `);
+      const io = capture();
+      expect(await runCli(["check", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
+      const report = JSON.parse(io.stdout);
+      expect(report).toMatchObject({
+        outcome: "failed",
+        typedArrays: {
+          obligations: expect.arrayContaining([
+            expect.objectContaining({ kind: "dataview-backing-bounds", result: "counterexample" }),
+            expect.objectContaining({ functionName: "shrink", kind: "dataview-backing-bounds", result: "counterexample", goal: expect.stringContaining("<= 4") }),
+            expect.objectContaining({ functionName: "staleView", kind: "index-bounds", result: "counterexample", goal: expect.stringContaining("view remains in bounds") }),
+          ]),
+          windows: expect.arrayContaining([expect.objectContaining({ backing: "shared", result: "verified" })]),
+          statistics: { solverQueries: expect.any(Number) },
+        },
+        ownership: expect.arrayContaining([expect.objectContaining({ operation: "read", state: "detached" })]),
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({ code: "ownership/invalid-transition" }),
+          expect.objectContaining({ code: "typed-array/dataview-backing-bounds" }),
+        ]),
+      });
+      const assured = capture();
+      expect(await runCli(["check", "--infer", "--json", "--assurance", "no-unknown", fileName], assured)).toBe(exitCode.failed);
+      expect(JSON.parse(assured.stdout).assurance).toMatchObject({
+        passed: false,
+        blockers: expect.arrayContaining([
+          expect.objectContaining({ kind: "typed-array", classification: "violation" }),
+          expect.objectContaining({ kind: "ownership", classification: "violation" }),
+        ]),
+        coverage: expect.objectContaining({ typedArrayObligations: expect.any(Number), typedArrayWindows: 1, ownershipDiagnostics: expect.any(Number) }),
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("loads caller-owned assumption records for source trust IDs", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-assumptions-"));
+    const fileName = join(directory, "runtime.ts");
+    const registryFile = join(directory, "assumptions.json");
+    try {
+      writeFileSync(fileName, `
+        /* uneffect:temporal_contract ensures ready' = true */
+        /* uneffect:trust trust assumption runtime-summary-v1 */
+        export function start() {}
+      `);
+      writeFileSync(registryFile, JSON.stringify({
+        schema: "uneffect-assumption-registry/v1",
+        records: [{
+          id: "runtime-summary-v1", domain: "temporal-contract", reason: "reviewed runtime summary",
+          owner: "runtime-team", reviewDigest: "a".repeat(64),
+        }],
+      }));
+      const io = capture();
+      expect(await runCli(["check", "--infer", "--json", "--assumptions", registryFile, fileName], io))
+        .toBe(exitCode.success);
+      expect(JSON.parse(io.stdout).assumptions.entries).toContainEqual(expect.objectContaining({
+        id: "runtime-summary-v1", domain: "temporal-contract", owner: "runtime-team",
+        reviewDigest: "a".repeat(64),
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("emits invalid effect-set syntax as a structured JSON diagnostic", async () => {
@@ -474,7 +565,7 @@ describe("uneffect command line", () => {
       const freshArtifacts = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], freshArtifacts)).toBe(exitCode.success);
       expect(JSON.parse(freshArtifacts.stdout)).toMatchObject({
-        outcome: "passed", buildArtifacts: { status: "fresh" }, assurance: { status: "verified", passed: true },
+        outcome: "passed", buildArtifacts: { status: "fresh" }, assurance: { status: "assumed", passed: true },
       });
 
       writeFileSync(join(a, "src", "a.ts"), `
@@ -596,13 +687,13 @@ describe("uneffect command line", () => {
       });
 
       writeFileSync(join(a, "src", "a.ts"), `
-        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> | GlobalVarsRead<"appState"> */
         export {}
         declare global { var appState: { value: number } }
         globalThis.appState.value = 1
       `);
       writeFileSync(join(b, "src", "b.ts"), `
-        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> | GlobalVarsRead<"appState"> */
         import "../../a/src/a.js"
         export const value = globalThis.appState.value
       `);

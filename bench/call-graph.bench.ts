@@ -26,6 +26,21 @@ host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile)
   ? ts.createSourceFile(fileName, sourceText, languageVersion, true)
   : originalGetSourceFile(name, languageVersion, onError, shouldCreateNewSourceFile);
 const program = ts.createProgram([fileName], options, host);
+const typedArrayFileName = "typed-array-callbacks.ts";
+const typedArrayOwners = [
+  "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array", "Int32Array", "Uint32Array",
+  "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",
+];
+const typedArraySourceText = typedArrayOwners.map((owner, index) => `
+  export function reverse${index}(values: ${owner}) { return values.reverse() }
+  export function visit${index}(values: ${owner}) { values.forEach((value, offset, receiver) => { receiver[offset] = value }) }
+`).join("\n");
+const typedArrayHost = ts.createCompilerHost(options);
+const originalTypedArrayGetSourceFile = typedArrayHost.getSourceFile.bind(typedArrayHost);
+typedArrayHost.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => name === typedArrayFileName
+  ? ts.createSourceFile(typedArrayFileName, typedArraySourceText, languageVersion, true)
+  : originalTypedArrayGetSourceFile(name, languageVersion, onError, shouldCreateNewSourceFile);
+const typedArrayProgram = ts.createProgram([typedArrayFileName], options, typedArrayHost);
 const cycleFiles = Array.from({ length: 4 }, (_, index) => `/bench/module-cycle-${index}.mts`);
 const cycleSources = new Map(cycleFiles.map((name, index) => [
   name,
@@ -61,6 +76,9 @@ const promiseLaunchProgram = ts.createProgram([promiseLaunchFile], options, prom
 describe("reviewed compiler callback timing", () => {
   bench("build a call graph for 32 TypeScript transformer chains", () => {
     buildProgramCallGraph(program);
+  });
+  bench("build a call graph for all standard TypedArray callback owners", () => {
+    buildProgramCallGraph(typedArrayProgram);
   });
 });
 

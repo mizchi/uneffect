@@ -57,11 +57,12 @@ describe("Uneffect annotation marker", () => {
     expect(validateUneffectAnnotations(source, 0, ["queue_depth"])).toEqual([]);
   });
   it("lowers canonical temporal contract clauses to temporal IR directives", () => {
-    const source = `/* uneffect:temporal_contract requires phase === 0 */\n/* uneffect:\n      temporal_contract ensures phase' = 1\n      temporal_contract modifies phase\n      temporal_contract rejects NetworkError\n    */`;
+    const source = `/* uneffect:temporal_contract requires phase === 0 */\n/* uneffect:\n      temporal_contract ensures phase' = 1\n      temporal_contract modifies phase\n      temporal_contract rejects NetworkError\n      temporal_contract terminates true\n    */`;
     expect(extractAnnotations(source, "temporal_requires")).toEqual(["phase === 0"]);
     expect(extractAnnotations(source, "temporal_ensures")).toEqual(["phase' = 1"]);
     expect(extractAnnotations(source, "temporal_modifies")).toEqual(["phase"]);
     expect(extractAnnotations(source, "temporal_rejects")).toEqual(["NetworkError"]);
+    expect(extractAnnotations(source, "temporal_terminates")).toEqual(["true"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
   it("rejects removed temporal-summary headers and invalid temporal contract clauses", () => {

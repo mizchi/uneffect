@@ -53,10 +53,19 @@ export function catchCompletions(
   incoming: CompletionSet,
   handler: () => CompletionSet,
 ): CompletionSet {
-  const retained = incoming.filter((value) => value.completion !== "throw");
-  return incoming.some((value) => value.completion === "throw")
-    ? unionCompletions(retained, handler())
-    : completionSet(...retained);
+  return completionSet(...routeCatchPaths(incoming, (value) => value.completion, handler));
+}
+
+/** Route catch for a domain path while retaining its attached payload. */
+export function routeCatchPaths<Path>(
+  incoming: readonly Path[],
+  completionOf: (path: Path) => CompletionKind,
+  handler: () => readonly Path[],
+): Path[] {
+  const retained = incoming.filter((value) => completionOf(value) !== "throw");
+  return incoming.some((value) => completionOf(value) === "throw")
+    ? [...retained, ...handler()]
+    : retained;
 }
 
 /**
@@ -67,10 +76,19 @@ export function finallyCompletions(
   incoming: CompletionSet,
   finalizer: CompletionSet,
 ): CompletionSet {
-  const abrupt = finalizer.filter((value) => value.completion !== "normal");
-  return finalizer.some((value) => value.completion === "normal")
-    ? unionCompletions(incoming, abrupt)
-    : completionSet(...abrupt);
+  return completionSet(...routeFinallyPaths(incoming, finalizer, (value) => value.completion));
+}
+
+/** Apply finally precedence to domain paths without discarding their payload. */
+export function routeFinallyPaths<Path>(
+  incoming: readonly Path[],
+  finalizer: readonly Path[],
+  completionOf: (path: Path) => CompletionKind,
+): Path[] {
+  const abrupt = finalizer.filter((value) => completionOf(value) !== "normal");
+  return finalizer.some((value) => completionOf(value) === "normal")
+    ? [...incoming, ...abrupt]
+    : abrupt;
 }
 
 /** Consume transfers owned by one loop, retaining transfers to outer owners. */

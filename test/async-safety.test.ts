@@ -28,6 +28,35 @@ function run(program: string, maxSteps = 12) {
 }
 
 describe("async error and explicit resource safety", () => {
+  it("tracks Promise.withResolvers promise bindings through destructuring", () => {
+    const result = analyzeAsyncSafety("with-resolvers.ts", `
+      function floating() {
+        const { promise, resolve, reject } = Promise.withResolvers<number>()
+        resolve(1)
+        void reject
+      }
+      async function awaited() {
+        const { promise: task, resolve } = Promise.withResolvers<number>()
+        resolve(1)
+        return await task
+      }
+      function ignored() {
+        const capability = Promise.withResolvers<number>()
+        const { promise: task } = capability
+        void task
+      }
+    `);
+    expect(result.promiseBindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ owner: "floating", binding: "promise", status: "floating" }),
+      expect.objectContaining({ owner: "awaited", binding: "task", status: "observed", observations: ["await"] }),
+      expect.objectContaining({ owner: "ignored", binding: "task", status: "observed", observations: ["void"] }),
+    ]));
+    expect(result.promiseBindings.map(({ binding }) => binding)).not.toEqual(expect.arrayContaining(["resolve", "reject"]));
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
+      expect.objectContaining({ functionName: "floating", message: expect.stringContaining("promise") }),
+    ]);
+  });
+
   it("reports floating rejecting Promise expressions and accepts explicit handling", () => {
     const result = analyzeAsyncSafety("floating.ts", `
       declare function task(): Promise<number>
@@ -40,6 +69,19 @@ describe("async error and explicit resource safety", () => {
     `);
     expect(result.diagnostics).toEqual([
       expect.objectContaining({ functionName: "bad", kind: "floating-promise", severity: "error" }),
+    ]);
+  });
+
+  it("requires ownership of the Promise returned by Promise.try", () => {
+    const result = analyzeAsyncSafety("promise-try-ownership.ts", `
+      declare function compute(): number
+      function floating() { Promise.try(compute) }
+      async function awaited() { return await Promise.try(compute) }
+      function caught() { Promise.try(compute).catch(() => 0) }
+      function ignored() { void Promise.try(compute) }
+    `);
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
+      expect.objectContaining({ functionName: "floating", severity: "error" }),
     ]);
   });
 
@@ -287,6 +329,7 @@ describe("async error and explicit resource safety", () => {
     `);
     expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
       { owner: "overwritten", status: "floating" },
+      { owner: "overwritten", status: "observed" },
       { owner: "loopOnly", status: "floating" },
       { owner: "afterLoop", status: "observed" },
       { owner: "doLoop", status: "observed" },
@@ -1010,6 +1053,49 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("tracks Promise reassignment as distinct ownership generations", () => {
+    const result = analyzeAsyncSafety("promise-generations.ts", `
+      declare function task(): Promise<number>
+      async function stale() {
+        let current = task()
+        const first = current
+        current = task()
+        await first
+      }
+      async function latest() {
+        let current = task()
+        current = task()
+        await current
+      }
+      async function complete() {
+        let current = task()
+        await current
+        current = task()
+        await current
+      }
+      async function conditional(cond: boolean) {
+        let current = task()
+        if (cond) current = task()
+        if (!cond) await current
+      }
+    `);
+    expect(result.promiseBindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ owner: "stale", binding: "current", generation: 0, status: "observed" }),
+      expect.objectContaining({ owner: "stale", binding: "first", generation: 0, status: "observed" }),
+      expect.objectContaining({ owner: "stale", binding: "current", generation: 1, status: "floating" }),
+      expect.objectContaining({ owner: "latest", binding: "current", generation: 0, status: "floating" }),
+      expect.objectContaining({ owner: "latest", binding: "current", generation: 1, status: "observed" }),
+      expect.objectContaining({ owner: "complete", binding: "current", generation: 0, status: "observed" }),
+      expect.objectContaining({ owner: "complete", binding: "current", generation: 1, status: "observed" }),
+      expect.objectContaining({ owner: "conditional", binding: "current", generation: 0, status: "floating" }),
+    ]));
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "stale", message: expect.stringContaining("generation 1") }),
+      expect.objectContaining({ functionName: "latest", message: expect.stringContaining("generation 0") }),
+    ]));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "complete", kind: "floating-promise" }));
+  });
+
   it("models using and await using as reverse-order cleanup on every exit", () => {
     const result = analyzeAsyncSafety("using.ts", `
       interface SyncResource { [Symbol.dispose](): void }
@@ -1033,9 +1119,10 @@ describe("async error and explicit resource safety", () => {
     expect(result.diagnostics).toEqual([]);
 
     const projection = lowerResourceDisposalsToProtocol(result.resources, result.disposals, "work");
-    expect(projection.status).toBe("exact-under-precondition");
-    if (projection.status === "exact-under-precondition") {
-      expect(projection.precondition).toBe("all-listed-resources-acquired");
+    expect(projection.status).toBe("exact");
+    if (projection.status === "exact") {
+      expect(projection.precondition).toBeUndefined();
+      expect(projection.initializerFailureResources).toHaveLength(2);
       expect(projection.disposalOrder.map((id) => id.split(":").at(-1))).toEqual(["second", "first"]);
       expect(projection.completions.map(({ resource, lane, failure }) => [resource.split(":").at(-1), lane, failure])).toEqual([
         ["second", "microtask", "reject"], ["first", "inline", "throw"],

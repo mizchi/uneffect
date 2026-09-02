@@ -2327,6 +2327,7 @@ describe("Uneffect dogfood", () => {
     const audit = await verifyUneffectProject({
       files: { [fileName]: source, [specificationFile]: specificationSource, [runtimeFile]: runtimeSource },
       assumptionPolicy: { requireOwner: true, requireExpiration: true, denyExpired: true, asOf: "2026-08-26" },
+      assumptionRegistry: reviewedAssumptions,
     });
     expect(audit.assumptions.entries).toContainEqual(expect.objectContaining({
       domain: "dispatch-sealing", owner: "telemetry-platform", expiresOn: "2027-08-31",

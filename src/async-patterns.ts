@@ -7,7 +7,8 @@ import type { PromiseChainModel } from "./promise-chains.js";
 import type { TemporalComposition } from "./temporal-compose.js";
 import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
-import { interpretBuiltinCallSemantics, projectBuiltinCallbacks, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
+import { interpretBuiltinCallSemantics, projectBuiltinCallbacks, projectedExpression, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
+import { isDefinitelyLexicallyExecuted } from "./lexical-execution.js";
 
 export interface TimerPattern {
   owner: string;
@@ -15,7 +16,7 @@ export interface TimerPattern {
   delay?: number;
   recursive: boolean;
   repeats: boolean;
-  queue: "timer" | "microtask" | "animation-frame" | "scheduler-task" | "next-tick" | "poll" | "check" | "close";
+  queue: "timer" | "microtask" | "animation-frame" | "scheduler-task" | "next-tick" | "poll" | "check" | "close" | "external";
   enqueuedBy?: number;
   handle?: string;
   handleKind?: "number" | "object" | "unknown";
@@ -36,6 +37,8 @@ export interface TimerPattern {
   externallyReady?: boolean;
   callbackAlternatives?: string[];
   parentAlternative?: number;
+  /** Stable TypeChecker-backed EventTarget registration identity. */
+  listenerIdentity?: string;
   span: { start: number; end: number };
 }
 
@@ -972,7 +975,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
     const protocol = events.find((event) => event.kind === "protocol" && event.name === "timer" && event.transition === "schedule");
     const callback = semanticCallbacks(call).find((event) => event.timing === "deferred" && event.target.status === "resolved");
-    if (!protocol || protocol.kind !== "protocol" || !callback || callback.target.status !== "resolved" || callback.queue === "current") return undefined;
+    if (!protocol || protocol.kind !== "protocol" || !callback || callback.target.status !== "resolved"
+      || callback.queue === "current") return undefined;
     const delay = protocol.inputs.delay;
     if (delay && delay.status !== "resolved") return undefined;
     return {
@@ -985,6 +989,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const semanticDeferredJob = (call: ts.CallExpression): {
     callback: ts.Expression; repeats: boolean; queue: TimerPattern["queue"]; handleFamily?: TimerPattern["handleFamily"];
     release?: { resource: string; target: ts.Expression };
+    abortSignal?: ts.Expression;
   } | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
@@ -995,7 +1000,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     // callback primitive as an independent host job would duplicate them.
     if (events.some((event) => event.kind === "protocol" && event.name === "promise-handler")) return undefined;
     const callback = semanticCallbacks(call).find((event) => event.timing === "deferred" && event.target.status === "resolved");
-    if (!callback || callback.kind !== "callback" || callback.target.status !== "resolved" || callback.queue === "current") return undefined;
+    if (!callback || callback.kind !== "callback" || callback.target.status !== "resolved"
+      || callback.queue === "current") return undefined;
     const resource = events.find((event) => event.kind === "result" && event.refinement.kind === "resource");
     const family = resource?.kind === "result" && resource.refinement.kind === "resource" ? resource.refinement.family : undefined;
     const handleFamily = family === "watcher" || family === "server" ? family : undefined;
@@ -1007,6 +1013,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       ...(handleFamily ? { handleFamily } : {}),
       ...(release?.kind === "release" && release.target?.status === "resolved"
         ? { release: { resource: release.resource, target: release.target.expression } } : {}),
+      ...(callback.abortSignal ? { abortSignal: projectedExpression(callback.abortSignal) } : {}),
     };
   };
   const semanticRelease = (call: ts.CallExpression): { resource: string; target: ts.Expression } | undefined => {
@@ -1065,6 +1072,24 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       return { transition: "any", signals: protocol.inputs.signals.expression };
     }
     return undefined;
+  };
+  const semanticEventListener = (call: ts.CallExpression): {
+    transition: "register" | "unregister";
+    target: ts.Expression; type: ts.Expression; callback: ts.Expression; options?: ts.Expression;
+  } | undefined => {
+    const resolved = adapter.resolveCall(call);
+    if (!resolved?.semantics) return undefined;
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+      .find((event) => event.kind === "protocol" && event.name === "event-listener"
+        && (event.transition === "register" || event.transition === "unregister"));
+    if (!protocol || protocol.kind !== "protocol") return undefined;
+    const target = protocol.inputs.target && projectedExpression(protocol.inputs.target);
+    const type = protocol.inputs.type && projectedExpression(protocol.inputs.type);
+    const callback = protocol.inputs.callback && projectedExpression(protocol.inputs.callback);
+    const options = protocol.inputs.options && projectedExpression(protocol.inputs.options);
+    return target && type && callback
+      ? { transition: protocol.transition as "register" | "unregister", target, type, callback, ...(options ? { options } : {}) }
+      : undefined;
   };
   const semanticScheduler = (call: ts.CallExpression):
     | { transition: "post-task"; callback: ts.Expression; options?: ts.Expression }
@@ -1169,6 +1194,54 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const staticObjectOption = (expression: ts.Expression | undefined, name: string): ts.Expression | undefined => {
       const result = resolveStaticObjectOption(expression, name);
       return result.status === "found" ? result.value : undefined;
+    };
+    const staticBoolean = (expression: ts.Expression | undefined): boolean | undefined => {
+      if (!expression) return undefined;
+      const value = evaluateStaticPrimitive(expression, {
+        resolveIdentifier: (identifier) => {
+          const symbol = resolvedSymbol(identifier);
+          if (!symbol) return undefined;
+          const initializer = immutableInitializer(identifier);
+          return { key: symbol, ...(initializer === identifier ? {} : { expression: initializer }) };
+        },
+      });
+      return typeof value === "boolean" ? value : undefined;
+    };
+    const expressionBindingIdentity = (expression: ts.Expression, seen = new Set<ts.Symbol>()): string | undefined => {
+      while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+      if (!ts.isIdentifier(expression)) return undefined;
+      const symbol = resolvedSymbol(expression);
+      if (symbol && !seen.has(symbol)) {
+        const initializer = immutableInitializer(expression);
+        if (initializer !== expression) {
+          seen.add(symbol);
+          return expressionBindingIdentity(initializer, seen);
+        }
+      }
+      return bindingKey(expression);
+    };
+    const eventListenerIdentity = (call: ts.CallExpression): string | undefined => {
+      const listener = semanticEventListener(call);
+      if (!listener) return undefined;
+      const target = expressionBindingIdentity(listener.target);
+      const callback = expressionBindingIdentity(listener.callback);
+      const eventType = evaluateStaticPrimitive(listener.type, { resolveIdentifier: () => undefined });
+      if (!target || !callback || typeof eventType !== "string") return undefined;
+      let capture = false;
+      if (listener.options) {
+        const directCapture = staticBoolean(listener.options);
+        if (directCapture !== undefined) capture = directCapture;
+        else {
+          const selected = resolveStaticObjectOption(listener.options, "capture");
+          if (selected.status === "found") {
+            const value = staticBoolean(selected.value);
+            if (value === undefined) return undefined;
+            capture = value;
+          } else if (selected.status === "unknown") return undefined;
+        }
+      }
+      return JSON.stringify([target, eventType, callback, capture]);
     };
     const taskControllerConstructor = (expression: ts.Expression): boolean => {
       if (!ts.isIdentifier(expression) || expression.text !== "TaskController") return false;
@@ -1306,6 +1379,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (bindings.size === 0) inlineAbortTimeoutTargets.set(expression, timer);
       return { timer, reason: "TimeoutError" };
     };
+    const isExternalAbortSignal = (expression: ts.Expression | undefined): boolean => {
+      if (!expression || abortTarget(expression)) return false;
+      const type = checker.getTypeAtLocation(expression);
+      return checker.getPropertyOfType(type, "aborted")?.declarations?.some((declaration) =>
+        declaration.getSourceFile().isDeclarationFile && ts.isInterfaceDeclaration(declaration.parent)
+        && declaration.parent.name.text === "AbortSignal") ?? false;
+    };
     const resolveHandle = (name: string): string => {
       const seen = new Set<string>();
       let current = name;
@@ -1358,17 +1438,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         scanCapture(expression.body);
       }
     };
-    const definitelyExecutedWithin = (node: ts.Node, boundary: ts.Node): boolean => {
-      for (let current = node.parent; current && current !== boundary; current = current.parent) {
-        if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
-          || ts.isCaseClause(current) || ts.isDefaultClause(current) || ts.isForStatement(current)
-          || ts.isForInStatement(current) || ts.isForOfStatement(current) || ts.isWhileStatement(current)
-          || ts.isDoStatement(current) || ts.isTryStatement(current) || ts.isCatchClause(current)
-          || (ts.isBinaryExpression(current) && [ts.SyntaxKind.AmpersandAmpersandToken,
-            ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(current.operatorToken.kind))) return false;
-      }
-      return true;
-    };
+    const definitelyExecutedWithin = isDefinitelyLexicallyExecuted;
     const collectNestedJobs = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
       const callbacks = resolveCallbacks(callbackExpression);
       if (callbacks.length > 1) timers[parent]!.callbackAlternatives = callbacks.map((callback) => functionName(callback));
@@ -1390,6 +1460,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               return;
             } else if (semanticDeferredJob(node)) {
               const job = semanticDeferredJob(node)!;
+              const listenerIdentity = eventListenerIdentity(node);
+              const signal = job.abortSignal ? abortTarget(job.abortSignal) : undefined;
+              const externalAbortSignal = isExternalAbortSignal(job.abortSignal);
               const closesSource = job.release && ts.isIdentifier(job.release.target)
                 ? handleTargets.get(bindingKey(job.release.target)) : undefined;
               const definiteClose = closesSource !== undefined
@@ -1400,7 +1473,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               timers.push({
                 owner: ownerName, callback: job.callback.getText(childSource), delay: 0,
                 recursive: false, repeats: job.repeats, queue: job.queue, enqueuedBy: parent,
-                externallyReady: job.queue === "poll" || job.queue === "close",
+                externallyReady: job.queue === "poll" || job.queue === "close" || job.queue === "external",
+                initiallyCancelled: signal?.alreadyAborted,
+                abortTimer: signal?.timer,
+                abortComposition: signal?.composition,
+                externalAbortSignal,
+                ...(listenerIdentity ? { listenerIdentity } : {}),
                 ...(definiteClose ? { closesSource } : {}),
                 ...(callbacks.length > 1 ? { parentAlternative } : {}),
                 ...(job.handleFamily ? { handleFamily: job.handleFamily } : {}),
@@ -1505,6 +1583,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const genericCancellation = semanticCancellation(node);
         const genericCombinator = semanticPromiseCombinator(node);
         const genericAbort = semanticAbortSignal(node);
+        const genericListener = semanticEventListener(node);
         const genericScheduler = semanticScheduler(node);
         if (!genericCancellation) for (const argument of node.arguments) recordEscapesInValue(argument, "argument", node);
         const genericTimer = semanticTimer(node);
@@ -1529,6 +1608,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           collectNestedJobs(callbackNode, timerIndex);
         } else if (semanticDeferredJob(node)) {
           const job = semanticDeferredJob(node)!;
+          const listenerIdentity = eventListenerIdentity(node);
+          const signal = job.abortSignal ? abortTarget(job.abortSignal) : undefined;
+          const externalAbortSignal = isExternalAbortSignal(job.abortSignal);
           const declaration = assignedBinding(node);
           const closesSource = job.release && ts.isIdentifier(job.release.target)
             ? handleTargets.get(bindingKey(job.release.target)) : undefined;
@@ -1542,7 +1624,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             handle: job.handleFamily ? declaration : undefined,
             handleKind: job.handleFamily ? "object" : undefined,
             handleFamily: job.handleFamily,
-            externallyReady: job.queue === "poll" || job.queue === "close",
+            externallyReady: job.queue === "poll" || job.queue === "close" || job.queue === "external",
+            initiallyCancelled: signal?.alreadyAborted,
+            abortTimer: signal?.timer,
+            abortComposition: signal?.composition,
+            externalAbortSignal,
+            ...(listenerIdentity ? { listenerIdentity } : {}),
             ...(definiteClose ? { closesSource } : {}),
             span: { start: node.getStart(source), end: node.getEnd() },
           });
@@ -1643,17 +1730,21 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             priority: "user-visible",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+        } else if (genericListener?.transition === "unregister") {
+          const identity = eventListenerIdentity(node);
+          const candidate = identity === undefined ? undefined : timers.findLastIndex((timer) =>
+            timer.owner === ownerName && timer.listenerIdentity === identity);
+          const definite = isDefinitelyLexicallyExecuted(node, ownerBody);
+          const compatible = candidate !== undefined && candidate >= 0;
+          cancellations.push({
+            owner: ownerName, handle: "event-listener", timer: compatible ? candidate : undefined,
+            definite, compatible, span: { start: node.getStart(source), end: node.getEnd() },
+          });
         } else if (genericCancellation) {
           const handleNode = genericCancellation.handle;
           const handleKey = handleNode && ts.isIdentifier(handleNode) ? bindingKey(handleNode) : undefined;
           const handle = handleKey ? handleNames.get(handleKey) ?? handleNode!.getText(source) : handleNode?.getText(source) ?? "<unknown>";
-          let current: ts.Node = node;
-          let definite = true;
-          while (current.parent && current.parent !== ownerBody) {
-            current = current.parent;
-            if (ts.isIfStatement(current) || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)
-              || ts.isWhileStatement(current) || ts.isDoStatement(current) || ts.isTryStatement(current) || ts.isConditionalExpression(current)) definite = false;
-          }
+          const definite = isDefinitelyLexicallyExecuted(node, ownerBody);
           const candidate = handleKey ? handleTargets.get(handleKey) : undefined;
           const compatible = candidate !== undefined && timers[candidate]?.handleFamily === genericCancellation.family;
           cancellations.push({ owner: ownerName, handle, timer: compatible ? candidate : undefined, definite, clearFamily: genericCancellation.family, compatible, span: { start: node.getStart(source), end: node.getEnd() } });
@@ -1995,11 +2086,21 @@ export function generateNodeEventLoopQuint(
     return [timer.closesSource, ...(timer.closesSources ?? [])]
       .filter((source): source is number => source !== undefined && supported.includes(source));
   }));
+  const divergentExecutors = promiseModel?.executors
+    .map((executor, index) => ({ executor, index }))
+    .filter(({ executor }) => executor.mayDivergeSynchronously)
+    .sort((left, right) => left.executor.span.start - right.executor.span.start) ?? [];
+  const hasSynchronousDivergence = divergentExecutors.length > 0;
+  const chainIndexForExecutor = (executorIndex: number): number | undefined => {
+    const index = promiseModel?.chains.findIndex((chain) => chain.executor === executorIndex) ?? -1;
+    return index < 0 ? undefined : index;
+  };
   const initialReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
     const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
     if (chain.links.length && (chain.initialSettlement !== undefined
-      || (executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending))) initialReactions.add(`${chainIndex}:0`);
+      || (executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending
+        && !executor.mayDivergeSynchronously))) initialReactions.add(`${chainIndex}:0`);
   });
   const initialV8Jobs = [
     ...microtasks.flatMap((index) => model.timers[index]!.enqueuedBy === undefined ? [{ key: `callback:${index}`, span: model.timers[index]!.span.start }] : []),
@@ -2012,6 +2113,8 @@ export function generateNodeEventLoopQuint(
     ? `callback_${job.key.slice("callback:".length)}_pending`
     : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`);
   const lines = [`module ${safe(moduleName)} {`, `  var ${clock}: int`, "  var node_phase: int", "  var resume_phase: int", "  var wrong_checkpoint_order: bool", "  var wrong_phase: bool", "  var callback_precondition_broken: bool"];
+  if (hasSynchronousDivergence) lines.push("  var synchronously_blocked: bool");
+  divergentExecutors.forEach(({ index }) => lines.push(`  var promise_executor_${index}_decided: bool`));
   temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${formatTemporalValueType(state.type)}`));
   supported.forEach((index) => {
     lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`);
@@ -2021,6 +2124,8 @@ export function generateNodeEventLoopQuint(
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
   lines.push("", "  action init = all {", `    ${clock}' = 0,`, "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint || options.allowEsmNextTickBeforeMicrotask)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`, "    callback_precondition_broken' = false,");
+  if (hasSynchronousDivergence) lines.push("    synchronously_blocked' = false,");
+  divergentExecutors.forEach(({ index }) => lines.push(`    promise_executor_${index}_decided' = false,`));
   temporalStates.forEach((state) => {
     const value = temporalInit.get(state.name);
     if (value === undefined) throw new Error(`missing temporal init for ${state.name}`);
@@ -2043,7 +2148,7 @@ export function generateNodeEventLoopQuint(
   }));
   lines.push("  }");
   const reactionVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`])) ?? [];
-  const variables = [clock, "node_phase", "resume_phase", "wrong_checkpoint_order", "wrong_phase", "callback_precondition_broken", ...temporalStates.map((state) => safe(state.name)), ...supported.flatMap((index) => [
+  const variables = [clock, "node_phase", "resume_phase", "wrong_checkpoint_order", "wrong_phase", "callback_precondition_broken", ...(hasSynchronousDivergence ? ["synchronously_blocked"] : []), ...divergentExecutors.map(({ index }) => `promise_executor_${index}_decided`), ...temporalStates.map((state) => safe(state.name)), ...supported.flatMap((index) => [
     `callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`,
     ...(multiInstanceTimers.has(index) ? [`callback_${index}_instances`, `callback_${index}_due_times`] : []),
     ...(externalRegistrations.has(index) ? [`callback_${index}_registered`] : []),
@@ -2052,10 +2157,25 @@ export function generateNodeEventLoopQuint(
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name);
-    lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
+    lines.push("", `  action ${name} = all {`, ...(hasSynchronousDivergence ? ["    not(synchronously_blocked),"] : []), ...guards.map((guard) => `    ${guard},`));
     variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
+  divergentExecutors.forEach(({ executor, index }, order) => {
+    const decided = `promise_executor_${index}_decided`;
+    const prior = divergentExecutors.slice(0, order).map(({ index: priorIndex }) => `promise_executor_${priorIndex}_decided`);
+    const guards = ["node_phase == 0", ...prior, `not(${decided})`];
+    action(`diverge_promise_executor_${index}`, guards, new Map([[decided, "true"], ["synchronously_blocked", "true"]]));
+    const chainIndex = chainIndexForExecutor(index);
+    const chain = chainIndex === undefined ? undefined : promiseModel!.chains[chainIndex];
+    const firstPending = chain?.links.length ? `promise_reaction_${chainIndex}_0_pending` : undefined;
+    if (firstPending && executor.possibleSettlements.length > 0) {
+      action(`return_promise_executor_${index}_settled`, guards, new Map([[decided, "true"], [firstPending, "true"]]));
+    }
+    if (executor.mayRemainPending || !firstPending) {
+      action(`return_promise_executor_${index}_pending`, guards, new Map([[decided, "true"]]));
+    }
+  });
   const applyCallbackSummary = (index: number, guards: string[], updates: Map<string, string>): void => {
     const summary = temporalComposition?.summaries.get(model.timers[index]!.callback);
     if (!summary) return;
@@ -2258,7 +2378,9 @@ export function generateNodeEventLoopQuint(
   }
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   temporalComposition?.properties.forEach((property) => lines.push("", `  val ${safe(property.name)} = ${generateQuintExpression(property.expressionAst)}`));
-  lines.push("", `  val nodeEventLoopSafe = not(wrong_checkpoint_order) and not(wrong_phase) and not(callback_precondition_broken)${callbackPreconditions.map((term) => ` and ${term}`).join("")}`, "}", "");
+  lines.push("", `  val nodeEventLoopSafe = not(wrong_checkpoint_order) and not(wrong_phase) and not(callback_precondition_broken)${callbackPreconditions.map((term) => ` and ${term}`).join("")}`);
+  if (hasSynchronousDivergence) lines.push("  val promiseSynchronouslyProgressed = not(synchronously_blocked)");
+  lines.push("}", "");
   return lines.join("\n");
 }
 
@@ -2273,16 +2395,28 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   const frames = model.timers.flatMap((timer, index) => timer.queue === "animation-frame" ? [index] : []);
   const timers = model.timers.flatMap((timer, index) => timer.queue === "timer" ? [index] : []);
   const schedulerTasks = model.timers.flatMap((timer, index) => timer.queue === "scheduler-task" ? [index] : []);
+  const externalEvents = model.timers.flatMap((timer, index) => timer.queue === "external" ? [index] : []);
+  const listenerTimers = new Set(model.timers.flatMap((timer, index) => timer.listenerIdentity ? [index] : []));
   const abortCompositions = model.abortCompositions ?? [];
   const temporalStates = temporalComposition?.states ?? [];
   const temporalInit = new Map(temporalComposition?.init.map((item) => [item.target, generateQuintExpression(item.expressionAst)]) ?? []);
   const temporalStateNames = new Set(temporalStates.map((state) => state.name));
   const clock = temporalStateNames.has("clock") ? "web_clock" : "clock";
   const phase = temporalStateNames.has("phase") ? "web_phase" : "phase";
+  const divergentExecutors = promiseModel?.executors
+    .map((executor, index) => ({ executor, index }))
+    .filter(({ executor }) => executor.mayDivergeSynchronously)
+    .sort((left, right) => left.executor.span.start - right.executor.span.start) ?? [];
+  const hasSynchronousDivergence = divergentExecutors.length > 0;
+  const chainIndexForExecutor = (executorIndex: number): number | undefined => {
+    const index = promiseModel?.chains.findIndex((chain) => chain.executor === executorIndex) ?? -1;
+    return index < 0 ? undefined : index;
+  };
   const initiallyQueuedReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
     const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
-    if (chain.links.length && executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending) initiallyQueuedReactions.add(`${chainIndex}:0`);
+    if (chain.links.length && executor && executor.possibleSettlements.length > 0
+      && !executor.mayRemainPending && !executor.mayDivergeSynchronously) initiallyQueuedReactions.add(`${chainIndex}:0`);
   });
   const initialJobs = [
     ...microtasks.flatMap((index) => model.timers[index]!.enqueuedBy === undefined ? [{ key: `callback:${index}`, span: model.timers[index]!.span.start }] : []),
@@ -2290,12 +2424,16 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   ].sort((left, right) => left.span - right.span);
   const initialTicket = new Map(initialJobs.map((job, ticket) => [job.key, ticket]));
   const lines = [`module ${safe(moduleName)} {`, `  var ${clock}: int`, `  var ${phase}: int`, "  var wrong_phase: bool", "  var fifo_broken: bool", "  var scheduler_priority_broken: bool", "  var scheduler_abort_broken: bool", "  var abort_source_broken: bool", "  var callback_precondition_broken: bool", "  var next_microtask_ticket: int"];
+  if (hasSynchronousDivergence) lines.push("  var synchronously_blocked: bool");
+  divergentExecutors.forEach(({ index }) => lines.push(`  var promise_executor_${index}_decided: bool`));
   temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${formatTemporalValueType(state.type)}`));
-  model.timers.forEach((timer, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`, ...(timer.externalAbortSignal ? [`  var callback_${index}_external_aborted: bool`] : []), ...(timer.priorityChanges?.length ? [`  var callback_${index}_priority: int`, `  var callback_${index}_priority_step: int`] : [])));
+  model.timers.forEach((timer, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`, ...(listenerTimers.has(index) ? [`  var callback_${index}_removed: bool`] : []), ...(timer.externalAbortSignal ? [`  var callback_${index}_external_aborted: bool`] : []), ...(timer.priorityChanges?.length ? [`  var callback_${index}_priority: int`, `  var callback_${index}_priority_step: int`] : [])));
   abortCompositions.forEach((composition, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`, ...(composition.sourcePaths ? [`  var abort_${index}_path: int`] : [])));
   microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`, `  var promise_reaction_${chainIndex}_${stage}_ticket: int`)));
   lines.push("", "  action init = all {", `    ${clock}' = 0,`, `    ${phase}' = 1,`, "    wrong_phase' = false,", "    fifo_broken' = false,", "    scheduler_priority_broken' = false,", "    scheduler_abort_broken' = false,", "    abort_source_broken' = false,", "    callback_precondition_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
+  if (hasSynchronousDivergence) lines.push("    synchronously_blocked' = false,");
+  divergentExecutors.forEach(({ index }) => lines.push(`    promise_executor_${index}_decided' = false,`));
   temporalStates.forEach((state) => {
     const value = temporalInit.get(state.name);
     if (value === undefined) throw new Error(`missing temporal init for ${state.name}`);
@@ -2303,7 +2441,8 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   model.timers.forEach((timer, index) => {
     const definitelyCancelled = model.cancellations.some((cancellation) => cancellation.timer === index && cancellation.definite);
-    lines.push(`    callback_${index}_pending' = ${!timer.initiallyCancelled && !definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
+    lines.push(`    callback_${index}_pending' = ${timer.queue !== "external" && !timer.initiallyCancelled && !definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
+    if (listenerTimers.has(index)) lines.push(`    callback_${index}_removed' = ${definitelyCancelled},`);
     if (timer.externalAbortSignal) lines.push(`    callback_${index}_external_aborted' = false,`);
     if (timer.priorityChanges?.length) lines.push(`    callback_${index}_priority' = ${timer.priority === "user-blocking" ? 2 : timer.priority === "background" ? 0 : 1},`, `    callback_${index}_priority_step' = 0,`);
     if (timer.queue === "microtask") lines.push(`    callback_${index}_ticket' = ${initialTicket.get(`callback:${index}`) ?? -1},`);
@@ -2321,13 +2460,32 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   lines.push("  }");
   const promiseVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`, `promise_reaction_${chainIndex}_${stage}_ticket`])) ?? [];
-  const variables = [clock, phase, "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "callback_precondition_broken", "next_microtask_ticket", ...temporalStates.map((state) => safe(state.name)), ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.externalAbortSignal ? [`callback_${index}_external_aborted`] : []), ...(timer.priorityChanges?.length ? [`callback_${index}_priority`, `callback_${index}_priority_step`] : []), ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((composition, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`, ...(composition.sourcePaths ? [`abort_${index}_path`] : [])]), ...promiseVariables];
+  const variables = [clock, phase, "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "callback_precondition_broken", "next_microtask_ticket", ...(hasSynchronousDivergence ? ["synchronously_blocked"] : []), ...divergentExecutors.map(({ index }) => `promise_executor_${index}_decided`), ...temporalStates.map((state) => safe(state.name)), ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(listenerTimers.has(index) ? [`callback_${index}_removed`] : []), ...(timer.externalAbortSignal ? [`callback_${index}_external_aborted`] : []), ...(timer.priorityChanges?.length ? [`callback_${index}_priority`, `callback_${index}_priority_step`] : []), ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((composition, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`, ...(composition.sourcePaths ? [`abort_${index}_path`] : [])]), ...promiseVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
-    actions.push(name); lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
+    actions.push(name); lines.push("", `  action ${name} = all {`, ...(hasSynchronousDivergence ? ["    not(synchronously_blocked),"] : []), ...guards.map((guard) => `    ${guard},`));
     variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
+  divergentExecutors.forEach(({ executor, index }, order) => {
+    const decided = `promise_executor_${index}_decided`;
+    const prior = divergentExecutors.slice(0, order).map(({ index: priorIndex }) => `promise_executor_${priorIndex}_decided`);
+    const guards = [`${phase} == 1`, ...prior, `not(${decided})`];
+    action(`diverge_promise_executor_${index}`, guards, new Map([[decided, "true"], ["synchronously_blocked", "true"]]));
+    const chainIndex = chainIndexForExecutor(index);
+    const chain = chainIndex === undefined ? undefined : promiseModel!.chains[chainIndex];
+    const firstPending = chain?.links.length ? `promise_reaction_${chainIndex}_0_pending` : undefined;
+    const firstTicket = chain?.links.length ? `promise_reaction_${chainIndex}_0_ticket` : undefined;
+    if (firstPending && firstTicket && executor.possibleSettlements.length > 0) {
+      action(`return_promise_executor_${index}_settled`, guards, new Map([
+        [decided, "true"], [firstPending, "true"], [firstTicket, "next_microtask_ticket"],
+        ["next_microtask_ticket", "next_microtask_ticket + 1"],
+      ]));
+    }
+    if (executor.mayRemainPending || !firstPending) {
+      action(`return_promise_executor_${index}_pending`, guards, new Map([[decided, "true"]]));
+    }
+  });
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [] : [`${phase} == ${expected}`];
   abortCompositions.forEach((composition, compositionIndex) => composition.sourcePaths?.forEach((_, pathIndex) => {
     const initialSource = composition.initiallyAbortedSources?.[pathIndex];
@@ -2441,7 +2599,29 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     ]));
     if (!options.allowRunAbortedSchedulerTask && timer.abortComposition !== undefined) action(`cancel_scheduler_task_${index}_from_composition_${timer.abortComposition}`, [`callback_${index}_pending`, `abort_${timer.abortComposition}_aborted`], new Map([[`callback_${index}_pending`, "false"]]));
     if (!options.allowRunAbortedSchedulerTask && timer.abortTimer !== undefined) action(`cancel_scheduler_task_${index}_from_timer_${timer.abortTimer}`, [`callback_${index}_pending`, `callback_${timer.abortTimer}_fires > 0`], new Map([[`callback_${index}_pending`, "false"]]));
-    if (timer.externalAbortSignal) action(`cancel_scheduler_task_${index}_from_external_signal`, [`callback_${index}_pending`, `not(callback_${index}_external_aborted)`], new Map([[`callback_${index}_pending`, "false"], [`callback_${index}_external_aborted`, "true"]]));
+    if (timer.externalAbortSignal) action(`cancel_scheduler_task_${index}_from_external_signal`, [`not(callback_${index}_external_aborted)`], new Map([[`callback_${index}_pending`, "false"], [`callback_${index}_external_aborted`, "true"]]));
+  });
+  externalEvents.forEach((index) => {
+    const timer = model.timers[index]!;
+    if (timer.abortComposition !== undefined) action(`cancel_external_${index}_from_composition_${timer.abortComposition}`, [`callback_${index}_pending`, `abort_${timer.abortComposition}_aborted`], new Map([[`callback_${index}_pending`, "false"]]));
+    if (timer.abortTimer !== undefined) action(`cancel_external_${index}_from_timer_${timer.abortTimer}`, [`callback_${index}_pending`, `callback_${timer.abortTimer}_fires > 0`], new Map([[`callback_${index}_pending`, "false"]]));
+    if (timer.externalAbortSignal) action(`cancel_external_${index}_from_external_signal`, [`not(callback_${index}_external_aborted)`], new Map([[`callback_${index}_pending`, "false"], [`callback_${index}_external_aborted`, "true"]]));
+    action(`complete_external_${index}`, [
+      `not(callback_${index}_pending)`,
+      ...(timer.repeats ? [] : [`callback_${index}_fires == 0`]),
+      ...(timer.initiallyCancelled ? ["false"] : []),
+      ...(timer.abortTimer === undefined ? [] : [`callback_${timer.abortTimer}_fires == 0`]),
+      ...(timer.abortComposition === undefined ? [] : [`not(abort_${timer.abortComposition}_aborted)`]),
+      ...(timer.externalAbortSignal ? [`not(callback_${index}_external_aborted)`] : []),
+      ...(listenerTimers.has(index) ? [`not(callback_${index}_removed)`] : []),
+    ], new Map([[`callback_${index}_pending`, "true"]]));
+    const updates = new Map<string, string>([
+      [phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`],
+    ]);
+    enqueueChildren(index, updates);
+    const guards = [...phaseGuard(0), `callback_${index}_pending`];
+    applyCallbackSummary(index, guards, updates);
+    action(`run_external_event_${index}`, guards, updates);
   });
   timers.forEach((index, order) => {
     const timer = model.timers[index]!;
@@ -2492,10 +2672,14 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   for (const index of new Set(model.cancellations.flatMap((cancellation) =>
     !cancellation.definite && cancellation.compatible && cancellation.timer !== undefined
       ? [cancellation.timer] : []))) {
-    action(`cancel_timer_${index}`, [`callback_${index}_pending`], new Map([[`callback_${index}_pending`, "false"]]));
+    action(listenerTimers.has(index) ? `remove_listener_${index}` : `cancel_timer_${index}`,
+      listenerTimers.has(index) ? [`not(callback_${index}_removed)`] : [`callback_${index}_pending`],
+      new Map([[`callback_${index}_pending`, "false"], ...(listenerTimers.has(index) ? [[`callback_${index}_removed`, "true"] as [string, string]] : [])]));
   }
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   temporalComposition?.properties.forEach((property) => lines.push("", `  val ${safe(property.name)} = ${generateQuintExpression(property.expressionAst)}`));
-  lines.push("", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken) and not(scheduler_priority_broken) and not(scheduler_abort_broken) and not(abort_source_broken) and not(callback_precondition_broken)${[...oneShotSignals, ...abortReasons, ...callbackPreconditions].map((term) => ` and ${term}`).join("")}`, "}", "");
+  lines.push("", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken) and not(scheduler_priority_broken) and not(scheduler_abort_broken) and not(abort_source_broken) and not(callback_precondition_broken)${[...oneShotSignals, ...abortReasons, ...callbackPreconditions].map((term) => ` and ${term}`).join("")}`);
+  if (hasSynchronousDivergence) lines.push("  val promiseSynchronouslyProgressed = not(synchronously_blocked)");
+  lines.push("}", "");
   return lines.join("\n");
 }

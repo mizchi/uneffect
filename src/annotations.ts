@@ -8,7 +8,7 @@ export type UneffectDirective =
   | "state" | "clock" | "init" | "action" | "action_when" | "action_fair" | "temporal"
   | "temporal_from"
   | "temporal_requires" | "temporal_ensures" | "temporal_modifies" | "temporal_throws" | "temporal_rejects"
-  | "temporal_suspends" | "temporal_cancellable" | "temporal_eventually" | "temporal_repeatedly"
+  | "temporal_suspends" | "temporal_cancellable" | "temporal_terminates" | "temporal_eventually" | "temporal_repeatedly"
   | "temporal_stabilizes" | "temporal_response" | "temporal_fair"
   | "consumes_rejection" | "consumes_callback_rejection" | "consumes_rejection_when"
   | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when"
@@ -55,7 +55,7 @@ const aliases: Readonly<Record<string, Readonly<Record<string, string>>>> = {
 const temporalContractAliases: Readonly<Record<string, string>> = {
   requires: "temporal_requires", ensures: "temporal_ensures", modifies: "temporal_modifies",
   throws: "temporal_throws", rejects: "temporal_rejects", suspends: "temporal_suspends",
-  cancellable: "temporal_cancellable", eventually: "temporal_eventually",
+  cancellable: "temporal_cancellable", terminates: "temporal_terminates", eventually: "temporal_eventually",
   repeatedly: "temporal_repeatedly", stabilizes: "temporal_stabilizes",
   response: "temporal_response", fair: "temporal_fair",
 };

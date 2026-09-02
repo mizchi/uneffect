@@ -17,6 +17,30 @@ The JavaScript catalog also owns Array callback/copy helpers, Promise
 combinators, `Math.random`, and `structuredClone`. Semantic axes are orthogonal:
 `Array#sort` has a generic synchronous `callback` plus `mutate(receiver)`, so
 neither comparator timing nor destructive receiver behavior is discarded.
+Array/Map/Set callbacks additionally declare their ECMAScript invocation
+arguments and optional `thisArg`. The collection receiver can therefore
+instantiate a callback's parameter-rooted Mutation, while engine-produced
+element/key/index values remain an attributed unknown alias instead of leaking
+the callback's local parameter name into the caller.
+The same rule covers `Promise` fulfillment/rejection handlers, `Array.from`
+mapping, and JSON replacers. Timer/immediate/next-tick variadic suffixes retain
+their actual source argument regions. A callback contract with no declared
+invocation shape is conservative: parameters are runtime unknowns, not an
+accidental reference to the callee's local parameter spelling.
+`Array.fromAsync` adds a deferred microtask mapper plus iterable-to-rejection
+conversion. Callback invocation time and abrupt-completion handling are
+independent catalog axes: `Promise.try` invokes its callback synchronously but
+converts a callback throw into rejection of the returned Promise. Its variadic
+arguments are projected into the callback invocation. `Promise.withResolvers`
+creates a fresh `promise-capability`
+protocol value. Resolver invocation and rejection ownership are interpreted by
+the Promise/async analyses using TypeChecker-authenticated bindings; the
+catalog entry alone is not presented as proof of arbitrary escaped resolver
+behavior.
+String `replace`/`replaceAll` callable replacements use the same synchronous
+callback primitive. `Object.groupBy` and `Map.groupBy` additionally combine a
+synchronous classifier, iterable consumption, and a fresh-result refinement;
+classifier element identity remains a runtime alias unless separately proved.
 Result, throw, resource, and argument-mutation projections follow this pattern
 instead of creating duplicate symbol contracts.
 
@@ -69,10 +93,10 @@ read and write operations, mutation regions, and possible user-code invocation.
 Cookie and Storage properties retain separate read/write capability effects.
 
 `reviewed` means the overlay is a trusted analyzer input, not that an engine or
-host implementation was proved. Unsupported callback composition remains
-visible. For example, `toSorted` records its synchronous comparator and fresh
-result, but arbitrary comparator-effect propagation through an enclosing
-function is not yet a supported claim.
+host implementation was proved. Same-Program callback Effects and addressable
+receiver/`thisArg` Mutation compose; mutation through runtime-produced
+collection elements remains explicit unknown without a container-content
+identity proof.
 
 Each expansion must preserve exact TypeChecker symbol identity, reject duplicate
 `(module, export)` definitions, record trust provenance, retain separate JS,

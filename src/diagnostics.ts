@@ -22,6 +22,36 @@ export interface TypeScriptCheckerDiagnostic {
   typescriptCode: number;
   notes?: DiagnosticNote[];
 }
+export interface TypedArrayCheckerDiagnostic {
+  domain: "typed-array";
+  kind: string;
+  severity: DiagnosticSeverity;
+  fileName: string;
+  line: number;
+  functionName: string;
+  message: string;
+  notes?: DiagnosticNote[];
+}
+export interface OwnershipCheckerDiagnostic {
+  domain: "ownership";
+  kind: "invalid-transition";
+  severity: DiagnosticSeverity;
+  fileName: string;
+  line: number;
+  functionName: string;
+  message: string;
+  notes?: DiagnosticNote[];
+}
+export interface AsyncIteratorCheckerDiagnostic {
+  domain: "async-iterator";
+  kind: "unclosed" | "unknown-cleanup";
+  severity: DiagnosticSeverity;
+  fileName: string;
+  line: number;
+  functionName: string;
+  message: string;
+  notes?: DiagnosticNote[];
+}
 
 /** Convert compiler failures into the same source-attributed diagnostic contract used by every frontend. */
 /* uneffect:effect none */
@@ -45,7 +75,7 @@ export function fromTypeScriptDiagnostic(
     ],
   };
 }
-export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TrustedTypesDiagnostic | TypeScriptCheckerDiagnostic;
+export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TrustedTypesDiagnostic | TypeScriptCheckerDiagnostic | TypedArrayCheckerDiagnostic | OwnershipCheckerDiagnostic | AsyncIteratorCheckerDiagnostic;
 
 export interface ReportedDiagnostic {
   code: string;
@@ -105,6 +135,9 @@ const hints: Readonly<Record<string, string>> = {
   "typescript/semantic": "fix the TypeScript type error or correct the project inputs before relying on TypeChecker-derived evidence",
   "typescript/options": "fix the TypeScript compiler configuration before running Uneffect assurance",
   "trusted-types/untrusted-script-sink": "create the value with a reviewed trustedTypes policy and pass the resulting TrustedScript without casting it to or from string",
+  "ownership/invalid-transition": "keep the resource available on every path before using it, or restructure transfer so ownership has one unambiguous successor",
+  "async-iterator/unclosed": "call and await iterator.return(), exhaust the iterator, or explicitly transfer its ownership to a contracted boundary",
+  "async-iterator/unknown-cleanup": "rewrite iterator ownership into a straight-line close/transfer, or add a reviewed resource callable contract at the boundary",
 };
 
 /* uneffect:effect none */
@@ -119,6 +152,9 @@ function severityOf(diagnostic: CheckerDiagnostic): DiagnosticSeverity {
 function codeOf(diagnostic: CheckerDiagnostic): string {
   if ("domain" in diagnostic && diagnostic.domain === "typescript") return `typescript/${diagnostic.kind}`;
   if ("domain" in diagnostic && diagnostic.domain === "trusted-types") return `trusted-types/${diagnostic.kind}`;
+  if ("domain" in diagnostic && diagnostic.domain === "typed-array") return `typed-array/${diagnostic.kind}`;
+  if ("domain" in diagnostic && diagnostic.domain === "ownership") return `ownership/${diagnostic.kind}`;
+  if ("domain" in diagnostic && diagnostic.domain === "async-iterator") return `async-iterator/${diagnostic.kind}`;
   if ("component" in diagnostic) return `react/${diagnostic.kind}`;
   if ("effect" in diagnostic) return `effect/${diagnostic.kind}`;
   if ("clause" in diagnostic) return diagnostic.clause === "unsupported" ? "contract/unsupported" : `contract/${diagnostic.clause}`;
@@ -179,11 +215,15 @@ export function formatDiagnostics(diagnostics: readonly CheckerDiagnostic[], opt
 
 /** What a run established: the obligations that were proved and the inferred effect of every function. */
 /* uneffect:effect none */
-export function formatCheckEvidence(result: Pick<CheckResult, "artifacts" | "summaries">): string {
+export function formatCheckEvidence(result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "typedArrays" | "ownership" | "asyncIterators">>): string {
   const lines = [
     ...result.artifacts.filter((artifact) => artifact.status === "verified" && artifact.obligation)
       .map((artifact) => `  proved ${artifact.obligation!.functionName}: ${artifact.obligation!.clause} ${artifact.obligation!.source}`),
     ...result.summaries.map((summary) => `  effects ${summary.functionName}: ${summary.effects.length > 0 ? summary.effects.map(formatEffect).join(" | ") : "no effect"} (${summary.evidence})`),
+    ...(result.typedArrays?.obligations.map((obligation) => `  typed-array ${obligation.functionName}: ${obligation.kind} ${obligation.goal} (${obligation.result})`) ?? []),
+    ...(result.typedArrays?.windows.map((window) => `  typed-array-window ${window.functionName}: ${window.binding} ${window.backing} backing (${window.result})`) ?? []),
+    ...(result.ownership?.map((diagnostic) => `  ownership ${diagnostic.resource}: ${diagnostic.operation} after ${diagnostic.state} (violation)`) ?? []),
+    ...(result.asyncIterators?.map((iterator) => `  async-iterator ${iterator.owner}: ${iterator.iterable} ${iterator.status} (${iterator.evidence})`) ?? []),
   ];
   return lines.length > 0 ? `\nevidence:\n${lines.join("\n")}\n` : "";
 }

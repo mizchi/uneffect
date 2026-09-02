@@ -3,6 +3,19 @@ import { analyzeEffects } from "../src/effects.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 describe("effect checker", () => {
+  it("tracks Node strict assertion failure as a typed synchronous throw", () => {
+    const diagnostics = analyzeEffects("node-assert-effect.ts", `
+      import { ok } from "node:assert/strict"
+      /* uneffect:effect Throw<AssertionError> */
+      function checked(value: number) { ok(value >= 0) }
+      function missing(value: number) { ok(value >= 0) }
+    `);
+    expect(diagnostics.filter(({ functionName }) => functionName === "checked")).toEqual([]);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "missing", kind: "missing", effect: "Throw<AssertionError>",
+    }));
+  });
+
   it("reports an invalid effect-set annotation without crashing the checker", () => {
     const source = `/* uneffect:effect none | Console */ function invalid() {}`;
     expect(analyzeEffects("invalid-effect-set.ts", source)).toContainEqual(expect.objectContaining({
@@ -470,6 +483,14 @@ describe("effect checker", () => {
     expect(analyzeEffects("to-sorted.ts", source)).toEqual([]);
   });
 
+  it("tracks ArrayBuffer resize mutation and synchronous failure effects", () => {
+    const source = `
+      /* uneffect:effect Mutate<typeof buffer> | Throw<TypeError> | Throw<RangeError> */
+      function resize(buffer: ArrayBuffer, size: number) { buffer.resize(size) }
+    `;
+    expect(analyzeEffects("resize.ts", source)).toEqual([]);
+  });
+
   it("localizes mutation of a fresh default parameter but preserves an explicit alias", () => {
     const source = `
       function walk(value: string, seen = new Set<string>()) {
@@ -486,6 +507,32 @@ describe("effect checker", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({
       functionName: "aliased", effect: "Mutate<typeof seen>", kind: "missing",
     }));
+  });
+
+  it("includes parameter and destructuring default initializers in function effects", () => {
+    const source = `
+      /* uneffect:effect Console */
+      function report() { console.log("default") }
+      /* uneffect:effect Console */
+      function key() { console.log("key"); return "value" }
+      /* uneffect:effect Console */
+      function direct(value = report()) { return value }
+      /* uneffect:effect Console */
+      function destructured({ value = report() }: { value?: void } = {}) { return value }
+      /* uneffect:effect Console */
+      function computed({ [key()]: value }: Record<string, unknown> = {}) { return value }
+      /* uneffect:effect Throw<Error> */
+      function fail(): never { throw new Error("default") }
+      /* uneffect:effect Throw<Error> */
+      function throwing(value = fail()) { return value }
+    `;
+    expect(analyzeEffects("default-initializer-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("missing-default-initializer-effect.ts", `
+      /* uneffect:effect Console */
+      function report() { console.log("default") }
+      /* uneffect:effect none */
+      function missed(value = report()) { return value }
+    `)).toContainEqual(expect.objectContaining({ functionName: "missed", effect: "Console", kind: "missing" }));
   });
 
   it("supports inference-only adoption without weakening annotated boundaries", () => {

@@ -21,6 +21,7 @@ export interface ResolvedPropertySite {
 
 export interface FrontendSymbolAdapter {
   resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined;
+  resolveConstruct(construction: ts.NewExpression): ResolvedCallSite | undefined;
   resolveProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedPropertySite | undefined;
   resolveDomReceiverRegion(expression: ts.Expression): ts.Expression | undefined;
   isDomReceiver(expression: ts.Expression): boolean;
@@ -36,6 +37,29 @@ function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undef
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
 }
 
+/** Authenticate a direct standard Proxy construction through immutable local aliases. */
+export function isAuthenticatedProxyExpression(checker: ts.TypeChecker, expression: ts.Expression): boolean {
+  const seen = new Set<ts.Symbol>();
+  const resolve = (value: ts.Expression): boolean => {
+    if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value)
+      || ts.isTypeAssertionExpression(value) || ts.isNonNullExpression(value)) return resolve(value.expression);
+    if (ts.isNewExpression(value) && ts.isIdentifier(value.expression) && value.expression.text === "Proxy") {
+      const constructor = targetSymbol(checker, value.expression);
+      return constructor?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName)) ?? false;
+    }
+    if (!ts.isIdentifier(value)) return false;
+    const symbol = targetSymbol(checker, value);
+    if (!symbol || seen.has(symbol)) return false;
+    seen.add(symbol);
+    const declaration = symbol.valueDeclaration;
+    return Boolean(declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+      && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+      && resolve(declaration.initializer));
+  };
+  return resolve(expression);
+}
+
 export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   readonly #checker: ts.TypeChecker;
   readonly #contracts: Map<ts.Symbol, BuiltinContract>;
@@ -43,6 +67,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   readonly #globalContracts: Map<string, BuiltinContract>;
   readonly #memberContracts: Map<string, BuiltinContract>;
   readonly #domPropertyContractsByName = new Map<string, Array<{ owner: string; contract: BuiltinContract }>>();
+  readonly #domMethodContractsByName = new Map<string, Array<{ owner: string; contract: BuiltinContract }>>();
   readonly #errorType?: ts.Type;
   readonly #nodeType?: ts.Type;
   readonly #domOwnerTypes = new Map<string, ts.Type>();
@@ -54,14 +79,15 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     this.#globalContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module === "global").map((contract) => [contract.symbol.export, contract]));
     this.#memberContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module.startsWith("lib.")).map((contract) => [contract.symbol.export, contract]));
     for (const contract of registry.contracts) {
-      if (!contract.semantics?.primitives.some((primitive) => primitive.kind === "property")) continue;
       const separator = contract.symbol.export.indexOf("#");
       if (separator < 0) continue;
       const owner = contract.symbol.export.slice(0, separator);
       const name = contract.symbol.export.slice(separator + 1);
-      const candidates = this.#domPropertyContractsByName.get(name) ?? [];
+      const properties = contract.semantics?.primitives.some((primitive) => primitive.kind === "property");
+      const table = properties ? this.#domPropertyContractsByName : this.#domMethodContractsByName;
+      const candidates = table.get(name) ?? [];
       candidates.push({ owner, contract });
-      this.#domPropertyContractsByName.set(name, candidates);
+      table.set(name, candidates);
     }
     const errorDeclaration = program.getSourceFiles().flatMap((source) => [...source.statements]).find((node): node is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(node) && node.name.text === "Error");
     const errorSymbol = errorDeclaration ? this.#checker.getSymbolAtLocation(errorDeclaration.name) : undefined;
@@ -114,6 +140,15 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       const moduleSymbol = this.#checker.getSymbolAtLocation(statement.moduleSpecifier);
       if (!moduleSymbol) continue;
       bindModuleContracts(moduleSymbol, contracts);
+      const defaultBinding = statement.importClause?.name;
+      const defaultContract = defaultBinding
+        ? contracts.find((candidate) => candidate.symbol.export === "default")
+        : undefined;
+      const defaultSymbol = defaultBinding ? targetSymbol(this.#checker, defaultBinding) : undefined;
+      if (defaultContract && defaultSymbol) {
+        this.#contracts.set(defaultSymbol, defaultContract);
+        for (const declaration of defaultSymbol.declarations ?? []) this.#declarationContracts.set(declaration, defaultContract);
+      }
       const named = statement.importClause?.namedBindings;
       if (named && ts.isNamedImports(named)) for (const element of named.elements) {
         const importedName = element.propertyName?.text ?? element.name.text;
@@ -179,6 +214,11 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         contract = this.#memberContracts.get(`${parent.name.text}#${symbol.name}`);
         if (contract) break;
       }
+      if (ts.isModuleBlock(parent) && ts.isModuleDeclaration(parent.parent)
+        && (ts.isIdentifier(parent.parent.name) || ts.isStringLiteral(parent.parent.name))) {
+        contract = this.#memberContracts.get(`${parent.parent.name.text}#${symbol.name}`);
+        if (contract) break;
+      }
     }
     return contract;
   }
@@ -192,6 +232,16 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
     const symbol = targetSymbol(this.#checker, lookup);
     let contract = symbol ? this.#resolveMemberContract(lookup) : undefined;
+    if (!contract && ts.isPropertyAccessExpression(call.expression)) {
+      const receiverType = this.#checker.getTypeAtLocation(call.expression.expression);
+      if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0) {
+        const matches = (this.#domMethodContractsByName.get(call.expression.name.text) ?? []).filter(({ owner }) => {
+          const ownerType = this.#domOwnerTypes.get(owner);
+          return ownerType !== undefined && this.#checker.isTypeAssignableTo(receiverType, ownerType);
+        });
+        if (matches.length === 1) contract = matches[0]!.contract;
+      }
+    }
     if (!contract) {
       const path = ts.isIdentifier(call.expression) ? call.expression.text
         : ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)
@@ -247,6 +297,23 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         return argument && ts.isStringLiteralLike(argument) ? { kind: "css-selector" as const, selector: argument.text } : undefined;
       })(),
     };
+  }
+
+  resolveConstruct(construction: ts.NewExpression): ResolvedCallSite | undefined {
+    const lookup = ts.isPropertyAccessExpression(construction.expression) ? construction.expression.name : construction.expression;
+    const symbol = targetSymbol(this.#checker, lookup);
+    let contract = symbol ? this.#resolveMemberContract(lookup) : undefined;
+    if (!contract && ts.isIdentifier(construction.expression)) {
+      const rootSymbol = targetSymbol(this.#checker, construction.expression);
+      const isLibraryGlobal = rootSymbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+      if (isLibraryGlobal) contract = this.#globalContracts.get(construction.expression.text);
+    }
+    return contract ? {
+      symbol: contract.symbol,
+      span: { start: construction.getStart(), end: construction.getEnd() },
+      semantics: contract.semantics,
+      callableResult: contract.callableResult,
+    } : undefined;
   }
 
   resolveProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedPropertySite | undefined {
@@ -317,16 +384,416 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   }
 
   mayInvokeUserCode(node: ts.Node): boolean {
+    const definitelyPrimitive = (value: ts.Expression): boolean => {
+      const type = this.#checker.getTypeAtLocation(value);
+      const members = type.isUnion() ? type.types : [type];
+      return members.every((member) => (member.flags & (
+        ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike
+        | ts.TypeFlags.BooleanLike | ts.TypeFlags.ESSymbolLike
+        | ts.TypeFlags.Null | ts.TypeFlags.Undefined
+      )) !== 0);
+    };
+    const directProxyReceiver = (expression: ts.Expression): boolean =>
+      isAuthenticatedProxyExpression(this.#checker, expression);
+    const localGlobalSymbolMethod = (expression: ts.Expression, member: string): boolean =>
+      this.#checker.getTypeAtLocation(expression).getProperties().some((property) =>
+        property.declarations?.some((declaration) => {
+          if (!ts.isMethodDeclaration(declaration) || !declaration.body
+            || !ts.isComputedPropertyName(declaration.name)
+            || !ts.isPropertyAccessExpression(declaration.name.expression)
+            || declaration.name.expression.name.text !== member) return false;
+          const symbol = targetSymbol(this.#checker, declaration.name.expression.expression);
+          return symbol?.declarations?.some((owner) => owner.getSourceFile().isDeclarationFile
+            && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(owner.getSourceFile().fileName)) ?? false;
+        }) ?? false);
+    const hasEnumerableObjectLiteralGetter = (type: ts.Type): boolean => type.getProperties().some((property) =>
+      property.declarations?.some((declaration) => ts.isGetAccessorDeclaration(declaration)
+        && ts.isObjectLiteralExpression(declaration.parent)) ?? false);
+    const objectBindingMayInvoke = (pattern: ts.ObjectBindingPattern, sourceType: ts.Type): boolean => {
+      if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+      for (const element of pattern.elements) {
+        if (element.propertyName && ts.isComputedPropertyName(element.propertyName)
+          && !definitelyPrimitive(element.propertyName.expression)) return true;
+        if (element.dotDotDotToken) {
+          if (hasEnumerableObjectLiteralGetter(sourceType)) return true;
+          continue;
+        }
+        const propertyName = element.propertyName
+          ? ts.isIdentifier(element.propertyName) || ts.isStringLiteralLike(element.propertyName)
+            || ts.isNumericLiteral(element.propertyName) ? element.propertyName.text : undefined
+          : ts.isIdentifier(element.name) ? element.name.text : undefined;
+        if (propertyName === undefined) continue;
+        const property = this.#checker.getPropertyOfType(sourceType, propertyName);
+        if (property?.declarations?.some(ts.isGetAccessorDeclaration)) return true;
+        if (property && ts.isObjectBindingPattern(element.name)
+          && objectBindingMayInvoke(element.name, this.#checker.getTypeOfSymbolAtLocation(property, element))) return true;
+      }
+      return false;
+    };
+    const jsonTypeMayInvoke = (type: ts.Type, seen = new Set<ts.Type>()): boolean => {
+      const members = type.isUnion() ? type.types : [type];
+      return members.some((member) => {
+        if ((member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+        if ((member.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike
+          | ts.TypeFlags.BooleanLike | ts.TypeFlags.ESSymbolLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined)) !== 0) return false;
+        if (member.getCallSignatures().length > 0) return false; // JSON omits function values.
+        if (seen.has(member)) return false;
+        seen.add(member);
+        if (this.#checker.getPropertyOfType(member, "toJSON") !== undefined || hasEnumerableObjectLiteralGetter(member)) return true;
+        for (const kind of [ts.IndexKind.Number, ts.IndexKind.String]) {
+          const indexed = this.#checker.getIndexTypeOfType(member, kind);
+          if (indexed && jsonTypeMayInvoke(indexed, seen)) return true;
+        }
+        return member.getProperties().some((property) => {
+          if (property.declarations?.some(ts.isGetAccessorDeclaration)) return true;
+          const location = property.valueDeclaration ?? property.declarations?.[0];
+          return Boolean(location && jsonTypeMayInvoke(this.#checker.getTypeOfSymbolAtLocation(property, location), seen));
+        });
+      });
+    };
+    const structuredCloneTypeMayInvoke = (type: ts.Type, seen = new Set<ts.Type>()): boolean => {
+      const members = type.isUnion() ? type.types : [type];
+      return members.some((member) => {
+        if ((member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return true;
+        if ((member.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike
+          | ts.TypeFlags.BooleanLike | ts.TypeFlags.ESSymbolLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined)) !== 0) return false;
+        if (member.getCallSignatures().length > 0 || seen.has(member)) return false;
+        seen.add(member);
+        // Structured clone visits own enumerable properties. Accessors declared
+        // by built-in interfaces/classes live on prototypes and are not invoked.
+        if (hasEnumerableObjectLiteralGetter(member)) return true;
+        for (const kind of [ts.IndexKind.Number, ts.IndexKind.String]) {
+          const indexed = this.#checker.getIndexTypeOfType(member, kind);
+          if (indexed && structuredCloneTypeMayInvoke(indexed, seen)) return true;
+        }
+        return member.getProperties().some((property) => {
+          const location = property.valueDeclaration ?? property.declarations?.[0];
+          return Boolean(location && structuredCloneTypeMayInvoke(this.#checker.getTypeOfSymbolAtLocation(property, location), seen));
+        });
+      });
+    };
+    const hasLocalCallableBody = (expression: ts.Expression): boolean =>
+      !directProxyReceiver(expression) && this.#checker.getTypeAtLocation(expression).getCallSignatures().some((signature) => {
+        const declaration = signature.declaration;
+        return Boolean(declaration && ts.isFunctionLike(declaration) && (declaration as ts.FunctionLikeDeclaration).body
+          && !declaration.getSourceFile().isDeclarationFile);
+      });
+    const isStaticApplyList = (raw: ts.Expression, seen = new Set<ts.Symbol>()): boolean => {
+      const expression = ts.isParenthesizedExpression(raw) || ts.isAsExpression(raw)
+        || ts.isTypeAssertionExpression(raw) || ts.isNonNullExpression(raw) ? raw.expression : raw;
+      if (ts.isArrayLiteralExpression(expression)) return expression.elements.every((item) => !ts.isSpreadElement(item));
+      if (!ts.isIdentifier(expression)) return false;
+      const symbol = targetSymbol(this.#checker, expression);
+      if (!symbol || seen.has(symbol)) return false;
+      seen.add(symbol);
+      const variable = symbol.valueDeclaration;
+      if (!(variable && ts.isVariableDeclaration(variable) && variable.initializer
+        && ts.isVariableDeclarationList(variable.parent) && (variable.parent.flags & ts.NodeFlags.Const) !== 0)) return false;
+      let scope: ts.Node = variable;
+      while (scope.parent && !ts.isFunctionLike(scope) && !ts.isSourceFile(scope)) scope = scope.parent;
+      let unstable = false;
+      const screen = (candidate: ts.Node): void => {
+        if (unstable) return;
+        if (ts.isIdentifier(candidate) && targetSymbol(this.#checker, candidate) === symbol
+          && candidate !== variable.name && candidate !== expression) unstable = true;
+        ts.forEachChild(candidate, screen);
+      };
+      screen(scope);
+      return !unstable && isStaticApplyList(variable.initializer, seen);
+    };
+    const boundTargetExpression = (
+      raw: ts.Expression, seen = new Set<ts.Symbol>(),
+    ): { target: ts.Expression; stable: boolean } | undefined => {
+      const expression = ts.isParenthesizedExpression(raw) || ts.isAsExpression(raw)
+        || ts.isTypeAssertionExpression(raw) || ts.isNonNullExpression(raw) ? raw.expression : raw;
+      let initializer: ts.Expression = expression;
+      if (ts.isIdentifier(expression)) {
+        const symbol = targetSymbol(this.#checker, expression);
+        const variable = symbol?.valueDeclaration;
+        if (!symbol || seen.has(symbol) || !variable || !ts.isVariableDeclaration(variable) || !variable.initializer
+          || !ts.isVariableDeclarationList(variable.parent) || (variable.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+        seen.add(symbol);
+        const possibleAlias = ts.isIdentifier(variable.initializer);
+        const possibleBind = ts.isCallExpression(variable.initializer)
+          && ts.isPropertyAccessExpression(variable.initializer.expression)
+          && variable.initializer.expression.name.text === "bind";
+        if (!possibleAlias && !possibleBind) return undefined;
+        let scope: ts.Node = variable;
+        while (scope.parent && !ts.isFunctionLike(scope) && !ts.isSourceFile(scope)) scope = scope.parent;
+        let unstable = false;
+        const screen = (candidate: ts.Node): void => {
+          if (unstable) return;
+          if (ts.isIdentifier(candidate) && targetSymbol(this.#checker, candidate) === symbol
+            && candidate !== variable.name && candidate !== expression) {
+            const directCall = ts.isCallExpression(candidate.parent) && candidate.parent.expression === candidate;
+            const wrapperCall = ts.isPropertyAccessExpression(candidate.parent) && candidate.parent.expression === candidate
+              && (candidate.parent.name.text === "call" || candidate.parent.name.text === "apply")
+              && ts.isCallExpression(candidate.parent.parent) && candidate.parent.parent.expression === candidate.parent;
+            const immutableAlias = ts.isVariableDeclaration(candidate.parent) && candidate.parent.initializer === candidate
+              && ts.isVariableDeclarationList(candidate.parent.parent)
+              && (candidate.parent.parent.flags & ts.NodeFlags.Const) !== 0;
+            if (!directCall && !wrapperCall && !immutableAlias) unstable = true;
+          }
+          ts.forEachChild(candidate, screen);
+        };
+        screen(scope);
+        initializer = variable.initializer;
+        if (ts.isIdentifier(initializer)) {
+          const nested = boundTargetExpression(initializer, seen);
+          return nested ? { ...nested, stable: nested.stable && !unstable } : undefined;
+        }
+        if (unstable && !(ts.isCallExpression(initializer) && ts.isPropertyAccessExpression(initializer.expression)
+          && initializer.expression.name.text === "bind")) return undefined;
+        if (ts.isCallExpression(initializer) && ts.isPropertyAccessExpression(initializer.expression)
+          && initializer.expression.name.text === "bind") {
+          const source = this.#checker.getResolvedSignature(initializer)?.declaration?.getSourceFile();
+          return source?.isDeclarationFile
+            && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName)
+            ? { target: initializer.expression.expression, stable: !unstable } : undefined;
+        }
+      }
+      if (!ts.isCallExpression(initializer) || !ts.isPropertyAccessExpression(initializer.expression)
+        || initializer.expression.name.text !== "bind") return undefined;
+      const source = this.#checker.getResolvedSignature(initializer)?.declaration?.getSourceFile();
+      return source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName)
+        ? { target: initializer.expression.expression, stable: true } : undefined;
+    };
+    const hasLocalConstructor = (expression: ts.Expression): boolean => {
+      if (directProxyReceiver(expression)) return false;
+      const symbol = targetSymbol(this.#checker, expression);
+      if (symbol?.declarations?.some((declaration) =>
+        (ts.isClassDeclaration(declaration) || ts.isClassExpression(declaration))
+        && !declaration.getSourceFile().isDeclarationFile)) return true;
+      return this.#checker.getTypeAtLocation(expression).getConstructSignatures().some((signature) =>
+        Boolean(signature.declaration && ts.isConstructorDeclaration(signature.declaration)
+          && signature.declaration.body && !signature.declaration.getSourceFile().isDeclarationFile));
+    };
+    const descriptorMayInvoke = (descriptor: ts.Expression): boolean => {
+      const type = this.#checker.getTypeAtLocation(descriptor);
+      return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+        || directProxyReceiver(descriptor)
+        || ["enumerable", "configurable", "value", "writable", "get", "set"].some((name) =>
+          this.#checker.getPropertyOfType(type, name)?.declarations?.some(ts.isGetAccessorDeclaration));
+    };
+    const descriptorMapMayInvoke = (descriptors: ts.Expression): boolean => {
+      const type = this.#checker.getTypeAtLocation(descriptors);
+      if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+        || directProxyReceiver(descriptors) || hasEnumerableObjectLiteralGetter(type)) return true;
+      return ts.isObjectLiteralExpression(descriptors) && descriptors.properties.some((property) => {
+        const descriptor = ts.isPropertyAssignment(property) ? property.initializer
+          : ts.isShorthandPropertyAssignment(property) ? property.name : undefined;
+        return !descriptor || descriptorMayInvoke(descriptor);
+      });
+    };
+    if (ts.isSpreadAssignment(node)) {
+      const sourceType = this.#checker.getTypeAtLocation(node.expression);
+      if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0
+        || directProxyReceiver(node.expression) || hasEnumerableObjectLiteralGetter(sourceType)) return true;
+    }
+    if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer) {
+      const sourceType = this.#checker.getTypeAtLocation(node.initializer);
+      if (directProxyReceiver(node.initializer) || objectBindingMayInvoke(node.name, sourceType)) return true;
+    }
+    if (ts.isObjectBindingPattern(node) && ts.isParameter(node.parent)) {
+      if (objectBindingMayInvoke(node, this.#checker.getTypeAtLocation(node))) return true;
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "stringify" && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === "JSON") {
+      const stringify = targetSymbol(this.#checker, node.expression.name);
+      const standard = stringify?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName));
+      if (standard) {
+        const value = node.arguments[0];
+        const type = this.#checker.getTypeAtLocation(value);
+        if (directProxyReceiver(value) || jsonTypeMayInvoke(type)) return true;
+      }
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isIdentifier(node.expression)
+      && node.expression.text === "structuredClone") {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      const value = node.arguments[0];
+      if (standard && !directProxyReceiver(value)
+        && structuredCloneTypeMayInvoke(this.#checker.getTypeAtLocation(value))) return true;
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object"
+      && node.expression.name.text === "create") {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard && node.arguments[1] && descriptorMapMayInvoke(node.arguments[1])) return true;
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object"
+      && ["getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "hasOwn"].includes(node.expression.name.text)) {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard) {
+        const target = node.arguments[0], type = this.#checker.getTypeAtLocation(target);
+        if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+          || directProxyReceiver(target)) return true;
+        if (node.expression.name.text !== "getOwnPropertyDescriptors"
+          && node.arguments[1] && !definitelyPrimitive(node.arguments[1])) return true;
+      }
+    }
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && (node.expression.name.text === "call" || node.expression.name.text === "apply")
+      && !(node.expression.name.text === "apply" && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === "Reflect")) {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard) {
+        const target = node.expression.expression;
+        if (directProxyReceiver(target) || !hasLocalCallableBody(target)) return true;
+        if (node.expression.name.text === "apply" && (!node.arguments[1] || !isStaticApplyList(node.arguments[1]))) return true;
+      }
+    }
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "construct" && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === "Reflect") {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard && node.arguments[0]) {
+        if (directProxyReceiver(node.arguments[0]) || !hasLocalConstructor(node.arguments[0])) return true;
+        if (!node.arguments[1] || !isStaticApplyList(node.arguments[1])) return true;
+        if (node.arguments[2] && directProxyReceiver(node.arguments[2])) return true;
+      }
+    }
+    if (ts.isCallExpression(node) && !ts.isPropertyAccessExpression(node.expression)
+      && !ts.isElementAccessExpression(node.expression)) {
+      const target = boundTargetExpression(node.expression);
+      if (target && (!target.stable || directProxyReceiver(target.target) || !hasLocalCallableBody(target.target))) return true;
+    }
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "apply" && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === "Reflect") {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard && node.arguments[0]) {
+        if (directProxyReceiver(node.arguments[0]) || !hasLocalCallableBody(node.arguments[0])) return true;
+        if (!node.arguments[2] || !isStaticApplyList(node.arguments[2])) return true;
+      }
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
+      && ["get", "set", "has", "deleteProperty"].includes(node.expression.name.text)
+      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Reflect") {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard) {
+        const target = node.arguments[0];
+        const targetType = this.#checker.getTypeAtLocation(target);
+        if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+          || directProxyReceiver(target)) return true;
+        const key = node.arguments[1];
+        if (key) {
+          const keyType = this.#checker.getTypeAtLocation(key);
+          const members = keyType.isUnion() ? keyType.types : [keyType];
+          const names = members.flatMap((member) => {
+            if ((member.flags & ts.TypeFlags.StringLiteral) !== 0) return [(member as ts.StringLiteralType).value];
+            if ((member.flags & ts.TypeFlags.NumberLiteral) !== 0) return [String((member as ts.NumberLiteralType).value)];
+            return [];
+          });
+          if (names.length !== members.length && node.expression.name.text !== "has") return true;
+          if (node.expression.name.text === "get" && names.some((name) =>
+            this.#checker.getPropertyOfType(targetType, name)?.declarations?.some(ts.isGetAccessorDeclaration))) return true;
+          if (node.expression.name.text === "set" && names.some((name) =>
+            this.#checker.getPropertyOfType(targetType, name)?.declarations?.some(ts.isSetAccessorDeclaration))) return true;
+        }
+        const receiverIndex = node.expression.name.text === "get" ? 2 : node.expression.name.text === "set" ? 3 : -1;
+        const receiver = receiverIndex >= 0 ? node.arguments[receiverIndex] : undefined;
+        if (receiver) {
+          const receiverType = this.#checker.getTypeAtLocation(receiver);
+          if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+            || directProxyReceiver(receiver)) return true;
+        }
+      }
+    }
+    if (ts.isCallExpression(node) && node.arguments.length >= 2 && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "assign" && ts.isIdentifier(node.expression.expression)
+      && node.expression.expression.text === "Object") {
+      const assign = targetSymbol(this.#checker, node.expression.name);
+      const standard = assign?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName));
+      if (standard) {
+        const target = node.arguments[0]!;
+        const sources = node.arguments.slice(1);
+        const targetType = this.#checker.getTypeAtLocation(target);
+        if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+          || directProxyReceiver(target)) return true;
+        for (const source of sources) {
+          const sourceType = this.#checker.getTypeAtLocation(source);
+          if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+            || directProxyReceiver(source) || hasEnumerableObjectLiteralGetter(sourceType)) return true;
+          if (sourceType.getProperties().some((sourceProperty) => {
+            const declarations = sourceProperty.declarations ?? [];
+            const potentiallyOwnEnumerable = declarations.length === 0 || declarations.some((item) =>
+              !((ts.isClassDeclaration(item.parent) || ts.isClassExpression(item.parent))
+                && (ts.isMethodDeclaration(item) || ts.isGetAccessorDeclaration(item) || ts.isSetAccessorDeclaration(item))));
+            return potentiallyOwnEnumerable
+              && this.#checker.getPropertyOfType(targetType, sourceProperty.name)?.declarations?.some(ts.isSetAccessorDeclaration);
+          })) return true;
+        }
+      }
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
+      && ts.isIdentifier(node.expression.expression)
+      && ((node.expression.expression.text === "Object"
+        && ["defineProperty", "defineProperties", "freeze", "seal", "preventExtensions", "setPrototypeOf"].includes(node.expression.name.text))
+        || (node.expression.expression.text === "Reflect"
+          && ["defineProperty", "setPrototypeOf"].includes(node.expression.name.text)))) {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard) {
+        const target = node.arguments[0], targetType = this.#checker.getTypeAtLocation(target);
+        if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+          || directProxyReceiver(target)) return true;
+        if (node.expression.name.text === "defineProperty") {
+          if (node.arguments[1] && !definitelyPrimitive(node.arguments[1])) return true;
+          const descriptor = node.arguments[2];
+          if (descriptor) {
+            const descriptorType = this.#checker.getTypeAtLocation(descriptor);
+            if ((descriptorType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+              || directProxyReceiver(descriptor)) return true;
+            if (["enumerable", "configurable", "value", "writable", "get", "set"].some((name) =>
+              this.#checker.getPropertyOfType(descriptorType, name)?.declarations?.some(ts.isGetAccessorDeclaration))) return true;
+          }
+        }
+        if (node.expression.name.text === "defineProperties" && node.arguments[1]) {
+          if (descriptorMapMayInvoke(node.arguments[1])) return true;
+        }
+      }
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
+      && ["values", "entries", "keys"].includes(node.expression.name.text)
+      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object") {
+      const operation = targetSymbol(this.#checker, node.expression.name);
+      const standard = operation?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName));
+      if (standard) {
+        const source = node.arguments[0];
+        const sourceType = this.#checker.getTypeAtLocation(source);
+        if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+          || directProxyReceiver(source)) return true;
+        if (node.expression.name.text !== "keys" && hasEnumerableObjectLiteralGetter(sourceType)) return true;
+      }
+    }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       const lookup = ts.isPropertyAccessExpression(node) ? node.name : node.argumentExpression;
       const symbol = lookup ? targetSymbol(this.#checker, lookup) : undefined;
       if (symbol?.declarations?.some((declaration) => ts.isGetAccessorDeclaration(declaration) || ts.isSetAccessorDeclaration(declaration))) return true;
       const receiverType = this.#checker.getTypeAtLocation(node.expression);
       if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
-      const receiverSymbol = targetSymbol(this.#checker, node.expression);
-      if (receiverSymbol?.declarations?.some((declaration) => ts.isVariableDeclaration(declaration)
-        && declaration.initializer && ts.isNewExpression(declaration.initializer)
-        && ts.isIdentifier(declaration.initializer.expression) && declaration.initializer.expression.text === "Proxy")) return true;
+      if (directProxyReceiver(node.expression)) return true;
       if (ts.isElementAccessExpression(node) && node.argumentExpression && !ts.isStringLiteralLike(node.argumentExpression) && !ts.isNumericLiteral(node.argumentExpression)) {
         const keyType = this.#checker.getTypeAtLocation(node.argumentExpression);
         const keyMembers = keyType.isUnion() ? keyType.types : [keyType];
@@ -343,13 +810,42 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         if (!staticallyPrimitiveKey) return true;
       }
     }
-    if (ts.isBinaryExpression(node) && [ts.SyntaxKind.PlusToken, ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken].includes(node.operatorToken.kind)) {
-      const primitive = (value: ts.Expression): boolean => {
-        const flags = this.#checker.getTypeAtLocation(value).flags;
-        return (flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.BooleanLike)) !== 0;
-      };
-      return !primitive(node.left) || !primitive(node.right);
+    if (ts.isBinaryExpression(node) && [
+      ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken,
+      ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken, ts.SyntaxKind.AsteriskAsteriskToken,
+      ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken,
+      ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken,
+      ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken,
+      ts.SyntaxKind.AmpersandToken, ts.SyntaxKind.BarToken, ts.SyntaxKind.CaretToken,
+      ts.SyntaxKind.LessThanLessThanToken, ts.SyntaxKind.GreaterThanGreaterThanToken,
+      ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+      ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.MinusEqualsToken, ts.SyntaxKind.AsteriskEqualsToken,
+      ts.SyntaxKind.SlashEqualsToken, ts.SyntaxKind.PercentEqualsToken, ts.SyntaxKind.AsteriskAsteriskEqualsToken,
+      ts.SyntaxKind.AmpersandEqualsToken, ts.SyntaxKind.BarEqualsToken, ts.SyntaxKind.CaretEqualsToken,
+      ts.SyntaxKind.LessThanLessThanEqualsToken, ts.SyntaxKind.GreaterThanGreaterThanEqualsToken,
+      ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken,
+    ].includes(node.operatorToken.kind)) {
+      return !definitelyPrimitive(node.left) || !definitelyPrimitive(node.right);
     }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) {
+      const type = this.#checker.getTypeAtLocation(node.right);
+      return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0
+        || directProxyReceiver(node.right) || localGlobalSymbolMethod(node.right, "hasInstance");
+    }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InKeyword) {
+      const type = this.#checker.getTypeAtLocation(node.right);
+      return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || directProxyReceiver(node.right);
+    }
+    if (ts.isDeleteExpression(node)
+      && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))) {
+      const receiver = node.expression.expression;
+      const type = this.#checker.getTypeAtLocation(receiver);
+      return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || directProxyReceiver(receiver);
+    }
+    if (ts.isPrefixUnaryExpression(node)
+      && [ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.TildeToken].includes(node.operator)
+      && !definitelyPrimitive(node.operand)) return true;
+    if (ts.isTemplateSpan(node) && !definitelyPrimitive(node.expression)) return true;
     return false;
   }
 

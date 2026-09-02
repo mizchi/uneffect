@@ -4,7 +4,7 @@ import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQ
 import { analyzeAsyncSafety, generateResourceSafetyQuint, type AsyncSafetyResult } from "./async-safety.js";
 import { bindingIdentityKey } from "./binding-identity.js";
 import { lowerPromiseChainTransitions, type SettlePromiseTransition } from "./host-neutral-transitions.js";
-import { analyzePromiseChains } from "./promise-chains.js";
+import { analyzePromiseChains, generatePromiseChainsQuint } from "./promise-chains.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
 import { generatePromiseOwnershipTemporalQuint, lowerPromiseOwnershipToResourceProtocol } from "./promise-ownership-protocol.js";
 import { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.js";
@@ -49,7 +49,7 @@ export interface TemporalModelSynchronization {
 }
 
 export interface TemporalModelProjection {
-  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "promise-ownership" | "abortable-fetch" | "resource-lifecycle" | "resource-host-lifecycle";
+  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "promise-chains" | "promise-ownership" | "abortable-fetch" | "resource-lifecycle" | "resource-host-lifecycle";
   module: string;
   owner?: string;
   properties: string[];
@@ -75,16 +75,29 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
     ? parseTemporalComposition(options.fileName, options.source, options.root ?? "main")
     : undefined;
   const name = moduleName(options.fileName);
+  const hasSynchronousPromiseDivergence = promiseChains.executors.some((executor) => executor.mayDivergeSynchronously);
   const hostQuint = options.runtime === "web"
     ? generateWebEventLoopQuint(name, asyncPatterns, {}, promiseChains, temporal)
     : generateNodeEventLoopQuint(name, asyncPatterns, { topLevelMode: options.nodeTopLevelMode ?? "commonjs" }, promiseChains, temporal);
-  const hostProperties = [options.runtime === "web" ? "eventLoopSafe" : "nodeEventLoopSafe", ...(temporal?.properties.map((property) => property.name) ?? [])];
+  const hostProperties = [options.runtime === "web" ? "eventLoopSafe" : "nodeEventLoopSafe",
+    ...(hasSynchronousPromiseDivergence ? ["promiseSynchronouslyProgressed"] : []),
+    ...(temporal?.properties.map((property) => property.name) ?? [])];
   const models: TemporalModelProjection[] = [{
     kind: options.runtime === "web" ? "web-event-loop" : "node-event-loop",
     module: name,
     properties: hostProperties,
     quint: hostQuint,
   }];
+  if (promiseChains.executors.length > 0 || promiseChains.chains.length > 0) {
+    const promiseModule = `${name}_promise_chains`;
+    models.push({
+      kind: "promise-chains",
+      module: promiseModule,
+      owner: options.root ?? "main",
+      properties: ["promiseSafe", ...(hasSynchronousPromiseDivergence ? ["promiseSynchronouslyProgressed"] : [])],
+      quint: generatePromiseChainsQuint(promiseModule, promiseChains),
+    });
+  }
   if (options.linkedTemporal) {
     const linkedModule = moduleName(options.linkedTemporal.specificationFile);
     models.push({
@@ -108,7 +121,7 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
         transition.kind === "settle-promise" && transition.promiseIdentity !== undefined);
     const settlementByIdentity = new Map(settlements.map((transition) => [bindingIdentityKey(transition.promiseIdentity!), transition] as const));
     for (const [resource, binding] of ownership.resources) {
-      if (!binding.identity) continue;
+      if (!binding.identity || binding.generation > 0) continue;
       const settlement = settlementByIdentity.get(bindingIdentityKey(binding.identity));
       if (settlement) synchronizations.push({
         kind: "promise-ownership-host",
@@ -156,9 +169,7 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
       properties: ["resourceSafe"],
       quint: generateResourceSafetyQuint(resourceModule, resourceResult),
     });
-    const supportsResourceTemporalProduct = resources.some((resource) => resource.asynchronous)
-      && resources.every((resource) => resource.controlPaths.every((path) =>
-        path.every((condition) => !condition.id.includes("@loop:"))));
+    const supportsResourceTemporalProduct = resources.some((resource) => resource.asynchronous);
     if (supportsResourceTemporalProduct) {
       const lifecycle = lowerResourceDisposalsToProtocol(resourceResult.resources, resourceResult.disposals, resourceOwner);
       const product = createResourceDisposalTemporalProduct(options.fileName, lifecycle, resourceResult.disposals);

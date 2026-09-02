@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics } from "../src/builtin-semantic-interpreter.js";
+import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics, projectedExpression } from "../src/builtin-semantic-interpreter.js";
 import type { BuiltinSemantics } from "../src/builtin-semantic-schema.js";
 
 function callOf(text: string): ts.CallExpression {
@@ -18,6 +18,52 @@ function propertyOf(text: string): ts.PropertyAccessExpression {
 }
 
 describe("generic builtin semantic interpreter", () => {
+  it("projects callback invocation arguments and explicit this bindings", () => {
+    const call = callOf("values.forEach(callback, owner)");
+    const events = interpretBuiltinCallSemantics({ schema: "uneffect-semantic-primitives/v1", primitives: [{
+      kind: "callback", target: { kind: "argument", index: 0 }, timing: "sync", queue: "current", cardinality: "0..n",
+      invocationArguments: [
+        { kind: "runtime-value", role: "collection-value" },
+        { kind: "runtime-value", role: "collection-key" },
+        { kind: "receiver" },
+      ],
+      thisArgument: { kind: "argument", index: 1, optional: true },
+    }] }, call, { symbol: { module: "lib.es", export: "Map#forEach" }, span: { start: 0, end: call.end } });
+    const event = events[0];
+    if (event?.kind !== "callback") throw new Error("expected callback event");
+    expect(event.invocationArguments).toMatchObject([
+      { status: "unknown", reason: "runtime callback value: collection-value" },
+      { status: "unknown", reason: "runtime callback value: collection-key" },
+      { status: "resolved", expression: (call.expression as ts.PropertyAccessExpression).expression, path: [] },
+    ]);
+    expect(event.thisArgument).toMatchObject({ status: "resolved", expression: call.arguments[1], path: [] });
+  });
+
+  it("projects variadic callback arguments from a reviewed call suffix", () => {
+    const call = callOf("setTimeout(callback, 10, first, second)");
+    const events = interpretBuiltinCallSemantics({ schema: "uneffect-semantic-primitives/v1", primitives: [{
+      kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "timer", cardinality: "0..1",
+      invocationArguments: [], invocationRestArguments: { from: 2 },
+    }] }, call, { symbol: { module: "global", export: "setTimeout" }, span: { start: 0, end: call.end } });
+    const event = events[0];
+    if (event?.kind !== "callback") throw new Error("expected callback event");
+    expect(event.invocationArguments?.map((argument) =>
+      argument.status === "resolved" ? argument.expression.getText() : argument.status)).toEqual(["first", "second"]);
+  });
+
+  it("materializes callback cancellation from property and shorthand object options", () => {
+    for (const text of ["target(callback, { signal })", "target(callback, { signal: controller.signal })"]) {
+      const call = callOf(text);
+      const events = interpretBuiltinCallSemantics({ schema: "uneffect-semantic-primitives/v1", primitives: [{
+        kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..n",
+        abortSignal: { kind: "property", target: { kind: "argument", index: 1 }, key: "signal" },
+      }] }, call, { symbol: { module: "test", export: "target" }, span: { start: 0, end: call.end } });
+      const event = events[0];
+      expect(event?.kind).toBe("callback");
+      if (event?.kind !== "callback" || !event.abortSignal) throw new Error("expected callback abort signal");
+      expect(projectedExpression(event.abortSignal)?.getText()).toBe(text.includes("controller") ? "controller.signal" : "signal");
+    }
+  });
   it("projects an omitted optional argument without producing unknown evidence", () => {
     const call = callOf("target()");
     const events = interpretBuiltinCallSemantics({ schema: "uneffect-semantic-primitives/v1", primitives: [{

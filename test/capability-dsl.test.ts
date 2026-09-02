@@ -15,6 +15,7 @@ const specification = `
     Builtin("Net", { arguments: [["api.example.com:443"]] }),
     Builtin("Dom", { arguments: [["AttributeWrite"], ["root"]] }),
     Builtin("CookieRead"),
+    Builtin("GlobalVarsRead", { arguments: [["featureFlag", "counter"]] }),
     Custom(Audit, { arguments: [["metric.write"]] }),
   ] });
 `;
@@ -31,6 +32,12 @@ describe("TypeScript capability DSL", () => {
         { kind: "finite", atoms: [{ kind: "region", value: "root" }] },
       ] }),
       expect.objectContaining({ kind: "capability", name: "CookieRead" }),
+      expect.objectContaining({ kind: "capability", name: "GlobalVarsRead", arguments: [
+        { kind: "finite", atoms: [
+          { kind: "literal", value: "featureFlag" },
+          { kind: "literal", value: "counter" },
+        ] },
+      ] }),
       expect.objectContaining({ kind: "capability", name: "Audit", arguments: [
         { kind: "finite", atoms: [{ kind: "literal", value: "metric.write" }] },
       ] }),

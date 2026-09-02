@@ -17,6 +17,9 @@ describe("generic builtin semantic schema", () => {
         timing: "sync",
         queue: "current",
         cardinality: "0..n",
+        invocationArguments: [{ kind: "runtime-value", role: "item" }],
+        invocationRestArguments: { from: 2 },
+        thisArgument: { kind: "argument", index: 1, optional: true },
       },
     ],
   };
@@ -50,6 +53,9 @@ describe("generic builtin semantic schema", () => {
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console", scope: { kind: "mystery" } }] }, "unsupported scope projector"],
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Net", scope: { kind: "network", format: "socket", target: { kind: "argument", index: 0 } } }] }, "format is unsupported"],
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console", scpoe: { kind: "literal", value: "x" } }] }, "unknown field"],
+    [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "sync", queue: "current", cardinality: "1", invocationArguments: [{ kind: "runtime-value", role: "" }] }] }, "non-empty string"],
+    [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "sync", queue: "current", cardinality: "1", invocationRestArguments: { from: -1 } }] }, "non-negative integer"],
+    [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "sync", queue: "current", cardinality: "1", completion: "swallow" }] }, "completion is unsupported"],
     [{ schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Console" }, { capability: "Console", kind: "effect" }] }, "duplicate semantic primitive"],
   ])("fails closed for invalid semantic data %#", (value, message) => {
     expect(() => validateBuiltinSemantics(value)).toThrow(message);

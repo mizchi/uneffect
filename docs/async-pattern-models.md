@@ -199,6 +199,38 @@ the request source stays open in the abstraction until path-correlated server
 lifecycle state is implemented; this avoids proving shutdown from a branch
 that may not execute.
 
+On the Web profile, the reviewed `EventTarget#addEventListener` catalog entry
+is now the single callback-registration source for callable summaries and the
+async model. The TypeChecker receiver fallback accepts interface overrides such
+as `WebSocket#addEventListener` only when the receiver remains assignable to the
+catalog owner; same-named user objects are ignored. Each registration creates
+a repeatable external event source by default. A statically visible object
+literal option `{ once: true }` narrows that registration to cardinality
+`0..1`; `{ once: false }`, omitted options, spreads, aliases, and other dynamic
+options remain repeatable. The generated completion action for a one-shot
+listener is disabled after its first execution. Quint exposes separate
+`complete_external_N` and `run_external_event_N` actions, returns through the
+microtask checkpoint after the callback, and can apply explicit weak/strong
+fairness to both environment completion and callback execution. This models
+literal `{ signal }`/`{ signal: expression }` options through the shared
+AbortSignal resolver: pre-aborted signals suppress completion, timeout and
+static `AbortSignal.any` sources race delivery, and an external AbortSignal is
+a nondeterministic latched cancellation source. The same cancellation also
+removes an event that completed but has not executed yet. This models
+nondeterministic delivery, not WebSocket protocol ordering, message contents,
+dynamic `once` options, dynamically shaped listener option objects, or suppression
+after close.
+
+The catalog also emits a common `event-listener/register|unregister` protocol.
+Within one analyzed function, direct registrations and removals are matched by
+TypeChecker-backed target and callback identity plus a static event type and
+capture flag. Reassignment-free `const` aliases are normalized. An
+unconditional matching removal disables later completion; a conditional
+removal is a latched nondeterministic removal transition. Different targets,
+callbacks, event types, or capture flags do not match. Cross-function cleanup,
+mutable/dynamic aliases, computed event types, and dynamically shaped capture
+options remain unresolved rather than being treated as a successful removal.
+
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and
 returned-inline-closure escape, including through immutable local bindings. It

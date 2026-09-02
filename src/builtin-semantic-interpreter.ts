@@ -26,16 +26,16 @@ export type ProjectedValue =
   | { status: "unknown"; reason: string };
 
 export type ProjectedScope =
-  | { status: "resolved"; kind: ScopeProjector["kind"]; value?: string; target?: ProjectedValue; member?: string; methodArgument?: number; methodFrom?: "value" | "request-init"; defaultPort?: number; networkFormat?: "host" | "connect" | "http-request"; hostArgument?: number }
+  | { status: "resolved"; kind: ScopeProjector["kind"]; value?: string; target?: ProjectedValue; member?: string; methodArgument?: number; methodFrom?: "value" | "request-init"; defaultPort?: number; networkFormat?: "host" | "connect" | "http-request" | "websocket"; hostArgument?: number; keyFormat?: "cookie-assignment" }
   | { status: "unknown"; reason: string };
 
 export type BuiltinSemanticEvent =
   | { kind: "effect"; capability: string; scope?: ProjectedScope; source: SemanticEventSource }
   | { kind: "mutate" | "clone" | "transfer"; target: ProjectedValue; source: SemanticEventSource }
-  | { kind: "callback"; target: ProjectedValue; timing: Extract<SemanticPrimitive, { kind: "callback" }>["timing"]; queue: Extract<SemanticPrimitive, { kind: "callback" }>["queue"]; cardinality: Extract<SemanticPrimitive, { kind: "callback" }>["cardinality"]; callable?: "required" | "optional"; returnDepth?: number; source: SemanticEventSource }
+  | { kind: "callback"; target: ProjectedValue; timing: Extract<SemanticPrimitive, { kind: "callback" }>["timing"]; queue: Extract<SemanticPrimitive, { kind: "callback" }>["queue"]; cardinality: Extract<SemanticPrimitive, { kind: "callback" }>["cardinality"]; completion?: Extract<SemanticPrimitive, { kind: "callback" }>["completion"]; callable?: "required" | "optional"; returnDepth?: number; abortSignal?: ProjectedValue; invocationArguments?: readonly ProjectedValue[]; thisArgument?: ProjectedValue; source: SemanticEventSource }
   | { kind: "invoke-user-code"; source: SemanticEventSource }
   | { kind: "result"; refinement: Extract<SemanticPrimitive, { kind: "result" }>["refinement"]; source: SemanticEventSource }
-  | { kind: "acquire" | "release"; resource: string; target?: ProjectedValue; source: SemanticEventSource }
+  | { kind: "acquire" | "use" | "release"; resource: string; target?: ProjectedValue; source: SemanticEventSource }
   | { kind: "throw"; error: string; condition?: string; source: SemanticEventSource }
   | { kind: "protocol"; name: string; transition: string; inputs: Readonly<Record<string, ProjectedValue>>; source: SemanticEventSource }
   | { kind: "unknown"; reason: string; primitive: SemanticPrimitive; source: SemanticEventSource };
@@ -48,6 +48,7 @@ function receiverOf(call: ts.CallExpression): ts.Expression | undefined {
 interface ProjectionContext {
   receiver?: ts.Expression;
   arguments?: readonly ts.Expression[];
+  assignedValue?: ts.Expression;
 }
 
 function projectValue(projector: ValueProjector, context: ProjectionContext, depth = 0): ProjectedValue {
@@ -56,6 +57,10 @@ function projectValue(projector: ValueProjector, context: ProjectionContext, dep
     case "receiver": {
       const expression = context.receiver;
       return expression ? { status: "resolved", expression, path: [] } : { status: "unknown", reason: "call has no receiver" };
+    }
+    case "assigned-value": {
+      const expression = context.assignedValue;
+      return expression ? { status: "resolved", expression, path: [] } : { status: "unknown", reason: "property access has no assigned value" };
     }
     case "argument": {
       const expression = context.arguments?.[projector.index];
@@ -76,6 +81,7 @@ function projectValue(projector: ValueProjector, context: ProjectionContext, dep
         : { status: "unknown", reason: `missing argument ${projector.offset} from end` };
     }
     case "result": return { status: "result", path: [] };
+    case "runtime-value": return { status: "unknown", reason: `runtime callback value: ${projector.role}` };
     case "array-elements": return { status: "unknown", reason: "array-elements projector requires a multi-value consumer" };
     case "property": {
       const target = projectValue(projector.target, context, depth + 1);
@@ -102,6 +108,7 @@ function projectScope(projector: ScopeProjector, context: ProjectionContext): Pr
     ...(projector.kind === "network" ? { networkFormat: projector.format } : {}),
     ...(projector.kind === "network" && projector.defaultPort !== undefined ? { defaultPort: projector.defaultPort } : {}),
     ...(projector.kind === "network" && projector.hostArgument !== undefined ? { hostArgument: projector.hostArgument } : {}),
+    ...(projector.kind === "literal-key" && projector.format !== undefined ? { keyFormat: projector.format } : {}),
   };
 }
 
@@ -129,14 +136,31 @@ function interpretPrimitive(
               : [{ status: "unknown", reason: "projected callback collection is not a literal array" } as ProjectedValue];
           })()
         : [projectValue(primitive.target, context)];
+      const once = primitive.once ? projectedStaticBoolean(projectValue(primitive.once, context)) : undefined;
+      const cardinality = once === true ? "0..1" : primitive.cardinality;
+      const abortSignal = primitive.abortSignal ? projectValue(primitive.abortSignal, context) : undefined;
+      const fixedInvocationArguments = primitive.invocationArguments?.map((argument) => projectValue(argument, context));
+      const restInvocationArguments = primitive.invocationRestArguments
+        ? (context.arguments ?? []).slice(primitive.invocationRestArguments.from).map((argument, offset) =>
+          ts.isSpreadElement(argument)
+            ? { status: "unknown" as const, reason: `spread callback argument ${primitive.invocationRestArguments!.from + offset}` }
+            : { status: "resolved" as const, expression: argument, path: [] })
+        : undefined;
+      const invocationArguments = fixedInvocationArguments || restInvocationArguments
+        ? [...(fixedInvocationArguments ?? []), ...(restInvocationArguments ?? [])] : undefined;
+      const thisArgument = primitive.thisArgument ? projectValue(primitive.thisArgument, context) : undefined;
       return targets.map((target) => target.status === "unknown"
         ? { kind: "unknown", reason: target.reason, primitive, source } as const
-        : { kind: "callback", target, timing: primitive.timing, queue: primitive.queue, cardinality: primitive.cardinality,
-            ...(primitive.callable ? { callable: primitive.callable } : {}), ...(primitive.returnDepth === undefined ? {} : { returnDepth: primitive.returnDepth }), source } as const);
+        : { kind: "callback", target, timing: primitive.timing, queue: primitive.queue, cardinality,
+            ...(primitive.completion ? { completion: primitive.completion } : {}),
+            ...(primitive.callable ? { callable: primitive.callable } : {}), ...(primitive.returnDepth === undefined ? {} : { returnDepth: primitive.returnDepth }),
+            ...(abortSignal && abortSignal.status !== "absent" ? { abortSignal } : {}),
+            ...(invocationArguments ? { invocationArguments } : {}),
+            ...(thisArgument && thisArgument.status !== "absent" ? { thisArgument } : {}), source } as const);
     }
     case "invoke-user-code": return [{ kind: "invoke-user-code", source }];
     case "result": return [{ kind: "result", refinement: primitive.refinement, source }];
-    case "acquire": case "release": {
+    case "acquire": case "use": case "release": {
       const target = primitive.target ? projectValue(primitive.target, context) : undefined;
       return target?.status === "unknown"
         ? [{ kind: "unknown", reason: target.reason, primitive, source }]
@@ -165,11 +189,11 @@ function interpretPrimitive(
  */
 export function interpretBuiltinCallSemantics(
   semantics: BuiltinSemantics,
-  call: ts.CallExpression,
+  call: ts.CallExpression | ts.NewExpression,
   source: BuiltinSemanticSource,
   access?: "read" | "write",
 ): BuiltinSemanticEvent[] {
-  const context = { receiver: receiverOf(call), arguments: [...call.arguments] };
+  const context = { receiver: ts.isCallExpression(call) ? receiverOf(call) : undefined, arguments: [...(call.arguments ?? [])] };
   return semantics.primitives.flatMap((primitive, primitiveIndex) => interpretPrimitive(primitive, context, {
     ...source, primitiveIndex, primitivePath: [],
   }, access));
@@ -182,7 +206,10 @@ export function interpretBuiltinPropertySemantics(
   source: BuiltinSemanticSource,
   direction: "read" | "write",
 ): BuiltinSemanticEvent[] {
-  const context = { receiver: access.expression };
+  const parent = access.parent;
+  const assignedValue = direction === "write" && ts.isBinaryExpression(parent) && parent.left === access
+    && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken ? parent.right : undefined;
+  const context = { receiver: access.expression, assignedValue };
   return semantics.primitives.flatMap((primitive, primitiveIndex) => interpretPrimitive(primitive, context, {
     ...source, primitiveIndex, primitivePath: [],
   }, direction));
@@ -192,17 +219,34 @@ export type BuiltinCallbackEvent = Extract<BuiltinSemanticEvent, { kind: "callba
 
 /** Resolve a projected literal array, including property paths such as options.transfer. */
 export function projectedArrayElements(target: ProjectedValue): readonly ts.Expression[] | undefined {
+  const expression = projectedExpression(target);
+  if (!expression) return undefined;
+  return ts.isArrayLiteralExpression(expression) ? expression.elements.filter(ts.isExpression) : undefined;
+}
+
+/** Materialize an object-literal property projection without evaluating user code. */
+export function projectedExpression(target: ProjectedValue): ts.Expression | undefined {
   if (target.status !== "resolved") return undefined;
   let expression = target.expression;
   for (const key of target.path) {
     if (!ts.isObjectLiteralExpression(expression)) return undefined;
-    const property = expression.properties.find((candidate) => ts.isPropertyAssignment(candidate)
+    const property = expression.properties.find((candidate) =>
+      (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
       && !ts.isComputedPropertyName(candidate.name)
       && candidate.name.getText().replace(/^['"]|['"]$/g, "") === key);
-    if (!property || !ts.isPropertyAssignment(property)) return undefined;
-    expression = property.initializer;
+    if (!property) return undefined;
+    if (ts.isPropertyAssignment(property)) expression = property.initializer;
+    else if (ts.isShorthandPropertyAssignment(property)) expression = property.name;
+    else return undefined;
   }
-  return ts.isArrayLiteralExpression(expression) ? expression.elements.filter(ts.isExpression) : undefined;
+  return expression;
+}
+
+function projectedStaticBoolean(target: ProjectedValue): boolean | undefined {
+  const expression = projectedExpression(target);
+  if (!expression) return undefined;
+  return expression.kind === ts.SyntaxKind.TrueKeyword ? true
+    : expression.kind === ts.SyntaxKind.FalseKeyword ? false : undefined;
 }
 
 /** Shared callback selection used by call-graph and async consumers. */

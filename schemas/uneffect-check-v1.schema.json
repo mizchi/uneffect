@@ -4,7 +4,7 @@
   "title": "Uneffect check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assumptions", "assurance", "project"],
+  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assumptions", "typedArrays", "ownership", "asyncIterators", "assurance", "project"],
   "properties": {
     "schema": { "const": "uneffect-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
@@ -21,6 +21,9 @@
     "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
     "contracts": { "type": "array", "items": { "$ref": "#/$defs/contract" } },
     "assumptions": { "$ref": "#/$defs/assumptionLedger" },
+    "typedArrays": { "$ref": "#/$defs/typedArrays" },
+    "ownership": { "type": "array", "items": { "$ref": "#/$defs/ownershipDiagnostic" } },
+    "asyncIterators": { "type": "array", "items": { "$ref": "#/$defs/asyncIterator" } },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] },
     "project": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/project" }] }
   },
@@ -42,6 +45,66 @@
     "span": {
       "type": "object", "additionalProperties": false, "required": ["start", "end"],
       "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 } }
+    },
+    "typedArrays": {
+      "type": "object", "additionalProperties": false,
+      "required": ["obligations", "windows", "statistics"],
+      "properties": {
+        "obligations": { "type": "array", "items": { "$ref": "#/$defs/typedArrayObligation" } },
+        "windows": { "type": "array", "items": { "$ref": "#/$defs/typedArrayWindow" } },
+        "statistics": {
+          "type": "object", "additionalProperties": false, "required": ["solverQueries"],
+          "properties": { "solverQueries": { "type": "integer", "minimum": 0 } }
+        }
+      }
+    },
+    "typedArrayObligation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["functionName", "kind", "result", "goal", "span"],
+      "properties": {
+        "functionName": { "type": "string" },
+        "kind": { "enum": ["max-length", "u8-write", "u32-write", "index-bounds", "dataview-bounds", "dataview-backing-bounds", "dataview-value", "shift-count", "bulk-copy-bounds", "bulk-copy-values", "constant-table-values", "constant-table-index"] },
+        "result": { "enum": ["verified", "trusted", "counterexample", "unknown"] },
+        "goal": { "type": "string" }, "span": { "$ref": "#/$defs/span" },
+        "trustReason": { "type": "string" }, "assumptionId": { "type": "string" },
+        "trustOwner": { "type": "string" }, "trustExpiresOn": { "type": "string" },
+        "trustReviewDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "typedArrayWindow": {
+      "type": "object", "additionalProperties": false,
+      "required": ["functionName", "binding", "sourceBinding", "backing", "result", "span"],
+      "properties": {
+        "functionName": { "type": "string" }, "binding": { "type": "string" }, "sourceBinding": { "type": "string" },
+        "sourceRegionId": { "type": "string" }, "backingRegionId": { "type": "string" },
+        "backing": { "enum": ["shared", "copied", "unknown"] },
+        "start": { "type": "number" }, "end": { "type": "number" },
+        "result": { "enum": ["inferred", "verified", "unknown"] }, "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "ownershipDiagnostic": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fileName", "resource", "operation", "state", "span", "message"],
+      "properties": {
+        "fileName": { "type": "string" }, "resource": { "type": "string" },
+        "operation": { "enum": ["clone", "transfer", "read", "mutate"] },
+        "state": { "enum": ["available", "detached", "transferred", "locked", "shared", "unknown"] },
+        "span": { "$ref": "#/$defs/span" }, "regionId": { "type": "string" }, "message": { "type": "string" }
+      }
+    },
+    "asyncIterator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fileName", "protocol", "owner", "resource", "iterable", "loopSpan", "coverage", "unknownReasons", "scenarios", "status", "evidence"],
+      "properties": {
+        "fileName": { "type": "string" }, "protocol": { "enum": ["sync", "async"] }, "owner": { "type": "string" },
+        "resource": { "type": "string" }, "iterable": { "type": "string" },
+        "loopSpan": { "$ref": "#/$defs/span" },
+        "coverage": { "enum": ["reviewed-explicit-completions", "reviewed-manual-protocol", "reviewed-yield-star-delegation"] },
+        "unknownReasons": { "type": "array", "items": { "type": "string" } },
+        "scenarios": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+        "status": { "enum": ["satisfied", "unsatisfied", "unknown"] },
+        "evidence": { "enum": ["exact", "trusted", "unknown"] }
+      }
     },
     "effect": {
       "type": "object", "additionalProperties": false,
@@ -152,10 +215,13 @@
         "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
         "coverage": {
           "type": "object", "additionalProperties": false,
-          "required": ["effectSummaries", "contractArtifacts", "assumptions", "checkedFiles", "uncoveredFiles"],
+          "required": ["effectSummaries", "contractArtifacts", "typedArrayObligations", "typedArrayWindows", "ownershipDiagnostics", "assumptions", "checkedFiles", "uncoveredFiles"],
           "properties": {
             "effectSummaries": { "type": "integer", "minimum": 0 },
             "contractArtifacts": { "type": "integer", "minimum": 0 },
+            "typedArrayObligations": { "type": "integer", "minimum": 0 },
+            "typedArrayWindows": { "type": "integer", "minimum": 0 },
+            "ownershipDiagnostics": { "type": "integer", "minimum": 0 },
             "assumptions": { "type": "integer", "minimum": 0 },
             "checkedFiles": { "type": "integer", "minimum": 0 },
             "uncoveredFiles": { "type": "array", "items": { "type": "string" } }
@@ -169,7 +235,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["kind", "classification", "fileName", "functionName", "message"],
       "properties": {
-        "kind": { "enum": ["effect", "contract", "coverage", "typescript", "assumption"] },
+        "kind": { "enum": ["effect", "contract", "typed-array", "ownership", "coverage", "typescript", "assumption"] },
         "classification": { "enum": ["unknown", "violation"] },
         "fileName": { "type": "string" }, "functionName": { "type": "string" },
         "message": { "type": "string" }
@@ -189,8 +255,9 @@
       "required": ["id", "evidence", "domain", "reason", "scope"],
       "properties": {
         "id": { "type": "string" }, "evidence": { "const": "trusted" },
-        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-summary", "dispatch-sealing"] },
+        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-contract", "dispatch-sealing", "resource-callable"] },
         "reason": { "type": "string" }, "owner": { "type": "string" }, "expiresOn": { "type": "string", "format": "date" },
+        "reviewDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "scope": {
           "type": "object", "additionalProperties": false, "required": ["fileName", "span"],
           "properties": { "fileName": { "type": "string" }, "functionName": { "type": "string" }, "span": { "$ref": "#/$defs/span" } }
@@ -206,7 +273,7 @@
       "required": ["assumptionId", "domain", "rule", "message", "scope"],
       "properties": {
         "assumptionId": { "type": "string" },
-        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-summary", "dispatch-sealing"] },
+        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-contract", "dispatch-sealing", "resource-callable"] },
         "rule": { "enum": ["owner-required", "expiration-required", "invalid-expiration", "expired"] },
         "message": { "type": "string" },
         "scope": {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { parseEffectSet } from "../src/capabilities.js";
-import { analyzeCallableSummaries, instantiateCallableSummary } from "../src/callable-summary.js";
+import { analyzeCallableSummaries, callbackArgumentKey, instantiateCallableSummary } from "../src/callable-summary.js";
 
 describe("backend-neutral callable summaries", () => {
   it("summarizes callback cardinality, effect bounds, and completion conversion", () => {
@@ -20,6 +20,55 @@ describe("backend-neutral callable summaries", () => {
         function maybe(callback: () => void, enabled: boolean) {
           if (enabled) callback()
         }
+        function optional(callback: (() => void) | undefined) {
+          callback?.()
+        }
+        function shortCircuitAnd(callback: () => void, enabled: boolean) {
+          enabled && callback()
+        }
+        function shortCircuitOr(callback: () => void, enabled: boolean) {
+          enabled || callback()
+        }
+        function nullish(callback: () => void, value: unknown) {
+          value ?? callback()
+        }
+        function eagerLeft(callback: () => boolean, enabled: boolean) {
+          callback() && enabled
+        }
+        function optionalLoop(callback: (() => void) | undefined, values: number[]) {
+          for (const value of values) callback?.()
+        }
+        function condition(callback: () => boolean) {
+          if (callback()) return true
+          return false
+        }
+        function ternaryCondition(callback: () => boolean) {
+          return callback() ? 1 : 0
+        }
+        function defaultInitializer(callback: () => number, value = callback()) {
+          return value
+        }
+        /* uneffect:effect_parameter callback extends Console */
+        function objectCallback({ callback }: { callback: () => void }) {
+          callback()
+        }
+        function tupleCallback([callback]: readonly [() => void]) {
+          callback()
+        }
+        function defaultedObjectCallback({ callback = () => undefined }: { callback?: () => void } = {}) {
+          callback()
+        }
+        function renamedObjectCallback({ onDone: callback }: { onDone: () => void }) {
+          const stable = callback
+          stable()
+        }
+        function callbackPair({ success, failure }: { success: () => void; failure: () => void }, ok: boolean) {
+          if (ok) success()
+          else failure()
+        }
+        function unsupportedCallbackRest({ ...callbacks }: Record<string, () => void>) {
+          return callbacks
+        }
         function many(callback: () => void, values: number[]) {
           for (const value of values) callback()
         }
@@ -28,9 +77,32 @@ describe("backend-neutral callable summaries", () => {
           promise.then(callback)
           setTimeout(callback, 0)
         }
+        function fromAsync(values: AsyncIterable<number>, callback: (value: number, index: number) => number) {
+          return Array.fromAsync(values, callback)
+        }
+        function promiseTry(callback: (value: number) => number) { return Promise.try(callback, 1) }
+        function socketEvents(socket: WebSocket, callback: (event: MessageEvent) => void) {
+          socket.addEventListener("message", callback)
+        }
+        function socketOnce(socket: WebSocket, callback: (event: MessageEvent) => void) {
+          socket.addEventListener("message", callback, { once: true })
+        }
+        function socketExplicitlyRepeating(socket: WebSocket, callback: (event: MessageEvent) => void) {
+          socket.addEventListener("message", callback, { once: false })
+        }
+        function socketDynamic(socket: WebSocket, callback: (event: MessageEvent) => void, options: AddEventListenerOptions) {
+          socket.addEventListener("message", callback, options)
+        }
+        function socketAbortable(socket: WebSocket, callback: (event: MessageEvent) => void, signal: AbortSignal) {
+          socket.addEventListener("message", callback, { signal })
+        }
+        interface ListenerLike { addEventListener(type: string, callback: () => void): void }
+        function lookalike(target: ListenerLike, callback: () => void) {
+          target.addEventListener("message", callback)
+        }
       `);
       const program = ts.createProgram([fileName], {
-        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+        target: ts.ScriptTarget.ESNext, lib: ["lib.esnext.d.ts", "lib.dom.d.ts"], noEmit: true,
       });
       const analysis = analyzeCallableSummaries(program);
 
@@ -51,6 +123,38 @@ describe("backend-neutral callable summaries", () => {
       });
       expect(analysis.summaries.find(({ name }) => name === "maybe")?.callbackParameters)
         .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "0..1", timing: "inline" }));
+      for (const name of ["optional", "shortCircuitAnd", "shortCircuitOr", "nullish"]) {
+        expect(analysis.summaries.find((summary) => summary.name === name)?.callbackParameters)
+          .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "0..1", timing: "inline" }));
+      }
+      expect(analysis.summaries.find(({ name }) => name === "eagerLeft")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "exactly-1" }));
+      expect(analysis.summaries.find(({ name }) => name === "optionalLoop")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "0..n" }));
+      for (const name of ["condition", "ternaryCondition"]) {
+        expect(analysis.summaries.find((summary) => summary.name === name)?.callbackParameters)
+          .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "exactly-1" }));
+      }
+      expect(analysis.summaries.find(({ name }) => name === "defaultInitializer")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "0..1" }));
+      expect(analysis.summaries.find(({ name }) => name === "objectCallback")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "callback", path: ["callback"], cardinality: "exactly-1" }));
+      expect(instantiateCallableSummary(analysis.summaries.find(({ name }) => name === "objectCallback")!, new Map([
+        [callbackArgumentKey(0, ["callback"]), parseEffectSet("Console")],
+      ]))).toMatchObject({ evidence: "inferred", violations: [], effects: [{ kind: "capability", name: "Console" }] });
+      expect(analysis.summaries.find(({ name }) => name === "tupleCallback")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "callback", path: [0], cardinality: "exactly-1" }));
+      expect(analysis.summaries.find(({ name }) => name === "defaultedObjectCallback")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "callback", path: ["callback"], cardinality: "exactly-1" }));
+      expect(analysis.summaries.find(({ name }) => name === "renamedObjectCallback")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "callback", path: ["onDone"], cardinality: "exactly-1" }));
+      expect(analysis.summaries.find(({ name }) => name === "callbackPair")?.callbackParameters).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: "success", path: ["success"], cardinality: "0..1" }),
+        expect.objectContaining({ name: "failure", path: ["failure"], cardinality: "0..1" }),
+      ]));
+      expect(analysis.summaries.find(({ name }) => name === "unsupportedCallbackRest")).toMatchObject({
+        evidence: "unknown", unknownReasons: ["unsupported-callback-binding"],
+      });
       expect(analysis.summaries.find(({ name }) => name === "many")?.callbackParameters)
         .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "0..n", timing: "inline" }));
       expect(analysis.summaries.find(({ name }) => name === "builtins")?.callbackInvocations).toEqual(expect.arrayContaining([
@@ -58,6 +162,27 @@ describe("backend-neutral callable summaries", () => {
         expect.objectContaining({ api: "Promise.prototype.then", cardinality: "0..1", timing: "promise-reaction", completion: "convert-throw-to-rejection" }),
         expect.objectContaining({ api: "setTimeout", cardinality: "0..1", timing: "deferred", completion: "host-report-throw" }),
       ]));
+      expect(analysis.summaries.find(({ name }) => name === "fromAsync")?.callbackInvocations)
+        .toContainEqual(expect.objectContaining({
+          api: "ArrayConstructor#fromAsync", callback: "callback", cardinality: "0..n",
+          timing: "promise-reaction", completion: "convert-throw-to-rejection",
+        }));
+      expect(analysis.summaries.find(({ name }) => name === "promiseTry")?.callbackInvocations)
+        .toContainEqual(expect.objectContaining({
+          api: "PromiseConstructor#try", callback: "callback", cardinality: "exactly-1",
+          timing: "inline", completion: "convert-throw-to-rejection",
+        }));
+      expect(analysis.summaries.find(({ name }) => name === "socketEvents")?.callbackInvocations)
+        .toContainEqual(expect.objectContaining({ api: "EventTarget.prototype.addEventListener", callback: "callback", cardinality: "0..n", timing: "deferred", completion: "host-report-throw" }));
+      expect(analysis.summaries.find(({ name }) => name === "socketOnce")?.callbackInvocations)
+        .toContainEqual(expect.objectContaining({ api: "EventTarget.prototype.addEventListener", callback: "callback", cardinality: "0..1" }));
+      expect(analysis.summaries.find(({ name }) => name === "socketExplicitlyRepeating")?.callbackInvocations)
+        .toContainEqual(expect.objectContaining({ api: "EventTarget.prototype.addEventListener", callback: "callback", cardinality: "0..n" }));
+      expect(analysis.summaries.find(({ name }) => name === "socketDynamic")?.callbackInvocations)
+        .toContainEqual(expect.objectContaining({ api: "EventTarget.prototype.addEventListener", callback: "callback", cardinality: "0..n" }));
+      expect(analysis.summaries.find(({ name }) => name === "socketAbortable")?.callbackInvocations)
+        .toContainEqual(expect.objectContaining({ api: "EventTarget.prototype.addEventListener", callback: "callback", cancellation: expect.objectContaining({ kind: "abort-signal" }) }));
+      expect(analysis.summaries.find(({ name }) => name === "lookalike")?.callbackInvocations).toEqual([]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

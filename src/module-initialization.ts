@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
+import { classifyLexicalExecution } from "./lexical-execution.js";
 
 /** Whether an import/export declaration can execute module initialization. */
 export function isRuntimeModuleDependency(
@@ -159,19 +160,8 @@ function collectTopLevelNodes(source: ts.SourceFile): Array<{ node: ts.Node; sta
 }
 
 function conditionalAwait(node: ts.AwaitExpression, statement: ts.Statement): boolean {
-  for (let current: ts.Node | undefined = node.parent; current && current !== statement; current = current.parent) {
-    if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
-      || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)
-      || ts.isWhileStatement(current) || ts.isDoStatement(current) || ts.isTryStatement(current)
-      || ts.isCatchClause(current)) return true;
-    if (ts.isBinaryExpression(current)
-      && (current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
-        || current.operatorToken.kind === ts.SyntaxKind.BarBarToken
-        || current.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)) return true;
-  }
-  return ts.isIfStatement(statement) || ts.isSwitchStatement(statement) || ts.isForStatement(statement)
-    || ts.isForInStatement(statement) || ts.isForOfStatement(statement) || ts.isWhileStatement(statement)
-    || ts.isDoStatement(statement) || ts.isTryStatement(statement);
+  void statement;
+  return classifyLexicalExecution(node, node.getSourceFile()) !== "exactly-once";
 }
 
 /**

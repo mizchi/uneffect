@@ -20,6 +20,12 @@ export default defineConfig({
     // candidates and hard Emscripten OOM aborts locally. Only the manifest-
     // checked verifier-free fast tier may schedule files concurrently.
     fileParallelism: requestedTier === "fast",
-    testTimeout: process.env.CI ? 30_000 : 15_000,
+    // The fast tier parallelizes files even outside hosted CI. Solver-backed
+    // project verification then sees the same contention as CI and needs the
+    // same wall-clock allowance. A project-verification test takes about 19s
+    // alone and can exceed 30s under two solver-heavy workers; assertion
+    // failures and solver unknowns still fail normally rather than being
+    // converted into passes.
+    testTimeout: process.env.CI || requestedTier === "fast" ? 60_000 : 15_000,
   },
 });

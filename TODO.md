@@ -286,9 +286,41 @@ introducing another domain-local control-flow or alias model.
      - [x] Infer bounded lengths for literal, in-range Uint8/Uint32
        `subarray`/`slice` windows and aliases; dynamic windows produce an
        explicit `unknown` index obligation when used.
-     - [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Distinguish shared `subarray` backing from copied
-       `slice`, prove overlap-sensitive writes, and model resizable buffers,
-       conditional detach, and returned/escaping views.
+     - [x] Distinguish shared `subarray` backing from copied `slice` in emitted
+       window provenance, retaining exact literal ranges and unknown dynamic ranges;
+       authenticate builtin identity and emit declaration-derived backing region IDs.
+     - [x] Reuse the authenticated window semantic in ownership analysis so
+       transfer invalidation crosses nested shared windows and immutable aliases,
+       while copied windows remain independent.
+     - [x] Join ownership transitions across lexical `if`/`else`, zero-or-many
+       loops, one-or-many `do...while`, and finite `switch` selection with
+       fallthrough and targeted-break awareness; retain may paths as `unknown`.
+     - [x] Migrate Transferable ownership sites to the common TypeScript
+       resource CFG so explicit throw, catch, mandatory finally, labels, and
+       fixed-point joins no longer use a domain-specific control-flow model.
+     - [x] Feed authenticated same-Program callable `Throw` and directly awaited
+       `Reject` summaries into ownership catch/finally edges as may-completions.
+     - [x] Run Program-backed typed-array and Transferable ownership analysis
+       from the default `check` pipeline; publish obligations, window
+       provenance, ownership diagnostics, assumption entries, and assurance
+       blockers in `uneffect-check/v1` JSON and text evidence.
+      - [x] Authenticate builtin `ArrayBuffer.resize`, carry literal/dynamic
+        post-resize byte lengths through immutable aliases, and update later
+        DataView backing obligations; catalog mutation plus TypeError/RangeError.
+      - [x] Revalidate accesses through locally constructed fixed-length and
+        length-tracking DataViews after literal/dynamic backing-buffer resizes.
+      - [x] Revalidate accesses through authenticated local Uint8Array/Uint32Array
+        fixed-length and length-tracking views after resize, including immutable
+        aliases and byte-width-aware bounds; publish failures through `check`.
+      - [x] Authenticate local standard ArrayBuffer construction and connect
+        literal initial/max byte lengths to resize success and later view bounds;
+        reject shadowed same-spelled constructors as evidence.
+      - [x] Prevent source-order overclaims across conditional/loop/switch/try
+        resize sites; join pre-existing view states as unknown and allow a later
+        unconditional literal resize to re-establish exact state.
+      - [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Consume window provenance to prove overlap-sensitive writes, and model
+        dynamic/non-literal `maxByteLength`, remaining typed-array domains, exact bounded-loop
+        detach counts, and returned/escaping views.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate contract/refinement mutation snapshots.
      - [x] Migrate the TypeChecker-backed local action-helper alias obligation;
        admit immutable alias chains while retaining helper, escape, computed
@@ -321,9 +353,20 @@ introducing another domain-local control-flow or alias model.
      - [x] Extend the resource-state lattice to retain `absent | available`
        and `absent | released` disjunctions and use them for bounded per-scope
        conditional acquisition without the all-acquired precondition.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Connect initializer
-       failure and repeated loop acquisition without widening either path to a
-       guessed resource state.
+     - [x] Connect initializer failure as prefix acquisition: a failed binding
+       skips later acquisitions and releases only the already acquired prefix,
+       without the former all-resources-acquired precondition.
+     - [x] Split a direct awaited initializer into inline evaluation failure and
+       microtask fulfillment/rejection, with a load-bearing wrong-lane Quint
+       counterexample.
+     - [x] Replace Boolean-only disposal suppression with a finite origin/parent
+       chain for body, initializer, and disposer failures; reject dropped or
+       corrupted parent identity in Quint.
+     - [x] Connect one contiguous source-loop acquisition group with explicit
+       zero-iteration, initializer-failure, repeat-generation, and exit paths.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Generalize repeated
+       acquisition to multiple, nested, non-contiguous, and non-stack resource
+       regions without widening iterations to a guessed resource state.
      - [x] Project binding-level Promise rejection ownership into the shared
        resource IR: floating remains available, observed consumes, and explicit
        ownership transfer transitions to transferred.
@@ -337,9 +380,83 @@ introducing another domain-local control-flow or alias model.
        models. Preserve optional `return` lookup, user-code property access,
        awaited-result rejection, nested/labeled loop ownership, and reject
        finally-crossing completion as unknown.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose implicit throw edges, full finally completion overriding, manual
-       `.next()`/`.return()`, `yield*` delegation close, and generator consumer
-       escape into the shared iterator resource model.
+     - [x] Project synchronous `for...of` exhaustion and abrupt
+       break/return/uncaught-throw through the same iterator resource schema,
+       preserving inline optional-return lookup/call, synchronous throw,
+       nested/labeled ownership, and finally uncertainty.
+     - [x] Generalize manual iterator analysis across `sync | async`: standard
+       TypeChecker identity, immutable aliases, `.next()`/`.return()`, direct
+       and closure/aggregate escape, callable contracts, immediate
+       `try/finally`, and direct `yield*`, while preserving inline/throw versus
+       microtask/reject completion semantics.
+     - [x] Preserve iterator identity through shallow builtin-`Object.freeze`
+       object properties, immutable object aliases, static string access, and
+       destructuring; distinguish returned frozen aggregates from mutable,
+       shadowed-freeze, and dynamic-key unknown escape.
+     - [x] Recognize canonical sync/async manual `.next().done` while loops as
+       natural exhaustion (`consume`) when their body has no additional
+       break/return/escaping-throw path; retain partial-correctness scope and
+       reject abrupt exits as unclosed.
+     - [x] Track sync/async Generator `.throw(value)` as a non-terminal protocol
+       use, retaining inline throw versus awaited rejection ownership rather
+       than assuming the injected exception closes the generator.
+     - [x] Recognize canonical infinite-loop `const step = next(); if
+       (step.done) break` and destructured `done` forms by symbol identity,
+       rejecting reassignment, intervening guards, and alternate abrupt exits.
+     - [x] Admit the canonical mutable-result `for (let step = next();
+       !step.done; step = next())` generation only when initializer/update share
+       one iterator symbol and the body has no alternate abrupt exit; reject
+       cross-iterator and general reassignment.
+     - [x] Project TypeChecker-resolved direct manual async-iterator `.next()`
+       and `.return()` calls through immutable aliases into the shared resource
+       model, retaining missing close, unawaited completion, and post-close use.
+     - [x] Project direct async-generator `yield*` over a TypeChecker-resolved
+       standard `AsyncIterable` as separate exhaustion and consumer-return
+       propagation scenarios.
+     - [x] Project direct iterator return and returned immutable closure/simple
+       aggregate capture as ownership escape; keep uncontracted call arguments
+       as unknown escape instead of assuming transfer.
+     - [x] Instantiate symbol-resolved local resource callable contracts at
+       manual iterator call boundaries, preserving trusted versus verified
+       transition evidence.
+     - [x] Accept trusted resource contracts on ambient functions/methods only
+       from explicit root `.d.ts` overlays; reject automatic trust from
+       transitively imported declaration files.
+     - [x] Expose async-iterator resource scenarios through `checkFiles`, CLI
+       diagnostics, JSON schema, text evidence, assurance coverage/blockers,
+       and the assumption ledger for used trusted callable boundaries.
+     - [x] Reuse the iterator decision layer in `verifyUneffectProject`, including
+       project coverage/blockers, trusted-boundary policy enforcement,
+       TypeScript-error downgrading, and `.uneffect.ts` exclusion.
+     - [x] Prove the immediately acquisition-dominating manual
+       `try/finally { await iterator.return() }` pattern across normal,
+       return/throw, and awaited-next rejection; reject pre-try gaps and
+       conditional/catch-only close as unknown.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose implicit
+       throw edges, full finally completion overriding, conditional/manual
+       protocol order, mutable or escaping iterator aliases, nested delegation
+       failure, and generator consumer escape into the shared model.
+       - [x] Add reviewed implicit body call/getter throw edges and preserve or
+         replace abrupt completion through normal/direct-abrupt `finally`.
+       - [x] Collapse a direct exhaustive manual `if/else` close into one exact
+         join release for both synchronous and asynchronous iterators.
+       - [x] Normalize guarded `if`, `switch`, and `catch` return/throw exits
+         against a fallthrough close; reject unclosed nested/loop bypasses and
+         possible double close instead of treating lexical order as dominance.
+       - [x] Track local mutable iterator aliases by TypeChecker symbol and
+         straight-line assignment generation, preserve immutable snapshots,
+         and join conditional reassignment candidates as explicit unknowns.
+       - [x] Add a fail-closed `yield*` delegation-step failure scenario for
+         delegate `next`/`throw` lookup, call, await, and result failures that
+         do not generally guarantee IteratorClose.
+       - [x] Prove write-screened local object/array iterator slots and closure
+         capture, while turning slot mutation, dynamic lookup, external calls,
+         and property-storage escape into explicit unknown ownership evidence.
+       - [x] Preserve exact static `const` object/array destructuring and retain
+         mutable, unstable-source, rest, and computed-pattern candidates as
+         `unstable-iterator-alias` unknown evidence.
+       - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Generalize these rules to arbitrary CFG joins, heap/escaping
+         aliases, and nested delegation/consumer failures.
      - [x] Define `uneffect-resource-temporal-product/v1` and connect acquired
        `using`/`await using` release transitions to host-neutral disposal IDs,
        requiring matching resource identity and inline/microtask completion
@@ -352,8 +469,8 @@ introducing another domain-local control-flow or alias model.
        disposal throw/reject transitions, and a finite multiple-failure
        suppression invariant.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend that product
-       through failed/repeated acquisition, exact nested `SuppressedError`
-       payload identity, other resource transitions, arbitrary callback
+       through broader repeated acquisition, concrete runtime `SuppressedError`
+       payload value/object identity, other resource transitions, arbitrary callback
        interleavings, cancellation, and explicitly selected fairness assumptions.
    - [x] Add the backend-neutral resource-state lattice over the shared CFG
      fixed-point engine. Equal branch states remain exact, unequal states join
@@ -506,11 +623,117 @@ introducing another domain-local control-flow or alias model.
    exact package, export, declaration, compiler, and source provenance. Unknown
    or stale summaries must block assurance; publisher/build authenticity stays
    a separate trust claim. ([#7](https://github.com/mizchi/uneffect/issues/7), [#20](https://github.com/mizchi/uneffect/issues/20))
-6. [ ] [#25](https://github.com/mizchi/uneffect/issues/25) Expand common expression semantics in measured frequency order:
+6. [x] [#25](https://github.com/mizchi/uneffect/issues/25) Expand common expression semantics in measured frequency order:
    optional chaining and nullish coalescing, destructuring/default initializers,
    stable method receivers and `this`, iterator-based `for...of`, then reviewed
    coercions. Property access that may invoke a getter remains effectful or
    unknown until descriptor evidence exists.
+   - [x] Resolve a local custom iterable's standard `[Symbol.iterator]`
+     method by TypeChecker identity at `for...of`. Generator methods compose
+     acquisition/step Effect and synchronous Throw into the consumer; ordinary
+     methods compose acquisition but keep opaque `next`/`return` execution
+     explicitly unknown.
+     - [x] Reuse that implicit iterator edge for spread, array destructuring,
+       `yield*`, reviewed iterable constructors, `Array.from`/
+       `Object.fromEntries`, and Promise combinators. Preserve synchronous
+       Throw for ordinary consumers and convert iteration Throw to Promise
+       rejection at combinator boundaries.
+   - [x] Extend reviewed coercion boundaries to loose equality, numeric and
+     bitwise binary/compound operators, unary numeric conversion, and template
+     interpolation. Object/unknown operands emit `InvokeUserCode`; unions made
+     entirely from primitive TypeChecker constituents remain effect-free.
+   - [x] Lower Program-visible getter/setter access and local coercion hooks to
+     ordinary inline call-graph edges. Compose `Symbol.toPrimitive`, followed
+     conservatively by local `valueOf`/`toString` fallbacks, including Effect,
+     synchronous Throw discharge, and receiver-rooted Mutation substitution.
+   - [x] Treat `new` of a same-Program class as an inline constructor call.
+     Compose constructor defaults/body and non-static instance field
+     initializers; classes with an implicit constructor project their fields at
+     the allocation site, including inherited constructor effects.
+   - [x] Lower a same-Program standard `Symbol.hasInstance` override to an
+     inline `instanceof` call edge, including its argument, receiver Mutation,
+     and catch discharge. Track direct builtin `Proxy` plus immutable aliases
+     for property access, `in`, and `delete`; reject same-spelled constructors.
+   - [x] Model reviewed `JSON.stringify` hidden execution: compose a local
+     `toJSON` method or, when absent, same-Program object-literal enumerable
+     getters; classify unknown/Proxy and recursively typed container values
+     whose elements may expose hooks as `InvokeUserCode`. Preserve the existing
+     synchronous replacer callback contract.
+   - [x] Model standard `structuredClone` clone failure as
+     `Throw<DOMException>`, compose same-Program own enumerable getters through
+     finite object/array literals, retain opaque generic graphs as
+     `InvokeUserCode`, and discharge catalog throws through synchronous catch.
+   - [x] Extend generic collection contracts to synchronous `Map`/`Set` and
+     readonly `forEach` callbacks plus receiver mutation for `WeakMap` and
+     `WeakSet`; retain TypeChecker identity and same-spelled lookalike controls.
+     - [x] Add generic callback invocation-argument and explicit-`thisArg`
+       projectors. Instantiate collection receiver Mutation, keep
+       engine-produced element/key/index aliases explicitly unknown, and
+       exclude TypeScript's erased pseudo-`this` parameter from runtime indexes.
+     - [x] Apply invocation shapes to Promise reactions, `Array.from`, JSON
+       replacers, EventTarget, disposal callbacks, and host schedulers. Add a
+       variadic suffix projector for timer/immediate/next-tick arguments and
+       treat omitted callback shapes as unresolved runtime parameters rather
+       than zero arguments.
+     - [x] Add synchronous callable replacement contracts for String
+       `replace`/`replaceAll`, and connect ES2024 `Object.groupBy`/`Map.groupBy`
+       to classifier callbacks, iterable consumption, runtime element aliases,
+       and fresh-result refinement. RegExp protocol semantics remain deferred.
+     - [x] Generate callback, receiver-Mutation, and fresh-result contracts for
+       all standard numeric and BigInt TypedArray owners. Reuse the common
+       invocation-shape IR and retain numeric bounds/backing/overlap as separate
+       typed-array obligations.
+   - [x] Model standard-identity `Object.assign` as enumerable reads followed
+     by target writes. Compose same-Program object-literal source getters and
+     matching target setters, exclude class prototype accessors, and classify
+     unknown/type-parameter or authenticated Proxy operands as
+     `InvokeUserCode`. Emit target Mutation and result-alias semantics from the
+     builtin catalog. Reject same-spelled lookalikes.
+   - [x] Reuse enumerable source-read semantics for standard-identity
+     `Object.values` and `Object.entries`, while keeping `Object.keys`
+     getter-free. Authenticate Proxy enumeration traps for all three; keep
+     unknown/type-parameter operands fail-closed and class prototype getters
+     excluded.
+   - [x] Lower standard-identity `Reflect.get`/`Reflect.set` with finite literal
+     keys to the same accessor call edges as direct property access. Preserve
+     the optional receiver as accessor `this`, catalog target/receiver Mutation
+     for `Reflect.set`, synchronous catch discharge, and fail closed for
+     dynamic keys, unknown/type-parameter values, and Proxy traps. Keep
+     `Reflect.has`/`Reflect.deleteProperty` free of ordinary accessor calls
+     while retaining Proxy traps; catalog delete Mutation explicitly.
+   - [x] Lower standard `Function.prototype.call`/`apply` and `Reflect.apply`
+     wrappers to the underlying same-Program callable edge. Preserve explicit
+     `this`, argument Mutation substitution, synchronous Throw discharge, and
+     immutable single-use array-literal argument aliases. Dynamic callable or
+     argument-list values, mutated/escaping list aliases, and callable Proxies
+     remain `InvokeUserCode` and unresolved Mutation rather than receiving
+     guessed identities.
+   - [x] Model standard `Function.prototype.bind` as deferred callable
+     composition: creation is effect-free, while a later direct/call/apply
+     invocation instantiates the target with bound `this`, prefix arguments,
+     and call-site arguments. Preserve immutable aliases and repeated calls;
+     reject callable Proxy/dynamic targets and any bound callable that escapes
+     before invocation as `InvokeUserCode`. Returned bound callables remain an
+     open cross-boundary callable-summary problem.
+   - [x] Lower standard `Reflect.construct` to the same-Program constructor/new
+     semantics for static argument lists. Compose explicit constructors and
+     implicit instance field initializers, synchronous catch discharge, and
+     argument-rooted Mutation; treat the constructed result as fresh local
+     state. Dynamic constructors/lists and Proxy target/newTarget values retain
+     `InvokeUserCode`, with unresolved argument Mutation instead of name-based
+     guessing.
+   - [x] Catalog standard object-internal mutations for
+     `Object.defineProperty`/`defineProperties`, `freeze`, `seal`,
+     `preventExtensions`, `setPrototypeOf`, and the corresponding reviewed
+     Reflect operations. Preserve target result aliases where applicable.
+     Compose same-Program descriptor getters (including inherited descriptor
+     fields), enumerable descriptor-map getters, synchronous Throw/catch, and
+     Proxy/dynamic descriptor boundaries as `InvokeUserCode`.
+   - [x] Reuse descriptor-map conversion for `Object.create`: compose map and
+     descriptor getters while recording a fresh result and no target Mutation.
+     Distinguish `Object.getOwnPropertyDescriptor(s)` and `Object.hasOwn`, which
+     do not execute ordinary getters, from authenticated Proxy/unknown targets
+     whose descriptor/has traps remain `InvokeUserCode`.
    - [x] Introduce name-independent Program binding identities and migrate
      AbortController composition, timer handles, TaskController handles, and
      locally bound abort signals. Add a block-shadowing negative control.
@@ -541,6 +764,45 @@ introducing another domain-local control-flow or alias model.
        source-only fail-closed behavior.
      - [x] Add one cross-domain rename-invariance suite covering abortable
        fetch, typed-array, ownership, and React Program-backed analyses.
+   - [x] Add one shared conservative lexical-execution classifier for optional
+     callback calls, the right side of `&&`/`||`/`??`, branch bodies, switch
+     clauses, and loop multiplicity. Reuse it for callable cardinality,
+     async/EventTarget cancellation, host-neutral conditional transitions, and
+     top-level-await ordering. Conditions and `for` initializers remain
+     exactly-once; optional calls and short-circuit right operands are `0..1`.
+   - [x] Treat parameter entry evaluation as part of the callable: scan ordinary
+     defaults, nested object/array binding defaults, and computed destructuring
+     keys for direct/callee effects and synchronous throws in both source and
+     Program call-graph frontends. Optional callback calls from a default
+     initializer have `0..1` cardinality rather than being omitted or reported
+     as exactly-once.
+     - [x] Lower static top-level object binding reads to local getter edges for
+       variable and parameter destructuring, including rename/default forms.
+       Parameter binding Throw occurs before the body catch; a getter that
+       mutates its nameless destructured source remains an explicit unresolved
+       receiver rather than receiving an invented region identity.
+     - [x] Compose enumerable same-Program object-literal getters through object
+       spread and variable object-rest, excluding explicitly selected rest
+       keys. Preserve direct Proxy/alias copies as `InvokeUserCode`; class
+       prototype getters are not incorrectly treated as enumerable own fields.
+     - [x] Recurse through finite static nested object binding paths for getter
+       Effect/Throw. Keep nested receiver Mutation unresolved without stable
+       heap identity, and compose a computed binding key's local
+       `Symbol.toPrimitive`/fallback coercion before property selection.
+   - [x] Extract callback parameters from finite object and tuple destructuring,
+     preserving renamed bindings, nested static paths, defaults, immutable local
+     aliases, and independent cardinality for multiple callback fields. Add a
+     path-keyed instantiation API; rest and computed callback bindings make the
+     summary explicitly unknown instead of silently dropping the callback.
+   - [x] Resolve same-Program class methods through the TypeChecker resolved
+     signature when instantiated receiver symbols differ from declaration
+     symbols. Carry a stable receiver on call edges and substitute
+     `Mutate<typeof this.path>` into the caller, including immutable aliases and
+     nested `this` data-property receivers. Getter receivers, mutable aliases,
+     extracted/unbound methods, and non-addressable receivers remain explicit
+     `unresolved-mutation-alias` evidence. Same-Program user method callback
+     timing is derived from its body without granting same-spelled builtin
+     identity.
 7. [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Add explicit JavaScript numeric domains instead of widening Z3 Real:
    safe integers and U32 first, then finite IEEE-754 facts (`NaN`, infinity,
    negative zero, and `Math.fround`). Keep unsupported coercion and rounding
@@ -1188,7 +1450,12 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add the initial typed builtin overlay entry for `node:os.tmpdir() -> Path<"$TEMP">`.
   - [x] Teach the TypeChecker frontend adapter to apply builtin return refinements at call sites.
 - [x] Add a registry for builtin and user-defined effect schemas.
-- [ ] Add `GlobalVarsRead<KeySet>` and `GlobalVarsWrite<KeySet>` with explicit realm identity, TypeChecker-resolved `globalThis`/host-global aliases, finite literal-key containment, and dynamic-key fail-closed behavior; do not equate declaration merging, module globals, Worker/iframe globals, or same-spelled local objects without evidence. ([#8](https://github.com/mizchi/uneffect/issues/8))
+- [x] Add `GlobalVarsRead<KeySet>` and `GlobalVarsWrite<KeySet>` with implicit same-realm identity, TypeChecker-resolved `globalThis`/reviewed host-global/immutable local aliases, finite literal-key containment, assignment/update modes, and dynamic-key fail-closed behavior; do not equate declaration merging, module globals, iframe globals, or same-spelled local objects without evidence. ([#8](https://github.com/mizchi/uneffect/issues/8))
+- [x] Scope `CookieRead`/`CookieWrite` and `LocalStorageRead`/`LocalStorageWrite` over the shared finite literal-set lattice; infer literal cookie write names and literal/finite-union Web Storage keys, retain aggregate operations as `All`, and fail closed on dynamic keys. Cookie path/domain and storage origin/area identity remain outside this fragment. ([#14](https://github.com/mizchi/uneffect/issues/14))
+- [x] Map TypeChecker-resolved `Navigator.sendBeacon` to the shared `Net<HostSet>` lattice and retain separate exact/unknown `beacon` transport provenance; reject same-named user methods. ([#14](https://github.com/mizchi/uneffect/issues/14))
+- [x] Add a catalog-driven `NewExpression` semantic path and use it for TypeChecker-resolved global `WebSocket`, projecting `ws:`/`wss:` endpoints to `Net<HostSet>` and distinct exact/unknown transport provenance while rejecting same-named constructors. Event/message/reconnect lifecycle remains separate. ([#14](https://github.com/mizchi/uneffect/issues/14))
+- [x] Add a generic catalog `use` resource primitive, teach the resource collector to consume constructor events, and model WebSocket construction/send/close as acquire/use/release through immutable aliases; report send-after-close as an invalid trusted transition. Keep this explicit CFG fragment distinct from unimplemented external-completion and event-loop lifecycle semantics. ([#14](https://github.com/mizchi/uneffect/issues/14))
+- [x] Move Web `EventTarget#addEventListener` callback ownership to the builtin catalog, resolve subtype overload redeclarations by TypeChecker owner assignability without accepting user lookalikes, and lower repeatable external completion plus event-task execution and nested microtask checkpoints into executable Web Quint with optional fairness. Statically visible `{ once: true }` is one-shot, literal `signal` options compose with abort/timeout/any cancellation, and direct same-function removal matches target/type/callback/capture identity through immutable aliases. Cross-function/dynamic removal, dynamic options, and WebSocket-specific event ordering remain open. ([#10](https://github.com/mizchi/uneffect/issues/10))
 - [x] Diagnose unknown effect names; warning in gradual mode and error in strict mode.
 - [x] Implement Fetch as the first scoped-effect vertical slice.
   - [x] Infer `GET` for a missing method.
@@ -1510,6 +1777,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Keep an intentionally broken use-after-transfer model as a regression oracle.
 - [x] Add `Transfer`, `Clone`, and ownership state to the Rust neutral IR.
 - [x] Instantiate contracts for `structuredClone`, `Worker.postMessage`, `MessagePort.postMessage`, and related platform APIs.
+- [x] Add `structuredClone` clone-failure throws, synchronous catch discharge,
+  and same-Program own-enumerable getter composition for finite object/array
+  literals without claiming prototype or Proxy-trap execution.
 - [x] Distinguish `SharedArrayBuffer` sharing from transfer.
 
 ## Historical ledger section 4.5 — Typed array refinements
@@ -1776,6 +2046,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Join exhaustive finite-literal/default `switch` catch-entry paths, including empty-label fallthrough groups, when every possible entry must observe before risk; reject unobserved cases and throw-capable discriminants or labels.
       - [x] Compose nested `try`/`catch`/`finally` into an outer catch-entry proof when the inner try must observe first and its handlers do not replace the tracked generation; reject replacement-before-later-throw paths.
       - [x] Treat every TypeScript assignment operator, including logical assignment, as a tracked Promise generation replacement in the ownership fixed point.
+      - [x] Materialize straight-line direct Promise reassignments as distinct
+        ownership resources while retaining the structured fixed point for
+        branch/loop/switch/try replacements.
       - [ ] Compute general CFG and loop data fixed points for exception-heavy scalar ownership state; keep Promise/resource generation lowering in #9. ([#25](https://github.com/mizchi/uneffect/issues/25))
       - [ ] Track Promise/resource generations through escaping aliases and dynamically dispatched ownership transfers. ([#24](https://github.com/mizchi/uneffect/issues/24))
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
@@ -2012,16 +2285,151 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Preserve each supported return/loop completion as
   `uneffect-contract-control-flow/v1` evidence with a source-stable basic-block
   identity and the exact path assumptions supplied to Z3.
+- [x] Lower one-to-eight-clause numeric/Boolean literal `switch` statements
+  into explicit entry paths, including default, fallthrough, nested
+  `if`/`try` propagation, and target-owned unlabeled `break`; compose throw
+  exits with catch/discharge and reject dynamic, duplicate, mixed-sort, labeled,
+  or escaping control.
+  - [x] Connect TypeChecker-validated readonly string discriminants, including
+    immutable aliases, to the same switch entries/default/fallthrough and
+    narrowed payload facts without introducing an unconstrained SMT string;
+    reject open/mutable discriminants and literals outside the finite family.
+- [x] Give invariant-backed `while`, canonical scalar `for`, and `do...while`
+  loops target-owned unlabeled `break`/`continue` completions. Prove `continue`
+  at the back edge (`for` after its assignment or `++/--` update), normalize
+  `break` as an exit, preserve ownership through nested switch/try/finally, and
+  reject labels, missing invariants, multi-binding/sequence headers, or escaped
+  control.
+- [x] Reuse one symbolic identifier updater for statement-level and canonical
+  `for` `++`, `--`, `=`, `+=`, `-=`, and `*=`. Reject property/sequence
+  mutation and keep `/=`/`%=` unsupported until JS division/remainder semantics
+  are represented rather than silently using Z3 integer `div`/`mod`; reviewed
+  Boolean logical assignments are handled by the path evaluator below.
+  - [x] Route ordinary-statement `+=`, `-=`, and `*=` right operands through
+    the shared path evaluator, so conditional expressions, reviewed Math calls,
+    and the supported signed-remainder fragment retain their branches. Require
+    matching numeric IR sorts; canonical loop-header updates remain deliberately
+    single-path.
+- [x] Remove direct `/` and `%` from the Hoare expression lowering after a
+  negative-control demonstrated that SMT `mod` could verify `result >= 0` for
+  JavaScript's negative remainder. Reject manual unknown SMT operators too;
+  raw division/remainder must not create proof evidence.
+  - [x] Reintroduce `%` for an Int-valued left operand and a direct nonzero
+    safe-integer literal divisor. Split on dividend sign and encode the negative
+    path as `-mod(-value, abs(divisor))`, matching JavaScript signed remainder.
+- [ ] Reintroduce `/`, dynamic/zero/Real `%`, `/=`, and `%=` only with JavaScript truncation, finite/nonzero divisor obligations, signed remainder, and domain-correct Int/Real result sorts. ([#6](https://github.com/mizchi/uneffect/issues/6))
+- [x] Apply one lexical-scope join to bare blocks and supported `if`, loop,
+  `try`, `catch`, and `finally` block bodies. Retain writes to outer and
+  function-scoped `var` bindings, remove block-local `let`/`const` at exit, and
+  reject lexical or catch bindings that shadow a tracked scalar until the
+  environment is keyed by TypeChecker symbol identity.
+- [x] Split recursive scalar conditional expressions into explicit true/false
+  path assumptions for direct return values, initialized identifier bindings,
+  and plain assignments. Keep call-conditioned, non-scalar, and abrupt/effectful
+  branches outside this evaluator rather than encoding an opaque `ite`.
+- [x] Lower direct TypeChecker-resolved standard-library `Math.abs` and one-to-
+  four-argument `Math.min`/`Math.max` calls into comparison-selected scalar
+  paths. Require the merged global `Math` receiver, exact standard `lib.*.d.ts`
+  member and signature identity, and numeric arguments; shadowed objects, zero/over-
+  budget arity, and call/effect-valued arguments fail closed.
+  - [x] Resolve reassignment-free `const abs = Math.abs`, `const { min: name } =
+    Math`, and identifier-only `const` alias chains by exact binding/member
+    identity. Keep `let`, shadowed receivers, computed properties, defaults,
+    rest bindings, and dynamic aliases outside the reviewed call set.
+  - [x] Add TypeChecker-resolved `Math.floor`, `Math.ceil`, `Math.trunc`, and
+    `Math.round` over the contract integer/finite-Real abstraction. Emit SMT
+    `to_int` for floor, derive ceil by negation, split trunc by sign, and model
+    round as floor of `x + 0.5`; retain NaN, infinities, and signed zero outside
+    the claim and accept aliases only through standard `lib.*.d.ts` identity.
+  - [x] Lower standard `Math.sign` through the same identity and immutable-alias
+    layer into exhaustive negative/zero/positive paths over the Int/finite-Real
+    abstraction. Keep NaN and negative-zero identity outside the claim.
+  - [x] Lower numeric `base ** exponent` and reviewed `Math.pow(base, exponent)`
+    to repeated multiplication when the exponent is a direct non-negative
+    integer literal from zero through eight. Evaluate the base once, reuse Math
+    aliases by symbol identity, and reject dynamic, negative, over-budget, or
+    shadowed forms.
+- [x] Split TypeChecker-proven Boolean `&&` and `||` expressions in the same
+  scalar evaluator, preserving left-to-right short-circuit reachability through
+  nested return, initialized binding, and plain assignment forms. Reject
+  JavaScript truthiness and call/effect-valued operands instead of eagerly
+  encoding them as Boolean SMT expressions.
+- [x] Reuse those Boolean short-circuit paths for identifier-only `&&=` and
+  `||=` logical assignment. Read the prior binding once, preserve it on the
+  skipped path, and evaluate/assign the right operand only on the selected
+  path; non-Boolean and call/effect-valued operands fail closed.
+- [x] Add identifier-only numeric or Boolean `??=` by splitting the TypeChecker-backed
+  nullable presence state, evaluating the right side only on the nullish path,
+  and setting the presence fact to true on every completion path. Subsequent
+  coalescing and nullish guards read that updated state rather than a stale
+  TypeChecker guard; properties, mutable aliases, and call-valued right sides
+  remain fail-closed. ([#25](https://github.com/mizchi/uneffect/issues/25))
 - [ ] Import sound TypeChecker narrowing facts into the contract logic IR; each ([#25](https://github.com/mizchi/uneffect/issues/25))
   admitted narrowing form needs a same-spelled/shadowed negative control.
   - [x] Admit one-to-sixteen-member safe-integer literal unions, including
     imported type aliases, and bind the evidence to TypeScript version, compiler
     options, and every non-declaration Program source digest. Programs with
     TypeScript errors and plain `number` aliases contribute no finite-range fact.
-  - [x] Admit TypeChecker-validated `typeof value === "number"` guards for
-    `number | string` and nullish equality guards for `number | null | undefined`;
+  - [x] Admit TypeChecker-validated `typeof` guards for exact `number | string`
+    and `boolean | string` unions, accepting either the scalar member or its
+    string complement, plus nullish equality guards for nullable numeric or
+    Boolean scalars;
+  - [x] Treat `typeof value ===/!== "undefined"` as the complement of the
+    presence fact only for exact numeric or Boolean `T | undefined`. Keep
+    `T | null | undefined` unsupported because one Boolean presence fact cannot
+    distinguish null from undefined.
+  - [x] Correlate nullable Boolean presence with truthiness by asserting
+    `!defined => !payload`; this admits direct Boolean conditions without
+    pretending absent values may be true. Route ternary, `if`, loop, and
+    reviewed assertion conditions through one Boolean-sort gate so nullable
+    numeric and other JavaScript truthiness remain explicit non-proofs.
     bind each guard to the exact parameter symbol and comparison source span.
-  - [ ] Extend narrowing to discriminated unions and assertion-function facts without trusting user-defined lookalikes. ([#25](https://github.com/mizchi/uneffect/issues/25))
+  - [x] Split direct numeric or Boolean `value ?? fallback` expressions using that same
+    TypeChecker-validated presence fact, keeping the Boolean defined state and
+    scalar payload separate through return, initialized binding, and plain
+    assignment. Preserve immutable identifier aliases; mutable aliases,
+    property/optional-chain operands, and call-valued fallbacks fail closed.
+  - [x] Admit direct equality/inequality guards over a two-to-eight-member
+    readonly string-discriminated object union as an explicit exactly-one
+    Boolean family, bound to the parameter symbol and comparison span;
+    same-spelled objects, open strings, and mutable discriminants remain
+    unsupported.
+  - [x] Resolve named and namespace `node:assert/strict` `ok(condition)` through
+    its exact import binding and TypeScript assertion signature, split normal
+    continuation from `Throw<AssertionError>`, retain the reviewed builtin in
+    the assumption ledger, and reject same-shaped user assertion functions.
+  - [x] Generalize the reviewed Node assertion binding through the common
+    frontend adapter for named, namespace, default, and import-equals forms.
+  - [x] Register non-strict `node:assert` named `ok` and default callable
+    bindings through catalog `default` export semantics; do not infer narrowing
+    from coercive equality helpers.
+  - [x] Lower a direct readonly discriminant payload access to its
+    TypeChecker-narrowed safe-integer/Boolean literal at the exact access span;
+    pre-narrow unions, mutable payloads, and same-spelled objects fail closed.
+  - [x] Represent direct readonly scalar `number`/`boolean`/`Int`/`Nat`/`Float`
+    payloads as member-scoped solver variables after TypeChecker discriminant
+    narrowing; preserve `Nat` bounds and leave plain `number` unconstrained.
+  - [x] Preserve discriminant and payload facts through TypeChecker-resolved
+    identifier-only immutable object alias chains, while excluding their
+    declarations from the scalar environment; mutable and destructured aliases
+    fail closed.
+  - [x] Admit one unambiguous one-to-four-segment readonly parameter property
+    path as a discriminated-union root when it is first selected into an
+    identifier-only immutable alias; mutable, computed, cyclic, over-depth, or
+    ambiguous roots fail closed.
+  - [x] Lower a readonly dot-property path from the narrowed union root to a
+    terminal scalar literal or `number`/`boolean`/`Int`/`Nat`/`Float` value;
+    every intermediate property must be readonly and computed access fails
+    closed.
+  - [x] Lower `const` object destructuring of narrowed readonly scalar payloads,
+    including renamed bindings and readonly nested payload sources, by exact
+    binding/property identity; pre-narrow, mutable, defaulted, rest, and
+    computed forms fail closed.
+  - [x] Lower fixed non-negative literal index reads and `const` array
+    destructuring from narrowed readonly tuple payloads. Require a readonly
+    rooted property path and readonly tuple identity; mutable/ordinary arrays,
+    dynamic indexes, holes, defaults, rest, and nested bindings fail closed.
+  - [ ] Extend narrowing to composite object/array values and further reviewed assertion APIs. ([#25](https://github.com/mizchi/uneffect/issues/25))
 - [x] Route `return`, synchronous `throw`, and TypeChecker-resolved direct
   `never` calls with declared `Throw<E>` through one
   exception-aware contract exit model without treating Promise rejection as a

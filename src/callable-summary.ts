@@ -1,7 +1,10 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { effectPermits, formatEffect, parseEffectSet, type Effect } from "./capabilities.js";
-import { analyzeProgramEffects, type EvidenceStatus } from "./effects.js";
+import { analyzeProgramEffects, type EffectAnalysisResult, type EvidenceStatus } from "./effects.js";
+import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
+import { projectBuiltinCallbacks, projectedExpression } from "./builtin-semantic-interpreter.js";
+import { classifyLexicalExecution } from "./lexical-execution.js";
 
 export type CallbackCardinality = "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
 export type CallbackTiming = "inline" | "deferred" | "promise-reaction" | "unknown";
@@ -10,6 +13,7 @@ export type CallbackCompletion = "propagate-throw" | "convert-throw-to-rejection
 export interface CallbackParameterSummary {
   readonly index: number;
   readonly name: string;
+  readonly path?: readonly (string | number)[];
   readonly cardinality: CallbackCardinality;
   readonly timing: CallbackTiming;
   readonly completion: CallbackCompletion;
@@ -24,6 +28,7 @@ export interface CallbackInvocationSummary {
   readonly timing: CallbackTiming;
   readonly completion: CallbackCompletion;
   readonly span: { start: number; end: number };
+  readonly cancellation?: { readonly kind: "abort-signal"; readonly expression: string };
 }
 
 export interface CallableSummary {
@@ -61,15 +66,21 @@ export interface CallableInstantiation {
   readonly violations: readonly { parameter: string; effect: string }[];
 }
 
+export function callbackArgumentKey(index: number, path: readonly (string | number)[]): string {
+  return `${index}:${JSON.stringify(path)}`;
+}
+
 /** Instantiates the callback portion of a summary without executing user code. */
 export function instantiateCallableSummary(
   summary: CallableSummary,
-  argumentsByIndex: ReadonlyMap<number, readonly Effect[]>,
+  argumentsByIndex: ReadonlyMap<number | string, readonly Effect[]>,
 ): CallableInstantiation {
   const effects = [...summary.effects];
   const violations: { parameter: string; effect: string }[] = [];
   for (const parameter of summary.callbackParameters) {
-    const actual = argumentsByIndex.get(parameter.index) ?? [];
+    const actual = parameter.path
+      ? argumentsByIndex.get(callbackArgumentKey(parameter.index, parameter.path)) ?? []
+      : argumentsByIndex.get(parameter.index) ?? [];
     const allowed = parameter.effectBound?.flatMap((item) => parseEffectSet(item));
     for (const effect of actual) {
       effects.push(effect);
@@ -86,7 +97,8 @@ export function instantiateCallableSummary(
   };
 }
 
-type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.GetAccessorDeclaration
+  | ts.SetAccessorDeclaration | ts.ConstructorDeclaration | ts.ArrowFunction | ts.FunctionExpression;
 
 function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
   const symbol = checker.getSymbolAtLocation(node);
@@ -94,7 +106,11 @@ function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | und
 }
 
 function functionName(node: SupportedFunction): string {
-  if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isFunctionExpression(node)) && node.name) return node.name.getText();
+  if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node)
+    || ts.isSetAccessorDeclaration(node) || ts.isFunctionExpression(node)) && node.name) return node.name.getText();
+  if (ts.isConstructorDeclaration(node) && (ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent))) {
+    return `${node.parent.name?.getText() ?? "<anonymous-class>"}.constructor`;
+  }
   return ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name) ? node.parent.name.text : "<anonymous>";
 }
 
@@ -111,12 +127,8 @@ function unwrap(expression: ts.Expression): ts.Expression {
 }
 
 function executionCardinality(call: ts.CallExpression, owner: SupportedFunction): CallbackCardinality {
-  for (let current: ts.Node | undefined = call.parent; current && current !== owner.body; current = current.parent) {
-    if (ts.isIterationStatement(current, false)) return "0..n";
-    if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
-      || ts.isTryStatement(current) || ts.isCatchClause(current)) return "0..1";
-  }
-  return "exactly-1";
+  const multiplicity = classifyLexicalExecution(call, owner);
+  return multiplicity === "repeated" ? "0..n" : multiplicity === "conditional" ? "0..1" : "exactly-1";
 }
 
 function libraryDeclaration(program: ts.Program, symbol: ts.Symbol | undefined): boolean {
@@ -126,6 +138,7 @@ function libraryDeclaration(program: ts.Program, symbol: ts.Symbol | undefined):
 function builtinInvocation(
   program: ts.Program,
   checker: ts.TypeChecker,
+  adapter: FrontendSymbolAdapter,
   call: ts.CallExpression,
 ): Omit<CallbackInvocationSummary, "callback" | "span"> & { argument: number } | undefined {
   if (ts.isIdentifier(call.expression)) {
@@ -138,6 +151,21 @@ function builtinInvocation(
   }
   if (!ts.isPropertyAccessExpression(call.expression)) return undefined;
   const name = call.expression.name.text;
+  if (name === "addEventListener") {
+    const resolved = adapter.resolveCall(call);
+    const event = projectBuiltinCallbacks(resolved, call, checker).find((candidate) => candidate.target.status === "resolved");
+    if (!event || event.target.status !== "resolved") return undefined;
+    const callbackExpression = event.target.expression;
+    const argument = call.arguments.findIndex((candidate) => candidate === callbackExpression);
+    return argument < 0 ? undefined : {
+      api: "EventTarget.prototype.addEventListener", argument,
+      cardinality: event.cardinality === "1" ? "exactly-1" : event.cardinality === "1..n" ? "0..n" : event.cardinality,
+      timing: "deferred", completion: "host-report-throw",
+      ...(event.abortSignal && projectedExpression(event.abortSignal)
+        ? { cancellation: { kind: "abort-signal" as const, expression: projectedExpression(event.abortSignal)!.getText(call.getSourceFile()) } }
+        : {}),
+    };
+  }
   const symbol = resolvedSymbol(checker, call.expression.name);
   if (!libraryDeclaration(program, symbol)) return undefined;
   if (["map", "filter", "forEach", "some", "every"].includes(name)) return {
@@ -147,10 +175,25 @@ function builtinInvocation(
     api: `Promise.prototype.${name}`, argument: name === "then" ? 0 : 0, cardinality: "0..1",
     timing: "promise-reaction", completion: "convert-throw-to-rejection",
   };
-  if (name === "addEventListener") return {
-    api: "EventTarget.prototype.addEventListener", argument: 1, cardinality: "0..n",
-    timing: "deferred", completion: "host-report-throw",
-  };
+  const resolved = adapter.resolveCall(call);
+  const event = projectBuiltinCallbacks(resolved, call, checker)
+    .find((candidate) => candidate.target.status === "resolved");
+  if (resolved && event?.target.status === "resolved") {
+    const callbackExpression = event.target.expression;
+    const argument = call.arguments.findIndex((candidate) => candidate === callbackExpression);
+    if (argument >= 0) {
+      const microtask = event.timing === "deferred" && event.queue === "microtask";
+      return {
+        api: resolved.symbol.export,
+        argument,
+        cardinality: event.cardinality === "1" ? "exactly-1"
+          : event.cardinality === "1..n" ? "0..n" : event.cardinality,
+        timing: event.timing === "sync" ? "inline" : microtask ? "promise-reaction" : "deferred",
+        completion: event.completion ?? (event.timing === "sync" ? "propagate-throw"
+          : microtask ? "convert-throw-to-rejection" : "host-report-throw"),
+      };
+    }
+  }
   return undefined;
 }
 
@@ -160,16 +203,18 @@ function directPromiseRejectType(program: ts.Program, checker: ts.TypeChecker, c
   return libraryDeclaration(program, symbol) ? checker.typeToString(checker.getTypeAtLocation(call.arguments[0]!)) : undefined;
 }
 
-export function analyzeCallableSummaries(program: ts.Program): CallableSummaryAnalysis {
+export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: EffectAnalysisResult = analyzeProgramEffects(program, { requireAnnotations: false })): CallableSummaryAnalysis {
   const checker = program.getTypeChecker();
-  const effectAnalysis = analyzeProgramEffects(program, { requireAnnotations: false });
+  const adapter = new TypeScriptFrontendAdapter(program);
   const effectsById = new Map(effectAnalysis.summaries.flatMap((summary) => summary.id ? [[summary.id, summary] as const] : []));
   const diagnostics: CallableSummaryDiagnostic[] = [];
   const declarations: SupportedFunction[] = [];
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const collect = (node: ts.Node): void => {
-      if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && node.body) declarations.push(node);
+      if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node)
+        || ts.isSetAccessorDeclaration(node) || ts.isConstructorDeclaration(node)
+        || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && node.body) declarations.push(node);
       ts.forEachChild(node, collect);
     };
     collect(source);
@@ -179,16 +224,46 @@ export function analyzeCallableSummaries(program: ts.Program): CallableSummaryAn
     const source = declaration.getSourceFile();
     const name = functionName(declaration);
     const id = `${source.fileName}:${declaration.getStart(source)}`;
-    const callbackSymbols = new Map<ts.Symbol, { index: number; name: string }>();
+    type CallbackBinding = { index: number; name: string; path?: readonly (string | number)[]; key: string };
+    const callbackSymbols = new Map<ts.Symbol, CallbackBinding>();
+    let unsupportedCallbackBinding = false;
     declaration.parameters.forEach((parameter, index) => {
-      if (!ts.isIdentifier(parameter.name) || checker.getTypeAtLocation(parameter).getCallSignatures().length === 0) return;
-      const symbol = resolvedSymbol(checker, parameter.name);
-      if (symbol) callbackSymbols.set(symbol, { index, name: parameter.name.text });
+      const collect = (name: ts.BindingName, path: readonly (string | number)[]): void => {
+        if (ts.isIdentifier(name)) {
+          if (checker.getNonNullableType(checker.getTypeAtLocation(name)).getCallSignatures().length === 0) return;
+          const symbol = resolvedSymbol(checker, name);
+          if (symbol) callbackSymbols.set(symbol, {
+            index, name: name.text, ...(path.length ? { path } : {}), key: callbackArgumentKey(index, path),
+          });
+          return;
+        }
+        if (ts.isObjectBindingPattern(name)) {
+          for (const element of name.elements) {
+            if (element.dotDotDotToken || element.propertyName && ts.isComputedPropertyName(element.propertyName)) {
+              unsupportedCallbackBinding = true;
+              continue;
+            }
+            const key = element.propertyName
+              ? ts.isIdentifier(element.propertyName) || ts.isStringLiteralLike(element.propertyName) || ts.isNumericLiteral(element.propertyName)
+                ? element.propertyName.text : undefined
+              : ts.isIdentifier(element.name) ? element.name.text : undefined;
+            if (key !== undefined) collect(element.name, [...path, key]);
+          }
+          return;
+        }
+        name.elements.forEach((element, elementIndex) => {
+          if (!element || ts.isOmittedExpression(element)) return;
+          if (element.dotDotDotToken) { unsupportedCallbackBinding = true; return; }
+          collect(element.name, [...path, elementIndex]);
+        });
+      };
+      collect(parameter.name, []);
     });
-    const aliasTargets = new Map<ts.Symbol, { index: number; name: string }>();
+    const aliasTargets = new Map<ts.Symbol, CallbackBinding>();
     const mutableAliases = new Set<string>();
     const unknownReasons = new Set<string>();
-    const callbackCalls = new Map<number, ts.CallExpression[]>();
+    if (unsupportedCallbackBinding) unknownReasons.add("unsupported-callback-binding");
+    const callbackCalls = new Map<string, ts.CallExpression[]>();
     const callbackInvocations: CallbackInvocationSummary[] = [];
     const rejects = new Set<string>();
 
@@ -207,7 +282,7 @@ export function analyzeCallableSummaries(program: ts.Program): CallableSummaryAn
       }
     }
 
-    const resolveCallback = (expression: ts.Expression): { index: number; name: string } | undefined => {
+    const resolveCallback = (expression: ts.Expression): CallbackBinding | undefined => {
       const target = unwrap(expression);
       if (!ts.isIdentifier(target)) return undefined;
       const symbol = resolvedSymbol(checker, target);
@@ -239,21 +314,23 @@ export function analyzeCallableSummaries(program: ts.Program): CallableSummaryAn
       if (ts.isCallExpression(node)) {
         const callback = resolveCallback(node.expression);
         if (callback) {
-          const calls = callbackCalls.get(callback.index) ?? [];
+          const calls = callbackCalls.get(callback.key) ?? [];
           calls.push(node);
-          callbackCalls.set(callback.index, calls);
+          callbackCalls.set(callback.key, calls);
         } else {
           const expression = unwrap(node.expression);
           if (ts.isConditionalExpression(expression) && (resolveCallback(expression.whenTrue) || resolveCallback(expression.whenFalse))) {
             unknownReasons.add("dynamic-callback-dispatch");
           }
         }
-        const builtin = builtinInvocation(program, checker, node);
+        const builtin = builtinInvocation(program, checker, adapter, node);
         if (builtin) {
           const argument = node.arguments[builtin.argument];
           callbackInvocations.push({
             api: builtin.api, callback: argument?.getText(source) ?? "<missing>", cardinality: builtin.cardinality,
-            timing: builtin.timing, completion: builtin.completion, span: { start: node.getStart(source), end: node.getEnd() },
+            timing: builtin.timing, completion: builtin.completion,
+            ...(builtin.cancellation ? { cancellation: builtin.cancellation } : {}),
+            span: { start: node.getStart(source), end: node.getEnd() },
           });
         }
         const rejection = directPromiseRejectType(program, checker, node);
@@ -264,16 +341,28 @@ export function analyzeCallableSummaries(program: ts.Program): CallableSummaryAn
         && mutableAliases.has(node.left.text)) unknownReasons.add("mutable-callable-alias");
       ts.forEachChild(node, visit);
     };
+    for (const parameter of declaration.parameters) {
+      visit(parameter.name);
+      if (parameter.initializer) visit(parameter.initializer);
+    }
+    if (ts.isConstructorDeclaration(declaration)) {
+      for (const member of declaration.parent.members) {
+        if (ts.isPropertyDeclaration(member) && member.initializer
+          && !member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)) {
+          visit(member.initializer);
+        }
+      }
+    }
     visit(declaration.body!);
 
-    const callbackParameters = [...callbackSymbols.values()].sort((left, right) => left.index - right.index).map((parameter): CallbackParameterSummary => {
-      const calls = callbackCalls.get(parameter.index) ?? [];
+    const callbackParameters = [...callbackSymbols.values()].sort((left, right) => left.index - right.index || left.key.localeCompare(right.key)).map((parameter): CallbackParameterSummary => {
+      const calls = callbackCalls.get(parameter.key) ?? [];
       let cardinality: CallbackCardinality = "0";
       if (calls.length === 1) cardinality = executionCardinality(calls[0]!, declaration);
       else if (calls.length > 1) cardinality = "unknown";
       if (unknownReasons.has("callback-escape") || unknownReasons.has("dynamic-callback-dispatch")) cardinality = "unknown";
       return {
-        ...parameter, cardinality, timing: "inline", completion: "propagate-throw",
+        index: parameter.index, name: parameter.name, ...(parameter.path ? { path: parameter.path } : {}), cardinality, timing: "inline", completion: "propagate-throw",
         ...(bounds.has(parameter.name) ? { effectBound: bounds.get(parameter.name)! } : {}),
         spans: calls.map((call) => ({ start: call.getStart(source), end: call.getEnd() })),
       };

@@ -408,6 +408,15 @@ independently:
 analyzeAsyncSafety(fileName, source, { allowVoid: false })
 ```
 
+Promise-valued binding elements are tracked as ownership resources as well as
+ordinary identifier initializers. This includes canonical and renamed
+destructuring from `Promise.withResolvers()` and from an immutable capability
+alias. The `resolve` and `reject` functions are not Promise resources. The
+destructured `promise` must still be awaited, returned, rejection-handled,
+explicitly voided, or transferred; otherwise it produces the same
+`floating-promise` diagnostic and temporal ownership counterexample as a
+Promise returned by an ordinary call.
+
 The binding analysis uses a deliberately restricted path-sensitive pass. An
 observation must occur on every `if`/`else` path. `switch` starts from every
 reachable case, preserves fallthrough, stops at direct `break`, and recognizes
@@ -463,7 +472,11 @@ Reassigning an unresolved Promise records the
 previous ownership obligation as lost, even when the replacement value is later
 awaited. Initial assignment to an uninitialized `let` is activation rather than
 reassignment; assigning the same Promise to another local creates an alias and
-does not lose ownership.
+does not lose ownership. Straight-line direct reassignment emits a distinct
+SSA-like ownership generation, so an alias can observe generation 0 without
+silently discharging generation 1. Conditional, loop, switch, and try-region
+reassignments continue through the structured ownership fixed point instead of
+being flattened into source-order generations.
 
 This is not yet a general TypeScript control-flow graph. Loop feasibility beyond
 the finite primitive fragment, other expression-level throw edges, and arbitrary graph joins

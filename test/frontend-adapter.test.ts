@@ -112,10 +112,15 @@ describe("TypeChecker symbol adapter", () => {
     const fileName = join(directory, "input.ts");
     try {
       writeFileSync(fileName, `
-        /* uneffect:effect CookieRead | CookieWrite */
+        /* uneffect:effect CookieRead | CookieWrite<"theme"> */
         export function cookies() { const before = document.cookie; document.cookie = "theme=dark"; return before }
-        /* uneffect:effect LocalStorageRead | LocalStorageWrite */
+        /* uneffect:effect LocalStorageRead<"theme"> | LocalStorageWrite<"theme"> */
         export function preferences() { const before = localStorage.getItem("theme"); localStorage.setItem("theme", "dark"); return before }
+        /* uneffect:effect LocalStorageRead<"theme" | "locale"> */
+        export function finite(key: "theme" | "locale") { return localStorage.getItem(key) }
+        export function dynamic(key: string) { return localStorage.removeItem(key) }
+        /* uneffect:effect LocalStorageWrite */
+        export function clearAll() { localStorage.clear() }
         interface StorageLike { getItem(key: string): string | null; setItem(key: string, value: string): void }
         /* uneffect:effect none */
         export function shadowed(storage: StorageLike) { storage.getItem("theme"); storage.setItem("theme", "dark") }
@@ -125,12 +130,80 @@ describe("TypeChecker symbol adapter", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
       });
       const source = program.getSourceFile(fileName)!;
-      expect(analyzeEffectsInProgram(program, source)).toEqual([]);
-      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "cookies")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind))
-        .toEqual(expect.arrayContaining(["CookieRead", "CookieWrite"]));
-      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "preferences")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind))
-        .toEqual(expect.arrayContaining(["LocalStorageRead", "LocalStorageWrite"]));
+      expect(analyzeEffectsInProgram(program, source)).toEqual([
+        expect.objectContaining({ functionName: "dynamic", kind: "missing", effect: "LocalStorageWrite<Unknown<dynamic-storage-key>>" }),
+      ]);
+      const summaries = analyzeProgramEffects(program).summaries;
+      expect(summaries.find((item) => item.functionName === "cookies")?.effects)
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ kind: "capability", name: "CookieRead", arguments: [{ kind: "all" }] }),
+          expect.objectContaining({ kind: "capability", name: "CookieWrite", arguments: [{ kind: "finite", atoms: [{ kind: "literal", value: "theme" }] }] }),
+        ]));
+      expect(summaries.find((item) => item.functionName === "preferences")?.effects)
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ kind: "capability", name: "LocalStorageRead", arguments: [{ kind: "finite", atoms: [{ kind: "literal", value: "theme" }] }] }),
+          expect.objectContaining({ kind: "capability", name: "LocalStorageWrite", arguments: [{ kind: "finite", atoms: [{ kind: "literal", value: "theme" }] }] }),
+        ]));
+      expect(summaries.find((item) => item.functionName === "finite")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "LocalStorageRead", arguments: [expect.objectContaining({ kind: "finite", atoms: expect.arrayContaining([
+          { kind: "literal", value: "theme" }, { kind: "literal", value: "locale" },
+        ]) })] }));
+      expect(summaries.find((item) => item.functionName === "dynamic")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "LocalStorageWrite", arguments: [{ kind: "unknown", reason: "dynamic-storage-key" }] }));
+      expect(summaries.find((item) => item.functionName === "clearAll")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "LocalStorageWrite", arguments: [{ kind: "all" }] }));
       expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "shadowed")?.effects).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("tracks same-realm globalThis keys without trusting same-spelled locals", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-global-vars-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        declare global { var featureFlag: boolean; var counter: number }
+        /* uneffect:effect GlobalVarsRead<"featureFlag"> | GlobalVarsWrite<"counter"> */
+        export function access() { const enabled = globalThis.featureFlag; globalThis.counter = enabled ? 1 : 0 }
+        /* uneffect:effect GlobalVarsRead<"featureFlag"> */
+        export function alias() { const realm = globalThis; return realm["featureFlag"] }
+        /* uneffect:effect GlobalVarsRead<"featureFlag"> */
+        export function browserAlias() { return window.featureFlag }
+        /* uneffect:effect GlobalVarsRead<"featureFlag" | "counter"> */
+        export function finite(key: "featureFlag" | "counter") { return globalThis[key] }
+        /* uneffect:effect GlobalVarsRead<"counter"> | GlobalVarsWrite<"counter"> */
+        export function update() { return globalThis.counter++ }
+        /* uneffect:effect GlobalVarsWrite<"counter"> */
+        export function erase() { return delete (globalThis as Record<string, unknown>)["counter"] }
+        export function dynamic(key: string) { return globalThis[key as keyof typeof globalThis] }
+        /* uneffect:effect none */
+        export function shadowed(globalThis: { featureFlag: boolean }) { return globalThis.featureFlag }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      expect(analyzeEffectsInProgram(program, source)).toEqual([
+        expect.objectContaining({ functionName: "dynamic", kind: "missing", effect: "GlobalVarsRead<Unknown<dynamic-global-key>>" }),
+      ]);
+      const summaries = analyzeProgramEffects(program).summaries;
+      expect(summaries.find((item) => item.functionName === "access")?.effects.map((effect) => effect.kind === "capability" ? `${effect.name}:${effect.arguments[0]?.kind === "finite" ? effect.arguments[0].atoms[0]?.value : ""}` : effect.kind))
+        .toEqual(expect.arrayContaining(["GlobalVarsRead:featureFlag", "GlobalVarsWrite:counter"]));
+      expect(summaries.find((item) => item.functionName === "alias")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "GlobalVarsRead" }));
+      expect(summaries.find((item) => item.functionName === "browserAlias")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "GlobalVarsRead" }));
+      expect(summaries.find((item) => item.functionName === "finite")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "GlobalVarsRead", arguments: [expect.objectContaining({ kind: "finite", atoms: expect.arrayContaining([
+          expect.objectContaining({ value: "featureFlag" }), expect.objectContaining({ value: "counter" }),
+        ]) })] }));
+      expect(summaries.find((item) => item.functionName === "update")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind))
+        .toEqual(expect.arrayContaining(["GlobalVarsRead", "GlobalVarsWrite"]));
+      expect(summaries.find((item) => item.functionName === "erase")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind))
+        .toEqual(["GlobalVarsWrite"]);
+      expect(summaries.find((item) => item.functionName === "dynamic")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "GlobalVarsRead", arguments: [expect.objectContaining({ kind: "unknown", reason: "dynamic-global-key" })] }));
+      expect(summaries.find((item) => item.functionName === "shadowed")?.effects).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -140,6 +213,20 @@ describe("TypeChecker symbol adapter", () => {
     try {
       writeFileSync(fileName, `
         export async function request() { await fetch("https://api.example.com/v1/users") }
+        /* uneffect:effect Net<"telemetry.example.com:443"> */
+        export function beacon() { navigator.sendBeacon("https://telemetry.example.com/v1/events", "ok") }
+        /* uneffect:effect Net<"stream.example.com:443"> */
+        export function socket() { return new WebSocket("wss://stream.example.com/events") }
+        /* uneffect:effect Net */
+        export function dynamicSocket(url: string) { return new WebSocket(url) }
+        /* uneffect:effect Net */
+        export function dynamicBeacon(url: string) { navigator.sendBeacon(url) }
+        interface NavigatorLike { sendBeacon(url: string, body?: string): boolean }
+        class WebSocketLike { constructor(_url: string) {} }
+        /* uneffect:effect none */
+        export function shadowedBeacon(navigator: NavigatorLike) { navigator.sendBeacon("https://telemetry.example.com/v1/events") }
+        /* uneffect:effect none */
+        export function shadowedSocket() { return new WebSocketLike("wss://stream.example.com/events") }
         export async function main() { await request() }
         export function script() {
           const node = document.createElement("script");
@@ -156,6 +243,22 @@ describe("TypeChecker symbol adapter", () => {
       const summaries = analyzeProgramEffects(program).summaries;
       expect(summaries.find((item) => item.functionName === "request")?.networkBoundaries)
         .toContainEqual(expect.objectContaining({ via: "fetch", authority: "api.example.com:443", target: "https://api.example.com/v1/users" }));
+      expect(summaries.find((item) => item.functionName === "beacon")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "Net", arguments: [{ kind: "finite", atoms: [{ kind: "host", value: "telemetry.example.com:443" }] }] }));
+      expect(summaries.find((item) => item.functionName === "beacon")?.networkBoundaries)
+        .toContainEqual(expect.objectContaining({ via: "beacon", authority: "telemetry.example.com:443", target: "https://telemetry.example.com/v1/events", evidence: "exact" }));
+      expect(summaries.find((item) => item.functionName === "dynamicBeacon"))
+        .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Net", arguments: [{ kind: "all" }] })], networkBoundaries: [expect.objectContaining({ via: "beacon", authority: "unknown", target: "unknown", evidence: "unknown" })] });
+      expect(summaries.find((item) => item.functionName === "socket"))
+        .toMatchObject({
+          evidence: "verified",
+          effects: [expect.objectContaining({ kind: "capability", name: "Net", arguments: [{ kind: "finite", atoms: [{ kind: "host", value: "stream.example.com:443" }] }] })],
+          networkBoundaries: [expect.objectContaining({ via: "websocket", authority: "stream.example.com:443", target: "wss://stream.example.com/events", evidence: "exact" })],
+        });
+      expect(summaries.find((item) => item.functionName === "dynamicSocket"))
+        .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Net", arguments: [{ kind: "all" }] })], networkBoundaries: [expect.objectContaining({ via: "websocket", authority: "unknown", target: "unknown", evidence: "unknown" })] });
+      expect(summaries.find((item) => item.functionName === "shadowedBeacon")?.effects).toEqual([]);
+      expect(summaries.find((item) => item.functionName === "shadowedSocket")?.effects).toEqual([]);
       expect(summaries.find((item) => item.functionName === "script")?.networkBoundaries)
         .toContainEqual(expect.objectContaining({ via: "script", authority: "cdn.example.com:443", target: "https://cdn.example.com/sdk.js" }));
       expect(summaries.find((item) => item.functionName === "main")?.networkBoundaries)
@@ -599,6 +702,28 @@ describe("TypeChecker symbol adapter", () => {
       class RoutedBox { get success() { return 1 } get failure() { return 0 } }
       /* uneffect:effect InvokeUserCode */ function routedGetter(value: RoutedBox, key: "success" | "failure") { return value[key] }
       /* uneffect:effect InvokeUserCode */ function coerce(value: object) { return value + "" }
+      /* uneffect:effect InvokeUserCode */ function compare(value: object) { return value == 1 }
+      /* uneffect:effect InvokeUserCode */ function arithmetic(value: object) { return value * 2 }
+      /* uneffect:effect InvokeUserCode */ function unary(value: object) { return +value }
+      /* uneffect:effect InvokeUserCode */ function interpolate(value: object) { return \`value=\${value}\` }
+      function primitiveUnion(value: string | number | null | undefined) {
+        return value == 1 || \`value=\${value}\` === "value=1"
+      }
+      /* uneffect:effect InvokeUserCode */ function proxyHas() {
+        const target = new Proxy({}, {}); const alias = target; return "value" in alias
+      }
+      /* uneffect:effect InvokeUserCode */ function proxyDelete() {
+        const target = new Proxy({ value: 1 }, {}); return delete target.value
+      }
+      /* uneffect:effect InvokeUserCode */ function proxyCopy() {
+        const target = new Proxy({ value: 1 }, {}); const alias = target; return { ...alias }
+      }
+      class Plain {}
+      function safeOperators(value: object) { return "value" in value || value instanceof Plain }
+      function shadowedProxy() {
+        class Proxy { value = 1 }
+        const target = new Proxy(); return target.value
+      }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
     expect(analyzeEffectsInProgram(program, program.getSourceFile(fileName)!)).toEqual([]);
@@ -608,9 +733,9 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-transfer-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect:effect Clone<typeof value> | Transfer<typeof buffer> */
+      /* uneffect:effect Clone<typeof value> | Transfer<typeof buffer> | Throw<DOMException> */
       function move(value: object, buffer: ArrayBuffer) { structuredClone(value, { transfer: [buffer] }) }
-      /* uneffect:effect Clone<typeof shared> | SharedMemory<typeof shared> */
+      /* uneffect:effect Clone<typeof shared> | SharedMemory<typeof shared> | Throw<DOMException> */
       function share(shared: SharedArrayBuffer) { structuredClone(shared) }
       /* uneffect:effect Clone<typeof value> | Transfer<typeof buffer> */
       function post(worker: Worker, value: object, buffer: ArrayBuffer) { worker.postMessage(value, [buffer]) }

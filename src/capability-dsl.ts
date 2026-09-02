@@ -15,6 +15,7 @@ export const Throw = (_error: ErrorConstructor): CapabilityDescriptor => ({}) as
 export type BuiltinEffectName =
   | "Console" | "Storage" | "Random" | "Timer" | "InvokeUserCode"
   | "CookieRead" | "CookieWrite" | "LocalStorageRead" | "LocalStorageWrite"
+  | "GlobalVarsRead" | "GlobalVarsWrite"
   | "ScriptLoad" | "ExecuteExternalCode" | "Fetch" | "Dom" | "Clone" | "Transfer" | "SharedMemory"
   | "FsRead" | "FsWrite" | "Ffi" | "Net" | "Env" | "Run" | "Sys" | "Import";
 export const Builtin = (_name: BuiltinEffectName, _scope?: { readonly arguments: readonly (readonly string[] | "All")[] }): CapabilityDescriptor => ({}) as CapabilityDescriptor;
@@ -160,6 +161,9 @@ export function parseCapabilityDslWithSchemas(fileName: string, text: string, ex
         if (element.arguments.length !== 1) throw new Error(`${fileName}: ${name.text} does not accept scope arguments`);
         return parseEffectExpression(name.text);
       }
+      // A bare parameterized builtin denotes its existing unscoped/All upper
+      // bound, matching comment syntax such as `CookieRead` and `FsRead`.
+      if (element.arguments.length === 1) return parseEffectExpression(name.text);
       const scope = fields(source, object(source, element.arguments[1], `Builtin ${name.text}`), `Builtin ${name.text}`);
       if (element.arguments.length !== 2 || scope.size !== 1 || !scope.has("arguments")) throw new Error(`${fileName}: Builtin ${name.text} requires exactly arguments`);
       const args = scope.get("arguments");

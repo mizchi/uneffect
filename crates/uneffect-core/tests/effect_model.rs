@@ -56,17 +56,35 @@ fn builtin_capability_domains_come_from_a_versioned_schema() {
             .arguments(),
         &[AtomDomain::Url, AtomDomain::Literal]
     );
-    assert!(
-        builtin_effect_schema("CookieRead")
-            .unwrap()
-            .arguments()
-            .is_empty()
+    assert_eq!(
+        builtin_effect_schema("CookieRead").unwrap().arguments(),
+        &[AtomDomain::Literal]
     );
-    assert!(
+    assert_eq!(
+        builtin_effect_schema("CookieWrite").unwrap().arguments(),
+        &[AtomDomain::Literal]
+    );
+    assert_eq!(
+        builtin_effect_schema("LocalStorageRead")
+            .unwrap()
+            .arguments(),
+        &[AtomDomain::Literal]
+    );
+    assert_eq!(
         builtin_effect_schema("LocalStorageWrite")
             .unwrap()
-            .arguments()
-            .is_empty()
+            .arguments(),
+        &[AtomDomain::Literal]
+    );
+    assert_eq!(
+        builtin_effect_schema("GlobalVarsRead").unwrap().arguments(),
+        &[AtomDomain::Literal]
+    );
+    assert_eq!(
+        builtin_effect_schema("GlobalVarsWrite")
+            .unwrap()
+            .arguments(),
+        &[AtomDomain::Literal]
     );
     assert!(builtin_effect_schema("app.Database").is_none());
 }

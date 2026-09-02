@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "../src/contracts.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
+import { collectAssumptionLedger } from "../src/assumptions.js";
+import { lowerInvariantProgram } from "../src/invariant-ir.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022 };
@@ -14,8 +16,8 @@ function programFor(fileName: string, source: string): ts.Program {
   return ts.createProgram([fileName], options, host);
 }
 
-function programForFiles(files: Readonly<Record<string, string>>): ts.Program {
-  const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler };
+function programForFiles(files: Readonly<Record<string, string>>, overrides: ts.CompilerOptions = {}): ts.Program {
+  const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, types: ["node"], ...overrides };
   const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
   host.getSourceFile = (requested, languageVersion, onError, shouldCreate) => files[requested] !== undefined
     ? ts.createSourceFile(requested, files[requested]!, languageVersion, true, ts.ScriptKind.TS)
@@ -207,6 +209,747 @@ describe("Hoare contract checker", () => {
     }
   });
 
+  it("lowers TypeChecker-valid Boolean typeof guards", async () => {
+    const fileName = "/typeof-boolean.ts";
+    const source = `
+      /* uneffect:ensures result === true || result === false */
+      function normalize(value: boolean | string): boolean {
+        if (typeof value !== "boolean") return false
+        return value
+      }
+      /* uneffect:ensures result === true */
+      function classify(value: boolean | string): boolean {
+        if (typeof value === "boolean") return value || true
+        return true
+      }
+      /* uneffect:ensures result === true || result === false */
+      function stringFirst(value: boolean | string): boolean {
+        if (typeof value === "string") return false
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.flatMap(({ controlFlow }) => controlFlow?.narrowing?.facts ?? []))
+      .toContain("value: boolean | string via typeof boolean guard");
+  });
+
+  it("fails closed for incompatible scalar typeof unions", async () => {
+    const fileName = "/unsupported-typeof-mixed-scalars.ts";
+    const source = `
+      /* uneffect:ensures result === true || result === false */
+      function mixed(value: boolean | number): boolean {
+        if (typeof value === "boolean") return value
+        return false
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("splits TypeChecker-valid numeric nullish coalescing through parameters and immutable aliases", async () => {
+    const fileName = "/nullish-coalescing.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === 0 || result === value */
+      function returned(value: Int | null | undefined): Int {
+        return value ?? 0
+      }
+      /* uneffect:ensures result === 1 || result === value */
+      function initialized(value: Int | null): Int {
+        const current = value
+        const selected = current ?? 1
+        return selected
+      }
+      /* uneffect:ensures result === 2 || result === value */
+      function assigned(value: Int | undefined): Int {
+        let selected = 0
+        selected = value ?? 2
+        return selected
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(6);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.flatMap(({ controlFlow }) => controlFlow?.narrowing?.facts ?? []))
+      .toContain("value: number | null | undefined via nullish guard");
+  });
+
+  it("fails closed for unsupported nullish coalescing shapes", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result === 0 || result === value */
+        function mutableAlias(value: Int | null): Int {
+          let current = value
+          return current ?? 0
+        }
+      `,
+      `
+        type Int = number
+        declare function fallback(): Int
+        /* uneffect:ensures result === 0 || result === value */
+        function calledFallback(value: Int | undefined): Int {
+          return value ?? fallback()
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === 0 || result === value */
+        function plainNumber(value: Int): Int {
+          return value ?? 0
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === result */
+        function mixed(value: boolean | Int | undefined): boolean {
+          return value ?? false
+        }
+      `,
+    ];
+
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-nullish-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("updates nullable presence after identifier nullish assignment", async () => {
+    const fileName = "/nullish-assignment.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function initialized(value: Int | null, choose: boolean): Int {
+        value ??= choose ? 1 : 2
+        return value ?? -1
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.length).toBeGreaterThanOrEqual(3);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("tracks TypeChecker-backed nullable Boolean guards, coalescing, and assignment", async () => {
+    const fileName = "/nullable-boolean.ts";
+    const source = `
+      /* uneffect:ensures result === true || result === false */
+      function selected(value: boolean | null | undefined): boolean {
+        return value ?? false
+      }
+      /* uneffect:ensures result === true */
+      function initialized(value: boolean | undefined): boolean {
+        value ??= true
+        if (value === undefined) return false
+        return value || true
+      }
+      /* uneffect:ensures result === true || result === false */
+      function guarded(value: boolean | null): boolean {
+        if (value === null) return false
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.flatMap(({ controlFlow }) => controlFlow?.narrowing?.facts ?? []))
+      .toContain("value: boolean | null | undefined via nullish guard");
+  });
+
+  it("correlates nullable Boolean truthiness with presence", async () => {
+    const fileName = "/nullable-boolean-truthiness.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function presentWhenTruthy(value: boolean | null | undefined): boolean {
+        if (value) return value != null
+        return true
+      }
+      /* uneffect:ensures result === true */
+      function undefinedPresentWhenTruthy(value: boolean | undefined): boolean {
+        if (value) return typeof value !== "undefined"
+        return true
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not apply nullable Boolean truthiness semantics to numbers", async () => {
+    const fileName = "/unsupported-nullable-number-truthiness.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === 0 || result === 1 */
+      function classify(value: Int | undefined): Int {
+        if (value) return 1
+        return 0
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("lowers typeof undefined for exact nullable scalar unions", async () => {
+    const fileName = "/typeof-undefined.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result >= 0 */
+      function magnitude(value: Int | undefined): Int {
+        if (typeof value === "undefined") return 0
+        return value < 0 ? -value : value
+      }
+      /* uneffect:ensures result === true */
+      function enabled(value: boolean | undefined): boolean {
+        if (typeof value !== "undefined") return value || true
+        return true
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not collapse null and undefined for typeof narrowing", async () => {
+    const fileName = "/unsupported-typeof-undefined-nullish.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result >= 0 */
+      function classify(value: Int | null | undefined): Int {
+        if (typeof value === "undefined") return 0
+        if (value === null) return 1
+        return value < 0 ? -value : value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("fails closed for unsupported nullish-assignment shapes", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function mutableAlias(value: Int | null): Int {
+          let current = value
+          current ??= 1
+          return current
+        }
+      `,
+      `
+        type Int = number
+        declare function fallback(): Int
+        /* uneffect:ensures result >= 0 */
+        function effectful(value: Int | undefined): Int {
+          value ??= fallback()
+          return value
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function property(value: { current?: Int }): Int {
+          value.current ??= 1
+          return value.current
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-nullish-assignment-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("preserves Boolean short-circuit paths in scalar returns, initializers, and assignments", async () => {
+    const fileName = "/boolean-short-circuit.ts";
+    const source = `
+      /* uneffect:ensures result === (left && right) */
+      function returned(left: boolean, right: boolean): boolean {
+        return left && right
+      }
+      /* uneffect:ensures result === (left || right) */
+      function initialized(left: boolean, right: boolean): boolean {
+        const selected = left || right
+        return selected
+      }
+      /* uneffect:ensures result === (left && (middle || right)) */
+      function assigned(left: boolean, middle: boolean, right: boolean): boolean {
+        let selected = false
+        selected = left && (middle || right)
+        return selected
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(7);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.map(({ controlFlow }) => controlFlow?.pathConditions.length))
+      .toEqual([1, 1, 1, 1, 1, 2, 2]);
+  });
+
+  it("does not treat JavaScript truthiness or effectful logical operands as Boolean CFG paths", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result === right */
+        function truthy(left: Int, right: Int): Int { return left && right }
+      `,
+      `
+        declare function choose(): boolean
+        /* uneffect:ensures result === enabled */
+        function effectful(enabled: boolean): boolean { return enabled || choose() }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-short-circuit-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("preserves Boolean short-circuit paths for logical assignment", async () => {
+    const fileName = "/boolean-logical-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === (left && right) */
+      function assignAnd(left: boolean, right: boolean): boolean {
+        let selected = left
+        selected &&= right
+        return selected
+      }
+      /* uneffect:ensures result === (left || right) */
+      function assignOr(left: boolean, right: boolean): boolean {
+        let selected = left
+        selected ||= right
+        return selected
+      }
+      /* uneffect:ensures result === (left && (middle || right)) */
+      function nested(left: boolean, middle: boolean, right: boolean): boolean {
+        let selected = left
+        selected &&= middle || right
+        return selected
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(7);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("fails closed for non-Boolean or effectful logical assignment", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result === right */
+        function truthy(left: Int, right: Int): Int {
+          let selected = left
+          selected &&= right
+          return selected
+        }
+      `,
+      `
+        declare function choose(): boolean
+        /* uneffect:ensures result === enabled */
+        function effectful(enabled: boolean): boolean {
+          let selected = enabled
+          selected ||= choose()
+          return selected
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-logical-assignment-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("executes bare lexical blocks while preserving outer writes and dropping local bindings", async () => {
+    const fileName = "/lexical-block.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value + 2 */
+      function outerWrite(value: Int): Int {
+        let result = value
+        {
+          const increment = 2
+          result = result + increment
+        }
+        return result
+      }
+      /* uneffect:ensures result === value + 1 || result === value - 1 */
+      function nestedReturn(value: Int, positive: boolean): Int {
+        {
+          const adjusted = positive ? value + 1 : value - 1
+          return adjusted
+        }
+      }
+      /* uneffect:ensures result === value + 3 */
+      function functionScopedVar(value: Int): Int {
+        {
+          var increment = 3
+        }
+        return value + increment
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(4);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("fails closed when a bare lexical block shadows a tracked scalar", async () => {
+    const fileName = "/lexical-shadow.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value */
+      function shadowed(value: Int): Int {
+        {
+          const value = 1
+          if (value === 1) return value
+        }
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("applies lexical scope to branch blocks while retaining writes to outer bindings", async () => {
+    const fileName = "/branch-lexical-scope.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value + 1 || result === value - 1 */
+      function adjusted(value: Int, positive: boolean): Int {
+        let result = value
+        if (positive) {
+          const amount = 1
+          result += amount
+        } else {
+          const amount = 1
+          result -= amount
+        }
+        return result
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("fails closed when branch or catch bindings shadow tracked scalars", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:requires enabled */
+        /* uneffect:ensures result === value */
+        function branchShadow(value: Int, enabled: boolean): Int {
+          if (enabled) { const value = 1 }
+          return value
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === value */
+        function catchShadow(value: Int): Int {
+          try { throw 1 } catch (value) { }
+          return value
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-scope-shadow-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("lowers TypeChecker-resolved Math.abs, Math.min, and Math.max into scalar paths", async () => {
+    const fileName = "/math-scalar.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures (result === value || result === -value) && result >= 0 */
+      function absolute(value: Int): Int { return Math.abs(value) }
+      /* uneffect:ensures (result === left || result === right) && result <= left && result <= right */
+      function minimum(left: Int, right: Int): Int { return Math.min(left, right) }
+      /* uneffect:ensures (result === left || result === middle || result === right) && result >= left && result >= middle && result >= right */
+      function maximum(left: Int, middle: Int, right: Int): Int { return Math.max(left, middle, right) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(8);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not trust shadowed Math or effectful Math arguments", async () => {
+    const cases = [
+      `
+        type Int = number
+        const Math = { abs(value: Int) { return value } }
+        /* uneffect:ensures result >= 0 */
+        function shadowed(value: Int): Int { return Math.abs(value) }
+      `,
+      `
+        type Int = number
+        declare function read(): Int
+        /* uneffect:ensures result >= 0 */
+        function effectful(): Int { return Math.abs(read()) }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === value */
+        function unsupportedArity(value: Int): Int { return Math.max() }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-math-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("resolves immutable callable aliases of reviewed Math operations", async () => {
+    const fileName = "/math-alias.ts";
+    const source = `
+      type Int = number
+      const absoluteValue = Math.abs
+      const renamedAbsolute = absoluteValue
+      const { min: minimum, max: maximum } = Math
+      /* uneffect:ensures (result === value || result === -value) && result >= 0 */
+      function absolute(value: Int): Int { return renamedAbsolute(value) }
+      /* uneffect:ensures (result === left || result === right) && result <= left && result <= right */
+      function least(left: Int, right: Int): Int { return minimum(left, right) }
+      /* uneffect:ensures (result === left || result === middle || result === right) && result >= left && result >= middle && result >= right */
+      function greatest(left: Int, middle: Int, right: Int): Int { return maximum(left, middle, right) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(8);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not resolve mutable, shadowed, or computed Math aliases", async () => {
+    const cases = [
+      `
+        type Int = number
+        let absoluteValue = Math.abs
+        /* uneffect:ensures result >= 0 */
+        function mutable(value: Int): Int { return absoluteValue(value) }
+      `,
+      `
+        type Int = number
+        const Math = { abs(value: Int) { return value } }
+        const absoluteValue = Math.abs
+        /* uneffect:ensures result >= 0 */
+        function shadowed(value: Int): Int { return absoluteValue(value) }
+      `,
+      `
+        type Int = number
+        const operation = "abs" as const
+        const absoluteValue = Math[operation]
+        /* uneffect:ensures result >= 0 */
+        function computed(value: Int): Int { return absoluteValue(value) }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-math-alias-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("lowers reviewed Math integer casts over the finite Real abstraction", async () => {
+    const fileName = "/math-integer-casts.ts";
+    const source = `
+      type Int = number
+      type Float = number
+      const { trunc: truncate } = Math
+      /* uneffect:ensures result <= value && value < result + 1 */
+      function floored(value: Float): Int { return Math.floor(value) }
+      /* uneffect:ensures result >= value && value > result - 1 */
+      function ceiled(value: Float): Int { return Math.ceil(value) }
+      /* uneffect:ensures (value >= 0 && result <= value && value < result + 1) || (value < 0 && result >= value && value > result - 1) */
+      function truncated(value: Float): Int { return truncate(value) }
+      /* uneffect:ensures result <= value + 0.5 && value + 0.5 < result + 1 */
+      function rounded(value: Float): Int { return Math.round(value) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(5);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("keeps unsupported Math integer-cast boundaries fail-closed", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Float = number
+        const Math = { floor(value: Float) { return 0 } }
+        /* uneffect:ensures result <= value */
+        function shadowed(value: Float): Int { return Math.floor(value) }
+      `,
+      `
+        type Int = number
+        type Float = number
+        declare function read(): Float
+        /* uneffect:ensures result <= 0 */
+        function effectful(): Int { return Math.floor(read()) }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-math-cast-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("lowers reviewed Math.sign into negative, zero, and positive paths", async () => {
+    const fileName = "/math-sign.ts";
+    const source = `
+      type Int = number
+      type Float = number
+      const direction = Math.sign
+      /* uneffect:ensures (value < 0 && result === -1) || (value === 0 && result === 0) || (value > 0 && result === 1) */
+      function sign(value: Float): Int { return direction(value) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(3);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not trust a shadowed Math.sign", async () => {
+    const fileName = "/unsupported-math-sign.ts";
+    const source = `
+      type Int = number
+      const Math = { sign(_value: Int) { return 0 } }
+      /* uneffect:ensures result === 0 */
+      function sign(value: Int): Int { return Math.sign(value) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("lowers bounded exponentiation and reviewed Math.pow to repeated multiplication", async () => {
+    const fileName = "/bounded-power.ts";
+    const source = `
+      type Int = number
+      const power = Math.pow
+      /* uneffect:ensures result === value * value */
+      function squared(value: Int): Int { return value ** 2 }
+      /* uneffect:ensures result === value * value * value */
+      function cubed(value: Int): Int { return power(value, 3) }
+      /* uneffect:ensures result === 1 */
+      function identity(value: Int): Int { return Math.pow(value, 0) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(3);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("rejects dynamic, negative, over-budget, and shadowed powers", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result === value */
+        function dynamic(value: Int, exponent: Int): Int { return value ** exponent }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === value */
+        function negative(value: Int): Int { return Math.pow(value, -1) }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function large(value: Int): Int { return value ** 9 }
+      `,
+      `
+        type Int = number
+        const Math = { pow(value: Int, _exponent: Int) { return value } }
+        /* uneffect:ensures result === value */
+        function shadowed(value: Int): Int { return Math.pow(value, 2) }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-power-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("models JavaScript signed integer remainder for a nonzero literal divisor", async () => {
+    const fileName = "/signed-remainder.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result > -3 && result < 3 && ((value >= 0 && result >= 0) || (value < 0 && result <= 0)) */
+      function remainder(value: Int): Int { return value % 3 }
+      /* uneffect:ensures result > -5 && result < 5 */
+      function negativeDivisor(value: Int): Int { return value % -5 }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(4);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not equate unsupported JavaScript division or remainder with raw SMT arithmetic", async () => {
+    const cases = [
+      `
+        type Float = number
+        /* uneffect:ensures result === result */
+        function divide(value: Float): Float { return 1 / value }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function dynamic(value: Int, divisor: Int): Int { return value % divisor }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === value */
+        function zero(value: Int): Int { return value % 0 }
+      `,
+      `
+        type Float = number
+        /* uneffect:ensures result >= 0 */
+        function real(value: Float): Float { return value % 3 }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/unsupported-js-division-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
   it("rejects a typeof branch that TypeScript does not narrow to number", async () => {
     const fileName = "/invalid-typeof.ts";
     const source = `
@@ -219,6 +962,675 @@ describe("Hoare contract checker", () => {
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
     expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("imports readonly discriminated-union guards from the TypeChecker", async () => {
+    const fileName = "/discriminated.ts";
+    const source = `
+      type Int = number
+      type Command =
+        | { readonly kind: "decrement" }
+        | { readonly kind: "idle" }
+        | { readonly kind: "increment" }
+      /* uneffect:ensures result >= -1 && result <= 1 */
+      function delta(command: Command): Int {
+        if (command.kind === "decrement") return -1
+        if (command.kind === "increment") return 1
+        if (command.kind === "idle") return 0
+        return 100
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts[0]?.controlFlow?.narrowing?.facts).toContain(
+      'command.kind ∈ {"decrement", "idle", "increment"}',
+    );
+  });
+
+  it("does not transfer a discriminant fact to a same-spelled object or open string property", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Command = { readonly kind: "idle" } | { readonly kind: "run" }
+        /* uneffect:ensures result >= 0 */
+        function shadowed(command: Command): Int {
+          const other = { kind: "idle" }
+          if (other.kind === "idle") return -1
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        type Command = { readonly kind: string }
+        /* uneffect:ensures result >= 0 */
+        function open(command: Command): Int {
+          if (command.kind === "idle") return -1
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        type Command = { kind: "idle" } | { kind: "run" }
+        /* uneffect:ensures result >= 0 */
+        function mutable(command: Command): Int {
+          if (command.kind === "idle") return -1
+          return 0
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/discriminated-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+      expect(result.artifacts[0]?.controlFlow?.narrowing?.facts ?? []).not.toContainEqual(expect.stringContaining(".kind ∈"));
+    }
+  });
+
+  it("imports TypeChecker-narrowed readonly discriminant payload literals", async () => {
+    const fileName = "/discriminated-payload.ts";
+    const source = `
+      type Int = number
+      type Packet =
+        | { readonly kind: "zero"; readonly value: 0 }
+        | { readonly kind: "one"; readonly value: 1 }
+        | { readonly kind: "two"; readonly value: 2 }
+      /* uneffect:ensures result >= 0 && result <= 2 */
+      function decode(packet: Packet): Int {
+        if (packet.kind === "zero") return packet.value
+        if (packet.kind === "one") return packet.value
+        if (packet.kind === "two") return packet.value
+        return 100
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("packet.value = 2")))).toBe(true);
+  });
+
+  it("rejects discriminant payload reads before narrowing or through mutable storage", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function beforeNarrow(packet: Packet): Int { return packet.value }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; value: 0 } | { readonly kind: "one"; value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function mutablePayload(packet: Packet): Int {
+          if (packet.kind === "zero") return packet.value
+          return packet.value
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function otherObject(packet: Packet): Int {
+          const other = { value: -1 }
+          if (packet.kind === "zero") return other.value
+          return 0
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/discriminated-payload-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("models a narrowed readonly Nat payload as a member-scoped solver value", async () => {
+    const fileName = "/discriminated-nat-payload.ts";
+    const source = `
+      type Int = number
+      type Nat = number
+      type Packet =
+        | { readonly kind: "value"; readonly value: Nat }
+        | { readonly kind: "empty"; readonly value: 0 }
+      /* uneffect:ensures result >= 0 */
+      function decode(packet: Packet): Int {
+        if (packet.kind === "value") return packet.value
+        return packet.value
+      }
+    `;
+    const program = programFor(fileName, source);
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(lowerInvariantProgram(fileName, source, program)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ variables: expect.arrayContaining([
+        expect.objectContaining({ name: expect.stringContaining("packet_uneffect_kind_value_value"), domain: "nat" }),
+      ]) }),
+    ]));
+  });
+
+  it("does not invent a range for a narrowed readonly number payload", async () => {
+    const fileName = "/discriminated-wide-payload.ts";
+    const source = `
+      type Int = number
+      type Packet =
+        | { readonly kind: "value"; readonly value: number }
+        | { readonly kind: "empty"; readonly value: 0 }
+      /* uneffect:ensures result >= 0 */
+      function decode(packet: Packet): Int {
+        if (packet.kind === "value") return packet.value
+        return packet.value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.artifacts).toContainEqual(expect.objectContaining({ status: "counterexample" }));
+  });
+
+  it("models a narrowed readonly nested scalar payload", async () => {
+    const fileName = "/discriminated-nested-payload.ts";
+    const source = `
+      type Int = number
+      type Nat = number
+      type Packet =
+        | { readonly kind: "value"; readonly payload: { readonly count: Nat } }
+        | { readonly kind: "empty"; readonly payload: { readonly count: 0 } }
+      /* uneffect:ensures result >= 0 */
+      function decode(packet: Packet): Int {
+        if (packet.kind === "value") return packet.payload.count
+        return packet.payload.count
+      }
+    `;
+    const program = programFor(fileName, source);
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("packet.payload.count: nat")))).toBe(true);
+  });
+
+  it("rejects a nested payload path with mutable or computed storage", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Packet =
+          | { readonly kind: "zero"; payload: { readonly count: 0 } }
+          | { readonly kind: "one"; payload: { readonly count: 1 } }
+        /* uneffect:ensures result >= 0 */
+        function mutable(packet: Packet): Int {
+          if (packet.kind === "zero") return packet.payload.count
+          return packet.payload.count
+        }
+      `,
+      `
+        type Int = number
+        type Packet =
+          | { readonly kind: "zero"; readonly payload: { readonly count: 0 } }
+          | { readonly kind: "one"; readonly payload: { readonly count: 1 } }
+        /* uneffect:ensures result >= 0 */
+        function computed(packet: Packet): Int {
+          if (packet.kind === "zero") return packet.payload["count"]
+          return packet.payload["count"]
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/discriminated-nested-payload-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("models a readonly scalar payload destructured after discriminant narrowing", async () => {
+    const fileName = "/discriminated-destructured-payload.ts";
+    const source = `
+      type Int = number
+      type Nat = number
+      type Packet =
+        | { readonly kind: "value"; readonly value: Nat; readonly payload: { readonly count: Nat } }
+        | { readonly kind: "empty"; readonly value: 0; readonly payload: { readonly count: 0 } }
+      /* uneffect:ensures result >= 0 */
+      function decode(packet: Packet): Int {
+        if (packet.kind === "value") {
+          const { value: count } = packet
+          return count
+        }
+        const { value } = packet
+        return value
+      }
+      /* uneffect:ensures result >= 0 */
+      function nested(packet: Packet): Int {
+        if (packet.kind === "value") {
+          const { count } = packet.payload
+          return count
+        }
+        const { count: emptyCount } = packet.payload
+        return emptyCount
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("count: nat")))).toBe(true);
+  });
+
+  it("rejects pre-narrow, mutable, defaulted, or rest payload destructuring", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function preNarrow(packet: Packet): Int { const { value } = packet; return value }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; value: 0 } | { readonly kind: "one"; value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function mutable(packet: Packet): Int {
+          if (packet.kind === "zero") { const { value } = packet; return value }
+          const { value } = packet; return value
+        }
+      `,
+      `
+        type Int = number
+        type Packet =
+          | { readonly kind: "zero"; payload: { readonly count: 0 } }
+          | { readonly kind: "one"; payload: { readonly count: 1 } }
+        /* uneffect:ensures result >= 0 */
+        function mutablePath(packet: Packet): Int {
+          if (packet.kind === "zero") { const { count } = packet.payload; return count }
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value?: 0 } | { readonly kind: "one"; readonly value?: 1 }
+        /* uneffect:ensures result >= 0 */
+        function defaulted(packet: Packet): Int {
+          if (packet.kind === "zero") { const { value = -1 } = packet; return value }
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function rest(packet: Packet): Int {
+          if (packet.kind === "zero") { const { kind, ...remaining } = packet; return remaining.value }
+          return 0
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/discriminated-destructured-payload-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("models fixed-index reads from a narrowed readonly tuple payload", async () => {
+    const fileName = "/discriminated-tuple-payload.ts";
+    const source = `
+      type Int = number
+      type Nat = number
+      type Packet =
+        | { readonly kind: "pair"; readonly values: readonly [Nat, Nat] }
+        | { readonly kind: "empty"; readonly values: readonly [0, 0] }
+      /* uneffect:ensures result >= 0 */
+      function sum(packet: Packet): Int {
+        if (packet.kind === "pair") return packet.values[0] + packet.values[1]
+        return packet.values[0]
+      }
+      /* uneffect:ensures result >= 0 */
+      function destructured(packet: Packet): Int {
+        if (packet.kind === "pair") {
+          const [left, right] = packet.values
+          return left + right
+        }
+        const [zero] = packet.values
+        return zero
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("packet.values[0]: nat")))).toBe(true);
+  });
+
+  it("rejects mutable, dynamic, or ordinary-array tuple-like payload reads", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Packet = { readonly kind: "a"; readonly values: [0] } | { readonly kind: "b"; readonly values: [1] }
+        /* uneffect:ensures result >= 0 */
+        function mutableTuple(packet: Packet): Int {
+          if (packet.kind === "a") return packet.values[0]
+          return packet.values[0]
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "a"; readonly values: readonly [0] } | { readonly kind: "b"; readonly values: readonly [1] }
+        /* uneffect:ensures result >= 0 */
+        function defaulted(packet: Packet): Int {
+          if (packet.kind === "a") { const [value = -1] = packet.values; return value }
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "a"; readonly values: readonly [0] } | { readonly kind: "b"; readonly values: readonly [1] }
+        /* uneffect:ensures result >= 0 */
+        function dynamic(packet: Packet, index: Int): Int {
+          if (packet.kind === "a") return packet.values[index]
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "a"; readonly values: readonly number[] } | { readonly kind: "b"; readonly values: readonly number[] }
+        /* uneffect:ensures result >= 0 */
+        function array(packet: Packet): Int {
+          if (packet.kind === "a") return packet.values[0]
+          return 0
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/discriminated-tuple-payload-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("preserves discriminant and payload facts through immutable object aliases", async () => {
+    const fileName = "/discriminated-alias.ts";
+    const source = `
+      type Int = number
+      type Nat = number
+      type Packet =
+        | { readonly kind: "value"; readonly value: Nat }
+        | { readonly kind: "empty"; readonly value: 0 }
+      /* uneffect:ensures result >= 0 */
+      function decode(packet: Packet): Int {
+        const current = packet
+        const selected = current
+        if (selected.kind === "value") return selected.value
+        return selected.value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("selected.value: nat")))).toBe(true);
+  });
+
+  it("does not treat mutable or destructured object bindings as discriminant aliases", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function mutable(packet: Packet): Int {
+          let current = packet
+          if (current.kind === "zero") return current.value
+          return current.value
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function destructured(packet: Packet): Int {
+          const { kind, value } = packet
+          if (kind === "zero") return value
+          return value
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/discriminated-alias-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("preserves discriminant facts through a readonly direct property root", async () => {
+    const fileName = "/discriminated-property-root.ts";
+    const source = `
+      type Int = number
+      type Nat = number
+      type Packet =
+        | { readonly kind: "value"; readonly value: Nat }
+        | { readonly kind: "empty"; readonly value: 0 }
+      type Envelope = { readonly packet: Packet }
+      /* uneffect:ensures result >= 0 */
+      function decode(envelope: Envelope): Int {
+        const packet = envelope.packet
+        const selected = packet
+        if (selected.kind === "value") return selected.value
+        return selected.value
+      }
+    `;
+    const program = programFor(fileName, source);
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts[0]?.controlFlow?.narrowing?.facts).toContain(
+      'envelope.packet.kind ∈ {"empty", "value"}',
+    );
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("selected.value: nat")))).toBe(true);
+  });
+
+  it("preserves discriminant facts through a readonly nested property root", async () => {
+    const fileName = "/discriminated-nested-property-root.ts";
+    const source = `
+      type Int = number
+      type Packet =
+        | { readonly kind: "zero"; readonly value: 0 }
+        | { readonly kind: "one"; readonly value: 1 }
+      type Envelope = { readonly inner: { readonly packet: Packet } }
+      /* uneffect:ensures result >= 0 */
+      function decode(envelope: Envelope): Int {
+        const packet = envelope.inner.packet
+        if (packet.kind === "zero") return packet.value
+        return packet.value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts[0]?.controlFlow?.narrowing?.facts).toContain(
+      'envelope.inner.packet.kind ∈ {"one", "zero"}',
+    );
+  });
+
+  it("rejects mutable, computed, or ambiguous discriminated property roots", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        type Envelope = { packet: Packet }
+        /* uneffect:ensures result >= 0 */
+        function mutable(envelope: Envelope): Int {
+          const packet = envelope.packet
+          if (packet.kind === "zero") return packet.value
+          return packet.value
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        type Envelope = { readonly packet: Packet }
+        /* uneffect:ensures result >= 0 */
+        function computed(envelope: Envelope): Int {
+          const packet = envelope["packet"]
+          if (packet.kind === "zero") return packet.value
+          return packet.value
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        type Envelope = { inner: { readonly packet: Packet } }
+        /* uneffect:ensures result >= 0 */
+        function mutableIntermediate(envelope: Envelope): Int {
+          const packet = envelope.inner.packet
+          if (packet.kind === "zero") return packet.value
+          return packet.value
+        }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "zero"; readonly value: 0 } | { readonly kind: "one"; readonly value: 1 }
+        type Envelope = { readonly primary: Packet; readonly fallback: Packet }
+        /* uneffect:ensures result >= 0 */
+        function ambiguous(envelope: Envelope): Int {
+          const packet = envelope.primary
+          if (packet.kind === "zero") return packet.value
+          return packet.value
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/discriminated-property-root-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+      expect(result.artifacts[0]?.controlFlow?.narrowing?.facts ?? []).not.toContainEqual(expect.stringContaining(".packet.kind ∈"));
+    }
+  });
+
+  it("uses TypeChecker-resolved node:assert guards and routes AssertionError through catch", async () => {
+    const fileName = `${process.cwd()}/node-assert.ts`;
+    const source = `
+      import { ok } from "node:assert/strict"
+      import * as strictAssert from "node:assert/strict"
+      import assertDefault from "node:assert/strict"
+      type Int = number
+      /* uneffect:ensures result >= 0 */
+      function magnitude(value: Int | string): Int {
+        ok(typeof value === "number")
+        if (value < 0) return -value
+        return value
+      }
+      /* uneffect:ensures result >= 0 */
+      function recover(value: Int): Int {
+        try {
+          ok(value >= 0)
+          return value
+        } catch {
+          return 0
+        }
+      }
+      /* uneffect:ensures result >= 0 */
+      function namespaceCheck(value: Int): Int {
+        strictAssert.ok(value >= 0)
+        return value
+      }
+      /* uneffect:ensures result >= 0 */
+      function defaultCheck(value: Int): Int {
+        assertDefault(value >= 0)
+        return value
+      }
+    `;
+    const program = programForFiles({ [fileName]: source });
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .includes("value: number | string via typeof number guard"))).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.exceptionFlow?.discharged
+      .some((edge) => edge.kind === "synchronous-throw" && edge.effect === "Throw<AssertionError>"))).toBe(true);
+    expect(collectAssumptionLedger(program, { [fileName]: source }, undefined).ledger.entries
+      .filter(({ domain }) => domain === "builtin")).toHaveLength(4);
+  });
+
+  it("supports the TypeChecker-resolved CommonJS export-equals assertion binding", async () => {
+    const fileName = `${process.cwd()}/node-assert-contract.cts`;
+    const source = `
+      import assert = require("node:assert/strict")
+      type Int = number
+      /* uneffect:ensures result >= 0 */
+      function checked(value: Int): Int {
+        assert(value >= 0)
+        return value
+      }
+    `;
+    const program = programForFiles(
+      { [fileName]: source },
+      { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext },
+    );
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(collectAssumptionLedger(program, { [fileName]: source }, undefined).ledger.entries)
+      .toContainEqual(expect.objectContaining({ domain: "builtin", reason: expect.stringContaining("strict assert callable") }));
+  });
+
+  it("supports reviewed node:assert ok and default-callable assertion bindings", async () => {
+    const fileName = `${process.cwd()}/node-assert-nonstrict.ts`;
+    const source = `
+      import assert, { ok } from "node:assert"
+      type Int = number
+      /* uneffect:ensures result >= 0 */
+      function named(value: Int): Int {
+        ok(value >= 0)
+        return value
+      }
+      /* uneffect:ensures result >= 0 */
+      function callable(value: Int): Int {
+        assert(value >= 0)
+        return value
+      }
+    `;
+    const program = programForFiles({ [fileName]: source });
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(collectAssumptionLedger(program, { [fileName]: source }, undefined).ledger.entries
+      .filter(({ domain }) => domain === "builtin")).toHaveLength(2);
+  });
+
+  it("does not trust a same-shaped user assertion function", async () => {
+    const fileName = "/assert-lookalike.ts";
+    const source = `
+      type Int = number
+      function ok(condition: unknown): asserts condition {}
+      /* uneffect:ensures result >= 0 */
+      function unsafe(value: Int): Int {
+        ok(value >= 0)
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("records the reviewed Node assertion boundary in the project assumption ledger", async () => {
+    const fileName = "src/node-assert-contract.ts";
+    const source = `
+      import { ok } from "node:assert/strict"
+      type Int = number
+      /* uneffect:effect Throw<AssertionError> */
+      /* uneffect:ensures result >= 0 */
+      export function checked(value: Int): Int {
+        ok(value >= 0)
+        return value
+      }
+    `;
+    const result = await verifyUneffectProject({ files: { [fileName]: source } });
+    expect(result.assumptions.entries).toContainEqual(expect.objectContaining({
+      domain: "builtin",
+      reason: expect.stringContaining("strict assert.ok"),
+      scope: expect.objectContaining({ fileName }),
+    }));
+    expect(result.assurance.status).toBe("assumed");
   });
 
   it("routes synchronous throw through catch before checking the postcondition", async () => {
@@ -249,6 +1661,449 @@ describe("Hoare contract checker", () => {
         }),
       }),
     }));
+  });
+
+  it("lowers numeric switch entry, fallthrough, default, and unlabeled break", async () => {
+    const fileName = "/contract-switch.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result >= 0 && result <= 3 */
+      function classify(value: Int): Int {
+        let result = 0
+        switch (value) {
+          case -1: result = 1; break
+          case 0:
+          case 1: result = 2; break
+          default: result = 3
+        }
+        return result
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toHaveLength(4);
+  });
+
+  it("composes switch throws with catch and contract discharge", async () => {
+    const fileName = "/contract-switch-catch.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires value >= -1 */
+      /* uneffect:ensures result >= 0 */
+      function decode(value: Int): Int {
+        try {
+          switch (value) {
+            case -1: throw new RangeError("negative")
+            case 0: return 0
+            default: return value
+          }
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.exceptionFlow?.discharged
+      .some((edge) => edge.effect === "Throw<RangeError>"))).toBe(true);
+  });
+
+  it("connects string switch cases to TypeChecker discriminant guards and payloads", async () => {
+    const fileName = "/contract-discriminant-switch.ts";
+    const source = `
+      type Int = number
+      type Nat = number
+      type Packet =
+        | { readonly kind: "value"; readonly value: Nat }
+        | { readonly kind: "empty"; readonly value: 0 }
+      /* uneffect:ensures result >= 0 */
+      function decode(packet: Packet): Int {
+        switch (packet.kind) {
+          case "value": return packet.value
+          case "empty": return packet.value
+        }
+        return -1
+      }
+      /* uneffect:ensures result >= 0 */
+      function aliased(packet: Packet): Int {
+        const current = packet
+        switch (current.kind) {
+          case "value": return current.value
+          default: return current.value
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts[0]?.controlFlow?.narrowing?.facts).toContain(
+      'packet.kind ∈ {"empty", "value"}',
+    );
+  });
+
+  it("rejects open/mutable discriminants and unknown string switch cases", async () => {
+    const cases = [
+      `
+        type Int = number
+        type Packet = { readonly kind: string; readonly value: Int }
+        /* uneffect:ensures result >= 0 */
+        function open(packet: Packet): Int { switch (packet.kind) { case "ok": return 0; default: return 1 } }
+      `,
+      `
+        type Int = number
+        type Packet = { kind: "a"; readonly value: 0 } | { kind: "b"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function mutable(packet: Packet): Int { switch (packet.kind) { case "a": return 0; default: return 1 } }
+      `,
+      `
+        type Int = number
+        type Packet = { readonly kind: "a"; readonly value: 0 } | { readonly kind: "b"; readonly value: 1 }
+        /* uneffect:ensures result >= 0 */
+        function unknownCase(packet: Packet): Int { switch (packet.kind) { case "missing": return 0; default: return 1 } }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/contract-discriminant-switch-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("rejects dynamic/duplicate switch cases and labeled break", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function dynamic(value: Int, other: Int): Int {
+          switch (value) { case other: return 0; default: return 1 }
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function duplicate(value: Int): Int {
+          switch (value) { case 0: return 0; case 0: return 1; default: return 2 }
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function labeled(value: Int): Int {
+          outer: switch (value) { case 0: break outer; default: return 0 }
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function mixed(value: Int): Int {
+          switch (value) { case 0: return 0; case true: return 1; default: return 2 }
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/contract-switch-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("routes while-owned break and continue through invariant paths", async () => {
+    const fileName = "/contract-while-control.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function sum(limit: Int): Int {
+        let index = 0
+        let total = 0
+        /* uneffect:loop_invariant index >= 0 && total >= 0 */
+        while (index < limit) {
+          index = index + 1
+          if (index === 2) continue
+          if (index === 4) break
+          total = total + index
+        }
+        return total
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("keeps switch break local while continue targets the enclosing while through finally", async () => {
+    const fileName = "/contract-loop-switch-finally.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function run(limit: Int): Int {
+        let index = 0
+        let total = 0
+        /* uneffect:loop_invariant index >= 0 && total >= 0 */
+        while (index < limit) {
+          try {
+            switch (index) {
+              case 0: break
+              default: total = total + index
+            }
+            index = index + 1
+            continue
+          } finally {
+            total = total + 1
+          }
+        }
+        return total
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("rejects labeled or ownerless loop control", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function labeled(limit: Int): Int {
+          let index = 0
+          outer: while (index < limit) { continue outer }
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function ownerless(value: Int): Int { if (value < 0) break; return 0 }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/contract-loop-control-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("lowers canonical for updates with loop-owned break and continue", async () => {
+    const fileName = "/contract-for-control.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function sum(limit: Int): Int {
+        let total = 0
+        /* uneffect:loop_invariant index >= 0 && total >= 0 */
+        for (let index = 0; index < limit; index++) {
+          if (index === 1) continue
+          if (index === 4) break
+          total = total + index
+        }
+        return total
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("lowers do-while exits only after one invariant-preserving body", async () => {
+    const fileName = "/contract-do-while.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 1 */
+      function advance(limit: Int): Int {
+        let value = 0
+        /* uneffect:loop_invariant value >= 0 */
+        do {
+          value = value + 1
+          if (value === 2) break
+        } while (value < limit)
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("rejects unsupported for headers and missing do-while invariants", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function multiple(limit: Int): Int {
+          /* uneffect:loop_invariant left >= 0 && right >= 0 */
+          for (let left = 0, right = 0; left < limit; left++, right++) {}
+          return 0
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function noInvariant(limit: Int): Int {
+          let value = 0
+          do { value = value + 1 } while (value < limit)
+          return value
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/contract-loop-header-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("symbolically executes identifier increment and arithmetic compound assignments", async () => {
+    const fileName = "/contract-scalar-updates.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function update(value: Int): Int {
+        let total = value
+        total++
+        total += 2
+        total -= 1
+        total *= 2
+        return total
+      }
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function loop(limit: Int): Int {
+        /* uneffect:loop_invariant index >= 0 */
+        for (let index = 0; index < limit; index += 1) {}
+        return 0
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("evaluates branch-aware scalar expressions on arithmetic compound-assignment RHS", async () => {
+    const fileName = "/contract-branching-compound-updates.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result > value */
+      function conditional(value: Int, choose: boolean): Int {
+        let total = value
+        total += choose ? 1 : 2
+        return total
+      }
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= value */
+      function reviewedMath(value: Int, delta: Int): Int {
+        let total = value
+        total += Math.abs(delta)
+        return total
+      }
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= value - 2 && result <= value + 2 */
+      function signedRemainder(value: Int, delta: Int): Int {
+        let total = value
+        total += delta % 3
+        return total
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(6);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("rejects property, logical, and sequence mutation in scalar contracts", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function property(value: { count: Int }): Int { value.count++; return value.count }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function logical(value: Int): Int { value ||= 1; return value }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function sequence(value: Int): Int { (value += 1, value += 2); return value }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function division(value: Int): Int { value /= 2; return value }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function remainder(value: Int): Int { value %= 2; return value }
+      `,
+      `
+        /* uneffect:ensures result === result */
+        function boolean(value: boolean): boolean { value += true; return value }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/contract-scalar-update-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("splits recursive scalar ternaries in returns, initializers, and assignments", async () => {
+    const fileName = "/contract-conditional-expression.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result >= 0 */
+      function returned(value: Int): Int {
+        return value > 0 ? value : value === 0 ? 0 : -value
+      }
+      /* uneffect:ensures result >= 0 */
+      function initialized(value: Int): Int {
+        const magnitude = value >= 0 ? value : -value
+        return magnitude
+      }
+      /* uneffect:ensures result >= 0 */
+      function assigned(value: Int): Int {
+        let magnitude = 0
+        magnitude = value >= 0 ? value : -value
+        return magnitude
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toHaveLength(7);
+  });
+
+  it("rejects non-scalar or call-conditioned ternaries", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function object(value: Int): Int { const selected = value >= 0 ? { value } : { value: 0 }; return selected.value }
+      `,
+      `
+        type Int = number
+        declare function choose(): boolean
+        /* uneffect:ensures result >= 0 */
+        function called(value: Int): Int { return choose() ? value : -value }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/contract-conditional-expression-negative-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
   });
 
   it("retains an uncaught synchronous throw as an escaping Effect boundary", async () => {

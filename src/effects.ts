@@ -122,6 +122,11 @@ interface FunctionInfo {
   locals: Set<string>;
 }
 
+function runtimeParametersOf(node: ts.FunctionLikeDeclaration): readonly ts.ParameterDeclaration[] {
+  return node.parameters.filter((parameter) =>
+    !(ts.isIdentifier(parameter.name) && parameter.name.text === "this"));
+}
+
 
 function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
   return kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
@@ -423,7 +428,7 @@ function objectLiteralValue(object: ts.ObjectLiteralExpression, keys: readonly s
 }
 
 /** Project a reviewed network projector without knowing which API symbol supplied it. */
-function projectedNetworkAuthority(scope: Extract<ProjectedScope, { status: "resolved" }>, call: ts.CallExpression): string | undefined {
+function projectedNetworkAuthority(scope: Extract<ProjectedScope, { status: "resolved" }>, call: ts.CallExpression | ts.NewExpression): string | undefined {
   if (scope.kind !== "network" || scope.target?.status !== "resolved") return undefined;
   const target = scope.target.expression;
   if (scope.networkFormat === "host") return ts.isStringLiteralLike(target) ? target.text : undefined;
@@ -434,7 +439,7 @@ function projectedNetworkAuthority(scope: Extract<ProjectedScope, { status: "res
       return host && ts.isStringLiteralLike(host) && port && (ts.isStringLiteralLike(port) || ts.isNumericLiteral(port))
         ? `${host.text}:${port.text}` : undefined;
     }
-    const host = scope.hostArgument === undefined ? undefined : call.arguments[scope.hostArgument];
+    const host = scope.hostArgument === undefined ? undefined : call.arguments?.[scope.hostArgument];
     return ts.isNumericLiteral(target) && host && ts.isStringLiteralLike(host) ? `${host.text}:${target.text}` : undefined;
   }
   if (scope.networkFormat === "http-request") {
@@ -453,13 +458,45 @@ function projectedNetworkAuthority(scope: Extract<ProjectedScope, { status: "res
       return hostText && portText ? `${hostText}:${portText}` : undefined;
     }
   }
+  if (scope.networkFormat === "websocket") {
+    const value = fetchUrlExpression(target);
+    if (!value) return undefined;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "ws:" && url.protocol !== "wss:") return undefined;
+      return `${url.hostname.toLowerCase()}:${url.port || (url.protocol === "wss:" ? "443" : "80")}`;
+    } catch { return undefined; }
+  }
   return undefined;
+}
+
+function literalKeyScope(
+  scope: Extract<ProjectedScope, { status: "resolved" }>,
+  checker?: ts.TypeChecker,
+): string {
+  if (scope.kind !== "literal-key" || scope.target?.status !== "resolved") return "Unknown<dynamic-storage-key>";
+  const expression = unwrapGlobalExpression(scope.target.expression);
+  const cookieName = (value: string): string | undefined => {
+    const separator = value.indexOf("=");
+    const name = (separator < 0 ? "" : value.slice(0, separator)).trim();
+    return name.length > 0 ? name : undefined;
+  };
+  if (ts.isStringLiteralLike(expression)) {
+    const value = scope.keyFormat === "cookie-assignment" ? cookieName(expression.text) : expression.text;
+    return value === undefined ? "Unknown<invalid-cookie-assignment>" : JSON.stringify(value);
+  }
+  if (scope.keyFormat === "cookie-assignment" || !checker) return `Unknown<${scope.keyFormat === "cookie-assignment" ? "dynamic-cookie-name" : "dynamic-storage-key"}>`;
+  const type = checker.getTypeAtLocation(expression), members = type.isUnion() ? type.types : [type];
+  const keys = [...new Set(members.flatMap((member) => (member.flags & ts.TypeFlags.StringLiteral) !== 0
+    ? [(member as ts.StringLiteralType).value] : []))];
+  return keys.length === members.length && keys.length > 0 && keys.length <= 32
+    ? keys.map((key) => JSON.stringify(key)).join(" | ") : "Unknown<dynamic-storage-key>";
 }
 
 /** First shared-interpreter slice. Unsupported events fall back to the legacy consumer during migration. */
 function effectsForGenericSemantics(
   resolved: NonNullable<ReturnType<FrontendSymbolAdapter["resolveCall"]>>,
-  call: ts.CallExpression,
+  call: ts.CallExpression | ts.NewExpression,
   adapter: FrontendSymbolAdapter,
   checker?: ts.TypeChecker,
 ): Effect[] | undefined {
@@ -473,9 +510,9 @@ function effectsForGenericSemantics(
       else if (event.scope.status === "resolved" && event.scope.kind === "url" && event.scope.target?.status === "resolved") {
         const url = fetchUrlExpression(event.scope.target.expression);
         const method = event.scope.methodArgument === undefined ? "GET"
-          : event.scope.methodFrom === "request-init" ? fetchMethod(call, event.scope.methodArgument)
+          : event.scope.methodFrom === "request-init" && ts.isCallExpression(call) ? fetchMethod(call, event.scope.methodArgument)
           : (() => {
-              const value = call.arguments[event.scope!.methodArgument!];
+              const value = call.arguments?.[event.scope!.methodArgument!];
               return value && ts.isStringLiteralLike(value) ? value.text.toUpperCase() : undefined;
             })();
         const authority = url ? netAuthority(url) : undefined;
@@ -488,6 +525,8 @@ function effectsForGenericSemantics(
       }
       else if (event.scope.status === "resolved" && event.scope.kind === "literal" && event.scope.value !== undefined) {
         effects.push(capability(`${event.capability}<${JSON.stringify(event.scope.value)}>`));
+      } else if (event.scope.status === "resolved" && event.scope.kind === "literal-key") {
+        effects.push(capability(`${event.capability}<${literalKeyScope(event.scope, checker)}>`));
       } else if (event.scope.status === "resolved" && event.scope.target?.status === "resolved") {
         const target = event.scope.target.expression;
         const literal = event.scope.kind === "network"
@@ -513,6 +552,7 @@ function effectsForGenericSemantics(
         effects.push(capability(`${event.capability}<Unknown<${reason}>>`));
       }
     } else if (event.kind === "mutate") {
+      if (event.target.status === "absent") continue;
       const mutation = projectedMutationEffect(event.target, domRegionSemantics ? adapter : undefined);
       if (!mutation) return undefined;
       if (event.target.status === "resolved" && ts.isCallExpression(event.target.expression)
@@ -540,10 +580,24 @@ function effectsForGenericSemantics(
         return ts.isArrayLiteralExpression(expression)
           && expression.elements.every((element) => !ts.isSpreadElement(element) || staticallySafeArray(element.expression));
       };
-      if (!staticallySafeArray(iterable.expression)) effects.push(capability("InvokeUserCode"));
+      const sameProgramGenerator = (expression: ts.Expression): boolean => {
+        while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+          || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+        if (!checker || !ts.isCallExpression(expression)) return false;
+        const declaration = checker.getResolvedSignature(expression)?.declaration;
+        return Boolean(declaration
+          && (ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration) || ts.isFunctionExpression(declaration))
+          && declaration.asteriskToken && declaration.body && !declaration.getSourceFile().isDeclarationFile);
+      };
+      // A directly resolved same-Program generator has an explicit execution
+      // edge in the call graph. Do not add a second opaque iterator-protocol
+      // authority for the standard generator object's self-iterator hook.
+      if (!staticallySafeArray(iterable.expression) && !sameProgramGenerator(iterable.expression)) {
+        effects.push(capability("InvokeUserCode"));
+      }
     }
     else if (event.kind === "callback" || event.kind === "protocol" || event.kind === "result"
-      || event.kind === "acquire" || event.kind === "release") continue;
+      || event.kind === "acquire" || event.kind === "use" || event.kind === "release") continue;
     else if (event.kind === "unknown" && ((event.primitive.kind === "callback" && event.primitive.callable === "optional")
       || (event.primitive.kind === "transfer" && event.primitive.optional))) continue;
     else return undefined;
@@ -558,6 +612,11 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
   if (generic !== undefined) return [...generic, ...scriptEffects];
   if (scriptEffects.length > 0) return scriptEffects;
   return [];
+}
+
+function primitiveConstructorEffects(construction: ts.NewExpression, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker): Effect[] {
+  const resolved = adapter.resolveConstruct(construction);
+  return resolved ? effectsForGenericSemantics(resolved, construction, adapter, checker) ?? [] : [];
 }
 
 function effectsForStaticScriptInsertion(call: ts.CallExpression, adapter: FrontendSymbolAdapter): Effect[] {
@@ -635,7 +694,7 @@ function domPropertyAccessMode(access: ts.PropertyAccessExpression | ts.ElementA
   return { read: true, write: false };
 }
 
-function effectsForDomProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression, adapter: FrontendSymbolAdapter): Effect[] | undefined {
+function effectsForDomProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker): Effect[] | undefined {
   const resolved = adapter.resolveProperty(access);
   if (!resolved) return undefined;
   const mode = domPropertyAccessMode(access);
@@ -651,6 +710,8 @@ function effectsForDomProperty(access: ts.PropertyAccessExpression | ts.ElementA
         const region = projectedRegionText(event.scope.target, adapter);
         if (!region) return undefined;
         addEffect(effects, capability(`${event.capability}<${event.scope.member}, typeof ${region}>`));
+      } else if (event.scope.status === "resolved" && event.scope.kind === "literal-key") {
+        addEffect(effects, capability(`${event.capability}<${literalKeyScope(event.scope, checker)}>`));
       } else return undefined;
     } else if (event.kind === "mutate") {
       const mutation = projectedMutationEffect(event.target, adapter);
@@ -720,25 +781,28 @@ function netAuthority(url: string): string | undefined {
 }
 
 function networkBoundaryFromEffects(
-  call: ts.CallExpression,
+  call: ts.CallExpression | ts.NewExpression,
   resolved: ReturnType<FrontendSymbolAdapter["resolveCall"]>,
   effects: readonly Effect[],
 ): NetworkBoundaryEvidence | undefined {
   const script = effects.find((effect) => effect.kind === "capability" && effect.name === "ScriptLoad");
   const fetch = effects.find((effect) => effect.kind === "capability" && effect.name === "Fetch");
-  if (!script && !fetch) return undefined;
+  const beacon = resolved?.symbol.module === "lib.dom" && resolved.symbol.export === "Navigator#sendBeacon";
+  const websocket = resolved?.symbol.module === "global" && resolved.symbol.export === "WebSocket";
+  if (!script && !fetch && !beacon && !websocket) return undefined;
   const scoped = script && script.kind === "capability" ? script : fetch && fetch.kind === "capability" ? fetch : undefined;
   const targetSet = scoped?.arguments[1];
   const targetAtom = targetSet?.kind === "finite" ? targetSet.atoms.find((atom) => atom.kind === "url") : undefined;
+  const directTarget = beacon || websocket ? fetchUrlExpression(call.arguments?.[0]) : undefined;
   const net = effects.find((effect) => effect.kind === "capability" && effect.name === "Net");
   const authoritySet = net?.kind === "capability" ? net.arguments[0] : undefined;
   const authorityAtom = authoritySet?.kind === "finite" ? authoritySet.atoms.find((atom) => atom.kind === "host") : undefined;
   const source = call.getSourceFile();
   return {
-    via: script ? "script" : "fetch",
+    via: script ? "script" : beacon ? "beacon" : websocket ? "websocket" : "fetch",
     authority: authorityAtom?.value ?? "unknown",
-    target: targetAtom?.value ?? "unknown",
-    evidence: targetAtom && authorityAtom ? "exact" : "unknown",
+    target: targetAtom?.value ?? directTarget ?? "unknown",
+    evidence: (targetAtom || directTarget) && authorityAtom ? "exact" : "unknown",
     fileName: source.fileName,
     line: source.getLineAndCharacterOfPosition(call.getStart(source)).line + 1,
   };
@@ -1013,6 +1077,64 @@ function processEnvEffects(checker: ts.TypeChecker | undefined, node: ts.Express
     : [capability("Env")];
 }
 
+function unwrapGlobalExpression(expression: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
+    || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) expression = expression.expression;
+  return expression;
+}
+
+function isSameRealmGlobalRoot(checker: ts.TypeChecker | undefined, expression: ts.Expression, seen = new Set<ts.Symbol>()): boolean {
+  if (!checker) return false;
+  expression = unwrapGlobalExpression(expression);
+  if (!ts.isIdentifier(expression)) return false;
+  const symbol = checker.getSymbolAtLocation(expression);
+  if (!symbol || seen.has(symbol)) return false;
+  const builtinGlobal = checker.resolveName("globalThis", expression.getSourceFile(), ts.SymbolFlags.Value, false);
+  if (expression.text === "globalThis" && symbol === builtinGlobal) return true;
+  if (["window", "self", "global"].includes(expression.text)) {
+    const hostGlobal = checker.resolveName(expression.text, expression.getSourceFile(), ts.SymbolFlags.Value, false);
+    if (symbol === hostGlobal && symbol.declarations?.some((declaration) => {
+      const file = declaration.getSourceFile().fileName.replaceAll("\\", "/");
+      return expression.text === "global"
+        ? /\/node_modules\/@types\/node\/globals\.d\.ts$/.test(file)
+        : declaration.getSourceFile().isDeclarationFile && /(?:^|\/)lib\.(?:dom|webworker).*\.d\.ts$/.test(file);
+    })) return true;
+  }
+  const declaration = symbol.valueDeclaration;
+  return !!declaration && ts.isVariableDeclaration(declaration) && !!declaration.initializer
+    && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+    && isSameRealmGlobalRoot(checker, declaration.initializer, new Set(seen).add(symbol));
+}
+
+function globalVariableEffects(checker: ts.TypeChecker | undefined, node: ts.Expression): Effect[] | undefined {
+  if (!checker || !ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node)
+    || !isSameRealmGlobalRoot(checker, node.expression)) return undefined;
+  let keySet: string;
+  if (ts.isPropertyAccessExpression(node)) keySet = JSON.stringify(node.name.text);
+  else {
+    const key = node.argumentExpression && unwrapGlobalExpression(node.argumentExpression);
+    if (key && ts.isStringLiteralLike(key)) keySet = JSON.stringify(key.text);
+    else if (key) {
+      const type = checker.getTypeAtLocation(key), members = type.isUnion() ? type.types : [type];
+      const names = [...new Set(members.flatMap((member) => (member.flags & ts.TypeFlags.StringLiteral) !== 0
+        ? [(member as ts.StringLiteralType).value] : []))];
+      keySet = names.length === members.length && names.length > 0 && names.length <= 32
+        ? names.map((name) => JSON.stringify(name)).join(" | ") : "Unknown<dynamic-global-key>";
+    } else keySet = "Unknown<dynamic-global-key>";
+  }
+  const parent = node.parent;
+  const assignment = ts.isBinaryExpression(parent) && parent.left === node && isAssignmentOperator(parent.operatorToken.kind);
+  const update = (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) && parent.operand === node
+    && (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken);
+  const deletion = ts.isDeleteExpression(parent) && parent.expression === node;
+  const read = !assignment && !deletion || assignment && parent.operatorToken.kind !== ts.SyntaxKind.EqualsToken || update;
+  const write = assignment || update || deletion;
+  return [
+    ...(read ? [capability(`GlobalVarsRead<${keySet}>`)] : []),
+    ...(write ? [capability(`GlobalVarsWrite<${keySet}>`)] : []),
+  ];
+}
+
 function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker, promiseModel?: PromiseChainModel): EffectAnalysisResult {
   const fileName = source.fileName;
   const annotationProblems = validateUneffectAnnotations(source.text);
@@ -1020,11 +1142,12 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
   source.forEachChild((node) => {
     if (ts.isFunctionDeclaration(node) && node.name && node.body) {
       const declared = effectDeclaration(source, node);
+      const runtimeParameters = runtimeParametersOf(node);
       functions.set(node.name.text, {
       name: node.name.text,
       node,
-      parameters: node.parameters.map((p) => ts.isIdentifier(p.name) ? p.name.text : p.name.getText()),
-      freshDefaultParameters: new Set(node.parameters.flatMap((parameter, index) =>
+      parameters: runtimeParameters.map((p) => ts.isIdentifier(p.name) ? p.name.text : p.name.getText()),
+      freshDefaultParameters: new Set(runtimeParameters.flatMap((parameter, index) =>
         parameter.initializer && checker && freshDefaultParameter(parameter.initializer, checker) ? [index] : [])),
       declared: declared.effects,
       declaredPresent: declared.present,
@@ -1128,12 +1251,13 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       if (adapter.mayInvokeUserCode(node)) addEffect(info.direct, capability("InvokeUserCode"));
       if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))) {
         for (const effect of processEnvEffects(checker, node) ?? []) addEffect(info.direct, effect);
+        for (const effect of globalVariableEffects(checker, node) ?? []) addEffect(info.direct, effect);
         if (isProcessEnvBase(checker, node)
           && !((ts.isPropertyAccessExpression(node.parent) || ts.isElementAccessExpression(node.parent)) && node.parent.expression === node)) {
           addEffect(info.direct, capability("Env"));
         }
       }
-      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter, checker) ?? []) {
         if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
       }
       if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {
@@ -1141,11 +1265,15 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       }
       if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
         && processEnvEffects(checker, node.left) === undefined
-        && effectsForDomProperty(node.left, adapter) === undefined) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
-      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
+        && globalVariableEffects(checker, node.left) === undefined
+        && effectsForDomProperty(node.left, adapter, checker) === undefined) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
+      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand)) && globalVariableEffects(checker, node.operand) === undefined) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if (ts.isCallExpression(node)) {
         const resolvedBuiltin = adapter.resolveCall(node);
-        for (const effect of primitiveEffects(node, adapter, checker)) if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
+        for (const effect of primitiveEffects(node, adapter, checker)) {
+          if (effect.kind === "throw" && (dischargesThrow || asyncOwner)) continue;
+          if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
+        }
         const semanticCallback = projectBuiltinCallbacks(resolvedBuiltin, node, checker)
           .find((event) => event.timing === "deferred" && event.target.status === "resolved");
         const semanticCallbackExpression = semanticCallback?.target.status === "resolved" ? semanticCallback.target.expression : undefined;
@@ -1172,8 +1300,18 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
           for (const target of returnedGenerators ?? []) addGeneratorConsumption(target, dischargesThrow);
         }
       }
+      if (ts.isNewExpression(node)) {
+        for (const effect of primitiveConstructorEffects(node, adapter, checker)) {
+          if (effect.kind === "throw" && (dischargesThrow || asyncOwner)) continue;
+          if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
+        }
+      }
       ts.forEachChild(node, (child) => visit(child, dischargesThrow, deferredBoundary));
     };
+    for (const parameter of info.node.parameters) {
+      visit(parameter.name, false);
+      if (parameter.initializer) visit(parameter.initializer, false);
+    }
     visit(info.node.body!, false);
   }
   const inferred = new Map([...functions].map(([name, info]) => [
@@ -1268,7 +1406,11 @@ function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclarat
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const visit = (node: ts.Node): void => {
-      if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && node.body) values.set(`${source.fileName}:${node.getStart(source)}`, node);
+      if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node)
+        || ts.isSetAccessorDeclaration(node) || ts.isConstructorDeclaration(node)
+        || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && node.body) {
+        values.set(`${source.fileName}:${node.getStart(source)}`, node);
+      }
       ts.forEachChild(node, visit);
     };
     visit(source);
@@ -1344,7 +1486,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const declarationEffects = declarations.some((item) => item.problems.length > 0) ? [] : declarations.flatMap((item) => item.effects);
     if (declarations.some((item) => item.present)) declaredPresent.add(graphNode.id);
     declared.set(graphNode.id, declarationEffects.filter((effect, index, all) => all.findIndex((item) => formatEffect(item) === formatEffect(effect)) === index));
-    const parameterNames = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : parameter.name.getText(source));
+    const parameterNames = runtimeParametersOf(node).map((parameter) =>
+      ts.isIdentifier(parameter.name) ? parameter.name.text : parameter.name.getText(source));
     parameters.set(graphNode.id, parameterNames);
     const iteratorIndices = new Set(graphNode.iteratorEffectParameters.map((parameter) => parameter.index));
     const bounds = new Map<number, { name: string; effects: Effect[] }>();
@@ -1364,6 +1507,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       }
     }
     iteratorEffectBounds.set(graphNode.id, bounds);
+    const expandingImplicitClasses = new Set<ts.ClassDeclaration | ts.ClassExpression>();
     const visit = (child: ts.Node, catches: boolean): void => {
       if (child !== node.body && ts.isFunctionLike(child)) return;
       if (ts.isTryStatement(child)) {
@@ -1391,12 +1535,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (adapter.mayInvokeUserCode(child)) observe(capability("InvokeUserCode"), child);
       if (ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child)) {
         for (const effect of processEnvEffects(checker, child) ?? []) observe(effect, child);
+        for (const effect of globalVariableEffects(checker, child) ?? []) observe(effect, child);
         if (isProcessEnvBase(checker, child)
           && !((ts.isPropertyAccessExpression(child.parent) || ts.isElementAccessExpression(child.parent)) && child.parent.expression === child)) {
           observe(capability("Env"), child);
         }
       }
-      if (ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child)) for (const effect of effectsForDomProperty(child, adapter) ?? []) {
+      if (ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child)) for (const effect of effectsForDomProperty(child, adapter, checker) ?? []) {
         if (observableMutation(effect, locals)) observe(effect, child);
       }
       if (ts.isElementAccessExpression(child)) for (const effect of effectsForDynamicDomProperty(child, adapter)) {
@@ -1405,12 +1550,16 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (ts.isBinaryExpression(child) && isAssignmentOperator(child.operatorToken.kind)
         && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))
         && processEnvEffects(checker, child.left) === undefined
-        && effectsForDomProperty(child.left, adapter) === undefined) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
-      if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand))) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
+        && globalVariableEffects(checker, child.left) === undefined
+        && effectsForDomProperty(child.left, adapter, checker) === undefined) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
+      if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand)) && globalVariableEffects(checker, child.operand) === undefined) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
         const primitive = primitiveEffects(child, adapter, checker);
-        for (const effect of primitive) if (observableMutation(effect, locals)) observe(effect, child);
+        for (const effect of primitive) {
+          if (effect.kind === "throw" && (catches || asyncOwners.has(graphNode.id))) continue;
+          if (observableMutation(effect, locals)) observe(effect, child);
+        }
         const networkBoundary = networkBoundaryFromEffects(child, resolvedBuiltin, primitive);
         if (networkBoundary) directNetworkBoundaries.get(graphNode.id)!.push(networkBoundary);
         const external = externalContractForCall(checker, child, options.externalFunctionEffects);
@@ -1436,8 +1585,45 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           unknownExternalEvidence.add(graphNode.id);
         }
       }
+      if (ts.isNewExpression(child)) {
+        const resolvedBuiltin = adapter.resolveConstruct(child);
+        const primitive = primitiveConstructorEffects(child, adapter, checker);
+        for (const effect of primitive) {
+          if (effect.kind === "throw" && (catches || asyncOwners.has(graphNode.id))) continue;
+          if (observableMutation(effect, locals)) observe(effect, child);
+        }
+        const networkBoundary = networkBoundaryFromEffects(child, resolvedBuiltin, primitive);
+        if (networkBoundary) directNetworkBoundaries.get(graphNode.id)!.push(networkBoundary);
+        let symbol = checker.getSymbolAtLocation(child.expression);
+        if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+        const classDeclaration = symbol?.declarations?.find((declaration): declaration is ts.ClassDeclaration | ts.ClassExpression =>
+          ts.isClassDeclaration(declaration) || ts.isClassExpression(declaration));
+        const hasExplicitConstructor = classDeclaration?.members.some((member) => ts.isConstructorDeclaration(member) && Boolean(member.body));
+        if (classDeclaration && !hasExplicitConstructor && !expandingImplicitClasses.has(classDeclaration)) {
+          expandingImplicitClasses.add(classDeclaration);
+          for (const member of classDeclaration.members) {
+            if (ts.isPropertyDeclaration(member) && member.initializer
+              && !member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)) {
+              visit(member.initializer, catches);
+            }
+          }
+          expandingImplicitClasses.delete(classDeclaration);
+        }
+      }
       ts.forEachChild(child, (next) => visit(next, catches));
     };
+    for (const parameter of node.parameters) {
+      visit(parameter.name, false);
+      if (parameter.initializer) visit(parameter.initializer, false);
+    }
+    if (ts.isConstructorDeclaration(node)) {
+      for (const member of node.parent.members) {
+        if (ts.isPropertyDeclaration(member) && member.initializer
+          && !member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)) {
+          visit(member.initializer, false);
+        }
+      }
+    }
     visit(node.body, false);
   }
   const externalIteratorNames = new Map<string, string>();
@@ -1476,9 +1662,18 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (edge.executesBody === false) continue;
       if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
       const calleeParams = parameters.get(edge.callee) ?? [];
-      if (edge.unresolvedMutationAlias && inferred.get(edge.callee)!.some((effect) => effect.kind === "mutate"
-        && calleeParams.some((parameter) => effect.region === parameter
-          || effect.region.startsWith(`${parameter}.`) || effect.region.startsWith(`${parameter}[`)))) {
+      const unresolvedArgumentIndices = new Set(edge.unresolvedMutationArgumentIndices ?? []);
+      if (inferred.get(edge.callee)!.some((effect) => effect.kind === "mutate" && (
+        (edge.unresolvedMutationAlias
+          && (effect.region === "this" || effect.region.startsWith("this.") || effect.region.startsWith("this[")
+            || calleeParams.some((parameter) => effect.region === parameter
+              || effect.region.startsWith(`${parameter}.`) || effect.region.startsWith(`${parameter}[`))))
+        || [...unresolvedArgumentIndices].some((index) => {
+          const parameter = calleeParams[index];
+          return parameter !== undefined && (effect.region === parameter
+            || effect.region.startsWith(`${parameter}.`) || effect.region.startsWith(`${parameter}[`));
+        })
+      ))) {
         unknownMutationAliasEvidence.add(edge.caller);
         if (!unknownMutationAliasSpans.has(edge.caller)) unknownMutationAliasSpans.set(edge.caller, edge.span);
       }
@@ -1488,9 +1683,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         const effect = raw.kind === "capability"
           ? substituteParameterizedCapability(raw, calleeParams, edge.arguments, parameters.get(edge.caller) ?? [])
           : raw.kind === "mutate" ? (() => {
+          if (raw.region === "this" || raw.region.startsWith("this.") || raw.region.startsWith("this[")) {
+            return edge.receiver ? { kind: "mutate" as const, region: `${edge.receiver}${raw.region.slice("this".length)}` } : undefined;
+          }
           for (let index = 0; index < calleeParams.length; index++) {
             const parameter = calleeParams[index]!;
             if (raw.region === parameter || raw.region.startsWith(`${parameter}.`) || raw.region.startsWith(`${parameter}[`)) {
+              if (unresolvedArgumentIndices.has(index)) return undefined;
               if (edge.arguments[index]) return { kind: "mutate" as const, region: `${edge.arguments[index]}${raw.region.slice(parameter.length)}` };
               if (freshDefaultParameters.get(edge.callee)?.has(index)) return undefined;
               return raw;
@@ -1957,23 +2156,31 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         ? addResolvedDependency(node.expression.arguments[0]!, true) : undefined;
       if (ts.isThrowStatement(node) && !catches) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
       if (adapter.mayInvokeUserCode(node) && !resolvedDynamicDependency && !resolvedAwaitedDynamicDependency) markUnknown("possible-user-code", "a top-level operation may invoke user code outside the resolved call graph");
-      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter, checker) ?? []) {
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of globalVariableEffects(checker, node) ?? []) addEffect(effects, effect);
       if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
       if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind)
         && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
-        && effectsForDomProperty(node.left, adapter) === undefined) {
+        && globalVariableEffects(checker, node.left) === undefined
+        && effectsForDomProperty(node.left, adapter, checker) === undefined) {
         const effect = mutateEffect(node.left);
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
       if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
         && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
-        && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) {
+        && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))
+        && globalVariableEffects(checker, node.operand) === undefined) {
         const effect = mutateEffect(node.operand);
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+      }
+      if (ts.isNewExpression(node)) {
+        for (const effect of primitiveConstructorEffects(node, adapter, checker)) {
+          if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+        }
       }
       if (ts.isCallExpression(node)) {
         if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !resolvedDynamicDependency) markUnknown("unresolved-dynamic-import", "a dynamic import specifier does not resolve to a selected relative source module");

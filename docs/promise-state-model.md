@@ -43,6 +43,75 @@ executor that reaches its end on an open path may remain pending. A callback
 whose body is unavailable is conservatively modeled as possibly fulfilled,
 rejected, assimilating, or pending.
 
+`Promise.withResolvers<T>()` enters the same first-settlement-wins state
+machine through a distinct external-resolver boundary. Canonical object
+destructuring, renamed bindings, immutable resolver aliases, and an immutable
+capability object with `.promise`/`.resolve`/`.reject` are resolved by
+TypeChecker identity. Settlement transitions use the `external` host lane;
+they are not described as synchronous executor calls, and an ordinary throw in
+the surrounding function does not itself reject the created Promise.
+Straight-line and `if`/`else` resolver calls retain exact first-settlement
+paths. Resolver calls under unsupported loop/switch/try shapes are included as
+conservative may-outcomes while pending remains possible. Escaped `resolve`,
+`reject`, or capability objects retain the corresponding externally controlled
+settlement outcomes instead of being treated as permanently pending. Dynamic
+property keys, mutable capability roots, and interprocedural resolver-return
+summaries are not yet exact.
+
+`Promise.try(callback, ...args)` is a second synchronous callback boundary. It
+invokes the callback immediately, but maps both a returned value and an abrupt
+throw into the returned Promise's settlement. Inline and same-Program named
+callbacks use a bounded `if`/return/throw analysis; a returned PromiseLike enters
+`Assimilating`. Calls and property evaluation conservatively add a rejection
+outcome. An unavailable callback body admits fulfillment, rejection,
+assimilation, and pending rather than claiming an exact result. General loops,
+dynamic switches, and escaped callback summaries are not yet path-exact. Direct nested
+`try`/`catch`/`finally` uses the shared completion algebra: catch consumes only
+synchronous throw paths, and an abrupt finally completion overrides the incoming
+return or throw while normal cleanup preserves it.
+Finite `switch` uses TypeChecker literal-union coverage, preserves source-order
+fallthrough, and consumes an unlabeled break owned by that switch. Without a
+default or proven literal-union coverage, a no-match fulfillment path remains.
+Loops, continue, labeled transfer, and possible synchronous nontermination are
+not mislabeled as an exact settlement: their callback result widens to all root
+settlements with pending retained, while the independent
+`mayDivergeSynchronously` axis records that the constructor/callback invocation
+itself may never return. The Quint projection exposes this as
+`synchronously_blocked` and `promiseSynchronouslyProgressed`; once blocked, no
+settlement or reaction transition can run. A returned-but-unsettled Promise has
+`mayRemainPending` without setting this flag.
+The divergence scan follows direct and mutually recursive same-Program
+callables by TypeChecker symbol identity. Immutable callable aliases and
+unmodified properties of a `const` object literal retain the same result;
+mutable bindings or written properties are not trusted as their initializer and
+fall back to an opaque callback boundary. Arbitrary external-call termination,
+dynamic dispatch, Proxy access, and semantic termination proofs remain outside
+this bounded cycle check. A visible callback body that invokes an external or
+otherwise unresolved callable therefore records `opaque-call` and admits
+synchronous divergence; an unresolved callback value records
+`opaque-callback`. The evidence distinguishes these from `iteration`,
+`recursion`, and `unsupported-control`.
+
+An external or otherwise opaque callable may carry
+`/* uneffect:temporal_contract terminates true */`. The Promise analysis resolves
+the invoked declaration with TypeScript symbol identity and then removes that
+call's `opaque-call` divergence branch. This is a user-supplied trusted
+termination contract, not an analysis of the callee implementation: it is
+recorded in the assumption ledger and prevents assumption-free `verified`
+assurance. Missing, `false`, duplicated, shadowed, or dynamically selected
+contracts remain fail-closed.
+Promise executor resolve/reject parameters are the only intrinsic call
+exemption in this analysis.
+
+Reaction-free executors are emitted as synthetic root chains rather than being
+dropped from the model. The unified temporal facade publishes the Promise
+projection and checks both properties. Its Web/Node event-loop projection uses
+the same source-ordered executor choice. A divergence branch blocks every host
+queue action; a returned-settled branch enqueues the first reaction, while a
+returned-pending branch does not. Opaque executors retain all three choices.
+The separate Promise projection remains reviewable, but synchronous divergence
+no longer creates a `promise-host-synchronization` exclusion.
+
 Resolving with a statically PromiseLike value enters `Assimilating`, not
 `Fulfilled`. Separate transitions then adopt fulfillment or rejection before
 reactions become enabled.

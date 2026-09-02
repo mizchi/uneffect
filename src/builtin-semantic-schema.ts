@@ -6,9 +6,11 @@ export interface BuiltinSemantics {
 
 export type ValueProjector =
   | { kind: "receiver" }
+  | { kind: "assigned-value" }
   | { kind: "argument"; index: number; optional?: boolean }
   | { kind: "argument-from-end"; offset: number; minimumArguments?: number }
   | { kind: "result" }
+  | { kind: "runtime-value"; role: string }
   | { kind: "array-elements"; target: ValueProjector }
   | { kind: "property"; target: ValueProjector; key: string }
   | { kind: "region"; target: ValueProjector; region: "parentNode" | "buffer" };
@@ -16,6 +18,7 @@ export type ValueProjector =
 export type ScopeProjector =
   | { kind: "literal"; value: string }
   | { kind: "value"; target: ValueProjector }
+  | { kind: "literal-key"; target: ValueProjector; format?: "cookie-assignment" }
   | { kind: "filesystem-path"; target: ValueProjector }
   | { kind: "run-program"; target: ValueProjector }
   | { kind: "url"; target: ValueProjector; methodArgument?: number; methodFrom?: "value" | "request-init" }
@@ -23,13 +26,14 @@ export type ScopeProjector =
   | {
       kind: "network";
       target: ValueProjector;
-      format: "host" | "connect" | "http-request";
+      format: "host" | "connect" | "http-request" | "websocket";
       defaultPort?: number;
       hostArgument?: number;
     };
 
 export type CallbackTiming = "sync" | "deferred";
-export type CallbackQueue = "current" | "microtask" | "next-tick" | "timer" | "animation-frame" | "scheduler-task" | "poll" | "check" | "close";
+export type CallbackCompletion = "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw";
+export type CallbackQueue = "current" | "microtask" | "next-tick" | "timer" | "animation-frame" | "scheduler-task" | "poll" | "check" | "close" | "external";
 export type CallbackCardinality = "0..1" | "1" | "0..n" | "1..n";
 
 export type ResultRefinement =
@@ -42,12 +46,13 @@ export type ResultRefinement =
 export type SemanticPrimitive =
   | { kind: "effect"; capability: string; scope?: ScopeProjector }
   | { kind: "mutate"; target: ValueProjector }
-  | { kind: "callback"; target: ValueProjector; timing: CallbackTiming; queue: CallbackQueue; cardinality: CallbackCardinality; callable?: "required" | "optional"; returnDepth?: number }
+  | { kind: "callback"; target: ValueProjector; timing: CallbackTiming; queue: CallbackQueue; cardinality: CallbackCardinality; completion?: CallbackCompletion; callable?: "required" | "optional"; returnDepth?: number; once?: ValueProjector; abortSignal?: ValueProjector; invocationArguments?: readonly ValueProjector[]; invocationRestArguments?: { from: number }; thisArgument?: ValueProjector }
   | { kind: "invoke-user-code" }
   | { kind: "result"; refinement: ResultRefinement }
   | { kind: "clone"; target: ValueProjector }
   | { kind: "transfer"; target: ValueProjector; optional?: boolean }
   | { kind: "acquire"; resource: string; target?: ValueProjector }
+  | { kind: "use"; resource: string; target: ValueProjector }
   | { kind: "release"; resource: string; target?: ValueProjector }
   | { kind: "throw"; error: string; condition?: string }
   | { kind: "property"; read: readonly SemanticPrimitive[]; write: readonly SemanticPrimitive[] }
@@ -82,7 +87,8 @@ function validateTarget(value: unknown, context: string, depth = 0): ValueProjec
   if (depth > 16) throw new Error(`${context} exceeds the projector nesting limit`);
   const item = record(value, context);
   switch (item.kind) {
-    case "receiver": case "result": fields(item, ["kind"], context); return item as ValueProjector;
+    case "receiver": case "assigned-value": case "result": fields(item, ["kind"], context); return item as ValueProjector;
+    case "runtime-value": fields(item, ["kind", "role"], context); text(item.role, `${context}.role`); return item as ValueProjector;
     case "argument":
       fields(item, ["kind", "index", "optional"], context); index(item.index, `${context}.index`);
       if (item.optional !== undefined && typeof item.optional !== "boolean") throw new Error(`${context}.optional must be a boolean`);
@@ -111,6 +117,10 @@ function validateScope(value: unknown, context: string): ScopeProjector {
   switch (item.kind) {
     case "literal": fields(item, ["kind", "value"], context); text(item.value, `${context}.value`); break;
     case "value": case "filesystem-path": case "run-program": fields(item, ["kind", "target"], context); validateTarget(item.target, `${context}.target`); break;
+    case "literal-key":
+      fields(item, ["kind", "target", "format"], context); validateTarget(item.target, `${context}.target`);
+      if (item.format !== undefined) oneOf(item.format, ["cookie-assignment"] as const, `${context}.format`);
+      break;
     case "region":
       fields(item, ["kind", "target", "member"], context);
       validateTarget(item.target, `${context}.target`); text(item.member, `${context}.member`); break;
@@ -123,7 +133,7 @@ function validateScope(value: unknown, context: string): ScopeProjector {
     case "network":
       fields(item, ["kind", "target", "format", "defaultPort", "hostArgument"], context);
       validateTarget(item.target, `${context}.target`);
-      oneOf(item.format, ["host", "connect", "http-request"] as const, `${context}.format`);
+      oneOf(item.format, ["host", "connect", "http-request", "websocket"] as const, `${context}.format`);
       if (item.defaultPort !== undefined) index(item.defaultPort, `${context}.defaultPort`);
       if (item.hostArgument !== undefined) index(item.hostArgument, `${context}.hostArgument`);
       break;
@@ -147,13 +157,26 @@ function validatePrimitive(value: unknown, context: string, depth = 0): Semantic
       if (item.optional !== undefined && typeof item.optional !== "boolean") throw new Error(`${context}.optional must be a boolean`);
       break;
     case "callback":
-      fields(item, ["kind", "target", "timing", "queue", "cardinality", "callable", "returnDepth"], context);
+      fields(item, ["kind", "target", "timing", "queue", "cardinality", "completion", "callable", "returnDepth", "once", "abortSignal", "invocationArguments", "invocationRestArguments", "thisArgument"], context);
       validateTarget(item.target, `${context}.target`);
       oneOf(item.timing, ["sync", "deferred"] as const, `${context}.timing`);
-      oneOf(item.queue, ["current", "microtask", "next-tick", "timer", "animation-frame", "scheduler-task", "poll", "check", "close"] as const, `${context}.queue`);
+      oneOf(item.queue, ["current", "microtask", "next-tick", "timer", "animation-frame", "scheduler-task", "poll", "check", "close", "external"] as const, `${context}.queue`);
       oneOf(item.cardinality, ["0..1", "1", "0..n", "1..n"] as const, `${context}.cardinality`);
+      if (item.completion !== undefined) oneOf(item.completion, ["propagate-throw", "convert-throw-to-rejection", "host-report-throw"] as const, `${context}.completion`);
       if (item.callable !== undefined) oneOf(item.callable, ["required", "optional"] as const, `${context}.callable`);
       if (item.returnDepth !== undefined) index(item.returnDepth, `${context}.returnDepth`);
+      if (item.once !== undefined) validateTarget(item.once, `${context}.once`);
+      if (item.abortSignal !== undefined) validateTarget(item.abortSignal, `${context}.abortSignal`);
+      if (item.invocationArguments !== undefined) {
+        if (!Array.isArray(item.invocationArguments)) throw new Error(`${context}.invocationArguments must be an array`);
+        item.invocationArguments.forEach((argument, index) => validateTarget(argument, `${context}.invocationArguments[${index}]`));
+      }
+      if (item.invocationRestArguments !== undefined) {
+        const rest = record(item.invocationRestArguments, `${context}.invocationRestArguments`);
+        fields(rest, ["from"], `${context}.invocationRestArguments`);
+        index(rest.from, `${context}.invocationRestArguments.from`);
+      }
+      if (item.thisArgument !== undefined) validateTarget(item.thisArgument, `${context}.thisArgument`);
       break;
     case "invoke-user-code": fields(item, ["kind"], context); break;
     case "result": {
@@ -169,9 +192,10 @@ function validatePrimitive(value: unknown, context: string, depth = 0): Semantic
       }
       break;
     }
-    case "acquire": case "release":
+    case "acquire": case "use": case "release":
       fields(item, ["kind", "resource", "target"], context);
       text(item.resource, `${context}.resource`);
+      if (item.kind === "use" && item.target === undefined) throw new Error(`${context}.target is required for use`);
       if (item.target !== undefined) validateTarget(item.target, `${context}.target`);
       break;
     case "throw":

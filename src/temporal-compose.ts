@@ -13,6 +13,8 @@ export interface TemporalFunctionSummary {
   rejects: string[];
   suspends: boolean;
   cancellable: boolean;
+  /** Trusted claim that synchronous evaluation returns instead of diverging. */
+  terminates: boolean;
   fairness?: "weak" | "strong";
   evidence: EvidenceStatus;
   span: { start: number; end: number };
@@ -84,11 +86,12 @@ export function parseTemporalComposition(fileName: string, text: string, root: s
     const rejects = extractAnnotations(comments, "temporal_rejects");
     const suspends = booleanDirective(extractAnnotations(comments, "temporal_suspends"), "temporal_suspends");
     const cancellable = booleanDirective(extractAnnotations(comments, "temporal_cancellable"), "temporal_cancellable");
+    const terminates = booleanDirective(extractAnnotations(comments, "temporal_terminates"), "temporal_terminates");
     const fairnessValues = extractAnnotations(comments, "temporal_fair");
     const fairness = fairnessValues[0] as "weak" | "strong" | undefined;
     if (fairnessValues.length > 1 || (fairness !== undefined && fairness !== "weak" && fairness !== "strong")) throw new Error(`${node.name.text}: temporal_fair requires weak or strong`);
     for (const errorType of [...throws, ...rejects]) if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(errorType)) throw new Error(`${node.name.text}: invalid temporal error type`);
-    if (requires.length || ensures.length || modifies.length || throws.length || rejects.length || suspends || cancellable || fairness) {
+    if (requires.length || ensures.length || modifies.length || throws.length || rejects.length || suspends || cancellable || terminates || fairness) {
       for (const requirement of requires) if (typeCheckTemporalExpression(requirement, symbols) !== "bool") throw new Error(`${node.name.text}: temporal_requires must be boolean`);
       for (const postcondition of ensures) {
         const targetType = stateTypes.get(postcondition.target);
@@ -97,7 +100,7 @@ export function parseTemporalComposition(fileName: string, text: string, root: s
       }
       const assigned = new Set(ensures.map((item) => item.target));
       if (modifies.some((name) => !assigned.has(name)) || ensures.some((item) => !modifies.includes(item.target))) throw new Error(`${node.name.text}: temporal_ensures targets must exactly match temporal_modifies`);
-      summaries.set(node.name.text, { functionName: node.name.text, requires, ensures, modifies, throws, rejects, suspends, cancellable, fairness, evidence: "trusted", span: { start: node.getStart(source), end: node.getEnd() } });
+      summaries.set(node.name.text, { functionName: node.name.text, requires, ensures, modifies, throws, rejects, suspends, cancellable, terminates, fairness, evidence: "trusted", span: { start: node.getStart(source), end: node.getEnd() } });
     }
   }
   const rootNode = declarations.get(root);

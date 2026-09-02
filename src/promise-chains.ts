@@ -1,9 +1,12 @@
 import ts from "typescript";
+import { extractAnnotations } from "./annotations.js";
 import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
+import { routeCatchPaths, routeFinallyPaths, type CompletionKind } from "./completion-flow.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
 
 export type PromiseReactionKind = "then" | "catch" | "finally";
 export type PromiseExecutorSettlement = "fulfilled" | "rejected" | "assimilating";
+export type SynchronousDivergenceReason = "iteration" | "recursion" | "opaque-call" | "opaque-callback" | "unsupported-control";
 export interface PromiseExecutorEvent {
   kind: "resolve" | "reject" | "throw";
   settlement: PromiseExecutorSettlement;
@@ -15,8 +18,9 @@ export interface PromiseExecutorPattern {
   /** Identity of the directly bound Promise, when one exists. */
   identity?: BindingIdentity;
   callback: string;
-  synchronous: true;
-  throwBecomesRejection: true;
+  synchronous: boolean;
+  throwBecomesRejection: boolean;
+  settlementSource?: "executor" | "promise-try" | "external-resolvers";
   events: PromiseExecutorEvent[];
   possibleSettlements: PromiseExecutorSettlement[];
   adoptedExecutor?: number;
@@ -25,6 +29,9 @@ export interface PromiseExecutorPattern {
   adoptedThenables?: number[];
   selfResolution?: boolean;
   mayRemainPending: boolean;
+  /** The synchronous constructor/callback invocation may never return. */
+  mayDivergeSynchronously: boolean;
+  synchronousDivergenceReasons: SynchronousDivergenceReason[];
   span: { start: number; end: number };
 }
 export type PromiseHandlerReturn = "absent" | "value" | "promise-like" | "unknown";
@@ -49,8 +56,70 @@ function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undef
   const symbol = checker.getSymbolAtLocation(node);
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
 }
+function isExecutableFunction(node: ts.Node): node is ts.FunctionLikeDeclaration {
+  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)
+    || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node)
+    || ts.isConstructorDeclaration(node);
+}
+function callableDeclaration(
+  checker: ts.TypeChecker,
+  symbol: ts.Symbol | undefined,
+  seen = new Set<ts.Symbol>(),
+): ts.FunctionLikeDeclaration | undefined {
+  if (!symbol || seen.has(symbol)) return undefined;
+  const nextSeen = new Set([...seen, symbol]);
+  for (const declaration of symbol.declarations ?? []) {
+    if (isExecutableFunction(declaration) && declaration.body) return declaration;
+    const immutableVariable = ts.isVariableDeclaration(declaration)
+      && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0;
+    const initializer = (immutableVariable || ts.isPropertyDeclaration(declaration)
+      || ts.isPropertyAssignment(declaration)) ? declaration.initializer : undefined;
+    if (initializer) {
+      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) return initializer;
+      const resolved = callableDeclaration(checker, targetSymbol(checker, initializer), nextSeen);
+      if (resolved) return resolved;
+    }
+    if (ts.isShorthandPropertyAssignment(declaration)) {
+      const resolved = callableDeclaration(checker, checker.getShorthandAssignmentValueSymbol(declaration), nextSeen);
+      if (resolved) return resolved;
+    }
+  }
+  return undefined;
+}
+function callableExpressionDeclaration(checker: ts.TypeChecker, expression: ts.Expression): ts.FunctionLikeDeclaration | undefined {
+  if (!ts.isPropertyAccessExpression(expression)) return callableDeclaration(checker, targetSymbol(checker, expression));
+  if (!ts.isIdentifier(expression.expression)) return undefined;
+  const root = targetSymbol(checker, expression.expression);
+  const immutableRoot = root?.declarations?.some((declaration) => ts.isVariableDeclaration(declaration)
+    && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+    && declaration.initializer !== undefined && ts.isObjectLiteralExpression(declaration.initializer));
+  if (!immutableRoot) return undefined;
+  const property = targetSymbol(checker, expression.name);
+  if (!property) return undefined;
+  let written = false;
+  const visit = (node: ts.Node): void => {
+    if (written) return;
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+      && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment && targetSymbol(checker, node.left) === property) written = true;
+    else if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+      && targetSymbol(checker, node.operand) === property) written = true;
+    else if (ts.isDeleteExpression(node) && targetSymbol(checker, node.expression) === property) written = true;
+    if (!written) ts.forEachChild(node, visit);
+  };
+  visit(expression.getSourceFile());
+  return written ? undefined : callableDeclaration(checker, property);
+}
 function librarySymbol(checker: ts.TypeChecker, node: ts.Node): boolean {
   return targetSymbol(checker, node)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+}
+function hasTrustedTerminationContract(symbol: ts.Symbol | undefined): boolean {
+  if (!symbol) return false;
+  const values = (symbol.declarations ?? []).flatMap((declaration) => {
+    const source = declaration.getSourceFile();
+    const leading = source.text.slice(declaration.getFullStart(), declaration.getStart(source));
+    return extractAnnotations(leading, "temporal_terminates");
+  });
+  return values.length === 1 && values[0] === "true";
 }
 function ownerName(node: ts.SignatureDeclaration | ts.SourceFile): string {
   if (ts.isSourceFile(node)) return "<module>";
@@ -81,13 +150,55 @@ function handlerReturn(expression: ts.Expression, checker: ts.TypeChecker): Prom
 
 type ExecutorPath = "open" | PromiseExecutorSettlement;
 
+function synchronousDivergenceReasons(
+  root: ts.Node,
+  checker: ts.TypeChecker,
+  trustedCalls = new Set<ts.Symbol>(),
+): SynchronousDivergenceReason[] {
+  const completed = new Map<ts.Symbol, SynchronousDivergenceReason[]>();
+  const ownerSymbol = (node: ts.Node): ts.Symbol | undefined => {
+    const owner = isExecutableFunction(node) ? node : isExecutableFunction(node.parent) && node.parent.body === node ? node.parent : undefined;
+    if (!owner) return undefined;
+    if (owner.name) return targetSymbol(checker, owner.name);
+    return ts.isVariableDeclaration(owner.parent) && ts.isIdentifier(owner.parent.name)
+      ? targetSymbol(checker, owner.parent.name) : undefined;
+  };
+  const scan = (node: ts.Node, boundary: ts.Node, stack: ReadonlySet<ts.Symbol>): Set<SynchronousDivergenceReason> => {
+    const reasons = new Set<SynchronousDivergenceReason>();
+    if (node !== boundary && ts.isFunctionLike(node)) return reasons;
+    if (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isForOfStatement(node)
+      || ts.isWhileStatement(node) || ts.isDoStatement(node)) reasons.add("iteration");
+    if (ts.isCallExpression(node)) {
+      const symbol = targetSymbol(checker, node.expression);
+      if (!symbol || (!trustedCalls.has(symbol) && !hasTrustedTerminationContract(symbol))) {
+        const declaration = callableExpressionDeclaration(checker, node.expression);
+        if (symbol && declaration) {
+          if (stack.has(symbol)) reasons.add("recursion");
+          else {
+            const cached = completed.get(symbol);
+            const nested = cached ?? [...scan(declaration.body!, declaration.body!, new Set([...stack, symbol]))];
+            if (!cached) completed.set(symbol, nested);
+            nested.forEach((reason) => reasons.add(reason));
+          }
+        } else reasons.add("opaque-call");
+      }
+    }
+    ts.forEachChild(node, (child) => {
+      for (const reason of scan(child, boundary, stack)) reasons.add(reason);
+    });
+    return reasons;
+  };
+  const owner = ownerSymbol(root);
+  return [...scan(root, root, new Set(owner ? [owner] : []))];
+}
+
 function analyzeExecutor(
   callback: ts.Expression | ts.MethodDeclaration | undefined,
   checker: ts.TypeChecker,
   source: ts.SourceFile,
-): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending"> & { adoptedSymbols: ts.Symbol[]; adoptedExpressions: ts.Expression[] } {
+): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending" | "mayDivergeSynchronously" | "synchronousDivergenceReasons"> & { adoptedSymbols: ts.Symbol[]; adoptedExpressions: ts.Expression[] } {
   if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback) && !ts.isMethodDeclaration(callback)) || !callback.body) {
-    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, adoptedSymbols: [], adoptedExpressions: [] };
+    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, mayDivergeSynchronously: true, synchronousDivergenceReasons: ["opaque-callback"], adoptedSymbols: [], adoptedExpressions: [] };
   }
   const resolveParameter = callback.parameters[0]?.name;
   const rejectParameter = callback.parameters[1]?.name;
@@ -97,6 +208,8 @@ function analyzeExecutor(
   const adoptedSymbols: ts.Symbol[] = [];
   const adoptedExpressions: ts.Expression[] = [];
   const unique = (paths: ExecutorPath[]): ExecutorPath[] => [...new Set(paths)];
+  const trustedCalls = new Set([resolveParameter, rejectParameter].flatMap((name) => name && ts.isIdentifier(name)
+    ? [targetSymbol(checker, name)].filter((symbol): symbol is ts.Symbol => Boolean(symbol)) : []));
   const expressionSettlement = (expression: ts.Expression): PromiseExecutorEvent | undefined => {
     if (!ts.isCallExpression(expression) || !ts.isIdentifier(expression.expression)) return undefined;
     const name = expression.expression.text;
@@ -143,12 +256,315 @@ function analyzeExecutor(
     if (event) events.push(event);
     paths = [event?.settlement ?? "open"];
   }
+  const divergenceReasons = synchronousDivergenceReasons(callback.body, checker, trustedCalls);
   return {
     events,
     possibleSettlements: paths.filter((path): path is PromiseExecutorSettlement => path !== "open"),
     mayRemainPending: paths.includes("open"),
+    mayDivergeSynchronously: divergenceReasons.length > 0,
+    synchronousDivergenceReasons: divergenceReasons,
     adoptedSymbols,
     adoptedExpressions,
+  };
+}
+
+function analyzeExternalResolvers(
+  body: ts.ConciseBody | ts.SourceFile | undefined,
+  checker: ts.TypeChecker,
+  source: ts.SourceFile,
+  resolveSymbol: ts.Symbol | undefined,
+  rejectSymbol: ts.Symbol | undefined,
+  capabilityRootSymbol?: ts.Symbol,
+): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending" | "mayDivergeSynchronously" | "synchronousDivergenceReasons"> & { adoptedSymbols: ts.Symbol[]; adoptedExpressions: ts.Expression[] } {
+  if (!body || (!ts.isBlock(body) && !ts.isSourceFile(body))) {
+    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, mayDivergeSynchronously: false, synchronousDivergenceReasons: [], adoptedSymbols: [], adoptedExpressions: [] };
+  }
+  const resolveSymbols = new Set(resolveSymbol ? [resolveSymbol] : []), rejectSymbols = new Set(rejectSymbol ? [rejectSymbol] : []);
+  const collectAliases = (node: ts.Node): void => {
+    if (node !== body && ts.isFunctionLike(node)) return;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+      && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
+      const alias = targetSymbol(checker, node.name);
+      if (ts.isIdentifier(node.initializer)) {
+        const sourceSymbol = targetSymbol(checker, node.initializer);
+        if (alias && sourceSymbol && resolveSymbols.has(sourceSymbol)) resolveSymbols.add(alias);
+        if (alias && sourceSymbol && rejectSymbols.has(sourceSymbol)) rejectSymbols.add(alias);
+      } else if (alias && ts.isPropertyAccessExpression(node.initializer) && ts.isIdentifier(node.initializer.expression)
+        && targetSymbol(checker, node.initializer.expression) === capabilityRootSymbol) {
+        if (node.initializer.name.text === "resolve") resolveSymbols.add(alias);
+        if (node.initializer.name.text === "reject") rejectSymbols.add(alias);
+      }
+    }
+    ts.forEachChild(node, collectAliases);
+  };
+  collectAliases(body);
+  const events: PromiseExecutorEvent[] = [], adoptedSymbols: ts.Symbol[] = [], adoptedExpressions: ts.Expression[] = [];
+  const unsupportedSettlements = new Set<PromiseExecutorSettlement>();
+  const escapedSettlements = new Set<PromiseExecutorSettlement>();
+  const collectResolverEscapes = (node: ts.Node): void => {
+    if (node !== body && ts.isFunctionLike(node)) return;
+    if (ts.isIdentifier(node)) {
+      const symbol = targetSymbol(checker, node);
+      const declarationName = (ts.isVariableDeclaration(node.parent) || ts.isBindingElement(node.parent)) && node.parent.name === node;
+      const directCallee = ts.isCallExpression(node.parent) && node.parent.expression === node;
+      const discardedReference = ts.isVoidExpression(node.parent) && node.parent.expression === node;
+      const immutableAlias = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node
+        && ts.isVariableDeclarationList(node.parent.parent) && (node.parent.parent.flags & ts.NodeFlags.Const) !== 0;
+      if (!declarationName && !directCallee && !discardedReference && !immutableAlias && symbol && resolveSymbols.has(symbol)) {
+        escapedSettlements.add("fulfilled"); escapedSettlements.add("assimilating");
+      }
+      if (!declarationName && !directCallee && !discardedReference && !immutableAlias && symbol && rejectSymbols.has(symbol)) escapedSettlements.add("rejected");
+      if (symbol === capabilityRootSymbol && !declarationName) {
+        if (ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node) {
+          const property = node.parent, propertyDirectCall = ts.isCallExpression(property.parent) && property.parent.expression === property;
+          const propertyAlias = ts.isVariableDeclaration(property.parent) && property.parent.initializer === property
+            && ts.isVariableDeclarationList(property.parent.parent) && (property.parent.parent.flags & ts.NodeFlags.Const) !== 0;
+          if (property.name.text === "resolve" && !propertyDirectCall && !propertyAlias) {
+            escapedSettlements.add("fulfilled"); escapedSettlements.add("assimilating");
+          } else if (property.name.text === "reject" && !propertyDirectCall && !propertyAlias) escapedSettlements.add("rejected");
+        } else {
+          escapedSettlements.add("fulfilled"); escapedSettlements.add("rejected"); escapedSettlements.add("assimilating");
+        }
+      }
+    }
+    ts.forEachChild(node, collectResolverEscapes);
+  };
+  collectResolverEscapes(body);
+  const unique = (paths: ExecutorPath[]): ExecutorPath[] => [...new Set(paths)];
+  const expressionSettlement = (expression: ts.Expression): PromiseExecutorEvent | undefined => {
+    if (!ts.isCallExpression(expression)) return undefined;
+    let resolves: boolean | undefined;
+    if (ts.isIdentifier(expression.expression)) {
+      const symbol = targetSymbol(checker, expression.expression);
+      if (symbol && resolveSymbols.has(symbol)) resolves = true;
+      else if (symbol && rejectSymbols.has(symbol)) resolves = false;
+    } else if (capabilityRootSymbol && ts.isPropertyAccessExpression(expression.expression)
+      && ts.isIdentifier(expression.expression.expression)
+      && targetSymbol(checker, expression.expression.expression) === capabilityRootSymbol) {
+      if (expression.expression.name.text === "resolve") resolves = true;
+      else if (expression.expression.name.text === "reject") resolves = false;
+    }
+    if (resolves === undefined) return undefined;
+    let settlement: PromiseExecutorSettlement = "rejected";
+    if (resolves) {
+      const argument = expression.arguments[0];
+      const promiseLike = argument && checker.getPropertyOfType(checker.getTypeAtLocation(argument), "then");
+      settlement = promiseLike ? "assimilating" : "fulfilled";
+      const adopted = argument && promiseLike ? targetSymbol(checker, argument) : undefined;
+      if (adopted) adoptedSymbols.push(adopted);
+      if (argument && promiseLike) adoptedExpressions.push(argument);
+    }
+    return { kind: resolves ? "resolve" : "reject", settlement, span: { start: expression.getStart(source), end: expression.getEnd() } };
+  };
+  const executeStatement = (statement: ts.Statement, paths: ExecutorPath[]): ExecutorPath[] => {
+    if (ts.isBlock(statement)) return executeStatements(statement.statements, paths);
+    if (ts.isIfStatement(statement)) {
+      const open = paths.filter((path) => path === "open"), settled = paths.filter((path) => path !== "open");
+      const thenPaths = executeStatement(statement.thenStatement, open);
+      const elsePaths = statement.elseStatement ? executeStatement(statement.elseStatement, open) : open;
+      return unique([...settled, ...thenPaths, ...elsePaths]);
+    }
+    if (ts.isExpressionStatement(statement)) {
+      const event = expressionSettlement(statement.expression);
+      if (event) {
+        events.push(event);
+        return unique(paths.map((path) => path === "open" ? event.settlement : path));
+      }
+    }
+    const scanUnsupported = (node: ts.Node): void => {
+      if (node !== statement && ts.isFunctionLike(node)) return;
+      if (ts.isCallExpression(node)) {
+        const event = expressionSettlement(node);
+        if (event) {
+          if (!events.some(({ span }) => span.start === event.span.start && span.end === event.span.end)) events.push(event);
+          unsupportedSettlements.add(event.settlement);
+          return;
+        }
+      }
+      ts.forEachChild(node, scanUnsupported);
+    };
+    scanUnsupported(statement);
+    return paths;
+  };
+  const executeStatements = (statements: readonly ts.Statement[], initial: ExecutorPath[]): ExecutorPath[] =>
+    statements.reduce((paths, statement) => executeStatement(statement, paths), initial);
+  const paths = executeStatements(body.statements, ["open"]);
+  return {
+    events,
+    possibleSettlements: unique([
+      ...paths.filter((path): path is PromiseExecutorSettlement => path !== "open"),
+      ...unsupportedSettlements,
+      ...escapedSettlements,
+    ]) as PromiseExecutorSettlement[],
+    mayRemainPending: paths.includes("open") || escapedSettlements.size > 0,
+    mayDivergeSynchronously: false,
+    synchronousDivergenceReasons: [],
+    adoptedSymbols,
+    adoptedExpressions,
+  };
+}
+
+function analyzePromiseTryCallback(
+  callback: ts.Expression | undefined,
+  checker: ts.TypeChecker,
+  source: ts.SourceFile,
+): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending" | "mayDivergeSynchronously" | "synchronousDivergenceReasons"> & { adoptedSymbols: ts.Symbol[]; adoptedExpressions: ts.Expression[] } {
+  let declaration: ts.FunctionLikeDeclaration | undefined;
+  if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) declaration = callback;
+  else if (callback) declaration = callableExpressionDeclaration(checker, callback);
+  if (!declaration?.body) {
+    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, mayDivergeSynchronously: true, synchronousDivergenceReasons: ["opaque-callback"], adoptedSymbols: [], adoptedExpressions: [] };
+  }
+  type CallbackPath = "open" | "break" | "throw" | "fulfilled" | "assimilating";
+  const events: PromiseExecutorEvent[] = [], adoptedSymbols: ts.Symbol[] = [], adoptedExpressions: ts.Expression[] = [];
+  let unsupportedControl = false;
+  const unique = (paths: CallbackPath[]): CallbackPath[] => [...new Set(paths)];
+  const completionOf = (path: CallbackPath): CompletionKind =>
+    path === "open" ? "normal" : path === "break" ? "break" : path === "throw" ? "throw" : "return";
+  const literalTypeValues = (type: ts.Type): (string | number | boolean)[] | undefined => {
+    const members = type.isUnion() ? type.types : [type];
+    const values: (string | number | boolean)[] = [];
+    for (const member of members) {
+      if (member.flags & ts.TypeFlags.StringLiteral) values.push((member as ts.StringLiteralType).value);
+      else if (member.flags & ts.TypeFlags.NumberLiteral) values.push((member as ts.NumberLiteralType).value);
+      else if (member.flags & ts.TypeFlags.BooleanLiteral) values.push(checker.typeToString(member) === "true");
+      else return undefined;
+    }
+    return values;
+  };
+  const switchIsExhaustive = (statement: ts.SwitchStatement): boolean => {
+    if (statement.caseBlock.clauses.some(ts.isDefaultClause)) return true;
+    const domain = literalTypeValues(checker.getTypeAtLocation(statement.expression));
+    if (!domain) return false;
+    const cases = new Set(statement.caseBlock.clauses.flatMap((clause) => {
+      if (!ts.isCaseClause(clause)) return [];
+      const value = evaluateStaticPrimitive(clause.expression, { resolveIdentifier: () => undefined });
+      return value === undefined ? [] : [value];
+    }));
+    return domain.every((value) => cases.has(value));
+  };
+  const mayAbrupt = (node: ts.Node | undefined): boolean => {
+    if (!node) return false;
+    // Creating a nested callable does not evaluate its body.
+    if (ts.isFunctionLike(node)) return false;
+    if (ts.isCallExpression(node) || ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node)
+      || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) return true;
+    let abrupt = false;
+    ts.forEachChild(node, (child) => { if (!abrupt && mayAbrupt(child)) abrupt = true; });
+    return abrupt;
+  };
+  const withPossibleThrow = (paths: CallbackPath[], node: ts.Node | undefined): CallbackPath[] =>
+    !mayAbrupt(node) ? paths : unique([...paths, ...paths.flatMap((path): CallbackPath[] => path === "open" ? ["throw"] : [])]);
+  const returned = (expression: ts.Expression | undefined, span: ts.Node): "fulfilled" | "assimilating" => {
+    if (!expression) return "fulfilled";
+    const promiseLike = checker.getPropertyOfType(checker.getTypeAtLocation(expression), "then");
+    if (!promiseLike) return "fulfilled";
+    const adopted = targetSymbol(checker, expression);
+    if (adopted) adoptedSymbols.push(adopted);
+    adoptedExpressions.push(expression);
+    events.push({ kind: "resolve", settlement: "assimilating", span: { start: span.getStart(source), end: span.getEnd() } });
+    return "assimilating";
+  };
+  const executeStatement = (statement: ts.Statement, paths: CallbackPath[]): CallbackPath[] => {
+    if (ts.isBlock(statement)) return executeStatements(statement.statements, paths);
+    if (ts.isIfStatement(statement)) {
+      const open = paths.filter((path) => path === "open"), completed = paths.filter((path) => path !== "open");
+      return unique([
+        ...completed,
+        ...(open.length > 0 && mayAbrupt(statement.expression) ? ["throw" as const] : []),
+        ...executeStatement(statement.thenStatement, open),
+        ...(statement.elseStatement ? executeStatement(statement.elseStatement, open) : open),
+      ]);
+    }
+    if (ts.isTryStatement(statement)) {
+      const tried = executeStatement(statement.tryBlock, paths);
+      const afterCatch = statement.catchClause
+        ? unique(routeCatchPaths(tried, completionOf,
+          () => executeStatement(statement.catchClause!.block, ["open"])))
+        : tried;
+      if (!statement.finallyBlock) return afterCatch;
+      const finalizer = executeStatement(statement.finallyBlock, ["open"]);
+      return unique(routeFinallyPaths(afterCatch, finalizer, completionOf));
+    }
+    if (ts.isSwitchStatement(statement)) {
+      const open = paths.filter((path) => path === "open"), completed = paths.filter((path) => path !== "open");
+      if (open.length === 0) return paths;
+      const clauses = statement.caseBlock.clauses;
+      const selected = clauses.flatMap((_, start): CallbackPath[] => {
+        let branch: CallbackPath[] = ["open"];
+        for (let index = start; index < clauses.length; index += 1) {
+          branch = executeStatements(clauses[index]!.statements, branch);
+        }
+        return branch.map((path) => path === "break" ? "open" : path);
+      });
+      const selectionMayThrow = mayAbrupt(statement.expression)
+        || clauses.some((clause) => ts.isCaseClause(clause) && mayAbrupt(clause.expression));
+      return unique([
+        ...completed,
+        ...selected,
+        ...(!switchIsExhaustive(statement) ? ["open" as const] : []),
+        ...(selectionMayThrow ? ["throw" as const] : []),
+      ]);
+    }
+    if (ts.isBreakStatement(statement)) {
+      if (statement.label) {
+        unsupportedControl = true;
+        return paths;
+      }
+      return unique(paths.map((path) => path === "open" ? "break" : path));
+    }
+    if (ts.isContinueStatement(statement)
+      || ts.isForStatement(statement) || ts.isForInStatement(statement) || ts.isForOfStatement(statement)
+      || ts.isWhileStatement(statement) || ts.isDoStatement(statement)) {
+      unsupportedControl = true;
+      return withPossibleThrow(paths, statement);
+    }
+    if (ts.isReturnStatement(statement)) {
+      const settlement = returned(statement.expression, statement);
+      return unique(paths.flatMap((path): CallbackPath[] => path === "open"
+        ? [settlement, ...(mayAbrupt(statement.expression) ? ["throw" as const] : [])] : [path]));
+    }
+    if (ts.isThrowStatement(statement)) {
+      events.push({ kind: "throw", settlement: "rejected", span: { start: statement.getStart(source), end: statement.getEnd() } });
+      return unique(paths.map((path) => path === "open" ? "throw" : path));
+    }
+    return withPossibleThrow(paths, statement);
+  };
+  const executeStatements = (statements: readonly ts.Statement[], initial: CallbackPath[]): CallbackPath[] =>
+    statements.reduce((paths, statement) => executeStatement(statement, paths), initial);
+  let paths: CallbackPath[];
+  if (ts.isBlock(declaration.body)) paths = executeStatements(declaration.body.statements, ["open"]);
+  else {
+    const settlement = returned(declaration.body, declaration.body);
+    paths = mayAbrupt(declaration.body) ? [settlement, "throw"] : [settlement];
+  }
+  // Normal fallthrough from a callback fulfills with undefined.
+  const settlements = paths.flatMap((path): PromiseExecutorSettlement[] => {
+    if (path === "open" || path === "break") return ["fulfilled"];
+    if (path === "throw") return ["rejected"];
+    return [path];
+  });
+  const uniqueEvents = events.filter((event, index) => events.findIndex((candidate) =>
+    candidate.kind === event.kind && candidate.settlement === event.settlement
+      && candidate.span.start === event.span.start && candidate.span.end === event.span.end) === index);
+  const uniqueAdoptedSymbols = adoptedSymbols.filter((symbol, index) => adoptedSymbols.indexOf(symbol) === index);
+  const uniqueAdoptedExpressions = adoptedExpressions.filter((expression, index) => adoptedExpressions.findIndex((candidate) =>
+    candidate.getSourceFile() === expression.getSourceFile()
+      && candidate.getStart(source) === expression.getStart(source) && candidate.getEnd() === expression.getEnd()) === index);
+  const divergenceReasons = [...new Set<SynchronousDivergenceReason>([
+    ...(unsupportedControl ? ["unsupported-control" as const] : []),
+    ...synchronousDivergenceReasons(declaration.body, checker),
+  ])];
+  return {
+    events: uniqueEvents,
+    possibleSettlements: [...new Set(unsupportedControl
+      ? [...settlements, "fulfilled" as const, "rejected" as const, "assimilating" as const]
+      : settlements)],
+    mayRemainPending: unsupportedControl,
+    mayDivergeSynchronously: divergenceReasons.length > 0,
+    synchronousDivergenceReasons: divergenceReasons,
+    adoptedSymbols: uniqueAdoptedSymbols,
+    adoptedExpressions: uniqueAdoptedExpressions,
   };
 }
 
@@ -590,12 +1006,89 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     return "<module>";
   };
   collectThenables(source);
+  const isBuiltinWithResolvers = (call: ts.CallExpression): boolean => {
+    const declaration = checker.getResolvedSignature(call)?.declaration;
+    if (!declaration || !program.isSourceFileDefaultLibrary(declaration.getSourceFile())) return false;
+    const named = declaration as ts.SignatureDeclaration & { name?: ts.PropertyName };
+    return named.name?.getText(declaration.getSourceFile()) === "withResolvers"
+      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor";
+  };
+  const isBuiltinPromiseTry = (call: ts.CallExpression): boolean => {
+    const declaration = checker.getResolvedSignature(call)?.declaration;
+    if (!declaration || !program.isSourceFileDefaultLibrary(declaration.getSourceFile())) return false;
+    const named = declaration as ts.SignatureDeclaration & { name?: ts.PropertyName };
+    return named.name?.getText(declaration.getSourceFile()) === "try"
+      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor";
+  };
+  const namedBindingElement = (pattern: ts.ObjectBindingPattern, key: string): ts.BindingElement | undefined =>
+    pattern.elements.find((element) => {
+      const name = element.propertyName ?? element.name;
+      return (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) && name.text === key && ts.isIdentifier(element.name);
+    });
   const visitFunctionExecutors = (owner: ts.FunctionLikeDeclaration | ts.SourceFile): void => {
     const ownerBody = ts.isSourceFile(owner) ? owner : owner.body;
     if (!ownerBody) return;
     const name = ownerName(owner);
     const visit = (node: ts.Node): void => {
       if (node !== ownerBody && ts.isFunctionLike(node)) return;
+      if (ts.isCallExpression(node) && isBuiltinPromiseTry(node)) {
+        const binding = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name)
+          ? node.parent.name.text : node.getText(source);
+        const directBinding = ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+          ? targetSymbol(checker, node.parent.name) : undefined;
+        const analyzed = analyzePromiseTryCallback(node.arguments[0], checker, source);
+        const index = executors.length;
+        const { adoptedSymbols, adoptedExpressions, ...publicAnalysis } = analyzed;
+        executors.push({
+          owner: name, binding, ...(directBinding ? { identity: bindingIdentity(directBinding) } : {}),
+          callback: node.arguments[0]?.getText(source) ?? "<unknown>", synchronous: true,
+          throwBecomesRejection: true, settlementSource: "promise-try", ...publicAnalysis,
+          span: { start: node.getStart(source), end: node.getEnd() },
+        });
+        if (directBinding) executorBySymbol.set(directBinding, index);
+        pendingAdoptions.push({ executor: index, symbols: adoptedSymbols, expressions: adoptedExpressions });
+      }
+      if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer
+        && ts.isCallExpression(node.initializer) && isBuiltinWithResolvers(node.initializer)) {
+        const promise = namedBindingElement(node.name, "promise"), resolve = namedBindingElement(node.name, "resolve"), reject = namedBindingElement(node.name, "reject");
+        if (promise && ts.isIdentifier(promise.name)) {
+          const promiseSymbol = targetSymbol(checker, promise.name);
+          const analyzed = analyzeExternalResolvers(
+            ts.isSourceFile(owner) ? owner : owner.body,
+            checker, source,
+            resolve && ts.isIdentifier(resolve.name) ? targetSymbol(checker, resolve.name) : undefined,
+            reject && ts.isIdentifier(reject.name) ? targetSymbol(checker, reject.name) : undefined,
+          );
+          const index = executors.length;
+          const { adoptedSymbols, adoptedExpressions, ...publicAnalysis } = analyzed;
+          executors.push({
+            owner: name, binding: promise.name.text,
+            ...(promiseSymbol ? { identity: bindingIdentity(promiseSymbol) } : {}),
+            callback: "<external-resolvers>", synchronous: false, throwBecomesRejection: false,
+            settlementSource: "external-resolvers", ...publicAnalysis,
+            span: { start: node.initializer.getStart(source), end: node.initializer.getEnd() },
+          });
+          if (promiseSymbol) executorBySymbol.set(promiseSymbol, index);
+          pendingAdoptions.push({ executor: index, symbols: adoptedSymbols, expressions: adoptedExpressions });
+        }
+      }
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+        && ts.isCallExpression(node.initializer) && isBuiltinWithResolvers(node.initializer)
+        && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
+        const capabilitySymbol = targetSymbol(checker, node.name);
+        const analyzed = analyzeExternalResolvers(
+          ts.isSourceFile(owner) ? owner : owner.body,
+          checker, source, undefined, undefined, capabilitySymbol,
+        );
+        const index = executors.length;
+        const { adoptedSymbols, adoptedExpressions, ...publicAnalysis } = analyzed;
+        executors.push({
+          owner: name, binding: `${node.name.text}.promise`, callback: "<external-resolvers>",
+          synchronous: false, throwBecomesRejection: false, settlementSource: "external-resolvers",
+          ...publicAnalysis, span: { start: node.initializer.getStart(source), end: node.initializer.getEnd() },
+        });
+        pendingAdoptions.push({ executor: index, symbols: adoptedSymbols, expressions: adoptedExpressions });
+      }
       if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise" && librarySymbol(checker, node.expression)) {
         const binding = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name)
           ? node.parent.name.text : node.getText(source);
@@ -605,7 +1098,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         const { adoptedSymbols, adoptedExpressions, ...publicAnalysis } = analyzed;
         const directBinding = ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
           ? targetSymbol(checker, node.parent.name) : undefined;
-        executors.push({ owner: name, binding, ...(directBinding ? { identity: bindingIdentity(directBinding) } : {}), callback: callback?.getText(source) ?? "<unknown>", synchronous: true, throwBecomesRejection: true, ...publicAnalysis, span: { start: node.getStart(source), end: node.getEnd() } });
+        executors.push({ owner: name, binding, ...(directBinding ? { identity: bindingIdentity(directBinding) } : {}), callback: callback?.getText(source) ?? "<unknown>", synchronous: true, throwBecomesRejection: true, settlementSource: "executor", ...publicAnalysis, span: { start: node.getStart(source), end: node.getEnd() } });
         if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
           const symbol = targetSymbol(checker, node.parent.name);
           if (symbol) executorBySymbol.set(symbol, index);
@@ -803,7 +1296,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
 }
 
 export function analyzePromiseChains(fileName: string, text: string): PromiseChainModel {
-  const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true };
+  const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.esnext.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true };
   const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
   host.getSourceFile = (name, version, onError, fresh) => name === fileName ? ts.createSourceFile(fileName, text, version, true, ts.ScriptKind.TS) : original(name, version, onError, fresh);
   const program = ts.createProgram([fileName], options, host);
@@ -812,20 +1305,37 @@ export function analyzePromiseChains(fileName: string, text: string): PromiseCha
 
 function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/g, "_"); }
 export function generatePromiseChainsQuint(moduleName: string, model: PromiseChainModel, options: { allowEarlyReaction?: boolean; breakFinallyTransparency?: boolean; allowDoubleSettlement?: boolean; skipHandlerAssimilation?: boolean } = {}): string {
-  const vars = model.chains.flatMap((chain, index) => [...chain.links.map((_, stage) => `chain_${index}_state_${stage}`), `chain_${index}_state_${chain.links.length}`, `chain_${index}_early`, `chain_${index}_finally_broken`, `chain_${index}_double_settlement`, `chain_${index}_flatten_broken`]);
-  const isBool = (name: string): boolean => name.endsWith("early") || name.endsWith("broken") || name.endsWith("double_settlement");
+  const referencedExecutors = new Set(model.chains.flatMap((chain) => chain.executor === undefined ? [] : [chain.executor]));
+  const chains: PromiseChainPattern[] = [
+    ...model.chains,
+    ...model.executors.flatMap((executor, index): PromiseChainPattern[] => referencedExecutors.has(index) ? [] : [{
+      owner: executor.owner,
+      source: executor.binding ?? executor.owner,
+      executor: index,
+      links: [],
+      span: executor.span,
+    }]),
+  ];
+  const hasSynchronousDivergence = chains.some((chain) =>
+    chain.executor !== undefined && model.executors[chain.executor]?.mayDivergeSynchronously);
+  const vars = [
+    ...chains.flatMap((chain, index) => [...chain.links.map((_, stage) => `chain_${index}_state_${stage}`), `chain_${index}_state_${chain.links.length}`, `chain_${index}_early`, `chain_${index}_finally_broken`, `chain_${index}_double_settlement`, `chain_${index}_flatten_broken`]),
+    ...(hasSynchronousDivergence ? ["synchronously_blocked"] : []),
+  ];
+  const isBool = (name: string): boolean => name === "synchronously_blocked" || name.endsWith("early") || name.endsWith("broken") || name.endsWith("double_settlement");
   const lines = [`module ${safe(moduleName)} {`, ...vars.map((name) => `  var ${name}: ${isBool(name) ? "bool" : "int"}`), "", "  action init = all {"];
   for (const name of vars) lines.push(`    ${name}' = ${isBool(name) ? "false" : "0"},`);
   lines.push("  }");
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name); lines.push("", `  action ${name} = all {`);
+    if (hasSynchronousDivergence) lines.push("    not(synchronously_blocked),");
     guards.forEach((guard) => lines.push(`    ${guard},`));
     vars.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
   const chainForExecutor = (executor: number): number | undefined => {
-    const index = model.chains.findIndex((chain) => chain.executor === executor);
+    const index = chains.findIndex((chain) => chain.executor === executor);
     return index < 0 ? undefined : index;
   };
   const emitAdoption = (name: string, state: string, adoptedExecutor: number | undefined, fulfilled: string, rejected: string, adoptedThenable?: number, selfResolution = false, seenThenables = new Set<number>()): void => {
@@ -861,16 +1371,19 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     action(`${name}_from_${adoptedChain}_fulfilled`, [`${state} == 3`, `${adoptedRoot} == 1`], new Map([[state, fulfilled]]));
     action(`${name}_from_${adoptedChain}_rejected`, [`${state} == 3`, `${adoptedRoot} == 2`], new Map([[state, rejected]]));
   };
-  model.chains.forEach((chain, chainIndex) => {
+  chains.forEach((chain, chainIndex) => {
     const root = `chain_${chainIndex}_state_0`;
+    const executor = chain.executor === undefined ? undefined : model.executors[chain.executor];
+    if (executor?.mayDivergeSynchronously) {
+      action(`diverge_${chainIndex}_synchronously`, [`${root} == 0`], new Map([["synchronously_blocked", "true"]]));
+    }
     const settlements: readonly PromiseExecutorSettlement[] = chain.executor === undefined
       ? chain.initialSettlement ? [chain.initialSettlement] : ["fulfilled", "rejected"]
-      : model.executors[chain.executor].possibleSettlements;
+      : executor!.possibleSettlements;
     if (settlements.includes("fulfilled")) action(`settle_${chainIndex}_fulfilled`, [`${root} == 0`], new Map([[root, "1"]]));
     if (settlements.includes("rejected")) action(`settle_${chainIndex}_rejected`, [`${root} == 0`], new Map([[root, "2"]]));
     if (settlements.includes("assimilating")) {
       action(`settle_${chainIndex}_assimilating`, [`${root} == 0`], new Map([[root, "3"]]));
-      const executor = chain.executor === undefined ? undefined : model.executors[chain.executor];
       if ((executor?.adoptedThenables?.length ?? 0) > 1) executor!.adoptedThenables!.forEach((thenable, option) =>
         emitAdoption(`assimilate_${chainIndex}_thenable_option_${option}`, root, undefined, "1", "2", thenable));
       else emitAdoption(`assimilate_${chainIndex}`, root, executor?.adoptedExecutor, "1", "2", executor?.adoptedThenable, executor?.selfResolution);
@@ -927,7 +1440,9 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     });
   });
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
-  const invariants = model.chains.flatMap((_, index) => [`not(chain_${index}_early)`, `not(chain_${index}_finally_broken)`, `not(chain_${index}_double_settlement)`, `not(chain_${index}_flatten_broken)`]);
-  lines.push("", `  val promiseSafe = ${invariants.join(" and ") || "true"}`, "}", "");
+  const invariants = chains.flatMap((_, index) => [`not(chain_${index}_early)`, `not(chain_${index}_finally_broken)`, `not(chain_${index}_double_settlement)`, `not(chain_${index}_flatten_broken)`]);
+  lines.push("", `  val promiseSafe = ${invariants.join(" and ") || "true"}`);
+  if (hasSynchronousDivergence) lines.push("  val promiseSynchronouslyProgressed = not(synchronously_blocked)");
+  lines.push("}", "");
   return lines.join("\n");
 }

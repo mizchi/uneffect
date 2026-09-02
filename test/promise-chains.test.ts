@@ -1352,6 +1352,319 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("action settle_1_fulfilled");
   });
 
+  it("models Promise.withResolvers as externally settled first-wins capability", () => {
+    const model = analyzePromiseChains("with-resolvers.ts", `
+      const { promise: moduleTask, resolve: resolveModule } = Promise.withResolvers<number>()
+      resolveModule(1)
+      moduleTask.then(value => value)
+      function choose(ok: boolean) {
+        const { promise: task, resolve: complete, reject: fail } = Promise.withResolvers<number>()
+        const done = complete
+        if (ok) done(1)
+        else fail(new Error("no"))
+        return task.catch(() => 0)
+      }
+      function pending() {
+        const { promise, resolve, reject } = Promise.withResolvers<number>()
+        void resolve; void reject
+        return promise
+      }
+      function resolveOnly(ok: boolean) {
+        const { promise, resolve } = Promise.withResolvers<number>()
+        if (ok) resolve(1)
+        return promise
+      }
+      function retained(ok: boolean) {
+        const capability = Promise.withResolvers<number>()
+        const done = capability.resolve
+        if (ok) done(1)
+        else capability.reject(new Error("no"))
+        return capability.promise.catch(() => 0)
+      }
+      function loop(values: number[]) {
+        const { promise, resolve } = Promise.withResolvers<number>()
+        for (const value of values) resolve(value)
+        return promise
+      }
+      declare function schedule(callback: (value: number | PromiseLike<number>) => void): void
+      function escapedResolver() {
+        const { promise, resolve } = Promise.withResolvers<number>()
+        schedule(resolve)
+        return promise
+      }
+      function escapedCapability() {
+        const capability = Promise.withResolvers<number>()
+        return capability
+      }
+      function shadowed() {
+        const Promise = { withResolvers() { return { promise: 1, resolve() {}, reject() {} } } }
+        const { promise, resolve, reject } = Promise.withResolvers()
+        resolve(); reject(); return promise
+      }
+    `);
+    expect(model.executors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ owner: "<module>", binding: "moduleTask", possibleSettlements: ["fulfilled"], mayRemainPending: false }),
+      expect.objectContaining({
+        owner: "choose", binding: "task", callback: "<external-resolvers>", synchronous: false,
+        throwBecomesRejection: false, settlementSource: "external-resolvers",
+        possibleSettlements: expect.arrayContaining(["fulfilled", "rejected"]), mayRemainPending: false,
+      }),
+      expect.objectContaining({ owner: "pending", binding: "promise", possibleSettlements: [], mayRemainPending: true }),
+      expect.objectContaining({ owner: "resolveOnly", binding: "promise", possibleSettlements: ["fulfilled"], mayRemainPending: true }),
+      expect.objectContaining({ owner: "retained", binding: "capability.promise",
+        possibleSettlements: expect.arrayContaining(["fulfilled", "rejected"]), mayRemainPending: false }),
+      expect.objectContaining({ owner: "loop", binding: "promise", possibleSettlements: ["fulfilled"], mayRemainPending: true }),
+      expect.objectContaining({ owner: "escapedResolver", binding: "promise",
+        possibleSettlements: expect.arrayContaining(["fulfilled", "assimilating"]), mayRemainPending: true }),
+      expect.objectContaining({ owner: "escapedCapability", binding: "capability.promise",
+        possibleSettlements: expect.arrayContaining(["fulfilled", "rejected", "assimilating"]), mayRemainPending: true }),
+    ]));
+    expect(model.executors.filter(({ owner }) => owner === "shadowed")).toEqual([]);
+    expect(model.chains).toContainEqual(expect.objectContaining({ owner: "<module>", source: "moduleTask", executor: 0 }));
+    expect(model.chains).toContainEqual(expect.objectContaining({ owner: "choose", source: "task", executor: 1 }));
+    expect(model.chains).toContainEqual(expect.objectContaining({ owner: "retained", source: "capability.promise", executor: 4 }));
+    const quint = generatePromiseChainsQuint("with_resolvers", model);
+    expect(quint).toContain("settle_0_fulfilled");
+    expect(quint).not.toContain("settle_0_rejected");
+    expect(quint).toContain("settle_1_fulfilled");
+    expect(quint).toContain("settle_1_rejected");
+  });
+
+  it("models Promise.try synchronous callback completion as Promise settlement", () => {
+    const model = analyzePromiseChains("promise-try.ts", `
+      function compute(value: number) {
+        if (value < 0) throw new RangeError("negative")
+        return value
+      }
+      function run(value: number) {
+        const task = Promise.try(compute, value)
+        return task.catch(() => 0)
+      }
+      function inline(flag: boolean) {
+        return Promise.try(() => { if (flag) throw new Error("no"); return 1 }).then(value => value)
+      }
+      function unknown(callback: () => number) { return Promise.try(callback) }
+      declare function risky(): number
+      function callsUnknown() { return Promise.try(() => risky()) }
+      function shadowed() {
+        const Promise = { try(callback: () => number) { return callback() } }
+        return Promise.try(() => 1)
+      }
+    `);
+    expect(model.executors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ owner: "run", binding: "task", callback: "compute", synchronous: true,
+        throwBecomesRejection: true, settlementSource: "promise-try",
+        possibleSettlements: expect.arrayContaining(["fulfilled", "rejected"]), mayRemainPending: false }),
+      expect.objectContaining({ owner: "inline", binding: expect.stringContaining("Promise.try"),
+        possibleSettlements: expect.arrayContaining(["fulfilled", "rejected"]), mayRemainPending: false }),
+      expect.objectContaining({ owner: "unknown", possibleSettlements: expect.arrayContaining(["fulfilled", "rejected", "assimilating"]), mayRemainPending: true }),
+      expect.objectContaining({ owner: "callsUnknown", possibleSettlements: expect.arrayContaining(["fulfilled", "rejected"]), mayRemainPending: false }),
+    ]));
+    expect(model.chains).toContainEqual(expect.objectContaining({ owner: "run", source: "task", executor: 0 }));
+    expect(model.chains).toContainEqual(expect.objectContaining({ owner: "inline", executor: 1 }));
+    expect(model.executors.filter(({ owner }) => owner === "shadowed")).toEqual([]);
+    expect(model.executors.find(({ owner }) => owner === "callsUnknown")).toEqual(expect.objectContaining({
+      mayDivergeSynchronously: true,
+      synchronousDivergenceReasons: ["opaque-call"],
+    }));
+    const quint = generatePromiseChainsQuint("promise_try", model);
+    expect(quint).toContain("settle_0_fulfilled");
+    expect(quint).toContain("settle_0_rejected");
+  });
+
+  it("routes Promise.try callback throws through catch and finally completion", () => {
+    const model = analyzePromiseChains("promise-try-handlers.ts", `
+      function caught() {
+        return Promise.try(() => {
+          try { throw new Error("no") }
+          catch { return 1 }
+        })
+      }
+      function finallyThrows() {
+        return Promise.try(() => {
+          try { return 1 }
+          finally { throw new TypeError("override") }
+        })
+      }
+      function finallyReturns() {
+        return Promise.try(() => {
+          try { throw new Error("hidden") }
+          finally { return 1 }
+        })
+      }
+      function maybeRethrows(flag: boolean) {
+        return Promise.try(() => {
+          try { throw new Error("no") }
+          catch (error) { if (flag) throw error; return 1 }
+        })
+      }
+    `);
+    const settlements = (owner: string) => model.executors.find((entry) => entry.owner === owner)?.possibleSettlements;
+    expect(settlements("caught")).toEqual(["fulfilled"]);
+    expect(settlements("finallyThrows")).toEqual(["rejected"]);
+    expect(settlements("finallyReturns")).toEqual(["fulfilled"]);
+    expect(settlements("maybeRethrows")).toEqual(expect.arrayContaining(["fulfilled", "rejected"]));
+    expect(model.executors.filter((entry) => ["caught", "finallyThrows", "finallyReturns", "maybeRethrows"].includes(entry.owner))
+      .every((entry) => entry.mayRemainPending === false)).toBe(true);
+  });
+
+  it("models Promise.try switch fallthrough and consumes switch-owned break", () => {
+    const model = analyzePromiseChains("promise-try-switch.ts", `
+      function rejects(kind: "first" | "second") {
+        return Promise.try(() => {
+          switch (kind) {
+            case "first": throw new TypeError("first")
+            case "second": throw new RangeError("second")
+          }
+        })
+      }
+      function breaks(kind: "skip" | "value") {
+        return Promise.try(() => {
+          switch (kind) {
+            case "skip": break
+            case "value": return 1
+          }
+          return 2
+        })
+      }
+      function fallsThrough(kind: "head" | "tail") {
+        return Promise.try(() => {
+          switch (kind) {
+            case "head": console.log("head")
+            case "tail": return 1
+          }
+        })
+      }
+      function nonExhaustive(kind: string) {
+        return Promise.try(() => {
+          switch (kind) { case "error": throw new Error("no") }
+        })
+      }
+      function unsupportedLoop(values: number[]) {
+        return Promise.try(() => {
+          for (const value of values) if (value > 0) return value
+          return 0
+        })
+      }
+    `);
+    const settlements = (owner: string) => model.executors.find((entry) => entry.owner === owner)?.possibleSettlements;
+    expect(settlements("rejects")).toEqual(["rejected"]);
+    expect(settlements("breaks")).toEqual(["fulfilled"]);
+    expect(settlements("fallsThrough")).toEqual(expect.arrayContaining(["fulfilled", "rejected"]));
+    expect(settlements("nonExhaustive")).toEqual(expect.arrayContaining(["fulfilled", "rejected"]));
+    expect(model.executors.find((entry) => entry.owner === "unsupportedLoop")).toEqual(expect.objectContaining({
+      possibleSettlements: expect.arrayContaining(["fulfilled", "rejected", "assimilating"]),
+      mayRemainPending: true,
+      mayDivergeSynchronously: true,
+    }));
+    const quint = generatePromiseChainsQuint("promise_try_switch", model);
+    expect(quint).toContain("var synchronously_blocked: bool");
+    expect(quint).toContain("action diverge_4_synchronously");
+    expect(quint).toContain("not(synchronously_blocked)");
+    expect(quint).toContain("val promiseSynchronouslyProgressed = not(synchronously_blocked)");
+  });
+
+  it("distinguishes a returned pending Promise from synchronous executor divergence", () => {
+    const model = analyzePromiseChains("executor-divergence.ts", `
+      declare const flag: boolean
+      function pending() {
+        const task = new Promise<number>(() => {})
+        return task.then(value => value)
+      }
+      function diverging() {
+        const task = new Promise<number>((resolve) => {
+          while (flag) {}
+          resolve(1)
+        })
+        return task.then(value => value)
+      }
+      function opaque(executor: (resolve: (value: number) => void) => void) {
+        const task = new Promise<number>(executor)
+        return task.then(value => value)
+      }
+    `);
+    expect(model.executors.find((entry) => entry.owner === "pending")).toEqual(expect.objectContaining({
+      mayRemainPending: true, mayDivergeSynchronously: false,
+    }));
+    expect(model.executors.find((entry) => entry.owner === "diverging")).toEqual(expect.objectContaining({
+      mayDivergeSynchronously: true,
+    }));
+    expect(model.executors.find((entry) => entry.owner === "opaque")).toEqual(expect.objectContaining({
+      mayRemainPending: true, mayDivergeSynchronously: true,
+    }));
+  });
+
+  it("detects TypeChecker-resolved recursive synchronous Promise callbacks", () => {
+    const model = analyzePromiseChains("recursive-callbacks.ts", `
+      function direct(): number { return direct() }
+      function left(): number { return right() }
+      function right(): number { return left() }
+      function finite(value: number): number { return value + 1 }
+      function promiseTryDirect() { return Promise.try(direct).then(value => value) }
+      function promiseTryMutual() { return Promise.try(left).then(value => value) }
+      function promiseTryFinite() { return Promise.try(finite, 1).then(value => value) }
+      function constructorRecursive() {
+        return new Promise<number>(() => { direct() }).then(value => value)
+      }
+      function constructorFinite() {
+        return new Promise<number>((resolve) => { resolve(finite(1)) }).then(value => value)
+      }
+      const finiteAlias = finite
+      const directAlias = direct
+      const callbacks = { finite, direct }
+      function aliasedFinite() { return Promise.try(finiteAlias, 1).then(value => value) }
+      function aliasedRecursive() { return Promise.try(directAlias).then(value => value) }
+      function propertyFinite() { return Promise.try(callbacks.finite, 1).then(value => value) }
+      function propertyRecursive() { return Promise.try(callbacks.direct).then(value => value) }
+      let mutable = finite
+      mutable = direct
+      const mutableCallbacks = { finite }
+      mutableCallbacks.finite = direct
+      function mutableAlias() { return Promise.try(mutable, 1).then(value => value) }
+      function mutableProperty() { return Promise.try(mutableCallbacks.finite, 1).then(value => value) }
+    `);
+    const divergence = (owner: string) => model.executors.find((entry) => entry.owner === owner)?.mayDivergeSynchronously;
+    expect(divergence("promiseTryDirect")).toBe(true);
+    expect(divergence("promiseTryMutual")).toBe(true);
+    expect(divergence("constructorRecursive")).toBe(true);
+    expect(divergence("promiseTryFinite")).toBe(false);
+    expect(divergence("constructorFinite")).toBe(false);
+    expect(divergence("aliasedFinite")).toBe(false);
+    expect(divergence("aliasedRecursive")).toBe(true);
+    expect(divergence("propertyFinite")).toBe(false);
+    expect(divergence("propertyRecursive")).toBe(true);
+    expect(divergence("mutableAlias")).toBe(true);
+    expect(divergence("mutableProperty")).toBe(true);
+    expect(model.executors.find((entry) => entry.owner === "promiseTryDirect")?.synchronousDivergenceReasons).toContain("recursion");
+    expect(model.executors.find((entry) => entry.owner === "constructorFinite")?.synchronousDivergenceReasons).toEqual([]);
+    expect(model.executors.find((entry) => entry.owner === "mutableAlias")?.synchronousDivergenceReasons).toContain("opaque-callback");
+  });
+
+  it("discharges opaque-call divergence only with a symbol-attached termination contract", () => {
+    const model = analyzePromiseChains("termination-contract.ts", `
+      /* uneffect:temporal_contract terminates true */
+      declare function bounded(value: number): number
+      declare function opaque(value: number): number
+      /* uneffect:temporal_contract terminates false */
+      declare function explicitlyUntrusted(value: number): number
+      function trusted() { return Promise.try(() => bounded(1)).then(value => value) }
+      function untrusted() { return Promise.try(() => opaque(1)).then(value => value) }
+      function falseContract() { return Promise.try(() => explicitlyUntrusted(1)).then(value => value) }
+      function shadowed() {
+        const bounded = (value: number) => opaque(value)
+        return Promise.try(() => bounded(1)).then(value => value)
+      }
+    `);
+    expect(model.executors.find((entry) => entry.owner === "trusted")).toEqual(expect.objectContaining({
+      mayDivergeSynchronously: false,
+      synchronousDivergenceReasons: [],
+    }));
+    for (const owner of ["untrusted", "falseContract", "shadowed"]) {
+      expect(model.executors.find((entry) => entry.owner === owner)?.synchronousDivergenceReasons)
+        .toContain("opaque-call");
+    }
+  });
+
   it("distinguishes omitted handlers from handlers that may reject", () => {
     const model = analyzePromiseChains("omitted.ts", `
       declare const promise: Promise<number>

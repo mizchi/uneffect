@@ -40,27 +40,80 @@ same property is proved for arbitrary TypeScript.
   DataView construction, and ownership transfer/read events carry the same
   source-stable region ID. Project reconciliation invalidates backing evidence
   even when the transfer and later DataView construction use different aliases.
-  Overlapping views, resize, conditional detach, and escaping views remain
-  outside this slice. Local DataView construction with literal
+  Ownership transitions now use the shared public-AST resource CFG across
+  `if`/`else`, switch fallthrough, loops, labels, and try/catch/finally.
+  Transfer paths are joined as must/may ownership states;
+  conditional invalidation downgrades DataView backing evidence to `unknown`.
+  Loop-contained transfers conservatively join zero/executed paths and report
+  possible repetition. A successful builtin `ArrayBuffer.resize` updates later
+  DataView backing bounds through immutable aliases; dynamic lengths become
+  unknown. Overlapping views, `maxByteLength`, pre-existing length-tracking
+  views, exact bounded-loop transfer counts, and escaping views remain outside this slice. Local DataView construction with literal
   byte offset/length now emits a separate backing-range obligation and gives
   immutable aliases a bounded accessor range. Literal in-range Uint8/Uint32
   `subarray` and `slice` windows similarly propagate their bounded length;
-  dynamic windows become `unknown` on indexed use. Shared-versus-copied
-  backing identity and overlap-sensitive writes are not yet modeled.
+  dynamic windows become `unknown` on indexed use. Standard-library identity
+  distinguishes shared `subarray` backing from copied `slice` backing. Nested
+  shared windows and immutable aliases participate in ownership invalidation;
+  overlap-sensitive writes are not yet modeled.
 - Effect declarations are checked as upper bounds, propagated through resolved
   call graphs, and diagnosed when declared but unused.
 - The experimental backend-neutral callable-summary API covers direct function,
-  method, arrow, and function-expression bodies plus immutable local callback
+  method, getter, setter, constructor, arrow, and function-expression bodies plus immutable local callback
   aliases. It records callback cardinality (`0`, `0..1`, `exactly-1`, `0..n`,
   or `unknown`), declared effect bounds, may-effects, synchronous throws,
   direct `Promise.reject` types, mutated regions, and source spans. Reviewed
-  Array callbacks propagate throws inline, Promise reactions convert callback
-  throws to rejection, and timers, microtasks, and event listeners report a
+  Array/Map/Set callbacks propagate throws inline and project their
+  collection receiver plus explicit `thisArg` into callback Mutation. Runtime
+  element/key/index values remain `unresolved-mutation-alias`. TypeScript's
+  erased pseudo-`this` parameter is excluded from runtime positional parameter
+  indexes. Promise reactions and JSON replacers retain explicit runtime-value
+  aliases; Array.from maps an explicit `thisArg`; timers, immediates, and
+  next-tick callbacks project variadic call-site arguments. Missing invocation
+  metadata fails closed per callback parameter. Promise reactions convert callback
+  throws to rejection. String replacement callbacks compose synchronously, and
+  ES2024 Object/Map grouping composes classifier plus iterable consumption with
+  a fresh result. RegExp hooks and dynamic capture arity are not proved. Timers,
+  microtasks, and event listeners report a
   deferred host boundary. `instantiateCallableSummary` checks concrete callback
   effects against the declared bound. This is not yet a proof for imported/open,
   returned, reentrant, concurrent, escaping, or dynamically selected callbacks;
   those cases remain `unknown`, and the older full effect analyzer still limits
   its own `effect_parameter` validation to iterator consumers.
+- `Array.fromAsync` is recognized by standard-library symbol identity. Its
+  mapper is a deferred microtask callback with runtime element/index aliases and
+  optional `thisArg`; generator iteration throws are discharged into Promise
+  rejection. General async-iterator rejection-type propagation remains partial.
+- `Promise.try` is recognized by standard-library symbol identity. The generic
+  callback contract keeps synchronous invocation separate from
+  `convert-throw-to-rejection` completion, forwards variadic arguments, removes
+  the callback's `Throw<T>` from the caller effect, and exposes settlement to
+  the Promise/temporal model. Inline and same-Program named callbacks have
+  bounded return/throw analysis; unavailable or unsupported bodies stay
+  conservative. Direct nested try/catch/finally uses the same payload-preserving
+  catch/finally routing as the shared Hoare/resource completion algebra. The
+  bounded switch extension uses literal-union exhaustiveness, fallthrough, and
+  switch-owned break. Dynamic/non-exhaustive selectors preserve no-match;
+  loops and unresolved transfers widen rather than claiming exact settlement.
+  `mayDivergeSynchronously` is separate from returned-Promise pending state.
+  Reaction-free executors receive synthetic Quint roots; divergence blocks all
+  later Promise transitions and makes `promiseSynchronouslyProgressed` fail.
+  The unified temporal facade publishes that projection. Web and Node host
+  models share the source-ordered return/diverge choice, block every queue after
+  divergence, and distinguish returned-pending from returned-settled reaction
+  scheduling. Direct/mutual same-Program recursion is detected through symbol
+  identity, including immutable aliases and unmodified const-object properties;
+  mutable callable locations stay opaque. Divergence evidence separates
+  `iteration`, `recursion`, `opaque-call`, `opaque-callback`, and
+  `unsupported-control`; unresolved external calls are not assumed to
+  terminate. A TypeChecker-symbol-attached `temporal_contract terminates true`
+  can discharge only `opaque-call`; it remains a recorded trusted assumption,
+  while missing, false, duplicated, or shadowed contracts remain fail-closed.
+  The returned Promise participates in floating-Promise checks.
+- All eleven standard TypedArray owners use generated catalog rules for
+  synchronous callbacks, explicit `thisArg`, mutating sort/copy/fill/reverse/set,
+  and fresh map/filter/slice/toSorted/toReversed/with results. This Effect layer
+  is distinct from numeric range, alias, overlap, and detachment proofs.
 - `uneffect-host-neutral-transitions/v1` is the first shared async/temporal
   contract. It projects callable invocation, first-settlement-wins Promise
   executors and reactions, and synchronous/asynchronous `using` disposal into
@@ -68,8 +121,146 @@ same property is proved for arbitrary TypeScript.
   `external`, or `unknown` lanes. `analyzeHostNeutralTransitions` connects the
   existing Program analyses and removes duplicate Promise-reaction observations.
   A bounded host projection maps inline and microtask work plus reviewed timers
-  and Web EventTarget delivery to separate Web/Node queue vocabulary. Ambiguous
+  and Web EventTarget delivery to separate Web/Node queue vocabulary. A literal
+  `{ once: true }` EventTarget option is projected as `0..1` and prevents a
+  second external completion. A statically projected `signal` option shares the
+  AbortSignal abort/timeout/composition model and blocks or cancels external
+  delivery. Direct same-function `removeEventListener` calls are matched by
+  target/type/callback/capture identity, including immutable aliases, and latch
+  cancellation in the Web model; dynamic option objects remain repeatable and
+  uncancelled. Ambiguous
   Node EventTarget delivery and other unreviewed host tasks remain `unknown`.
+- A shared syntax-level lexical-execution classifier distinguishes exactly-once,
+  conditional, and repeated sites before a domain builds a full CFG. It covers
+  optional callback calls, short-circuit right operands, branch bodies, switch
+  clauses, and loop multiplicity while preserving always-evaluated `if`/ternary
+  conditions and `for` initializers. Callable summaries, event/timer
+  cancellation, host-neutral transitions, and ESM top-level-await ordering use
+  this classifier; it is conservative evidence, not a replacement for the
+  exception-aware CFG.
+- Function entry semantics include parameter evaluation before the body.
+  Ordinary default expressions, nested destructuring defaults, and computed
+  binding keys contribute calls, effects, and synchronous throws to source and
+  Program summaries. Callback calls in a default initializer are conditional
+  (`0..1`), because an explicit non-`undefined` argument skips that initializer.
+  Static top-level object binding keys additionally resolve same-Program getter
+  declarations for local variable and parameter destructuring, including
+  renamed bindings and defaults. Parameter getter Throw precedes the function
+  body and therefore is not discharged by a catch inside that body. Because a
+  destructured parameter has no addressable source binding, receiver mutation
+  from its getter remains `unresolved-mutation-alias`. Object spread and local
+  variable object-rest additionally compose enumerable getters declared on a
+  same-Program object literal; selected rest keys are excluded and class
+  prototype accessors are not treated as enumerable own properties. Finite
+  static nested object paths recursively compose getter Effect/Throw, while a
+  nested receiver Mutation stays unresolved unless a later heap-identity proof
+  can name the fetched object. A computed key composes its local primitive-
+  conversion hook, but dynamic property selection and parameter-rest body
+  identity are not claimed by this exact accessor fragment.
+- Standard `structuredClone` emits `Clone`, optional transfer/shared-memory
+  ownership effects, and `Throw<DOMException>`. Same-Program own enumerable
+  object-literal getters are composed through finite nested object/array
+  literals; opaque generic graphs retain `InvokeUserCode`. Prototype accessors
+  and direct Proxy traps are not claimed to run. Catalog-originated synchronous
+  throws participate in lexical catch discharge.
+- Callable summaries preserve finite object/tuple callback parameter paths, so
+  `{ onDone: callback }`, `[callback]`, defaults, and multiple callback fields
+  do not collapse into one top-level argument slot. `callbackArgumentKey`
+  addresses a path when instantiating effect bounds. Rest and computed callback
+  bindings currently downgrade the summary to `unknown`.
+- Same-Program class method edges use resolved-signature identity and carry an
+  addressable receiver. Parameter-rooted or `this`-rooted mutation regions are
+  instantiated at the caller through direct receivers, immutable aliases, and
+  ordinary data-property paths. Getter-backed receivers, mutable aliases,
+  extracted/unbound methods, and non-addressable expressions fail closed as
+  `unresolved-mutation-alias`. Source-visible user methods may provide callback
+  timing from their analyzed bodies; their spelling never grants a builtin
+  contract.
+- Program-visible property accessors use the same inline call-graph edge and
+  stable receiver substitution. Reads invoke a getter, simple assignment invokes
+  a setter, and update/compound assignment may invoke both; their Effect,
+  synchronous Throw, and `this`-rooted Mutation therefore compose at the access
+  site. Reviewed implicit coercion similarly resolves a local standard
+  `Symbol.toPrimitive` method, or conservatively the local `valueOf` and
+  `toString` fallback candidates in hint order. Dynamic/proxy/external hooks
+  retain `InvokeUserCode` without claiming that their hidden body was analyzed.
+- A TypeChecker-resolved same-Program `new` expression is an inline constructor
+  edge. Explicit constructors include parameter defaults, non-static instance
+  field initializers, and the constructor body; synchronous throws follow the
+  surrounding catch boundary. A class without its own constructor projects its
+  field initializers at the allocation site and still links an inherited local
+  constructor when TypeScript resolves one. Static fields remain module
+  initialization, not instance-construction work.
+- A local standard-identity `Symbol.hasInstance` override is an inline edge from
+  `instanceof`, with the tested value as its argument and the constructor object
+  as its receiver. Direct builtin `Proxy` construction is followed through
+  immutable aliases for property access, `in`, and `delete`, which retain
+  `InvokeUserCode`; a same-spelled local `Proxy` class receives no such trust.
+- Standard-identity `JSON.stringify` composes a same-Program `toJSON` method as
+  an inline call, or enumerable object-literal getters when no `toJSON` property
+  exists. Unknown/any values, direct Proxy aliases, and recursively typed
+  arrays/records whose values expose serialization hooks retain
+  `InvokeUserCode`; primitive and hook-free finite structural values do not.
+  Replacer callbacks keep their existing synchronous callback summary. Hooks
+  returned dynamically from `toJSON`, arbitrary runtime graph identity, and
+  unbounded reflective traversal are not concrete body proofs.
+- Standard-identity `Object.assign` composes enumerable own source getters from
+  same-Program object literals and matching same-Program target setters.
+  Class prototype accessors are excluded because assignment does not copy
+  them. Unknown/type-parameter values and authenticated Proxy operands retain
+  `InvokeUserCode`; finite hook-free structural operands do not. This remains a
+  reviewed static fragment rather than a proof of arbitrary runtime property
+  descriptors or escaped Proxy identity.
+  Its catalog entry also emits `Mutate<typeof target>` and records the result as
+  an alias of that target; plain data-property copies are therefore not
+  incorrectly classified as pure.
+- Standard-identity `Object.values` and `Object.entries` reuse the enumerable
+  own-read rule and compose same-Program object-literal getters. `Object.keys`
+  deliberately does not compose value getters. Direct or immutable-aliased
+  Proxy operands retain `InvokeUserCode` for all three because key enumeration
+  itself can invoke traps; unknown/type-parameter operands are also fail-closed.
+- Standard-identity `Reflect.get` and `Reflect.set` resolve finite string/number
+  literal key unions to same-Program getter/setter edges. Their optional
+  receiver becomes accessor `this`; `Reflect.set` additionally emits catalog
+  Mutation for its target and present receiver. Dynamic keys, unknown/type
+  parameters, and authenticated Proxy operands retain `InvokeUserCode`.
+  `Reflect.has` and `Reflect.deleteProperty` do not invoke ordinary accessors,
+  but Proxy traps remain; delete emits target Mutation from the catalog.
+- Standard `Function.prototype.call`/`apply` and `Reflect.apply` recover the
+  same-Program callable edge rather than stopping at the library wrapper. They
+  substitute explicit `this`, static arguments, Effect, Mutation, and
+  synchronous Throw/catch. Direct array literals and immutable single-use
+  aliases are accepted for apply; parameterized, mutated, reused, escaped, or
+  spread lists remain `InvokeUserCode` with unresolved argument Mutation.
+  Callable Proxies and open/external callable values are not treated as local
+  bodies.
+- Standard `Function.prototype.bind` records a local deferred callable rather
+  than executing its body at bind time. Direct invocation, `.call`, or `.apply`
+  later restores the same-Program target with bound `this`, prefix arguments,
+  and call-site arguments. Immutable aliases and repeated calls are supported;
+  escape before invocation, dynamic targets, and callable Proxies become
+  `InvokeUserCode`. A returned bound callable is not yet a composable package
+  callable summary, so creating/returning it alone makes no body-effect claim.
+- Standard `Reflect.construct` reuses same-Program construction semantics for
+  a static argument list. Explicit constructor bodies, implicit instance-field
+  initializers, argument Mutation, and synchronous Throw/catch are composed;
+  initialization writes to the fresh result remain allocation-local. Dynamic
+  constructor/list values and Proxy target/newTarget values require
+  `InvokeUserCode`; dynamic lists also retain unresolved Mutation evidence.
+- Standard object-internal mutation APIs are cataloged: `defineProperty`,
+  `defineProperties`, `freeze`, `seal`, `preventExtensions`, and
+  `setPrototypeOf`, plus reviewed Reflect counterparts. They emit target
+  Mutation and Object result aliasing where applicable. `defineProperty`
+  composes inherited same-Program descriptor-field getters;
+  `defineProperties` additionally composes enumerable descriptor-map getters
+  and static object-literal descriptor values. Dynamic descriptors and Proxy
+  targets/maps retain `InvokeUserCode`.
+- `Object.create` reuses descriptor-map conversion and records its result as
+  fresh without target Mutation. `Object.getOwnPropertyDescriptor`,
+  `getOwnPropertyDescriptors`, and `hasOwn` deliberately do not compose an
+  ordinary property's getter body. Authenticated Proxy and unknown/type-
+  parameter targets retain `InvokeUserCode` because descriptor/has traps may
+  run.
 - `generateHostTransitionModel` now joins that projection to the existing
   executable Web/Node Quint event-loop generators. It preserves exact compatible
   timer cancellation links and Node poll/close external-completion links.
@@ -88,6 +279,13 @@ same property is proved for arbitrary TypeScript.
   are not made fair. The combined resource/Promise/external product remains
   open. Queue order, cancellation, and external-completion safety retain their
   existing checked properties.
+- Reviewed Web `EventTarget#addEventListener` callback semantics now come from
+  the builtin catalog rather than a same-spelled callable-summary rule.
+  TypeChecker owner assignability covers WebSocket overload redeclarations and
+  rejects user lookalikes. The executable Web Quint model separates repeatable
+  external completion from event-task callback execution, drains nested
+  microtasks afterward, and supports explicit fairness for both actions.
+  Listener removal/options and WebSocket-specific event ordering remain open.
 - Abort control is also represented in the neutral layer. Local builtin
   `AbortController` construction and identity-checked `abort(reason)` calls
   produce source-attributed inline transitions; same-spelled user classes are
@@ -226,6 +424,31 @@ same property is proved for arbitrary TypeScript.
   NaN, infinite, or overflow Float32 remain unknown.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
+- TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto
+  the same `Net<HostSet>` lattice and records a distinct beacon transport
+  boundary. Absolute literals are exact; dynamic/relative targets remain
+  unknown transport provenance and require broad `Net` authority.
+- The same catalog-driven path now covers TypeChecker-resolved global
+  `new WebSocket(url)`, including `ws:`/`wss:` default ports and distinct
+  WebSocket transport evidence. Catalog acquire/use/release primitives also
+  let the explicit resource-CFG collector validate constructor → `send` →
+  `close`, follow immutable aliases, and report send-after-close as an invalid
+  trusted transition (`unknown`, not a verified counterexample). This is not
+  yet automatic project assurance and does not model message callbacks,
+  reconnect behavior, external completion, or event-loop ordering.
+- Cookie and Web Storage effects use the shared finite literal-set lattice.
+  Literal cookie assignments scope writes by cookie name; literal and finite
+  string-union storage keys remain finite. Cookie aggregate reads, storage
+  enumeration/clear, and bare declarations are broad. Dynamic keys fail closed.
+  Cookie path/domain and storage origin/area identity are not modeled.
+- Same-realm global property access is separated into
+  `GlobalVarsRead<KeySet>` and `GlobalVarsWrite<KeySet>`. TypeChecker-resolved
+  `globalThis`, reviewed browser/Worker/Node host globals, and immutable local
+  aliases are supported. Literal keys and finite literal unions are preserved;
+  dynamic keys become `Unknown<dynamic-global-key>`. Plain assignment and
+  deletion are write-only, while compound assignment and update are read/write.
+  This is not evidence that module globals, iframe globals, or arbitrary
+  same-spelled objects share the current realm.
 - Filesystem scopes support explicit `$WORKSPACE_ROOT`, `$PACKAGE_ROOT`,
   `$SOURCE_DIR`, `$CWD`, and target-profile `$TEMP` anchors. Separator, dot
   segment, case-policy, and containment normalization are implemented.
@@ -246,28 +469,80 @@ same property is proved for arbitrary TypeScript.
   fragment now runs through the common resource-protocol evaluator with legacy
   diagnostic parity tests. Shared-memory transfer remains on the explicitly
   unsupported compatibility path; Atomics ordering is not modeled.
-- Unconditional `using`/`await using` disposal suffixes can be projected into
-  the shared resource lifecycle under an explicit all-resources-acquired
-  precondition. Reverse order and disposal completion metadata are preserved.
-  Conditional/failed acquisition is still checked by the dedicated Quint model
-  because the shared lattice does not yet retain `absent | available`.
+- Straight-line and bounded conditional `using`/`await using` lifecycles
+  project into the shared resource model. Initializer failure skips later
+  acquisitions and enters reverse cleanup for the acquired prefix; lexical
+  conditionals retain acquire-or-skip/release-or-skip paths. Reverse order and
+  disposal completion metadata are preserved without an all-acquired
+  precondition. One contiguous source-loop acquisition group has explicit
+  zero/repeat/exit generation transitions; multiple, nested, non-contiguous, or
+  non-stack groups remain unknown. A direct awaited initializer separates
+  inline evaluation failure from microtask fulfillment/rejection; indirect
+  thenable and wrapper timing remains unknown.
 - Binding-level Promise rejection ownership projects to the same resource IR:
   floating remains available, observation consumes, and explicit ownership
-  transfer reaches transferred. Alias bindings are not yet unified by one
-  underlying Promise identity, so the existing async analysis remains the
-  source of truth for control-flow classification.
-- Explicit `for await...of` exhaustion and abrupt break/return/uncaught-throw
-  paths project to consumed/released iterator resource scenarios. Optional
-  `return` lookup and awaited rejection metadata are retained. Finally-crossing
-  completion and implicit exceptions remain unknown; this is not yet general
-  AsyncIteratorClose or generator-delegation verification.
+  transfer reaches transferred. Supported immutable aliases share the
+  TypeChecker-resolved underlying Promise identity. Straight-line reassignment
+  creates distinct ownership generations; control-dependent reassignment uses
+  the structured fixed point. Escaping and dynamically dispatched aliases
+  remain unknown.
+- Explicit synchronous `for...of` and asynchronous `for await...of` exhaustion
+  and abrupt break/return/uncaught-throw paths project to consumed/released
+  iterator resource scenarios. Synchronous close retains inline optional-return
+  lookup/call and throw; asynchronous close retains awaited rejection.
+  A Program-visible custom iterable generator method named by the standard
+  `Symbol.iterator` identity also composes its Effect and synchronous Throw into
+  `for...of`, spread, array destructuring, `yield*`, reviewed iterable
+  constructors, and Promise-combinator consumers. Promise combinators retain
+  the iteration-Throw-to-rejection boundary. A non-generator iterator factory composes known
+  acquisition effects, but its returned `next`/`return` object remains opaque
+  and therefore keeps the consumer unknown rather than implying purity.
+  Finally-crossing
+  completion and implicit exceptions remain unknown. Direct local manual
+  async-iterator bindings now project awaited `.next()` and explicit
+  `.return()` through immutable aliases using TypeChecker identity; missing
+  close, unawaited completion, and post-close use stay visible to the resource
+  evaluator. Direct return and returned immutable closure/simple-aggregate
+  capture are exact ownership escape; an uncontracted call argument remains
+  unknown. Symbol-resolved local resource callable contracts can classify that
+  boundary as trusted borrow/consume/transfer/escape without upgrading it to
+  verified evidence. Explicit root `.d.ts` overlays may provide the same trusted
+  function/method contract; transitively imported declarations are not trusted
+  automatically. Conditional ordering, mutable/escaping aliases, and `yield*`
+  delegation are not yet general AsyncIteratorClose verification. Direct async
+  generator `yield*` over a standard `AsyncIterable` does project normal
+  exhaustion and consumer-return propagation, but nested delegation failures
+  and broader consumer escape remain outside that fragment. An immediately
+  acquisition-dominating `try/finally` with unconditional awaited `return()` is
+  exact across normal/return/throw and awaited-next rejection; pre-try gaps,
+  catch-only close, and conditional finalizer close remain unknown.
+  Manual synchronous Iterator/Generator calls share the same identity, alias,
+  escape, callable-contract, and finally rules, with inline/throw completion;
+  direct synchronous `yield*` consumer-close propagation is also represented.
+  Shallow builtin-`Object.freeze` property paths, aliases, static string access,
+  destructuring, and returned frozen aggregates preserve iterator identity.
+  Mutable/shadowed/dynamic property paths remain explicit unknown evidence.
+  Canonical sync/async `while` conditions that continue while direct `.done` is
+  false establish natural exhaustion as `consume`; any additional abrupt body
+  exit keeps the iterator unclosed. This is partial correctness, not loop
+  termination or fairness proof.
+  Canonical infinite loops with an immutable direct IteratorResult binding and
+  immediate symbol-resolved `done` break, including destructured `done`, provide
+  the same consume evidence; alternate exits remain unclosed.
+  Canonical `for` initializer/update IteratorResult generations are also
+  composed when both `.next()` calls resolve to one iterator identity; general
+  mutable result flow and cross-iterator updates remain unclosed.
 - `uneffect-resource-temporal-product/v1` links acquired using-resource releases
   to host-neutral disposal transitions with resource identity and lane checks.
-  Its result remains `exact-under-precondition`; dangling, duplicate,
+  Its supported lifecycle result is `exact`; dangling, duplicate,
   mismatched, and unlinked release edges are unknown. The common product emits
   the bounded acquire/release Quint model; the old resource/host entry point has
-  been removed. Conditional/failed acquisition, disposal failure,
-  other transition kinds, fairness, and arbitrary callbacks are not composed.
+  been removed. Initializer failure and bounded conditionals are composed. The
+  finite suppression model retains body/initializer/disposer origin IDs and
+  parent edges, with broken-parent negative controls. Indirect async initializer
+  host timing, broader repeated acquisition, concrete runtime Error payload
+  values/identity, other transition kinds, fairness, and arbitrary
+  callbacks are not composed.
 - Explicit package resource-callable artifacts bind trusted summaries to exact
   module/export, runtime version, declaration bytes, artifact digest, review
   owner/reason, and optional expiry. Accepted artifacts are rebound to the
@@ -294,6 +569,103 @@ same property is proved for arbitrary TypeScript.
   block identity and exact solver path assumptions make branch-local proof and
   counterexample results reviewable. This is the checker's restricted neutral
   CFG, not a claim that TypeScript's private compiler CFG has been exported.
+  A one-to-eight-clause numeric or Boolean literal `switch` lowers each selected
+  entry, default non-match, fallthrough suffix, and target-owned unlabeled
+  `break` into the same path state. Nested `if`/`try` preserve switch ownership,
+  and synchronous throws enter the existing catch/discharge flow. Dynamic or
+  duplicate cases, mixed scalar sorts, labels, and unsupported loop-break
+  ownership fail closed.
+  A switch over a TypeChecker-validated readonly finite string discriminant
+  reuses its exactly-one Boolean family directly, including immutable aliases,
+  default exclusion, fallthrough, and narrowed payload access. No unconstrained
+  SMT string is invented. Open/mutable discriminants and case literals outside
+  the reviewed family fail closed.
+  Invariant-backed `while`, canonical single-binding scalar `for`, and
+  `do...while` share target-owned unlabeled `break`/`continue`. Continue creates
+  a loop-preservation obligation; a `for` applies its single assignment or
+  `++/--` update first. Break contributes a concrete post-loop path, and
+  try/finally plus a nested switch retain the nearest owner. The do-while exit
+  is reachable only after one body execution. Labels, missing invariants,
+  multi-binding/sequence headers, and general loop expressions remain outside
+  this bounded inductive fragment.
+  Identifier-only `++`, `--`, `=`, `+=`, `-=`, and `*=` share one symbolic
+  updater between ordinary statements and canonical `for` headers. Property,
+  logical, and comma-sequence mutation fail closed. `/=` and `%=` also remain
+  unsupported here because general JavaScript number division/remainder do not
+  equal the current integer SMT abstraction.
+  Ordinary-statement arithmetic compound assignments evaluate their right side
+  through the same path-sensitive scalar evaluator as returns and plain
+  assignments. Conditional expressions, reviewed Math calls, and the supported
+  signed-remainder fragment therefore preserve their branch assumptions before
+  updating the identifier once. Both operands must have the same numeric IR
+  sort. Canonical loop-header updates stay in the single-path updater.
+  Direct `/` and general `%` expressions now fail closed for the same reason. A
+  regression demonstrates the prior unsound mapping: SMT `mod` could prove a
+  non-negative result for a negative JavaScript remainder. Reintroduction
+  requires explicit finite/nonzero-divisor obligations, truncation toward zero,
+  signed remainder, and domain-correct result sorts. The SMT emitter also
+  rejects unknown manually constructed operators instead of printing an
+  invalid `(undefined ...)` term.
+  One reviewed remainder fragment is restored: an Int-valued left operand and
+  a direct nonzero safe-integer literal divisor split on the dividend sign.
+  The negative path emits `-mod(-value, abs(divisor))`, matching JavaScript's
+  signed remainder while retaining a non-negative SMT modulus. Dynamic or zero
+  divisors and Real operands remain unsupported.
+  Bare lexical blocks and the block bodies of supported conditionals, loops,
+  try/catch, and finally share one scope join. Writes to an existing outer
+  scalar and function-scoped `var` bindings survive the block; block-local
+  `let`/`const` bindings are removed at every exit, including abrupt exits.
+  Readonly object/tuple destructuring already admitted by TypeChecker remains
+  supported. A lexical or catch binding that shadows a tracked scalar fails
+  closed until the environment itself is keyed by TypeChecker symbol identity.
+  Recursive scalar conditional expressions in a return, initialized identifier
+  declaration, or plain assignment fork the shared CFG into true/false path
+  assumptions before evaluating each branch. This retains nested ternary
+  correlations in evidence. Call-conditioned, non-scalar, and abrupt/effectful
+  branches remain unsupported instead of becoming an opaque SMT `ite`.
+  Direct standard-library `Math.abs` and one-to-four-argument `Math.min` or
+  `Math.max` calls split into comparison-selected scalar paths. Recognition
+  requires the TypeChecker-resolved merged global `Math` receiver plus the
+  exact TypeScript standard `lib.*.d.ts` member and call signature. Shadowed objects, zero-arity
+  infinity results, over-budget arity, nonnumeric operands, and call/effect-
+  valued arguments remain unsupported. These operations inherit the contract
+  domain's integer/real abstraction; they are not an IEEE-754 NaN or signed-zero
+  proof for an unvalidated runtime `number`.
+  Reassignment-free callable aliases are accepted as direct `const` property
+  selection, renamed/shorthand `const` object destructuring, or identifier-only
+  `const` alias chains. Every call still resolves through the alias binding and
+  the original standard-library signature. `let`, shadowed Math receivers,
+  computed properties, default/rest bindings, and dynamic aliases fail closed.
+  The same identity layer recognizes `Math.floor`, `ceil`, `trunc`, and `round`.
+  Floor emits SMT `to_int`; ceil is the negated floor of the negated operand;
+  trunc splits on the operand sign; and round is floor of `x + 0.5` in the
+  finite Real abstraction. This matches integer-valued results but deliberately
+  does not distinguish JavaScript negative zero or admit NaN and infinities.
+  `Math.sign` reuses the same standard-library and immutable-alias identity and
+  emits three comparison-selected negative, zero, and positive paths. Their
+  exhaustiveness relies on the Int/finite-Real abstraction; NaN remains absent
+  and negative zero is represented by the integer result zero.
+  Numeric exponentiation supports both `base ** exponent` and reviewed
+  `Math.pow(base, exponent)` (including immutable callable aliases) when the
+  exponent is a syntactic non-negative integer literal from zero through eight.
+  The base is evaluated once and the result becomes repeated multiplication in
+  the solver IR. Dynamic, negative, larger, effectful-base, and shadowed forms
+  fail closed; fractional/reciprocal and IEEE overflow semantics are not
+  silently approximated.
+  TypeChecker-proven Boolean `&&` and `||` use the same evaluator and preserve
+  left-to-right short-circuit reachability. A skipped right operand produces the
+  corresponding literal result, while an evaluated right operand may split
+  recursively. JavaScript truthiness over numbers or other non-Boolean values,
+  and call/effect-valued operands, fail closed rather than becoming eager SMT
+  conjunction or disjunction. Identifier-only Boolean `&&=` and `||=` share
+  those paths: the left binding is read once, retained on the skipped path, and
+  updated only after evaluating the selected right path. `??=` is also
+  supported for a TypeChecker-backed nullable numeric or Boolean identifier: it splits on
+  the prior presence value, evaluates the right side only when nullish, and
+  writes `true` to the path environment on both completion paths. Later
+  coalescing or nullish guards therefore consume the updated state instead of
+  stale TypeChecker evidence. Property targets, mutable aliases, call-valued
+  right sides, and mismatched scalar sorts remain unsupported.
   When verification receives the exact checked `ts.Program`, a parameter whose
   TypeChecker type is a union of one to sixteen safe-integer literals contributes
   its finite-set assumption. This works through imported type aliases. The
@@ -301,13 +673,64 @@ same property is proved for arbitrary TypeScript.
   all non-declaration Program sources. A source mismatch or any TypeScript error
   disables these facts; a plain `number` alias never receives a finite range.
   The same Program-backed layer accepts direct equality guards for
-  `number | undefined`, `number | null`, and `number | null | undefined`, plus
-  direct `typeof value === "number"`/`!==` guards for `number | string`. Guard
-  evidence is tied to the exact parameter symbol and comparison source span;
+  nullable numeric and Boolean scalar unions, plus direct `typeof` equality or
+  inequality guards for exact `number | string` and `boolean | string` unions.
+  The string comparison is treated as the complement only for those closed
+  two-member unions; `boolean | number` and wider mixtures remain unsupported.
+  For exact numeric or Boolean `T | undefined`, `typeof value ===/!==
+  "undefined"` selects the inverse/direct presence fact. A union that also
+  contains null remains unsupported because the current single presence bit
+  cannot distinguish the two absent values. Guard evidence is tied to the exact
+  parameter symbol and comparison source span;
+  Nullable Boolean facts additionally constrain an absent payload to false,
+  matching JavaScript truthiness for false, null, and undefined. Direct Boolean
+  conditions can therefore imply presence. A shared Boolean-sort gate covers
+  ternaries, `if`, loop conditions, and reviewed assertion conditions; numeric
+  or other coercive truthiness fails closed before reaching SMT.
   shadowed values and locally redefined `undefined` do not match. A Boolean
   discriminator is explicit in SMT rather than pretending the inactive union
-  member has an integer value. Discriminated object unions and assertion
-  functions remain unsupported.
+  member has an integer value. Direct numeric or Boolean `value ?? fallback`
+  in a return, initialized identifier declaration, or plain assignment reuses that exact
+  TypeChecker presence fact: the defined path yields the separate scalar
+  payload and the nullish path evaluates the scalar fallback. Immutable
+  identifier aliases retain the parameter identity. Mutable aliases,
+  property/optional-chain operands, call-valued fallbacks, and ordinary
+  non-nullable scalars fail closed. The first object-union slice accepts two to
+  eight members with one common readonly string-literal discriminant and direct
+  equality/inequality guards on the exact parameter symbol. It emits an
+  exactly-one Boolean family, so exhaustive fallthrough is solver-visible.
+  Within the same supported CFG, a direct readonly payload access narrowed by
+  TypeScript to one safe-integer or Boolean literal becomes a constant fact
+  keyed by its exact source span. A narrowed scalar `number`, `boolean`, `Int`,
+  `Nat`, or `Float` instead receives a stable member/property-scoped solver
+  variable; `Nat` contributes its non-negative domain, while plain `number`
+  remains unconstrained and can produce a counterexample. The terminal scalar
+  may be reached through a readonly dot-property path; every intermediate
+  property is checked by TypeChecker symbol identity. A `const` object binding
+  may destructure those narrowed scalar properties directly or from a readonly
+  nested payload source, including a renamed binding; binding references retain
+  their exact TypeChecker identity. A narrowed readonly tuple payload also
+  admits fixed non-negative literal index reads and flat `const` array
+  destructuring; tuple element literals and scalar domains use the same IR.
+  TypeChecker-resolved
+  identifier-only `const` alias chains preserve the same object identity;
+  their declarations do not enter the scalar environment. One unambiguous
+  one-to-four-segment readonly parameter property path may also expose the
+  discriminated union when it is first selected into such an alias. A
+  pre-narrow union, mutable payload, same-spelled object, mutable/destructured
+  alias, mutable/computed/cyclic/over-depth root, ambiguous root, computed
+  payload access, pre-narrow/mutable/defaulted/rest destructuring, or composite
+  object/array payload value remains a non-proof. Ordinary or mutable arrays,
+  dynamic tuple indexes, holes, defaults, rest, and nested tuple bindings are
+  likewise outside the proof subset.
+  TypeChecker-resolved named, namespace, default, and import-equals bindings of
+  `node:assert/strict`, plus named `ok` and the default callable from
+  `node:assert`, additionally split normal continuation from trusted
+  `Throw<AssertionError>`; catch discharges the latter through the shared
+  exception CFG, and the reviewed builtin is recorded in the assumption
+  ledger. Catalog `default` export binding is reusable by other reviewed
+  modules. Coercive assertion helpers and arbitrary user-defined assertion
+  signatures remain unsupported.
   A bounded exception-aware extension routes direct synchronous `throw` and
   TypeChecker-resolved direct `never` calls carrying an explicit `Throw<E>`
   declaration into `try`/`catch`. Each return artifact records the throw edges
@@ -941,6 +1364,14 @@ same property is proved for arbitrary TypeScript.
   `void`, global `undefined`, and immutable aliases select a supported `??`
   right side; nullable unions and shadowed identifiers remain unknown.
   Arbitrary expressions still retain a conservative possible-throw catch entry.
+- `Promise.withResolvers` is represented as a Promise capability whose
+  settlement runs on the external host lane rather than as a synchronous
+  executor. Canonical/renamed destructuring, immutable resolver aliases,
+  immutable capability properties, module scope, and direct `if`/`else`
+  settlement compose with first-settlement-wins. Unsupported control-flow and
+  escaped resolver authority widen to may-outcomes and preserve pending.
+  Promise ownership recognizes the destructured Promise binding, and stable
+  binding identity connects it to the unified temporal host settlement.
 - Standard-library identity recognizes a direct
   `Promise.{all,allSettled,race,any}(values.map(async ...))` pipeline as
   transferring every mapped callback rejection to the aggregate Promise.

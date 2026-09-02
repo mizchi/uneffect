@@ -12,6 +12,9 @@ import type { WorkspaceModuleInitializationComposition } from "./workspace-modul
 import type { BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { EffectUnknownReason } from "./effects.js";
 import type { AssumptionLedger } from "./assumptions.js";
+import type { TypedArrayObligation, TypedArraySafetyStatistics, TypedArrayWindowProvenance } from "./typed-array-safety.js";
+import type { OwnershipDiagnostic } from "./ownership.js";
+import type { IteratorCheckEvidence } from "./iterator-check.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -35,6 +38,9 @@ export interface CheckJsonReport {
   effects: CheckReportEffect[];
   contracts: VerificationArtifact[];
   assumptions: AssumptionLedger;
+  typedArrays: { obligations: TypedArrayObligation[]; windows: TypedArrayWindowProvenance[]; statistics: TypedArraySafetyStatistics };
+  ownership: Array<OwnershipDiagnostic & { fileName: string }>;
+  asyncIterators: IteratorCheckEvidence[];
   assurance: AssuranceAssessment | null;
   project: TypeScriptProjectProvenance | null;
 }
@@ -117,6 +123,13 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
     })),
     contracts: result.artifacts,
     assumptions: result.assumptions,
+    typedArrays: {
+      obligations: result.typedArrays.obligations,
+      windows: result.typedArrays.windows,
+      statistics: result.typedArrays.statistics,
+    },
+    ownership: result.ownership,
+    asyncIterators: result.asyncIterators,
     assurance: assurance ?? null,
     project: result.project ?? null,
   };

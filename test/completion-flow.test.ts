@@ -4,6 +4,8 @@ import {
   completionSet,
   consumeLoopCompletions,
   finallyCompletions,
+  routeCatchPaths,
+  routeFinallyPaths,
   sequenceCompletions,
 } from "../src/completion-flow.js";
 
@@ -44,6 +46,21 @@ describe("shared JavaScript completion algebra", () => {
       completionSet({ completion: "throw" }),
     );
     expect(kinds(overridden)).toEqual(["throw"]);
+  });
+
+  it("preserves domain payloads while sharing catch and finally routing", () => {
+    type Path = { completion: "normal" | "return" | "throw"; value: string };
+    const completionOf = (path: Path) => path.completion;
+    const caught = routeCatchPaths<Path>(
+      [{ completion: "return", value: "try-value" }, { completion: "throw", value: "error" }],
+      completionOf,
+      () => [{ completion: "return", value: "recovered" }],
+    );
+    expect(caught.map(({ value }) => value)).toEqual(["try-value", "recovered"]);
+    expect(routeFinallyPaths<Path>(caught, [
+      { completion: "normal", value: "fallthrough" },
+      { completion: "throw", value: "cleanup-error" },
+    ], completionOf).map(({ value }) => value)).toEqual(["try-value", "recovered", "cleanup-error"]);
   });
 
   it("consumes only break/continue transfers owned by the lexical loop", () => {

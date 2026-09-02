@@ -2,13 +2,19 @@ import { readFile } from "node:fs/promises";
 import ts from "typescript";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { attachContractEffectBoundaries, verifyContractObligations, type VerificationArtifact } from "./contracts.js";
-import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
+import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type OwnershipCheckerDiagnostic, type TypedArrayCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
-import { collectAssumptionLedger, type AssumptionLedger } from "./assumptions.js";
+import { collectAssumptionLedger, mergeAssumptionLedger, type AssumptionEntry, type AssumptionLedger } from "./assumptions.js";
 import { analyzeTrustedScriptSinks } from "./trusted-types.js";
+import type { AssumptionRegistry } from "./assumption-registry.js";
+import { verifyTypedArraySafetyInTypeScriptProgram, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
+import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
+import { analyzeCallableSummaries } from "./callable-summary.js";
+import { invalidateTransferredTypedArrayEvidence } from "./project-verification.js";
+import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -19,6 +25,8 @@ export interface CheckOptions {
   host?: ts.CompilerHost;
   /** Caller-owned, versioned semantic contracts. Defaults to Uneffect's registry. */
   builtinRegistry?: BuiltinContractRegistry;
+  /** Caller-owned review records referenced by source-level trust IDs. */
+  assumptionRegistry?: AssumptionRegistry;
   /** Consumer compiler semantics, normally loaded from its tsconfig.json. */
   compilerOptions?: ts.CompilerOptions;
   /** Exact project/compiler identity used to qualify TypeChecker-derived assurance. */
@@ -42,6 +50,9 @@ export interface CheckResult {
   summaries: EffectSummary[];
   /** Every trusted semantic input used by this exact check boundary. */
   assumptions: AssumptionLedger;
+  typedArrays: TypedArrayProgramSafetyResult;
+  ownership: Array<OwnershipDiagnostic & { fileName: string }>;
+  asyncIterators: IteratorCheckEvidence[];
   errors: number;
   warnings: number;
   project?: TypeScriptProjectProvenance;
@@ -102,6 +113,8 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   for (const summary of effects.summaries) if (summary.fileName && invalidSources.has(summary.fileName)) summary.evidence = "unknown";
   diagnostics.push(...effects.diagnostics);
   const sources = new Map<string, string>(), artifacts: VerificationArtifact[] = [];
+  const asyncIterators: IteratorCheckEvidence[] = [];
+  const iteratorAssumptions: AssumptionEntry[] = [];
   for (const fileName of fileNames) {
     if (fileName.endsWith(".uneffect.ts")) continue;
     const text = await readFile(fileName, "utf8");
@@ -114,12 +127,83 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
       diagnostics.push(...analyzeTrustedScriptSinks(program, sourceFile));
       diagnostics.push(...(react.get(sourceFile.fileName)?.diagnostics ?? []));
       diagnostics.push(...analyzeAsyncSafetyInProgram(program, sourceFile).diagnostics);
+      const iterator = collectIteratorChecks(program, sourceFile, options.mode ?? "gradual", !invalidSources.has(fileName));
+      asyncIterators.push(...iterator.evidence);
+      diagnostics.push(...iterator.diagnostics);
+      iteratorAssumptions.push(...iterator.assumptions);
     }
   }
+  const typedFiles: TypedArrayProgramSafetyResult["files"] = {};
+  const ownership: Array<OwnershipDiagnostic & { fileName: string }> = [];
+  const typedArrayCandidate = (text: string): boolean => /\b(?:BoundedUint8Array|BoundedUint32Array|BoundedDataView|BoundedArrayBuffer|FixedArrayBuffer|u8Table|u32Table|U8|U32|I32|F32)\b/u.test(text);
+  const ownershipCandidate = (text: string): boolean => /\b(?:structuredClone|postMessage|DataView|subarray|slice)\b/u.test(text);
+  const needsOwnership = fileNames.some((fileName) => {
+    const source = program.getSourceFile(fileName);
+    return source ? ownershipCandidate(source.text) : false;
+  });
+  const callableSummaries = needsOwnership ? analyzeCallableSummaries(program, analyzedEffects).summaries : [];
+  const functionAt = (source: ts.SourceFile, position: number): string => {
+    let name = "<module>";
+    const visit = (node: ts.Node): void => {
+      if (position < node.getStart(source) || position > node.getEnd()) return;
+      if (ts.isFunctionLike(node) && "name" in node && node.name && ts.isIdentifier(node.name)) name = node.name.text;
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    return name;
+  };
+  for (const fileName of fileNames) {
+    if (fileName.endsWith(".uneffect.ts")) continue;
+    const sourceFile = program.getSourceFile(fileName);
+    if (!sourceFile) continue;
+    const typed = typedArrayCandidate(sourceFile.text)
+      ? await verifyTypedArraySafetyInTypeScriptProgram(program, sourceFile, undefined, options.assumptionRegistry)
+      : { obligations: [], diagnostics: [], windows: [], statistics: { solverQueries: 0 } };
+    if (invalidSources.has(fileName)) {
+      for (const obligation of typed.obligations) obligation.result = "unknown";
+      for (const window of typed.windows) window.result = "unknown";
+    }
+    typedFiles[fileName] = typed;
+    if (!invalidSources.has(fileName) && ownershipCandidate(sourceFile.text)) {
+      const found = analyzeOwnership(program, sourceFile, callableSummaries);
+      ownership.push(...found.map((diagnostic) => ({ ...diagnostic, fileName })));
+      diagnostics.push(...found.map((diagnostic): OwnershipCheckerDiagnostic => ({
+        domain: "ownership", kind: "invalid-transition", severity: diagnostic.state === "unknown" && options.mode !== "strict" ? "warning" : "error", fileName,
+        line: sourceFile.getLineAndCharacterOfPosition(diagnostic.span.start).line + 1,
+        functionName: functionAt(sourceFile, diagnostic.span.start), message: diagnostic.message,
+        notes: [{ label: "state", detail: diagnostic.state }, { label: "resource", detail: diagnostic.resource }],
+      })));
+    }
+  }
+  const typedArrays: TypedArrayProgramSafetyResult = {
+    files: typedFiles,
+    obligations: Object.values(typedFiles).flatMap((result) => result.obligations),
+    diagnostics: Object.values(typedFiles).flatMap((result) => result.diagnostics),
+    windows: Object.values(typedFiles).flatMap((result) => result.windows),
+    statistics: { solverQueries: Object.values(typedFiles).reduce((total, result) => total + result.statistics.solverQueries, 0) },
+  };
+  invalidateTransferredTypedArrayEvidence(program, Object.fromEntries(sources), typedArrays, ownership.map((diagnostic) => ({
+    ...diagnostic, kind: "ownership" as const,
+  })));
+  typedArrays.diagnostics = Object.values(typedFiles).flatMap((result) => result.diagnostics);
+  for (const [fileName, typed] of Object.entries(typedFiles)) {
+    const sourceFile = program.getSourceFile(fileName);
+    if (!sourceFile) continue;
+    diagnostics.push(...typed.diagnostics.map((diagnostic): TypedArrayCheckerDiagnostic => ({
+      domain: "typed-array", kind: diagnostic.kind,
+      severity: typed.obligations.find((obligation) => obligation.kind === diagnostic.kind
+        && obligation.span.start === diagnostic.span.start)?.result === "unknown" && options.mode !== "strict" ? "warning" : "error",
+      fileName,
+      line: sourceFile.getLineAndCharacterOfPosition(diagnostic.span.start).line + 1,
+      functionName: diagnostic.functionName, message: diagnostic.message,
+      notes: [{ label: "obligation", detail: diagnostic.kind }],
+    })));
+  }
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
-  const assumptions = collectAssumptionLedger(program, Object.fromEntries(sources), undefined, {}, options.builtinRegistry).ledger;
+  const collectedAssumptions = collectAssumptionLedger(program, Object.fromEntries(sources), typedArrays, {}, options.builtinRegistry, options.assumptionRegistry).ledger;
+  const assumptions = mergeAssumptionLedger(program, collectedAssumptions, iteratorAssumptions).ledger;
   return {
-    diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, errors, warnings: diagnostics.length - errors,
+    diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, typedArrays, ownership, asyncIterators, errors, warnings: diagnostics.length - errors,
     ...(options.project === undefined ? {} : { project: options.project }),
   };
 }

@@ -9,7 +9,7 @@ export interface PromiseOwnershipProtocolProjection {
 }
 
 function promiseResourceId(binding: PromiseBinding, index: number): string {
-  return binding.identity ? `promise:${bindingIdentityKey(binding.identity)}`
+  return binding.identity ? `promise:${bindingIdentityKey(binding.identity)}${binding.generation > 0 ? `:generation:${binding.generation}` : ""}`
     : `promise:${binding.owner}:${binding.span.start}:${binding.binding}:${index}`;
 }
 

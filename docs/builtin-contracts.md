@@ -8,7 +8,15 @@ Uneffect annotates existing platform APIs without requiring application wrappers
 
 The prototype exposes a `FrontendSymbolAdapter` boundary and a TypeScript implementation. The implementation indexes registry exports through the TypeChecker and compares resolved `ts.Symbol` identities, so renamed imports and namespace access resolve to the same stable `{ module, export }` key while a shadowing local function does not. `node:os.tmpdir()` call sites now receive `Path<"$TEMP">` result refinements through this path. Corsa should provide the same `ResolvedCallSite` contract from its symbol/context mapper rather than reproducing TypeScript source spelling rules.
 
-The standalone analyzer and CLI also construct a TypeScript Program; there is no fallback recognizer based on callee source text. Array/Map/Set mutation methods are declaration-symbol overlays, so a user-defined method named `push` is not classified as an Array mutation.
+The catalog also assigns `Throw<AssertionError>` to the named `ok` and callable
+`strict` exports of `node:assert/strict`. The contract CFG consumes this
+reviewed entry only for an exact TypeChecker-resolved named, namespace,
+default, or import-equals binding and only when the selected
+signature is an assertion signature. Its normal edge assumes the condition;
+its abrupt edge remains a synchronous throw. Same-shaped user functions are
+not treated as this builtin.
+
+The standalone analyzer and CLI also construct a TypeScript Program; there is no fallback recognizer based on callee source text. Array/Map/Set/WeakMap/WeakSet mutation methods are declaration-symbol overlays, so a user-defined method named `push`, `set`, or `add` is not classified as a collection mutation. Standard `Map`, `ReadonlyMap`, `Set`, and `ReadonlySet` `forEach` callbacks are synchronous `0..n` callback edges; a same-spelled local method does not receive that timing.
 
 A builtin contract may carry more than one semantic projection. In the current
 Node slice, reviewed one-shot completion APIs in `node:fs` still emit
@@ -300,7 +308,91 @@ Node.appendChild(child)
 
 User-code reentrancy must be explicit. Getters, proxies, event dispatch, custom element reactions, and conversions are not safely summarized as plain reads or writes.
 
-The frontend conservatively emits `InvokeUserCode` for declared accessors, `any`/`unknown` receivers, direct `new Proxy` receivers, computed keys that may coerce, and coercive operators with non-primitive operands. A union whose every key constituent is string- or number-like does not add a coercion effect; for finite literal unions, every candidate property is still checked and any declared accessor retains `InvokeUserCode`. A Proxy can inhabit its target's static type, so absence of this effect is not a general proof that an escaped object is non-proxied; that stronger conclusion requires later escape and evidence analysis.
+The frontend conservatively emits `InvokeUserCode` for declared accessors,
+`any`/`unknown` receivers, direct `new Proxy` receivers, computed keys that may
+coerce, and coercive operators with non-primitive operands. Reviewed coercive
+operators include loose equality, relational, arithmetic, bitwise and shift
+operators (including compound assignments), unary numeric conversion, and
+template interpolation. A union whose every constituent is a TypeChecker-proven
+primitive does not add a coercion effect. For finite literal computed-key
+unions, every candidate property is still checked and any declared accessor
+retains `InvokeUserCode`. A Proxy can inhabit its target's static type, so
+absence of this effect is not a general proof that an escaped object is
+non-proxied; that stronger conclusion requires later escape and evidence
+analysis.
+The same direct builtin-identity Proxy evidence is followed through immutable
+local aliases for property reads/writes, `in`, `delete`, and `instanceof`.
+`instanceof` additionally resolves a same-Program standard
+`Symbol.hasInstance` method as an inline call, so its concrete Effect and Throw
+summary is composed rather than represented only by `InvokeUserCode`.
+
+`JSON.stringify` has a reviewed hidden-execution rule in addition to its
+replacer callback primitive. A local `toJSON` body is composed inline; without
+one, enumerable getters from a same-Program object literal are composed.
+Unknown values, Proxy aliases, and recursively typed containers that may reach
+such hooks emit `InvokeUserCode`. This is a may-effect boundary, not a proof of
+complete serialization-graph traversal.
+
+Standard-library `Object.assign` has a corresponding enumerable-copy rule.
+Same-Program getters on object-literal sources and matching setters on the
+target are ordinary inline call edges, including their Effect, Throw, and
+receiver-rooted Mutation summaries. Class prototype accessors are not copied.
+Unknown/type-parameter operands and authenticated direct or immutable-aliased
+Proxy values emit `InvokeUserCode`; a same-spelled local `assign` receives no
+builtin authority.
+The declarative catalog separately records target Mutation and result aliasing,
+so a hook-free data-property copy is still recognized as destructive.
+
+`Object.values` and `Object.entries` reuse the enumerable source-read half of
+that rule. `Object.keys` does not read property values and therefore does not
+compose ordinary getters. All three retain `InvokeUserCode` for authenticated
+Proxy operands because enumeration can execute proxy traps; unknown and type
+parameter operands are conservatively classified the same way.
+
+`Reflect.get` and `Reflect.set` with finite literal keys reuse ordinary
+same-Program accessor edges. A supplied receiver is used as accessor `this`,
+and `Reflect.set` catalogs writes to the target and optional receiver. Dynamic
+keys, unknown/type-parameter operands, and authenticated Proxy values require
+`InvokeUserCode`. `Reflect.has` does not call getters, although a Proxy can
+still execute its `has` trap. `Reflect.deleteProperty` likewise avoids ordinary
+accessors and emits target Mutation, while a Proxy may execute a delete trap.
+
+Standard `Function.prototype.call`/`apply` and `Reflect.apply` are reviewed
+invocation wrappers. When their target resolves to a same-Program callable,
+Uneffect emits the ordinary inline edge with explicit `this` and static
+arguments. Apply accepts direct array literals or one immutable, single-use
+literal alias. Dynamic/open callables, dynamic or mutated argument lists, and
+callable Proxies retain `InvokeUserCode` and unresolved Mutation evidence.
+
+Standard `Function.prototype.bind` is treated as deferred composition. Binding
+alone does not execute the target. A later local direct, call, or apply
+invocation composes the same-Program body with bound `this` and prefix
+arguments. Immutable aliases and repeated calls are accepted; escape before
+invocation, dynamic callable targets, and callable Proxies remain
+`InvokeUserCode`. Returned bound callables do not yet carry authenticated
+cross-package summaries.
+
+Standard `Reflect.construct` is a reviewed indirect construction wrapper.
+Static same-Program classes and static argument lists reuse ordinary
+constructor and instance-field initialization edges, including synchronous
+Throw discharge and argument Mutation. The constructed receiver is fresh.
+Dynamic constructors/lists and Proxy targets or new-targets remain
+`InvokeUserCode`; no constructor identity is inferred from a structural
+`new (...args)` type alone.
+
+The JavaScript catalog marks `Object.defineProperty`, `defineProperties`,
+`freeze`, `seal`, `preventExtensions`, and `setPrototypeOf` as target Mutation,
+with result aliases for Object methods that return the target. Reviewed Reflect
+variants emit the corresponding target write. Descriptor conversion is not
+assumed pure: same-Program descriptor getters are inline edges, descriptor-map
+enumeration is tracked, and dynamic/Proxy descriptors or targets require
+`InvokeUserCode`.
+
+`Object.create` uses the same descriptor-map conversion but returns a fresh
+object rather than mutating the prototype argument. Descriptor inspection via
+`Object.getOwnPropertyDescriptor(s)` and `Object.hasOwn` does not execute
+ordinary getters. It does remain `InvokeUserCode` for authenticated Proxy or
+unknown/type-parameter targets because proxy descriptor/has traps can run.
 
 ## Fetch authority
 
@@ -330,10 +422,21 @@ Worker<Post, typeof worker>
 Clone<typeof message>
 Transfer<typeof buffer>
 Invalidate<typeof buffer>
-Throw<DataCloneError>
+Throw<DOMException>
 ```
 
-`Clone` reads an object graph and may invoke accessors during serialization. `Transfer` is an ownership transition, not merely a mutation. The source reference enters a type-specific unavailable state:
+`Clone` reads an object graph. For standard-identity `structuredClone`, Uneffect
+composes own enumerable getters from same-Program object literals, including
+finite nested object/array literals, and emits `InvokeUserCode` when the static
+graph can reach such a getter through an opaque or generic value. Prototype
+getters are not treated as own properties. A directly authenticated `Proxy`
+does not contribute trap effects here: the platform rejects it with a clone
+error instead of traversing it. Every call conservatively carries
+`Throw<DOMException>` because unsupported values and invalid transfer lists can
+fail with a `DataCloneError` DOMException. A synchronous `catch` discharges that
+throw and any throw from a composed getter.
+
+`Transfer` is an ownership transition, not merely a mutation. The source reference enters a type-specific unavailable state:
 
 ```text
 Available(ArrayBuffer) -> Detached

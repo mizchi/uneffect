@@ -277,6 +277,22 @@ describe("ESM module initialization order IR", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("distinguishes always-evaluated control conditions from conditional branches", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-condition-await-"));
+    try {
+      const entry = join(directory, "entry.mts");
+      const result = analyzeModuleInitializationOrder(program({
+        [entry]: `
+          export {}
+          if (await Promise.resolve(true)) console.log("ready")
+          for (let value = await Promise.resolve(0); value < 0; value++) {}
+        `,
+      }), entry);
+      expect(result.unknowns).not.toContainEqual(expect.objectContaining({ kind: "conditional-top-level-await" }));
+      expect(result.modules[0]?.events.filter((event) => event.kind === "suspend")).toHaveLength(2);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("never verifies an order extracted from ill-typed source", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-invalid-order-"));
     try {

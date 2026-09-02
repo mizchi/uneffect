@@ -213,6 +213,276 @@ describe("bounded Uint8Array safety", () => {
       expect.objectContaining({ functionName: "windows", kind: "index-bounds", goal: expect.stringContaining("8 < 8"), result: "counterexample" }),
       expect.objectContaining({ functionName: "dynamic", kind: "index-bounds", result: "unknown" }),
     ]));
+    expect(result.windows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "windows", binding: "shared", sourceBinding: "bytes", backing: "shared", start: 4, end: 12, result: "inferred" }),
+      expect.objectContaining({ functionName: "windows", binding: "copied", sourceBinding: "bytes", backing: "copied", start: 4, end: 12, result: "inferred" }),
+      expect.objectContaining({ functionName: "dynamic", binding: "window", sourceBinding: "bytes", backing: "shared", result: "unknown" }),
+    ]));
+  });
+
+  it("authenticates typed-array window methods by standard-library symbol identity", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-typed-array-window-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        type BoundedUint8Array<N extends number> = Uint8Array
+        function builtin(bytes: BoundedUint8Array<16>) {
+          const shared = bytes.subarray(4, 12)
+          const copied = bytes.slice(4, 12)
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+      expect(result.windows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "builtin", binding: "shared", backing: "shared", result: "verified" }),
+        expect.objectContaining({ functionName: "builtin", binding: "copied", backing: "copied", result: "verified" }),
+      ]));
+      const shared = result.windows.find((window) => window.binding === "shared")!;
+      const copied = result.windows.find((window) => window.binding === "copied")!;
+      expect(shared.backingRegionId).toBe(shared.sourceRegionId);
+      expect(copied.backingRegionId).not.toBe(copied.sourceRegionId);
+      const fakeFileName = join(directory, "fake.ts");
+      writeFileSync(fakeFileName, `
+        class FakeWindow { subarray(_start: number, _end: number): FakeWindow { return this } }
+        type BoundedUint8Array<N extends number> = FakeWindow
+        function custom(bytes: BoundedUint8Array<16>) { const fake = bytes.subarray(4, 12) }
+      `);
+      const fakeProgram = ts.createProgram([fakeFileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const fakeResult = await verifyTypedArraySafetyInTypeScriptProgram(fakeProgram, fakeProgram.getSourceFile(fakeFileName)!);
+      expect(fakeResult.windows).toContainEqual(expect.objectContaining({
+        functionName: "custom", binding: "fake", backing: "unknown", result: "unknown",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("invalidates fixed backing bounds through builtin ArrayBuffer resize aliases", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-array-buffer-resize-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        type BoundedArrayBuffer<N extends number> = ArrayBuffer
+        type FixedArrayBuffer<N extends number> = ArrayBuffer
+        type BoundedDataView<N extends number> = DataView
+        function shrink(buffer: BoundedArrayBuffer<32>): BoundedDataView<8> {
+          const alias = buffer
+          alias.resize(4)
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+        function grow(buffer: BoundedArrayBuffer<32>): BoundedDataView<8> {
+          buffer.resize(32)
+          return new DataView(buffer, 20, 8) as BoundedDataView<8>
+        }
+        function dynamic(buffer: BoundedArrayBuffer<32>, size: number): BoundedDataView<8> {
+          buffer.resize(size)
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+        function invalidFixed(buffer: FixedArrayBuffer<16>): BoundedDataView<8> {
+          buffer.resize(8)
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.es2024.arraybuffer.d.ts"], noEmit: true });
+      const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+      expect(result.obligations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "shrink", kind: "dataview-backing-bounds", result: "counterexample" }),
+        expect.objectContaining({ functionName: "grow", kind: "dataview-backing-bounds", result: "verified" }),
+        expect.objectContaining({ functionName: "dynamic", kind: "dataview-backing-bounds", result: "unknown" }),
+        expect.objectContaining({ functionName: "invalidFixed", kind: "dataview-backing-bounds", result: "unknown", goal: expect.stringContaining("no verified normal completion") }),
+      ]));
+      const fakeFileName = join(directory, "fake.ts");
+      writeFileSync(fakeFileName, `
+        class FakeBuffer { resize(_size: number): void {} }
+        type FixedArrayBuffer<N extends number> = FakeBuffer
+        type BoundedDataView<N extends number> = DataView
+        function custom(buffer: FixedArrayBuffer<16>): BoundedDataView<8> {
+          buffer.resize(4)
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+      `);
+      const fakeProgram = ts.createProgram([fakeFileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const fake = await verifyTypedArraySafetyInTypeScriptProgram(fakeProgram, fakeProgram.getSourceFile(fakeFileName)!);
+      expect(fake.obligations).toContainEqual(expect.objectContaining({
+        functionName: "custom", kind: "dataview-backing-bounds", result: "verified", goal: expect.stringContaining("<= 16"),
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("checks DataView accesses against later backing-buffer resizes", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dataview-resize-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        type BoundedArrayBuffer<N extends number> = ArrayBuffer
+        type BoundedDataView<N extends number> = DataView
+        function fixedView(buffer: BoundedArrayBuffer<16>) {
+          buffer.resize(16)
+          const view: BoundedDataView<8> = new DataView(buffer, 0, 8)
+          buffer.resize(4)
+          return view.getUint8(0)
+        }
+        function trackingView(buffer: BoundedArrayBuffer<16>) {
+          buffer.resize(16)
+          const view: BoundedDataView<16> = new DataView(buffer, 4)
+          buffer.resize(8)
+          return view.getUint32(0)
+        }
+        function invalidTrackingView(buffer: BoundedArrayBuffer<16>) {
+          buffer.resize(16)
+          const view: BoundedDataView<12> = new DataView(buffer, 4)
+          buffer.resize(3)
+          return view.getUint8(0)
+        }
+        function dynamicView(buffer: BoundedArrayBuffer<16>, size: number) {
+          buffer.resize(16)
+          const view: BoundedDataView<8> = new DataView(buffer, 0, 8)
+          buffer.resize(size)
+          return view.getUint8(0)
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.es2024.arraybuffer.d.ts"], noEmit: true });
+      const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+      expect(result.obligations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "fixedView", kind: "dataview-bounds", result: "counterexample", goal: expect.stringContaining("view remains in bounds") }),
+        expect.objectContaining({ functionName: "trackingView", kind: "dataview-bounds", result: "verified", goal: expect.stringContaining("<= 4") }),
+        expect.objectContaining({ functionName: "invalidTrackingView", kind: "dataview-bounds", result: "counterexample", goal: expect.stringContaining("view remains in bounds") }),
+        expect.objectContaining({ functionName: "dynamicView", kind: "dataview-bounds", result: "unknown", goal: expect.stringContaining("dynamic ArrayBuffer resize") }),
+      ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("checks typed-array views against later backing-buffer resizes", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-typed-view-resize-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        type BoundedArrayBuffer<N extends number> = ArrayBuffer
+        type BoundedUint8Array<N extends number> = Uint8Array
+        type BoundedUint32Array<N extends number> = Uint32Array
+        function fixedView(buffer: BoundedArrayBuffer<32>) {
+          buffer.resize(32)
+          const words: BoundedUint32Array<4> = new Uint32Array(buffer, 0, 4)
+          const alias = words
+          buffer.resize(8)
+          return alias[0]
+        }
+        function trackingView(buffer: BoundedArrayBuffer<32>) {
+          buffer.resize(32)
+          const bytes: BoundedUint8Array<32> = new Uint8Array(buffer, 4)
+          buffer.resize(8)
+          return bytes[3]
+        }
+        function invalidTrackingView(buffer: BoundedArrayBuffer<32>) {
+          buffer.resize(32)
+          const bytes: BoundedUint8Array<28> = new Uint8Array(buffer, 4)
+          buffer.resize(3)
+          return bytes[0]
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.es2024.arraybuffer.d.ts"], noEmit: true });
+      const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+      expect(result.obligations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "fixedView", kind: "index-bounds", result: "counterexample", goal: expect.stringContaining("view remains in bounds") }),
+        expect.objectContaining({ functionName: "trackingView", kind: "index-bounds", result: "verified", goal: "3 >= 0 && 3 < 4" }),
+        expect.objectContaining({ functionName: "invalidTrackingView", kind: "index-bounds", result: "counterexample", goal: expect.stringContaining("view remains in bounds") }),
+      ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("uses authenticated resizable ArrayBuffer constructor state", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-array-buffer-constructor-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        type BoundedArrayBuffer<N extends number> = ArrayBuffer
+        type BoundedDataView<N extends number> = DataView
+        function initial(): BoundedDataView<8> {
+          const buffer: BoundedArrayBuffer<16> = new ArrayBuffer(8, { maxByteLength: 16 })
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+        function grown(): BoundedDataView<4> {
+          const buffer: BoundedArrayBuffer<16> = new ArrayBuffer(8, { maxByteLength: 16 })
+          buffer.resize(12)
+          return new DataView(buffer, 8, 4) as BoundedDataView<4>
+        }
+        function overLimit(): BoundedDataView<8> {
+          const buffer: BoundedArrayBuffer<32> = new ArrayBuffer(8, { maxByteLength: 16 })
+          buffer.resize(20)
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+        function shadowed(ArrayBuffer: new (...args: any[]) => ArrayBuffer): BoundedDataView<8> {
+          const buffer: BoundedArrayBuffer<16> = new ArrayBuffer(8, { maxByteLength: 16 })
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+        function invalidConstruction(): BoundedDataView<8> {
+          const buffer: BoundedArrayBuffer<16> = new ArrayBuffer(20, { maxByteLength: 16 })
+          return new DataView(buffer, 0, 8) as BoundedDataView<8>
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.es2024.arraybuffer.d.ts"], noEmit: true });
+      const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+      expect(result.obligations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "initial", kind: "dataview-backing-bounds", result: "verified", goal: expect.stringContaining("<= 8") }),
+        expect.objectContaining({ functionName: "grown", kind: "dataview-backing-bounds", result: "verified", goal: expect.stringContaining("<= 12") }),
+        expect.objectContaining({ functionName: "overLimit", kind: "dataview-backing-bounds", result: "unknown", goal: expect.stringContaining("no verified normal completion") }),
+        expect.objectContaining({ functionName: "shadowed", kind: "dataview-backing-bounds", result: "unknown", goal: expect.stringContaining("current bounded ArrayBuffer length") }),
+        expect.objectContaining({ functionName: "invalidConstruction", kind: "dataview-backing-bounds", result: "unknown", goal: expect.stringContaining("construction has no verified normal completion") }),
+      ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("joins conditional resize states conservatively", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-conditional-resize-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        type BoundedArrayBuffer<N extends number> = ArrayBuffer
+        type BoundedUint8Array<N extends number> = Uint8Array
+        function branch(buffer: BoundedArrayBuffer<16>, cond: boolean) {
+          buffer.resize(16)
+          const bytes: BoundedUint8Array<8> = new Uint8Array(buffer, 0, 8)
+          if (cond) buffer.resize(4)
+          return bytes[0]
+        }
+        function branchBeforeView(buffer: BoundedArrayBuffer<16>, cond: boolean) {
+          if (cond) buffer.resize(4)
+          else buffer.resize(16)
+          const bytes: BoundedUint8Array<8> = new Uint8Array(buffer, 0, 8)
+          return bytes[0]
+        }
+        function reestablished(buffer: BoundedArrayBuffer<16>, cond: boolean) {
+          if (cond) buffer.resize(4)
+          buffer.resize(16)
+          const bytes: BoundedUint8Array<8> = new Uint8Array(buffer, 0, 8)
+          return bytes[7]
+        }
+        function loop(buffer: BoundedArrayBuffer<16>, count: number) {
+          buffer.resize(16)
+          const bytes: BoundedUint8Array<8> = new Uint8Array(buffer, 0, 8)
+          for (let i = 0; i < count; i++) buffer.resize(4)
+          return bytes[0]
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.es2024.arraybuffer.d.ts"], noEmit: true });
+      const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+      expect(result.obligations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "branch", kind: "index-bounds", result: "unknown", goal: expect.stringContaining("control-flow-dependent") }),
+        expect.objectContaining({ functionName: "branchBeforeView", kind: "index-bounds", result: "verified", goal: "0 >= 0 && 0 < 8" }),
+        expect.objectContaining({ functionName: "reestablished", kind: "index-bounds", result: "verified", goal: "7 >= 0 && 7 < 8" }),
+        expect.objectContaining({ functionName: "loop", kind: "index-bounds", result: "unknown", goal: expect.stringContaining("control-flow-dependent") }),
+      ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("derives integer intervals from strict and reversed requires bounds", async () => {

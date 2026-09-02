@@ -96,7 +96,7 @@ loop_invariant_decl = "loop_invariant", expression ;
 temporal_always_decl = "always", identifier, ":", expression ;
 temporal_contract_decl = "temporal_contract", temporal_contract_clause, temporal_contract_payload ;
 temporal_contract_clause = "requires" | "ensures" | "modifies" | "throws" | "rejects"
-               | "suspends" | "cancellable" | "eventually" | "repeatedly"
+               | "suspends" | "cancellable" | "terminates" | "eventually" | "repeatedly"
                | "stabilizes" | "response" | "fair" ;
 returns_decl   = "returns", refinement_type ;
 assert_decl    = "assert", identifier, ":", schema ;

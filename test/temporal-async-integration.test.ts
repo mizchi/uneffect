@@ -56,6 +56,89 @@ describe("unified async temporal model", () => {
       .toContain("sends' = sends + 1");
   });
 
+  it.each(["web", "node"] as const)("publishes synchronous Promise callback divergence through the %s temporal facade", (runtime) => {
+    const result = generateTemporalModel({
+      fileName: `promise-divergence-${runtime}.ts`,
+      source: `
+        declare const running: boolean
+        export function main(): Promise<number> {
+          return Promise.try(() => { while (running) {}; return 1 }).then(value => value)
+        }
+      `,
+      runtime,
+      root: "main",
+    });
+    expect(result.models).toContainEqual(expect.objectContaining({
+      kind: "promise-chains",
+      owner: "main",
+      properties: expect.arrayContaining(["promiseSafe", "promiseSynchronouslyProgressed"]),
+    }));
+    expect(result.exclusions).not.toContain("promise-host-synchronization");
+    const host = result.models.find((model) => model.kind === `${runtime}-event-loop`);
+    expect(host?.properties).toContain("promiseSynchronouslyProgressed");
+    expect(host?.quint).toContain("action diverge_promise_executor_0");
+    expect(host?.quint).toContain("action return_promise_executor_0_settled");
+    expect(host?.quint).toContain("not(synchronously_blocked)");
+    expect(result.quint).toContain("action diverge_0_synchronously");
+    expect(result.quint).toContain("val promiseSynchronouslyProgressed = not(synchronously_blocked)");
+  });
+
+  it("reports synchronous Promise callback divergence as a project counterexample", async () => {
+    const source = `
+      declare const running: boolean
+      export function main(): Promise<number> {
+        return new Promise<number>((resolve) => { while (running) {}; resolve(1) })
+      }
+    `;
+    const result = await verifyUneffectProject({
+      files: { "src/promise-divergence.ts": source },
+      temporalRuntime: "node",
+      temporalRoot: "main",
+    });
+    expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
+      name: "main.promiseSynchronouslyProgressed",
+      result: "counterexample",
+    }));
+  }, 30_000);
+
+  it("does not prequeue a reaction for an opaque executor that may return pending", () => {
+    const result = generateTemporalModel({
+      fileName: "opaque-executor.ts",
+      source: `
+        export function main(executor: (resolve: (value: number) => void) => void): Promise<number> {
+          const task = new Promise<number>(executor)
+          return task.then(value => value)
+        }
+      `,
+      runtime: "node",
+      root: "main",
+    });
+    const host = result.models.find((model) => model.kind === "node-event-loop")!;
+    expect(host.quint).toContain("promise_reaction_0_0_pending' = false");
+    expect(host.quint).toContain("action return_promise_executor_0_settled");
+    expect(host.quint).toContain("action return_promise_executor_0_pending");
+    expect(host.quint.slice(host.quint.indexOf("action return_promise_executor_0_settled")))
+      .toContain("promise_reaction_0_0_pending' = true");
+  });
+
+  it("connects same-Program recursive callback cycles to host blocking", () => {
+    const result = generateTemporalModel({
+      fileName: "recursive-executor.ts",
+      source: `
+        function left(): number { return right() }
+        function right(): number { return left() }
+        export function main(): Promise<number> {
+          return new Promise<number>(() => { left() }).then(value => value)
+        }
+      `,
+      runtime: "web",
+      root: "main",
+    });
+    const host = result.models.find((model) => model.kind === "web-event-loop")!;
+    expect(host.quint).toContain("action diverge_promise_executor_0");
+    expect(host.properties).toContain("promiseSynchronouslyProgressed");
+  });
+
   it("checks a Node user property in the same project temporal result", async () => {
     const result = await verifyUneffectProject({
       files: { "src/unified-node.ts": source },
@@ -170,6 +253,28 @@ describe("unified async temporal model", () => {
     expect(result.synchronizations[0]?.hostTransitionId).toContain(":main:settle:");
   });
 
+  it("links Promise.withResolvers ownership to its externally driven settlement identity", () => {
+    const result = generateTemporalModel({
+      fileName: "with-resolvers-promise.ts",
+      source: `
+        export async function main(ok: boolean): Promise<void> {
+          const { promise: task, resolve, reject } = Promise.withResolvers<number>()
+          if (ok) resolve(1)
+          else reject(new Error("no"))
+          try { await task } catch {}
+        }
+      `,
+      runtime: "web",
+      root: "main",
+    });
+
+    expect(result.exclusions).not.toContain("promise-host-synchronization");
+    expect(result.synchronizations).toContainEqual(expect.objectContaining({
+      kind: "promise-ownership-host", relation: "same-promise", evidence: "exact",
+      hostTransitionId: expect.stringContaining(":main:settle:"),
+    }));
+  });
+
   it("normalizes a supported immutable Promise alias to one ownership and host identity", () => {
     const result = generateTemporalModel({
       fileName: "aliased-direct-promise.ts",
@@ -188,6 +293,27 @@ describe("unified async temporal model", () => {
     expect(ownership?.quint).not.toContain("var resource_1: int");
     expect(result.synchronizations).toHaveLength(1);
     expect(result.exclusions).not.toContain("promise-host-synchronization");
+  });
+
+  it("keeps reassigned Promise generations as distinct ownership resources", () => {
+    const result = generateTemporalModel({
+      fileName: "reassigned-promise.ts",
+      source: `
+        export async function main(): Promise<void> {
+          let current = new Promise<number>((resolve) => resolve(1))
+          const first = current
+          current = Promise.resolve(2)
+          await first
+        }
+      `,
+      runtime: "web",
+      root: "main",
+    });
+    const ownership = result.models.find((model) => model.kind === "promise-ownership");
+    expect(ownership?.quint).toContain("var resource_0: int");
+    expect(ownership?.quint).toContain("var resource_1: int");
+    expect(result.synchronizations).toHaveLength(1);
+    expect(result.exclusions).toContain("promise-host-synchronization");
   });
 
   it("reports external Promise settlement as an unsupported synchronization", () => {
@@ -285,6 +411,25 @@ describe("unified async temporal model", () => {
     }));
   }, 30_000);
 
+  it("connects an explicitly awaited using initializer to the microtask checkpoint", () => {
+    const result = generateTemporalModel({
+      fileName: "awaited-using.ts",
+      source: `
+        interface Resource { [Symbol.asyncDispose](): Promise<void> }
+        declare function open(): Promise<Resource>
+        export async function main(): Promise<void> {
+          await using resource = await open()
+        }
+      `,
+      runtime: "web",
+      root: "main",
+    });
+    expect(result.models).toContainEqual(expect.objectContaining({ kind: "resource-host-lifecycle", owner: "main" }));
+    expect(result.quint).toContain("acquire_start_0");
+    expect(result.quint).toContain("acquire_resume_0");
+    expect(result.quint).toContain("fail_acquire_reject_0");
+  });
+
   it("finds a counterexample when await disposal resumes outside the microtask checkpoint", () => {
     const usingSource = `
       class Resource { async [Symbol.asyncDispose](): Promise<void> {} }
@@ -331,7 +476,7 @@ describe("unified async temporal model", () => {
     expect(result.quint).toContain("skip_acquire_0");
   });
 
-  it("keeps repeated loop acquisition as explicit resource-host scheduling exclusion", () => {
+  it("includes one contiguous repeated acquisition in the resource-host product", () => {
     const result = generateTemporalModel({
       fileName: "loop-using.ts",
       source: `
@@ -339,6 +484,26 @@ describe("unified async temporal model", () => {
         declare function open(): Resource
         export async function main(values: boolean[]): Promise<void> {
           for (const value of values) { await using resource = open(); void value }
+        }
+      `,
+      runtime: "node",
+      root: "main",
+    });
+    expect(result.models).toContainEqual(expect.objectContaining({ kind: "resource-host-lifecycle", owner: "main" }));
+    expect(result.exclusions).not.toContain("resource-host-scheduling");
+    expect(result.quint).toContain("exit_repeat_0");
+    expect(result.quint).toContain("release_resume_repeat_1");
+  });
+
+  it("keeps multiple repeated acquisition regions as an explicit scheduling exclusion", () => {
+    const result = generateTemporalModel({
+      fileName: "multiple-loop-using.ts",
+      source: `
+        interface Resource { [Symbol.asyncDispose](): Promise<void> }
+        declare function open(): Resource
+        export async function main(left: number[], right: number[]): Promise<void> {
+          for (const value of left) { await using first = open(); void value }
+          for (const value of right) { await using second = open(); void value }
         }
       `,
       runtime: "node",

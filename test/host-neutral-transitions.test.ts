@@ -7,6 +7,7 @@ import ts from "typescript";
 import type { CallableSummary } from "../src/callable-summary.js";
 import type { ResourceDisposal } from "../src/async-safety.js";
 import type { PromiseChainModel } from "../src/promise-chains.js";
+import { analyzeAsyncPatternsInProgram, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import {
   composeHostNeutralTransitions,
   analyzeHostNeutralTransitions,
@@ -40,7 +41,9 @@ describe("host-neutral async transitions", () => {
   it("uses the same contract for Promise settlement and sync/async disposal", () => {
     const promises: PromiseChainModel = {
       executors: [{ owner: "p", callback: "executor", synchronous: true, throwBecomesRejection: true,
-        events: [], possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: false, span: { start: 0, end: 4 } }],
+        events: [], possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: false, mayDivergeSynchronously: true, synchronousDivergenceReasons: ["recursion"], span: { start: 0, end: 4 } },
+      { owner: "external", binding: "task", callback: "<external-resolvers>", synchronous: false, throwBecomesRejection: false,
+        settlementSource: "external-resolvers", events: [], possibleSettlements: ["fulfilled"], mayRemainPending: true, mayDivergeSynchronously: false, synchronousDivergenceReasons: [], span: { start: 10, end: 14 } }],
       thenables: [],
       chains: [{ owner: "p", source: "p", links: [{ kind: "then", handlers: ["ok", "bad"], handlerReturns: ["value", "value"], span: { start: 5, end: 9 } }], span: { start: 0, end: 9 } }],
     };
@@ -54,7 +57,8 @@ describe("host-neutral async transitions", () => {
       lowerResourceDisposalTransitions("entry.ts", [sync, asyncDisposal]),
     );
     expect(transitions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "settle-promise", lane: "inline", outcomes: ["fulfilled", "rejected"], firstSettlementWins: true }),
+      expect.objectContaining({ kind: "settle-promise", lane: "inline", outcomes: ["fulfilled", "rejected"], firstSettlementWins: true, mayDivergeSynchronously: true, synchronousDivergenceReasons: ["recursion"] }),
+      expect.objectContaining({ kind: "settle-promise", promise: "task", lane: "external", outcomes: ["fulfilled"], firstSettlementWins: true }),
       expect.objectContaining({ kind: "invoke-callback", lane: "microtask", completion: "reject", callback: "ok" }),
       expect.objectContaining({ kind: "dispose-resource", resource: "file", lane: "inline", completion: "throw" }),
       expect.objectContaining({ kind: "dispose-resource", resource: "socket", lane: "microtask", completion: "reject" }),
@@ -138,6 +142,134 @@ describe("host-neutral async transitions", () => {
       expect(model.quint).toContain("complete_poll_0.strongFair(hostFairnessVars)");
       const quintFile = join(directory, "neutral-node.qnt");
       writeFileSync(quintFile, model.quint);
+      expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("links WebSocket EventTarget registration to executable external Web completion", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-neutral-websocket-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function main(socket: WebSocket) {
+          socket.addEventListener("message", () => queueMicrotask(() => console.log("message")), { once: true })
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const model = generateHostTransitionModel(program, source, {
+        profile: "web", moduleName: "neutral_websocket", fairnessBound: 2, fairness: "weak",
+      });
+      expect(model.scheduled).toContainEqual(expect.objectContaining({ queue: "event-task", evidence: "exact" }));
+      expect(model.externalCompletions).toContainEqual(expect.objectContaining({ queue: "external", evidence: "exact" }));
+      expect(model.quint).toContain("action complete_external_0");
+      expect(model.quint).toContain("callback_0_fires == 0");
+      expect(model.quint).toContain("action run_external_event_0");
+      expect(model.quint).toContain("action drain_microtask_1");
+      expect(model.fairnessProperties).toEqual(expect.arrayContaining(["fair_host_0", "fair_external_0"]));
+      const quintFile = join(directory, "neutral-websocket.qnt");
+      writeFileSync(quintFile, model.quint);
+      expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("connects EventTarget AbortSignal options to external completion cancellation", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-web-event-abort-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function preAborted(socket: WebSocket, callback: (event: MessageEvent) => void) {
+          socket.addEventListener("message", callback, { signal: AbortSignal.abort("stop") })
+        }
+        export function timed(socket: WebSocket, callback: (event: MessageEvent) => void) {
+          socket.addEventListener("message", callback, { signal: AbortSignal.timeout(5) })
+        }
+        export function external(socket: WebSocket, callback: (event: MessageEvent) => void, signal: AbortSignal) {
+          socket.addEventListener("message", callback, { signal })
+        }
+        export function composed(socket: WebSocket, callback: (event: MessageEvent) => void, signal: AbortSignal) {
+          const combined = AbortSignal.any([signal, AbortSignal.timeout(8)])
+          socket.addEventListener("message", callback, { signal: combined })
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const patterns = analyzeAsyncPatternsInProgram(program, source);
+      expect(patterns.timers).toContainEqual(expect.objectContaining({ owner: "preAborted", queue: "external", initiallyCancelled: true }));
+      const timeoutIndex = patterns.timers.findIndex((timer) => timer.owner === "timed" && timer.kind === "abort-timeout");
+      expect(timeoutIndex).toBeGreaterThanOrEqual(0);
+      expect(patterns.timers).toContainEqual(expect.objectContaining({ owner: "timed", queue: "external", abortTimer: timeoutIndex }));
+      const externalIndex = patterns.timers.findIndex((timer) => timer.owner === "external" && timer.queue === "external");
+      expect(patterns.timers[externalIndex]).toEqual(expect.objectContaining({ externalAbortSignal: true }));
+      const composedIndex = patterns.timers.findIndex((timer) => timer.owner === "composed" && timer.queue === "external");
+      expect(patterns.timers[composedIndex]).toEqual(expect.objectContaining({ abortComposition: expect.any(Number) }));
+      const quint = generateWebEventLoopQuint("external_abort", patterns);
+      expect(quint).toContain(`action cancel_external_${externalIndex}_from_external_signal`);
+      expect(quint).toMatch(new RegExp(`action cancel_external_${externalIndex}_from_external_signal[\\s\\S]*callback_${externalIndex}_external_aborted' = true`));
+      expect(quint).toMatch(new RegExp(`action complete_external_${externalIndex}[\\s\\S]*not\\(callback_${externalIndex}_external_aborted\\)`));
+      expect(quint).toMatch(new RegExp(`action complete_external_${composedIndex}[\\s\\S]*not\\(abort_\\d+_aborted\\)`));
+      const quintFile = join(directory, "external-abort.qnt");
+      writeFileSync(quintFile, quint);
+      expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("matches EventTarget removal by target, type, callback, and capture identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-web-event-remove-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function removed(target: EventTarget, handler: EventListener) {
+          target.addEventListener("message", handler)
+          target.removeEventListener("message", handler)
+        }
+        export function maybeRemoved(target: EventTarget, handler: EventListener, remove: boolean) {
+          target.addEventListener("message", handler, true)
+          if (remove) target.removeEventListener("message", handler, true)
+        }
+        export function aliased(target: EventTarget, handler: EventListener) {
+          const targetAlias = target
+          const handlerAlias = handler
+          targetAlias.addEventListener("message", handlerAlias)
+          target.removeEventListener("message", handler)
+        }
+        export function mismatch(target: EventTarget, first: EventListener, second: EventListener) {
+          target.addEventListener("message", first, true)
+          target.removeEventListener("message", second, true)
+          target.removeEventListener("other", first, true)
+          target.removeEventListener("message", first, false)
+        }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const patterns = analyzeAsyncPatternsInProgram(program, program.getSourceFile(fileName)!);
+      const removed = patterns.timers.findIndex((timer) => timer.owner === "removed" && timer.queue === "external");
+      const maybe = patterns.timers.findIndex((timer) => timer.owner === "maybeRemoved" && timer.queue === "external");
+      const mismatch = patterns.timers.findIndex((timer) => timer.owner === "mismatch" && timer.queue === "external");
+      const aliased = patterns.timers.findIndex((timer) => timer.owner === "aliased" && timer.queue === "external");
+      expect(patterns.cancellations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "removed", timer: removed, definite: true, compatible: true }),
+        expect.objectContaining({ owner: "maybeRemoved", timer: maybe, definite: false, compatible: true }),
+        expect.objectContaining({ owner: "aliased", timer: aliased, definite: true, compatible: true }),
+      ]));
+      expect(patterns.cancellations).not.toContainEqual(expect.objectContaining({ owner: "mismatch", timer: mismatch, compatible: true }));
+      const quint = generateWebEventLoopQuint("listener_remove", patterns);
+      expect(quint).toMatch(new RegExp(`callback_${removed}_removed' = true`));
+      expect(quint).toMatch(new RegExp(`action remove_listener_${maybe}[\\s\\S]*callback_${maybe}_removed' = true`));
+      expect(quint).toMatch(new RegExp(`action complete_external_${maybe}[\\s\\S]*not\\(callback_${maybe}_removed\\)`));
+      const quintFile = join(directory, "listener-remove.qnt");
+      writeFileSync(quintFile, quint);
       expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
     } finally {
       rmSync(directory, { recursive: true, force: true });

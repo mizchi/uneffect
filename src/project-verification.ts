@@ -8,9 +8,10 @@ import { fileURLToPath } from "node:url";
 import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
+import { analyzeCallableSummaries } from "./callable-summary.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 import { resolveRegionIdentity } from "./region-alias.js";
-import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
+import { collectAssumptionLedger, mergeAssumptionLedger, type AssumptionEntry, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { generateTemporalModel } from "./temporal-model.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
 import { prepareCapabilityDslLinks } from "./capability-dsl.js";
@@ -20,7 +21,8 @@ import { resolveRefinementDslLink } from "./refinement-dsl.js";
 import type { RefinementBindingManifest } from "./refinement-bindings.js";
 import { hasProjectCallableAliasContracts, instrumentContractPredicates, relocateProjectCallableAliasContracts } from "./contract-runtime.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
-import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
+import { fromTypeScriptDiagnostic, type AsyncIteratorCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
+import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
 import {
   assessProjectVerification,
   PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION,
@@ -85,10 +87,11 @@ export interface ProjectVerificationObligation extends VerificationArtifact {
 
 export interface VerifyUneffectProjectResult {
   obligations: ProjectVerificationObligation[];
-  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic>;
+  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AsyncIteratorCheckerDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic>;
   emittedFiles: Record<string, string>;
   typedArrays: TypedArrayProgramSafetyResult;
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
+  asyncIterators: IteratorCheckEvidence[];
   assumptions: AssumptionLedger;
   effects: EffectAnalysisResult;
   refinements: ProjectRefinementVerification;
@@ -151,7 +154,7 @@ export interface ProjectTemporalProperty {
 
 export interface ProjectTemporalModel {
   fileName: string;
-  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "promise-ownership" | "abortable-fetch" | "resource-lifecycle" | "resource-host-lifecycle";
+  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "promise-chains" | "promise-ownership" | "abortable-fetch" | "resource-lifecycle" | "resource-host-lifecycle";
   module?: string;
   owner?: string;
   quint: string;
@@ -274,7 +277,7 @@ export function invalidateTransferredTypedArrayEvidence(
 ): void {
   const checker = program.getTypeChecker();
   for (const ownership of ownershipDiagnostics) {
-    if (ownership.operation !== "read" || !["detached", "transferred", "locked"].includes(ownership.state)) continue;
+    if (ownership.operation !== "read" || !["detached", "transferred", "locked", "unknown"].includes(ownership.state)) continue;
     const result = typedArrays.files[ownership.fileName];
     const source = files[ownership.fileName];
     if (!result || source === undefined) continue;
@@ -295,13 +298,15 @@ export function invalidateTransferredTypedArrayEvidence(
         sameRegion = identity?.status === "resolved" && identity.regionId === ownership.regionId;
       }
       if (!sameRegion) continue;
-      obligation.result = "counterexample";
+      obligation.result = ownership.state === "unknown" ? "unknown" : "counterexample";
       if (!result.diagnostics.some((item) => item.kind === obligation.kind && item.span.start === obligation.span.start)) result.diagnostics.push({
         fileName: ownership.fileName,
         functionName: obligation.functionName,
         kind: obligation.kind,
         span: obligation.span,
-        message: `fixed-buffer evidence for ${ownership.resource} was invalidated after it became ${ownership.state}`,
+        message: ownership.state === "unknown"
+          ? `fixed-buffer evidence for ${ownership.resource} is unknown after a conditional ownership transition`
+          : `fixed-buffer evidence for ${ownership.resource} was invalidated after it became ${ownership.state}`,
       });
     }
   }
@@ -313,7 +318,7 @@ async function verifyUneffectProjectFiles(
 ): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
   const pendingContractObligations: ProjectVerificationObligation[] = [];
-  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic> = [];
+  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic | AsyncIteratorCheckerDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
@@ -381,11 +386,19 @@ async function verifyUneffectProjectFiles(
     diagnostics: analyzedEffects.diagnostics.filter((diagnostic) => !diagnostic.fileName.endsWith(".uneffect.ts")),
   };
   diagnostics.push(...effects.diagnostics);
+  const callableSummaries = analyzeCallableSummaries(program, effectProgram === program ? analyzedEffects : undefined).summaries;
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
+  const asyncIterators: IteratorCheckEvidence[] = [];
+  const iteratorAssumptions: AssumptionEntry[] = [];
   for (const fileName of Object.keys(options.files)) {
     const sourceFile = program.getSourceFile(fileName);
     if (!sourceFile) continue;
-    ownershipDiagnostics.push(...analyzeOwnership(program, sourceFile).map((diagnostic) => ({ ...diagnostic, fileName, kind: "ownership" as const })));
+    ownershipDiagnostics.push(...analyzeOwnership(program, sourceFile, callableSummaries).map((diagnostic) => ({ ...diagnostic, fileName, kind: "ownership" as const })));
+    if (fileName.endsWith(".uneffect.ts")) continue;
+    const iterator = collectIteratorChecks(program, sourceFile, "strict", !invalidSources.has(fileName));
+    asyncIterators.push(...iterator.evidence);
+    diagnostics.push(...iterator.diagnostics);
+    iteratorAssumptions.push(...iterator.assumptions);
   }
   invalidateTransferredTypedArrayEvidence(program, options.files, typedArrays, ownershipDiagnostics);
   for (const [fileName, result] of Object.entries(typedArrays.files)) if (invalidSources.has(fileName)) {
@@ -394,7 +407,8 @@ async function verifyUneffectProjectFiles(
   typedArrays.obligations = Object.values(typedArrays.files).flatMap((result) => result.obligations);
   typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
   diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
-  const assumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry, options.assumptionRegistry);
+  const baseAssumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry, options.assumptionRegistry);
+  const assumptions = mergeAssumptionLedger(program, baseAssumptions.ledger, iteratorAssumptions, options.assumptionPolicy);
   diagnostics.push(...assumptions.diagnostics);
   const runtimeInputs = Object.fromEntries(Object.entries(options.files).map(([fileName, source]) => {
     const contractSource = runtimeContractFiles[fileName] ?? source;
@@ -454,7 +468,7 @@ async function verifyUneffectProjectFiles(
   const moduleInitialization = options.moduleInitializationEntry === undefined
     ? undefined : analyzeModuleInitializationOrder(program, options.moduleInitializationEntry);
   const partial = {
-    obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects,
+    obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, asyncIterators, assumptions: assumptions.ledger, effects,
     refinements: { manifests: refinementManifests, links: refinementLinks },
     ...(temporal ? { temporal } : {}), ...(moduleInitialization ? { moduleInitialization } : {}),
   };

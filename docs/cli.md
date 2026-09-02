@@ -29,7 +29,7 @@ npx quint run protocol.qnt
 
 | Command | Purpose |
 | --- | --- |
-| `check [<file.ts> ...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. `--project` preserves consumer compiler options and can select the project's root files; `--module-entry` opts a solution workspace into the supported cross-project module-order composition. |
+| `check [<file.ts> ...]` | Effect, contract, async-safety, async-iterator cleanup, typed-array, and Transferable ownership diagnostics. The default command, so `uneffect <file.ts>` runs it. `--project` preserves consumer compiler options and can select the project's root files; `--module-entry` opts a solution workspace into the supported cross-project module-order composition. |
 | `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the selected Z3 backend, the optional Quint peer, and the optional `java` command. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes. `temporal --runtime web|node` is the public host-aware model combining user temporal annotations with supported JavaScript async observations. `ir`, `lint`, `z3`, `quint`, and `compose` expose the other specification projections. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
@@ -39,7 +39,7 @@ npx quint run protocol.qnt
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 
 `check` takes `--infer` (only check functions that already declare effects),
-`--strict` (an unknown effect name is an error, not a warning),
+`--strict` (unknown effect, typed-array, or ownership evidence is an error, not a warning),
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
 are listed, its `include`/`files` roots; report exact TypeScript package/version
 parity),
@@ -54,11 +54,14 @@ assumption ledger), and
 `--evidence` (also print the proved obligations and the inferred effect of every
 function), and `--json` (write one `uneffect-check/v1` decision report to stdout
 and suppress the text report). JSON always contains normalized diagnostics,
-effect summaries, contract artifacts, and the optional assurance assessment;
+effect summaries, contract artifacts, typed-array obligations/window
+provenance, ownership diagnostics, async-iterator resource scenarios, the assumption ledger, and the optional assurance assessment;
 therefore it remains useful on exit 1 and does not require `--evidence`. Its
 schema is published as `schemas/uneffect-check-v1.schema.json`. Both `check` and `evidence` accept
 `--config <uneffect.registry.json>` for a versioned caller-owned semantic
-registry. `instrument` takes `--ownership`, `--verify-ownership`, and
+registry. `check` also accepts `--assumptions <assumptions.json>` for the
+versioned caller-owned review records referenced by source trust IDs.
+`instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.
 
@@ -134,6 +137,13 @@ exit code and `outcome`; an omitted `--assurance` is represented as
 Every Effect entry whose `evidence` is `unknown` includes a non-empty
 `unknownReasons` array. The schema requires it and forbids the field for
 non-unknown evidence, preventing an unexplained unknown or stale reason list.
+The `asyncIterators` array (retained as the v1 field name) records each selected
+synchronous or asynchronous iterator resource's `protocol`, coverage fragment,
+alternative scenarios, aggregate `satisfied | unsatisfied |
+unknown` status, and `exact | trusted | unknown` evidence. Unclosed iterators
+are errors; incomplete control/alias coverage is a warning in gradual mode and
+an error in strict mode. A used trusted callable boundary is also recorded as a
+`resource-callable` assumption, so verified assurance cannot silently accept it.
 When `--project` is present, `project.compiler` records the analyzer and
 consumer package paths, versions, and `exact | mismatch | unknown` parity.
 Assurance requires `exact`; resolution failure and even patch-version drift are
@@ -260,6 +270,7 @@ Uneffect's installed registry:
 ```sh
 npx uneffect check --config uneffect.registry.json --assurance no-unknown src/main.ts
 npx uneffect evidence --config uneffect.registry.json src/main.ts
+npx uneffect check --assumptions uneffect.assumptions.json src/main.ts
 ```
 
 The runtime parser is intentionally stricter than ordinary JSON loading. It

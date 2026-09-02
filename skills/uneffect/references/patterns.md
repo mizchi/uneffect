@@ -41,8 +41,19 @@ touch a known DOM region. Prefer operation-specific DOM effects over a broad
 `Dom` bound when supported. Browser storage and globals should be declared as
 separate permissions, for example `CookieRead`, `CookieWrite`,
 `LocalStorageRead`, and `LocalStorageWrite` according to the current schemas.
-`GlobalVarsRead<K>` and `GlobalVarsWrite<K>` are planned vocabulary, not an
-implemented permission to rely on yet.
+Use finite forms such as `CookieWrite<"theme">` and
+`LocalStorageRead<"theme" | "locale">` for literal or finite-union keys. Bare
+names grant the whole category. Cookie reads, storage enumeration, and
+`Storage.clear()` are broad; dynamic storage keys fail closed.
+Use `GlobalVarsRead<K>` and `GlobalVarsWrite<K>` to constrain direct access to
+same-realm global properties. The analyzer recognizes the TypeScript-resolved
+`globalThis`, reviewed host aliases such as `window`, `self`, and Node's
+`global`, plus immutable local aliases of those roots. Literal keys and finite
+literal unions remain finite permission sets; dynamic keys fail closed as
+`Unknown<dynamic-global-key>`. A plain assignment only writes, while updates
+and compound assignments both read and write. This does not identify iframe
+globals, module-local variables, or arbitrary same-spelled objects as the
+current realm.
 
 Do not claim that detecting DOM insertion proves the behavior of inserted
 third-party code. External script execution and transitive runtime behavior

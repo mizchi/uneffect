@@ -72,6 +72,57 @@ target types supply their maximum lengths. An unbounded source remains unknown.
 Copying between different element domains, such as Uint32 into Uint8, produces
 `bulk-copy-values` instead of silently accepting per-element narrowing.
 
+Bounded `subarray` and `slice` calls also emit window provenance. `subarray`
+is recorded as sharing its source backing store, while `slice` is recorded as
+allocating a copied backing store. Literal in-range windows retain exact start
+and end offsets; dynamic offsets retain the backing relationship but report an
+unknown range. The syntax-only checker labels this evidence `inferred` because
+it cannot authenticate method identity. The TypeChecker-backed entry point authenticates the standard-library method,
+labels supported windows `verified`, and emits declaration-derived source and
+backing region IDs. A shared window reuses its source backing region; a copied
+window receives a distinct backing region. Same-spelled user methods remain
+`unknown`. Ownership analysis consumes the same builtin semantic identity:
+transferring a source invalidates element reads and writes through nested
+`subarray` windows and immutable aliases, but not through a copied `slice`.
+This is not yet a proof of overlap-sensitive writes or escaping-view safety.
+
+The Program-backed checker authenticates standard `ArrayBuffer.prototype.resize`
+and updates later `new DataView(...)` backing obligations through immutable
+buffer aliases. `BoundedArrayBuffer<Max>` describes a resizable buffer whose
+current length is not known until a supported resize. On a normally returning,
+literal resize within `Max`, shrinking below `offset + length` is a
+counterexample and growing enough verifies the constructor. A dynamic resize
+length produces `unknown`. Calling `resize` on `FixedArrayBuffer<N>` has no
+verified normal completion because that contract denotes a non-resizable
+buffer. The builtin catalog records receiver mutation plus possible `TypeError`
+and `RangeError`. For locally constructed DataViews, later literal resizes are
+also connected through the backing region: fixed-length views become invalid
+when their complete span no longer fits, while length-tracking views use the
+new remainder after their byte offset. Dynamic resizes produce `unknown`.
+The same rule applies to locally constructed `Uint8Array` and `Uint32Array`
+views. Fixed-length views require their complete byte span to survive a resize;
+length-tracking views derive their new element bound from the remaining bytes,
+including each element type's byte width. Immutable aliases retain the same
+backing identity. The TypeChecker-backed path authenticates the standard typed
+array constructor instead of matching its spelling.
+
+For an authenticated local `new ArrayBuffer(initial, { maxByteLength })`, both
+literal values become backing-state evidence. This proves views against the
+initial byte length before any resize and rejects a normally returning path
+whose resize exceeds the actual `maxByteLength`, even when the branded type has
+a wider upper bound. A shadowed same-spelled constructor does not produce this
+evidence.
+
+Resize facts use a conservative control-flow boundary. A resize inside an
+`if`, `switch`, loop, conditional expression, or `try`/`catch` region does not
+become one unconditional post-state after the join. Accesses through a view
+created before that control-dependent resize report `unknown`. A later
+unconditional literal resize re-establishes an exact current length.
+
+This slice does not yet read non-literal runtime `maxByteLength`, prove dynamic resize
+success, cover every typed-array element domain, or track views that escape the
+analyzed function.
+
 For a bounded input, the checker also understands the conventional padding
 allocation expression:
 
@@ -249,6 +300,21 @@ function-wide fallback for gradual adoption. Verified obligations stay
 Every used escape hatch is emitted into the project assumption ledger with its
 exact statement span and review metadata. Trust is not a generic Lean-style
 `sorry` and never authorizes proof-only optimizer rewrites.
+
+## Standard method effects
+
+All standard numeric and BigInt TypedArray owners share the builtin callback
+and mutation catalog. `forEach`, `map`, `filter`, `find`, `some`, `every`, and
+the reduce families invoke callbacks synchronously with element, index, and
+receiver invocation shapes. An explicit `thisArg` is projected to its stable
+region. Runtime element/index identities remain unknown unless another proof
+connects them, while the collection argument maps back to the actual receiver.
+
+`sort` mutates its receiver and composes its optional comparator; `toSorted`
+returns a fresh array. `copyWithin`, `fill`, `reverse`, and `set` mutate the
+receiver. `slice`, `toReversed`, and `with` return fresh typed arrays. These are
+Effect/call-graph facts and complement, rather than replace, bounds, element
+domain, backing-buffer, and transfer obligations.
 
 ## SHA-256-style bitwise arithmetic
 

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeOwnership, checkOwnership, checkOwnershipWithResourceProtocol, generateOwnershipQuint, lowerOwnershipEventsToResourceProtocol, type OwnershipEvent } from "../src/ownership.js";
 import { invalidateTransferredTypedArrayEvidence } from "../src/project-verification.js";
 import { verifyTypedArraySafety, type TypedArrayProgramSafetyResult } from "../src/typed-array-safety.js";
+import { analyzeCallableSummaries } from "../src/callable-summary.js";
 
 const span = { start: 0, end: 1 };
 function run(events: OwnershipEvent[]) {
@@ -75,6 +76,142 @@ describe("Transferable ownership", () => {
     expect(analyzeOwnership(program, program.getSourceFile(fileName)!)).toContainEqual(expect.objectContaining({ resource: "buffer", state: "detached", operation: "read" }));
   });
 
+  it("distinguishes possible from definite use after conditional transfer", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-conditional-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      function maybe(buffer: ArrayBuffer, move: boolean) {
+        if (move) structuredClone({}, { transfer: [buffer] })
+        return buffer.byteLength
+      }
+      function always(buffer: ArrayBuffer, move: boolean) {
+        if (move) structuredClone({}, { transfer: [buffer] })
+        else structuredClone({}, { transfer: [buffer] })
+        return buffer.byteLength
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const diagnostics = analyzeOwnership(program, program.getSourceFile(fileName)!);
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "buffer", state: "unknown", operation: "read", message: expect.stringContaining("conditional") }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "buffer", state: "detached", operation: "read" }));
+    expect(() => generateOwnershipQuint("conditional", [{
+      operation: "transfer", resource: "buffer", transferState: "detached", span,
+      controlPath: [{ id: 1, branch: true }],
+    }])).toThrow(/CFG-aware/);
+  });
+
+  it("fails closed for zero-or-many loop transfers", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-loop-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      function loop(buffer: ArrayBuffer, count: number) {
+        for (let index = 0; index < count; index++) {
+          structuredClone({}, { transfer: [buffer] })
+        }
+        return buffer.byteLength
+      }
+      function doOnce(buffer: ArrayBuffer, again: boolean) {
+        do { structuredClone({}, { transfer: [buffer] }) } while (again)
+        return buffer.byteLength
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const diagnostics = analyzeOwnership(program, program.getSourceFile(fileName)!);
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "buffer", operation: "transfer", state: "unknown", message: expect.stringContaining("repeat") }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "buffer", operation: "read", state: "unknown" }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "buffer", operation: "read", state: "detached" }));
+  });
+
+  it("joins switch selection while preserving fallthrough and break", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-switch-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      function partial(buffer: ArrayBuffer, kind: number) {
+        switch (kind) {
+          case 0: structuredClone({}, { transfer: [buffer] }); break
+          case 1: break
+        }
+        return buffer.byteLength
+      }
+      function complete(buffer: ArrayBuffer, kind: number) {
+        switch (kind) {
+          case 0:
+          case 1: structuredClone({}, { transfer: [buffer] }); break
+          default: structuredClone({}, { transfer: [buffer] })
+        }
+        return buffer.byteLength
+      }
+      function conditionalBreak(buffer: ArrayBuffer, kind: number, stop: boolean) {
+        switch (kind) {
+          case 0: if (stop) break
+          case 1: structuredClone({}, { transfer: [buffer] }); break
+          default: structuredClone({}, { transfer: [buffer] })
+        }
+        return buffer.byteLength
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const diagnostics = analyzeOwnership(program, program.getSourceFile(fileName)!);
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "buffer", operation: "read", state: "unknown" }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "buffer", operation: "read", state: "detached" }));
+    expect(diagnostics.filter((item) => item.operation === "read" && item.state === "unknown")).toHaveLength(2);
+  });
+
+  it("routes ownership through try, catch, and mandatory finally", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-try-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      function caught(buffer: ArrayBuffer) {
+        try { throw new Error("move") }
+        catch { structuredClone({}, { transfer: [buffer] }) }
+        return buffer.byteLength
+      }
+      function unreachableCatch(buffer: ArrayBuffer) {
+        try { const value = 1; void value }
+        catch { structuredClone({}, { transfer: [buffer] }) }
+        return buffer.byteLength
+      }
+      function mandatory(buffer: ArrayBuffer, fail: boolean) {
+        try { if (fail) throw new Error("fail") }
+        finally { structuredClone({}, { transfer: [buffer] }) }
+        return buffer.byteLength
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const diagnostics = analyzeOwnership(program, program.getSourceFile(fileName)!);
+    expect(diagnostics.filter((item) => item.operation === "read" && item.state === "detached")).toHaveLength(2);
+    expect(diagnostics.filter((item) => item.operation === "read" && item.state === "unknown")).toEqual([]);
+  });
+
+  it("routes authenticated callable Throw summaries into ownership catch edges", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-callable-throw-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      /* uneffect:effect Throw<Error> */
+      function fail(): never { throw new Error("fail") }
+      /* uneffect:effect Reject<Error> */
+      async function reject(): Promise<never> { return Promise.reject(new Error("reject")) }
+      function caught(buffer: ArrayBuffer) {
+        try { fail() }
+        catch { structuredClone({}, { transfer: [buffer] }) }
+        return buffer.byteLength
+      }
+      async function caughtReject(buffer: ArrayBuffer) {
+        try { await reject() }
+        catch { structuredClone({}, { transfer: [buffer] }) }
+        return buffer.byteLength
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const summaries = analyzeCallableSummaries(program).summaries;
+    expect(summaries.find((summary) => summary.name === "reject")?.rejects).toEqual(["Error"]);
+    const diagnostics = analyzeOwnership(program, program.getSourceFile(fileName)!, summaries);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      resource: "buffer", operation: "read", state: "unknown",
+    }));
+    expect(diagnostics.filter((item) => item.operation === "read" && item.state === "unknown")).toHaveLength(2);
+  });
+
   it("does not merge same-spelled shadowed ownership bindings", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-shadow-"));
     const fileName = join(directory, "input.ts");
@@ -127,6 +264,27 @@ describe("Transferable ownership", () => {
     }));
   });
 
+  it("shares ownership state with builtin subarray but not copied slice windows", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-window-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      function move(bytes: Uint8Array) {
+        const root = bytes
+        const shared = root.subarray(0, 4)
+        const nested = shared.subarray(1, 3)
+        const sharedAlias = nested
+        const copied = bytes.slice(0, 4)
+        structuredClone({}, { transfer: [bytes] })
+        sharedAlias[0] = 1
+        copied[0] = 2
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const diagnostics = analyzeOwnership(program, program.getSourceFile(fileName)!);
+    expect(diagnostics).toContainEqual(expect.objectContaining({ resource: "sharedAlias", state: "transferred", operation: "mutate" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ resource: "copied" }));
+  });
+
   it("invalidates typed-array backing evidence through a different immutable alias", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-typed-region-"));
     const fileName = join(directory, "input.ts");
@@ -146,6 +304,7 @@ describe("Transferable ownership", () => {
     expect(typed.obligations).toContainEqual(expect.objectContaining({ kind: "dataview-backing-bounds", result: "verified" }));
     const aggregate: TypedArrayProgramSafetyResult = {
       files: { [fileName]: typed }, obligations: [...typed.obligations], diagnostics: [...typed.diagnostics],
+      windows: [...typed.windows],
       statistics: typed.statistics,
     };
     const ownership = analyzeOwnership(program, program.getSourceFile(fileName)!).map((diagnostic) => ({
@@ -155,5 +314,31 @@ describe("Transferable ownership", () => {
     invalidateTransferredTypedArrayEvidence(program, { [fileName]: source }, aggregate, ownership);
 
     expect(typed.obligations).toContainEqual(expect.objectContaining({ kind: "dataview-backing-bounds", result: "counterexample" }));
+  });
+
+  it("downgrades backing evidence after a conditional transfer", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-owner-typed-conditional-"));
+    const fileName = join(directory, "input.ts");
+    const source = `
+      type FixedArrayBuffer<N extends number> = ArrayBuffer
+      type BoundedDataView<N extends number> = DataView
+      function maybeMove(buffer: FixedArrayBuffer<16>, move: boolean): BoundedDataView<8> {
+        if (move) structuredClone({}, { transfer: [buffer] })
+        return new DataView(buffer, 0, 8) as BoundedDataView<8>
+      }
+    `;
+    writeFileSync(fileName, source);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const typed = await verifyTypedArraySafety(fileName, source);
+    const aggregate: TypedArrayProgramSafetyResult = {
+      files: { [fileName]: typed }, obligations: [...typed.obligations], diagnostics: [...typed.diagnostics],
+      windows: [...typed.windows], statistics: typed.statistics,
+    };
+    const ownership = analyzeOwnership(program, program.getSourceFile(fileName)!).map((diagnostic) => ({
+      ...diagnostic, fileName, kind: "ownership" as const,
+    }));
+    expect(ownership).toContainEqual(expect.objectContaining({ state: "unknown", operation: "read" }));
+    invalidateTransferredTypedArrayEvidence(program, { [fileName]: source }, aggregate, ownership);
+    expect(typed.obligations).toContainEqual(expect.objectContaining({ kind: "dataview-backing-bounds", result: "unknown" }));
   });
 });

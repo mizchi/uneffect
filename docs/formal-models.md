@@ -135,7 +135,9 @@ also receive a bounded resource/host product: async disposal must start a
 microtask checkpoint and may resume only inside it. A load-bearing broken model
 resumes outside the checkpoint and Quint finds the violation. Bounded non-loop
 conditional acquisition uses explicit acquire-or-skip and release-or-skip
-paths. Repeated loop acquisition still reports `resource-host-scheduling`; the supported
+paths. One contiguous source-loop acquisition group is composed with explicit
+zero/repeat/exit generations. Multiple, nested, non-contiguous, or non-stack
+groups still report `resource-host-scheduling`; the supported
 product reports `resource-host-callback-interleavings` because arbitrary host
 callbacks are not yet in the product. #63 tracks that remaining composition. It does not make
 the local function-summary composer itself concurrent.
@@ -162,6 +164,32 @@ first-settlement-wins path outcomes, and PromiseLike assimilation;
 `then`, `catch`, and `finally` produce ordered derived-Promise states whose
 reactions are separate microtask transitions. Negative controls forbid
 reaction-before-settlement and enforce successful `finally` transparency.
+Synchronous executor/callback divergence is distinct from a returned pending
+Promise. A possible loop or unavailable synchronous callback can take a global
+`synchronously_blocked` transition that disables later settlement/reaction;
+`promiseSynchronouslyProgressed` exposes a counterexample. Executors without a
+reaction remain represented as synthetic roots. The public temporal facade
+includes this Promise projection and the Web/Node event-loop model consumes the
+same source-ordered return/diverge choice. Divergence disables every later host
+transition. Returned pending executors do not prequeue reactions; returned
+settled executors do. This bounded synchronization does not prove termination
+of arbitrary calls hidden inside an otherwise loop-free callback. It does detect
+direct and mutual same-Program recursion through TypeChecker-resolved immutable
+aliases and stable object-literal properties. Mutable aliases/properties and
+dynamic dispatch remain opaque rather than inheriting an initializer's result.
+Unresolved calls are not silently assumed to terminate: the executor evidence
+names `opaque-call` or `opaque-callback`, and the host model retains the blocked
+branch. Iteration, recursion, and unsupported control have separate reason
+codes. Only the Promise capability's own resolve/reject calls are intrinsic
+termination assumptions.
+
+For gradual adoption, a TypeChecker-resolved callable can declare
+`/* uneffect:temporal_contract terminates true */`. This trusted contract
+discharges only the `opaque-call` synchronous-divergence alternative at that
+symbol. It neither proves the implementation nor suppresses recursion,
+iteration, unsupported control flow, or an opaque callback value. The contract
+is emitted to the temporal-contract assumption ledger; absent, false,
+duplicated, and shadowed annotations do not discharge the branch.
 
 ## Transferable ownership
 

@@ -38,6 +38,8 @@ export interface PromiseObservation {
 export interface PromiseBinding {
   owner: string;
   binding: string;
+  /** SSA-like ownership generation for one mutable binding. Immutable aliases share it. */
+  generation: number;
   status: "floating" | "transferred" | "observed";
   observations: string[];
   /** Stable within this source snapshot; spelling is diagnostic-only. */
@@ -58,6 +60,8 @@ export interface ResourceBinding {
   scopeEnd: number;
   catchesFailure: boolean;
   initializerMayFail: true;
+  /** True only for a source-authenticated direct `await` in the initializer. */
+  initializerAwaited: boolean;
   disposalFailureType: string;
   disposalProtocol?: {
     kind: "sync" | "async";
@@ -944,16 +948,49 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return false;
     };
+    const isStraightLineReassignment = (node: ts.Node): boolean => {
+      for (let current: ts.Node | undefined = node.parent; current && current !== ownerNode.body; current = current.parent) {
+        if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
+          || ts.isIterationStatement(current, false) || ts.isTryStatement(current) || ts.isCatchClause(current)
+          || ts.isCaseClause(current) || ts.isDefaultClause(current)) return false;
+        if (ts.isBinaryExpression(current) && current.right === node
+          && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(current.operatorToken.kind)) return false;
+      }
+      return true;
+    };
     const bindingGroups = new Map<ts.Symbol, PromiseBinding[]>();
+    const allBindingGroups = new Set<PromiseBinding[]>();
+    const generationManagedGroups = new Set<PromiseBinding[]>();
+    const conditionallyCreatedGroups = new Set<PromiseBinding[]>();
+    const symbolGenerations = new Map<ts.Symbol, number>();
     const localBindings: PromiseBinding[] = [];
     const registerBinding = (symbol: ts.Symbol, name: string, spanNode: ts.Node, existing?: PromiseBinding[]): void => {
       if (bindingGroups.has(symbol)) return;
       if (existing) {
-        const binding: PromiseBinding = { owner, binding: name, status: existing[0]!.status, observations: existing[0]!.observations, identity: existing[0]!.identity, span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        const binding: PromiseBinding = { owner, binding: name, generation: existing[0]!.generation, status: existing[0]!.status, observations: existing[0]!.observations, identity: existing[0]!.identity, span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
         existing.push(binding); bindingGroups.set(symbol, existing); localBindings.push(binding); promiseBindings.push(binding);
       } else {
-        const binding: PromiseBinding = { owner, binding: name, status: "floating", observations: [], identity: bindingIdentity(symbol), span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
-        bindingGroups.set(symbol, [binding]); localBindings.push(binding); promiseBindings.push(binding);
+        const generation = symbolGenerations.get(symbol) ?? 0;
+        symbolGenerations.set(symbol, generation);
+        const binding: PromiseBinding = { owner, binding: name, generation, status: "floating", observations: [], identity: bindingIdentity(symbol), span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        const group = [binding];
+        bindingGroups.set(symbol, group); allBindingGroups.add(group); localBindings.push(binding); promiseBindings.push(binding);
+      }
+    };
+    const rebindPromise = (symbol: ts.Symbol, name: string, spanNode: ts.Node, existing?: PromiseBinding[]): void => {
+      const previous = bindingGroups.get(symbol);
+      if (previous) generationManagedGroups.add(previous);
+      const generation = (symbolGenerations.get(symbol) ?? previous?.[0]?.generation ?? 0) + 1;
+      symbolGenerations.set(symbol, generation);
+      if (existing) {
+        const binding: PromiseBinding = { owner, binding: name, generation: existing[0]!.generation, status: existing[0]!.status, observations: existing[0]!.observations, identity: existing[0]!.identity, span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        existing.push(binding); bindingGroups.set(symbol, existing); generationManagedGroups.add(existing); localBindings.push(binding); promiseBindings.push(binding);
+        if (isConditionalExecution(spanNode)) conditionallyCreatedGroups.add(existing);
+      } else {
+        const binding: PromiseBinding = { owner, binding: name, generation, status: "floating", observations: [], identity: bindingIdentity(symbol), span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        const group = [binding];
+        bindingGroups.set(symbol, group); allBindingGroups.add(group); generationManagedGroups.add(group); localBindings.push(binding); promiseBindings.push(binding);
+        if (isConditionalExecution(spanNode)) conditionallyCreatedGroups.add(group);
       }
     };
     const markSymbol = (symbol: ts.Symbol | undefined, status: "transferred" | "observed", observation: string): void => {
@@ -991,12 +1028,33 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           else if (isPromiseLike(checker, node.initializer)) registerBinding(symbol, node.name.text, node);
         }
       }
+      if (ts.isVariableDeclaration(node)
+        && (ts.isObjectBindingPattern(node.name) || ts.isArrayBindingPattern(node.name)) && node.initializer) {
+        const registerPromiseElements = (name: ts.BindingName): void => {
+          if (ts.isIdentifier(name)) {
+            const symbol = checker.getSymbolAtLocation(name);
+            if (symbol && isPromiseLike(checker, name)) registerBinding(symbol, name.text, name);
+            return;
+          }
+          for (const element of name.elements) if (!ts.isOmittedExpression(element)) registerPromiseElements(element.name);
+        };
+        registerPromiseElements(node.name);
+      }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
         const symbol = checker.getSymbolAtLocation(node.left);
-        if (symbol && !bindingGroups.has(symbol)) {
+        if (symbol) {
           const aliasedSymbol = ts.isIdentifier(node.right) ? checker.getSymbolAtLocation(node.right) : undefined;
           const existing = aliasedSymbol && bindingGroups.get(aliasedSymbol);
-          if (existing) registerBinding(symbol, node.left.text, node, existing);
+          if (bindingGroups.has(symbol)) {
+            if (!isStraightLineReassignment(node)) {
+              // The existing CFG evaluator retains branch/loop/try generation joins.
+            } else if (existing) rebindPromise(symbol, node.left.text, node, existing);
+            else if (isPromiseLike(checker, node.right)) rebindPromise(symbol, node.left.text, node);
+            else {
+              generationManagedGroups.add(bindingGroups.get(symbol)!);
+              bindingGroups.delete(symbol);
+            }
+          } else if (existing) registerBinding(symbol, node.left.text, node, existing);
           else if (isPromiseLike(checker, node.right)) registerBinding(symbol, node.left.text, node);
         }
       }
@@ -1010,7 +1068,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const selectedProtocol = asynchronous ? protocol.asyncSymbol ?? protocol.syncSymbol : protocol.syncSymbol;
           const protocolDeclaration = selectedProtocol?.declarations?.[0];
           const paths = controlPaths(declaration);
-          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, conditional: isConditionalExecution(declaration), controlConditions: paths[0] ?? [], controlPaths: paths, acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
+          let initializer = declaration.initializer;
+          while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+            || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)) initializer = initializer.expression;
+          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, conditional: isConditionalExecution(declaration), controlConditions: paths[0] ?? [], controlPaths: paths, acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, initializerAwaited: ts.isAwaitExpression(initializer), disposalFailureType: disposalFailureType(selectedProtocol),
             disposalProtocol: protocolDeclaration ? { kind: protocol.asyncSymbol === selectedProtocol ? "async" : "sync", fileName: protocolDeclaration.getSourceFile().fileName, start: protocolDeclaration.getStart(), end: protocolDeclaration.getEnd() } : undefined,
             span: { start: declaration.getStart(source), end: declaration.getEnd() } };
           resources.push(resource); ownedResources.push(resource);
@@ -1558,8 +1619,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       ts.forEachChild(node, collectDisposedAliasFlow);
     };
     collectDisposedAliasFlow(ownerNode.body);
-    const uniqueGroups = [...new Set(bindingGroups.values())];
+    const uniqueGroups = [...allBindingGroups];
     for (const group of uniqueGroups) {
+      if (generationManagedGroups.has(group)) continue;
       const symbols = new Set([...bindingGroups].filter(([, value]) => value === group).map(([symbol]) => symbol));
       type PathState = {
         active: boolean;
@@ -1596,10 +1658,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       const activates = (statement: ts.Node): boolean => {
         let active = false;
+        const declaresGroup = (name: ts.BindingName): boolean => {
+          if (ts.isIdentifier(name)) return symbols.has(checker.getSymbolAtLocation(name)!);
+          return name.elements.some((element) => !ts.isOmittedExpression(element) && declaresGroup(element.name));
+        };
         const scan = (node: ts.Node): void => {
           if (active || (node !== statement && ts.isFunctionLike(node))) return;
-          if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.name)
-            && symbols.has(checker.getSymbolAtLocation(node.name)!)) active = true;
+          if (ts.isVariableDeclaration(node) && node.initializer && declaresGroup(node.name)) active = true;
           else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
             && referencesGroup(node.left) && isPromiseLike(checker, node.right)) active = true;
           else ts.forEachChild(node, scan);
@@ -1952,13 +2017,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       const states = ts.isBlock(ownerNode.body) ? executeStatements(ownerNode.body.statements, [{ active: false, pending: false, lost: false, terminated: false }]) : [];
       if (states.some((state) => state.active && (state.pending || state.lost))) for (const binding of group) binding.status = "floating";
     }
-    const reported = new Set<PromiseBinding[]>();
-    for (const binding of localBindings) {
-      const symbol = [...bindingGroups].find(([, group]) => group.includes(binding))?.[0];
-      const group = symbol && bindingGroups.get(symbol);
-      if (!group || reported.has(group) || group[0]!.status !== "floating") continue;
-      reported.add(group);
-      diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, binding.span.start), kind: "floating-promise", severity: "error", message: `${owner} leaves Promise binding ${binding.binding} without await, return, rejection handler, explicit void, or responsibility transfer`, notes: [{ label: "because", detail: `every path through ${owner} leaves ${binding.binding} unobserved, so its rejection escapes as an unhandled rejection` }] });
+    for (const group of allBindingGroups) {
+      if (conditionallyCreatedGroups.has(group)) for (const binding of group) binding.status = "floating";
+      const binding = group[0]!;
+      if (binding.status !== "floating") continue;
+      diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, binding.span.start), kind: "floating-promise", severity: "error", message: `${owner} leaves Promise binding ${binding.binding} generation ${binding.generation} without await, return, rejection handler, explicit void, or responsibility transfer`, notes: [{ label: "because", detail: `every supported path through ${owner} leaves ${binding.binding} generation ${binding.generation} unobserved, so its rejection escapes as an unhandled rejection` }] });
     }
   };
   const boundedForIterations = (loop: ts.ForStatement): number | undefined => {

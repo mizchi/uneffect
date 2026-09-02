@@ -12,6 +12,7 @@ import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffec
 import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject, type WorkspaceRefinementComposition } from "./workspace-refinements.js";
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 import { loadDeclarationTransformManifest, validateDeclarationTransformManifest } from "./declaration-transforms.js";
+import { loadAssumptionRegistry } from "./assumption-registry.js";
 import {
   composeWorkspaceModuleInitialization,
   type CompletedModuleInitializationProject,
@@ -21,13 +22,14 @@ import {
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--assumptions <registry.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
     "--evidence   also print the proved obligations and the inferred effect of every function",
     "--assurance  fail on non-proof evidence: no-unknown, declared, or verified",
     "--config     load a versioned caller-owned semantic registry",
+    "--assumptions  load a versioned caller-owned assumption registry",
     "--semantics-module  load a declarative trusted semantics module; repeat to compose modules",
     "--declaration-transforms  bind generated TypeScript to exact spans in non-TypeScript sources",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
@@ -44,6 +46,7 @@ export const checkCommand: CliCommand = {
       infer: { type: "boolean" }, strict: { type: "boolean" }, evidence: { type: "boolean" },
       assurance: { type: "string" },
       config: { type: "string" },
+      assumptions: { type: "string" },
       "semantics-module": { type: "string", multiple: true },
       "declaration-transforms": { type: "string" },
       project: { type: "string" },
@@ -74,6 +77,9 @@ export const checkCommand: CliCommand = {
         builtinRegistry = (await loadUneffectModules(values["semantics-module"] as string[], builtinRegistry)).registry;
       }
     }
+    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+    let assumptionRegistry;
+    try { assumptionRegistry = values.assumptions === undefined ? undefined : await loadAssumptionRegistry(String(values.assumptions)); }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
     let declarationTransforms;
     try { declarationTransforms = values["declaration-transforms"] === undefined
@@ -112,7 +118,7 @@ export const checkCommand: CliCommand = {
         composedRefinements.links.push(...refinementComposition.links);
         composedRefinements.blockers.push(...refinementComposition.blockers);
         const domainResult = await checkFiles(domain.fileNames, {
-          mode: values.strict ? "strict" : "gradual", requireAnnotations: !values.infer, builtinRegistry,
+          mode: values.strict ? "strict" : "gradual", requireAnnotations: !values.infer, builtinRegistry, assumptionRegistry,
           compilerOptions: domain.compilerOptions, project: domain.provenance,
           projectReferences: domain.projectReferences,
           program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts,
@@ -168,6 +174,7 @@ export const checkCommand: CliCommand = {
       mode: values.strict ? "strict" : "gradual",
       requireAnnotations: !values.infer,
       builtinRegistry,
+      assumptionRegistry,
       compilerOptions: project?.compilerOptions,
       project: project?.provenance,
       projectReferences: project?.projectReferences,

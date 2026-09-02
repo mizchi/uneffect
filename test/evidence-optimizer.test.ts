@@ -724,13 +724,13 @@ describe("evidence and optimizer obligations", () => {
         .toMatchObject({ evidence: "unknown" });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
-        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> | GlobalVarsRead<"appState"> */
         export {}
         declare global { var appState: { value: number } }
         globalThis.appState.value = 1
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:module_effect Mutate<typeof globalThis.appState.value> | GlobalVarsRead<"appState"> */
         import "../../a/src/a.js"
         export const value = globalThis.appState.value
       `);
@@ -746,17 +746,20 @@ describe("evidence and optimizer obligations", () => {
       });
       expect(ambientGlobal.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
         .verification.effects.summaries.find((item) => item.functionName === "<module>" && item.fileName === join(bDirectory, "src", "b.ts")))
-        .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "globalThis.appState.value" })] });
+        .toMatchObject({ evidence: "verified", effects: expect.arrayContaining([
+          expect.objectContaining({ kind: "mutate", region: "globalThis.appState.value" }),
+          expect.objectContaining({ kind: "capability", name: "GlobalVarsRead" }),
+        ]) });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         export {}
         declare global { var appState: { value: number } }
-        /* uneffect:effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:effect Mutate<typeof globalThis.appState.value> | GlobalVarsRead<"appState"> */
         export function setGlobal() { globalThis.appState.value = 1 }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         import { setGlobal } from "../../a/src/a.js"
-        /* uneffect:effect Mutate<typeof globalThis.appState.value> */
+        /* uneffect:effect Mutate<typeof globalThis.appState.value> | GlobalVarsRead<"appState"> */
         export function update() { setGlobal() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
@@ -770,7 +773,10 @@ describe("evidence and optimizer obligations", () => {
       });
       expect(ambientFunction.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
         .verification.effects.summaries.find((item) => item.functionName === "update"))
-        .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "globalThis.appState.value" })] });
+        .toMatchObject({ evidence: "verified", effects: expect.arrayContaining([
+          expect.objectContaining({ kind: "mutate", region: "globalThis.appState.value" }),
+          expect.objectContaining({ kind: "capability", name: "GlobalVarsRead" }),
+        ]) });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         /* uneffect:module_effect Mutate<typeof window.appState.value> */

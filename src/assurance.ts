@@ -6,7 +6,7 @@ export type AssuranceProfile = "no-unknown" | "declared" | "verified";
 export type AssuranceStatus = "verified" | "assumed" | "unknown" | "violated";
 
 export interface AssuranceBlocker {
-  kind: "effect" | "contract" | "coverage" | "typescript" | "assumption";
+  kind: "effect" | "contract" | "typed-array" | "ownership" | "async-iterator" | "coverage" | "typescript" | "assumption";
   classification: "unknown" | "violation";
   fileName: string;
   functionName: string;
@@ -19,6 +19,10 @@ export interface AssuranceCoverage {
   checkedFiles: number;
   uncoveredFiles: string[];
   assumptions: number;
+  typedArrayObligations: number;
+  typedArrayWindows: number;
+  ownershipDiagnostics: number;
+  asyncIteratorObligations: number;
 }
 
 export interface AssuranceAssessment {
@@ -54,13 +58,17 @@ const commonExclusions = [
  * a proof claim.
  */
 export function assessCheckAssurance(
-  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics" | "project">> & { assumptions?: AssumptionLedger },
+  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics" | "project" | "typedArrays" | "ownership" | "asyncIterators">> & { assumptions?: AssumptionLedger },
   profile: AssuranceProfile,
 ): AssuranceAssessment {
   const blockers: AssuranceBlocker[] = [];
   const coveredFiles = new Set<string>();
   for (const summary of result.summaries) if (summary.fileName) coveredFiles.add(summary.fileName);
   for (const artifact of result.artifacts) coveredFiles.add(artifact.source.fileName);
+  for (const [fileName, typed] of Object.entries(result.typedArrays?.files ?? {})) {
+    if (typed.obligations.length || typed.windows.length) coveredFiles.add(fileName);
+  }
+  for (const iterator of result.asyncIterators ?? []) coveredFiles.add(iterator.fileName);
   const selectedFiles = [...(result.sources?.keys() ?? [])];
   const uncoveredFiles = selectedFiles.filter((fileName) => !coveredFiles.has(fileName));
   const coverage: AssuranceCoverage = {
@@ -69,8 +77,13 @@ export function assessCheckAssurance(
     checkedFiles: selectedFiles.length,
     uncoveredFiles,
     assumptions: result.assumptions?.entries.length ?? 0,
+    typedArrayObligations: result.typedArrays?.obligations.length ?? 0,
+    typedArrayWindows: result.typedArrays?.windows.length ?? 0,
+    ownershipDiagnostics: result.ownership?.length ?? 0,
+    asyncIteratorObligations: result.asyncIterators?.length ?? 0,
   };
-  if (coverage.effectSummaries === 0 && coverage.contractArtifacts === 0) blockers.push({
+  if (coverage.effectSummaries === 0 && coverage.contractArtifacts === 0
+    && coverage.typedArrayObligations === 0 && coverage.typedArrayWindows === 0) blockers.push({
     kind: "coverage", classification: "unknown", fileName: "<assessment>", functionName: "<coverage>",
     message: "no effect summary or contract artifact was emitted; the assurance claim would be vacuous",
   });
@@ -114,6 +127,36 @@ export function assessCheckAssurance(
     functionName: artifact.obligation?.functionName ?? "<contract>",
     message: `${artifact.obligation?.functionName ?? "contract"}: contract evidence is ${artifact.status}, not verified`,
   });
+  for (const obligation of result.typedArrays?.obligations ?? []) if (obligation.result === "unknown" || obligation.result === "counterexample") blockers.push({
+    kind: "typed-array", classification: obligation.result === "counterexample" ? "violation" : "unknown",
+    fileName: Object.entries(result.typedArrays?.files ?? {}).find(([, file]) => file.obligations.includes(obligation))?.[0] ?? "<typed-array>",
+    functionName: obligation.functionName,
+    message: `${obligation.functionName}: ${obligation.kind} evidence is ${obligation.result}`,
+  });
+  for (const window of result.typedArrays?.windows ?? []) if (window.result === "unknown") blockers.push({
+    kind: "typed-array", classification: "unknown",
+    fileName: Object.entries(result.typedArrays?.files ?? {}).find(([, file]) => file.windows.includes(window))?.[0] ?? "<typed-array>",
+    functionName: window.functionName,
+    message: `${window.functionName}: ${window.binding} window backing provenance is unknown`,
+  });
+  for (const diagnostic of result.ownership ?? []) blockers.push({
+    kind: "ownership", classification: diagnostic.state === "unknown" ? "unknown" : "violation",
+    fileName: diagnostic.fileName, functionName: "<ownership>", message: diagnostic.message,
+  });
+  for (const iterator of result.asyncIterators ?? []) {
+    if (iterator.status === "unsatisfied") blockers.push({
+      kind: "async-iterator", classification: "violation", fileName: iterator.fileName, functionName: iterator.owner,
+      message: `${iterator.owner}: async iterator does not reach an accepted terminal state`,
+    });
+    else if (iterator.status === "unknown" || iterator.evidence === "unknown") blockers.push({
+      kind: "async-iterator", classification: "unknown", fileName: iterator.fileName, functionName: iterator.owner,
+      message: `${iterator.owner}: async-iterator cleanup evidence is unknown (${iterator.unknownReasons.join(", ") || "resource transition"})`,
+    });
+    else if (profile === "verified" && iterator.evidence === "trusted") blockers.push({
+      kind: "async-iterator", classification: "unknown", fileName: iterator.fileName, functionName: iterator.owner,
+      message: `${iterator.owner}: async-iterator ownership depends on a trusted callable contract`,
+    });
+  }
   if (profile === "verified") {
     if (!result.assumptions) blockers.push({
       kind: "assumption", classification: "unknown", fileName: "<assessment>", functionName: "<assumptions>",
@@ -132,6 +175,9 @@ export function assessCheckAssurance(
   if (result.project?.compiler.parity === "exact") candidateClaims.push(
     "the consumer project and analyzer resolve the exact same TypeScript version",
   );
+  if ((result.typedArrays?.obligations.length ?? 0) > 0) candidateClaims.push("every emitted typed-array obligation is verified or explicitly trusted");
+  if ((result.typedArrays?.windows.length ?? 0) > 0) candidateClaims.push("every emitted typed-array window has non-unknown backing provenance");
+  if ((result.asyncIterators?.length ?? 0) > 0) candidateClaims.push("every emitted async-iterator resource scenario reaches an accepted terminal state");
   const exclusions = profile === "no-unknown"
     ? [...commonExclusions, "inferred effects need not have an explicit upper-bound declaration"]
     : [...commonExclusions];
@@ -144,8 +190,10 @@ export function assessCheckAssurance(
     !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)))) {
     exclusions.push("unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set");
   }
+  const hasAssumptions = hasTrustedSummary || (result.assumptions?.entries.length ?? 0) > 0
+    || (result.asyncIterators?.some((iterator) => iterator.evidence === "trusted") ?? false);
   const status: AssuranceStatus = blockers.some((blocker) => blocker.classification === "violation")
-    ? "violated" : blockers.length > 0 ? "unknown" : hasTrustedSummary ? "assumed" : "verified";
+    ? "violated" : blockers.length > 0 ? "unknown" : hasAssumptions ? "assumed" : "verified";
   const claims = blockers.length === 0 ? candidateClaims : [];
   return { profile, status, passed: blockers.length === 0, blockers, coverage, claims, exclusions };
 }
@@ -157,7 +205,7 @@ function countLabel(count: number, singular: string, plural = `${singular}s`): s
 export function formatAssuranceAssessment(assessment: AssuranceAssessment): string {
   const header = `assurance ${assessment.profile}: ${assessment.passed ? "passed" : "failed"} (${assessment.status})`;
   const scope = "  scope: emitted evidence for explicitly checked files and opted-in annotations only";
-  const coverage = `  coverage: ${countLabel(assessment.coverage.effectSummaries, "effect summary", "effect summaries")}, ${countLabel(assessment.coverage.contractArtifacts, "contract artifact")}, ${countLabel(assessment.coverage.assumptions, "assumption")}, ${countLabel(assessment.coverage.checkedFiles, "selected file")}`;
+  const coverage = `  coverage: ${countLabel(assessment.coverage.effectSummaries, "effect summary", "effect summaries")}, ${countLabel(assessment.coverage.contractArtifacts, "contract artifact")}, ${countLabel(assessment.coverage.typedArrayObligations, "typed-array obligation")}, ${countLabel(assessment.coverage.typedArrayWindows, "typed-array window")}, ${countLabel(assessment.coverage.ownershipDiagnostics, "ownership diagnostic")}, ${countLabel(assessment.coverage.asyncIteratorObligations, "async-iterator obligation")}, ${countLabel(assessment.coverage.assumptions, "assumption")}, ${countLabel(assessment.coverage.checkedFiles, "selected file")}`;
   return `${[
     header,
     scope,

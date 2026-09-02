@@ -86,7 +86,7 @@ function temporalSummary(node: ts.FunctionDeclaration, source: ts.SourceFile): b
   const leading = source.text.slice(node.getFullStart(), node.getStart(source));
   const summaryDirectives = [
     "temporal_requires", "temporal_ensures", "temporal_modifies", "temporal_throws",
-    "temporal_rejects", "temporal_suspends", "temporal_cancellable", "temporal_eventually",
+    "temporal_rejects", "temporal_suspends", "temporal_cancellable", "temporal_terminates", "temporal_eventually",
     "temporal_repeatedly", "temporal_stabilizes", "temporal_response", "temporal_fair",
   ] as const;
   return summaryDirectives
@@ -108,6 +108,31 @@ export function evaluateAssumptionPolicy(entries: readonly AssumptionEntry[], po
     else if (policy.denyExpired && assumption.expiresOn && assumption.expiresOn < asOf) report("expired", `${assumption.domain} assumption expired on ${assumption.expiresOn}`);
   }
   return violations;
+}
+
+/** Merge newly used trusted boundaries and re-evaluate one assumption policy. */
+export function mergeAssumptionLedger(
+  program: ts.Program,
+  ledger: AssumptionLedger,
+  additions: readonly AssumptionEntry[],
+  policy: AssumptionPolicy = {},
+): { ledger: AssumptionLedger; diagnostics: AssumptionPolicyDiagnostic[] } {
+  const byId = new Map([...ledger.entries, ...additions].map((item) => [item.id, item] as const));
+  const entries = [...byId.values()].sort((left, right) => left.scope.fileName.localeCompare(right.scope.fileName)
+    || left.scope.span.start - right.scope.span.start || left.domain.localeCompare(right.domain));
+  const violations = evaluateAssumptionPolicy(entries, policy);
+  const diagnostics = violations.map((violation): AssumptionPolicyDiagnostic => {
+    const source = program.getSourceFile(violation.scope.fileName);
+    return {
+      ...violation,
+      fileName: violation.scope.fileName,
+      functionName: violation.scope.functionName ?? "<module>",
+      line: source ? source.getLineAndCharacterOfPosition(violation.scope.span.start).line + 1 : 1,
+      kind: "assumption-policy",
+      severity: "error",
+    };
+  });
+  return { ledger: { schema: "uneffect-assumptions/v1", entries, violations }, diagnostics };
 }
 
 export function collectAssumptionLedger(
@@ -201,18 +226,5 @@ export function collectAssumptionLedger(
       }, sourceMetadata.id));
     }
   }
-  entries.sort((left, right) => left.scope.fileName.localeCompare(right.scope.fileName) || left.scope.span.start - right.scope.span.start || left.domain.localeCompare(right.domain));
-  const violations = evaluateAssumptionPolicy(entries, policy);
-  const diagnostics = violations.map((violation): AssumptionPolicyDiagnostic => {
-    const source = program.getSourceFile(violation.scope.fileName);
-    return {
-      ...violation,
-      fileName: violation.scope.fileName,
-      functionName: violation.scope.functionName ?? "<module>",
-      line: source ? source.getLineAndCharacterOfPosition(violation.scope.span.start).line + 1 : 1,
-      kind: "assumption-policy",
-      severity: "error",
-    };
-  });
-  return { ledger: { schema: "uneffect-assumptions/v1", entries, violations }, diagnostics };
+  return mergeAssumptionLedger(program, { schema: "uneffect-assumptions/v1", entries: [], violations: [] }, entries, policy);
 }

@@ -23,6 +23,20 @@ function runQuint(program: string, invariant = "completedInOrder"): ReturnType<t
 }
 
 describe("temporal function-summary composition", () => {
+  it("retains a trusted termination contract in the callable summary", () => {
+    const composition = parseTemporalComposition("terminates.ts", `
+      /* uneffect: state done: bool */
+      /* uneffect: init done = false */
+      /* uneffect:temporal_contract terminates true */
+      function bounded(): void {}
+      function main(): void { bounded() }
+    `, "main");
+    expect(composition.summaries.get("bounded")).toEqual(expect.objectContaining({
+      terminates: true,
+      evidence: "trusted",
+    }));
+  });
+
   it("infers the local call sequence and composes verified summaries", () => {
     const composition = parseTemporalComposition("calls.ts", source, "main");
     expect(composition.calls.map((call) => call.callee)).toEqual(["open", "close"]);

@@ -3,9 +3,10 @@ import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
 import { analyzeAsyncSafetyInProgram, type AsyncSafetyDiagnostic, type AsyncSafetyOptions, type ResourceDisposal } from "./async-safety.js";
 import { analyzeAsyncPatternsInProgram, generateNodeEventLoopQuint, generateWebEventLoopQuint, type AsyncPatternModel, type TimerPattern } from "./async-patterns.js";
 import { analyzeCallableSummaries, type CallbackCardinality, type CallableSummary, type CallableSummaryDiagnostic } from "./callable-summary.js";
-import type { PromiseChainModel, PromiseExecutorSettlement } from "./promise-chains.js";
+import type { PromiseChainModel, PromiseExecutorSettlement, SynchronousDivergenceReason } from "./promise-chains.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js";
+import { classifyLexicalExecution } from "./lexical-execution.js";
 
 export type HostNeutralLane = "inline" | "microtask" | "host-task" | "external" | "unknown";
 export type HostNeutralCompletion = "normal" | "propagate-throw" | "throw" | "reject" | "host-report-throw" | "unknown";
@@ -33,6 +34,8 @@ export interface SettlePromiseTransition extends HostNeutralTransitionBase {
   readonly outcomes: readonly PromiseExecutorSettlement[];
   readonly firstSettlementWins: true;
   readonly mayRemainPending: boolean;
+  readonly mayDivergeSynchronously: boolean;
+  readonly synchronousDivergenceReasons: readonly SynchronousDivergenceReason[];
 }
 
 export interface DisposeResourceTransition extends HostNeutralTransitionBase {
@@ -171,11 +174,11 @@ function lexicalOwner(node: ts.Node): string {
 }
 
 function conditionalExecution(node: ts.Node): boolean {
-  for (let current: ts.Node | undefined = node.parent; current && !ts.isFunctionLike(current) && !ts.isSourceFile(current); current = current.parent) {
-    if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
-      || ts.isIterationStatement(current, false) || ts.isTryStatement(current) || ts.isCatchClause(current)) return true;
+  let boundary: ts.Node = node.getSourceFile();
+  for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+    if (ts.isFunctionLike(current) || ts.isSourceFile(current)) { boundary = current; break; }
   }
-  return false;
+  return classifyLexicalExecution(node, boundary) !== "exactly-once";
 }
 
 function synchronousFunctionExecution(node: ts.Node): boolean {
@@ -290,10 +293,12 @@ export function lowerPromiseChainTransitions(fileName: string, model: PromiseCha
     owner: executor.owner,
     promise: executor.binding ?? executor.owner,
     ...(executor.identity ? { promiseIdentity: executor.identity } : {}),
-    lane: "inline",
+    lane: executor.settlementSource === "external-resolvers" ? "external" : "inline",
     outcomes: executor.possibleSettlements,
     firstSettlementWins: true,
     mayRemainPending: executor.mayRemainPending,
+    mayDivergeSynchronously: executor.mayDivergeSynchronously,
+    synchronousDivergenceReasons: executor.synchronousDivergenceReasons,
     span: executor.span,
   }));
   const reactions = model.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, linkIndex) =>
@@ -366,6 +371,7 @@ function runActionNames(timer: TimerPattern, index: number, profile: HostProfile
       : timer.queue === "close" ? `run_close_${index}` : `run_timer_${index}`
     : timer.queue === "microtask" ? `drain_microtask_${index}`
       : timer.queue === "animation-frame" ? `run_animation_frame_${index}`
+      : timer.queue === "external" ? `run_external_event_${index}`
       : timer.kind === "scheduler-post-task" ? `run_scheduler_task_${index}`
       : timer.kind === "scheduler-yield" ? `run_scheduler_yield_${index}`
       : timer.kind === "abort-timeout" ? `run_abort_timeout_task_${index}` : `run_timer_task_${index}`;
@@ -425,7 +431,12 @@ export function composeHostNeutralTransitions(
 function hostQueue(transition: HostNeutralTransition, profile: HostProfile): Omit<HostScheduledTransition, "transition" | "profile"> {
   if (transition.lane === "inline") return { queue: "synchronous", evidence: "exact" };
   if (transition.lane === "microtask") return { queue: profile === "web" ? "microtask" : "v8-microtask", evidence: "exact" };
-  if (transition.lane === "external") return { queue: "external", evidence: "exact" };
+  if (transition.lane === "external") {
+    if (transition.kind === "invoke-callback" && transition.api === "host.external") return profile === "web"
+      ? { queue: "event-task", evidence: "exact" }
+      : { queue: "unknown", evidence: "unknown", reason: "a DOM external event has no reviewed Node/libuv phase" };
+    return { queue: "external", evidence: "exact" };
+  }
   if (transition.lane === "unknown") return { queue: "unknown", evidence: "unknown", reason: "the neutral transition has no reviewed scheduling lane" };
   if (transition.kind === "invoke-callback") {
     if (transition.api === "setTimeout") return { queue: profile === "web" ? "timer-task" : "timers", evidence: "exact" };

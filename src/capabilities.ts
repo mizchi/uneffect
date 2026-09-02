@@ -29,8 +29,12 @@ export interface EffectSchema { name: string; version: number; arguments: readon
 const schemas = new Map<string, EffectSchema>([
   ...[
     "Console", "Storage", "Random", "Timer", "InvokeUserCode",
-    "CookieRead", "CookieWrite", "LocalStorageRead", "LocalStorageWrite",
   ].map((name): [string, EffectSchema] => [name, { name, version: 1, arguments: [] }]),
+  ...[
+    "CookieRead", "CookieWrite", "LocalStorageRead", "LocalStorageWrite",
+  ].map((name): [string, EffectSchema] => [name, { name, version: 1, arguments: ["literal"] }]),
+  ["GlobalVarsRead", { name: "GlobalVarsRead", version: 1, arguments: ["literal"] }],
+  ["GlobalVarsWrite", { name: "GlobalVarsWrite", version: 1, arguments: ["literal"] }],
   ["ScriptLoad", { name: "ScriptLoad", version: 1, arguments: ["token", "url"] }],
   ["ExecuteExternalCode", { name: "ExecuteExternalCode", version: 1, arguments: ["url", "literal"] }],
   ["Fetch", { name: "Fetch", version: 1, arguments: ["token", "url"] }],

@@ -86,7 +86,10 @@ function propertyDescriptorUnchecked(checker: ts.TypeChecker, access: ts.Propert
   const symbol = location ? resolvedSymbol(checker, location) : undefined;
   if (!symbol) return true;
   return !symbol.declarations?.every((declaration) => ts.isPropertyDeclaration(declaration)
-    || ts.isPropertyAssignment(declaration) || ts.isShorthandPropertyAssignment(declaration));
+    || ts.isPropertyAssignment(declaration) || ts.isShorthandPropertyAssignment(declaration)
+    || ts.isParameter(declaration) && Boolean(ts.getModifiers(declaration)?.some((modifier) =>
+      modifier.kind === ts.SyntaxKind.PublicKeyword || modifier.kind === ts.SyntaxKind.PrivateKeyword
+      || modifier.kind === ts.SyntaxKind.ProtectedKeyword || modifier.kind === ts.SyntaxKind.ReadonlyKeyword)));
 }
 
 /**

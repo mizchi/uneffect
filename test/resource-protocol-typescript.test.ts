@@ -60,6 +60,50 @@ describe("TypeScript resource protocol CFG lowering", () => {
       if (lowered.status === "exact") expect(evaluateResourceProtocolCfg(lowered.cfg).status).toBe("satisfied");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+  it("lowers catalog-driven constructor/use/release semantics for WebSocket aliases", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-websocket-resource-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        function exchange() {
+          const socket = new WebSocket("wss://stream.example.com/events")
+          const alias = socket
+          alias.send("ping")
+          alias.close()
+        }
+        function invalid() {
+          const socket = new WebSocket("wss://stream.example.com/events")
+          socket.close()
+          socket.send("too-late")
+        }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, lib: ["lib.esnext.d.ts", "lib.dom.d.ts"], noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const fn = source.statements.find(ts.isFunctionDeclaration)!;
+      const collected = collectBuiltinResourceTransitionSites(program, fn);
+      expect(collected.unknown).toEqual([]);
+      expect(collected.resources).toEqual([expect.objectContaining({ id: "socket", kind: "websocket", initialState: "absent" })]);
+      expect(collected.sites.flatMap((site) => site.transitions)).toMatchObject([
+        { kind: "acquire", resource: "socket", evidence: "trusted" },
+        { kind: "use", resource: "socket", evidence: "trusted" },
+        { kind: "release", resource: "socket", evidence: "trusted" },
+      ]);
+      const lowered = lowerResourceProtocolCfgInFunction(source, fn, {
+        schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],
+      }, collected.sites);
+      expect(lowered.status).toBe("exact");
+      if (lowered.status === "exact") expect(evaluateResourceProtocolCfg(lowered.cfg).status).toBe("satisfied");
+      const invalid = source.statements.filter(ts.isFunctionDeclaration).find((candidate) => candidate.name?.text === "invalid")!;
+      const invalidCollected = collectBuiltinResourceTransitionSites(program, invalid);
+      const invalidLowered = lowerResourceProtocolCfgInFunction(source, invalid, {
+        schema: "uneffect-resource-protocol/v1", resources: invalidCollected.resources, transitions: [],
+      }, invalidCollected.sites);
+      expect(invalidLowered.status).toBe("exact");
+      if (invalidLowered.status === "exact") expect(evaluateResourceProtocolCfg(invalidLowered.cfg)).toMatchObject({
+        status: "unknown", diagnostics: [expect.objectContaining({ code: "invalid-transition", transition: "use", state: "released" })],
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
   it("extracts and instantiates declared resource boundaries by symbol identity", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-boundary-"));
     try {
@@ -105,6 +149,48 @@ describe("TypeScript resource protocol CFG lowering", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it("extracts trusted method contracts from declaration files and imported aliases", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-declaration-"));
+    try {
+      const sdk = join(directory, "sdk.d.ts"), entry = join(directory, "entry.ts");
+      writeFileSync(sdk, `
+        export interface Sink {
+          /* uneffect: consume value */
+          drain(value: object): void
+        }
+        export declare const sink: Sink
+      `);
+      writeFileSync(entry, `
+        import { sink as external } from "./sdk.js"
+        function main(value: object) { external.drain(value) }
+        function shadow(value: object) {
+          const external = { drain(input: object) { return input } }
+          external.drain(value)
+        }
+      `);
+      const program = ts.createProgram([sdk, entry], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const source = program.getSourceFile(entry)!;
+      const analysis = analyzeResourceCallableSummaries(program);
+      expect(analysis.diagnostics).toEqual([]);
+      expect(analysis.summaries).toMatchObject([{ evidence: "trusted", operations: [{
+        kind: "consume", subject: { kind: "parameter", index: 0, name: "value" },
+      }] }]);
+      const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).map((fn) => [fn.name!.text, fn]));
+      expect(collectResourceCallableTransitionSites(program, functions.get("main")!, analysis.summaries).sites)
+        .toMatchObject([{ transitions: [{ kind: "consume", evidence: "trusted" }] }]);
+      expect(collectResourceCallableTransitionSites(program, functions.get("shadow")!, analysis.summaries).sites).toEqual([]);
+
+      const transitiveProgram = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(analyzeResourceCallableSummaries(transitiveProgram).summaries).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
   it("rejects malformed or unbound declared resource boundaries", () => {

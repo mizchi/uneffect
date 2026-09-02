@@ -129,7 +129,8 @@ proof or a replacement for the project-wide assurance and assumption ledger.
 Project verification is fail-closed on TypeScript syntax, semantic, and
 compiler-option errors. These errors appear in `result.diagnostics`; function
 and module summaries, contract obligations, and typed-array obligations from
-the invalid source are downgraded to `unknown`. Optional temporal models may
+the invalid source are downgraded to `unknown`. Iterator cleanup evidence is
+also downgraded instead of being inferred from an invalid AST. Optional temporal models may
 still be emitted for inspection, but their properties return `error` without
 invoking Quint. Emitted JavaScript remains available for gradual tooling and
 must not be interpreted as verified output. Every temporal property carries
@@ -139,7 +140,13 @@ about an invalid file with the same property name.
 The returned `result.assurance` is the conservative project-level acceptance
 decision. It aggregates source-attributed blockers from TypeScript, effects,
 contracts, typed arrays, ownership, runtime instrumentation, assumption policy,
-temporal verification, and evidence coverage. Consumers should gate on
+temporal verification, iterator cleanup, and evidence coverage. Iterator
+obligations are returned in `result.asyncIterators` (the retained public field
+name covers both synchronous and asynchronous protocols) and contribute to
+`coverage.iteratorObligations`. An unclosed iterator is a violation; incomplete
+cleanup evidence is unknown. A trusted callable consumer contributes a
+`resource-callable` assumption and is governed by the same owner/expiration
+policy as every other trusted boundary. Consumers should gate on
 `result.assurance.passed`, not `diagnostics.length`, one verified obligation,
 or a same-named temporal property. Its `claims`, `exclusions`, and per-domain
 `blockers` remain machine-readable. Inferred effects are accepted; explicit

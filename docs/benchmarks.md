@@ -1353,6 +1353,17 @@ or TypeScript transforms. It is an observation rather than a regression budget;
 the relatively high margin of error makes it unsuitable for small comparative
 claims.
 
+On 2026-09-02, after moving all eleven standard TypedArray owners onto generated
+callback/mutation/fresh-result contracts, the dedicated warm-Program matrix
+measured 19.1904 ms mean (52.1094 operations/second over 27 samples, 0.81%
+relative margin of error). The fixture contains `reverse` and `forEach` for
+every numeric and BigInt TypedArray owner, including callback receiver writes.
+In the same run the larger 32-chain TypeScript transformer fixture measured
+28.7352 ms mean (34.8006 operations/second over 18 samples, 1.37% relative
+margin of error). Program construction is excluded; contract lookup,
+TypeChecker identity, invocation projection, and call-graph construction are
+included. These values are observations, not regression budgets.
+
 On 2026-08-27, after changing the symbolic telemetry batching loop to process
 two entries per iteration and preserve its one-or-two-entry overshoot, its
 summary measured 0.1534 ms mean (6,517.78 operations/second over 3,259 samples,

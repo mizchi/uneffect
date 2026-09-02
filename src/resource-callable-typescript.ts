@@ -9,7 +9,8 @@ import {
 } from "./resource-protocol.js";
 import type { ResourceTransitionSite } from "./resource-protocol-typescript.js";
 
-type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.MethodSignature
+  | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
 
 export interface ResourceCallableDiagnostic {
   readonly code: "invalid-resource-reference" | "invalid-resource-transfer" | "unresolved-resource-binding";
@@ -52,10 +53,13 @@ function reference(text: string, declaration: SupportedFunction): ResourceCallab
 export function analyzeResourceCallableSummaries(program: ts.Program): ResourceCallableSummaryAnalysis {
   const summaries: ResourceCallableSummary[] = [];
   const diagnostics: ResourceCallableDiagnostic[] = [];
+  const roots = new Set(program.getRootFileNames().map((fileName) => program.getSourceFile(fileName)).filter((candidate): candidate is ts.SourceFile => !!candidate));
   for (const source of program.getSourceFiles()) {
-    if (source.isDeclarationFile) continue;
+    if (source.isDeclarationFile && !roots.has(source)) continue;
+    if (!source.text.includes("uneffect:")) continue;
     const visit = (node: ts.Node): void => {
-      if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && node.body) {
+      if (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isMethodSignature(node)
+        || ts.isCallSignatureDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
         const owner = annotationOwner(node);
         const leadingStart = owner.getFullStart();
         const leading = source.text.slice(leadingStart, owner.getStart(source));
