@@ -406,6 +406,17 @@ to the host rather than emitting the invalid scope `host:0`.
 it. Omitting `close()` remains an unsatisfied lifecycle even after `unref()`;
 event-loop liveness and resource ownership are deliberately distinct facts.
 
+`node:fs/promises.open()` acquires a `file-handle` only on Promise fulfillment.
+Reviewed `FileHandle` read/write methods use the handle, and `close()` releases
+the caller's ownership responsibility. Here `released` means that the required
+release operation was invoked, not that the OS operation was proved successful;
+close rejection remains an async/temporal outcome. A preceding awaited read or
+write can bypass a later close, so reliable ownership discharge still requires
+`try/finally` or `await using`.
+Binding the unresolved Promise first (`const pending = open(...)`) is currently
+reported as unknown rather than treating the Promise object as a file handle.
+Promise-to-resource aliasing across a later `await pending` is not yet proved.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 

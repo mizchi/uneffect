@@ -450,6 +450,11 @@ introducing another domain-local control-flow or alias model.
        resource operations and normalize ephemeral port zero to host authority.
      - [x] Treat Node `FSWatcher.ref()`/`unref()` as resource uses and `close()`
        as release, keeping event-loop liveness separate from ownership.
+     - [x] Add call-versus-fulfillment timing to generic resource primitives
+       and lower fulfilled transitions on only the normal awaited CFG edge.
+     - [x] Model `node:fs/promises.open()` as fulfilled `file-handle`
+       acquisition, FileHandle I/O as use, and `close()` as responsibility
+       release, with rejection-safe cleanup requiring `finally`.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

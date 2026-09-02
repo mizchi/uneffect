@@ -198,6 +198,12 @@ export function collectResourceCallableTransitionSites(
   const sites: ResourceTransitionSite[] = [];
   const resources = new Map<string, ResourceProtocolResource>();
   const diagnostics: ResourceCallableDiagnostic[] = [];
+  const directlyAwaited = (call: ts.CallExpression): boolean => {
+    let expression: ts.Expression = call;
+    while (ts.isParenthesizedExpression(expression.parent) || ts.isAsExpression(expression.parent)
+      || ts.isTypeAssertionExpression(expression.parent) || ts.isNonNullExpression(expression.parent)) expression = expression.parent;
+    return ts.isAwaitExpression(expression.parent) && expression.parent.expression === expression;
+  };
   const summaryForDeclarationSymbol = (symbol: ts.Symbol | undefined): ResourceCallableSummary | undefined => {
     const declarations = symbol?.declarations ?? (symbol?.valueDeclaration ? [symbol.valueDeclaration] : []);
     for (const declaration of declarations) {
@@ -249,8 +255,29 @@ export function collectResourceCallableTransitionSites(
             returnResource: returnedResourceId(node),
             at: node.getStart(),
           });
-          for (const resource of instantiated.resources) resources.set(resource.id, resource);
-          if (instantiated.transitions.length > 0) sites.push({ node, transitions: instantiated.transitions });
+          const hasAcquire = instantiated.transitions.some((transition) => transition.kind === "acquire");
+          const returnType = checker.getTypeAtLocation(node);
+          const promiseLike = checker.getPropertyOfType(returnType, "then") !== undefined;
+          const unsupportedAsyncAcquire = hasAcquire && promiseLike && !directlyAwaited(node);
+          if (!unsupportedAsyncAcquire) for (const resource of instantiated.resources) resources.set(resource.id, resource);
+          else diagnostics.push({
+            code: "unresolved-resource-binding", fileName: node.getSourceFile().fileName,
+            message: `async acquisition from ${summary.id} is not directly awaited; Promise-to-resource aliasing is unknown`,
+            span: { start: node.getStart(), end: node.getEnd() },
+          });
+          if (instantiated.transitions.length > 0) {
+            if (unsupportedAsyncAcquire) {
+              const remaining = instantiated.transitions.filter((transition) => transition.kind !== "acquire");
+              if (remaining.length > 0) sites.push({ node, transitions: remaining });
+              ts.forEachChild(node, visit);
+              return;
+            }
+            const fulfilled = directlyAwaited(node)
+              ? instantiated.transitions.filter((transition) => transition.kind === "acquire") : [];
+            const immediate = fulfilled.length > 0
+              ? instantiated.transitions.filter((transition) => transition.kind !== "acquire") : instantiated.transitions;
+            sites.push({ node, transitions: immediate, ...(fulfilled.length > 0 ? { fulfillmentTransitions: fulfilled } : {}) });
+          }
           for (const missing of instantiated.missing) diagnostics.push({
             code: "unresolved-resource-binding",
             fileName: node.getSourceFile().fileName,
@@ -272,9 +299,11 @@ function auditAcquiredResourceReferences(
 ): ResourceTransitionSite[] {
   if (!fn.body) return [...inputSites];
   const checker = program.getTypeChecker();
+  const allTransitions = (site: ResourceTransitionSite): readonly ResourceProtocolTransition[] =>
+    [...site.transitions, ...(site.fulfillmentTransitions ?? [])];
   const acquiredBindings = new Map<ts.Symbol, string>();
   for (const site of inputSites) if (ts.isCallExpression(site.node) || ts.isNewExpression(site.node)) {
-    const acquired = site.transitions.find((transition) => transition.kind === "acquire");
+    const acquired = allTransitions(site).find((transition) => transition.kind === "acquire");
     if (!acquired || !("resource" in acquired) || !ts.isCallExpression(site.node) && !ts.isNewExpression(site.node)) continue;
     let current: ts.Expression = site.node;
     while ((ts.isParenthesizedExpression(current.parent) || ts.isNonNullExpression(current.parent)
@@ -317,7 +346,7 @@ function auditAcquiredResourceReferences(
     if (ts.isVariableDeclaration(declaration)) allowed.add(declaration.name);
   }
   for (const site of inputSites) if (ts.isCallExpression(site.node) || ts.isNewExpression(site.node)) {
-    const resourcesAtSite = new Set(site.transitions.flatMap((transition) => "resource" in transition ? [transition.resource] : []));
+    const resourcesAtSite = new Set(allTransitions(site).flatMap((transition) => "resource" in transition ? [transition.resource] : []));
     const candidates: ts.Expression[] = [...(site.node.arguments ?? [])];
     if (ts.isCallExpression(site.node)
       && (ts.isPropertyAccessExpression(site.node.expression) || ts.isElementAccessExpression(site.node.expression))) {
@@ -424,6 +453,8 @@ export function analyzeResourceLifecyclesInSource(
         resource: "<builtin>", state: "unknown", message: unknown.reason,
       });
       if (collected.resources.length > 0) {
+        const allSiteTransitions = (site: ResourceTransitionSite): readonly ResourceProtocolTransition[] =>
+          [...site.transitions, ...(site.fulfillmentTransitions ?? [])];
         if (!sourceValid) diagnostics.push({
           kind: "unknown-analysis", fileName: source.fileName, functionName: lifecycleOwner(node),
           span: { start: node.getStart(source), end: node.getEnd() }, resource: "<typescript>", state: "unknown",
@@ -435,7 +466,7 @@ export function analyzeResourceLifecyclesInSource(
           if (!declaration || !ts.isVariableDeclarationList(declaration.parent)) return [];
           const flags = ts.getCombinedNodeFlags(declaration.parent);
           if ((flags & ts.NodeFlags.Using) !== ts.NodeFlags.Using) return [];
-          return site.transitions.flatMap((transition) => transition.kind === "acquire" ? [{
+          return allSiteTransitions(site).flatMap((transition) => transition.kind === "acquire" ? [{
             declaration,
             transition: { kind: "release" as const, resource: transition.resource,
               at: lexicalScopeEnd(declaration), evidence: transition.evidence },
@@ -450,11 +481,11 @@ export function analyzeResourceLifecyclesInSource(
             resource: "<cfg>", state: "unknown", message: `resource CFG is unknown: ${lowered.reason}` });
           for (const resource of collected.resources) evidence.push({
             fileName: source.fileName, owner: lifecycleOwner(node), resource: resource.label, kind: resource.kind,
-            span, status: "unknown", evidence: "unknown", authority: authorityFor(resource.id), state: "unknown", transitions: collected.sites.flatMap((site) => site.transitions),
+            span, status: "unknown", evidence: "unknown", authority: authorityFor(resource.id), state: "unknown", transitions: collected.sites.flatMap(allSiteTransitions),
           });
         } else {
           const evaluated = evaluateResourceProtocolCfg(lowered.cfg);
-          const transitions = [...collected.sites.flatMap((site) => site.transitions), ...lexicalDisposals.map(({ transition }) => transition)];
+          const transitions = [...collected.sites.flatMap(allSiteTransitions), ...lexicalDisposals.map(({ transition }) => transition)];
           const trust = !sourceValid || transitions.some((transition) => transition.evidence === "unknown") ? "unknown" as const
             : transitions.some((transition) => transition.evidence === "trusted") ? "trusted" as const : "verified" as const;
           for (const resource of collected.resources) {

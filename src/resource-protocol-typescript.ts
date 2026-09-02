@@ -8,6 +8,8 @@ import { interpretBuiltinCallSemantics, type ProjectedValue } from "./builtin-se
 export interface ResourceTransitionSite {
   readonly node: ts.Node;
   readonly transitions: readonly ResourceProtocolTransition[];
+  /** State changes that happen only after an awaited operation fulfills. */
+  readonly fulfillmentTransitions?: readonly ResourceProtocolTransition[];
   /** Authenticated synchronous throw, or an awaited rejection converted to throw. */
   readonly exceptionalCompletion?: "throw";
   readonly exceptionEvidence?: CallableExceptionalTransitionEvidence;
@@ -53,8 +55,12 @@ export function collectBuiltinResourceTransitionSites(
   const sites: ResourceTransitionSite[] = [];
   const unknown: Array<{ node: ts.CallExpression | ts.NewExpression; reason: string }> = [];
   const resultBinding = (call: ts.CallExpression | ts.NewExpression): { id: string; label: string } | undefined => {
-    const parent = call.parent;
-    return ts.isVariableDeclaration(parent) && parent.initializer === call && ts.isIdentifier(parent.name)
+    let result: ts.Expression = call;
+    while ((ts.isParenthesizedExpression(result.parent) || ts.isNonNullExpression(result.parent)
+      || ts.isAsExpression(result.parent) || ts.isTypeAssertionExpression(result.parent)
+      || ts.isAwaitExpression(result.parent)) && result.parent.expression === result) result = result.parent;
+    const parent = result.parent;
+    return ts.isVariableDeclaration(parent) && parent.initializer === result && ts.isIdentifier(parent.name)
       ? { id: `region:${parent.getSourceFile().fileName}:${parent.getStart()}`, label: parent.name.text } : undefined;
   };
   const stableRoot = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
@@ -87,8 +93,13 @@ export function collectBuiltinResourceTransitionSites(
       const events = resolved?.semantics
         ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }) : [];
       const transitions: ResourceProtocolTransition[] = [];
+      const fulfillmentTransitions: ResourceProtocolTransition[] = [];
       for (const event of events) {
         if ((event.kind !== "acquire" && event.kind !== "use" && event.kind !== "release") || !event.target) continue;
+        if (event.completion === "fulfillment" && (!ts.isCallExpression(node) || !directlyAwaited(node))) {
+          unknown.push({ node, reason: `${event.kind}(${event.resource}) occurs on fulfillment but the result is not directly awaited` });
+          continue;
+        }
         const identityValue = identity(event.target, node);
         if (!identityValue) {
           unknown.push({ node, reason: `${event.kind}(${event.resource}) has no stable projected resource identity` });
@@ -99,9 +110,12 @@ export function collectBuiltinResourceTransitionSites(
           id: resource, label: identityValue.label, kind: event.resource,
           initialState: event.kind === "acquire" ? "absent" : "available", requiredTerminalStates: ["released"],
         });
-        transitions.push({ kind: event.kind, resource, at: node.getStart(node.getSourceFile()), evidence: "trusted" });
+        const transition = { kind: event.kind, resource, at: node.getStart(node.getSourceFile()), evidence: "trusted" } as ResourceProtocolTransition;
+        (event.completion === "fulfillment" ? fulfillmentTransitions : transitions).push(transition);
       }
-      if (transitions.length) sites.push({ node, transitions });
+      if (transitions.length || fulfillmentTransitions.length) sites.push({
+        node, transitions, ...(fulfillmentTransitions.length ? { fulfillmentTransitions } : {}),
+      });
     }
     ts.forEachChild(node, visit);
   };
@@ -133,7 +147,8 @@ export function collectAwaitedRejectionTransitionSites(
 ): readonly ResourceTransitionSite[] {
   if (!fn.body) return [];
   const checker = program.getTypeChecker();
-  const acquisitions = new Set(resourceSites.filter((site) => site.transitions.some((transition) => transition.kind === "acquire"))
+  const callTimeAcquisitions = new Set(resourceSites.filter((site) => site.transitions
+    .some((transition) => transition.kind === "acquire"))
     .map((site) => site.node));
   const sites: ResourceTransitionSite[] = [];
   const mayBePromiseLike = (type: ts.Type): boolean => type.isUnion()
@@ -141,7 +156,7 @@ export function collectAwaitedRejectionTransitionSites(
     : checker.getPropertyOfType(type, "then") !== undefined;
   const visit = (node: ts.Node): void => {
     if (node !== fn && ts.isFunctionLike(node)) return;
-    if (ts.isCallExpression(node) && directlyAwaited(node) && !acquisitions.has(node)) {
+    if (ts.isCallExpression(node) && directlyAwaited(node) && !callTimeAcquisitions.has(node)) {
       const type = checker.getTypeAtLocation(node);
       if (mayBePromiseLike(type)) sites.push({ node, transitions: [], exceptionalCompletion: "throw" });
     }
@@ -242,8 +257,18 @@ export function lowerResourceProtocolCfgInFunction(
     return selected;
   };
   const transitionsFor = (statement: ts.Statement): readonly ResourceProtocolTransition[] => sitesFor(statement).flatMap((site) => site.transitions);
-  const successorsFor = (statement: ts.Statement, normal: readonly string[], context: Context): readonly string[] =>
-    sitesFor(statement).some((site) => site.exceptionalCompletion === "throw") ? [...normal, context.throwTarget] : normal;
+  const successorsFor = (statement: ts.Statement, normal: readonly string[], context: Context): readonly string[] => {
+    const selected = sitesFor(statement);
+    const fulfillment = selected.flatMap((site) => site.fulfillmentTransitions ?? []);
+    let normalSuccessors = normal;
+    if (fulfillment.length > 0) {
+      const completion = id("fulfillment", statement);
+      blocks.set(completion, { id: completion, transitions: fulfillment, successors: normal });
+      normalSuccessors = [completion];
+    }
+    return selected.some((site) => site.exceptionalCompletion === "throw")
+      ? [...normalSuccessors, context.throwTarget] : normalSuccessors;
+  };
   const exit = id("exit");
   blocks.set(exit, { id: exit, transitions: [], successors: [] });
   let unsupported: ts.Statement | undefined;

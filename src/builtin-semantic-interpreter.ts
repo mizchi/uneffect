@@ -35,7 +35,7 @@ export type BuiltinSemanticEvent =
   | { kind: "callback"; target: ProjectedValue; timing: Extract<SemanticPrimitive, { kind: "callback" }>["timing"]; queue: Extract<SemanticPrimitive, { kind: "callback" }>["queue"]; cardinality: Extract<SemanticPrimitive, { kind: "callback" }>["cardinality"]; completion?: Extract<SemanticPrimitive, { kind: "callback" }>["completion"]; callable?: "required" | "optional"; returnDepth?: number; abortSignal?: ProjectedValue; invocationArguments?: readonly ProjectedValue[]; thisArgument?: ProjectedValue; source: SemanticEventSource }
   | { kind: "invoke-user-code"; source: SemanticEventSource }
   | { kind: "result"; refinement: Extract<SemanticPrimitive, { kind: "result" }>["refinement"]; source: SemanticEventSource }
-  | { kind: "acquire" | "use" | "release"; resource: string; target?: ProjectedValue; source: SemanticEventSource }
+  | { kind: "acquire" | "use" | "release"; resource: string; target?: ProjectedValue; completion: "call" | "fulfillment"; source: SemanticEventSource }
   | { kind: "throw"; error: string; condition?: string; source: SemanticEventSource }
   | { kind: "protocol"; name: string; transition: string; inputs: Readonly<Record<string, ProjectedValue>>; source: SemanticEventSource }
   | { kind: "unknown"; reason: string; primitive: SemanticPrimitive; source: SemanticEventSource };
@@ -164,7 +164,7 @@ function interpretPrimitive(
       const target = primitive.target ? projectValue(primitive.target, context) : undefined;
       return target?.status === "unknown"
         ? [{ kind: "unknown", reason: target.reason, primitive, source }]
-        : [{ kind: primitive.kind, resource: primitive.resource, ...(target ? { target } : {}), source }];
+        : [{ kind: primitive.kind, resource: primitive.resource, ...(target ? { target } : {}), completion: primitive.completion ?? "call", source }];
     }
     case "throw": return [{ kind: "throw", error: primitive.error, ...(primitive.condition ? { condition: primitive.condition } : {}), source }];
     case "property": {

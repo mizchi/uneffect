@@ -44,6 +44,12 @@ classifier element identity remains a runtime alias unless separately proved.
 Result, throw, resource, and argument-mutation projections follow this pattern
 instead of creating duplicate symbol contracts.
 
+Resource primitives may declare `completion: "fulfillment"`. The default is
+`"call"`. The TypeScript CFG lowerer places fulfillment transitions only on
+the normal edge of a directly awaited Promise operation, while its rejection
+edge bypasses them. This is used for asynchronous acquisition such as
+`node:fs/promises.open()`; a rejected open never creates a file-handle region.
+
 The Node catalog owns both `node:fs` callback/synchronous APIs and
 `node:fs/promises`. The Promise catalog has its own API surface rather than
 inheriting nonexistent sync names; it includes Promise-specific `opendir`,
@@ -51,6 +57,10 @@ inheriting nonexistent sync names; it includes Promise-specific `opendir`,
 source and destination path arguments, poll-queue callback completion, repeated
 watch callbacks, and buffer mutation for descriptor-based reads. Compound APIs
 such as `copyFile` therefore retain both `FsRead` and `FsWrite`.
+`open()` additionally acquires a `file-handle` on Promise fulfillment.
+TypeChecker-resolved `FileHandle` read/write methods use that region and
+`close()` transfers the caller's release responsibility. Cleanup following an
+awaited operation must be in `finally`, because that operation may reject.
 These definitions now use generic effect, filesystem-path, mutate, callback,
 result, and acquire primitives exclusively; the legacy filesystem operation is
 no longer present. Promise APIs share permission projection but do not claim

@@ -152,7 +152,7 @@ describe("general resource lifecycle check", () => {
         expect.objectContaining({ owner: "normal", status: "satisfied", state: "released" }),
         expect.objectContaining({ owner: "early", status: "satisfied", state: "released" }),
         expect.objectContaining({ owner: "nested", status: "satisfied", state: "released" }),
-        expect.objectContaining({ owner: "asynchronous", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "asynchronous", status: "satisfied", state: "absent-or-released" }),
         expect.objectContaining({ owner: "caught", status: "satisfied", state: "released" }),
         expect.objectContaining({ owner: "throwing", status: "satisfied", state: "released" }),
         expect.objectContaining({ owner: "repeated", status: "unknown" }),
@@ -338,7 +338,7 @@ describe("general resource lifecycle check", () => {
       `);
       const result = await checkFiles([fileName]);
       expect(result.resourceProtocols).toMatchObject([
-        { owner: "main", status: "satisfied", state: "released" },
+        { owner: "main", status: "satisfied", state: "absent-or-released" },
       ]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
@@ -383,6 +383,41 @@ describe("general resource lifecycle check", () => {
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
         expect.objectContaining({ owner: "valid", kind: "watcher", status: "satisfied", state: "released" }),
         expect.objectContaining({ owner: "leaked", kind: "watcher", status: "unsatisfied", state: "available" }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("tracks fulfilled FileHandle acquisition and finally-based close", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-file-handle-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        import { open } from "node:fs/promises"
+        export async function unsafe(path: string) {
+          const handle = await open(path, "r")
+          await handle.readFile()
+          await handle.close()
+        }
+        export async function safe(path: string) {
+          const renamed = await open(path, "r")
+          try { await renamed.readFile() } finally { await renamed.close() }
+        }
+        export function floating(path: string) {
+          const pending = open(path, "r")
+          void pending
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "unsafe", kind: "file-handle", status: "unknown", state: "unknown" }),
+        expect.objectContaining({ owner: "safe", kind: "file-handle", status: "satisfied", state: "absent-or-released" }),
+      ]));
+      expect(result.summaries.find((summary) => summary.functionName === "safe")?.effects).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "capability", name: "FsRead" }),
+      ]));
+      expect(result.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "resource", kind: "unknown-analysis", functionName: "floating",
+          message: expect.stringContaining("not directly awaited") }),
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });

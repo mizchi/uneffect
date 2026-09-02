@@ -91,6 +91,17 @@ describe("generic builtin semantic interpreter", () => {
     expect(events[0]!.source.symbol).toEqual({ module: "lib.es", export: "Array#push" });
   });
 
+  it("preserves fulfillment timing on asynchronous resource transitions", () => {
+    const call = callOf("handle.close()");
+    const events = interpretBuiltinCallSemantics({ schema: "uneffect-semantic-primitives/v1", primitives: [{
+      kind: "release", resource: "file-handle", target: { kind: "receiver" }, completion: "fulfillment",
+    }] }, call, { symbol: { module: "node:fs/promises", export: "FileHandle#close" }, span: { start: 0, end: call.end } });
+    expect(events).toMatchObject([{
+      kind: "release", resource: "file-handle", completion: "fulfillment",
+      target: { status: "resolved", expression: (call.expression as ts.PropertyAccessExpression).expression },
+    }]);
+  });
+
   it("keeps unsupported dynamic inputs as attributed unknown projections", () => {
     const call = callOf("run()"), semantics: BuiltinSemantics = {
       schema: "uneffect-semantic-primitives/v1",

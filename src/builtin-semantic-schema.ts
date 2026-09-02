@@ -51,9 +51,9 @@ export type SemanticPrimitive =
   | { kind: "result"; refinement: ResultRefinement }
   | { kind: "clone"; target: ValueProjector }
   | { kind: "transfer"; target: ValueProjector; optional?: boolean }
-  | { kind: "acquire"; resource: string; target?: ValueProjector }
-  | { kind: "use"; resource: string; target: ValueProjector }
-  | { kind: "release"; resource: string; target?: ValueProjector }
+  | { kind: "acquire"; resource: string; target?: ValueProjector; completion?: "call" | "fulfillment" }
+  | { kind: "use"; resource: string; target: ValueProjector; completion?: "call" | "fulfillment" }
+  | { kind: "release"; resource: string; target?: ValueProjector; completion?: "call" | "fulfillment" }
   | { kind: "throw"; error: string; condition?: string }
   | { kind: "property"; read: readonly SemanticPrimitive[]; write: readonly SemanticPrimitive[] }
   | { kind: "protocol"; name: string; transition: string; inputs?: Readonly<Record<string, ValueProjector>> };
@@ -193,10 +193,11 @@ function validatePrimitive(value: unknown, context: string, depth = 0): Semantic
       break;
     }
     case "acquire": case "use": case "release":
-      fields(item, ["kind", "resource", "target"], context);
+      fields(item, ["kind", "resource", "target", "completion"], context);
       text(item.resource, `${context}.resource`);
       if (item.kind === "use" && item.target === undefined) throw new Error(`${context}.target is required for use`);
       if (item.target !== undefined) validateTarget(item.target, `${context}.target`);
+      if (item.completion !== undefined) oneOf(item.completion, ["call", "fulfillment"] as const, `${context}.completion`);
       break;
     case "throw":
       fields(item, ["kind", "error", "condition"], context);

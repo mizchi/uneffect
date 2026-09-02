@@ -154,6 +154,10 @@ function nodeFsDefinitions(module: "node:fs" | "node:fs/promises"): ReviewedBuil
         primitives.push({ kind: "acquire", resource: "watcher", target: { kind: "result" } });
       }
     }
+    if (module === "node:fs/promises" && name === "open") {
+      primitives.push({ kind: "result", refinement: { kind: "resource", family: "file-handle" } });
+      primitives.push({ kind: "acquire", resource: "file-handle", target: { kind: "result" }, completion: "fulfillment" });
+    }
     return { schema: "uneffect-semantic-primitives/v1", primitives };
   };
   const reads = module === "node:fs"
@@ -612,6 +616,22 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     reviewed("node", { symbol: { module: "lib.node", export: "Process#cwd" }, trustReason: "Node process.cwd reads launch configuration without a Deno-style permission", trustOwner: "@mizchi/uneffect" }),
     ...nodeFsDefinitions("node:fs"),
     ...nodeFsDefinitions("node:fs/promises"),
+    reviewed("node", { symbol: { module: "node:fs/promises", export: "FileHandle#close" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+      { kind: "release", resource: "file-handle", target: { kind: "receiver" } },
+      { kind: "protocol", name: "file-handle", transition: "close", inputs: { handle: { kind: "receiver" } } },
+    ] } }),
+    ...(["read", "readFile", "readLines", "readv", "stat"] as const).map((name) => reviewed("node", {
+      symbol: { module: "node:fs/promises", export: `FileHandle#${name}` }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "effect", capability: "FsRead" },
+        { kind: "use", resource: "file-handle", target: { kind: "receiver" } },
+      ] },
+    })),
+    ...(["appendFile", "chmod", "chown", "datasync", "sync", "truncate", "utimes", "write", "writeFile", "writev"] as const).map((name) => reviewed("node", {
+      symbol: { module: "node:fs/promises", export: `FileHandle#${name}` }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "effect", capability: "FsWrite" },
+        { kind: "use", resource: "file-handle", target: { kind: "receiver" } },
+      ] },
+    })),
     reviewed("node", { symbol: { module: "node:os", export: "tmpdir" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "path", pattern: "$TEMP" } }] } }),
     ...([ ["hostname", "Sys<hostname>"], ["release", "Sys<osRelease>"], ["uptime", "Sys<osUptime>"], ["loadavg", "Sys<loadavg>"], ["networkInterfaces", "Sys<networkInterfaces>"], ["totalmem", "Sys<systemMemoryInfo>"], ["freemem", "Sys<systemMemoryInfo>"], ["cpus", "Sys<cpus>"], ["availableParallelism", "Sys<cpus>"], ["homedir", "Sys<homedir>"], ["userInfo", "Sys<username | uid | gid | homedir>"] ] as const)
       .map(([name, effect]) => reviewed("node", { symbol: { module: "node:os", export: name }, semantics: effectSemantics(effect) })),

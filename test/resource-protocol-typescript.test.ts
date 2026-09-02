@@ -337,6 +337,30 @@ describe("TypeScript resource protocol CFG lowering", () => {
     expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({ status: "unknown", states: new Map([["body", "unknown"]]) });
   });
 
+  it("applies fulfillment transitions only on the normal awaited edge", () => {
+    const { source, fn } = fixture(`
+      async function main() {
+        const handle = open()
+        await close(handle)
+      }
+    `);
+    const statements = fn.body!.statements;
+    const openCall = (statements[0] as ts.VariableStatement).declarationList.declarations[0]!.initializer as ts.CallExpression;
+    const closeCall = ((statements[1] as ts.ExpressionStatement).expression as ts.AwaitExpression).expression as ts.CallExpression;
+    const resourceModel: ResourceProtocolModel = {
+      schema: "uneffect-resource-protocol/v1",
+      resources: [{ id: "handle", label: "handle", kind: "Handle", initialState: "absent", requiredTerminalStates: ["released"] }],
+      transitions: [],
+    };
+    const lowered = lowerResourceProtocolCfgInFunction(source, fn, resourceModel, [
+      { node: openCall, transitions: [{ kind: "acquire", resource: "handle", at: openCall.getStart() }] },
+      { node: closeCall, transitions: [], fulfillmentTransitions: [{ kind: "release", resource: "handle", at: closeCall.getStart() }], exceptionalCompletion: "throw" },
+    ]);
+    expect(lowered.status).toBe("exact");
+    if (lowered.status !== "exact") return;
+    expect(evaluateResourceProtocolCfg(lowered.cfg)).toMatchObject({ status: "unknown", states: new Map([["handle", "unknown"]]) });
+  });
+
   it("keeps a conditional loop consumption unknown without claiming an iteration", () => {
     const { source, fn, sites } = fixture(`
       function main(flag: boolean) {
