@@ -257,4 +257,23 @@ describe("general resource lifecycle check", () => {
       expect(result.assumptions.entries.filter((entry) => entry.domain === "resource-callable")).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("accepts a using resource acquired only on one conditional branch", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-optional-using-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Handle { [Symbol.dispose](): void }
+        /* uneffect:acquire return */ declare function open(): Handle
+        export function main(enabled: boolean) {
+          if (enabled) { using handle = open() }
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toMatchObject([
+        { owner: "main", status: "satisfied", state: "absent-or-released" },
+      ]);
+      expect(result.diagnostics.filter((diagnostic) => "domain" in diagnostic && diagnostic.domain === "resource")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

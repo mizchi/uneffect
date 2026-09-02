@@ -370,7 +370,9 @@ function isFunctionWithBody(node: ts.Node): node is ts.FunctionLikeDeclaration {
 }
 
 function acceptedTerminal(resource: ResourceProtocolResource, state: ResourceProtocolState): boolean {
-  return !resource.requiredTerminalStates?.length || resource.requiredTerminalStates.includes(state as never);
+  return !resource.requiredTerminalStates?.length
+    || state === "absent-or-released" && resource.requiredTerminalStates.includes("released")
+    || resource.requiredTerminalStates.includes(state as never);
 }
 
 function lexicalScopeEnd(node: ts.Node): number {

@@ -381,6 +381,12 @@ Lifecycle evidence reports `authority` as `callable-contract`,
 assumptions in the assurance ledger; they are not mislabeled as user callable
 contracts or promoted to verified evidence.
 
+CFG joins preserve optional lexical lifecycles. If a resource is acquired and
+released only on one branch while the other branch never creates it, the joined
+state is `absent-or-released` and satisfies a release obligation. This does not
+generalize arbitrary unequal states: a branch that may leave a live resource,
+consume it inconsistently, or reuse it after release remains unknown.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 

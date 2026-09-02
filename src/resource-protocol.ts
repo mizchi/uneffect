@@ -309,6 +309,19 @@ function terminalStatus(
   return diagnostics.length > 0 || unresolved ? "unknown" : unsatisfied ? "unsatisfied" : "satisfied";
 }
 
+function joinResourceStates(left: ResourceProtocolState, right: ResourceProtocolState): ResourceProtocolState {
+  if (left === right) return left;
+  if (left === "unknown" || right === "unknown") return "unknown";
+  const pair = new Set([left, right]);
+  if ([...pair].every((state) => state === "absent" || state === "available" || state === "absent-or-available")) {
+    return "absent-or-available";
+  }
+  if ([...pair].every((state) => state === "absent" || state === "released" || state === "absent-or-released")) {
+    return "absent-or-released";
+  }
+  return "unknown";
+}
+
 export function evaluateResourceProtocolCfg(cfg: ResourceProtocolCfg): ResourceProtocolCfgEvaluation {
   const resourceIds = cfg.model.resources.map((resource) => resource.id);
   const bottom = (): ResourceFlowState => ({ reachable: false, states: new Map(), diagnostics: [] });
@@ -319,7 +332,7 @@ export function evaluateResourceProtocolCfg(cfg: ResourceProtocolCfg): ResourceP
     for (const id of resourceIds) {
       const leftState = left.states.get(id) ?? "unknown";
       const rightState = right.states.get(id) ?? "unknown";
-      states.set(id, leftState === rightState ? leftState : "unknown");
+      states.set(id, joinResourceStates(leftState, rightState));
     }
     return { reachable: true, states, diagnostics: mergeDiagnostics(left.diagnostics, right.diagnostics) };
   };

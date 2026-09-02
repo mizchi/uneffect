@@ -146,6 +146,30 @@ describe("resource protocol IR", () => {
     expect(evaluateResourceProtocolCfg(partial)).toMatchObject({ status: "unknown", states: new Map([["body", "unknown"]]) });
   });
 
+  it("joins an absent branch with a released optional acquisition", () => {
+    const model: ResourceProtocolModel = {
+      schema: "uneffect-resource-protocol/v1",
+      resources: [{ id: "handle", label: "handle", kind: "Handle", initialState: "absent", requiredTerminalStates: ["released"] }],
+      transitions: [],
+    };
+    const cfg: ResourceProtocolCfg = {
+      schema: "uneffect-resource-protocol-cfg/v1", model, entry: "entry", exits: ["exit"],
+      budget: { name: "optional-resource-test", limit: 32 },
+      blocks: [
+        { id: "entry", transitions: [], successors: ["then", "else"] },
+        { id: "then", transitions: [
+          { kind: "acquire", resource: "handle", at: 1 },
+          { kind: "release", resource: "handle", at: 2 },
+        ], successors: ["exit"] },
+        { id: "else", transitions: [], successors: ["exit"] },
+        { id: "exit", transitions: [], successors: [] },
+      ],
+    };
+    expect(evaluateResourceProtocolCfg(cfg)).toMatchObject({
+      status: "satisfied", states: new Map([["handle", "absent-or-released"]]),
+    });
+  });
+
   it("routes normal and exceptional paths through one mandatory finally block", () => {
     const cfg: ResourceProtocolCfg = {
       schema: "uneffect-resource-protocol-cfg/v1",
