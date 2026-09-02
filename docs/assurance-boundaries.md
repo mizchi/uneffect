@@ -328,6 +328,12 @@ Repeated plain `const` containers are also admitted when producer evidence says
 finds only calls to the same verified declaration at the same argument index.
 This is a narrow borrow proof, not general TypeScript readonly soundness.
 
+Authenticated package summaries may contribute synchronous `Throw` and direct
+`await` rejection successors to resource control flow. Both successors are
+retained when a Promise-producing call can do both. Indirect awaits, thenable
+assimilation, and floating rejection are not inferred by this bridge, and the
+package producer remains a trusted assumption.
+
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do
 not infer support from a nearby example.

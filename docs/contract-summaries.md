@@ -122,9 +122,9 @@ exports are not published.
 Finite object/tuple callback paths are supported for an inline literal or a
 single-use `const` literal container whose TypeChecker symbol appears only at
 its declaration and the external call. The selected leaf may be an inline
-function or immutable symbol-resolved function identifier. A repeated use,
-mutation, alias, capture, spread, computed/dynamic selection, or unresolved
-leaf fails closed. Returned
+function or immutable symbol-resolved function identifier. A repeated use
+without the borrow evidence described below, mutation, alias, capture, spread,
+computed/dynamic selection, or unresolved leaf fails closed. Returned
 callables, reentrancy/concurrency, external settlement internals, and resource ownership
 remain outside this first consumer fragment.
 
@@ -145,3 +145,10 @@ The consumer may then reuse a plain `const` literal container with zero runtime
 work, but only when every reference is the same verified callee's same argument
 position. Mutation, aliasing, capture, returning, unrelated calls, or missing
 borrow evidence fail closed.
+
+The Effect payload also persists direct Promise rejection types separately as
+`rejects`. After exact package/declaration/signature binding, synchronous
+`Throw<E>` and a directly awaited rejection become authenticated exceptional
+edges in the shared resource CFG. Package semantic authority remains `trusted`;
+declaration linkage does not upgrade it to a proof. A floating rejection stays
+in Promise ownership and is never rewritten into a synchronous throw edge.

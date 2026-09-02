@@ -492,9 +492,11 @@ introducing another domain-local control-flow or alias model.
        continuations independently of resource transitions.
      - [x] Resolve supplied same-Program trusted/verified callable `Throw` and directly awaited `Reject` summaries
        into those sites with declaration and call-site provenance.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Authenticate and compose persisted/external callable summaries before
-       admitting their exceptional edges; floating rejections remain in the
-       Promise-ownership analysis rather than becoming synchronous CFG edges.
+     - [x] Authenticate and compose persisted/external callable summaries before
+       admitting synchronous `Throw` and directly awaited rejection edges;
+       preserve producer authority as trusted, route both alternatives when a
+       call may synchronously throw and later reject, and keep floating
+       rejections in Promise ownership rather than synchronous CFG edges.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Define authenticated declarative protocol summaries for builtin,
      package, and plugin operations; executable plugin booleans must not create
      verified evidence.

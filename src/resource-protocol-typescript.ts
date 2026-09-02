@@ -1,5 +1,6 @@
 import ts from "typescript";
 import type { CallableSummary } from "./callable-summary.js";
+import type { ExternalFunctionEffectContract } from "./effects.js";
 import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourceProtocolCfg, type ResourceProtocolModel, type ResourceProtocolResource, type ResourceProtocolTransition } from "./resource-protocol.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics, type ProjectedValue } from "./builtin-semantic-interpreter.js";
@@ -113,6 +114,7 @@ export function collectCallableExceptionalTransitionSites(
   program: ts.Program,
   fn: ts.FunctionLikeDeclaration,
   summaries: readonly CallableSummary[],
+  externalContracts: ReadonlyMap<string, ExternalFunctionEffectContract> = new Map(),
 ): readonly ResourceTransitionSite[] {
   if (!fn.body) return [];
   const checker = program.getTypeChecker();
@@ -126,23 +128,29 @@ export function collectCallableExceptionalTransitionSites(
       const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
       if (declaration) {
         const declarationSource = declaration.getSourceFile();
-        const summary = byId.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`);
-        const completion = summary?.throws.length ? "synchronous-throw"
-          : summary?.rejects.length && directlyAwaited(node) ? "awaited-reject" : undefined;
-        const errorTypes = completion === "synchronous-throw" ? summary?.throws : completion === "awaited-reject" ? summary?.rejects : undefined;
-        if (summary && completion && errorTypes?.length) sites.push({
-          node,
-          transitions: [],
-          exceptionalCompletion: "throw",
-          exceptionEvidence: {
-            summaryId: summary.id,
-            evidence: summary.evidence as "trusted" | "verified",
-            completion,
-            errorTypes,
-            declaration: { fileName: declarationSource.fileName, start: declaration.getStart(declarationSource), end: declaration.getEnd() },
-            call: { fileName: node.getSourceFile().fileName, start: node.getStart(), end: node.getEnd() },
-          },
-        });
+        const key = `${declarationSource.fileName}:${declaration.getStart(declarationSource)}`;
+        const summary = byId.get(key);
+        const candidate = externalContracts.get(key);
+        const external = candidate?.evidence === "verified" ? candidate : undefined;
+        const throws = summary?.throws ?? external?.effects.flatMap((effect) => effect.kind === "throw" ? [effect.errorType] : []);
+        const rejects = summary?.rejects ?? external?.rejects;
+        const evidence = summary ? summary.evidence as "trusted" | "verified"
+          : external ? external.contractEvidence ?? (external.evidence === "verified" ? "verified" : "trusted")
+            : undefined;
+        const add = (completion: CallableExceptionalTransitionEvidence["completion"], errorTypes: readonly string[]): void => {
+          sites.push({
+            node,
+            transitions: [],
+            exceptionalCompletion: "throw",
+            exceptionEvidence: {
+              summaryId: summary?.id ?? key, evidence: evidence!, completion, errorTypes,
+              declaration: { fileName: declarationSource.fileName, start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+              call: { fileName: node.getSourceFile().fileName, start: node.getStart(), end: node.getEnd() },
+            },
+          });
+        };
+        if ((summary || external) && throws?.length) add("synchronous-throw", throws);
+        if ((summary || external) && rejects?.length && directlyAwaited(node)) add("awaited-reject", rejects);
       }
     }
     ts.forEachChild(node, visit);

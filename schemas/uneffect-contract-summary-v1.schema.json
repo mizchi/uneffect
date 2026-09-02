@@ -68,6 +68,7 @@
             "properties": {
               "effects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
               "parameters": { "type": "array", "items": { "type": "string" } },
+              "rejects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
               "callbacks": {
                 "type": "array",
                 "items": { "$ref": "#/$defs/callback" }

@@ -72,7 +72,10 @@ also permits repeated zero-runtime use when all consumer references target the
 same verified callable and argument position; any other use fails closed.
 Direct immutable exported arrow/function-expression callables use the same
 package export-symbol and resolved-signature binding. Mutable or compound
-export declarations remain unsupported.
+export declarations remain unsupported. Persisted rejection types and
+synchronous `Throw` effects feed the shared resource CFG only after exact
+declaration binding; a direct `await` admits rejection, floating Promises do
+not, and package authority stays trusted.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

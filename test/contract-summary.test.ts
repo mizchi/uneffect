@@ -106,6 +106,10 @@ describe("persisted contract summary bundles", () => {
       export function later(callback: () => void): Promise<void> {
         return Promise.resolve().then(callback)
       }
+      /* uneffect:effect none */
+      export async function rejectLater(): Promise<never> {
+        return Promise.reject(new TypeError("nope"))
+      }
     `;
     const program = programFor(fileName, source);
     const bundle = createContractSummaryBundle({
@@ -167,6 +171,9 @@ describe("persisted contract summary bundles", () => {
           effectBound: ["Console"],
         })],
       }),
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "rejectLater" },
+      effect: expect.objectContaining({ rejects: ["TypeError"] }),
     })]));
     expect(bundle.exports.some(({ symbol }) => symbol.export === "mutableReport")).toBe(false);
     expect(validateContractSummaryBundle(bundle, {

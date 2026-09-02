@@ -92,10 +92,11 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
     bindContractSummaryBundleToProgram(bundle, program));
   const packageEffects = boundContractSummaryEffectContracts(contractSummaryBindings);
+  const externalFunctionEffects = new Map([...(options.externalFunctionEffects ?? []), ...packageEffects]);
   const analyzedEffects = analyzeProgramEffects(program, {
     mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
     builtinRegistry: options.builtinRegistry,
-    externalFunctionEffects: new Map([...(options.externalFunctionEffects ?? []), ...packageEffects]),
+    externalFunctionEffects,
     externalModuleEffects: options.externalModuleEffects,
   });
   const effects = {
@@ -197,7 +198,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     }
     typedFiles[fileName] = typed;
     if (!invalidSources.has(fileName) && ownershipCandidate(sourceFile.text)) {
-      const found = analyzeOwnership(program, sourceFile, callableSummaries);
+      const found = analyzeOwnership(program, sourceFile, callableSummaries, externalFunctionEffects);
       ownership.push(...found.map((diagnostic) => ({ ...diagnostic, fileName })));
       diagnostics.push(...found.map((diagnostic): OwnershipCheckerDiagnostic => ({
         domain: "ownership", kind: "invalid-transition", severity: diagnostic.state === "unknown" && options.mode !== "strict" ? "warning" : "error", fileName,

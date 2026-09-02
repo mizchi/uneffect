@@ -918,6 +918,10 @@ same property is proved for arbitrary TypeScript.
   only with persisted `borrow-readonly` producer evidence and a whole-file
   same-callee/same-argument reference screen; mutation, capture, aliasing, and
   unrelated use remain unknown.
+  Persisted callable summaries also retain direct Promise rejection types.
+  Exact declaration binding feeds package `Throw` and directly awaited
+  rejection alternatives into the shared resource CFG while preserving trusted
+  producer authority; floating rejection remains an ownership concern.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

@@ -7,6 +7,7 @@ import { evaluateResourceProtocol, evaluateResourceProtocolCfg, resourceProtocol
 import { resolveBuiltinTypedArrayWindowMethod } from "./typed-array-windows.js";
 import { lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
 import { collectCallableExceptionalTransitionSites } from "./resource-protocol-typescript.js";
+import type { ExternalFunctionEffectContract } from "./effects.js";
 import type { CallableSummary } from "./callable-summary.js";
 
 export type OwnershipState = "available" | "detached" | "transferred" | "locked" | "shared" | "unknown";
@@ -342,6 +343,7 @@ function analyzeOwnershipFunctionWithCfg(
   fn: ts.FunctionLikeDeclaration,
   records: readonly CollectedOwnershipEvent[],
   callableSummaries: readonly CallableSummary[],
+  externalContracts: ReadonlyMap<string, ExternalFunctionEffectContract>,
 ): OwnershipDiagnostic[] | undefined {
   if (!fn.body || records.some((event) => event.transferState === "shared")) return undefined;
   const byIdentity = new Map<string, CollectedOwnershipEvent>();
@@ -362,7 +364,7 @@ function analyzeOwnershipFunctionWithCfg(
       evidence: "exact",
     }],
   }));
-  sites.push(...collectCallableExceptionalTransitionSites(program, fn, callableSummaries));
+  sites.push(...collectCallableExceptionalTransitionSites(program, fn, callableSummaries, externalContracts));
   const lowered = lowerResourceProtocolCfgInFunction(source, fn, model, sites, {
     budget: { name: "ownership-typescript-cfg", limit: 256 },
   });
@@ -390,7 +392,12 @@ function analyzeOwnershipFunctionWithCfg(
   });
 }
 
-export function analyzeOwnership(program: ts.Program, source: ts.SourceFile, callableSummaries: readonly CallableSummary[] = []): OwnershipDiagnostic[] {
+export function analyzeOwnership(
+  program: ts.Program,
+  source: ts.SourceFile,
+  callableSummaries: readonly CallableSummary[] = [],
+  externalContracts: ReadonlyMap<string, ExternalFunctionEffectContract> = new Map(),
+): OwnershipDiagnostic[] {
   const records = collectOwnershipEventRecords(program, source);
   const byFunction = new Map<ts.FunctionLikeDeclaration, CollectedOwnershipEvent[]>();
   const outside: CollectedOwnershipEvent[] = [];
@@ -403,7 +410,7 @@ export function analyzeOwnership(program: ts.Program, source: ts.SourceFile, cal
       byFunction.set(fn, events);
     }
   }
-  const diagnostics = [...byFunction].flatMap(([fn, events]) => analyzeOwnershipFunctionWithCfg(program, source, fn, events, callableSummaries) ?? checkOwnership(events));
+  const diagnostics = [...byFunction].flatMap(([fn, events]) => analyzeOwnershipFunctionWithCfg(program, source, fn, events, callableSummaries, externalContracts) ?? checkOwnership(events));
   if (outside.length) diagnostics.push(...checkOwnership(outside));
   return diagnostics.sort((left, right) => left.span.start - right.span.start);
 }

@@ -64,6 +64,10 @@ export type ExternalMutationRoot = ExternalExportedMutationRoot | ExternalAmbien
 export interface ExternalFunctionEffectContract {
   effects: readonly Effect[];
   evidence: EvidenceStatus;
+  /** Authority of the semantic producer after declaration linkage succeeds. */
+  contractEvidence?: "trusted" | "verified";
+  /** Promise rejection payloads proved or declared by the callable producer. */
+  rejects?: readonly string[];
   /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
   parameters?: readonly string[];
   functionName?: string;
