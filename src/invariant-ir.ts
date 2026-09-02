@@ -2621,15 +2621,21 @@ export function lowerInvariantProgram(
       } else if (ts.isIfStatement(statement)) {
         const forked: PathState[] = [];
         for (const path of paths) {
-          const condition = evaluateCondition(statement.expression, path.env);
-          const thenInput = [{ ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] }];
-          forked.push(...(ts.isBlock(statement.thenStatement)
-            ? executeScopedBlock(statement.thenStatement, thenInput, context)
-            : execute([statement.thenStatement], thenInput, context)));
-          const elseInput = [{ ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] }];
-          forked.push(...(!statement.elseStatement ? elseInput : ts.isBlock(statement.elseStatement)
-            ? executeScopedBlock(statement.elseStatement, elseInput, context)
-            : execute([statement.elseStatement], elseInput, context)));
+          const conditions = containsTrackedSynchronousCall(statement.expression)
+            ? evaluateScalar(statement.expression, path)
+            : [{ path, value: evaluateCondition(statement.expression, path.env) }];
+          for (const evaluated of conditions) {
+            if (evaluated.path.completion !== "normal") { forked.push(evaluated.path); continue; }
+            const condition = evaluated.value;
+            const thenInput = [{ ...evaluated.path, env: new Map(evaluated.path.env), assumptions: [...evaluated.path.assumptions, condition] }];
+            forked.push(...(ts.isBlock(statement.thenStatement)
+              ? executeScopedBlock(statement.thenStatement, thenInput, context)
+              : execute([statement.thenStatement], thenInput, context)));
+            const elseInput = [{ ...evaluated.path, env: new Map(evaluated.path.env), assumptions: [...evaluated.path.assumptions, negate(condition)] }];
+            forked.push(...(!statement.elseStatement ? elseInput : ts.isBlock(statement.elseStatement)
+              ? executeScopedBlock(statement.elseStatement, elseInput, context)
+              : execute([statement.elseStatement], elseInput, context)));
+          }
         }
         paths = forked;
       } else if (ts.isSwitchStatement(statement)) {
@@ -2672,8 +2678,15 @@ export function lowerInvariantProgram(
         const switched: PathState[] = [];
         for (const path of paths) {
           const stringSwitch = caseSorts.has("Discriminant");
-          const discriminant = stringSwitch ? undefined
-            : substitute(logic(statement.expression, pipeBindings, semanticGuards, semanticValues), path.env);
+          const evaluations: Array<{ path: PathState; value?: LogicExpression }> = stringSwitch
+            ? [{ path }]
+            : containsTrackedSynchronousCall(statement.expression)
+              ? evaluateScalar(statement.expression, path)
+              : [{ path, value: substitute(logic(statement.expression, pipeBindings, semanticGuards, semanticValues), path.env) }];
+          for (const evaluated of evaluations) {
+            if (evaluated.path.completion !== "normal") { switched.push(evaluated.path); continue; }
+            const activePath = evaluated.path;
+            const discriminant = stringSwitch ? undefined : evaluated.value;
           const expectedSort = caseSorts.values().next().value;
           if (discriminant && expectedSort !== "Discriminant" && scalarExpressionSort(discriminant) !== expectedSort) {
             throw new Error("switch discriminant and case literals must use the same scalar sort");
@@ -2693,12 +2706,13 @@ export function lowerInvariantProgram(
               ? conditionFor(entry)
               : conjunction(nonMatches) ?? { kind: "boolean", value: true };
             const suffix = clauses.slice(index).flatMap((item) => [...item.statements]);
-            const exits = execute(suffix, [{ ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] }], { ...context, breakTarget: switchTarget });
+            const exits = execute(suffix, [{ ...activePath, env: new Map(activePath.env), assumptions: [...activePath.assumptions, condition] }], { ...context, breakTarget: switchTarget });
             switched.push(...exits.map((exit): PathState => exit.completion === "break" && exit.breakTarget === switchTarget
               ? { ...exit, completion: "normal", breakTarget: undefined } : exit));
           }
           if (!clauses.some(ts.isDefaultClause)) {
-            switched.push({ ...path, env: new Map(path.env), assumptions: [...path.assumptions, ...(nonMatches.length ? [conjunction(nonMatches)!] : [])] });
+            switched.push({ ...activePath, env: new Map(activePath.env), assumptions: [...activePath.assumptions, ...(nonMatches.length ? [conjunction(nonMatches)!] : [])] });
+          }
           }
         }
         paths = switched;
@@ -2717,22 +2731,30 @@ export function lowerInvariantProgram(
             if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
             loopEnv.set(name, variable(fresh));
           }
-          const inv = substitute(invariant, loopEnv), condition = evaluateCondition(statement.expression, loopEnv);
-          const bodyInput = [{ ...path, env: new Map(loopEnv), assumptions: [inv, condition] }];
-          const loopContext = { breakTarget: loopTarget, continueTarget: loopTarget };
-          const bodyPaths = ts.isBlock(statement.statement)
-            ? executeScopedBlock(statement.statement, bodyInput, loopContext)
-            : execute([statement.statement], bodyInput, loopContext);
-          const backEdges = bodyPaths.filter((item) => item.completion === "normal"
-            || (item.completion === "continue" && item.continueTarget === loopTarget));
-          for (const bodyPath of backEdges) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource, bodyPath.env);
-          exited.push(...bodyPaths.flatMap((item): PathState[] => {
-            if (item.completion === "normal" || (item.completion === "continue" && item.continueTarget === loopTarget)) return [];
-            if (item.completion === "break" && item.breakTarget === loopTarget) {
-              return [{ ...item, completion: "normal", breakTarget: undefined }];
-            }
-            return [item];
-          }), { ...path, env: loopEnv, assumptions: [inv, negate(condition)] });
+          const inv = substitute(invariant, loopEnv);
+          const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [inv] };
+          const conditions = containsTrackedSynchronousCall(statement.expression)
+            ? evaluateScalar(statement.expression, conditionSeed)
+            : [{ path: conditionSeed, value: evaluateCondition(statement.expression, loopEnv) }];
+          for (const evaluated of conditions) {
+            if (evaluated.path.completion !== "normal") { exited.push(evaluated.path); continue; }
+            const condition = evaluated.value;
+            const bodyInput = [{ ...evaluated.path, assumptions: [...evaluated.path.assumptions, condition] }];
+            const loopContext = { breakTarget: loopTarget, continueTarget: loopTarget };
+            const bodyPaths = ts.isBlock(statement.statement)
+              ? executeScopedBlock(statement.statement, bodyInput, loopContext)
+              : execute([statement.statement], bodyInput, loopContext);
+            const backEdges = bodyPaths.filter((item) => item.completion === "normal"
+              || (item.completion === "continue" && item.continueTarget === loopTarget));
+            for (const bodyPath of backEdges) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource, bodyPath.env);
+            exited.push(...bodyPaths.flatMap((item): PathState[] => {
+              if (item.completion === "normal" || (item.completion === "continue" && item.continueTarget === loopTarget)) return [];
+              if (item.completion === "break" && item.breakTarget === loopTarget) {
+                return [{ ...item, completion: "normal", breakTarget: undefined }];
+              }
+              return [item];
+            }), { ...evaluated.path, assumptions: [...evaluated.path.assumptions, negate(condition)] });
+          }
         }
         paths = exited;
       } else if (ts.isForStatement(statement)) {
@@ -2765,21 +2787,28 @@ export function lowerInvariantProgram(
             loopEnv.set(name, variable(fresh));
           }
           const inv = substitute(invariant, loopEnv);
-          const condition = evaluateCondition(statement.condition, loopEnv);
-          const bodyInput = [{ ...path, env: new Map(loopEnv), assumptions: [inv, condition] }];
-          const loopContext = { breakTarget: loopTarget, continueTarget: loopTarget };
-          const bodyPaths = ts.isBlock(statement.statement)
-            ? executeScopedBlock(statement.statement, bodyInput, loopContext)
-            : execute([statement.statement], bodyInput, loopContext);
-          for (const bodyPath of bodyPaths) {
-            if (bodyPath.completion === "normal" || (bodyPath.completion === "continue" && bodyPath.continueTarget === loopTarget)) {
-              const updated = applyScalarUpdate(statement.incrementor, bodyPath);
-              add("loop-preserve", statement, updated.assumptions, substitute(invariant, updated.env), invariantSource, updated.env);
-            } else if (bodyPath.completion === "break" && bodyPath.breakTarget === loopTarget) {
-              exited.push({ ...bodyPath, completion: "normal", breakTarget: undefined });
-            } else exited.push(bodyPath);
+          const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [inv] };
+          const conditions = containsTrackedSynchronousCall(statement.condition)
+            ? evaluateScalar(statement.condition, conditionSeed)
+            : [{ path: conditionSeed, value: evaluateCondition(statement.condition, loopEnv) }];
+          for (const evaluated of conditions) {
+            if (evaluated.path.completion !== "normal") { exited.push(evaluated.path); continue; }
+            const condition = evaluated.value;
+            const bodyInput = [{ ...evaluated.path, assumptions: [...evaluated.path.assumptions, condition] }];
+            const loopContext = { breakTarget: loopTarget, continueTarget: loopTarget };
+            const bodyPaths = ts.isBlock(statement.statement)
+              ? executeScopedBlock(statement.statement, bodyInput, loopContext)
+              : execute([statement.statement], bodyInput, loopContext);
+            for (const bodyPath of bodyPaths) {
+              if (bodyPath.completion === "normal" || (bodyPath.completion === "continue" && bodyPath.continueTarget === loopTarget)) {
+                const updated = applyScalarUpdate(statement.incrementor, bodyPath);
+                add("loop-preserve", statement, updated.assumptions, substitute(invariant, updated.env), invariantSource, updated.env);
+              } else if (bodyPath.completion === "break" && bodyPath.breakTarget === loopTarget) {
+                exited.push({ ...bodyPath, completion: "normal", breakTarget: undefined });
+              } else exited.push(bodyPath);
+            }
+            exited.push({ ...evaluated.path, assumptions: [...evaluated.path.assumptions, negate(condition)] });
           }
-          exited.push({ ...path, env: loopEnv, assumptions: [inv, negate(condition)] });
         }
         paths = exited;
       } else if (ts.isDoStatement(statement)) {
@@ -2807,8 +2836,14 @@ export function lowerInvariantProgram(
             if (bodyPath.completion === "normal" || (bodyPath.completion === "continue" && bodyPath.continueTarget === loopTarget)) {
               const preserved = substitute(invariant, bodyPath.env);
               add("loop-preserve", statement, bodyPath.assumptions, preserved, invariantSource, bodyPath.env);
-              const condition = evaluateCondition(statement.expression, bodyPath.env);
-              exited.push({ ...bodyPath, completion: "normal", continueTarget: undefined, assumptions: [...bodyPath.assumptions, preserved, negate(condition)] });
+              const conditionSeed: PathState = { ...bodyPath, completion: "normal", continueTarget: undefined, assumptions: [...bodyPath.assumptions, preserved] };
+              const conditions = containsTrackedSynchronousCall(statement.expression)
+                ? evaluateScalar(statement.expression, conditionSeed)
+                : [{ path: conditionSeed, value: evaluateCondition(statement.expression, bodyPath.env) }];
+              for (const evaluated of conditions) {
+                if (evaluated.path.completion !== "normal") exited.push(evaluated.path);
+                else exited.push({ ...evaluated.path, assumptions: [...evaluated.path.assumptions, negate(evaluated.value)] });
+              }
             } else if (bodyPath.completion === "break" && bodyPath.breakTarget === loopTarget) {
               exited.push({ ...bodyPath, completion: "normal", breakTarget: undefined });
             } else exited.push(bodyPath);

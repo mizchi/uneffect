@@ -50,6 +50,10 @@ arithmetic/comparisons, prefix negation, ternaries, Boolean short circuit, and
 reviewed Math calls. It preserves left-to-right operand/argument evaluation and
 does not evaluate the remainder of an abrupt path. Existing nullable, `typeof`,
 and discriminant refinements retain their specialized TypeChecker path.
+Throwing Boolean contracts can additionally select `if`, finite literal
+`switch`, and invariant-backed `while`/`for`/`do...while` paths while retaining
+their exception escape. This does not add termination or call-cardinality
+claims to the loop abstraction.
 
 Callable summaries classify uncaught `throw` statements in an `async` callable
 as Promise rejection types, exclude locally caught throws, and retain catch

@@ -901,6 +901,7 @@ introducing another domain-local control-flow or alias model.
   - [x] Compose value-plus-`Throw<E>` completion for a direct scalar return or initialized binding.
   - [x] Apply the same value-plus-`Throw<E>` completion to direct identifier assignment, including catch joins.
   - [x] Generalize scalar expressions to propagate value/abrupt completion through supported arithmetic/comparison, prefix, ternary, short-circuit, and reviewed Math operations with left-to-right evaluation; retain specialized nullable/`typeof`/discriminant lowering when no tracked call is present.
+  - [x] Connect throwing Boolean contract completions to `if`, finite literal `switch`, and invariant-backed `while`/`for`/`do...while` conditions without changing the existing loop termination/cardinality claim.
   - [x] Persist Promise rejection sets, including uncaught `async throw` and catch rethrow classification, and compose them as authenticated `Reject<E>` await/catch edges without granting authority to receiver lookalikes.
      Expose the path programmatically and through repeatable CLI
      `--contract-summary` inputs.

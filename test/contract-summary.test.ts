@@ -1549,6 +1549,12 @@ describe("persisted contract summary bundles", () => {
         ensureNonnegative(value: number): boolean {
           if (value < 0) throw new RangeError("negative")
           return true
+        },
+        /* uneffect:effect Throw<RangeError> */
+        /* uneffect:ensures result === enabled */
+        checkedFlag(value: number, enabled: boolean): boolean {
+          if (value < 0) throw new RangeError("negative")
+          return enabled
         }
       })
     `;
@@ -1569,6 +1575,7 @@ describe("persisted contract summary bundles", () => {
         danger(value: number): void
         dangerousAdd(value: number): number
         ensureNonnegative(value: number): boolean
+        checkedFlag(value: number, enabled: boolean): boolean
       }>
     `);
     const consumerFile = join(directory, "consumer.ts");
@@ -1750,6 +1757,48 @@ describe("persisted contract summary bundles", () => {
       export function absolute(value: number): number {
         return Math.abs(api.dangerousAdd(value))
       }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === 1 */
+      export function ifCall(value: number): number {
+        if (api.ensureNonnegative(value)) return 1
+        return 0
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === 1 */
+      export function switchCall(value: number): number {
+        switch (api.ensureNonnegative(value)) {
+          case true: return 1
+          case false: return 0
+        }
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === 1 */
+      export function whileCall(value: number): number {
+        /* uneffect:loop_invariant true */
+        while (api.ensureNonnegative(value)) {
+          break
+        }
+        return 1
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === 1 */
+      export function forCall(value: number, enabled: boolean): number {
+        /* uneffect:loop_invariant true */
+        for (let i = 0; api.checkedFlag(value, enabled); i++) {
+          break
+        }
+        return 1
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === 1 */
+      export function doCall(value: number): number {
+        let repeat = true
+        /* uneffect:loop_invariant true */
+        do {
+          repeat = false
+        } while (api.checkedFlag(value, repeat))
+        return 1
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -1760,7 +1809,7 @@ describe("persisted contract summary bundles", () => {
     const nestedVerification = await verifyContractObligations(nestedFile, nestedSource, undefined, nestedProgram, {
       externalContractBindings: nestedBinding.exports,
     });
-    for (const functionName of ["nested", "conditional", "compared", "negated", "shortCircuitLeft", "shortCircuitRight", "conditionCall", "absolute"]) {
+    for (const functionName of ["nested", "conditional", "compared", "negated", "shortCircuitLeft", "shortCircuitRight", "conditionCall", "absolute", "ifCall", "switchCall", "whileCall", "forCall", "doCall"]) {
       expect(nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName))
         .toMatchObject({
           status: "verified",
