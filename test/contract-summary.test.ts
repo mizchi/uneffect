@@ -1452,4 +1452,142 @@ describe("persisted contract summary bundles", () => {
       expect.objectContaining({ status: "unsupported", message: expect.stringContaining("fake.addOne(value)") }),
     ]);
   });
+
+  it("discharges an authenticated frozen member Throw effect through consumer catch", async () => {
+    const producerFile = "/src/danger-api.ts";
+    const producerSource = `
+      export const api = Object.freeze({
+        /* uneffect:effect Throw<RangeError> */
+        danger(value: number): void { if (value < 0) throw new RangeError("negative") },
+        /* uneffect:effect Throw<RangeError> */
+        /* uneffect:ensures result === value + 1 */
+        dangerousAdd(value: number): number {
+          if (value < 0) throw new RangeError("negative")
+          return value + 1
+        }
+      })
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const producerVerification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/danger-api", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: producerVerification.artifacts,
+    });
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-member-throw-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "danger-api");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/danger-api", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare const api: Readonly<{
+        danger(value: number): void
+        dangerousAdd(value: number): number
+      }>
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    const consumerSource = `
+      import { api } from "@example/danger-api"
+      /* uneffect:ensures result === 1 */
+      export function run(value: number): number {
+        try {
+          api.danger(value)
+          return 1
+        } catch {
+          return 1
+        }
+      }
+      /* uneffect:ensures result === 1 */
+      export function unhandled(value: number): number {
+        api.danger(value)
+        return 1
+      }
+      /* uneffect:ensures result === 1 */
+      export function finalized(value: number): number {
+        try {
+          api.danger(value)
+        } finally {
+          value += 0
+        }
+        return 1
+      }
+    `;
+    writeFileSync(consumerFile, consumerSource);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding).toMatchObject({ status: "verified", blockers: [] });
+    const verification = await verifyContractObligations(consumerFile, consumerSource, undefined, consumerProgram, {
+      externalContractBindings: binding.exports,
+    });
+    expect(verification.diagnostics).toEqual([]);
+    expect(verification.artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: "verified",
+        controlFlow: expect.objectContaining({
+          exceptionFlow: expect.objectContaining({
+            discharged: [expect.objectContaining({ effect: "Throw<RangeError>", evidence: "trusted" })],
+          }),
+        }),
+      }),
+    ]));
+    for (const functionName of ["unhandled", "finalized"]) {
+      expect(verification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName))
+        .toMatchObject({
+          status: "verified",
+          controlFlow: { exceptionFlow: { escapes: [expect.objectContaining({ effect: "Throw<RangeError>", evidence: "trusted" })] } },
+        });
+    }
+
+    const lookalikeFile = join(directory, "lookalike.ts");
+    const lookalikeSource = `
+      import { api } from "@example/danger-api"
+      function authorized(value: number): void { api.danger(value) }
+      const fake = { danger(_value: number): void {} } as typeof api
+      /* uneffect:ensures result === 1 */
+      export function lookalike(value: number): number {
+        try { fake.danger(value) } catch {}
+        return 1
+      }
+    `;
+    writeFileSync(lookalikeFile, lookalikeSource);
+    const lookalikeProgram = ts.createProgram([lookalikeFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const lookalikeBinding = bindContractSummaryBundleToProgram(bundle, lookalikeProgram);
+    const lookalikeVerification = await verifyContractObligations(lookalikeFile, lookalikeSource, undefined, lookalikeProgram, {
+      externalContractBindings: lookalikeBinding.exports,
+    });
+    expect(lookalikeVerification.artifacts).toEqual([
+      expect.objectContaining({ status: "unsupported", message: expect.stringContaining("fake.danger") }),
+    ]);
+
+    const scalarFile = join(directory, "scalar.ts");
+    const scalarSource = `
+      import { api } from "@example/danger-api"
+      function authorize(value: number): void { api.danger(value) }
+      /* uneffect:ensures result === value + 1 */
+      export function scalar(value: number): number {
+        return api.dangerousAdd(value)
+      }
+    `;
+    writeFileSync(scalarFile, scalarSource);
+    const scalarProgram = ts.createProgram([scalarFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const scalarBinding = bindContractSummaryBundleToProgram(bundle, scalarProgram);
+    const scalarVerification = await verifyContractObligations(scalarFile, scalarSource, undefined, scalarProgram, {
+      externalContractBindings: scalarBinding.exports,
+    });
+    expect(scalarVerification.artifacts).toEqual([
+      expect.objectContaining({
+        status: "unsupported",
+        message: expect.stringContaining("both value and synchronous Throw completion"),
+      }),
+    ]);
+  });
 });

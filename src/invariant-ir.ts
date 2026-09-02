@@ -175,6 +175,7 @@ export interface ExternalContractBinding {
     parameters: string[];
     requires: string[];
     ensures: string[];
+    effect?: { effects: string[] };
   };
 }
 
@@ -182,12 +183,12 @@ export interface InvariantLoweringOptions {
   externalContractBindings?: readonly ExternalContractBinding[];
 }
 interface CallCompletionFact {
+  mode: "sync" | "promise";
   effect?: string;
   definitelyRejects: boolean;
   synchronousThrows: string[];
   evidence: "verified" | "trusted";
   payloadFromFirstArgument: boolean;
-  synchronousFulfillment?: boolean;
   fulfillment?: AwaitFulfillmentFact;
 }
 
@@ -1387,7 +1388,7 @@ function typeCheckerCallCompletions(
       const errorType = adapter.thrownErrorType(argument);
       const rejectionType = errorType === "unknown" ? checker.typeToString(checker.getTypeAtLocation(argument)) : errorType;
       facts.set(key, {
-        effect: `Reject<${rejectionType}>`, definitelyRejects: true, synchronousThrows: [], evidence: "verified", payloadFromFirstArgument: true,
+        mode: "promise", effect: `Reject<${rejectionType}>`, definitelyRejects: true, synchronousThrows: [], evidence: "verified", payloadFromFirstArgument: true,
       });
     } else if (standardPromiseMember(call, "resolve") && call.arguments.length === 1) {
       const argument = call.arguments[0]!;
@@ -1398,6 +1399,7 @@ function typeCheckerCallCompletions(
       if (domain && declaration) {
         const declarationSource = declaration.getSourceFile();
         facts.set(key, {
+          mode: "promise",
           definitelyRejects: false,
           synchronousThrows: [],
           evidence: "verified",
@@ -1428,6 +1430,7 @@ function typeCheckerCallCompletions(
         const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
         const rejected = extractAnnotations(comments, "temporal_rejects");
         const thrown = extractAnnotations(comments, "temporal_throws");
+        const externalThrows = external?.summary.effect?.effects.filter((effect) => /^Throw<.+>$/.test(effect)) ?? [];
         const contractEnsures = external?.summary.ensures ?? extractAnnotations(comments, "ensures");
         const contractRequires = external?.summary.requires ?? extractAnnotations(comments, "requires");
         const awaitedType = checker.getAwaitedType(checker.getReturnTypeOfSignature(signature));
@@ -1451,9 +1454,10 @@ function typeCheckerCallCompletions(
           ? inferredLocalFulfillment(call, signature, declaration) : undefined;
         const fulfillment = declaredFulfillment ?? inferred?.fulfillment;
         const rejectionEffect = rejected.length === 1 ? `Reject<${rejected[0]}>` : inferred?.rejectionEffect;
-        if (rejectionEffect || fulfillment) facts.set(key, {
+        if (rejectionEffect || fulfillment || externalThrows.length > 0) facts.set(key, {
+          mode: "promise",
           ...(rejectionEffect ? { effect: rejectionEffect } : {}), definitelyRejects: inferred?.definitelyRejects ?? false,
-          synchronousThrows: [...new Set(thrown.map((errorType) => `Throw<${errorType}>`))].sort(),
+          synchronousThrows: [...new Set([...thrown.map((errorType) => `Throw<${errorType}>`), ...externalThrows])].sort(),
           evidence: external?.evidence ?? (declaredFulfillment || rejected.length === 1 || thrown.length > 0 ? "trusted" : "verified"),
           payloadFromFirstArgument: false, ...(fulfillment ? { fulfillment } : {}),
         });
@@ -1466,23 +1470,25 @@ function typeCheckerCallCompletions(
           && binding.callSites.some((site) => site.fileName === source.fileName
             && site.span.start === call.getStart(source) && site.span.end === call.getEnd()));
         const resultDomain = scalarDomain(checker.getReturnTypeOfSignature(signature));
-        if (external && resultDomain && external.summary.ensures.length > 0) {
+        const externalThrows = external?.summary.effect?.effects.filter((effect) => /^Throw<.+>$/.test(effect)) ?? [];
+        const fulfillment = external && resultDomain && external.summary.ensures.length > 0 ? {
+          domain: resultDomain,
+          functionName: external.summary.functionName,
+          parameters: external.summary.parameters,
+          clauses: external.summary.ensures.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
+          preconditions: external.summary.requires.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
+          declarationFileName: declarationSource.fileName,
+          declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
+          declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+        } satisfies AwaitFulfillmentFact : undefined;
+        if (external && (fulfillment || externalThrows.length > 0)) {
           facts.set(key, {
+            mode: "sync",
             definitelyRejects: false,
-            synchronousThrows: [],
+            synchronousThrows: externalThrows,
             evidence: external.evidence,
             payloadFromFirstArgument: false,
-            synchronousFulfillment: true,
-            fulfillment: {
-              domain: resultDomain,
-              functionName: external.summary.functionName,
-              parameters: external.summary.parameters,
-              clauses: external.summary.ensures.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
-              preconditions: external.summary.requires.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
-              declarationFileName: declarationSource.fileName,
-              declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
-              declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
-            },
+            ...(fulfillment ? { fulfillment } : {}),
           });
         }
       }
@@ -2050,7 +2056,10 @@ export function lowerInvariantProgram(
         ? mathScalarCalls.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
       const externalFact = ts.isCallExpression(unwrapped)
         ? callCompletions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
-      if (ts.isCallExpression(unwrapped) && externalFact?.synchronousFulfillment && externalFact.fulfillment) {
+      if (ts.isCallExpression(unwrapped) && externalFact?.mode === "sync" && externalFact.fulfillment) {
+        if (externalFact.synchronousThrows.length > 0) {
+          throw new Error(`scalar call with both value and synchronous Throw completion is unsupported: ${unwrapped.getText(source)}`);
+        }
         const fulfillment = externalFact.fulfillment;
         let argumentsByPath: Array<{ path: PathState; values: LogicExpression[] }> = [{ path, values: [] }];
         for (const argument of unwrapped.arguments) {
@@ -2312,7 +2321,7 @@ export function lowerInvariantProgram(
         && statement.declarationList.declarations[0]!.initializer
         && ts.isCallExpression(statement.declarationList.declarations[0]!.initializer)
         && callCompletions.has(`${statement.declarationList.declarations[0]!.initializer.getStart(source)}:${statement.declarationList.declarations[0]!.initializer.getEnd()}`)
-        && !callCompletions.get(`${statement.declarationList.declarations[0]!.initializer.getStart(source)}:${statement.declarationList.declarations[0]!.initializer.getEnd()}`)?.synchronousFulfillment) {
+        && callCompletions.get(`${statement.declarationList.declarations[0]!.initializer.getStart(source)}:${statement.declarationList.declarations[0]!.initializer.getEnd()}`)?.mode === "promise") {
         const declaration = statement.declarationList.declarations[0]!;
         const call = declaration.initializer as ts.CallExpression;
         const fact = callCompletions.get(`${call.getStart(source)}:${call.getEnd()}`);
@@ -2831,11 +2840,16 @@ export function lowerInvariantProgram(
           });
           return paths;
         }
-        const fact = declaredThrowCalls.get(`${call.getStart(source)}:${call.getEnd()}`);
-        if (!fact) throw new Error(`call requires a verified function summary: ${call.expression.getText(source)}`);
+        const completion = callCompletions.get(`${call.getStart(source)}:${call.getEnd()}`);
+        const declared = declaredThrowCalls.get(`${call.getStart(source)}:${call.getEnd()}`);
+        const effects = completion?.synchronousThrows ?? declared?.effects;
+        if (!effects) throw new Error(`call requires a verified function summary: ${call.expression.getText(source)}`);
         const originSpan = { start: call.getStart(source), end: call.getEnd() };
-        const thrown = paths.flatMap((path) => fact.effects.map((effect): PathState => ({ ...path, env: new Map(path.env), completion: "throw", thrown: { kind: "synchronous-throw", effect, originSpan } })));
-        paths = [...(fact.definitelyThrows ? [] : paths), ...thrown];
+        const thrown = paths.flatMap((path) => effects.map((effect): PathState => ({
+          ...path, env: new Map(path.env), completion: "throw",
+          thrown: { kind: "synchronous-throw", effect, originSpan, ...(completion ? { evidence: completion.evidence } : {}) },
+        })));
+        paths = [...(declared?.definitelyThrows ? [] : paths), ...thrown];
       } else if (!ts.isEmptyStatement(statement)) {
         throw new Error(`unsupported invariant statement: ${statement.getText(source)}`);
       }
