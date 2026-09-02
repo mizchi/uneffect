@@ -636,6 +636,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Bind reviewed registry contracts at explicit re-export boundaries so
        renamed local/package barrels preserve the original declaration identity;
        keep mutable aliases and same-spelled local functions untrusted.
+     - [x] Resolve reviewed calls through acyclic immutable `const` callable
+       aliases and stable namespace properties; do not propagate contracts
+       through `let`, dynamic initializers, or symbol cycles.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

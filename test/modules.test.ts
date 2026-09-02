@@ -138,10 +138,13 @@ describe("declarative Uneffect modules", () => {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
         import { open, openAsync, inspect, close, closeAsync, schedule } from "reviewed-handle"
+        const scheduleAlias = schedule
+        const aliasedCallback = () => {}
         export function valid() { const handle = open(); inspect(handle); close(handle) }
         export function leaked() { const handle = open(); inspect(handle) }
         export async function asyncValid() { const handle = await openAsync(); inspect(handle); await closeAsync(handle) }
         export function scheduled() { schedule(() => {}) }
+        export function aliasScheduled() { scheduleAlias(aliasedCallback) }
       `);
       const result = await checkFiles([entry], { builtinRegistry: installed.registry });
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
@@ -168,6 +171,10 @@ describe("declarative Uneffect modules", () => {
       const temporal = analyzeHostNeutralTransitions(program, source, { builtinRegistry: installed.registry });
       expect(temporal.transitions).toContainEqual(expect.objectContaining({
         kind: "invoke-callback", callback: "() => {}", api: "schedule",
+        cardinality: "0..1", lane: "external", completion: "host-report-throw",
+      }));
+      expect(temporal.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", callback: "aliasedCallback", api: "schedule",
         cardinality: "0..1", lane: "external", completion: "host-report-throw",
       }));
       const barrelEntry = join(directory, "barrel-entry.ts");

@@ -216,7 +216,9 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     }
   }
 
-  #resolveSymbolContract(symbol: ts.Symbol): BuiltinContract | undefined {
+  #resolveSymbolContract(symbol: ts.Symbol, seen = new Set<ts.Symbol>()): BuiltinContract | undefined {
+    if (seen.has(symbol)) return undefined;
+    seen.add(symbol);
     let contract = this.#contracts.get(symbol);
     if (!contract) for (const declaration of symbol.declarations ?? []) {
       contract = this.#declarationContracts.get(declaration);
@@ -232,6 +234,22 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         && (ts.isIdentifier(parent.parent.name) || ts.isStringLiteral(parent.parent.name))) {
         contract = this.#memberContracts.get(`${parent.parent.name.text}#${symbol.name}`);
         if (contract) break;
+      }
+    }
+    if (!contract) {
+      const declaration = symbol.valueDeclaration;
+      if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+        && ts.isVariableDeclarationList(declaration.parent)
+        && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
+        let initializer = declaration.initializer;
+        while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+          || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)) initializer = initializer.expression;
+        const lookup = ts.isPropertyAccessExpression(initializer) ? initializer.name
+          : ts.isElementAccessExpression(initializer) && initializer.argumentExpression
+            && (ts.isStringLiteral(initializer.argumentExpression) || ts.isNumericLiteral(initializer.argumentExpression))
+            ? initializer.argumentExpression : ts.isIdentifier(initializer) ? initializer : undefined;
+        const target = lookup ? targetSymbol(this.#checker, lookup) : undefined;
+        if (target) contract = this.#resolveSymbolContract(target, seen);
       }
     }
     return contract;

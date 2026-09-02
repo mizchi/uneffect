@@ -102,7 +102,9 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
   transition model; an `external` queue remains external rather than being
   guessed as a Web or Node task queue. Local/package barrels and renamed
   re-exports retain that declaration identity, while mutable aliases and
-  same-spelled local functions do not inherit the contract;
+  same-spelled local functions do not inherit the contract. Acyclic immutable
+  `const` callable aliases, including stable namespace properties, resolve back
+  to the same reviewed symbol without depending on the local variable name;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.
