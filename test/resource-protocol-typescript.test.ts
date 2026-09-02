@@ -508,12 +508,20 @@ describe("TypeScript resource protocol CFG lowering", () => {
       writeFileSync(fileName, `
         function riskySync(): void {}
         async function riskyAsync(): Promise<void> {}
+        const syncAlias = riskySync
+        const asyncAlias = riskyAsync
+        const frozen = Object.freeze({ riskyAsync })
+        let mutableAlias = riskySync
         function main() {
           riskySync()
         }
         async function awaited() {
           await riskyAsync()
         }
+        function aliasedSync() { syncAlias() }
+        async function aliasedAsync() { await asyncAlias() }
+        async function frozenAsync() { await frozen.riskyAsync() }
+        function mutable() { mutableAlias() }
         function floating() {
           riskyAsync()
         }
@@ -551,6 +559,16 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(collectCallableExceptionalTransitionSites(program, functions.get("awaited")!, summaries)[0]).toMatchObject({
         exceptionEvidence: { completion: "awaited-reject", errorTypes: ["Error"] },
       });
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("aliasedSync")!, summaries)[0]).toMatchObject({
+        exceptionEvidence: { completion: "synchronous-throw", errorTypes: ["Error"] },
+      });
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("aliasedAsync")!, summaries)[0]).toMatchObject({
+        exceptionEvidence: { completion: "awaited-reject", errorTypes: ["Error"] },
+      });
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("frozenAsync")!, summaries)[0]).toMatchObject({
+        exceptionEvidence: { completion: "awaited-reject", errorTypes: ["Error"] },
+      });
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("mutable")!, summaries)).toEqual([]);
       expect(collectCallableExceptionalTransitionSites(program, functions.get("floating")!, summaries)).toEqual([]);
       expect(collectCallableExceptionalTransitionSites(program, functions.get("sameName")!, summaries)).toEqual([]);
       expect(syncSites[0]!.exceptionEvidence?.summaryId).toContain(`${fileName}:`);

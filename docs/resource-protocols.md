@@ -95,8 +95,10 @@ Explicit `throw` routes ownership state to the matching `catch`, and mandatory
 `finally` blocks run on normal, return, throw, break, and continue exits through
 the shared lowerer. Authenticated callable `Throw` and directly awaited
 `Reject` summaries add may-throw edges by declaration identity, so catch-side
-ownership changes join with normal completion. Arbitrary or same-named calls
-do not manufacture exceptional edges.
+ownership changes join with normal completion. The identity survives immutable
+`const` callable aliases and own properties of an authenticated
+`Object.freeze({...})` table. Reassigned aliases, mutable property tables,
+arbitrary calls, and same-named calls do not manufacture exceptional edges.
 
 ## Callable resource boundaries
 
