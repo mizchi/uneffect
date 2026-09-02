@@ -137,6 +137,12 @@ describe("declarative Uneffect modules", () => {
         expect.objectContaining({ owner: "valid", status: "satisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
       ]));
+      expect(result.assumptions.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "builtin", owner: "security-platform", reason: "reviewed acquisition" }),
+      ]));
+      expect(result.assumptions.entries).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: expect.stringContaining("builtin-resource:"), owner: "@mizchi/uneffect" }),
+      ]));
       const project = await verifyUneffectProject({
         files: { [entry]: readFileSync(entry, "utf8") }, builtinRegistry: installed.registry,
       });

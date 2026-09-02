@@ -197,12 +197,6 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
           reason: "trusted resource callable contract used by general lifecycle analysis", owner: "source declaration",
           scope: { fileName: item.fileName, functionName: item.owner, span: item.span },
         }] : []),
-        ...(item.authority !== "callable-contract" ? [{
-          id: `builtin-resource:${item.fileName}:${item.span.start}:${item.resource}`,
-          evidence: "trusted" as const, domain: "builtin" as const,
-          reason: "reviewed builtin resource lifecycle overlay", owner: "@mizchi/uneffect",
-          scope: { fileName: item.fileName, functionName: item.owner, span: item.span },
-        }] : []),
       ]));
       diagnostics.push(...lifecycle.diagnostics.map((diagnostic): ResourceCheckerDiagnostic => ({
         domain: "resource", kind: diagnostic.kind,

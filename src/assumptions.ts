@@ -170,7 +170,7 @@ export function collectAssumptionLedger(
         },
       }));
     }
-    for (const call of collectBuiltinCallRefinements(program, source)) {
+    for (const call of collectBuiltinCallRefinements(program, source, registry)) {
       const contract = findBuiltinContract(registry, call.symbol);
       if (!contract || contract.evidence !== "trusted") continue;
       entries.push(entry({

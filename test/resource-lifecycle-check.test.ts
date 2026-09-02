@@ -398,7 +398,7 @@ describe("general resource lifecycle check", () => {
         expect.objectContaining({ domain: "resource", kind: "invalid-transition", functionName: "invalid" }),
       ]));
       expect(result.assumptions.entries).toEqual(expect.arrayContaining([
-        expect.objectContaining({ domain: "builtin", reason: "reviewed builtin resource lifecycle overlay" }),
+        expect.objectContaining({ domain: "builtin", reason: "reviewed builtin semantic overlay" }),
       ]));
       expect(result.assumptions.entries.filter((entry) => entry.domain === "resource-callable")).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
