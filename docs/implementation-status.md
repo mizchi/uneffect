@@ -931,8 +931,9 @@ same property is proved for arbitrary TypeScript.
   async lanes remain unknown.
   A package summary may persist one direct immutable returned callable. Its
   Effect and exception metadata compose through a direct consumer
-  `const result = factory()` binding; mutable, conditional, multi-return, and
-  further higher-order forms remain unknown.
+  `const result = factory()` binding plus acyclic immutable identifier aliases
+  across TypeChecker-resolved imports/re-exports; mutable, conditional, cyclic,
+  property-stored, multi-return, and further higher-order forms remain unknown.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

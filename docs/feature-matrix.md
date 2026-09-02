@@ -83,9 +83,10 @@ optionality remain unknown.
 Reviewed builtin forwarding uses the same join with composed inner
 cardinality, but only when timing and completion agree across every arm.
 A single direct immutable returned callable may carry Effect and exception
-metadata through a direct `const result = factory()` consumer binding. Mutable,
-selected, aliased, multi-return, callable-object, and fluent forms remain
-unknown.
+metadata through a direct `const result = factory()` consumer binding and
+acyclic immutable identifier aliases across imports/re-exports. Mutable,
+selected, cyclic, property-stored, multi-return, callable-object, and fluent
+forms remain unknown.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

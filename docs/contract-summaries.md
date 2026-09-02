@@ -169,8 +169,10 @@ with a Promise reaction or host task stays `unknown`.
 One direct returned callable is persisted as `returnCallable` when the producer
 has exactly one return expression resolving to an inline function or immutable
 local callable with non-unknown evidence. A consumer may invoke it through a
-direct `const result = factory()` binding; its Effect, synchronous `Throw`, and
-directly awaited rejection then compose like an ordinary authenticated package
-call. `let`, reassignment, conditional or multiple returns, aliases of the
-result, and dynamic selection remain unknown. This is not yet a general
-higher-order or fluent-API model.
+direct `const result = factory()` binding and an acyclic immutable identifier
+alias chain. TypeChecker-resolved imports and re-exports of that binding retain
+identity. Its Effect, synchronous `Throw`, and directly awaited rejection then
+compose like an ordinary authenticated package call. `let`, reassignment,
+conditional or multiple returns, cyclic aliases, property storage, and dynamic
+selection remain unknown. This is not yet a general higher-order or fluent-API
+model.

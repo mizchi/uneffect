@@ -914,18 +914,24 @@ export function externalContractForCall(
   const location = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
   let symbol = checker.getSymbolAtLocation(location);
   if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-  for (const declaration of symbol?.declarations ?? []) {
-    const source = declaration.getSourceFile();
-    const contract = contracts.get(`${source.fileName}:${declaration.getStart(source)}`);
-    if (contract) return contract;
-  }
-  if (symbol && !seen.has(symbol)) {
-    const declaration = symbol.valueDeclaration;
+  const resolveSymbol = (candidate: ts.Symbol | undefined, visited: Set<ts.Symbol>): ExternalFunctionEffectContract | undefined => {
+    if (!candidate) return undefined;
+    for (const item of candidate.declarations ?? []) {
+      const source = item.getSourceFile();
+      const contract = contracts.get(`${source.fileName}:${item.getStart(source)}`);
+      if (contract) return contract;
+    }
+    if (visited.has(candidate)) return undefined;
+    const nextVisited = new Set(visited).add(candidate);
+    const declaration = candidate.valueDeclaration;
     if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
       && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
-      const initializer = declaration.initializer;
+      let initializer = declaration.initializer;
+      while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+        || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)
+        || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
       if (ts.isCallExpression(initializer)) {
-        const producer = externalContractForCall(checker, initializer, contracts, new Set(seen).add(symbol));
+        const producer = externalContractForCall(checker, initializer, contracts, nextVisited);
         if (producer?.returnCallable) return {
           effects: producer.returnCallable.effects,
           rejects: producer.returnCallable.rejects,
@@ -934,9 +940,15 @@ export function externalContractForCall(
           functionName: `${producer.functionName ?? initializer.expression.getText()} return`,
         };
       }
+      if (ts.isIdentifier(initializer)) {
+        let target = checker.getSymbolAtLocation(initializer);
+        if (target && (target.flags & ts.SymbolFlags.Alias) !== 0) target = checker.getAliasedSymbol(target);
+        return resolveSymbol(target, nextVisited);
+      }
     }
-  }
-  return undefined;
+    return undefined;
+  };
+  return resolveSymbol(symbol, seen);
 }
 
 function hasExternalReturnedCallableCandidate(
@@ -945,25 +957,32 @@ function hasExternalReturnedCallableCandidate(
   contracts: ReadonlyMap<string, ExternalFunctionEffectContract> | undefined,
 ): boolean {
   if (!contracts || !ts.isIdentifier(call.expression)) return false;
-  const symbol = checker.getSymbolAtLocation(call.expression);
-  const declaration = symbol?.valueDeclaration;
-  if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer) return false;
-  let found = false;
-  const visit = (node: ts.Node): void => {
-    if (found) return;
+  const seen = new Set<ts.Symbol>();
+  const inspect = (node: ts.Node): boolean => {
+    if (ts.isIdentifier(node)) {
+      let symbol = checker.getSymbolAtLocation(node);
+      if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+      if (symbol && !seen.has(symbol)) {
+        seen.add(symbol);
+        const declaration = symbol.valueDeclaration;
+        if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+          && inspect(declaration.initializer)) return true;
+      }
+    }
     if (ts.isCallExpression(node)) {
       const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
       let target = checker.getSymbolAtLocation(lookup);
       if (target && (target.flags & ts.SymbolFlags.Alias) !== 0) target = checker.getAliasedSymbol(target);
       for (const candidate of target?.declarations ?? []) {
         const source = candidate.getSourceFile();
-        if (contracts.get(`${source.fileName}:${candidate.getStart(source)}`)?.returnCallable) { found = true; return; }
+        if (contracts.get(`${source.fileName}:${candidate.getStart(source)}`)?.returnCallable) return true;
       }
     }
-    ts.forEachChild(node, visit);
+    let found = false;
+    ts.forEachChild(node, (child) => { if (!found && inspect(child)) found = true; });
+    return found;
   };
-  visit(declaration.initializer);
-  return found;
+  return inspect(call.expression);
 }
 
 function hasConfiguredExternalContractCandidate(

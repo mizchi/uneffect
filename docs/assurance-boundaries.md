@@ -343,9 +343,11 @@ has the same timing and completion semantics. Different async lanes are never
 collapsed into one callback guarantee.
 
 Returned-callable composition is limited to a producer's single direct
-immutable callable return and a consumer's direct `const` factory-result
-binding. Mutable or selected results are explicitly unknown; callable objects,
-methods, currying chains, and general higher-order escape are outside the claim.
+immutable callable return and a consumer's direct `const` factory-result plus
+acyclic immutable identifier aliases, including TypeChecker-resolved
+imports/re-exports. Mutable, cyclic, property-stored, or selected results are
+explicitly unknown; callable objects, methods, currying chains, and general
+higher-order escape are outside the claim.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

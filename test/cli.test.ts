@@ -140,6 +140,7 @@ describe("uneffect command line", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-contract-summary-"));
     const producerFile = join(directory, "producer.ts");
     const consumerFile = join(directory, "consumer.ts");
+    const reporterFile = join(directory, "reporter.ts");
     const summaryFile = join(directory, "contract-summary.json");
     const packageDirectory = join(directory, "node_modules", "@example", "math");
     const producerSource = `
@@ -179,8 +180,8 @@ describe("uneffect command line", () => {
       }
     `;
     const consumerSource = `
-      import { addOne, choose, chooseLater, configure, makeReporter, once, report, reportArrow, update } from "@example/math"
-      const madeReporter = makeReporter()
+      import { addOne, choose, chooseLater, configure, once, report, reportArrow, update } from "@example/math"
+      import { madeReporter } from "./reporter.js"
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result === value + 1 */
       export async function run(value: number): Promise<number> { return await addOne(value) }
@@ -213,6 +214,11 @@ describe("uneffect command line", () => {
       mkdirSync(packageDirectory, { recursive: true });
       writeFileSync(producerFile, producerSource);
       writeFileSync(consumerFile, consumerSource);
+      writeFileSync(reporterFile, `
+        import { makeReporter } from "@example/math"
+        const reporter = makeReporter()
+        export const madeReporter = reporter
+      `);
       writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
         name: "@example/math", version: "1.2.3", types: "index.d.ts",
       }));

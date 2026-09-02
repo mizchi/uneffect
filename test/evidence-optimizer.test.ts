@@ -1144,11 +1144,14 @@ describe("evidence and optimizer obligations", () => {
       /* uneffect:effect Console */
       export function stable() {
         const report = makeReporter()
-        report("ok")
+        const alias = report
+        const nestedAlias = alias
+        nestedAlias("ok")
       }
       /* uneffect:effect Console */
       export function mutable() {
-        let report = makeReporter()
+        const made = makeReporter()
+        let report = made
         report("unknown")
       }
     `);
