@@ -29,6 +29,35 @@ function analyze(body: string) {
   return result;
 }
 
+function analyzeRegionIds(body: string): string[] {
+  const directory = mkdtempSync(join(tmpdir(), "uneffect-region-paths-"));
+  try {
+    const fileName = join(directory, "entry.ts");
+    writeFileSync(fileName, `
+      declare function mutate(value: object): void;
+      function run(state: { left: object; right: object }) { ${body} }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, noEmit: true });
+    const source = program.getSourceFile(fileName)!;
+    const calls: ts.CallExpression[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "mutate") calls.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    return calls.map((call) => {
+      const result = resolveStableRegion(program.getTypeChecker(), call.arguments[0]!, {
+        scope: call.parent.parent,
+        permittedUse: call.arguments[0]!,
+      });
+      if (result.status !== "resolved") throw new Error(`unexpected ${result.reason}`);
+      return result.regionId;
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 describe("common immutable region aliases", () => {
   it("resolves a non-escaping const alias chain and static property path", () => {
     expect(analyze(`
@@ -40,6 +69,16 @@ describe("common immutable region aliases", () => {
       region: "state.nested",
       aliases: [{ name: "target", binding: "const" }, { name: "root", binding: "const" }],
     });
+  });
+
+  it("assigns distinct machine identities to sibling property regions", () => {
+    const [left, right, leftAgain] = analyzeRegionIds(`
+      mutate(state.left);
+      mutate(state.right);
+      mutate(state["left"]);
+    `);
+    expect(left).not.toBe(right);
+    expect(leftAgain).toBe(left);
   });
 
   it.each([

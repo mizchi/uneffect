@@ -24,7 +24,9 @@ same property is proved for arbitrary TypeScript.
 ## Capability effects
 
 - The first shared region resolver follows non-escaping `const` alias chains
-  and static property paths for direct call arguments. Effect-call mutation
+  and static property paths for direct call arguments. Static sibling paths
+  have distinct canonical machine identities, while dot access and an
+  equivalent literal element access share one identity. Effect-call mutation
   substitution uses this resolver and fails closed for mutable bindings,
   computed keys, extra uses/escape, cycles, and property paths whose runtime
   data descriptor cannot be established. Other region consumers have not yet

@@ -119,6 +119,7 @@ export function resolveStableRegion(
       return {
         ...base,
         region: `${base.region}${separator}${member}`,
+        regionId: `${base.regionId}#property:${JSON.stringify(member)}`,
         runtimeDescriptorUnchecked: base.runtimeDescriptorUnchecked || propertyDescriptorUnchecked(checker, expression),
       };
     }

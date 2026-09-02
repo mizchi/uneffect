@@ -274,6 +274,9 @@ introducing another domain-local control-flow or alias model.
    - [x] Add the shared immutable-alias resolver and migrate direct Effect-call
      mutation argument substitution, including explicit unchecked runtime
      descriptor evidence for property paths.
+   - [x] Include canonical static property segments in machine region ids, so
+     sibling properties cannot alias accidentally and equivalent dot/literal
+     access retains one identity.
    - [ ] [#6](https://github.com/mizchi/uneffect/issues/6) Migrate typed-array buffer/view aliases.
      - [x] Migrate Program-backed bounded DataView receiver alias chains; allow
        repeated reviewed builtin accessor calls and report an escaped alias as
