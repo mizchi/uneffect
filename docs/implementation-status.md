@@ -909,6 +909,12 @@ same property is proved for arbitrary TypeScript.
   opaque synchronous-divergence choices; generated models are Quint-typechecked
   in acceptance tests. Returned callables, arbitrary profile-specific host
   tasks, and resource ownership remain open.
+  A shallow literal callback container returned by the exact standard-library
+  `Object.freeze` symbol may be reused; a local lookalike remains unknown and
+  deep payload immutability is not inferred.
+  This only recognizes an existing runtime freeze and does not recommend adding
+  one. Inline literals and exclusive single-use `const` containers are the
+  current zero-runtime alternatives.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

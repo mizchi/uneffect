@@ -127,3 +127,14 @@ mutation, alias, capture, spread, computed/dynamic selection, or unresolved
 leaf fails closed. Returned
 callables, reentrancy/concurrency, external settlement internals, and resource ownership
 remain outside this first consumer fragment.
+
+A literal wrapped by the exact standard-library `Object.freeze` symbol may be
+reused across calls. This is a shallow rule: the selected callback property is
+stable, but Uneffect does not infer deep immutability for nested mutable values.
+A same-spelled local `Object.freeze` receives no authority.
+
+This is compatibility recognition for code that already freezes the container,
+not a recommendation to introduce `Object.freeze`. Freezing has runtime cost,
+while Uneffect's preferred inline-literal and exclusive single-use `const`
+paths are static-only. Reusable zero-runtime containers require a separate
+write-screened ownership rule and remain unsupported here.

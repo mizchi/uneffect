@@ -64,6 +64,10 @@ the executable Web/Node Quint Promise-chain state machine with explicit
 settled, pending, and opaque synchronous-divergence choices. Returned
 callables, arbitrary host-task queue selection, and resource semantics remain
 unsupported.
+The TypeChecker-identical standard `Object.freeze` admits repeated shallow
+literal-container use. Lookalikes and deep immutability are not assumed.
+This is recognition of an existing runtime operation, not an adoption
+recommendation; the current zero-runtime container rule remains single-use.
 Direct immutable exported arrow/function-expression callables use the same
 package export-symbol and resolved-signature binding. Mutable or compound
 export declarations remain unsupported.

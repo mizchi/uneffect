@@ -963,6 +963,65 @@ describe("evidence and optimizer obligations", () => {
     });
   });
 
+  it("reuses a standard Object.freeze callback container across calls", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { readonly onDone: () => void }): void
+      /* uneffect:effect Console */
+      function log() { console.log("called") }
+      /* uneffect:effect Console */
+      export function run() {
+        const options = Object.freeze({ onDone: log })
+        configure(options)
+        configure(options)
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, functionName: "configure",
+        callbackParameters: [{
+          index: 0, path: ["onDone"], name: "onDone", timing: "inline" as const,
+          cardinality: "exactly-1" as const, completion: "propagate-throw" as const,
+          effectBound: [{ kind: "capability", name: "Console", arguments: [] }],
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      effects: [{ kind: "capability", name: "Console", arguments: [] }], evidence: "verified",
+    });
+  });
+
+  it("does not trust a same-named Object.freeze lookalike", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { readonly onDone: () => void }): void
+      const Object = { freeze<T>(value: T): T { return value } }
+      function done() {}
+      /* uneffect:effect none */
+      export function run() {
+        const options = Object.freeze({ onDone: done })
+        configure(options)
+        configure(options)
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, functionName: "configure",
+        callbackParameters: [{
+          index: 0, path: ["onDone"], name: "onDone", timing: "inline" as const,
+          cardinality: "exactly-1" as const, completion: "propagate-throw" as const, effectBound: [],
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      evidence: "unknown", unknownReasons: [{ code: "unknown-callback-timing" }],
+    });
+  });
+
   it("fails closed for a dynamically selected nested external callback", () => {
     const { program, source } = programOf(`
       declare function configure(options: { onDone: () => void }): void

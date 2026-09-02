@@ -317,6 +317,12 @@ the callback, conservative settlement, and ownership status by declaration
 identity; this does not prove when or whether opaque external code settles.
 Returned callables and resource
 summaries remain outside this claim.
+The TypeChecker-identical standard `Object.freeze` permits repeated use of a
+shallow literal callback container. Same-named user code and deep mutable
+payloads are outside that stability claim.
+This recognizes an existing runtime freeze; Uneffect does not recommend adding
+one for verification. Inline literals and exclusive single-use `const`
+containers remain the zero-runtime paths.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

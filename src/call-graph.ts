@@ -109,6 +109,17 @@ export function expressionAtExclusiveConstArgumentPath(
   path: readonly (string | number)[],
 ): ts.Expression | undefined {
   const seen = new Set<ts.Symbol>();
+  const frozenLiteral = (initializer: ts.Expression): ts.Expression | undefined => {
+    const current = unwrapLiteralContainerExpression(initializer);
+    if (!ts.isCallExpression(current) || current.arguments.length !== 1
+      || !ts.isPropertyAccessExpression(current.expression) || current.expression.name.text !== "freeze") return undefined;
+    const freeze = resolvedSymbol(checker, current.expression.name);
+    const standard = freeze?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "ObjectConstructor");
+    if (!standard) return undefined;
+    const value = unwrapLiteralContainerExpression(current.arguments[0]!);
+    return ts.isObjectLiteralExpression(value) || ts.isArrayLiteralExpression(value) ? value : undefined;
+  };
   const exclusiveInitializer = (identifier: ts.Identifier): ts.Expression | undefined => {
     const symbol = resolvedSymbol(checker, identifier);
     if (!symbol || seen.has(symbol)) return undefined;
@@ -116,6 +127,8 @@ export function expressionAtExclusiveConstArgumentPath(
     if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
       || !ts.isVariableDeclarationList(declaration.parent)
       || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+    const frozen = frozenLiteral(declaration.initializer);
+    if (frozen) { seen.add(symbol); return frozen; }
     let references = 0;
     const scan = (node: ts.Node): void => {
       if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === symbol) references++;

@@ -527,6 +527,13 @@ introducing another domain-local control-flow or alias model.
    - [x] Admit an exclusive single-use `const` object/tuple callback container
      by TypeChecker symbol identity while rejecting mutation, repeated use,
      capture, and escape through the same reference screen.
+   - [x] Recognize existing repeated shallow literal callback-container use
+     through the TypeChecker-identical standard `Object.freeze`; reject
+     same-named user functions, avoid claiming deep immutability, and do not
+     recommend introducing a runtime freeze for verification.
+   - [ ] Generalize repeated zero-runtime callback containers through
+     TypeChecker-resolved, write-screened readonly ownership without requiring
+     `Object.freeze`; reject mutation, capture, escape, getters, and proxies.
    - [x] Publish and consume single immutable exported arrow/function-expression
      callables by root-package export symbol plus resolved signature; exclude
      mutable and compound variable exports.
