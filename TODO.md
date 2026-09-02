@@ -646,6 +646,10 @@ introducing another domain-local control-flow or alias model.
        error type through direct Promise return and uncaught direct await into
        callable summaries; exclude floating calls and swallowing catches while
        retaining explicit rethrow.
+     - [x] Apply semantics-module resource and callback primitives to reviewed
+       interface/class member symbols, retaining concrete receiver identity and
+       callback queues through aliases; reject extracted unbound resource
+       methods without inventing receiver authority.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

@@ -272,11 +272,11 @@ function builtinInvocation(
     };
   }
   const symbol = resolvedSymbol(checker, call.expression.name);
-  if (!libraryDeclaration(program, symbol)) return undefined;
-  if (["map", "filter", "forEach", "some", "every"].includes(name)) return {
+  const standardLibraryMember = libraryDeclaration(program, symbol);
+  if (standardLibraryMember && ["map", "filter", "forEach", "some", "every"].includes(name)) return {
     api: `Array.prototype.${name}`, argument: 0, cardinality: "0..n", timing: "inline", completion: "propagate-throw",
   };
-  if (["then", "catch", "finally"].includes(name)) return {
+  if (standardLibraryMember && ["then", "catch", "finally"].includes(name)) return {
     api: `Promise.prototype.${name}`, argument: name === "then" ? 0 : 0, cardinality: "0..1",
     timing: "promise-reaction", completion: "convert-throw-to-rejection",
   };
@@ -296,6 +296,7 @@ function builtinInvocation(
         timing: event.timing === "sync" ? "inline" : microtask ? "promise-reaction" : "deferred",
         completion: event.completion ?? (event.timing === "sync" ? "propagate-throw"
           : microtask ? "convert-throw-to-rejection" : "host-report-throw"),
+        queue: event.queue,
       };
     }
   }

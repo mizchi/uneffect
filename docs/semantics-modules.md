@@ -113,6 +113,11 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
   direct return or uncaught direct await. A swallowing catch and a floating
   Promise do not attribute that rejection to the wrapper, while an explicit
   rethrow remains rejecting;
+- reviewed interface/class member contracts use the declared member symbol and
+  concrete receiver identity for resource use/release, and carry callback queue
+  semantics through the same temporal IR. Immutable receiver aliases compose;
+  an extracted unbound resource method has no receiver authority and fails
+  closed instead of releasing the original object;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.

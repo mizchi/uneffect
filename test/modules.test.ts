@@ -106,7 +106,8 @@ describe("declarative Uneffect modules", () => {
         name: "reviewed-handle", version: "1.0.0", types: "index.d.ts",
       }));
       writeFileSync(join(packageDirectory, "index.d.ts"), `
-        export interface Handle { readonly id: number }
+        export interface Handle { readonly id: number; inspect(): void; close(): void }
+        export interface Scheduler { schedule(callback: () => void): void }
         export declare function open(): Handle
         export declare function openAsync(): Promise<Handle>
         export declare function inspect(handle: Handle): void
@@ -116,6 +117,7 @@ describe("declarative Uneffect modules", () => {
         export declare function risky(): void
         export declare function riskyWhen(flag: boolean): void
         export declare function riskyAsync(): Promise<void>
+        export declare function createScheduler(): Scheduler
       `);
       const module = {
         ...auditModule,
@@ -136,6 +138,9 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "risky" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed synchronous failure", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "Error" }] } },
             { symbol: { module: "reviewed-handle", export: "riskyWhen" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed conditional failure", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "Error", condition: "flag" }] } },
             { symbol: { module: "reviewed-handle", export: "riskyAsync" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed Promise rejection", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "reject", error: "RangeError" }] } },
+            { symbol: { module: "reviewed-handle", export: "Handle#inspect" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed receiver use", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "use", resource: "Acme.Handle", target: { kind: "receiver" } }] } },
+            { symbol: { module: "reviewed-handle", export: "Handle#close" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed receiver release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "receiver" } }] } },
+            { symbol: { module: "reviewed-handle", export: "Scheduler#schedule" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed member callback", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..1", completion: "host-report-throw" }] } },
           ],
         },
       } as const;
@@ -144,7 +149,7 @@ describe("declarative Uneffect modules", () => {
       writeFileSync(facade, `export { schedule as later } from "reviewed-handle"`);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler } from "reviewed-handle"
         const scheduleAlias = schedule
         const aliasedCallback = () => {}
         export function valid() { const handle = open(); inspect(handle); close(handle) }
@@ -152,6 +157,9 @@ describe("declarative Uneffect modules", () => {
         export async function asyncValid() { const handle = await openAsync(); inspect(handle); await closeAsync(handle) }
         export function scheduled() { schedule(() => {}) }
         export function aliasScheduled() { scheduleAlias(aliasedCallback) }
+        export function memberValid() { const handle = open(); const alias = handle; alias.inspect(); alias.close() }
+        export function extractedReceiver() { const handle = open(); const shutdown = handle.close; shutdown() }
+        export function memberScheduled() { const scheduler = createScheduler(); scheduler.schedule(aliasedCallback) }
         export function exceptional() {
           const handle = open()
           try { risky(); close(handle) }
@@ -181,6 +189,8 @@ describe("declarative Uneffect modules", () => {
         expect.objectContaining({ owner: "exceptional", status: "unknown", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "conservativeCondition", status: "unknown", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "rejectionCleanup", status: "unknown", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "memberValid", status: "satisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "extractedReceiver", status: "unknown", authority: "builtin-catalog" }),
       ]));
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         domain: "resource", kind: "invalid-transition", functionName: "exceptional",
@@ -210,6 +220,10 @@ describe("declarative Uneffect modules", () => {
       expect(callable.summaries.find((summary) => summary.name === "floatsRisky")?.rejects).toEqual([]);
       expect(temporal.transitions).toContainEqual(expect.objectContaining({
         kind: "invoke-callback", callback: "() => {}", api: "schedule",
+        cardinality: "0..1", lane: "external", completion: "host-report-throw",
+      }));
+      expect(temporal.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", callback: "aliasedCallback", api: "Scheduler#schedule",
         cardinality: "0..1", lane: "external", completion: "host-report-throw",
       }));
       expect(temporal.transitions).toContainEqual(expect.objectContaining({
