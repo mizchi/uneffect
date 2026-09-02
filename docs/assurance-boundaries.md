@@ -359,6 +359,10 @@ mutation, escape, or dynamic selection invalidate the evidence. Explicit
 callable members carry may-effects and exception metadata; general classes,
 prototype methods, `this`-dependent refinements, and fluent chains are outside
 the claim.
+Direct member callback parameters may additionally carry the same bounded
+cardinality, timing, completion, and Effect-bound evidence as top-level package
+functions. This is not evidence for reentrant, concurrent, retained, or
+dynamically selected callbacks.
 `this`-rooted member mutation effects are substituted with the proven receiver
 region; this does not imply general method binding or relational `this`
 semantics.

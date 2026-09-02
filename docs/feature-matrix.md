@@ -96,6 +96,10 @@ and exception metadata for a write-screened `const client` receiver and its
 acyclic immutable aliases. Mutable or escaping aliases fail closed. Classes,
 prototype/`this` refinements, escaped clients, and fluent chains remain
 unknown.
+Direct callback parameters on those returned members retain bounded Effect,
+cardinality, timing, and completion evidence across an authenticated package
+boundary; retained, reentrant, concurrent, and dynamically selected callbacks
+remain unknown.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

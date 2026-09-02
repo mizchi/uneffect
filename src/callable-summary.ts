@@ -57,6 +57,8 @@ export interface CallableSummary {
     readonly effects: readonly Effect[];
     readonly throws: readonly string[];
     readonly rejects: readonly string[];
+    readonly parameters: readonly string[];
+    readonly callbackParameters: readonly CallbackParameterSummary[];
     readonly evidence: Exclude<EvidenceStatus, "unknown">;
   }[];
   readonly evidence: EvidenceStatus;
@@ -539,6 +541,9 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
         const returned = byId.get(`${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`);
         return !returned || returned.evidence === "unknown" ? [] : [{
           key, effects: returned.effects, throws: returned.throws, rejects: returned.rejects,
+          parameters: target.parameters.map((parameter, index) =>
+            ts.isIdentifier(parameter.name) ? parameter.name.text : `arg${index}`),
+          callbackParameters: returned.callbackParameters,
           evidence: returned.evidence as Exclude<EvidenceStatus, "unknown">,
         }];
       });

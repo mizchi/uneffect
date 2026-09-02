@@ -598,6 +598,11 @@ introducing another domain-local control-flow or alias model.
        chains. Screen the complete alias family by TypeChecker identity,
        normalize `this` mutation to the factory-bound root, and reject mutable
        aliases, escape, mutation, or dynamic member selection.
+     - [x] Persist each returned member's direct callback parameters, Effect
+       bounds, invocation cardinality/timing, and completion lane. Project the
+       authenticated member contract onto the consumer's TypeChecker-resolved
+       method symbol so the existing callback call graph composes it through
+       immutable receiver aliases and package boundaries.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.

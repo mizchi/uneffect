@@ -89,6 +89,8 @@
                     "key": { "type": "string", "minLength": 1 },
                     "effects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
                     "rejects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                    "parameters": { "type": "array", "items": { "type": "string" } },
+                    "callbacks": { "type": "array", "items": { "$ref": "#/$defs/callback" } },
                     "evidence": { "enum": ["inferred", "trusted", "verified"] }
                   }
                 }

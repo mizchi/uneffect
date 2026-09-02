@@ -119,6 +119,8 @@ describe("backend-neutral callable summaries", () => {
           return {
             report(message: string) { console.log(message) },
             audit: (message: string) => console.log(message),
+            /* uneffect:effect_parameter callback extends Console */
+            run(callback: () => void) { callback() },
             label: "client",
           }
         }
@@ -238,6 +240,13 @@ describe("backend-neutral callable summaries", () => {
       expect(analysis.summaries.find(({ name }) => name === "createClient")?.returnMembers).toEqual([
         expect.objectContaining({ key: "report", effects: [expect.objectContaining({ name: "Console" })] }),
         expect.objectContaining({ key: "audit", effects: [expect.objectContaining({ name: "Console" })] }),
+        expect.objectContaining({
+          key: "run",
+          callbackParameters: [expect.objectContaining({
+            name: "callback", cardinality: "exactly-1", timing: "inline",
+            effectBound: ["Console"],
+          })],
+        }),
       ]);
       expect(analysis.summaries.find(({ name }) => name === "spreadClient")?.returnMembers).toBeUndefined();
       expect(analysis.summaries.find(({ name }) => name === "accessorClient")?.returnMembers).toBeUndefined();

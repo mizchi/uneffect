@@ -943,6 +943,9 @@ same property is proved for arbitrary TypeScript.
   its acyclic immutable aliases, then composes per-member Effect/Throw/rejection
   metadata. Mutable or escaping aliases fail closed. General class instances,
   prototype dispatch, `this` refinements, escape, and fluent chains remain open.
+  Direct member callback parameters preserve Effect bounds, cardinality,
+  timing, and completion through package binding and immutable receiver aliases;
+  opaque retention, reentrancy, and concurrency remain open.
   A member `Mutate<typeof this.path>` is instantiated as mutation of the
   concrete addressable client receiver; an unstable receiver fails closed.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an

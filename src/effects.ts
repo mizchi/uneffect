@@ -79,6 +79,8 @@ export interface ExternalFunctionEffectContract {
     effects: readonly Effect[];
     rejects?: readonly string[];
     contractEvidence?: "trusted" | "verified";
+    parameters?: readonly string[];
+    callbackParameters?: ExternalFunctionEffectContract["callbackParameters"];
   }[];
   /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
   parameters?: readonly string[];
@@ -1017,6 +1019,8 @@ export function externalContractForCall(
     const member = producer?.returnMembers?.find((candidate) => candidate.key === key);
     return member ? {
       effects: member.effects, rejects: member.rejects, evidence: producer!.evidence,
+      parameters: member.parameters,
+      callbackParameters: member.callbackParameters,
       contractEvidence: member.contractEvidence ?? producer!.contractEvidence,
       functionName: `${producer!.functionName ?? "factory"}.${key}`,
       receiverBound: true,
@@ -1692,7 +1696,7 @@ function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclarat
 
 /** Program-wide path used by the CLI/native frontend: all edges come from TypeChecker identities. */
 export function analyzeProgramEffects(program: ts.Program, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
-  const registry = options.builtinRegistry ?? builtinContractRegistry;
+  const registry = options.builtinRegistry ?? builtinContractRegistry, checker = program.getTypeChecker();
   const isKnown = (effect: Effect): boolean => effect.kind !== "capability" || options.effectSchemas?.has(effect.name) === true || effectSchema(effect.name) !== undefined;
   const externalIteratorEffects = new Map<string, ExternalIteratorEffectContract>();
   for (const [key, contract] of options.externalFunctionEffects ?? []) {
@@ -1701,15 +1705,53 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       externalIteratorEffects.set(key, { key, parameters: contract.iteratorEffectParameters! });
     }
   }
-  const externalCallableEffects = new Map([...options.externalFunctionEffects ?? []].flatMap(([key, contract]) =>
-    contract.callbackParameters?.length ? [[key, {
+  const callableContract = (key: string, contract: ExternalFunctionEffectContract) =>
+    contract.callbackParameters?.length ? {
       key,
       parameters: contract.callbackParameters.map(({ index, name, path, containerAccess, timing, completion, effectBound }) => ({
         index, name, path, timing: timing === "promise-reaction" ? "deferred" as const : timing, completion, effectBound,
         preservesContainer: containerAccess === "borrow-readonly",
       })),
-    }] as const] : []));
-  const graph = buildProgramCallGraph(program, { externalIteratorEffects, externalCallableEffects, builtinRegistry: registry }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
+    } : undefined;
+  const externalCallableEffects = new Map([...options.externalFunctionEffects ?? []].flatMap(([key, contract]) => {
+    const projected = callableContract(key, contract);
+    return projected ? [[key, projected] as const] : [];
+  }));
+  const returnedMemberFactories = new Map([...options.externalFunctionEffects ?? []].filter(([, contract]) =>
+    contract.returnMembers?.some((member) => member.callbackParameters?.length)));
+  if (returnedMemberFactories.size > 0) for (const source of program.getSourceFiles()) {
+    const visitFactoryDeclarations = (node: ts.Node): void => {
+      const key = `${source.fileName}:${node.getStart(source)}`;
+      const factory = returnedMemberFactories.get(key);
+      if (factory && ts.isFunctionLike(node)) {
+        const signature = checker.getSignatureFromDeclaration(node);
+        const returnType = signature && checker.getReturnTypeOfSignature(signature);
+        for (const member of factory.returnMembers ?? []) if (member.callbackParameters?.length && returnType) {
+          const property = checker.getPropertyOfType(returnType, member.key);
+          const projected = callableContract(`${key}.${member.key}`, {
+            effects: member.effects, evidence: factory.evidence,
+            callbackParameters: member.callbackParameters,
+          });
+          if (projected) for (const declaration of property?.declarations ?? []) {
+            const declarationSource = declaration.getSourceFile();
+            externalCallableEffects.set(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`, projected);
+          }
+        }
+      }
+      ts.forEachChild(node, visitFactoryDeclarations);
+    };
+    visitFactoryDeclarations(source);
+  }
+  const externalCallContracts = new Map<ts.CallExpression, ExternalFunctionEffectContract | undefined>();
+  const resolveExternalCall = (call: ts.CallExpression): ExternalFunctionEffectContract | undefined => {
+    if (externalCallContracts.has(call)) return externalCallContracts.get(call);
+    const contract = externalContractForCall(checker, call, options.externalFunctionEffects);
+    externalCallContracts.set(call, contract);
+    return contract;
+  };
+  const graph = buildProgramCallGraph(program, {
+    externalIteratorEffects, externalCallableEffects, builtinRegistry: registry,
+  }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry);
   const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
   for (const source of program.getSourceFiles()) if (!source.isDeclarationFile) {
     const problems = validateUneffectAnnotations(source.text);
@@ -1842,7 +1884,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         }
         const networkBoundary = networkBoundaryFromEffects(child, resolvedBuiltin, primitive);
         if (networkBoundary) directNetworkBoundaries.get(graphNode.id)!.push(networkBoundary);
-        const external = externalContractForCall(checker, child, options.externalFunctionEffects);
+        const external = resolveExternalCall(child);
         if (external) {
           if (external.evidence !== "verified") unknownExternalEvidence.add(graphNode.id);
           const unboundedIterator = unboundedExternalIteratorParameter(external);
@@ -2497,7 +2539,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !resolvedDynamicDependency) markUnknown("unresolved-dynamic-import", "a dynamic import specifier does not resolve to a selected relative source module");
         const resolvedBuiltin = adapter.resolveCall(node), primitive = primitiveEffects(node, adapter, checker);
         for (const effect of primitive) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
-        const external = externalContractForCall(checker, node, options.externalFunctionEffects);
+        const external = resolveExternalCall(node);
         if (external) {
           if (external.evidence !== "verified") markUnknown("unknown-external-evidence", `external function effect evidence is ${external.evidence}`);
           for (const rawEffect of external.effects) {

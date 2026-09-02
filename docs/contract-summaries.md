@@ -195,6 +195,13 @@ Effect, synchronous `Throw`, and awaited rejection. Producer spreads,
 accessors, computed or duplicate keys, and consumer mutation, escape, or
 dynamic selection fail closed. Stateful method effects are tracked, but
 general `this`-dependent relational contracts are not yet modeled.
+Direct callable parameters of each member also retain their Effect bounds,
+invocation cardinality, timing, and throw-completion lane. At the consumer the
+authenticated member contract is projected onto the TypeChecker-resolved
+method declaration before the ordinary callback call graph is built. This
+supports `client.run(callback)` through immutable receiver aliases without a
+wrapper or runtime marker. Reentrant/concurrent callback protocols and callbacks
+stored for later opaque invocation remain outside this fragment.
 Member mutation effects rooted at `this` are instantiated against the concrete
 static receiver, so `Mutate<typeof this.value>` becomes
 `Mutate<typeof client.value>`. If the receiver has no stable addressable region,

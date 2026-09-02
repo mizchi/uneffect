@@ -25,7 +25,11 @@ export interface ContractReturnedCallableV1 {
   rejects?: string[];
   evidence: "inferred" | "trusted" | "verified";
 }
-export interface ContractReturnedMemberV1 extends ContractReturnedCallableV1 { key: string }
+export interface ContractReturnedMemberV1 extends ContractReturnedCallableV1 {
+  key: string;
+  parameters?: string[];
+  callbacks?: ContractCallbackSummaryV1[];
+}
 
 export interface ContractSummaryExportV1 {
   symbol: { module: string; export: string };
@@ -116,6 +120,11 @@ export function boundContractSummaryEffectContracts(
         key: member.key,
         effects: member.effects.flatMap((effect) => parseEffectSet(effect)),
         rejects: member.rejects ?? [],
+        parameters: member.parameters,
+        ...(member.callbacks ? { callbackParameters: member.callbacks.map((callback) => {
+          const { effectBound, ...rest } = callback;
+          return { ...rest, ...(effectBound ? { effectBound: effectBound.flatMap((effect) => parseEffectSet(effect)) } : {}) };
+        }) } : {}),
         contractEvidence: "trusted" as const,
       })) } : {}),
       ...(item.summary.effect.callbacks ? { callbackParameters: item.summary.effect.callbacks.map((callback) => {
@@ -199,6 +208,10 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
           || !item.effect.returnMembers.every((member) => member && typeof member.key === "string"
             && Array.isArray(member.effects) && member.effects.every((entry) => typeof entry === "string")
             && ["inferred", "trusted", "verified"].includes(member.evidence)
+            && (member.parameters === undefined || (Array.isArray(member.parameters)
+              && member.parameters.every((entry) => typeof entry === "string")))
+            && (member.callbacks === undefined || (Array.isArray(member.callbacks)
+              && member.callbacks.every(validCallback)))
             && (member.rejects === undefined || (Array.isArray(member.rejects)
               && member.rejects.every((entry) => typeof entry === "string"))))))
         || (item.effect.callbacks !== undefined && (!Array.isArray(item.effect.callbacks)
@@ -446,6 +459,14 @@ function describeExport(
       } } : {}),
       ...(callableSummary?.returnMembers?.length ? { returnMembers: callableSummary.returnMembers.map((member) => ({
         key: member.key, effects: member.effects.map(formatEffect).sort(),
+        parameters: [...member.parameters],
+        ...(member.callbackParameters.length ? { callbacks: member.callbackParameters.map((callback) => ({
+          index: callback.index, name: callback.name,
+          ...(callback.path ? { path: callback.path } : {}),
+          ...(callback.containerAccess ? { containerAccess: callback.containerAccess } : {}),
+          cardinality: callback.cardinality, timing: callback.timing, completion: callback.completion,
+          ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
+        })) } : {}),
         ...(member.rejects.length ? { rejects: [...member.rejects].sort() } : {}), evidence: member.evidence,
       })) } : {}),
       ...(callableSummary?.callbackParameters.length ? { callbacks: callableSummary.callbackParameters.map((callback) => ({
@@ -534,6 +555,14 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
       } : undefined;
       const returnMembers = callable?.returnMembers?.length ? callable.returnMembers.map((member) => ({
         key: member.key, effects: member.effects.map(formatEffect).sort(),
+        parameters: [...member.parameters],
+        ...(member.callbackParameters.length ? { callbacks: member.callbackParameters.map((callback) => ({
+          index: callback.index, name: callback.name,
+          ...(callback.path ? { path: callback.path } : {}),
+          ...(callback.containerAccess ? { containerAccess: callback.containerAccess } : {}),
+          cardinality: callback.cardinality, timing: callback.timing, completion: callback.completion,
+          ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
+        })) } : {}),
         ...(member.rejects.length ? { rejects: [...member.rejects].sort() } : {}), evidence: member.evidence,
       })) : undefined;
       const callbacks = callable?.callbackParameters.length ? callable.callbackParameters.map((callback) => ({

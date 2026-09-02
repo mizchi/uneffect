@@ -1234,15 +1234,18 @@ describe("evidence and optimizer obligations", () => {
 
   it("tracks a write-screened returned client object and rejects unstable receivers", () => {
     const { program, source } = programOf(`
-      declare function createClient(): { value: number; report(message: string): void; update(): void }
+      declare function createClient(): { value: number; report(message: string): void; update(): void; run(callback: () => void): void }
       const sharedClient = createClient()
-      /* uneffect:effect Console | Mutate<typeof sharedClient.value> */
+      /* uneffect:effect Fetch<GET, "https://example.com/audit"> */
+      function noisy() { fetch("https://example.com/audit") }
+      /* uneffect:effect Console | Fetch<GET, "https://example.com/audit"> | Net<"example.com:443"> | Mutate<typeof sharedClient.value> */
       export function stable() {
         const clientAlias = sharedClient
         const secondAlias = clientAlias
         clientAlias.report("ok")
         secondAlias["report"]("again")
         secondAlias.update()
+        secondAlias.run(noisy)
       }
       /* uneffect:effect Console */
       export function mutated() {
@@ -1288,6 +1291,16 @@ describe("evidence and optimizer obligations", () => {
         }, {
           key: "update", effects: [{ kind: "mutate", region: "this.value" }],
           contractEvidence: "trusted" as const,
+        }, {
+          key: "run", effects: [], contractEvidence: "trusted" as const,
+          callbackParameters: [{
+            index: 0, name: "callback", timing: "inline" as const,
+            cardinality: "exactly-1" as const, completion: "propagate-throw" as const,
+            effectBound: [
+              { kind: "capability", name: "Fetch", arguments: [{ kind: "all" }, { kind: "all" }] },
+              { kind: "capability", name: "Net", arguments: [{ kind: "all" }] },
+            ],
+          }],
         }],
       },
     ]]) });
@@ -1295,6 +1308,7 @@ describe("evidence and optimizer obligations", () => {
     expect(result.summaries.find((summary) => summary.functionName === "stable")).toMatchObject({
       effects: expect.arrayContaining([
         { kind: "capability", name: "Console", arguments: [] },
+        expect.objectContaining({ kind: "capability", name: "Fetch" }),
         { kind: "mutate", region: "sharedClient.value" },
       ]), evidence: "verified",
     });
