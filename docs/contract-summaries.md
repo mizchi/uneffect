@@ -105,7 +105,8 @@ of trusting the stored digest.
 ## Assurance boundary
 
 The consumer binder follows TypeChecker-resolved calls through named-import
-aliases, namespace imports, and source re-exports. It accepts a contract only when the resolved
+aliases, namespace imports, source re-exports, and immutable aliases of a
+supported callable member. It accepts a contract only when the resolved
 declaration belongs to an installed package with the exact summarized name and
 version, exact root-package export identity, and its TypeChecker signature matches the producer signature. Evidence
 records the resolved declaration file, span, and SHA-256. The CLI exposes the
@@ -146,6 +147,20 @@ or type-parameter list blocks the binding. This authenticates the declaration
 that TypeScript instantiated. A call site overlapping a TypeScript semantic
 error is rejected even when the compiler exposes a recovery signature. It does not prove TypeScript's type system or
 infer a contract for an opaque dynamically selected callable.
+
+One-level callable members of an exported builtin
+`Object.freeze({ ... })` literal can be published as an export plus a static
+symbol path, for example `telemetry.track`. Direct calls and immutable local
+aliases must retain the root exported receiver identity, resolve to the
+installed member declaration, and then use the ordinary
+external Effect/resource IR. An ordinary mutable object, computed key, getter,
+spread-built object, or a same-named user implementation of `Object.freeze`
+is rejected. A structurally compatible value with the same imported member
+type is not the exported receiver: its call remains explicit `unknown` rather
+than inheriting the package authority. Uneffect does not insert or recommend `Object.freeze`; this rule
+only consumes an immutability decision already present in the package. As with
+function exports, the producer claim remains trusted unless the optional exact
+emit/runtime evidence is supplied.
 
 Effect-only exports are supported. Scoped capabilities, `Throw<E>`, and
 parameter-rooted `Mutate<typeof parameter.member>` use the same parser and

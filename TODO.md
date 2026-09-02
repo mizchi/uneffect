@@ -921,6 +921,12 @@ introducing another domain-local control-flow or alias model.
        installed declaration has matched. Constraint and type-parameter drift
        remain blocking unknowns; compiler recovery signatures at invalid call
        sites are never accepted as evidence.
+     - [x] Publish a one-level callable member of an exported builtin
+       `Object.freeze({ ... })` literal with an explicit symbol path, and bind
+       direct or immutable-alias consumer calls to the installed member
+       declaration. Mutable objects and shadowed freeze lookalikes fail closed;
+       structurally compatible non-export receivers remain `unknown`. This is
+       recognition of existing code, not a runtime-freezing recommendation.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

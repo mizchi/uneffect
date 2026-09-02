@@ -11,6 +11,7 @@ import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { SameRealmGlobalThisIdentity } from "./runtime-identities.js";
 import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics, projectedArrayElements, projectBuiltinCallbacks, type ProjectedScope, type ProjectedValue } from "./builtin-semantic-interpreter.js";
 import { callableAnnotationOwner } from "./callable-annotation-owner.js";
+import { resolveStableCallableSymbol } from "./stable-callable.js";
 
 export interface EffectDiagnostic {
   fileName: string;
@@ -87,6 +88,8 @@ export interface ExternalFunctionEffectContract {
   /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
   parameters?: readonly string[];
   functionName?: string;
+  /** Optional exact consumer call sites authorized by a persisted binding. */
+  authorizedCallSites?: readonly string[];
   iteratorEffectParameters?: readonly IteratorEffectParameter[];
   iteratorEffectBounds?: ReadonlyArray<{ index: number; name: string; effects: readonly Effect[] }>;
   mutationRoots?: readonly ExternalMutationRoot[];
@@ -928,6 +931,10 @@ export function externalContractForCall(
   seen: Set<ts.Symbol> = new Set(),
 ): ExternalFunctionEffectContract | undefined {
   if (!contracts) return undefined;
+  const callSource = call.getSourceFile();
+  const callSiteKey = `${callSource.fileName}:${call.getStart(callSource)}:${call.getEnd()}`;
+  const authorizedAtCall = (contract: ExternalFunctionEffectContract): boolean =>
+    contract.authorizedCallSites === undefined || contract.authorizedCallSites.includes(callSiteKey);
   const returnedMember = (
     receiver: ts.Expression,
     key: string,
@@ -1047,17 +1054,21 @@ export function externalContractForCall(
     if (member) return member;
   }
   const location = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
-  let symbol = ts.isElementAccessExpression(call.expression) && call.expression.argumentExpression
+  let symbol = resolveStableCallableSymbol(checker, call.expression) ?? (ts.isElementAccessExpression(call.expression) && call.expression.argumentExpression
     && (ts.isStringLiteralLike(call.expression.argumentExpression) || ts.isNumericLiteral(call.expression.argumentExpression))
     ? checker.getPropertyOfType(checker.getTypeAtLocation(call.expression.expression), call.expression.argumentExpression.text)
-    : checker.getSymbolAtLocation(location);
+    : checker.getSymbolAtLocation(location));
   if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
   const resolveSymbol = (candidate: ts.Symbol | undefined, visited: Set<ts.Symbol>): ExternalFunctionEffectContract | undefined => {
     if (!candidate) return undefined;
     for (const item of candidate.declarations ?? []) {
       const source = item.getSourceFile();
       const contract = contracts.get(`${source.fileName}:${item.getStart(source)}`);
-      if (contract) return contract;
+      if (contract && authorizedAtCall(contract)) return contract;
+      if (contract) return {
+        effects: [], evidence: "unknown",
+        reason: "persisted external contract does not authorize this receiver/call site",
+      };
     }
     if (visited.has(candidate)) return undefined;
     const nextVisited = new Set(visited).add(candidate);

@@ -8,6 +8,8 @@ import { verifyContractObligations } from "../src/contracts.js";
 import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 import { analyzeResourceLifecyclesInSource } from "../src/resource-callable-typescript.js";
+import { analyzeProgramEffects } from "../src/effects.js";
+import { formatEffect } from "../src/capabilities.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
@@ -29,6 +31,7 @@ describe("persisted contract summary bundles", () => {
         typescriptEmit: { properties: { outputs: { items: { required: string[] } } } };
         exports: { items: { required: string[]; properties: {
           genericArity: { minimum: number };
+          symbol: { properties: { path: { minItems: number } } };
           implementation: { required: string[] }; overloads: { items: { required: string[]; properties: {
             genericArity: { minimum: number };
           } } };
@@ -44,6 +47,7 @@ describe("persisted contract summary bundles", () => {
     expect(schema.properties.exports.items.properties.implementation.required).toEqual(["fileName", "sourceDigest"]);
     expect(schema.properties.exports.items.properties.overloads.items.required).toEqual(["signature", "digest"]);
     expect(schema.properties.exports.items.properties.genericArity.minimum).toBe(1);
+    expect(schema.properties.exports.items.properties.symbol.properties.path.minItems).toBe(1);
     expect(schema.properties.exports.items.properties.overloads.items.properties.genericArity.minimum).toBe(1);
   });
 
@@ -1127,5 +1131,86 @@ describe("persisted contract summary bundles", () => {
     expect(bindContractSummaryBundleToProgram(bundle, driftedProgram)).toMatchObject({
       status: "unknown", exports: [], blockers: [expect.stringContaining("signature")],
     });
+  });
+
+  it("binds a callable member of an exported frozen object by symbol path", () => {
+    const producerFile = "/src/telemetry.ts";
+    const producerSource = `
+      export const telemetry = Object.freeze({
+        /* uneffect:effect Console */
+        track(value: string): void { console.log(value) }
+      })
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/telemetry", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+    });
+    expect(bundle.exports).toEqual([expect.objectContaining({
+      symbol: { module: "@example/telemetry", export: "telemetry", path: ["track"] },
+      functionName: "telemetry.track",
+      signature: "(value: string): void",
+      effect: expect.objectContaining({ effects: ["Console"] }),
+    })]);
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-member-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "telemetry");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/telemetry", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare const telemetry: Readonly<{ track(value: string): void }>
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { telemetry } from "@example/telemetry"
+      export function run(): void { telemetry.track("event") }
+      const track = telemetry.track
+      export function runAlias(): void { track("aliased") }
+      declare const fake: typeof telemetry
+      export function runFake(): void { fake.track("not-the-export") }
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding).toMatchObject({
+      status: "verified", blockers: [], exports: [expect.objectContaining({
+        exportName: "telemetry", callSites: [expect.anything(), expect.anything()],
+      })],
+    });
+    const analysis = analyzeProgramEffects(consumerProgram, {
+      externalFunctionEffects: boundContractSummaryEffectContracts([binding]),
+    });
+    expect(analysis.summaries.find(({ functionName }) => functionName === "run")?.effects.map(formatEffect)).toEqual(["Console"]);
+    expect(analysis.summaries.find(({ functionName }) => functionName === "runAlias")?.effects.map(formatEffect)).toEqual(["Console"]);
+    expect(analysis.summaries.find(({ functionName }) => functionName === "runFake")).toMatchObject({
+      evidence: "unknown", effects: [], unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })],
+    });
+
+    const mutableSource = `
+      export const telemetry = {
+        /* uneffect:effect Console */
+        track(value: string): void { console.log(value) }
+      }
+    `;
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/telemetry", packageVersion: "1.0.0", fileName: producerFile,
+      source: mutableSource, program: programFor(producerFile, mutableSource), artifacts: [],
+    })).toThrow(/no fully verified exported function contracts/u);
+
+    const shadowedSource = `
+      const Object = { freeze<T>(value: T): T { return value } }
+      export const telemetry = Object.freeze({
+        /* uneffect:effect Console */
+        track(value: string): void { console.log(value) }
+      })
+    `;
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/telemetry", packageVersion: "1.0.0", fileName: producerFile,
+      source: shadowedSource, program: programFor(producerFile, shadowedSource), artifacts: [],
+    })).toThrow(/no fully verified exported function contracts/u);
   });
 });

@@ -93,6 +93,14 @@ function frozenLiteralForReceiver(
   return undefined;
 }
 
+/** Resolve the literal protected by the builtin Object.freeze for a stable binding. */
+export function resolveFrozenObjectLiteral(
+  checker: ts.TypeChecker,
+  input: ts.Expression,
+): ts.ObjectLiteralExpression | undefined {
+  return frozenLiteralForReceiver(checker, input, new Set());
+}
+
 /**
  * Resolves the declaration identity of a callable through references whose
  * target cannot change: import aliases, const alias chains, and own properties
