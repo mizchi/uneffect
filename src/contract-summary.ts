@@ -268,10 +268,9 @@ export function bindContractSummaryBundleToProgram(
     const declarations = [...new Set(uses.map(({ declaration }) => declaration))];
     if (declarations.length === 0) continue;
     const unsupportedCallback = summary.effect?.callbacks?.find((callback) =>
-      (callback.path?.length ?? 0) > 0 || callback.completion !== "propagate-throw");
+      callback.completion !== "propagate-throw");
     if (unsupportedCallback) {
-      blockers.push(`contract summary callback ${summary.symbol.export}.${unsupportedCallback.name} uses unsupported consumer semantics: ${
-        (unsupportedCallback.path?.length ?? 0) > 0 ? "nested callback path" : `completion ${unsupportedCallback.completion}`}`);
+      blockers.push(`contract summary callback ${summary.symbol.export}.${unsupportedCallback.name} uses unsupported consumer semantics: completion ${unsupportedCallback.completion}`);
       continue;
     }
     if (declarations.length !== 1) {
@@ -339,6 +338,10 @@ function directExportName(node: ts.FunctionDeclaration): string | undefined {
   return node.name.text;
 }
 
+function summaryParameterNames(node: ts.FunctionDeclaration): string[] {
+  return node.parameters.map((parameter, index) => ts.isIdentifier(parameter.name) ? parameter.name.text : `$arg${index}`);
+}
+
 function describeExport(
   program: ts.Program,
   source: ts.SourceFile,
@@ -375,14 +378,11 @@ function describeExport(
     symbol: { module: packageName, export: exportName }, functionName: exportName, evidence: "verified",
     declarationSpan: span, declarationDigest: sha256(declarationText),
     signature: signatureText, signatureDigest: sha256(signatureText),
-    parameters: node.parameters.map((parameter) => {
-      if (!ts.isIdentifier(parameter.name)) throw new Error(`${exportName} has an unsupported destructured parameter`);
-      return parameter.name.text;
-    }),
+    parameters: summaryParameterNames(node),
     requires, ensures, artifactIds: candidates.map(({ obligationId }) => obligationId).sort(),
     ...(effectDeclared && (effectSummary || callableSummary) ? { effect: {
       effects: (effectSummary?.evidence === "verified" ? effectSummary.effects : callableSummary!.effects).map(formatEffect).sort(),
-      parameters: node.parameters.map((parameter) => (parameter.name as ts.Identifier).text),
+      parameters: summaryParameterNames(node),
       ...(callableSummary?.callbackParameters.length ? { callbacks: callableSummary.callbackParameters.map((callback) => ({
         index: callback.index,
         name: callback.name,
@@ -456,8 +456,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
         && callable.unknownReasons.length === 0 && callable.callbackParameters.length > 0;
       const effects = (actual?.evidence === "verified" ? actual.effects : callableFallback ? callable.effects : undefined)
         ?.map(formatEffect).sort();
-      const parameters = declaration.parameters.every((parameter) => ts.isIdentifier(parameter.name))
-        ? declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text) : undefined;
+      const parameters = summaryParameterNames(declaration);
       const callbacks = callable?.callbackParameters.length ? callable.callbackParameters.map((callback) => ({
         index: callback.index, name: callback.name,
         ...(callback.path ? { path: callback.path } : {}),
@@ -465,7 +464,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
         ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
       })) : undefined;
       if (!effects || canonical(effects) !== canonical(item.effect.effects)
-        || !parameters || canonical(parameters) !== canonical(item.effect.parameters)
+        || canonical(parameters) !== canonical(item.effect.parameters)
         || canonical(callbacks) !== canonical(item.effect.callbacks)) {
         errors.push(`contract summary Effect payload for ${item.symbol.export} does not match verified producer evidence`);
       }

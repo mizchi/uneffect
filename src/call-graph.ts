@@ -13,7 +13,10 @@ export interface EffectParameter { index: number; name: string; timing: Invocati
 export interface IteratorEffectParameter { index: number; name: string; convertsThrowToRejection: boolean }
 export interface IteratorEffectInstantiation { consumer: string; parameterIndex: number }
 export interface ExternalIteratorEffectContract { key: string; parameters: readonly IteratorEffectParameter[] }
-export interface ExternalCallableEffectParameter extends EffectParameter { effectBound?: readonly Effect[] }
+export interface ExternalCallableEffectParameter extends EffectParameter {
+  path?: readonly (string | number)[];
+  effectBound?: readonly Effect[];
+}
 export interface ExternalCallableEffectContract { key: string; parameters: readonly ExternalCallableEffectParameter[] }
 export interface CallbackEffectInstantiation {
   consumer: string;
@@ -154,6 +157,42 @@ export function buildProgramCallGraph(
     const name = callableName(declaration), symbol = name ? resolvedSymbol(checker, name) : undefined;
     if (symbol) symbolNodes.set(symbol, declaration);
   }
+  const unwrapExpression = (expression: ts.Expression): ts.Expression =>
+    ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+      || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)
+      || ts.isSatisfiesExpression(expression)
+      ? unwrapExpression(expression.expression) : expression;
+  const expressionAtLiteralPath = (
+    expression: ts.Expression,
+    path: readonly (string | number)[],
+  ): ts.Expression | undefined => {
+    let current = unwrapExpression(expression);
+    for (const part of path) {
+      if (typeof part === "number") {
+        if (!ts.isArrayLiteralExpression(current) || part < 0 || part >= current.elements.length) return undefined;
+        const element = current.elements[part];
+        if (!element || ts.isSpreadElement(element) || ts.isOmittedExpression(element)) return undefined;
+        current = unwrapExpression(element);
+        continue;
+      }
+      if (!ts.isObjectLiteralExpression(current)) return undefined;
+      const property = current.properties.find((candidate) => {
+        if (!ts.isPropertyAssignment(candidate) && !ts.isShorthandPropertyAssignment(candidate)) return false;
+        const name = candidate.name;
+        return (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) && name.text === part;
+      });
+      if (!property) return undefined;
+      if (ts.isShorthandPropertyAssignment(property)) current = unwrapExpression(property.name);
+      else if (ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name)) current = unwrapExpression(property.initializer);
+      else return undefined;
+    }
+    return current;
+  };
+  const callbackDeclarationFor = (expression: ts.Expression): ts.FunctionLikeDeclaration | undefined => {
+    const current = unwrapExpression(expression);
+    return ts.isArrowFunction(current) || ts.isFunctionExpression(current) ? current
+      : ts.isIdentifier(current) ? symbolNodes.get(resolvedSymbol(checker, current)!) : undefined;
+  };
   const nodes = declarations.map((declaration): CallGraphNode => {
     const nameNode = callableName(declaration), symbol = nameNode ? resolvedSymbol(checker, nameNode) : undefined;
     const overloads = symbol?.declarations?.filter((item): item is ts.FunctionDeclaration | ts.MethodDeclaration => (ts.isFunctionDeclaration(item) || ts.isMethodDeclaration(item)) && !item.body).map((item) => checker.signatureToString(checker.getSignatureFromDeclaration(item)!)) ?? [];
@@ -1227,8 +1266,7 @@ export function buildProgramCallGraph(
             timings.set(parameterIndex, joined);
             edges.push({ caller, kind: "callback-argument", unresolvedName: argument.getText(), timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
           }
-          const callbackDeclaration = (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) ? argument
-            : ts.isIdentifier(argument) ? symbolNodes.get(resolvedSymbol(checker, argument)!) : undefined;
+          const callbackDeclaration = callbackDeclarationFor(argument);
           if (callbackDeclaration) {
             const calleeNode = targetDeclaration ? byId.get(stableId(targetDeclaration)) : undefined;
             const externalParameter = externalCallable?.parameters.find((item) => item.index === index);
@@ -1248,6 +1286,28 @@ export function buildProgramCallGraph(
               } } : {}),
               dischargesThrow: catchesThrow && timing === "inline"
                 || projectedCallback?.completion === "convert-throw-to-rejection" });
+          }
+          for (const externalParameter of externalCallable?.parameters.filter((item) =>
+            item.index === index && (item.path?.length ?? 0) > 0) ?? []) {
+            const callbackExpression = expressionAtLiteralPath(argument, externalParameter.path!);
+            const nestedDeclaration = callbackExpression ? callbackDeclarationFor(callbackExpression) : undefined;
+            if (!callbackExpression || !nestedDeclaration) {
+              edges.push({ caller, kind: "callback-argument", unresolvedName: `${argument.getText()}${externalParameter.path!.map((part) => `[${JSON.stringify(part)}]`).join("")}`,
+                timing: "unknown", span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
+              continue;
+            }
+            edges.push({
+              caller, callee: stableId(nestedDeclaration), kind: "callback-argument", timing: externalParameter.timing,
+              span: { start: callbackExpression.getStart(), end: callbackExpression.getEnd() },
+              ...callbackInstantiation(callbackExpression, nestedDeclaration),
+              ...(externalParameter.effectBound ? { callbackEffectInstantiation: {
+                consumer: externalCallable!.key,
+                parameterIndex: index,
+                parameterName: externalParameter.name,
+                effectBound: externalParameter.effectBound,
+              } } : {}),
+              dischargesThrow: catchesThrow && externalParameter.timing === "inline",
+            });
           }
         });
         const semanticEvents = resolvedBuiltin?.semantics

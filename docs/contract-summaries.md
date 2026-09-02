@@ -99,6 +99,9 @@ successfully bound scalar call carries `trusted` relational evidence: the
 declaration binding is checked, while the persisted producer authority is not
 silently upgraded to an authenticated proof.
 
-Object/tuple callback paths, mutable or dynamically selected callbacks,
-returned callables, reentrancy/concurrency, temporal cardinality, and resource
-ownership remain outside this first consumer fragment.
+Finite object/tuple callback paths are supported when the consumer supplies an
+inline object/array literal whose selected leaf is an inline function or an
+immutable symbol-resolved function identifier. A spread, computed/dynamic
+selection, mutable container alias, or unresolved leaf fails closed. Returned
+callables, reentrancy/concurrency, temporal cardinality, and resource ownership
+remain outside this first consumer fragment.

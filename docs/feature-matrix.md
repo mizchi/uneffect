@@ -52,10 +52,12 @@ capabilities, parameter-rooted `Mutate`, and `Throw<E>`. Calls remain `trusted`,
 because persisted producer authority is not authenticated. Producer-to-emitted `.d.ts` build
 linkage, installed tarball/runtime identity, and publisher authenticity remain
 unsupported. Direct callback parameters now preserve timing and Effect bounds
-for inline or immutable symbol-resolved arguments; persisted cardinality,
-object/tuple callback paths, non-synchronous completion modes, returned
-callables, and resource semantics remain unsupported. Unsupported persisted
-callback semantics block binding rather than being approximated.
+for inline or immutable symbol-resolved arguments. Finite object/tuple paths
+compose through inline literal containers; spreads, computed/dynamic leaves,
+and container aliases fail closed. Persisted cardinality, non-synchronous
+completion modes, returned callables, and resource semantics remain
+unsupported. Unsupported persisted callback semantics block binding rather
+than being approximated.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

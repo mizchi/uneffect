@@ -156,9 +156,12 @@ describe("uneffect command line", () => {
       /* uneffect:effect none */
       /* uneffect:effect_parameter callback extends Console */
       export function once(callback: () => void): void { callback() }
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter onDone extends Console */
+      export function configure({ onDone }: { onDone: () => void }): void { onDone() }
     `;
     const consumerSource = `
-      import { addOne, once, report, update } from "@example/math"
+      import { addOne, configure, once, report, update } from "@example/math"
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result === value + 1 */
       export async function run(value: number): Promise<number> { return await addOne(value) }
@@ -170,6 +173,8 @@ describe("uneffect command line", () => {
       function logOnce(): void { console.log("once") }
       /* uneffect:effect Console */
       export function runOnce(): void { once(logOnce) }
+      /* uneffect:effect Console */
+      export function runConfigured(): void { configure({ onDone: logOnce }) }
     `;
     try {
       mkdirSync(packageDirectory, { recursive: true });
@@ -183,6 +188,7 @@ describe("uneffect command line", () => {
         "export declare function report(message: string): void;",
         "export declare function update(target: { value: number }): void;",
         "export declare function once(callback: () => void): void;",
+        "export declare function configure({ onDone }: { onDone: () => void }): void;",
         "",
       ].join("\n"));
       const producerProgram = ts.createProgram([producerFile], {
@@ -201,6 +207,7 @@ describe("uneffect command line", () => {
       expect(checked.stderr).toContain("effects reportIt: Console");
       expect(checked.stderr).toContain("effects updateIt: Mutate<typeof state.value> | Throw<RangeError>");
       expect(checked.stderr).toContain("effects runOnce: Console");
+      expect(checked.stderr).toContain("effects runConfigured: Console");
       const reported = capture();
       expect(await runCli(["check", "--contract-summary", summaryFile, "--json", consumerFile], reported)).toBe(exitCode.success);
       expect((JSON.parse(reported.stdout) as { assumptions: { entries: Array<{ domain: string }> } }).assumptions.entries)

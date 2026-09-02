@@ -73,6 +73,7 @@ export interface ExternalFunctionEffectContract {
   callbackParameters?: readonly {
     index: number;
     name: string;
+    path?: readonly (string | number)[];
     timing: "inline" | "deferred" | "unknown";
     cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
     completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
@@ -1440,7 +1441,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const externalCallableEffects = new Map([...options.externalFunctionEffects ?? []].flatMap(([key, contract]) =>
     contract.callbackParameters?.length ? [[key, {
       key,
-      parameters: contract.callbackParameters.map(({ index, name, timing, effectBound }) => ({ index, name, timing, effectBound })),
+      parameters: contract.callbackParameters.map(({ index, name, path, timing, effectBound }) => ({ index, name, path, timing, effectBound })),
     }] as const] : []));
   const graph = buildProgramCallGraph(program, { externalIteratorEffects, externalCallableEffects, builtinRegistry: registry }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
   const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
@@ -1671,9 +1672,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         unknownGeneratorParameterEvidence.add(edge.caller);
         changed = true;
       }
+      if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
       if (!edge.callee || !inferred.has(edge.callee)) continue;
       if (edge.executesBody === false) continue;
-      if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
       const calleeParams = parameters.get(edge.callee) ?? [];
       const unresolvedArgumentIndices = new Set(edge.unresolvedMutationArgumentIndices ?? []);
       if (inferred.get(edge.callee)!.some((effect) => effect.kind === "mutate" && (

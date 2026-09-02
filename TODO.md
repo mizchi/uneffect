@@ -521,6 +521,9 @@ introducing another domain-local control-flow or alias model.
    - [x] Persist direct callback timing/cardinality/completion and Effect bounds
      in package summaries; bind direct inline/immutable callback arguments and
      fail closed when their inferred effects exceed the producer bound.
+   - [x] Compose finite object/tuple callback paths through inline literal
+     arguments; reject spread, dynamic, unresolved, and aliased containers as
+     unknown instead of flattening them into a direct callback.
    - [x] Add a versioned backend-neutral callable-summary API for direct
      functions and immutable local callable aliases, including may-effects,
      synchronous throws, direct Promise rejections, and mutated regions.

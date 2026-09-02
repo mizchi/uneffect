@@ -304,9 +304,11 @@ authenticated producer proof. This does not authenticate producer-to-`.d.ts` emi
 tarball/runtime JavaScript, or the publisher. Verified Effect atoms are
 consumed through the ordinary external Effect IR. Direct callback timing and
 Effect bounds are composed for inline or immutable symbol-resolved callback
-arguments with synchronous throw propagation. Persisted cardinality is not a
-temporal claim; object/tuple callback paths and other completion modes block
-binding. Returned callables and resource summaries remain outside this claim.
+arguments with synchronous throw propagation. Finite object/tuple paths are
+accepted only through inline literal containers and statically resolved leaves;
+dynamic selection fails closed. Persisted cardinality is not a temporal claim,
+and other completion modes block binding. Returned callables and resource
+summaries remain outside this claim.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

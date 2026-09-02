@@ -91,6 +91,9 @@ describe("persisted contract summary bundles", () => {
       /* uneffect:effect none */
       /* uneffect:effect_parameter callback extends Console */
       export function once(callback: () => void): void { callback() }
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter onDone extends Console */
+      export function configure({ onDone }: { onDone: () => void }): void { onDone() }
     `;
     const program = programFor(fileName, source);
     const bundle = createContractSummaryBundle({
@@ -122,6 +125,16 @@ describe("persisted contract summary bundles", () => {
           timing: "inline",
           completion: "propagate-throw",
           effectBound: ["Console"],
+        })],
+      },
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "configure" },
+      parameters: ["$arg0"],
+      effect: {
+        effects: [], parameters: ["$arg0"],
+        callbacks: [expect.objectContaining({
+          index: 0, name: "onDone", path: ["onDone"], cardinality: "exactly-1",
+          timing: "inline", completion: "propagate-throw", effectBound: ["Console"],
         })],
       },
     })]));

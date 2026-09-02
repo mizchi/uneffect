@@ -879,6 +879,58 @@ describe("evidence and optimizer obligations", () => {
     }));
   });
 
+  it("instantiates a callback effect through an inline object argument path", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { onDone: () => void }): void
+      /* uneffect:effect Console */
+      function log() { console.log("called") }
+      /* uneffect:effect Console */
+      export function run() { configure({ onDone: log }) }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const key = `${source.fileName}:${declaration.getStart(source)}`;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[key, {
+      effects: [], evidence: "verified" as const, functionName: "configure",
+      callbackParameters: [{
+        index: 0, name: "onDone", timing: "inline" as const, path: ["onDone"],
+        cardinality: "exactly-1" as const, completion: "propagate-throw" as const,
+        effectBound: [{ kind: "capability", name: "Console", arguments: [] }],
+      }],
+    }]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      effects: [{ kind: "capability", name: "Console", arguments: [] }], evidence: "verified",
+    });
+    expect(result.diagnostics.filter(({ functionName, severity }) => functionName === "run" && severity === "error")).toEqual([]);
+  });
+
+  it("fails closed for a dynamically selected nested external callback", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { onDone: () => void }): void
+      declare const choose: boolean
+      function left() {}
+      function right() {}
+      /* uneffect:effect none */
+      export function run() { configure({ onDone: choose ? left : right }) }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const key = `${source.fileName}:${declaration.getStart(source)}`;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[key, {
+      effects: [], evidence: "verified" as const, functionName: "configure",
+      callbackParameters: [{
+        index: 0, name: "onDone", timing: "inline" as const, path: ["onDone"],
+        cardinality: "exactly-1" as const, completion: "propagate-throw" as const,
+        effectBound: [],
+      }],
+    }]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      evidence: "unknown", unknownReasons: [{ code: "unknown-callback-timing" }],
+    });
+  });
+
   it("binds persisted evidence to the caller-owned builtin registry", () => {
     const { program, source } = programOf("export function identity(value: number) { return value }");
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;

@@ -890,9 +890,11 @@ same property is proved for arbitrary TypeScript.
   analyzer. Direct callback parameters preserve timing and optional Effect
   bounds for inline or immutable symbol-resolved callback arguments; bound
   violations fail closed. Persisted cardinality is not yet connected to the
-  temporal model. Object/tuple paths and completion modes other than
-  synchronous throw propagation block consumer binding; returned callables and
-  resource ownership remain open.
+  temporal model. Finite object/tuple paths compose through inline object/array
+  literals with statically resolved callback leaves; spreads, dynamic leaves,
+  and container aliases fail closed. Completion modes other than synchronous
+  throw propagation block consumer binding; returned callables and resource
+  ownership remain open.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint
