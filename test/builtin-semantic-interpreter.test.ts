@@ -111,6 +111,8 @@ describe("generic builtin semantic interpreter", () => {
     expect(interpretBuiltinCallSemantics(semantics, callOf('open("r")'), source)).toEqual([]);
     expect(interpretBuiltinCallSemantics(semantics, callOf('open("w")'), source)).toMatchObject([{ kind: "effect", capability: "FsWrite" }]);
     expect(interpretBuiltinCallSemantics(semantics, callOf("open(flags)"), source)).toMatchObject([{ kind: "effect", capability: "FsWrite" }]);
+    expect(interpretBuiltinCallSemantics(semantics, callOf("open(flags)"), source, undefined,
+      { resolveStaticString: () => "r" })).toEqual([]);
   });
 
   it("keeps unsupported dynamic inputs as attributed unknown projections", () => {

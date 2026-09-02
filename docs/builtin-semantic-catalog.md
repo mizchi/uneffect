@@ -74,6 +74,10 @@ Effect primitives can carry an `argument-literal-in` condition. Node `open` and
 strings without an API-specific analyzer branch. A statically visible `"r"`
 therefore requires only `FsRead`, `"w"` only `FsWrite`, and `"r+"` both.
 Dynamic or numeric flags conservatively retain both capabilities.
+The TypeScript consumer supplies a symbol-aware static-string resolver, so
+immutable chains such as `const READ = "r" as const; const FLAGS = READ` keep
+the same precision. Mutable bindings, parameters, and unresolved expressions
+do not satisfy the condition and therefore retain both may-effects.
 
 Node DNS, socket, HTTP, and server lifecycle definitions use generic network
 scope, callback, result, acquire, release, and protocol primitives. Host,

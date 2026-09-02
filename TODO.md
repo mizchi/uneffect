@@ -463,6 +463,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Add generic literal-argument conditions to effect primitives and use
        them for Node `open`/`openSync` flag-sensitive `FsRead`/`FsWrite`, while
        retaining both permissions for dynamic and numeric flags.
+     - [x] Resolve conditional-effect literals through immutable TypeChecker
+       aliases and transparent `as const`/parenthesized expressions; keep
+       mutable and unresolved values conservative.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

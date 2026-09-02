@@ -49,6 +49,7 @@ interface ProjectionContext {
   receiver?: ts.Expression;
   arguments?: readonly ts.Expression[];
   assignedValue?: ts.Expression;
+  resolveStaticString?: (expression: ts.Expression) => string | undefined;
 }
 
 function projectValue(projector: ValueProjector, context: ProjectionContext, depth = 0): ProjectedValue {
@@ -122,7 +123,8 @@ function interpretPrimitive(
     case "effect": {
       if (primitive.when?.kind === "argument-literal-in") {
         const argument = context.arguments?.[primitive.when.index];
-        if (argument && ts.isStringLiteralLike(argument) && !primitive.when.values.includes(argument.text)) return [];
+        const literal = argument && (ts.isStringLiteralLike(argument) ? argument.text : context.resolveStaticString?.(argument));
+        if (literal !== undefined && !primitive.when.values.includes(literal)) return [];
       }
       return [{ kind: "effect", capability: primitive.capability, ...(primitive.scope ? { scope: projectScope(primitive.scope, context) } : {}), source }];
     }
@@ -198,8 +200,10 @@ export function interpretBuiltinCallSemantics(
   call: ts.CallExpression | ts.NewExpression,
   source: BuiltinSemanticSource,
   access?: "read" | "write",
+  options: { readonly resolveStaticString?: (expression: ts.Expression) => string | undefined } = {},
 ): BuiltinSemanticEvent[] {
-  const context = { receiver: ts.isCallExpression(call) ? receiverOf(call) : undefined, arguments: [...(call.arguments ?? [])] };
+  const context = { receiver: ts.isCallExpression(call) ? receiverOf(call) : undefined,
+    arguments: [...(call.arguments ?? [])], resolveStaticString: options.resolveStaticString };
   return semantics.primitives.flatMap((primitive, primitiveIndex) => interpretPrimitive(primitive, context, {
     ...source, primitiveIndex, primitivePath: [],
   }, access));

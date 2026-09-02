@@ -210,6 +210,11 @@ describe("effect checker", () => {
       /* uneffect:effect FsWrite<"write.txt"> */ function writeOnly() { return openSync("write.txt", "w") }
       /* uneffect:effect FsRead<"update.txt"> | FsWrite<"update.txt"> */ async function update() { return open("update.txt", "r+") }
       /* uneffect:effect FsRead | FsWrite */ async function dynamic(path: string, flags: string) { return open(path, flags) }
+      const READ = "r" as const
+      const READ_ALIAS = READ
+      /* uneffect:effect FsRead<"aliased.txt"> */ function aliased() { return openSync("aliased.txt", READ_ALIAS) }
+      let mutable = "r"
+      /* uneffect:effect FsRead<"mutable.txt"> | FsWrite<"mutable.txt"> */ function mutableFlag() { return openSync("mutable.txt", mutable) }
     `;
     expect(analyzeEffects("fs-open-flags.ts", source)).toEqual([]);
   });
