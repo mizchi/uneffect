@@ -15,6 +15,9 @@ export type ResourceProtocolState =
   | "invalidated"
   | "absent-or-available"
   | "absent-or-released"
+  | "absent-or-consumed"
+  | "absent-or-transferred"
+  | "absent-or-escaped"
   | "unknown";
 
 export type ResourceTerminalState = Extract<ResourceProtocolState,
@@ -237,8 +240,8 @@ export function evaluateResourceProtocol(
       return;
     }
     const state = states.get(transition.resource)!;
-    if (transition.kind === "release" && state === "absent-or-available") {
-      states.set(transition.resource, "absent-or-released");
+    if (["release", "consume", "transfer", "escape"].includes(transition.kind) && state === "absent-or-available") {
+      states.set(transition.resource, `absent-or-${transition.kind === "transfer" ? "transferred" : `${transition.kind}d`}` as ResourceProtocolState);
       return;
     }
     if (state !== "available") { invalid(transition, transition.resource, state, `cannot ${transition.kind} ${transition.resource} from ${state}`); return; }
@@ -302,7 +305,8 @@ function terminalStatus(
   const unresolved = required.some((resource) => states.get(resource.id) === "unknown");
   const accepted = (resource: ResourceProtocolResource): boolean => {
     const state = states.get(resource.id);
-    return state === "absent-or-released" && resource.requiredTerminalStates!.includes("released")
+    return state?.startsWith("absent-or-") === true && state !== "absent-or-available"
+      && resource.requiredTerminalStates!.includes(state.slice("absent-or-".length) as ResourceTerminalState)
       || resource.requiredTerminalStates!.includes(state as ResourceTerminalState);
   };
   const unsatisfied = required.some((resource) => !accepted(resource));
@@ -318,6 +322,15 @@ function joinResourceStates(left: ResourceProtocolState, right: ResourceProtocol
   }
   if ([...pair].every((state) => state === "absent" || state === "released" || state === "absent-or-released")) {
     return "absent-or-released";
+  }
+  if ([...pair].every((state) => state === "absent" || state === "consumed" || state === "absent-or-consumed")) {
+    return "absent-or-consumed";
+  }
+  if ([...pair].every((state) => state === "absent" || state === "transferred" || state === "absent-or-transferred")) {
+    return "absent-or-transferred";
+  }
+  if ([...pair].every((state) => state === "absent" || state === "escaped" || state === "absent-or-escaped")) {
+    return "absent-or-escaped";
   }
   return "unknown";
 }

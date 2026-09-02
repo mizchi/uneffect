@@ -170,6 +170,31 @@ describe("resource protocol IR", () => {
     });
   });
 
+  it.each([
+    ["consume", "consumed", "absent-or-consumed"],
+    ["transfer", "transferred", "absent-or-transferred"],
+    ["escape", "escaped", "absent-or-escaped"],
+  ] as const)("joins an absent branch with an optional %s terminal", (kind, terminal, joined) => {
+    const model: ResourceProtocolModel = {
+      schema: "uneffect-resource-protocol/v1",
+      resources: [{ id: "value", label: "value", kind: "Resource", initialState: "absent", requiredTerminalStates: [terminal] }],
+      transitions: [],
+    };
+    const cfg: ResourceProtocolCfg = {
+      schema: "uneffect-resource-protocol-cfg/v1", model, entry: "entry", exits: ["exit"],
+      budget: { name: "optional-terminal-test", limit: 32 },
+      blocks: [
+        { id: "entry", transitions: [], successors: ["then", "exit"] },
+        { id: "then", transitions: [{ kind: "acquire", resource: "value", at: 1 },
+          { kind, resource: "value", at: 2 }], successors: ["exit"] },
+        { id: "exit", transitions: [], successors: [] },
+      ],
+    };
+    expect(evaluateResourceProtocolCfg(cfg)).toMatchObject({
+      status: "satisfied", states: new Map([["value", joined]]),
+    });
+  });
+
   it("routes normal and exceptional paths through one mandatory finally block", () => {
     const cfg: ResourceProtocolCfg = {
       schema: "uneffect-resource-protocol-cfg/v1",

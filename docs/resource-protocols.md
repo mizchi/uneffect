@@ -153,7 +153,12 @@ also receive source-stable temporary identities, so `open().close()`,
 `release(open())`, and an unbound leaking `open()` preserve JavaScript nested
 call evaluation order. For optional fluent calls such as `open()?.close()`, the
 receiver acquisition runs before the optional branch and the conditional
-release joins to `unknown`. Malformed parameter names,
+release joins to `unknown`. A direct `return open()` adds an `escape` after
+acquisition. `return await openAsync()` puts both acquisition and escape on the
+fulfillment edge; rejection leaves the resource absent. The lattice records
+this as `absent-or-escaped`, which is a valid terminal state only when `escaped`
+is permitted. Equivalent optional terminal states exist for consume, release,
+and transfer. Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions
 produce diagnostics or remain outside the fragment. Ambient function and method
 signatures are accepted when their `.d.ts` overlay is an explicit TypeScript

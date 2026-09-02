@@ -588,8 +588,11 @@ introducing another domain-local control-flow or alias model.
      - [x] Extend synchronous return/argument identity to acquired temporaries,
        including fluent receiver release, nested call arguments, bare leaks,
        source evaluation order, and optional receiver-before-call branching.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend stable return/argument identity through destructured, returned,
-       escaping, and dynamically selected resource values.
+     - [x] Treat direct synchronous and directly awaited acquired returns as
+       caller escape, retaining acquisition/escape on fulfillment and adding
+       `absent-or-consumed|released|transferred|escaped` terminal joins.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend stable return/argument identity through destructured,
+       non-direct escaping, and dynamically selected resource values.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
    aliases. Represent may-effects, synchronous throws, Promise rejections,
    region reads/writes, and callback invocation cardinality/timing. Start with

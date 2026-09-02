@@ -246,8 +246,13 @@ describe("TypeScript resource protocol CFG lowering", () => {
       writeFileSync(fileName, `
         interface Handle { /* uneffect:release this */ close(): void }
         /* uneffect:acquire return */ declare function connect(): Handle
+        /* uneffect:acquire return */ declare function asyncConnect(): Promise<Handle>
         /* uneffect:release handle */ declare function release(handle: Handle): void
+        /* uneffect:acquire return */ function forwarded(): Handle { return connect() }
+        /* uneffect:acquire return */ async function asyncForwarded(): Promise<Handle> { return await asyncConnect() }
         function direct() { connect().close() }
+        function forwardedUse() { forwarded().close() }
+        async function asyncForwardedUse() { const handle = await asyncForwarded(); handle.close() }
         function nestedArgument() { release(connect()) }
         function optional() { connect()?.close() }
         function leaked() { connect() }
@@ -268,6 +273,12 @@ describe("TypeScript resource protocol CFG lowering", () => {
         return lowered.status === "exact" ? evaluateResourceProtocolCfg(lowered.cfg) : undefined;
       };
       expect(evaluate("direct")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("forwarded")).toMatchObject({ status: "satisfied", states: expect.any(Map) });
+      expect(evaluate("forwarded")?.states.values().next().value).toBe("escaped");
+      expect(evaluate("forwardedUse")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("asyncForwarded")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("asyncForwarded")?.states.values().next().value).toBe("absent-or-escaped");
+      expect(evaluate("asyncForwardedUse")).toMatchObject({ status: "satisfied" });
       expect(evaluate("nestedArgument")).toMatchObject({ status: "satisfied" });
       expect(evaluate("optional")).toMatchObject({ status: "unknown" });
       expect(evaluate("leaked")).toMatchObject({ status: "unsatisfied" });

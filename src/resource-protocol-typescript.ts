@@ -65,8 +65,11 @@ export function resolveAwaitedResourceBinding(
       || ts.isAsExpression(result.parent) || ts.isTypeAssertionExpression(result.parent)
       || ts.isAwaitExpression(result.parent)) && result.parent.expression === result) result = result.parent;
     const parent = result.parent;
-    return ts.isVariableDeclaration(parent) && parent.initializer === result && ts.isIdentifier(parent.name)
-      ? { id: `region:${parent.getSourceFile().fileName}:${parent.getStart()}`, label: parent.name.text, node }
+    if (ts.isVariableDeclaration(parent) && parent.initializer === result && ts.isIdentifier(parent.name)) {
+      return { id: `region:${parent.getSourceFile().fileName}:${parent.getStart()}`, label: parent.name.text, node };
+    }
+    return ts.isReturnStatement(parent) && parent.expression === result
+      ? { id: `region:${call.getSourceFile().fileName}:${call.getStart()}`, label: "returned resource", node: result }
       : undefined;
   };
   if (directlyAwaited(call)) return bindingOf(call, call);

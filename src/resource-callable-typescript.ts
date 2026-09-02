@@ -159,6 +159,14 @@ function returnedResourceId(call: ts.CallExpression, allowTemporary = false): st
     : allowTemporary ? `region:${call.getSourceFile().fileName}:${call.getStart()}` : undefined;
 }
 
+function directlyReturned(call: ts.CallExpression): boolean {
+  let current: ts.Expression = call;
+  while ((ts.isParenthesizedExpression(current.parent) || ts.isNonNullExpression(current.parent)
+    || ts.isAsExpression(current.parent) || ts.isTypeAssertionExpression(current.parent)
+    || ts.isAwaitExpression(current.parent)) && current.parent.expression === current) current = current.parent;
+  return ts.isReturnStatement(current.parent) && current.parent.expression === current;
+}
+
 function resourceArgumentId(checker: ts.TypeChecker, input: ts.Expression): string | undefined {
   const visit = (expression: ts.Expression, seen: ReadonlySet<ts.Symbol>): string | undefined => {
     while (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
@@ -287,6 +295,12 @@ export function collectResourceCallableTransitionSites(
             at: node.getStart(),
           });
           const hasAcquire = instantiated.transitions.some((transition) => transition.kind === "acquire");
+          const returned = hasAcquire && directlyReturned(node);
+          const acquiredResource = instantiated.transitions.find((transition) => transition.kind === "acquire");
+          const returnEscape = returned && acquiredResource && "resource" in acquiredResource
+            ? { kind: "escape" as const, resource: acquiredResource.resource, at: node.parent.getEnd(), evidence: acquiredResource.evidence }
+            : undefined;
+          const effectiveTransitions = returnEscape ? [...instantiated.transitions, returnEscape] : instantiated.transitions;
           const unsupportedAsyncAcquire = hasAcquire && promiseLike && !awaitedBinding;
           if (hasAcquire && awaitedBinding && ts.isAwaitExpression(awaitedBinding.node)) {
             const declaration = awaitedBinding.node.parent;
@@ -300,17 +314,17 @@ export function collectResourceCallableTransitionSites(
             message: `async acquisition from ${summary.id} is not directly awaited; Promise-to-resource aliasing is unknown`,
             span: { start: node.getStart(), end: node.getEnd() },
           });
-          if (instantiated.transitions.length > 0) {
+          if (effectiveTransitions.length > 0) {
             if (unsupportedAsyncAcquire) {
-              const remaining = instantiated.transitions.filter((transition) => transition.kind !== "acquire");
+              const remaining = effectiveTransitions.filter((transition) => transition.kind !== "acquire");
               if (remaining.length > 0) sites.push({ node, transitions: remaining });
               ts.forEachChild(node, visit);
               return;
             }
             const fulfilled = awaitedBinding
-              ? instantiated.transitions.filter((transition) => transition.kind === "acquire") : [];
+              ? effectiveTransitions.filter((transition) => transition.kind === "acquire" || transition === returnEscape) : [];
             const immediate = fulfilled.length > 0
-              ? instantiated.transitions.filter((transition) => transition.kind !== "acquire") : instantiated.transitions;
+              ? effectiveTransitions.filter((transition) => transition.kind !== "acquire" && transition !== returnEscape) : effectiveTransitions;
             const siteNode = fulfilled.length > 0 ? awaitedBinding!.node : node;
             sites.push({ node: siteNode, transitions: immediate,
               ...(fulfilled.length > 0 ? { fulfillmentTransitions: fulfilled.map((transition) => ({ ...transition, at: siteNode.getStart() })) } : {}),
