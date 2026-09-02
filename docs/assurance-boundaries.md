@@ -342,6 +342,11 @@ Reviewed builtin forwarding shares this structural join only when every arm
 has the same timing and completion semantics. Different async lanes are never
 collapsed into one callback guarantee.
 
+Returned-callable composition is limited to a producer's single direct
+immutable callable return and a consumer's direct `const` factory-result
+binding. Mutable or selected results are explicitly unknown; callable objects,
+methods, currying chains, and general higher-order escape are outside the claim.
+
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do
 not infer support from a nearby example.

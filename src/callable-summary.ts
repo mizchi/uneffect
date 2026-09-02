@@ -46,6 +46,12 @@ export interface CallableSummary {
   readonly writes: readonly string[];
   readonly callbackParameters: readonly CallbackParameterSummary[];
   readonly callbackInvocations: readonly CallbackInvocationSummary[];
+  readonly returnCallable?: {
+    readonly effects: readonly Effect[];
+    readonly throws: readonly string[];
+    readonly rejects: readonly string[];
+    readonly evidence: Exclude<EvidenceStatus, "unknown">;
+  };
   readonly evidence: EvidenceStatus;
   readonly unknownReasons: readonly string[];
 }
@@ -482,5 +488,37 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       unknownReasons: [...unknownReasons].sort(),
     };
   });
-  return { summaries, diagnostics };
+  const byId = new Map(summaries.map((summary) => [summary.id, summary] as const));
+  const withReturnedCallables = summaries.map((summary, index): CallableSummary => {
+    const declaration = declarations[index]!;
+    const returns: ts.ReturnStatement[] = [];
+    const collectReturns = (node: ts.Node): void => {
+      if (node !== declaration && ts.isFunctionLike(node)) return;
+      if (ts.isReturnStatement(node)) returns.push(node);
+      ts.forEachChild(node, collectReturns);
+    };
+    collectReturns(declaration.body!);
+    if (returns.length !== 1 || !returns[0]!.expression) return summary;
+    const expression = unwrap(returns[0]!.expression!);
+    let target: SupportedFunction | undefined;
+    if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) target = expression;
+    else if (ts.isIdentifier(expression)) {
+      const symbol = resolvedSymbol(checker, expression);
+      const value = symbol?.valueDeclaration;
+      if (value && ts.isFunctionDeclaration(value)) target = value;
+      else if (value && ts.isVariableDeclaration(value) && value.initializer
+        && ts.isVariableDeclarationList(value.parent) && (value.parent.flags & ts.NodeFlags.Const) !== 0) {
+        const initializer = unwrap(value.initializer);
+        if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) target = initializer;
+      }
+    }
+    if (!target) return summary;
+    const returned = byId.get(`${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`);
+    if (!returned || returned.evidence === "unknown") return summary;
+    return { ...summary, returnCallable: {
+      effects: returned.effects, throws: returned.throws, rejects: returned.rejects,
+      evidence: returned.evidence as Exclude<EvidenceStatus, "unknown">,
+    } };
+  });
+  return { summaries: withReturnedCallables, diagnostics };
 }

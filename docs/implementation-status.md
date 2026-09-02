@@ -929,6 +929,10 @@ same property is proved for arbitrary TypeScript.
   Reviewed builtin callback forwardings use the same exclusive join, composing
   outer and inner cardinality only when timing and completion match; mixed
   async lanes remain unknown.
+  A package summary may persist one direct immutable returned callable. Its
+  Effect and exception metadata compose through a direct consumer
+  `const result = factory()` binding; mutable, conditional, multi-return, and
+  further higher-order forms remain unknown.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

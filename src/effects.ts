@@ -68,6 +68,12 @@ export interface ExternalFunctionEffectContract {
   contractEvidence?: "trusted" | "verified";
   /** Promise rejection payloads proved or declared by the callable producer. */
   rejects?: readonly string[];
+  /** Effects of one directly returned immutable callable. */
+  returnCallable?: {
+    effects: readonly Effect[];
+    rejects?: readonly string[];
+    contractEvidence?: "trusted" | "verified";
+  };
   /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
   parameters?: readonly string[];
   functionName?: string;
@@ -898,10 +904,11 @@ export interface EffectAnalysisOptions {
   effectSchemas?: ReadonlyMap<string, EffectSchema>;
 }
 
-function externalContractForCall(
+export function externalContractForCall(
   checker: ts.TypeChecker,
   call: ts.CallExpression,
   contracts: ReadonlyMap<string, ExternalFunctionEffectContract> | undefined,
+  seen: Set<ts.Symbol> = new Set(),
 ): ExternalFunctionEffectContract | undefined {
   if (!contracts) return undefined;
   const location = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
@@ -912,7 +919,51 @@ function externalContractForCall(
     const contract = contracts.get(`${source.fileName}:${declaration.getStart(source)}`);
     if (contract) return contract;
   }
+  if (symbol && !seen.has(symbol)) {
+    const declaration = symbol.valueDeclaration;
+    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+      && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
+      const initializer = declaration.initializer;
+      if (ts.isCallExpression(initializer)) {
+        const producer = externalContractForCall(checker, initializer, contracts, new Set(seen).add(symbol));
+        if (producer?.returnCallable) return {
+          effects: producer.returnCallable.effects,
+          rejects: producer.returnCallable.rejects,
+          evidence: producer.evidence,
+          contractEvidence: producer.returnCallable.contractEvidence ?? producer.contractEvidence,
+          functionName: `${producer.functionName ?? initializer.expression.getText()} return`,
+        };
+      }
+    }
+  }
   return undefined;
+}
+
+function hasExternalReturnedCallableCandidate(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  contracts: ReadonlyMap<string, ExternalFunctionEffectContract> | undefined,
+): boolean {
+  if (!contracts || !ts.isIdentifier(call.expression)) return false;
+  const symbol = checker.getSymbolAtLocation(call.expression);
+  const declaration = symbol?.valueDeclaration;
+  if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer) return false;
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isCallExpression(node)) {
+      const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
+      let target = checker.getSymbolAtLocation(lookup);
+      if (target && (target.flags & ts.SymbolFlags.Alias) !== 0) target = checker.getAliasedSymbol(target);
+      for (const candidate of target?.declarations ?? []) {
+        const source = candidate.getSourceFile();
+        if (contracts.get(`${source.fileName}:${candidate.getStart(source)}`)?.returnCallable) { found = true; return; }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(declaration.initializer);
+  return found;
 }
 
 function hasConfiguredExternalContractCandidate(
@@ -1604,6 +1655,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
             if (effect.kind === "throw" && (catches || asyncOwners.has(graphNode.id))) continue;
             if (observableMutation(effect, locals)) observe(effect, child);
           }
+        }
+        if (!external && hasExternalReturnedCallableCandidate(checker, child, options.externalFunctionEffects)) {
+          unknownExternalEvidence.add(graphNode.id);
         }
         if (!resolvedBuiltin && !external && hasConfiguredExternalContractCandidate(checker, child, registry)) {
           unknownExternalEvidence.add(graphNode.id);

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CallableSummary } from "./callable-summary.js";
-import type { ExternalFunctionEffectContract } from "./effects.js";
+import { externalContractForCall, type ExternalFunctionEffectContract } from "./effects.js";
 import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourceProtocolCfg, type ResourceProtocolModel, type ResourceProtocolResource, type ResourceProtocolTransition } from "./resource-protocol.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics, type ProjectedValue } from "./builtin-semantic-interpreter.js";
@@ -130,7 +130,7 @@ export function collectCallableExceptionalTransitionSites(
         const declarationSource = declaration.getSourceFile();
         const key = `${declarationSource.fileName}:${declaration.getStart(declarationSource)}`;
         const summary = byId.get(key);
-        const candidate = externalContracts.get(key);
+        const candidate = externalContractForCall(checker, node, externalContracts);
         const external = candidate?.evidence === "verified" ? candidate : undefined;
         const throws = summary?.throws ?? external?.effects.flatMap((effect) => effect.kind === "throw" ? [effect.errorType] : []);
         const rejects = summary?.rejects ?? external?.rejects;

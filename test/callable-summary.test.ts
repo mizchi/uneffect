@@ -106,6 +106,15 @@ describe("backend-neutral callable summaries", () => {
           if (deferred) promise.then(callback)
           else callback()
         }
+        function makeCallback() { return () => console.log("made") }
+        function chooseCallback(ok: boolean) {
+          if (ok) return () => console.log("left")
+          return () => console.log("right")
+        }
+        function mutableCallback() {
+          let callback = () => console.log("mutable")
+          return callback
+        }
         function unsupportedCallbackRest({ ...callbacks }: Record<string, () => void>) {
           return callbacks
         }
@@ -208,6 +217,11 @@ describe("backend-neutral callable summaries", () => {
         .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "exactly-1", timing: "deferred", completion: "host-report-throw" }));
       expect(analysis.summaries.find(({ name }) => name === "mixedLane")?.callbackParameters)
         .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "unknown", timing: "unknown", completion: "unknown" }));
+      expect(analysis.summaries.find(({ name }) => name === "makeCallback")?.returnCallable).toMatchObject({
+        effects: [{ kind: "capability", name: "Console" }], evidence: "inferred",
+      });
+      expect(analysis.summaries.find(({ name }) => name === "chooseCallback")?.returnCallable).toBeUndefined();
+      expect(analysis.summaries.find(({ name }) => name === "mutableCallback")?.returnCallable).toBeUndefined();
       expect(analysis.summaries.find(({ name }) => name === "unsupportedCallbackRest")).toMatchObject({
         evidence: "unknown", unknownReasons: ["unsupported-callback-binding"],
       });

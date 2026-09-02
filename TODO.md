@@ -574,6 +574,11 @@ introducing another domain-local control-flow or alias model.
      forwarding. Compose outer control multiplicity with inner callback
      cardinality, preserve a common timing/completion lane, and reject mixed
      inline/Promise/host-task alternatives as unknown.
+   - [x] Persist one directly returned immutable callable's Effect and rejection
+     contract, then resolve a consumer's direct `const result = factory()`
+     invocation by TypeChecker declaration identity. Feed its `Throw`/awaited
+     rejection into the shared CFG; mutable, conditional, multiple-return, and
+     unresolved factory results remain unknown.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.

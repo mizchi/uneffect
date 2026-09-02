@@ -1138,6 +1138,40 @@ describe("evidence and optimizer obligations", () => {
     });
   });
 
+  it("tracks an immutable external factory result and rejects mutable selection", () => {
+    const { program, source } = programOf(`
+      declare function makeReporter(): (message: string) => void
+      /* uneffect:effect Console */
+      export function stable() {
+        const report = makeReporter()
+        report("ok")
+      }
+      /* uneffect:effect Console */
+      export function mutable() {
+        let report = makeReporter()
+        report("unknown")
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "makeReporter")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, contractEvidence: "trusted" as const,
+        functionName: "makeReporter", returnCallable: {
+          effects: [{ kind: "capability", name: "Console", arguments: [] }],
+          contractEvidence: "trusted" as const,
+        },
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "stable")).toMatchObject({
+      effects: [{ kind: "capability", name: "Console", arguments: [] }], evidence: "verified",
+    });
+    expect(result.summaries.find((summary) => summary.functionName === "mutable")).toMatchObject({
+      evidence: "unknown", unknownReasons: [{ code: "unknown-external-evidence" }],
+    });
+  });
+
   it("binds persisted evidence to the caller-owned builtin registry", () => {
     const { program, source } = programOf("export function identity(value: number) { return value }");
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;

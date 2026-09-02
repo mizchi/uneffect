@@ -20,6 +20,12 @@ export interface ContractCallbackSummaryV1 {
   effectBound?: readonly string[];
 }
 
+export interface ContractReturnedCallableV1 {
+  effects: string[];
+  rejects?: string[];
+  evidence: "inferred" | "trusted" | "verified";
+}
+
 export interface ContractSummaryExportV1 {
   symbol: { module: string; export: string };
   functionName: string;
@@ -36,6 +42,7 @@ export interface ContractSummaryExportV1 {
     effects: string[];
     parameters: string[];
     rejects?: string[];
+    returnCallable?: ContractReturnedCallableV1;
     callbacks?: ContractCallbackSummaryV1[];
   };
 }
@@ -98,6 +105,11 @@ export function boundContractSummaryEffectContracts(
       parameters: item.summary.effect.parameters,
       rejects: item.summary.effect.rejects ?? [],
       contractEvidence: "trusted",
+      ...(item.summary.effect.returnCallable ? { returnCallable: {
+        effects: item.summary.effect.returnCallable.effects.flatMap((effect) => parseEffectSet(effect)),
+        rejects: item.summary.effect.returnCallable.rejects ?? [],
+        contractEvidence: "trusted",
+      } } : {}),
       ...(item.summary.effect.callbacks ? { callbackParameters: item.summary.effect.callbacks.map((callback) => {
         const { effectBound, ...rest } = callback;
         return {
@@ -169,6 +181,12 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
         || !Array.isArray(item.effect.parameters) || !item.effect.parameters.every((entry) => typeof entry === "string")
         || (item.effect.rejects !== undefined && (!Array.isArray(item.effect.rejects)
           || !item.effect.rejects.every((entry) => typeof entry === "string")))
+        || (item.effect.returnCallable !== undefined && (!item.effect.returnCallable
+          || !Array.isArray(item.effect.returnCallable.effects)
+          || !item.effect.returnCallable.effects.every((entry) => typeof entry === "string")
+          || !["inferred", "trusted", "verified"].includes(item.effect.returnCallable.evidence)
+          || (item.effect.returnCallable.rejects !== undefined && (!Array.isArray(item.effect.returnCallable.rejects)
+            || !item.effect.returnCallable.rejects.every((entry) => typeof entry === "string")))))
         || (item.effect.callbacks !== undefined && (!Array.isArray(item.effect.callbacks)
           || !item.effect.callbacks.every(validCallback)))))) {
       throw new Error(`malformed contract summary export ${index} in ${fileName}`);
@@ -407,6 +425,11 @@ function describeExport(
       effects: (effectSummary?.evidence === "verified" ? effectSummary.effects : callableSummary!.effects).map(formatEffect).sort(),
       parameters: summaryParameterNames(node),
       ...(callableSummary?.rejects.length ? { rejects: [...callableSummary.rejects].sort() } : {}),
+      ...(callableSummary?.returnCallable ? { returnCallable: {
+        effects: callableSummary.returnCallable.effects.map(formatEffect).sort(),
+        ...(callableSummary.returnCallable.rejects.length ? { rejects: [...callableSummary.returnCallable.rejects].sort() } : {}),
+        evidence: callableSummary.returnCallable.evidence,
+      } } : {}),
       ...(callableSummary?.callbackParameters.length ? { callbacks: callableSummary.callbackParameters.map((callback) => ({
         index: callback.index,
         name: callback.name,
@@ -486,6 +509,11 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
         ?.map(formatEffect).sort();
       const parameters = summaryParameterNames(declaration);
       const rejects = callable?.rejects.length ? [...callable.rejects].sort() : undefined;
+      const returnCallable = callable?.returnCallable ? {
+        effects: callable.returnCallable.effects.map(formatEffect).sort(),
+        ...(callable.returnCallable.rejects.length ? { rejects: [...callable.returnCallable.rejects].sort() } : {}),
+        evidence: callable.returnCallable.evidence,
+      } : undefined;
       const callbacks = callable?.callbackParameters.length ? callable.callbackParameters.map((callback) => ({
         index: callback.index, name: callback.name,
         ...(callback.path ? { path: callback.path } : {}),
@@ -496,6 +524,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
       if (!effects || canonical(effects) !== canonical(item.effect.effects)
         || canonical(parameters) !== canonical(item.effect.parameters)
         || canonical(rejects) !== canonical(item.effect.rejects)
+        || canonical(returnCallable) !== canonical(item.effect.returnCallable)
         || canonical(callbacks) !== canonical(item.effect.callbacks)) {
         errors.push(`contract summary Effect payload for ${item.symbol.export} does not match verified producer evidence`);
       }

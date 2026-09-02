@@ -470,12 +470,15 @@ describe("TypeScript resource protocol CFG lowering", () => {
         declare function riskyAsync(): Promise<void>
         declare function riskyBoth(): Promise<void>
         declare function unauthenticated(): void
+        declare function makeRisky(): () => Promise<void>
+        const madeRisky = makeRisky()
         function syncMain() { riskySync() }
         async function awaitedMain() { await riskyAsync() }
         async function bothMain() { await riskyBoth() }
         function floatingMain() { riskyAsync() }
         function shadowMain() { const riskySync = () => {}; riskySync() }
         function unauthenticatedMain() { unauthenticated() }
+        async function madeMain() { await madeRisky() }
       `);
       const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
       const source = program.getSourceFile(fileName)!;
@@ -500,6 +503,14 @@ describe("TypeScript resource protocol CFG lowering", () => {
         effects: [{ kind: "throw", errorType: "Error" }], evidence: "unknown",
         contractEvidence: "trusted", functionName: "unauthenticated",
       });
+      const factory = functions.get("makeRisky")!;
+      contracts.set(`${fileName}:${factory.getStart(source)}`, {
+        effects: [], evidence: "verified", contractEvidence: "trusted", functionName: "makeRisky",
+        returnCallable: {
+          effects: [{ kind: "throw", errorType: "RangeError" }], rejects: ["TypeError"],
+          contractEvidence: "trusted",
+        },
+      });
 
       expect(collectCallableExceptionalTransitionSites(program, functions.get("syncMain")!, [], contracts)[0]).toMatchObject({
         exceptionEvidence: { completion: "synchronous-throw", evidence: "trusted", errorTypes: ["Error"] },
@@ -512,6 +523,8 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(collectCallableExceptionalTransitionSites(program, functions.get("floatingMain")!, [], contracts)).toEqual([]);
       expect(collectCallableExceptionalTransitionSites(program, functions.get("shadowMain")!, [], contracts)).toEqual([]);
       expect(collectCallableExceptionalTransitionSites(program, functions.get("unauthenticatedMain")!, [], contracts)).toEqual([]);
+      expect(collectCallableExceptionalTransitionSites(program, functions.get("madeMain")!, [], contracts).map((site) =>
+        site.exceptionEvidence?.completion)).toEqual(["synchronous-throw", "awaited-reject"]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
