@@ -265,8 +265,8 @@ export { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.j
 export type { ResourceDisposalCompletion, ResourceDisposalProtocolProjection } from "./resource-disposal-protocol.js";
 export { lowerPromiseOwnershipToResourceProtocol } from "./promise-ownership-protocol.js";
 export type { PromiseOwnershipProtocolProjection } from "./promise-ownership-protocol.js";
-export { authenticateResourceCallableContractArtifact, createResourceCallableContractArtifact, resourceCallableArtifactAssumption, resourceCallableArtifactSchema } from "./resource-callable-artifact.js";
-export type { ResourceCallableArtifactAuthentication, ResourceCallableArtifactEnvironment, ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
+export { authenticateResourceCallableContractArtifact, bindResourceCallableArtifactsToProgram, createResourceCallableContractArtifact, loadResourceCallableContractArtifact, resourceCallableArtifactAssumption, resourceCallableArtifactSchema } from "./resource-callable-artifact.js";
+export type { BoundResourceCallableArtifacts, ResourceCallableArtifactAuthentication, ResourceCallableArtifactEnvironment, ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
 export { analyzeAsyncIteratorCleanup, analyzeAsyncIteratorCleanupInProgram, analyzeIteratorCleanupInProgram, analyzeSynchronousIteratorCleanup } from "./async-iterator-cleanup.js";
 export type { AsyncIteratorCleanup, AsyncIteratorCleanupScenario, AsyncIteratorCleanupUnknown, AsyncIteratorExit } from "./async-iterator-cleanup.js";
 export { collectIteratorChecks } from "./iterator-check.js";

@@ -11,6 +11,7 @@ import { builtinContractDigest } from "../src/evidence.js";
 import type { CheckWorkspaceJsonReport } from "../src/check-report.js";
 import { createContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
+import { createResourceCallableContractArtifact } from "../src/resource-callable-artifact.js";
 
 function capture(): CliStreams & { stdout: string; stderr: string } {
   const io = {
@@ -303,6 +304,45 @@ describe("uneffect command line", () => {
       const drifted = capture();
       expect(await runCli(["check", "--contract-summary", summaryFile, consumerFile], drifted)).toBe(exitCode.failed);
       expect(drifted.stderr).toContain("version 1.2.4 does not match summary 1.2.3");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("loads repeated package resource lifecycle artifacts", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-resource-contract-"));
+    try {
+      const packageDirectory = join(directory, "node_modules", "reviewed-resource");
+      mkdirSync(packageDirectory, { recursive: true });
+      const declarationText = "export interface Handle {}\nexport declare function open(): Handle\nexport declare function close(value: Handle): void\n";
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+        name: "reviewed-resource", version: "1.0.0", types: "index.d.ts",
+      }));
+      writeFileSync(join(packageDirectory, "index.d.ts"), declarationText);
+      const artifactFiles = (["open", "close"] as const).map((name) => {
+        const artifact = createResourceCallableContractArtifact({
+          symbol: { module: "reviewed-resource", export: name },
+          runtime: { kind: "package", version: "1.0.0" }, declarationText,
+          summary: {
+            schema: "uneffect-resource-callable-summary/v1", id: `reviewed-resource#${name}`, evidence: "trusted",
+            operations: name === "open" ? [{ kind: "acquire", subject: { kind: "return" } }]
+              : [{ kind: "release", subject: { kind: "parameter", index: 0 } }],
+          },
+          trust: { owner: "cli-test", reason: "reviewed lifecycle" },
+        });
+        const fileName = join(directory, `${name}.resource.json`);
+        writeFileSync(fileName, JSON.stringify(artifact));
+        return fileName;
+      });
+      const consumer = join(directory, "consumer.ts");
+      writeFileSync(consumer, `import { open, close } from "reviewed-resource"; export function main() { const value = open(); close(value) }`);
+      const io = capture();
+      expect(await runCli(["check", "--infer", "--json",
+        "--resource-contract", artifactFiles[0]!, "--resource-contract", artifactFiles[1]!, consumer], io), io.stderr)
+        .toBe(exitCode.success);
+      const report = JSON.parse(io.stdout) as { resourceProtocols: Array<{ owner: string; status: string }>; assumptions: { entries: Array<{ owner?: string }> } };
+      expect(report.resourceProtocols).toContainEqual(expect.objectContaining({ owner: "main", status: "satisfied" }));
+      expect(report.assumptions.entries).toContainEqual(expect.objectContaining({ owner: "cli-test" }));
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

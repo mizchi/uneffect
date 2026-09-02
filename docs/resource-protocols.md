@@ -163,12 +163,18 @@ artifact payload SHA-256, and non-empty trust owner/reason. Invalid or expired
 review dates block the artifact. Accepted summaries are rebound to the actual
 TypeChecker declaration identity, enabling the same call-site lowering used for
 local declarations. External artifacts are always `trusted`; a payload that
-self-asserts `verified` is rejected. Automatic package/config discovery is not
-implemented yet. `resourceCallableArtifactAssumption` converts every accepted
-artifact into the shared `resource-callable` assumption-ledger domain, retaining
-dependency version, owner, reason, expiry, and source scope. Until registry
-loading is implemented, callers must explicitly append that entry to their
-ledger.
+self-asserts `verified` is rejected. `checkFiles` and `verifyUneffectProject`
+accept `resourceCallableArtifacts` plus an optional deterministic
+`resourceArtifactAsOf` date. They discover matching exports from module
+specifiers in the checked TypeScript Program, verify the installed package or
+Node version and declaration bytes, rebind accepted summaries, and append a
+source-scoped assumption entry for every matching call. Invalid supplied
+artifacts produce an `invalid-contract` diagnostic. CLI/config-file discovery
+is not implemented yet.
+
+`resourceCallableArtifactAssumption` remains available to integrations that
+authenticate artifacts outside the standard project check. Every entry retains
+dependency version, owner, reason, expiry, and source scope.
 
 ## Explicit Resource Management
 

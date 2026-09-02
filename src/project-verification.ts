@@ -25,6 +25,7 @@ import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic
 import { fromTypeScriptDiagnostic, type AsyncIteratorCheckerDiagnostic, type ResourceCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
 import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, type ResourceLifecycleEvidence } from "./resource-callable-typescript.js";
+import { bindResourceCallableArtifactsToProgram, type ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
 import {
   assessProjectVerification,
   PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION,
@@ -68,6 +69,10 @@ export interface VerifyUneffectProjectBaseOptions {
   z3?: Z3ExecutionOptions;
   /** Producer-verified package contracts to bind to installed declarations. */
   contractSummaryBundles?: readonly ContractSummaryBundleV1[];
+  /** Reviewed resource lifecycle contracts to bind to installed declarations. */
+  resourceCallableArtifacts?: readonly ResourceCallableContractArtifact[];
+  /** UTC review date used for deterministic resource-artifact expiry checks. */
+  resourceArtifactAsOf?: string;
 }
 
 export interface VerifyUneffectProjectOptions extends VerifyUneffectProjectBaseOptions {
@@ -423,10 +428,20 @@ async function verifyUneffectProjectFiles(
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   const asyncIterators: IteratorCheckEvidence[] = [];
   const resourceProtocols: ResourceLifecycleEvidence[] = [];
-  const resourceAssumptions: AssumptionEntry[] = [];
+  const resourceArtifactBinding = bindResourceCallableArtifactsToProgram(
+    options.resourceCallableArtifacts ?? [], program,
+    options.resourceArtifactAsOf ?? new Date().toISOString().slice(0, 10),
+  );
+  const resourceAssumptions: AssumptionEntry[] = [...resourceArtifactBinding.assumptions];
+  const artifactDiagnosticFile = Object.keys(options.files)[0] ?? "<resource-artifact>";
+  diagnostics.push(...resourceArtifactBinding.blockers.map((message): ResourceCheckerDiagnostic => ({
+    domain: "resource", kind: "invalid-contract", severity: "error", fileName: artifactDiagnosticFile,
+    line: 1, functionName: "<resource-artifact>", message,
+  })));
   const localResourceCallableAnalysis = analyzeResourceCallableSummaries(program);
   const resourceCallableAnalysis = {
-    summaries: [...localResourceCallableAnalysis.summaries, ...boundContractSummaryResourceContracts(contractSummaryBindings)],
+    summaries: [...localResourceCallableAnalysis.summaries, ...boundContractSummaryResourceContracts(contractSummaryBindings),
+      ...resourceArtifactBinding.summaries],
     diagnostics: localResourceCallableAnalysis.diagnostics,
   };
   const iteratorAssumptions: AssumptionEntry[] = [];
@@ -591,6 +606,8 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     ...(options.assumptionRegistry === undefined ? {} : { assumptionRegistry: options.assumptionRegistry }),
     ...(options.builtinRegistry === undefined ? {} : { builtinRegistry: options.builtinRegistry }),
     ...(options.contractSummaryBundles === undefined ? {} : { contractSummaryBundles: options.contractSummaryBundles }),
+    ...(options.resourceCallableArtifacts === undefined ? {} : { resourceCallableArtifacts: options.resourceCallableArtifacts }),
+    ...(options.resourceArtifactAsOf === undefined ? {} : { resourceArtifactAsOf: options.resourceArtifactAsOf }),
   };
   for (const project of workspace.projects) {
     if (project.fileNames.length === 0) continue;

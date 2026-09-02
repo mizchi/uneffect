@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { createContractSummaryBundle } from "../src/contract-summary.js";
+import { createResourceCallableContractArtifact } from "../src/resource-callable-artifact.js";
 import ts from "typescript";
 
 function programFor(fileName: string, source: string): ts.Program {
@@ -19,6 +20,73 @@ function programFor(fileName: string, source: string): ts.Program {
 }
 
 describe("general resource lifecycle check", () => {
+  it("discovers and authenticates supplied package resource artifacts", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-artifact-check-"));
+    try {
+      const packageDirectory = join(directory, "node_modules", "reviewed-resource");
+      mkdirSync(packageDirectory, { recursive: true });
+      const declarationText = `
+        export interface Handle { readonly id: number }
+        export declare function open(): Handle
+        export declare function close(handle: Handle): void
+      `;
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+        name: "reviewed-resource", version: "1.2.3", types: "index.d.ts",
+      }));
+      writeFileSync(join(packageDirectory, "index.d.ts"), declarationText);
+      const artifact = (name: "open" | "close") => createResourceCallableContractArtifact({
+        symbol: { module: "reviewed-resource", export: name },
+        runtime: { kind: "package", version: "1.2.3" }, declarationText,
+        summary: {
+          schema: "uneffect-resource-callable-summary/v1", id: `reviewed-resource#${name}`, evidence: "trusted",
+          operations: name === "open" ? [{ kind: "acquire", subject: { kind: "return" } }]
+            : [{ kind: "release", subject: { kind: "parameter", index: 0 } }],
+        },
+        trust: { owner: "security@example.test", reason: "reviewed SDK lifecycle", expiresOn: "2030-01-01" },
+      });
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        import { open, close } from "reviewed-resource"
+        export function main() { const handle = open(); close(handle) }
+      `);
+      const result = await checkFiles([entry], {
+        resourceCallableArtifacts: [artifact("open"), artifact("close")], resourceArtifactAsOf: "2026-09-03",
+      });
+      expect(result.resourceProtocols).toMatchObject([{ owner: "main", status: "satisfied", evidence: "trusted" }]);
+      expect(result.assumptions.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "resource-callable", owner: "security@example.test" }),
+      ]));
+      const project = await verifyUneffectProject({
+        files: { [entry]: `
+          import { open, close } from "reviewed-resource"
+          export function main() { const handle = open(); close(handle) }
+        ` },
+        resourceCallableArtifacts: [artifact("open"), artifact("close")], resourceArtifactAsOf: "2026-09-03",
+      });
+      expect(project.resourceProtocols).toMatchObject([{ owner: "main", status: "satisfied", evidence: "trusted" }]);
+      expect(project.assumptions.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "resource-callable", owner: "security@example.test" }),
+      ]));
+      const wrongVersion = createResourceCallableContractArtifact({
+        symbol: { module: "reviewed-resource", export: "open" },
+        runtime: { kind: "package", version: "9.9.9" }, declarationText,
+        summary: {
+          schema: "uneffect-resource-callable-summary/v1", id: "reviewed-resource#open", evidence: "trusted",
+          operations: [{ kind: "acquire", subject: { kind: "return" } }],
+        },
+        trust: { owner: "security@example.test", reason: "wrong package review" },
+      });
+      const rejected = await checkFiles([entry], {
+        resourceCallableArtifacts: [wrongVersion], resourceArtifactAsOf: "2026-09-03",
+      });
+      expect(rejected.diagnostics).toContainEqual(expect.objectContaining({
+        domain: "resource", kind: "invalid-contract", message: expect.stringContaining("runtime version mismatch"),
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not treat a short-circuited builtin release as unconditional cleanup", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-conditional-release-"));
     try {

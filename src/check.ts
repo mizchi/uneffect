@@ -17,6 +17,7 @@ import { invalidateTransferredTypedArrayEvidence } from "./project-verification.
 import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
 import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, boundContractSummaryResourceContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
 import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, type ResourceLifecycleEvidence } from "./resource-callable-typescript.js";
+import { bindResourceCallableArtifactsToProgram, type ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -43,6 +44,10 @@ export interface CheckOptions {
   externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;
   /** Producer-verified package contracts bound to installed declarations. */
   contractSummaryBundles?: readonly ContractSummaryBundleV1[];
+  /** Reviewed resource lifecycle contracts bound to installed declarations. */
+  resourceCallableArtifacts?: readonly ResourceCallableContractArtifact[];
+  /** UTC review date used for deterministic resource-artifact expiry checks. */
+  resourceArtifactAsOf?: string;
 }
 
 export interface CheckResult {
@@ -148,10 +153,20 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   }
   const asyncIterators: IteratorCheckEvidence[] = [];
   const resourceProtocols: ResourceLifecycleEvidence[] = [];
-  const resourceAssumptions: AssumptionEntry[] = [];
+  const resourceArtifactBinding = bindResourceCallableArtifactsToProgram(
+    options.resourceCallableArtifacts ?? [], program,
+    options.resourceArtifactAsOf ?? new Date().toISOString().slice(0, 10),
+  );
+  const resourceAssumptions: AssumptionEntry[] = [...resourceArtifactBinding.assumptions];
+  const artifactDiagnosticFile = fileNames[0] ?? "<resource-artifact>";
+  diagnostics.push(...resourceArtifactBinding.blockers.map((message): ResourceCheckerDiagnostic => ({
+    domain: "resource", kind: "invalid-contract", severity: "error", fileName: artifactDiagnosticFile,
+    line: 1, functionName: "<resource-artifact>", message,
+  })));
   const localResourceCallableAnalysis = analyzeResourceCallableSummaries(program);
   const resourceCallableAnalysis = {
-    summaries: [...localResourceCallableAnalysis.summaries, ...boundContractSummaryResourceContracts(contractSummaryBindings)],
+    summaries: [...localResourceCallableAnalysis.summaries, ...boundContractSummaryResourceContracts(contractSummaryBindings),
+      ...resourceArtifactBinding.summaries],
     diagnostics: localResourceCallableAnalysis.diagnostics,
   };
   const iteratorAssumptions: AssumptionEntry[] = [];

@@ -14,6 +14,7 @@ import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegri
 import { loadDeclarationTransformManifest, validateDeclarationTransformManifest } from "./declaration-transforms.js";
 import { loadAssumptionRegistry } from "./assumption-registry.js";
 import { loadContractSummaryBundle } from "./contract-summary.js";
+import { loadResourceCallableContractArtifact } from "./resource-callable-artifact.js";
 import {
   composeWorkspaceModuleInitialization,
   type CompletedModuleInitializationProject,
@@ -23,7 +24,7 @@ import {
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--contract-summary <summary.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--assumptions <registry.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--contract-summary <summary.json>] [--resource-contract <artifact.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--assumptions <registry.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
@@ -33,6 +34,7 @@ export const checkCommand: CliCommand = {
     "--assumptions  load a versioned caller-owned assumption registry",
     "--semantics-module  load a declarative trusted semantics module; repeat to compose modules",
     "--contract-summary  bind a verified package contract summary; repeat to compose packages",
+    "--resource-contract  bind a reviewed package resource lifecycle artifact; repeat to compose exports",
     "--declaration-transforms  bind generated TypeScript to exact spans in non-TypeScript sources",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
     "--module-entry  compose the supported module-initialization order from this workspace entry",
@@ -51,6 +53,7 @@ export const checkCommand: CliCommand = {
       assumptions: { type: "string" },
       "semantics-module": { type: "string", multiple: true },
       "contract-summary": { type: "string", multiple: true },
+      "resource-contract": { type: "string", multiple: true },
       "declaration-transforms": { type: "string" },
       project: { type: "string" },
       "module-entry": { type: "string" },
@@ -79,6 +82,12 @@ export const checkCommand: CliCommand = {
       if (values["semantics-module"] !== undefined) {
         builtinRegistry = (await loadUneffectModules(values["semantics-module"] as string[], builtinRegistry)).registry;
       }
+    }
+    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+    let resourceCallableArtifacts;
+    try {
+      resourceCallableArtifacts = values["resource-contract"] === undefined ? undefined
+        : await Promise.all((values["resource-contract"] as string[]).map((fileName) => loadResourceCallableContractArtifact(String(fileName))));
     }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
     let assumptionRegistry;
@@ -132,6 +141,7 @@ export const checkCommand: CliCommand = {
           projectReferences: domain.projectReferences,
           program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts,
           contractSummaryBundles,
+          resourceCallableArtifacts,
         });
         const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
@@ -186,6 +196,7 @@ export const checkCommand: CliCommand = {
       builtinRegistry,
       assumptionRegistry,
       contractSummaryBundles,
+      resourceCallableArtifacts,
       compilerOptions: project?.compilerOptions,
       project: project?.provenance,
       projectReferences: project?.projectReferences,

@@ -65,6 +65,12 @@ versioned caller-owned review records referenced by source trust IDs.
 package contract to the exact installed package version and
 TypeChecker-resolved declaration; repeat it for multiple packages. Digest,
 version, compiler, and signature drift fail closed.
+`--resource-contract <resource.json>` binds one reviewed resource lifecycle
+artifact to the exact installed package/Node version and declaration bytes;
+repeat it for multiple exports. Accepted contracts remain trusted assumptions,
+are rebound by TypeChecker symbol identity, and appear in the JSON assumption
+ledger. Invalid schema, digest, version, declaration, or expired-review evidence
+fails the check.
 `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.
