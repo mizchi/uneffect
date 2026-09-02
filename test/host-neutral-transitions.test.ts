@@ -428,14 +428,15 @@ describe("host-neutral async transitions", () => {
       const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
         ts.isFunctionDeclaration(statement) && statement.name?.text === "later")!;
       const key = `${fileName}:${declaration.getStart(source)}`;
+      const externalFunctionEffects = new Map([[key, {
+        effects: [], evidence: "verified" as const, functionName: "later",
+        callbackParameters: [{
+          index: 0, name: "callback", timing: "promise-reaction" as const,
+          cardinality: "0..1" as const, completion: "convert-throw-to-rejection" as const,
+        }],
+      }]]);
       const analysis = analyzeHostNeutralTransitions(program, source, {
-        externalFunctionEffects: new Map([[key, {
-          effects: [], evidence: "verified" as const, functionName: "later",
-          callbackParameters: [{
-            index: 0, name: "callback", timing: "promise-reaction" as const,
-            cardinality: "0..1" as const, completion: "convert-throw-to-rejection" as const,
-          }],
-        }]]),
+        externalFunctionEffects,
       });
 
       expect(analysis.transitions).toContainEqual(expect.objectContaining({
@@ -448,6 +449,16 @@ describe("host-neutral async transitions", () => {
         synchronousDivergenceReasons: ["opaque-call"],
       }));
       expect(analysis.evidence).toBe("inferred");
+      const model = generateHostTransitionModel(program, source, {
+        profile: "web", moduleName: "ExternalReaction", externalFunctionEffects,
+      });
+      expect(model.quint).toContain("promise_reaction_0_0_pending");
+      expect(model.quint).toContain("return_promise_executor_0_settled");
+      expect(model.quint).toContain("return_promise_executor_0_pending");
+      expect(model.quint).toContain("diverge_promise_executor_0");
+      const quintFile = join(directory, "external-reaction.qnt");
+      writeFileSync(quintFile, model.quint);
+      expect(spawnSync("quint", ["typecheck", quintFile], { encoding: "utf8" })).toMatchObject({ status: 0 });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

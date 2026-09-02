@@ -903,9 +903,11 @@ same property is proved for arbitrary TypeScript.
   host-neutral microtask/reject transition. A directly bound returned Promise
   gives the callback and conservative settlement transition the same
   `BindingIdentity`; async ownership status and observations are joined onto
-  that settlement. General external settlement execution in generated Quint,
-  returned callables, arbitrary profile-specific host tasks, and resource
-  ownership remain open.
+  that settlement. The host model generator projects the same external
+  reaction into executable Web/Node Quint with separate settled, pending, and
+  opaque synchronous-divergence choices; generated models are Quint-typechecked
+  in acceptance tests. Returned callables, arbitrary profile-specific host
+  tasks, and resource ownership remain open.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

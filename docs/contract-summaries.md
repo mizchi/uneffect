@@ -97,6 +97,12 @@ throw-to-rejection contract on a call whose actual TypeChecker return type is
 not Promise-like is rejected as `unknown`; Uneffect does not invent a hidden
 returned Promise.
 
+`generateHostTransitionModel` projects this external Promise reaction into the
+same executable Web/Node Quint Promise-chain state machine. Because external
+implementation progress is opaque, the generated model keeps separate
+settled, pending, and synchronous-divergence choices instead of assuming that
+the callback eventually runs.
+
 This does not yet prove that the installed declaration bytes were emitted from
 the summarized producer source, or that bundled/runtime JavaScript corresponds
 to that declaration. Export-map selection is inherited from TypeScript module

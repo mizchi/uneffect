@@ -571,6 +571,46 @@ export function lowerAbortSignalTransitions(fileName: string, analysis: AbortSig
   }));
 }
 
+function appendExternalPromiseReactions(
+  model: PromiseChainModel,
+  transitions: readonly HostNeutralTransition[],
+): PromiseChainModel {
+  const executors = [...model.executors], chains = [...model.chains];
+  for (const transition of transitions) {
+    if (transition.kind !== "invoke-callback" || transition.lane !== "microtask"
+      || transition.completion !== "reject" || !transition.promise) continue;
+    const executor = executors.length;
+    executors.push({
+      owner: transition.owner,
+      binding: transition.promise,
+      ...(transition.promiseIdentity ? { identity: transition.promiseIdentity } : {}),
+      callback: `<external:${transition.api}>`,
+      synchronous: true,
+      throwBecomesRejection: true,
+      settlementSource: "external-resolvers",
+      events: [],
+      possibleSettlements: ["fulfilled", "rejected"],
+      mayRemainPending: true,
+      mayDivergeSynchronously: true,
+      synchronousDivergenceReasons: ["opaque-call"],
+      span: transition.span,
+    });
+    chains.push({
+      owner: transition.owner,
+      source: transition.promise,
+      executor,
+      links: [{
+        kind: "then",
+        handlers: [transition.callback],
+        handlerReturns: ["unknown"],
+        span: transition.span,
+      }],
+      span: transition.span,
+    });
+  }
+  return { executors, thenables: [...model.thenables], chains };
+}
+
 /** Connects callable, Promise, and resource analyses before a host scheduler is selected. */
 export function analyzeHostNeutralTransitions(
   program: ts.Program,
@@ -679,9 +719,10 @@ export function generateHostTransitionModel(
       ? [{ transitionId: item.transition.id, maximumSkips: options.fairnessBound!, assumption: "bounded-host-progress", evidence: "assumed" }]
       : [],
   );
+  const promiseModel = appendExternalPromiseReactions(asyncSafety.promiseChains, transitionAnalysis.transitions);
   const hostQuint = options.profile === "web"
-    ? generateWebEventLoopQuint(options.moduleName, patterns, {}, asyncSafety.promiseChains)
-    : generateNodeEventLoopQuint(options.moduleName, patterns, { topLevelMode: options.nodeTopLevelMode ?? "commonjs" }, asyncSafety.promiseChains);
+    ? generateWebEventLoopQuint(options.moduleName, patterns, {}, promiseModel)
+    : generateNodeEventLoopQuint(options.moduleName, patterns, { topLevelMode: options.nodeTopLevelMode ?? "commonjs" }, promiseModel);
   const executableFairness = attachExecutableFairness(
     hostQuint, patterns, options.profile, options.fairness, definitelyCancelled, patternTransitions,
   );

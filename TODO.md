@@ -537,7 +537,7 @@ introducing another domain-local control-flow or alias model.
    - [x] Require the concrete consumer call to have a TypeChecker-visible
      Promise-like return before emitting external settlement identity; reject
      contradictory throw-to-rejection contracts instead of inventing a Promise.
-   - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Project external
+   - [x] [#63](https://github.com/mizchi/uneffect/issues/63) Project external
      settlement transitions into executable generated Quint rather than only
      the shared host-neutral artifact; retain opaque pending/divergence choices.
    - [x] Add a versioned backend-neutral callable-summary API for direct

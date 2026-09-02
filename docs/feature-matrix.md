@@ -58,9 +58,11 @@ and container aliases fail closed. Persisted Promise-reaction callbacks lower
 to host-neutral microtask/reject transitions and discharge synchronous callback
 throws from the registering caller. A direct Promise binding connects callback,
 conservative fulfilled/rejected settlement, and floating/observed ownership by
-source identity. The standalone host-neutral artifact carries this relation;
-general external settlement execution in generated Quint, returned callables,
-arbitrary host-task queue selection, and resource semantics remain unsupported.
+source identity. `generateHostTransitionModel` also projects the reaction into
+the executable Web/Node Quint Promise-chain state machine with explicit
+settled, pending, and opaque synchronous-divergence choices. Returned
+callables, arbitrary host-task queue selection, and resource semantics remain
+unsupported.
 Direct immutable exported arrow/function-expression callables use the same
 package export-symbol and resolved-signature binding. Mutable or compound
 export declarations remain unsupported.
