@@ -659,6 +659,9 @@ introducing another domain-local control-flow or alias model.
        - [x] Reuse the registry-aware Effect analysis when deriving callable
          metadata, and persist module-derived callback and Promise rejection
          summaries with source revalidation under the same ledger.
+       - [x] Bind those summaries to the consumer's installed declarations only
+         under the identical module ledger, and reconnect persisted callback,
+         rejection, and resource operations to temporal and lifecycle analysis.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

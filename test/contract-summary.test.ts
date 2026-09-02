@@ -3,10 +3,11 @@ import ts from "typescript";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
+import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, boundContractSummaryResourceContracts, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
 import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { analyzeResourceLifecyclesInSource } from "../src/resource-callable-typescript.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
@@ -538,6 +539,56 @@ describe("persisted contract summary bundles", () => {
       outcomes: ["fulfilled", "rejected"], firstSettlementWins: true,
       promiseIdentity: expect.objectContaining({ fileName: consumerFile }),
       ownership: expect.objectContaining({ status: "observed", observations: ["return"] }),
+    }));
+  });
+
+  it("connects persisted resource contracts to consumer lifecycle analysis", () => {
+    const producerFile = "/src/resource.ts";
+    const producerSource = `
+      export interface Handle { readonly id: number }
+      /* uneffect:acquire return */
+      export function open(): Handle { return { id: 1 } }
+      /* uneffect:release handle */
+      export function close(handle: Handle): void { void handle }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/resource", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+    });
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-resource-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "resource");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/resource", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export interface Handle { readonly id: number }
+      export declare function open(): Handle
+      export declare function close(handle: Handle): void
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { close, open } from "@example/resource"
+      export function run(): void {
+        const handle = open()
+        close(handle)
+      }
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding.status).toBe("verified");
+    const resourceContracts = boundContractSummaryResourceContracts([binding]);
+    const analysis = analyzeResourceLifecyclesInSource(
+      consumerProgram, consumerProgram.getSourceFile(consumerFile)!,
+      { summaries: resourceContracts, diagnostics: [] },
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.evidence).toContainEqual(expect.objectContaining({
+      owner: "run", status: "satisfied", state: "released", authority: "callable-contract",
     }));
   });
 });

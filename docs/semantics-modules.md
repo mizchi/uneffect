@@ -142,6 +142,11 @@ Producer Effect and callable analysis use that same registry instance: callback
 timing/cardinality/completion and `reject` payloads derived from a reviewed
 dependency are serialized into the package summary, then recomputed under the
 same ledger during source validation.
+After declaration and ledger binding in a consumer Program, these are active
+contracts rather than report-only metadata: callbacks feed host-neutral async
+transitions, rejection types feed external Effect contracts, and resource
+operations feed the common lifecycle CFG. A missing or different module ledger
+blocks the whole package binding instead of partially trusting those fields.
 
 The intended later tiers are:
 
