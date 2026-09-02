@@ -276,4 +276,23 @@ describe("general resource lifecycle check", () => {
       expect(result.diagnostics.filter((diagnostic) => "domain" in diagnostic && diagnostic.domain === "resource")).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("tracks stream reader use and release through the builtin catalog", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-stream-reader-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function readOne(stream: ReadableStream<Uint8Array>) {
+          const renamed = stream.getReader()
+          await renamed.read()
+          renamed.releaseLock()
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toMatchObject([
+        { owner: "readOne", kind: "stream-reader", status: "satisfied", state: "released", authority: "builtin-catalog" },
+      ]);
+      expect(result.diagnostics.filter((diagnostic) => "domain" in diagnostic && diagnostic.domain === "resource")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

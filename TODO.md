@@ -441,6 +441,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Route builtin semantic-catalog acquire/use/release events (including
        WebSocket and stream readers) through the normal CLI/project resource
        protocol output, using declaration-region ids instead of variable names.
+     - [x] Catalog stream-reader `read()` as a resource use so ordinary
+       acquire/read/release code remains analyzable instead of opaque.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

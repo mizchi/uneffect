@@ -747,6 +747,12 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
         { kind: "protocol", name: "stream", transition: "release-readable", inputs: { reader: { kind: "receiver" } } },
       ] },
     })),
+    ...(["ReadableStreamDefaultReader", "ReadableStreamBYOBReader"] as const).map((owner) => reviewed("dom", {
+      symbol: { module: "lib.dom", export: `${owner}#read` }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "use", resource: "stream-reader", target: { kind: "receiver" } },
+        { kind: "protocol", name: "stream", transition: "read", inputs: { reader: { kind: "receiver" } } },
+      ] },
+    })),
     reviewed("dom", { symbol: { module: "lib.dom", export: "ReadableStream#getReader" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
       { kind: "result", refinement: { kind: "resource", family: "stream-reader" } },
       { kind: "acquire", resource: "stream-reader", target: { kind: "result" } },

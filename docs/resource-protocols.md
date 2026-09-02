@@ -371,7 +371,8 @@ that the opaque operation preserved ownership.
 Reviewed lifecycle events from the versioned builtin semantic catalog enter
 this same checker. For example, `new WebSocket()` acquires a `websocket`,
 `send()` uses it, and `close()` releases it; stream-reader acquisition and
-release follow the same route. The resource id is the TypeScript declaration
+release follow the same route, and `ReadableStreamDefaultReader.read()` /
+`ReadableStreamBYOBReader.read()` are resource uses. The resource id is the TypeScript declaration
 region, while the local variable spelling is display-only, so renaming a binding
 or calling through an immutable alias does not change the proof relation.
 Catalog gaps and unstable projected identities are unknown rather than silently
