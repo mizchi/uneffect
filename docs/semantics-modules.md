@@ -95,7 +95,8 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
   including callbacks, ownership, directional properties, and named protocols;
 - `acquire`, `use`, and `release` resource primitives connected to the same
   TypeScript CFG lifecycle checker used by the built-in catalog, in both the
-  direct checker and project verification APIs;
+  direct checker and project verification APIs, including transitions that
+  occur only on Promise fulfillment;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.

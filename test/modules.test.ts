@@ -106,8 +106,10 @@ describe("declarative Uneffect modules", () => {
       writeFileSync(join(packageDirectory, "index.d.ts"), `
         export interface Handle { readonly id: number }
         export declare function open(): Handle
+        export declare function openAsync(): Promise<Handle>
         export declare function inspect(handle: Handle): void
         export declare function close(handle: Handle): void
+        export declare function closeAsync(handle: Handle): Promise<void>
       `);
       const module = {
         ...auditModule,
@@ -122,20 +124,24 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "open" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed acquisition", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "acquire", resource: "Acme.Handle", target: { kind: "result" } }] } },
             { symbol: { module: "reviewed-handle", export: "inspect" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed use", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "use", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
             { symbol: { module: "reviewed-handle", export: "close" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
+            { symbol: { module: "reviewed-handle", export: "openAsync" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed async acquisition", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "acquire", resource: "Acme.Handle", target: { kind: "result" }, completion: "fulfillment" }] } },
+            { symbol: { module: "reviewed-handle", export: "closeAsync" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed async release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 }, completion: "fulfillment" }] } },
           ],
         },
       } as const;
       const installed = installUneffectModules([module], builtinContractRegistry);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, inspect, close } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync } from "reviewed-handle"
         export function valid() { const handle = open(); inspect(handle); close(handle) }
         export function leaked() { const handle = open(); inspect(handle) }
+        export async function asyncValid() { const handle = await openAsync(); inspect(handle); await closeAsync(handle) }
       `);
       const result = await checkFiles([entry], { builtinRegistry: installed.registry });
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
         expect.objectContaining({ owner: "valid", status: "satisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "asyncValid", status: "satisfied", authority: "builtin-catalog", state: "absent-or-released" }),
       ]));
       expect(result.assumptions.entries).toEqual(expect.arrayContaining([
         expect.objectContaining({ domain: "builtin", owner: "security-platform", reason: "reviewed acquisition" }),
@@ -149,6 +155,7 @@ describe("declarative Uneffect modules", () => {
       expect(project.resourceProtocols).toEqual(expect.arrayContaining([
         expect.objectContaining({ owner: "valid", status: "satisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "asyncValid", status: "satisfied", authority: "builtin-catalog", state: "absent-or-released" }),
       ]));
     } finally {
       rmSync(directory, { recursive: true, force: true });
