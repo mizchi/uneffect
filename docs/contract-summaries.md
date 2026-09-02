@@ -143,7 +143,8 @@ complete TypeChecker-rendered declaration signature. Consumer calls may use
 different inferred instantiations only after the installed declaration's full
 signature set has matched exactly; changing a constraint, default, overload,
 or type-parameter list blocks the binding. This authenticates the declaration
-that TypeScript instantiated. It does not prove TypeScript's type system or
+that TypeScript instantiated. A call site overlapping a TypeScript semantic
+error is rejected even when the compiler exposes a recovery signature. It does not prove TypeScript's type system or
 infer a contract for an opaque dynamically selected callable.
 
 Effect-only exports are supported. Scoped capabilities, `Throw<E>`, and

@@ -1107,6 +1107,20 @@ describe("persisted contract summary bundles", () => {
       })],
     });
 
+    writeFileSync(consumerFile, `
+      import { identity } from "@example/generic"
+      identity(true)
+    `);
+    const invalidProgram = ts.createProgram([consumerFile], options);
+    expect(invalidProgram.getSemanticDiagnostics()).not.toHaveLength(0);
+    expect(bindContractSummaryBundleToProgram(bundle, invalidProgram)).toMatchObject({
+      status: "unknown", exports: [], blockers: [expect.stringContaining("TypeScript-invalid")],
+    });
+
+    writeFileSync(consumerFile, `
+      import { identity } from "@example/generic"
+      identity("value")
+    `);
     writeFileSync(declarationFile,
       "export declare function identity<T extends string>(value: T): T\n");
     const driftedProgram = ts.createProgram([consumerFile], options);

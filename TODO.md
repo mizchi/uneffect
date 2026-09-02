@@ -919,7 +919,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Preserve generic arity and the exact public generic signature, then
        accept TypeChecker-resolved concrete instantiations only after the full
        installed declaration has matched. Constraint and type-parameter drift
-       remain blocking unknowns.
+       remain blocking unknowns; compiler recovery signatures at invalid call
+       sites are never accepted as evidence.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

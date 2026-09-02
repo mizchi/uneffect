@@ -484,9 +484,13 @@ export function bindContractSummaryBundleToProgram(
   }
   const candidates = new Map<string, Array<{
     declaration: ts.Declaration; signature: string; availableSignatures: string[]; call: ts.CallExpression;
+    typeScriptValid: boolean;
   }>>();
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
+    const semanticErrors = program.getSemanticDiagnostics(source)
+      .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error
+        && diagnostic.file === source && diagnostic.start !== undefined && diagnostic.length !== undefined);
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
         const signature = checker.getResolvedSignature(node);
@@ -499,6 +503,8 @@ export function bindContractSummaryBundleToProgram(
             declaration, signature: checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation),
             availableSignatures: checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(symbol, lookup), ts.SignatureKind.Call)
               .map((available) => checker.signatureToString(available, declaration, ts.TypeFormatFlags.NoTruncation)),
+            typeScriptValid: !semanticErrors.some((diagnostic) => diagnostic.start! < node.getEnd()
+              && diagnostic.start! + diagnostic.length! > node.getStart(source)),
             call: node,
           }]);
         }
@@ -557,6 +563,10 @@ export function bindContractSummaryBundleToProgram(
       || availableSets.length !== 1
       || availableSets[0] !== canonical(acceptedSignatures.map(({ signature }) => signature))) {
       blockers.push(`contract summary signature for ${summary.symbol.export} does not match the installed declaration`);
+      continue;
+    }
+    if (uses.some(({ typeScriptValid }) => !typeScriptValid)) {
+      blockers.push(`contract summary call to ${summary.symbol.export} is TypeScript-invalid`);
       continue;
     }
     const signatureText = signatures.join(" | ");
