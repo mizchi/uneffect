@@ -882,6 +882,13 @@ introducing another domain-local control-flow or alias model.
      `Throw`, scoped capabilities, and the package-contract assumption ledger.
    - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Bind producer evidence to emitted declaration/build artifacts, consume
      callback/callable/resource summaries, and add publisher/tarball authenticity.
+     - [x] Add an opt-in package-relative runtime artifact digest ledger and
+       block consumer binding when any explicitly listed installed file is
+       missing or byte-different. This does not claim source-to-emit provenance.
+     - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Bind declarations
+       and runtime files to reproducible source-to-emit evidence, then add
+       publisher and complete tarball authenticity. Explicit file digests alone
+       do not satisfy this boundary.
 6. [x] [#25](https://github.com/mizchi/uneffect/issues/25) Expand common expression semantics in measured frequency order:
    optional chaining and nullish coalescing, destructuring/default initializers,
    stable method receivers and `this`, iterator-based `for...of`, then reviewed

@@ -24,6 +24,9 @@ const bundle = createContractSummaryBundle({
   source,
   program,
   artifacts,
+  runtimeArtifacts: [
+    { packagePath: "dist/index.js", fileName: emittedJavaScriptFile },
+  ],
 })
 
 const validation = validateContractSummaryBundle(bundle, {
@@ -53,6 +56,7 @@ The bundle binds:
   upper bound.
 - optional parameter/return resource operations (`acquire`, `use`/`borrow`,
   `consume`, `release`, `transfer`, and `escape`) retained as trusted evidence.
+- optional package-relative runtime artifact paths and SHA-256 digests.
 
 Changing any covered value invalidates the bundle content digest. Validation
 also recomputes compiler, source, declaration, and signature evidence instead
@@ -106,10 +110,19 @@ implementation progress is opaque, the generated model keeps separate
 settled, pending, and synchronous-divergence choices instead of assuming that
 the callback eventually runs.
 
-This does not yet prove that the installed declaration bytes were emitted from
-the summarized producer source, or that bundled/runtime JavaScript corresponds
-to that declaration. Export-map selection is inherited from TypeScript module
-resolution; Uneffect does not independently authenticate an installed tarball.
+When `runtimeArtifacts` is supplied, production hashes the selected emitted
+files and includes their package-relative paths and digests in the signed
+content envelope. Consumer binding resolves the installed package root from the
+TypeChecker-selected declaration and requires those installed bytes to match.
+Paths must be normalized forward-slash package paths; absolute paths, `.`/`..`
+segments, backslashes, duplicate paths, missing files, and digest drift fail
+closed. This opt-in proves byte identity only for the listed files. It does not
+prove that the declaration or JavaScript was emitted from the summarized source,
+that every runtime/export-map branch was listed, or that the tarball publisher
+is authentic.
+
+Export-map selection is inherited from TypeScript module resolution; Uneffect
+does not independently choose or authenticate all conditional runtime targets.
 
 The content SHA-256 provides integrity, not publisher authenticity. There is no
 signature, transparency log, or trusted publishing identity in v1. A

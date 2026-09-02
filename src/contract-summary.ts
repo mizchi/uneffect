@@ -72,6 +72,8 @@ export interface ContractSummaryBundleV1 {
   producer: { fileName: string; sourceDigest: string };
   /** Exact trusted semantics inputs used while producing this summary. */
   modules?: readonly SemanticModuleLedgerEntry[];
+  /** Package-relative runtime files whose exact bytes were reviewed with this summary. */
+  runtimeArtifacts?: readonly { packagePath: string; digest: string }[];
   exports: ContractSummaryExportV1[];
   contentDigest: string;
 }
@@ -84,6 +86,7 @@ export interface CreateContractSummaryBundleOptions {
   program: ts.Program;
   artifacts: readonly VerificationArtifact[];
   builtinRegistry?: BuiltinContractRegistry;
+  runtimeArtifacts?: readonly { packagePath: string; fileName: string }[];
 }
 
 export interface ValidateContractSummaryBundleOptions {
@@ -93,6 +96,7 @@ export interface ValidateContractSummaryBundleOptions {
   source: string;
   program: ts.Program;
   builtinRegistry?: BuiltinContractRegistry;
+  runtimeArtifacts?: readonly { packagePath: string; fileName: string }[];
 }
 
 export interface BoundContractSummaryExportV1 {
@@ -175,6 +179,24 @@ export function boundContractSummaryResourceContracts(
 }
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+const sha256File = (fileName: string): string => createHash("sha256").update(readFileSync(fileName)).digest("hex");
+function validPackagePath(packagePath: string): boolean {
+  return packagePath.length > 0 && !packagePath.startsWith("/") && !packagePath.includes("\\")
+    && packagePath.split("/").every((part) => part.length > 0 && part !== "." && part !== "..");
+}
+function runtimeArtifactLedger(
+  artifacts: readonly { packagePath: string; fileName: string }[] | undefined,
+): readonly { packagePath: string; digest: string }[] | undefined {
+  if (!artifacts?.length) return undefined;
+  if (new Set(artifacts.map(({ packagePath }) => packagePath)).size !== artifacts.length) {
+    throw new Error("contract summary runtime artifact paths must be unique");
+  }
+  return artifacts.map(({ packagePath, fileName }) => {
+    if (!validPackagePath(packagePath)) throw new Error(`invalid package-relative runtime artifact path ${packagePath}`);
+    if (!existsSync(fileName)) throw new Error(`contract summary runtime artifact does not exist: ${fileName}`);
+    return { packagePath, digest: sha256File(fileName) };
+  });
+}
 function ordered(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(ordered);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, ordered(item)]));
@@ -208,6 +230,14 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
       || !/^[0-9a-f]{64}$/u.test(module.digest))
     || new Set(bundle.modules.map((module) => `${module.name}@${module.version}`)).size !== bundle.modules.length)) {
     throw new Error(`malformed contract summary semantics-module ledger ${fileName}`);
+  }
+  if (bundle.runtimeArtifacts !== undefined && (!Array.isArray(bundle.runtimeArtifacts)
+    || bundle.runtimeArtifacts.length === 0
+    || bundle.runtimeArtifacts.some((artifact) => !artifact || typeof artifact !== "object"
+      || typeof artifact.packagePath !== "string" || !validPackagePath(artifact.packagePath)
+      || typeof artifact.digest !== "string" || !/^[0-9a-f]{64}$/u.test(artifact.digest))
+    || new Set(bundle.runtimeArtifacts.map(({ packagePath }) => packagePath)).size !== bundle.runtimeArtifacts.length)) {
+    throw new Error(`malformed contract summary runtime artifact ledger ${fileName}`);
   }
   for (const [index, item] of bundle.exports.entries()) {
     const validCallback = (callback: ContractCallbackSummaryV1): boolean =>
@@ -284,7 +314,7 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
   return bundle;
 }
 
-function installedPackageAt(declarationFileName: string, packageName: string): { name: string; version: string } | undefined {
+function installedPackageAt(declarationFileName: string, packageName: string): { name: string; version: string; directory: string } | undefined {
   let directory = dirname(declarationFileName);
   for (;;) {
     const manifestFile = join(directory, "package.json");
@@ -292,7 +322,7 @@ function installedPackageAt(declarationFileName: string, packageName: string): {
       try {
         const manifest = JSON.parse(readFileSync(manifestFile, "utf8")) as { name?: unknown; version?: unknown };
         if (manifest.name === packageName && typeof manifest.version === "string") {
-          return { name: packageName, version: manifest.version };
+          return { name: packageName, version: manifest.version, directory };
         }
       } catch {
         return undefined;
@@ -321,6 +351,14 @@ export function bindContractSummaryBundleToProgram(
   if (bundleDigest(unsigned) !== contentDigest) blockers.push("contract summary content digest does not match its payload");
   if (canonical(bundle.modules ?? []) !== canonical(builtinRegistry.modules ?? [])) {
     blockers.push("contract summary semantics-module ledger does not match the consumer registry");
+  }
+  if (bundle.runtimeArtifacts !== undefined && (!Array.isArray(bundle.runtimeArtifacts)
+    || bundle.runtimeArtifacts.length === 0
+    || bundle.runtimeArtifacts.some((artifact) => !artifact || typeof artifact !== "object"
+      || typeof artifact.packagePath !== "string" || !validPackagePath(artifact.packagePath)
+      || typeof artifact.digest !== "string" || !/^[0-9a-f]{64}$/u.test(artifact.digest))
+    || new Set(bundle.runtimeArtifacts.map(({ packagePath }) => packagePath)).size !== bundle.runtimeArtifacts.length)) {
+    blockers.push("contract summary runtime artifact ledger is malformed");
   }
   if (bundle.compiler.typescriptVersion !== ts.version) {
     blockers.push(`contract summary TypeScript ${bundle.compiler.typescriptVersion} does not match consumer ${ts.version}`);
@@ -402,6 +440,16 @@ export function bindContractSummaryBundleToProgram(
       blockers.push(`installed ${bundle.package.name} version ${installed.version} does not match summary ${bundle.package.version}`);
       continue;
     }
+    let runtimeMatches = true;
+    for (const artifact of bundle.runtimeArtifacts ?? []) {
+      const installedFile = join(installed.directory, ...artifact.packagePath.split("/"));
+      if (!existsSync(installedFile) || sha256File(installedFile) !== artifact.digest) {
+        const message = `installed ${bundle.package.name} runtime artifact ${artifact.packagePath} does not match summary digest`;
+        if (!blockers.includes(message)) blockers.push(message);
+        runtimeMatches = false;
+      }
+    }
+    if (!runtimeMatches) continue;
     const signatures = [...new Set(uses.map((use) => use.signature))];
     const signatureText = signatures.length === 1 ? signatures[0] : undefined;
     if (!signatureText || signatureText !== summary.signature || sha256(signatureText) !== summary.signatureDigest) {
@@ -589,6 +637,7 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
       .filter((item): item is ContractSummaryExportV1 => item !== undefined);
   }));
   if (exports.length === 0) throw new Error("contract summary has no fully verified exported function contracts");
+  const runtimeArtifacts = runtimeArtifactLedger(options.runtimeArtifacts);
   const unsigned: Omit<ContractSummaryBundleV1, "contentDigest"> = {
     schema: "uneffect-contract-summary/v1",
     package: { name: options.packageName, version: options.packageVersion },
@@ -597,6 +646,7 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
     ...(options.builtinRegistry?.modules?.length
       ? { modules: options.builtinRegistry.modules.map((module) => ({ ...module })) }
       : {}),
+    ...(runtimeArtifacts ? { runtimeArtifacts } : {}),
     exports: exports.sort((left, right) => left.symbol.export.localeCompare(right.symbol.export)),
   };
   return { ...unsigned, contentDigest: bundleDigest(unsigned) };
@@ -609,6 +659,13 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   if (bundleDigest(unsigned) !== contentDigest) errors.push("contract summary content digest does not match its payload");
   if (canonical(bundle.modules ?? []) !== canonical(options.builtinRegistry?.modules ?? [])) {
     errors.push("contract summary semantics-module ledger does not match the validation registry");
+  }
+  try {
+    if (canonical(bundle.runtimeArtifacts ?? []) !== canonical(runtimeArtifactLedger(options.runtimeArtifacts) ?? [])) {
+      errors.push("contract summary runtime artifact ledger does not match validation artifacts");
+    }
+  } catch (cause) {
+    errors.push(cause instanceof Error ? cause.message : String(cause));
   }
   if (bundle.package.name !== options.packageName) errors.push(`contract summary package name ${bundle.package.name} does not match ${options.packageName}`);
   if (bundle.package.version !== options.packageVersion) errors.push(`contract summary package version ${bundle.package.version} does not match ${options.packageVersion}`);

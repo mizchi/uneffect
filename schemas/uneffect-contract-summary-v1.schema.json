@@ -38,6 +38,19 @@
       "type": "array",
       "items": { "$ref": "#/$defs/semanticModule" }
     },
+    "runtimeArtifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["packagePath", "digest"],
+        "properties": {
+          "packagePath": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*\\\\).+$" },
+          "digest": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
     "exports": {
       "type": "array",
       "minItems": 1,

@@ -23,12 +23,15 @@ function programFor(fileName: string, source: string): ts.Program {
 describe("persisted contract summary bundles", () => {
   it("publishes a strict JSON schema for distributed summaries", () => {
     const schema = JSON.parse(readFileSync("schemas/uneffect-contract-summary-v1.schema.json", "utf8")) as {
-      $id: string;
-      properties: { schema: { const: string }; modules: { items: { $ref: string } }; exports: { items: { required: string[] } } };
+      $id: string; properties: {
+        schema: { const: string }; modules: { items: { $ref: string } };
+        runtimeArtifacts: { items: { required: string[] } }; exports: { items: { required: string[] } };
+      };
     };
     expect(schema.$id).toBe("https://github.com/mizchi/uneffect/schemas/uneffect-contract-summary-v1.schema.json");
     expect(schema.properties.schema.const).toBe("uneffect-contract-summary/v1");
     expect(schema.properties.modules.items.$ref).toBe("#/$defs/semanticModule");
+    expect(schema.properties.runtimeArtifacts.items.required).toEqual(["packagePath", "digest"]);
     expect(schema.properties.exports.items.required).toEqual(expect.arrayContaining(["symbol", "signatureDigest", "artifactIds"]));
   });
 
@@ -590,5 +593,63 @@ describe("persisted contract summary bundles", () => {
     expect(analysis.evidence).toContainEqual(expect.objectContaining({
       owner: "run", status: "satisfied", state: "released", authority: "callable-contract",
     }));
+  });
+
+  it("binds package summaries to exact installed runtime artifacts", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-runtime-"));
+    const producerFile = join(directory, "producer.ts");
+    const producerSource = `/* uneffect:effect none */ export function value(): number { return 1 }`;
+    writeFileSync(producerFile, producerSource);
+    const runtimeFile = join(directory, "index.js");
+    writeFileSync(runtimeFile, "export function value() { return 1 }\n");
+    const producerProgram = ts.createProgram([producerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+    });
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/runtime", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+      runtimeArtifacts: [{ packagePath: "index.js", fileName: runtimeFile }],
+    });
+    expect(bundle.runtimeArtifacts).toEqual([{
+      packagePath: "index.js", digest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    }]);
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/runtime", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram,
+      runtimeArtifacts: [{ packagePath: "index.js", fileName: runtimeFile }],
+    })).toEqual({ valid: true, errors: [] });
+    writeFileSync(runtimeFile, "export function value() { return 2 }\n");
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/runtime", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram,
+      runtimeArtifacts: [{ packagePath: "index.js", fileName: runtimeFile }],
+    })).toMatchObject({ valid: false, errors: [expect.stringContaining("runtime artifact ledger")] });
+    writeFileSync(runtimeFile, "export function value() { return 1 }\n");
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/runtime", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+      runtimeArtifacts: [{ packagePath: "../index.js", fileName: runtimeFile }],
+    })).toThrow(/invalid package-relative runtime artifact path/u);
+
+    const packageDirectory = join(directory, "node_modules", "@example", "runtime");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/runtime", version: "1.0.0", types: "index.d.ts", module: "index.js",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function value(): number\n");
+    writeFileSync(join(packageDirectory, "index.js"), "export function value() { return 1 }\n");
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `import { value } from "@example/runtime"; value()`);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram).status).toBe("verified");
+
+    writeFileSync(join(packageDirectory, "index.js"), "export function value() { return 2 }\n");
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
+      status: "unknown", exports: [],
+      blockers: [expect.stringContaining("runtime artifact index.js")],
+    });
   });
 });

@@ -395,8 +395,11 @@ same property is proved for arbitrary TypeScript.
   direct-`const` return identities. This is declared evidence rather than an
   implementation proof. Direct exported lifecycle declarations can now travel
   through the authenticated package contract envelope and bind to exact
-  installed declaration identities; returned-member contracts and dynamic
-  resource identity remain unsupported.
+  installed declaration identities. Package summaries may also carry an opt-in
+  package-relative runtime artifact ledger; consumer binding checks every listed
+  installed file byte-for-byte before exposing any contract. This is artifact
+  integrity, not source-to-emit or publisher authenticity. Dynamic resource
+  identity remains unsupported.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
 - TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
