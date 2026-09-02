@@ -146,6 +146,11 @@ describe("backend-neutral callable summaries", () => {
         }
         function timerForward(callback: () => void) { setTimeout(callback, 0) }
         function dynamicTimerForward(callback: () => void, delay: number) { setTimeout(callback, delay) }
+        declare function retainCallback(callback: () => void): void
+        let savedCallback: (() => void) | undefined
+        function retainedCallback(callback: () => void) { retainCallback(callback) }
+        function storedCallback(callback: () => void) { savedCallback = callback }
+        function returnedCallback(callback: () => void) { return callback }
         function fromAsync(values: AsyncIterable<number>, callback: (value: number, index: number) => number) {
           return Array.fromAsync(values, callback)
         }
@@ -279,6 +284,12 @@ describe("backend-neutral callable summaries", () => {
         }));
       expect(analysis.summaries.find(({ name }) => name === "dynamicTimerForward")?.callbackParameters[0]?.schedulingDelay)
         .toBeUndefined();
+      for (const retained of ["retainedCallback", "storedCallback", "returnedCallback"]) {
+        expect(analysis.summaries.find(({ name }) => name === retained)).toMatchObject({
+          evidence: "unknown", unknownReasons: expect.arrayContaining(["callback-escape"]),
+          callbackParameters: [expect.objectContaining({ cardinality: "unknown" })],
+        });
+      }
       expect(analysis.summaries.find(({ name }) => name === "fromAsync")?.callbackInvocations)
         .toContainEqual(expect.objectContaining({
           api: "ArrayConstructor#fromAsync", callback: "callback", cardinality: "0..n",

@@ -946,6 +946,9 @@ same property is proved for arbitrary TypeScript.
   Direct member callback parameters preserve Effect bounds, cardinality,
   timing, and completion through package binding and immutable receiver aliases;
   opaque retention, reentrancy, and concurrency remain open.
+  A TypeChecker reference-consumption screen prevents retained, stored,
+  returned, captured, or otherwise opaque callback references from being
+  summarized as zero invocations.
   The host-neutral temporal collector resolves the same member calls. Generic
   deferred timing is retained as an unknown scheduled queue rather than being
   mislabeled as a timer or event source. Reviewed builtin forwarding records

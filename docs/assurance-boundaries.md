@@ -363,6 +363,9 @@ Direct member callback parameters may additionally carry the same bounded
 cardinality, timing, completion, and Effect-bound evidence as top-level package
 functions. This is not evidence for reentrant, concurrent, retained, or
 dynamically selected callbacks.
+Callback cardinality `0` requires a TypeChecker reference screen with no
+unconsumed use. Unknown calls, storage, return, capture, and other uses are
+escape evidence and prevent verified package publication.
 These member callbacks enter the host-neutral transition model. A deferred
 callback without reviewed host-queue provenance is retained in `scheduled` as
 unknown and is not inserted into an executable timer/event/poll queue. Direct

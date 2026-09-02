@@ -202,6 +202,10 @@ method declaration before the ordinary callback call graph is built. This
 supports `client.run(callback)` through immutable receiver aliases without a
 wrapper or runtime marker. Reentrant/concurrent callback protocols and callbacks
 stored for later opaque invocation remain outside this fragment.
+Every callback-parameter reference and immutable alias must be consumed by a
+direct invocation, immutable alias declaration, or reviewed builtin forwarding
+site. Unknown calls, storage, return, capture, comparison, and other uses are
+`callback-escape`; cardinality becomes unknown and package publication fails.
 The same authenticated member callback is visible to the host-neutral temporal
 collector. `inline` and Promise-reaction lanes retain their defined projection.
 A direct reviewed forwarding to `setTimeout`, `setInterval`,

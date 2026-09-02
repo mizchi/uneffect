@@ -79,6 +79,20 @@ describe("persisted contract summary bundles", () => {
     })).toThrow(/not fully verified/);
   });
 
+  it("refuses to publish a retained callback as zero invocations", () => {
+    const fileName = "/src/retained.ts";
+    const source = `
+      declare function retain(callback: () => void): void
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter callback extends none */
+      export function register(callback: () => void): void { retain(callback) }
+    `;
+    const program = programFor(fileName, source);
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/retained", packageVersion: "1.0.0", fileName, source, program, artifacts: [],
+    })).toThrow(/Effect summary is not verified/);
+  });
+
   it("publishes a verified Effect-only export in the shared package envelope", () => {
     const fileName = "/src/report.ts";
     const source = `

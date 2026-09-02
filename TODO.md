@@ -565,6 +565,11 @@ introducing another domain-local control-flow or alias model.
      cardinality for direct calls and reviewed Array callback APIs; mutable
      aliases, callback escape, multiple unrelated calls, and dynamic dispatch
      remain explicit `unknown` evidence.
+   - [x] Scan callback parameters and every immutable alias by TypeChecker
+     identity. Only direct calls, immutable alias edges, and reviewed builtin
+     forwarding consume a reference; unknown calls, storage, return, capture,
+     comparison, and other uses become `callback-escape` with unknown
+     cardinality and cannot be published as verified package evidence.
    - [x] Preserve declared `effect_parameter` bounds in the summary so callers
      and future package summaries can instantiate effect-polymorphic callbacks.
    - [x] Distinguish inline throw propagation, Promise-reaction conversion to

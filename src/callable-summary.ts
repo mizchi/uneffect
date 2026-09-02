@@ -349,6 +349,7 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       invocation: Omit<CallbackInvocationSummary, "callback" | "span"> & { argument: number };
     }>>();
     const callbackInvocations: CallbackInvocationSummary[] = [];
+    const consumedCallbackReferences = new Set<ts.Node>();
     const rejects = new Set<string>();
 
     const bounds = new Map<string, string[]>();
@@ -391,13 +392,19 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
         if (target) {
           const symbol = resolvedSymbol(checker, node.name);
           const immutable = ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0;
-          if (immutable && symbol) aliasTargets.set(symbol, target);
+          if (immutable && symbol) {
+            aliasTargets.set(symbol, target);
+            const initializer = unwrap(node.initializer);
+            if (ts.isIdentifier(initializer)) consumedCallbackReferences.add(initializer);
+          }
           else { mutableAliases.add(node.name.text); unknownReasons.add("mutable-callable-alias"); }
         }
       }
       if (ts.isCallExpression(node)) {
         const callback = resolveCallback(node.expression);
         if (callback) {
+          const expression = unwrap(node.expression);
+          if (ts.isIdentifier(expression)) consumedCallbackReferences.add(expression);
           const calls = callbackCalls.get(callback.key) ?? [];
           calls.push(node);
           callbackCalls.set(callback.key, calls);
@@ -418,9 +425,13 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
           });
           if (argument) {
             const forwarded = resolveCallback(argument);
-            if (forwarded) callbackForwardings.set(forwarded.key, [
-              ...(callbackForwardings.get(forwarded.key) ?? []), { call: node, invocation: builtin },
-            ]);
+            if (forwarded) {
+              const selected = unwrap(argument);
+              if (ts.isIdentifier(selected)) consumedCallbackReferences.add(selected);
+              callbackForwardings.set(forwarded.key, [
+                ...(callbackForwardings.get(forwarded.key) ?? []), { call: node, invocation: builtin },
+              ]);
+            }
           }
         }
         const rejection = directPromiseRejectType(program, checker, node);
@@ -444,6 +455,19 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       }
     }
     visit(declaration.body!);
+
+    const callbackBindingSymbols = new Set([...callbackSymbols.keys(), ...aliasTargets.keys()]);
+    const isDeclarationName = (node: ts.Identifier, symbol: ts.Symbol): boolean => symbol.declarations?.some((candidate) =>
+      "name" in candidate && candidate.name === node) ?? false;
+    const screenCallbackReferences = (node: ts.Node): void => {
+      if (ts.isIdentifier(node)) {
+        const symbol = resolvedSymbol(checker, node);
+        if (symbol && callbackBindingSymbols.has(symbol) && !isDeclarationName(node, symbol)
+          && !consumedCallbackReferences.has(node)) unknownReasons.add("callback-escape");
+      }
+      ts.forEachChild(node, screenCallbackReferences);
+    };
+    screenCallbackReferences(declaration);
 
     const callbackParameters = [...callbackSymbols.values()].sort((left, right) => left.index - right.index || left.key.localeCompare(right.key)).map((parameter): CallbackParameterSummary => {
       const calls = callbackCalls.get(parameter.key) ?? [];
