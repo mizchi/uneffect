@@ -179,7 +179,7 @@ describe("uneffect command line", () => {
       export function runOnce(): void { once(logOnce) }
       /* uneffect:effect Console */
       export function runConfigured(): void {
-        const options = Object.freeze({ onDone: logOnce })
+        const options = { onDone: logOnce }
         configure(options)
         configure(options)
       }

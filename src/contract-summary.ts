@@ -13,6 +13,7 @@ export interface ContractCallbackSummaryV1 {
   index: number;
   name: string;
   path?: readonly (string | number)[];
+  containerAccess?: "borrow-readonly";
   cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
   timing: "inline" | "deferred" | "promise-reaction" | "unknown";
   completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
@@ -144,6 +145,7 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
         && typeof callback.name === "string"
         && (callback.path === undefined || (Array.isArray(callback.path)
           && callback.path.every((part) => typeof part === "string" || Number.isInteger(part))))
+        && (callback.containerAccess === undefined || callback.containerAccess === "borrow-readonly")
         && ["0", "0..1", "exactly-1", "0..n", "unknown"].includes(callback.cardinality)
         && ["inline", "deferred", "promise-reaction", "unknown"].includes(callback.timing)
         && ["propagate-throw", "convert-throw-to-rejection", "host-report-throw", "unknown"].includes(callback.completion)
@@ -403,6 +405,7 @@ function describeExport(
         index: callback.index,
         name: callback.name,
         ...(callback.path ? { path: callback.path } : {}),
+        ...(callback.containerAccess ? { containerAccess: callback.containerAccess } : {}),
         cardinality: callback.cardinality,
         timing: callback.timing,
         completion: callback.completion,
@@ -479,6 +482,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
       const callbacks = callable?.callbackParameters.length ? callable.callbackParameters.map((callback) => ({
         index: callback.index, name: callback.name,
         ...(callback.path ? { path: callback.path } : {}),
+        ...(callback.containerAccess ? { containerAccess: callback.containerAccess } : {}),
         cardinality: callback.cardinality, timing: callback.timing, completion: callback.completion,
         ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
       })) : undefined;

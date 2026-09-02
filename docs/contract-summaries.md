@@ -136,5 +136,12 @@ A same-spelled local `Object.freeze` receives no authority.
 This is compatibility recognition for code that already freezes the container,
 not a recommendation to introduce `Object.freeze`. Freezing has runtime cost,
 while Uneffect's preferred inline-literal and exclusive single-use `const`
-paths are static-only. Reusable zero-runtime containers require a separate
-write-screened ownership rule and remain unsupported here.
+paths are static-only.
+
+A persisted callback entry may additionally carry
+`containerAccess: "borrow-readonly"`. The producer emits this only for a
+TypeChecker-resolved destructured parameter whose callback does not escape.
+The consumer may then reuse a plain `const` literal container with zero runtime
+work, but only when every reference is the same verified callee's same argument
+position. Mutation, aliasing, capture, returning, unrelated calls, or missing
+borrow evidence fail closed.

@@ -332,7 +332,11 @@ export function lowerExternalCallableTransitions(
         for (const callback of callbacks) {
         const argument = node.arguments[callback.index];
         const selected = argument && callback.path?.length
-          ? expressionAtExclusiveConstArgumentPath(checker, argument, callback.path) : argument;
+          ? expressionAtExclusiveConstArgumentPath(checker, argument, callback.path, {
+            call: node,
+            argumentIndex: callback.index,
+            preservesContainer: callback.containerAccess === "borrow-readonly",
+          }) : argument;
         const span = { start: node.getStart(source), end: node.getEnd() };
         if (!selected) {
           diagnostics.push({

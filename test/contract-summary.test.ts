@@ -153,7 +153,8 @@ describe("persisted contract summary bundles", () => {
       effect: {
         effects: [], parameters: ["$arg0"],
         callbacks: [expect.objectContaining({
-          index: 0, name: "onDone", path: ["onDone"], cardinality: "exactly-1",
+          index: 0, name: "onDone", path: ["onDone"], containerAccess: "borrow-readonly",
+          cardinality: "exactly-1",
           timing: "inline", completion: "propagate-throw", effectBound: ["Console"],
         })],
       },

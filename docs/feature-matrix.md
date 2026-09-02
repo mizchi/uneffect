@@ -67,7 +67,9 @@ unsupported.
 The TypeChecker-identical standard `Object.freeze` admits repeated shallow
 literal-container use. Lookalikes and deep immutability are not assumed.
 This is recognition of an existing runtime operation, not an adoption
-recommendation; the current zero-runtime container rule remains single-use.
+recommendation. A producer-certified `borrow-readonly` destructured parameter
+also permits repeated zero-runtime use when all consumer references target the
+same verified callable and argument position; any other use fails closed.
 Direct immutable exported arrow/function-expression callables use the same
 package export-symbol and resolved-signature binding. Mutable or compound
 export declarations remain unsupported.

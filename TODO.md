@@ -531,9 +531,11 @@ introducing another domain-local control-flow or alias model.
      through the TypeChecker-identical standard `Object.freeze`; reject
      same-named user functions, avoid claiming deep immutability, and do not
      recommend introducing a runtime freeze for verification.
-   - [ ] Generalize repeated zero-runtime callback containers through
-     TypeChecker-resolved, write-screened readonly ownership without requiring
-     `Object.freeze`; reject mutation, capture, escape, getters, and proxies.
+   - [x] Generalize repeated zero-runtime callback containers through a
+     persisted producer `borrow-readonly` certificate and a TypeChecker-resolved
+     same-callee/same-argument reference screen without requiring
+     `Object.freeze`; reject mutation, capture, escape, unrelated use, getters,
+     and proxies.
    - [x] Publish and consume single immutable exported arrow/function-expression
      callables by root-package export symbol plus resolved signature; exclude
      mutable and compound variable exports.

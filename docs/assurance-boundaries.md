@@ -323,6 +323,10 @@ payloads are outside that stability claim.
 This recognizes an existing runtime freeze; Uneffect does not recommend adding
 one for verification. Inline literals and exclusive single-use `const`
 containers remain the zero-runtime paths.
+Repeated plain `const` containers are also admitted when producer evidence says
+`containerAccess: "borrow-readonly"` and a whole-file symbol-reference screen
+finds only calls to the same verified declaration at the same argument index.
+This is a narrow borrow proof, not general TypeScript readonly soundness.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

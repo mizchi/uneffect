@@ -993,6 +993,96 @@ describe("evidence and optimizer obligations", () => {
     });
   });
 
+  it("reuses a zero-runtime callback container across one preserving external call", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { readonly onDone: () => void }): void
+      /* uneffect:effect Console */
+      function log() { console.log("called") }
+      /* uneffect:effect Console */
+      export function run() {
+        const options = { onDone: log }
+        configure(options)
+        configure(options)
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], parameters: ["options"], evidence: "verified" as const, functionName: "configure",
+        callbackParameters: [{
+          index: 0, path: ["onDone"], containerAccess: "borrow-readonly" as const,
+          name: "onDone", timing: "inline" as const,
+          cardinality: "exactly-1" as const, completion: "propagate-throw" as const,
+          effectBound: [{ kind: "capability", name: "Console", arguments: [] }],
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      effects: [{ kind: "capability", name: "Console", arguments: [] }], evidence: "verified",
+    });
+  });
+
+  it("rejects repeated callback-container use when the external call may mutate it", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { onDone: () => void }): void
+      function done() {}
+      /* uneffect:effect none */
+      export function run() {
+        const options = { onDone: done }
+        configure(options)
+        configure(options)
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [{ kind: "mutate", region: "options.onDone" }], parameters: ["options"],
+        evidence: "verified" as const, functionName: "configure",
+        callbackParameters: [{
+          index: 0, path: ["onDone"], name: "onDone", timing: "inline" as const,
+          cardinality: "exactly-1" as const, completion: "propagate-throw" as const, effectBound: [],
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      evidence: "unknown", unknownReasons: [{ code: "unknown-callback-timing" }],
+    });
+  });
+
+  it("rejects a repeated callback container that also escapes to another use", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { readonly onDone: () => void }): void
+      declare function retain(value: unknown): void
+      function done() {}
+      /* uneffect:effect none */
+      export function run() {
+        const options = { onDone: done }
+        configure(options)
+        retain(options)
+        configure(options)
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], parameters: ["options"], evidence: "verified" as const, functionName: "configure",
+        callbackParameters: [{
+          index: 0, path: ["onDone"], name: "onDone", timing: "inline" as const,
+          cardinality: "exactly-1" as const, completion: "propagate-throw" as const, effectBound: [],
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      evidence: "unknown", unknownReasons: [{ code: "unknown-callback-timing" }],
+    });
+  });
+
   it("does not trust a same-named Object.freeze lookalike", () => {
     const { program, source } = programOf(`
       declare function configure(options: { readonly onDone: () => void }): void

@@ -14,6 +14,8 @@ export interface CallbackParameterSummary {
   readonly index: number;
   readonly name: string;
   readonly path?: readonly (string | number)[];
+  /** The producer only borrows a destructured container long enough to read this callback. */
+  readonly containerAccess?: "borrow-readonly";
   readonly cardinality: CallbackCardinality;
   readonly timing: CallbackTiming;
   readonly completion: CallbackCompletion;
@@ -224,7 +226,7 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
     const source = declaration.getSourceFile();
     const name = functionName(declaration);
     const id = `${source.fileName}:${declaration.getStart(source)}`;
-    type CallbackBinding = { index: number; name: string; path?: readonly (string | number)[]; key: string };
+    type CallbackBinding = { index: number; name: string; path?: readonly (string | number)[]; key: string; containerAccess?: "borrow-readonly" };
     const callbackSymbols = new Map<ts.Symbol, CallbackBinding>();
     let unsupportedCallbackBinding = false;
     declaration.parameters.forEach((parameter, index) => {
@@ -233,7 +235,7 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
           if (checker.getNonNullableType(checker.getTypeAtLocation(name)).getCallSignatures().length === 0) return;
           const symbol = resolvedSymbol(checker, name);
           if (symbol) callbackSymbols.set(symbol, {
-            index, name: name.text, ...(path.length ? { path } : {}), key: callbackArgumentKey(index, path),
+            index, name: name.text, ...(path.length ? { path, containerAccess: "borrow-readonly" as const } : {}), key: callbackArgumentKey(index, path),
           });
           return;
         }
@@ -386,6 +388,7 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       if (unknownReasons.has("callback-escape") || unknownReasons.has("dynamic-callback-dispatch")) cardinality = "unknown";
       return {
         index: parameter.index, name: parameter.name, ...(parameter.path ? { path: parameter.path } : {}), cardinality, timing, completion,
+        ...(parameter.containerAccess ? { containerAccess: parameter.containerAccess } : {}),
         ...(bounds.has(parameter.name) ? { effectBound: bounds.get(parameter.name)! } : {}),
         spans: [...calls, ...forwardings.map(({ call }) => call)].map((call) => ({ start: call.getStart(source), end: call.getEnd() })),
       };

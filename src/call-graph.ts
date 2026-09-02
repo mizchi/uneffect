@@ -16,6 +16,8 @@ export interface ExternalIteratorEffectContract { key: string; parameters: reado
 export interface ExternalCallableEffectParameter extends EffectParameter {
   path?: readonly (string | number)[];
   effectBound?: readonly Effect[];
+  /** Verified callee effects contain no mutation rooted at this argument. */
+  preservesContainer?: boolean;
   completion?: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
 }
 export interface ExternalCallableEffectContract { key: string; parameters: readonly ExternalCallableEffectParameter[] }
@@ -107,6 +109,11 @@ export function expressionAtExclusiveConstArgumentPath(
   checker: ts.TypeChecker,
   expression: ts.Expression,
   path: readonly (string | number)[],
+  repeatedUse?: {
+    call: ts.CallExpression;
+    argumentIndex: number;
+    preservesContainer: boolean;
+  },
 ): ts.Expression | undefined {
   const seen = new Set<ts.Symbol>();
   const frozenLiteral = (initializer: ts.Expression): ts.Expression | undefined => {
@@ -135,7 +142,34 @@ export function expressionAtExclusiveConstArgumentPath(
       ts.forEachChild(node, scan);
     };
     scan(declaration.getSourceFile());
-    if (references !== 2) return undefined;
+    if (references !== 2) {
+      if (!repeatedUse?.preservesContainer) return undefined;
+      const lookup = ts.isPropertyAccessExpression(repeatedUse.call.expression)
+        ? repeatedUse.call.expression.name : repeatedUse.call.expression;
+      const expectedCallee = resolvedSymbol(checker, lookup);
+      if (!expectedCallee) return undefined;
+      let safeReferences = 0, unsafeReference = false;
+      const screen = (node: ts.Node): void => {
+        if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === symbol) {
+          if (node === declaration.name) { safeReferences++; return; }
+          let argument: ts.Expression = node;
+          while (ts.isParenthesizedExpression(argument.parent) || ts.isAsExpression(argument.parent)
+            || ts.isTypeAssertionExpression(argument.parent) || ts.isNonNullExpression(argument.parent)
+            || ts.isSatisfiesExpression(argument.parent)) argument = argument.parent;
+          const call = argument.parent;
+          if (!ts.isCallExpression(call) || call.arguments[repeatedUse.argumentIndex] !== argument) {
+            unsafeReference = true; return;
+          }
+          const candidate = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+          if (resolvedSymbol(checker, candidate) !== expectedCallee) { unsafeReference = true; return; }
+          safeReferences++;
+          return;
+        }
+        ts.forEachChild(node, screen);
+      };
+      screen(declaration.getSourceFile());
+      if (unsafeReference || safeReferences !== references) return undefined;
+    }
     seen.add(symbol);
     return declaration.initializer;
   };
@@ -1351,7 +1385,10 @@ export function buildProgramCallGraph(
           }
           for (const externalParameter of externalCallable?.parameters.filter((item) =>
             item.index === index && (item.path?.length ?? 0) > 0) ?? []) {
-            const callbackExpression = expressionAtExclusiveConstArgumentPath(checker, argument, externalParameter.path!);
+            const callbackExpression = expressionAtExclusiveConstArgumentPath(checker, argument, externalParameter.path!, {
+              call: node, argumentIndex: index,
+              preservesContainer: externalParameter.preservesContainer === true,
+            });
             const nestedDeclaration = callbackExpression ? callbackDeclarationFor(callbackExpression) : undefined;
             if (!callbackExpression || !nestedDeclaration) {
               edges.push({ caller, kind: "callback-argument", unresolvedName: `${argument.getText()}${externalParameter.path!.map((part) => `[${JSON.stringify(part)}]`).join("")}`,

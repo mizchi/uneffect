@@ -914,7 +914,10 @@ same property is proved for arbitrary TypeScript.
   deep payload immutability is not inferred.
   This only recognizes an existing runtime freeze and does not recommend adding
   one. Inline literals and exclusive single-use `const` containers are the
-  current zero-runtime alternatives.
+  basic zero-runtime alternatives. Repeated plain `const` literals are accepted
+  only with persisted `borrow-readonly` producer evidence and a whole-file
+  same-callee/same-argument reference screen; mutation, capture, aliasing, and
+  unrelated use remain unknown.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.
