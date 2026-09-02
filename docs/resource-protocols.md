@@ -332,6 +332,29 @@ currently restricted to a directly `const`-bound return value. Destructuring,
 mutable aliases, returned-member factory contracts, and contracts imported only
 through an unauthenticated transitive `.d.ts` remain unknown.
 
+An acquired return bound by TypeScript Explicit Resource Management is
+connected to its implicit lexical release:
+
+```ts
+/* uneffect:acquire return */
+declare function open(): Handle
+
+function read() {
+  using handle = open()
+  inspect(handle)
+} // implicit Symbol.dispose is the release transition
+```
+
+`await using handle = await openAsync()` is handled in the same resource CFG;
+the awaited initializer still receives the declaration identity of `handle`.
+Cleanup is inserted on normal, early-return, and throwing exits and at nested
+block boundaries. Repeated acquisition in a loop currently converges to
+unknown rather than claiming that one static resource identity represents all
+iterations. The lifecycle checker proves only protocol state here. Disposal
+failure, `SuppressedError`, Promise rejection, and microtask ordering continue
+to be reported/modelled by the existing async/disposal analysis; an implicit
+release does not assert that disposal cannot fail.
+
 The manual fragment recognizes one common exception-safe form: the iterator is
 acquired and the immediately following statement is a `try` whose unconditional
 `finally` directly calls (and, for async iterators, awaits) `iterator.return()`.

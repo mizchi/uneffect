@@ -150,7 +150,7 @@ an error in strict mode. A used trusted callable boundary is also recorded as a
 `resource-callable` assumption, so verified assurance cannot silently accept it.
 The separate `resourceProtocols` array records general user-defined
 `acquire`/`use`/`release` composition. Each entry names the owning function,
-resource kind and final state, ordered transition kinds, aggregate status, and
+resource kind and final state, observed transition kinds, aggregate status, and
 evidence level. An unclosed lifecycle or invalid transition is an error. Source
 annotations are trusted contracts, so their use is also present in the
 assumption ledger; the CLI does not present declaration trust as implementation

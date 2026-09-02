@@ -28,6 +28,11 @@ export type ResourceProtocolTypeScriptLowering =
 
 export interface ResourceProtocolTypeScriptLoweringOptions {
   readonly budget?: { readonly name: string; readonly limit: number };
+  /** Implicit releases introduced by `using` / `await using` lexical scope exit. */
+  readonly lexicalDisposals?: readonly {
+    readonly declaration: ts.VariableDeclaration;
+    readonly transition: ResourceProtocolTransition;
+  }[];
 }
 
 export interface BuiltinResourceTransitionCollection {
@@ -208,9 +213,48 @@ export function lowerResourceProtocolCfgInFunction(
   interface Context { returnTarget: string; throwTarget: string; breakTarget?: string; continueTarget?: string; labels: ReadonlyMap<string, { breakTarget: string; continueTarget?: string }> }
   const rootContext: Context = { returnTarget: exit, throwTarget: exit, labels: new Map() };
 
+  const cleanupCache = new Map<string, string>();
+  const cleanupEntry = (target: string, transitions: readonly ResourceProtocolTransition[]): string => {
+    if (transitions.length === 0) return target;
+    const key = `${target}:${transitions.map((transition) => `${transition.kind}:${"resource" in transition ? transition.resource : "join"}:${transition.at}:${transition.evidence ?? ""}:${transition.conditional ?? false}`).join("|")}`;
+    const cached = cleanupCache.get(key);
+    if (cached) return cached;
+    let entry = target;
+    for (const transition of transitions) {
+      const blockId = id("dispose");
+      blocks.set(blockId, { id: blockId, transitions: [transition], successors: [entry] });
+      entry = blockId;
+    }
+    cleanupCache.set(key, entry);
+    return entry;
+  };
+  const throughCleanup = (context: Context, transitions: readonly ResourceProtocolTransition[]): Context => {
+    if (transitions.length === 0) return context;
+    const labels = new Map([...context.labels].map(([name, targets]) => [name, {
+      breakTarget: cleanupEntry(targets.breakTarget, transitions),
+      ...(targets.continueTarget ? { continueTarget: cleanupEntry(targets.continueTarget, transitions) } : {}),
+    }]));
+    return {
+      returnTarget: cleanupEntry(context.returnTarget, transitions),
+      throwTarget: cleanupEntry(context.throwTarget, transitions),
+      ...(context.breakTarget ? { breakTarget: cleanupEntry(context.breakTarget, transitions) } : {}),
+      ...(context.continueTarget ? { continueTarget: cleanupEntry(context.continueTarget, transitions) } : {}),
+      labels,
+    };
+  };
+
   const lowerSequence = (statements: readonly ts.Statement[], continuation: string, context: Context): string => {
-    let next = continuation;
-    for (let index = statements.length - 1; index >= 0; index--) next = lowerStatement(statements[index]!, next, context);
+    const disposals = (options.lexicalDisposals ?? []).flatMap((disposal) => {
+      const list = disposal.declaration.parent;
+      const statement = ts.isVariableDeclarationList(list) && ts.isVariableStatement(list.parent) ? list.parent : undefined;
+      const index = statement ? statements.indexOf(statement) : -1;
+      return index >= 0 ? [{ ...disposal, index }] : [];
+    }).sort((left, right) => left.index - right.index);
+    let next = cleanupEntry(continuation, disposals.map(({ transition }) => transition));
+    for (let index = statements.length - 1; index >= 0; index--) {
+      const active = disposals.filter((disposal) => disposal.index < index).map(({ transition }) => transition);
+      next = lowerStatement(statements[index]!, next, throughCleanup(context, active));
+    }
     return next;
   };
   const lowerLoop = (statement: ts.IterationStatement, continuation: string, context: Context, label?: string): string => {

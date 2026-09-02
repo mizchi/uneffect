@@ -135,10 +135,18 @@ export function analyzeResourceCallableSummaries(program: ts.Program): ResourceC
   return { summaries, diagnostics };
 }
 
+function resultDeclaration(call: ts.CallExpression): ts.VariableDeclaration | undefined {
+  let current: ts.Expression = call;
+  while ((ts.isParenthesizedExpression(current.parent) || ts.isNonNullExpression(current.parent)
+    || ts.isAsExpression(current.parent) || ts.isTypeAssertionExpression(current.parent)
+    || ts.isAwaitExpression(current.parent)) && current.parent.expression === current) current = current.parent;
+  const parent = current.parent;
+  return ts.isVariableDeclaration(parent) && parent.initializer === current && ts.isIdentifier(parent.name) ? parent : undefined;
+}
+
 function returnedResourceId(call: ts.CallExpression): string | undefined {
-  const parent = call.parent;
-  if (!ts.isVariableDeclaration(parent) || parent.initializer !== call || !ts.isIdentifier(parent.name)) return undefined;
-  return `region:${parent.getSourceFile().fileName}:${parent.getStart()}`;
+  const declaration = resultDeclaration(call);
+  return declaration ? `region:${declaration.getSourceFile().fileName}:${declaration.getStart()}` : undefined;
 }
 
 function resourceArgumentId(checker: ts.TypeChecker, input: ts.Expression): string | undefined {
@@ -150,12 +158,18 @@ function resourceArgumentId(checker: ts.TypeChecker, input: ts.Expression): stri
       const declaration = symbol?.declarations?.find((candidate): candidate is ts.VariableDeclaration =>
         ts.isVariableDeclaration(candidate) && ts.isIdentifier(candidate.name));
       if (symbol && declaration) {
+        const flags = ts.isVariableDeclarationList(declaration.parent) ? ts.getCombinedNodeFlags(declaration.parent) : 0;
+        const immutable = (flags & ts.NodeFlags.Const) !== 0 || (flags & ts.NodeFlags.Using) === ts.NodeFlags.Using;
         if (seen.has(symbol) || !ts.isVariableDeclarationList(declaration.parent)
-          || (declaration.parent.flags & ts.NodeFlags.Const) === 0 || !declaration.initializer) return undefined;
-        if (ts.isCallExpression(declaration.initializer)) {
+          || !immutable || !declaration.initializer) return undefined;
+        let initializer = declaration.initializer;
+        while (ts.isParenthesizedExpression(initializer) || ts.isNonNullExpression(initializer)
+          || ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer)
+          || ts.isAwaitExpression(initializer)) initializer = initializer.expression;
+        if (ts.isCallExpression(initializer)) {
           return `region:${declaration.getSourceFile().fileName}:${declaration.getStart()}`;
         }
-        return visit(declaration.initializer, new Set([...seen, symbol]));
+        return visit(initializer, new Set([...seen, symbol]));
       }
     }
     const identity = resolveRegionIdentity(checker, expression);
@@ -232,6 +246,13 @@ function acceptedTerminal(resource: ResourceProtocolResource, state: ResourcePro
   return !resource.requiredTerminalStates?.length || resource.requiredTerminalStates.includes(state as never);
 }
 
+function lexicalScopeEnd(node: ts.Node): number {
+  for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+    if (ts.isBlock(current) || ts.isSourceFile(current) || ts.isCaseBlock(current)) return current.getEnd();
+  }
+  return node.getEnd();
+}
+
 /** Checks same-function user-declared lifecycle composition through the shared CFG. */
 export function analyzeResourceLifecyclesInSource(
   program: ts.Program,
@@ -259,9 +280,21 @@ export function analyzeResourceLifecyclesInSource(
           span: { start: node.getStart(source), end: node.getEnd() }, resource: "<typescript>", state: "unknown",
           message: "TypeScript diagnostics invalidate source-level resource lifecycle evidence",
         });
+        const lexicalDisposals = collected.sites.flatMap((site) => {
+          if (!ts.isCallExpression(site.node)) return [];
+          const declaration = resultDeclaration(site.node);
+          if (!declaration || !ts.isVariableDeclarationList(declaration.parent)) return [];
+          const flags = ts.getCombinedNodeFlags(declaration.parent);
+          if ((flags & ts.NodeFlags.Using) !== ts.NodeFlags.Using) return [];
+          return site.transitions.flatMap((transition) => transition.kind === "acquire" ? [{
+            declaration,
+            transition: { kind: "release" as const, resource: transition.resource,
+              at: lexicalScopeEnd(declaration), evidence: transition.evidence },
+          }] : []);
+        });
         const lowered = lowerResourceProtocolCfgInFunction(source, node, {
           schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],
-        }, collected.sites);
+        }, collected.sites, { lexicalDisposals });
         if (lowered.status === "unknown") {
           const span = { start: node.getStart(source), end: node.getEnd() };
           diagnostics.push({ kind: "unknown-analysis", fileName: source.fileName, functionName: lifecycleOwner(node), span,
@@ -272,7 +305,7 @@ export function analyzeResourceLifecyclesInSource(
           });
         } else {
           const evaluated = evaluateResourceProtocolCfg(lowered.cfg);
-          const transitions = collected.sites.flatMap((site) => site.transitions);
+          const transitions = [...collected.sites.flatMap((site) => site.transitions), ...lexicalDisposals.map(({ transition }) => transition)];
           const trust = !sourceValid || transitions.some((transition) => transition.evidence === "unknown") ? "unknown" as const
             : transitions.some((transition) => transition.evidence === "trusted") ? "trusted" as const : "verified" as const;
           for (const resource of collected.resources) {

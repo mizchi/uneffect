@@ -126,4 +126,41 @@ describe("general resource lifecycle check", () => {
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("composes using and await using disposal with annotated acquisition", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-using-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Handle { value: number; [Symbol.dispose](): void }
+        interface AsyncHandle { value: number; [Symbol.asyncDispose](): Promise<void> }
+        /* uneffect:acquire return */ declare function open(): Handle
+        /* uneffect:acquire return */ declare function openAsync(): Promise<AsyncHandle>
+        /* uneffect:use handle */ declare function inspect(handle: Handle | AsyncHandle): void
+        /* uneffect:release handle */ declare function close(handle: Handle): void
+        export function normal() { using handle = open(); inspect(handle) }
+        export function early(flag: boolean) { using handle = open(); if (flag) return; inspect(handle) }
+        export function nested() { { using handle = open(); inspect(handle) } }
+        export async function asynchronous() { await using handle = await openAsync(); inspect(handle) }
+        export function caught(flag: boolean) { try { using handle = open(); inspect(handle); if (flag) throw new Error() } catch {} }
+        export function throwing() { using handle = open(); throw new Error() }
+        export function repeated(values: number[]) { for (const value of values) { using handle = open(); inspect(handle); void value } }
+        export function duplicate() { using handle = open(); close(handle) }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "normal", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "early", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "nested", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "asynchronous", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "caught", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "throwing", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "repeated", status: "unknown" }),
+        expect.objectContaining({ owner: "duplicate", status: "unknown" }),
+      ]));
+      expect(result.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "resource", kind: "invalid-transition", functionName: "duplicate" }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

@@ -426,6 +426,10 @@ introducing another domain-local control-flow or alias model.
      - [x] Persist direct exported lifecycle operations in the authenticated
        package contract summary, retain them as trusted evidence, and bind them
        to exact installed declaration identities in CLI/project consumers.
+     - [x] Compose annotated acquisition with `using` and `await using` lexical
+       disposal across normal, return, throw, catch, and nested-block exits;
+       keep repeated loop acquisition unknown and disposal failure in the async
+       temporal model.
      - [x] Accept trusted resource contracts on ambient functions/methods only
        from explicit root `.d.ts` overlays; reject automatic trust from
        transitively imported declaration files.
