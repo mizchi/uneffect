@@ -639,9 +639,11 @@ introducing another domain-local control-flow or alias model.
      constraints over the generated Web/Node state tuple, including external
      poll/close completion and finite callback alternatives; Quint typechecks
      both host projections.
-   - [ ] [#10](https://github.com/mizchi/uneffect/issues/10) Persist reviewed host-queue provenance for package callbacks so a
-     deferred client member may enter a specific timer/event/poll/close queue;
-     timing=`deferred` alone remains insufficient authority.
+   - [x] Persist reviewed builtin scheduling provenance for package callbacks.
+     Direct `setTimeout`/`setInterval` literal delays, animation frames, and
+     EventTarget forwarding can enter their profile-specific queue; generic
+     `deferred` timing alone remains insufficient authority. Poll/close package
+     provenance remains tracked by [#10](https://github.com/mizchi/uneffect/issues/10).
    - [x] Preserve compatible conditional `clearTimeout` as a nondeterministic
      cancellation-versus-execution race in both Web and Node queue-state
      models; do not impose fairness on the optional cancellation branch.

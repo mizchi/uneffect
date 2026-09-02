@@ -27,6 +27,8 @@ export interface InvokeCallbackTransition extends HostNeutralTransitionBase {
   readonly api: string;
   readonly cardinality: CallbackCardinality;
   readonly completion: HostNeutralCompletion;
+  readonly schedulingSource?: "setTimeout" | "setInterval" | "requestAnimationFrame" | "EventTarget.prototype.addEventListener";
+  readonly schedulingDelay?: number;
   /** Returned Promise whose settlement receives a converted callback throw. */
   readonly promise?: string;
   readonly promiseIdentity?: BindingIdentity;
@@ -67,7 +69,7 @@ export interface AbortSignalTransition extends HostNeutralTransitionBase {
 
 export type HostNeutralTransition = InvokeCallbackTransition | SettlePromiseTransition | DisposeResourceTransition | AbortSignalTransition;
 export type HostProfile = "web" | "node";
-export type WebHostQueue = "synchronous" | "microtask" | "timer-task" | "event-task" | "external" | "unknown";
+export type WebHostQueue = "synchronous" | "microtask" | "timer-task" | "animation-frame" | "event-task" | "external" | "unknown";
 export type NodeHostQueue = "synchronous" | "next-tick" | "v8-microtask" | "timers" | "poll" | "check" | "close" | "external" | "unknown";
 export interface HostScheduledTransition {
   readonly transition: HostNeutralTransition;
@@ -360,6 +362,8 @@ export function lowerExternalCallableTransitions(
             : callback.timing === "deferred" ? "host-task" : "unknown",
           completion: !selected ? "unknown" : callback.completion === "propagate-throw" ? "propagate-throw"
             : callback.completion === "convert-throw-to-rejection" ? "reject" : callback.completion,
+          ...(callback.schedulingSource ? { schedulingSource: callback.schedulingSource } : {}),
+          ...(callback.schedulingDelay !== undefined ? { schedulingDelay: callback.schedulingDelay } : {}),
           ...(callback.completion === "convert-throw-to-rejection" && returnsPromise ? target : {}),
           span,
         });
@@ -542,8 +546,12 @@ function hostQueue(transition: HostNeutralTransition, profile: HostProfile): Omi
   }
   if (transition.lane === "unknown") return { queue: "unknown", evidence: "unknown", reason: "the neutral transition has no reviewed scheduling lane" };
   if (transition.kind === "invoke-callback") {
-    if (transition.api === "setTimeout") return { queue: profile === "web" ? "timer-task" : "timers", evidence: "exact" };
-    if (transition.api === "EventTarget.prototype.addEventListener") return profile === "web"
+    const source = transition.schedulingSource ?? transition.api;
+    if (source === "setTimeout" || source === "setInterval") return { queue: profile === "web" ? "timer-task" : "timers", evidence: "exact" };
+    if (source === "requestAnimationFrame") return profile === "web"
+      ? { queue: "animation-frame", evidence: "exact" }
+      : { queue: "unknown", evidence: "unknown", reason: "requestAnimationFrame has no reviewed Node/libuv phase" };
+    if (source === "EventTarget.prototype.addEventListener") return profile === "web"
       ? { queue: "event-task", evidence: "exact" }
       : { queue: "unknown", evidence: "unknown", reason: "EventTarget delivery has no single reviewed Node/libuv phase" };
   }
@@ -678,6 +686,21 @@ export function generateHostTransitionModel(
   });
   const asyncSafety = analyzeAsyncSafetyInProgram(program, source);
   const patterns = analyzeAsyncPatternsInProgram(program, source);
+  for (const transition of transitionAnalysis.transitions) {
+    if (transition.kind !== "invoke-callback" || !transition.schedulingSource) continue;
+    const queue = transition.schedulingSource === "setTimeout" || transition.schedulingSource === "setInterval" ? "timer"
+      : transition.schedulingSource === "requestAnimationFrame" ? "animation-frame"
+      : options.profile === "web" ? "external" : undefined;
+    if (!queue || queue === "timer" && transition.schedulingDelay === undefined) continue;
+    patterns.timers.push({
+      owner: transition.owner, callback: transition.callback,
+      recursive: false, repeats: transition.schedulingSource === "setInterval",
+      ...(queue === "timer" ? { delay: transition.schedulingDelay } : {}),
+      queue, ...(queue === "timer" ? { handleFamily: "timeout" as const }
+        : queue === "animation-frame" ? { handleFamily: "animation-frame" as const } : {}),
+      span: transition.span,
+    });
+  }
   for (const link of transitionAnalysis.abortSignals.compositionLinks) {
     const event = transitionAnalysis.abortSignals.events.find((candidate) =>
       candidate.controllerIndex === link.controllerIndex && candidate.synchronous && !candidate.conditional);

@@ -469,12 +469,12 @@ describe("host-neutral async transitions", () => {
     try {
       const fileName = join(directory, "entry.ts");
       writeFileSync(fileName, `
-        interface Client { schedule(callback: () => void): void }
+        interface Client { schedule(callback: () => void): void; opaque(callback: () => void): void }
         declare function createClient(): Client
         const client = createClient()
         const alias = client
         function work() {}
-        export function run() { alias.schedule(work) }
+        export function run() { alias.schedule(work); alias.opaque(work) }
       `);
       const program = ts.createProgram([fileName], {
         target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts"], noEmit: true,
@@ -486,6 +486,14 @@ describe("host-neutral async transitions", () => {
         effects: [], evidence: "verified" as const, functionName: "createClient",
         returnMembers: [{
           key: "schedule", effects: [],
+          callbackParameters: [{
+            index: 0, name: "callback", timing: "deferred" as const,
+            cardinality: "0..1" as const, completion: "host-report-throw" as const,
+            schedulingSource: "setTimeout" as const,
+            schedulingDelay: 0,
+          }],
+        }, {
+          key: "opaque", effects: [],
           callbackParameters: [{
             index: 0, name: "callback", timing: "deferred" as const,
             cardinality: "0..1" as const, completion: "host-report-throw" as const,
@@ -502,13 +510,16 @@ describe("host-neutral async transitions", () => {
         profile: "web", moduleName: "ExternalClientCallback", externalFunctionEffects,
       });
       expect(model.transitionAnalysis.transitions).toContainEqual(expect.objectContaining({
-        kind: "invoke-callback", api: "createClient.schedule", lane: "host-task",
+        kind: "invoke-callback", api: "setTimeout", lane: "host-task",
+      }));
+      expect(model.scheduled).toContainEqual(expect.objectContaining({
+        queue: "timer-task", evidence: "exact",
       }));
       expect(model.scheduled).toContainEqual(expect.objectContaining({
         queue: "unknown", evidence: "unknown",
         reason: expect.stringContaining("no reviewed web queue mapping"),
       }));
-      expect(model.quint).not.toContain("webTimers");
+      expect(model.quint).toContain("run_timer_task_0");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

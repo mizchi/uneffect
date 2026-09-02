@@ -9,6 +9,7 @@ import { classifyLexicalExecution } from "./lexical-execution.js";
 export type CallbackCardinality = "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
 export type CallbackTiming = "inline" | "deferred" | "promise-reaction" | "unknown";
 export type CallbackCompletion = "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
+export type CallbackSchedulingSource = "setTimeout" | "setInterval" | "requestAnimationFrame" | "EventTarget.prototype.addEventListener";
 
 export interface CallbackParameterSummary {
   readonly index: number;
@@ -19,6 +20,8 @@ export interface CallbackParameterSummary {
   readonly cardinality: CallbackCardinality;
   readonly timing: CallbackTiming;
   readonly completion: CallbackCompletion;
+  readonly schedulingSource?: CallbackSchedulingSource;
+  readonly schedulingDelay?: number;
   readonly effectBound?: readonly string[];
   readonly spans: readonly { start: number; end: number }[];
 }
@@ -448,14 +451,30 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       let cardinality: CallbackCardinality = "0";
       let timing: CallbackTiming = "inline", completion: CallbackCompletion = "propagate-throw";
       const sites = [
-        ...calls.map((call) => ({ call, cardinality: "exactly-1" as const, timing: "inline" as const, completion: "propagate-throw" as const })),
-        ...forwardings.map(({ call, invocation }) => ({ call, cardinality: invocation.cardinality, timing: invocation.timing, completion: invocation.completion })),
+        ...calls.map((call) => ({ call, cardinality: "exactly-1" as const, timing: "inline" as const, completion: "propagate-throw" as const, schedulingSource: undefined })),
+        ...forwardings.map(({ call, invocation }) => ({
+          call, cardinality: invocation.cardinality, timing: invocation.timing, completion: invocation.completion,
+          schedulingSource: (["setTimeout", "setInterval", "requestAnimationFrame", "EventTarget.prototype.addEventListener"] as string[]).includes(invocation.api)
+            ? invocation.api as CallbackSchedulingSource : undefined,
+        })),
       ];
+      let schedulingSource: CallbackSchedulingSource | undefined;
+      let schedulingDelay: number | undefined;
+      const staticDelay = (site: typeof sites[number]): number | undefined => {
+        if (site.schedulingSource !== "setTimeout" && site.schedulingSource !== "setInterval") return undefined;
+        const argument = site.call.arguments[1];
+        if (!argument) return 0;
+        const value = unwrap(argument);
+        return ts.isNumericLiteral(value) && Number.isFinite(Number(value.text)) && Number(value.text) >= 0
+          ? Number(value.text) : undefined;
+      };
       if (sites.length === 1) {
         const site = sites[0]!;
         cardinality = composeCardinality(executionCardinality(site.call, declaration), site.cardinality);
         timing = site.timing;
         completion = site.completion;
+        schedulingSource = site.schedulingSource;
+        schedulingDelay = staticDelay(site);
       } else if (sites.length > 1) {
         const outer = exclusiveControlCardinality(sites.map(({ call }) => call), declaration);
         const timings = new Set(sites.map((site) => site.timing));
@@ -466,11 +485,17 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
           cardinality = composeCardinality(outer, alternativeCardinality(sites.map((site) => site.cardinality)));
           timing = sites[0]!.timing;
           completion = sites[0]!.completion;
+          const schedulingSources = new Set(sites.map((site) => site.schedulingSource));
+          if (schedulingSources.size === 1) schedulingSource = sites[0]!.schedulingSource;
+          const delays = new Set(sites.map(staticDelay));
+          if (delays.size === 1) schedulingDelay = staticDelay(sites[0]!);
         }
       }
       if (unknownReasons.has("callback-escape") || unknownReasons.has("dynamic-callback-dispatch")) cardinality = "unknown";
       return {
         index: parameter.index, name: parameter.name, ...(parameter.path ? { path: parameter.path } : {}), cardinality, timing, completion,
+        ...(schedulingSource ? { schedulingSource } : {}),
+        ...(schedulingDelay !== undefined ? { schedulingDelay } : {}),
         ...(parameter.containerAccess ? { containerAccess: parameter.containerAccess } : {}),
         ...(bounds.has(parameter.name) ? { effectBound: bounds.get(parameter.name)! } : {}),
         spans: [...calls, ...forwardings.map(({ call }) => call)].map((call) => ({ start: call.getStart(source), end: call.getEnd() })),

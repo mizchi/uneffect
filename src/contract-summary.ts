@@ -17,6 +17,8 @@ export interface ContractCallbackSummaryV1 {
   cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
   timing: "inline" | "deferred" | "promise-reaction" | "unknown";
   completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
+  schedulingSource?: "setTimeout" | "setInterval" | "requestAnimationFrame" | "EventTarget.prototype.addEventListener";
+  schedulingDelay?: number;
   effectBound?: readonly string[];
 }
 
@@ -183,6 +185,9 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
         && ["0", "0..1", "exactly-1", "0..n", "unknown"].includes(callback.cardinality)
         && ["inline", "deferred", "promise-reaction", "unknown"].includes(callback.timing)
         && ["propagate-throw", "convert-throw-to-rejection", "host-report-throw", "unknown"].includes(callback.completion)
+        && (callback.schedulingSource === undefined || ["setTimeout", "setInterval", "requestAnimationFrame", "EventTarget.prototype.addEventListener"].includes(callback.schedulingSource))
+        && (callback.schedulingDelay === undefined || ((callback.schedulingSource === "setTimeout" || callback.schedulingSource === "setInterval")
+          && Number.isFinite(callback.schedulingDelay) && callback.schedulingDelay >= 0))
         && (callback.effectBound === undefined || (Array.isArray(callback.effectBound)
           && callback.effectBound.every((entry) => typeof entry === "string"))));
     if (!item || typeof item !== "object" || !item.symbol
@@ -469,6 +474,8 @@ function describeExport(
           ...(callback.path ? { path: callback.path } : {}),
           ...(callback.containerAccess ? { containerAccess: callback.containerAccess } : {}),
           cardinality: callback.cardinality, timing: callback.timing, completion: callback.completion,
+          ...(callback.schedulingSource ? { schedulingSource: callback.schedulingSource } : {}),
+          ...(callback.schedulingDelay !== undefined ? { schedulingDelay: callback.schedulingDelay } : {}),
           ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
         })) } : {}),
         ...(member.rejects.length ? { rejects: [...member.rejects].sort() } : {}), evidence: member.evidence,
@@ -481,6 +488,8 @@ function describeExport(
         cardinality: callback.cardinality,
         timing: callback.timing,
         completion: callback.completion,
+        ...(callback.schedulingSource ? { schedulingSource: callback.schedulingSource } : {}),
+        ...(callback.schedulingDelay !== undefined ? { schedulingDelay: callback.schedulingDelay } : {}),
         ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
       })) } : {}),
     } } : {}),
@@ -566,6 +575,8 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
           ...(callback.path ? { path: callback.path } : {}),
           ...(callback.containerAccess ? { containerAccess: callback.containerAccess } : {}),
           cardinality: callback.cardinality, timing: callback.timing, completion: callback.completion,
+          ...(callback.schedulingSource ? { schedulingSource: callback.schedulingSource } : {}),
+          ...(callback.schedulingDelay !== undefined ? { schedulingDelay: callback.schedulingDelay } : {}),
           ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
         })) } : {}),
         ...(member.rejects.length ? { rejects: [...member.rejects].sort() } : {}), evidence: member.evidence,
@@ -575,6 +586,8 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
         ...(callback.path ? { path: callback.path } : {}),
         ...(callback.containerAccess ? { containerAccess: callback.containerAccess } : {}),
         cardinality: callback.cardinality, timing: callback.timing, completion: callback.completion,
+        ...(callback.schedulingSource ? { schedulingSource: callback.schedulingSource } : {}),
+        ...(callback.schedulingDelay !== undefined ? { schedulingDelay: callback.schedulingDelay } : {}),
         ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
       })) : undefined;
       if (!effects || canonical(effects) !== canonical(item.effect.effects)

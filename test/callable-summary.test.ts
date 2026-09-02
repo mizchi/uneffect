@@ -144,6 +144,8 @@ describe("backend-neutral callable summaries", () => {
           promise.then(callback)
           setTimeout(callback, 0)
         }
+        function timerForward(callback: () => void) { setTimeout(callback, 0) }
+        function dynamicTimerForward(callback: () => void, delay: number) { setTimeout(callback, delay) }
         function fromAsync(values: AsyncIterable<number>, callback: (value: number, index: number) => number) {
           return Array.fromAsync(values, callback)
         }
@@ -266,6 +268,17 @@ describe("backend-neutral callable summaries", () => {
         expect.objectContaining({ api: "Promise.prototype.then", cardinality: "0..1", timing: "promise-reaction", completion: "convert-throw-to-rejection" }),
         expect.objectContaining({ api: "setTimeout", cardinality: "0..1", timing: "deferred", completion: "host-report-throw" }),
       ]));
+      expect(analysis.summaries.find(({ name }) => name === "timerForward")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({
+          name: "callback", timing: "deferred", schedulingSource: "setTimeout",
+          schedulingDelay: 0,
+        }));
+      expect(analysis.summaries.find(({ name }) => name === "dynamicTimerForward")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({
+          name: "callback", schedulingSource: "setTimeout",
+        }));
+      expect(analysis.summaries.find(({ name }) => name === "dynamicTimerForward")?.callbackParameters[0]?.schedulingDelay)
+        .toBeUndefined();
       expect(analysis.summaries.find(({ name }) => name === "fromAsync")?.callbackInvocations)
         .toContainEqual(expect.objectContaining({
           api: "ArrayConstructor#fromAsync", callback: "callback", cardinality: "0..n",

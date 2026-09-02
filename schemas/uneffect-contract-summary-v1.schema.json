@@ -133,6 +133,8 @@
         "cardinality": { "enum": ["0", "0..1", "exactly-1", "0..n", "unknown"] },
         "timing": { "enum": ["inline", "deferred", "promise-reaction", "unknown"] },
         "completion": { "enum": ["propagate-throw", "convert-throw-to-rejection", "host-report-throw", "unknown"] },
+        "schedulingSource": { "enum": ["setTimeout", "setInterval", "requestAnimationFrame", "EventTarget.prototype.addEventListener"] },
+        "schedulingDelay": { "type": "number", "minimum": 0 },
         "effectBound": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     }

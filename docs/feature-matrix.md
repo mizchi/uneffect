@@ -102,7 +102,9 @@ boundary; retained, reentrant, concurrent, and dynamically selected callbacks
 remain unknown.
 Their invocations also enter the host-neutral temporal artifact. Generic
 deferred timing has unknown host-queue identity and is deliberately omitted
-from executable Web/Node queue actions until queue provenance is available.
+from executable Web/Node queue actions. Reviewed timer/event/animation-frame
+forwarding retains queue provenance; a literal non-negative timer delay enables
+the corresponding executable queue action.
 One direct-final `return this` object-literal member preserves receiver identity
 through a fluent chain. Conditional/multiple returns, replacement results, and
 polymorphic fluent APIs remain unknown.

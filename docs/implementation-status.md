@@ -948,7 +948,9 @@ same property is proved for arbitrary TypeScript.
   opaque retention, reentrancy, and concurrency remain open.
   The host-neutral temporal collector resolves the same member calls. Generic
   deferred timing is retained as an unknown scheduled queue rather than being
-  mislabeled as a timer or event source.
+  mislabeled as a timer or event source. Reviewed builtin forwarding records
+  timer/event/animation-frame provenance, and literal timer delays feed the
+  executable Web/Node queue model.
   One object-literal member with exactly one direct final `return this` carries
   the original receiver through a fluent chain; general fluent/polymorphic
   return values remain open.

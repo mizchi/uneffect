@@ -97,6 +97,8 @@ export interface ExternalFunctionEffectContract {
     timing: "inline" | "deferred" | "promise-reaction" | "unknown";
     cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
     completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
+    schedulingSource?: "setTimeout" | "setInterval" | "requestAnimationFrame" | "EventTarget.prototype.addEventListener";
+    schedulingDelay?: number;
     effectBound?: readonly Effect[];
   }[];
   reason?: string;

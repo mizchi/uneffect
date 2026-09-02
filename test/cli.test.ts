@@ -181,6 +181,7 @@ describe("uneffect command line", () => {
       export interface Client {
         report(message: string): void
         run(callback: () => void): void
+        schedule(callback: () => void): void
         chain(): Client
       }
       /* uneffect:effect none */
@@ -189,6 +190,8 @@ describe("uneffect command line", () => {
           report(message: string): void { console.log(message) },
           /* uneffect:effect_parameter callback extends Console */
           run(callback: () => void): void { callback() },
+          /* uneffect:effect_parameter callback extends Console */
+          schedule(callback: () => void): void { setTimeout(callback, 0) },
           chain(): Client { return this },
         }
       }
@@ -229,6 +232,8 @@ describe("uneffect command line", () => {
       export function runClient(message: string): void { clientAlias.chain().report(message) }
       /* uneffect:effect Console */
       export function runClientCallback(): void { clientAlias.run(logOnce) }
+      /* uneffect:effect Console | Timer */
+      export function runClientScheduled(): void { clientAlias.schedule(logOnce) }
     `;
     try {
       mkdirSync(packageDirectory, { recursive: true });
@@ -252,7 +257,7 @@ describe("uneffect command line", () => {
         "export declare function choose(callback: () => void, ok: boolean): void;",
         "export declare function chooseLater(left: Promise<void>, right: Promise<void>, callback: () => void, first: boolean): Promise<void>;",
         "export declare function makeReporter(): (message: string) => void;",
-        "export interface Client { report(message: string): void; run(callback: () => void): void; chain(): Client }",
+        "export interface Client { report(message: string): void; run(callback: () => void): void; schedule(callback: () => void): void; chain(): Client }",
         "export declare function createClient(): Client;",
         "",
       ].join("\n"));
@@ -267,6 +272,10 @@ describe("uneffect command line", () => {
       });
       expect(contractBundle.exports.find(({ functionName }) => functionName === "createClient")?.effect?.returnMembers)
         .toContainEqual(expect.objectContaining({ key: "chain", returnsReceiver: true }));
+      expect(contractBundle.exports.find(({ functionName }) => functionName === "createClient")?.effect?.returnMembers)
+        .toContainEqual(expect.objectContaining({
+          key: "schedule", callbacks: [expect.objectContaining({ schedulingSource: "setTimeout", schedulingDelay: 0 })],
+        }));
       writeFileSync(summaryFile, JSON.stringify(contractBundle));
 
       const checked = capture();
@@ -282,6 +291,7 @@ describe("uneffect command line", () => {
       expect(checked.stderr).toContain("effects runMadeReporter: Console");
       expect(checked.stderr).toContain("effects runClient: Console");
       expect(checked.stderr).toContain("effects runClientCallback: Console");
+      expect(checked.stderr).toContain("effects runClientScheduled: Timer | Console");
       const reported = capture();
       expect(await runCli(["check", "--contract-summary", summaryFile, "--json", consumerFile], reported)).toBe(exitCode.success);
       expect((JSON.parse(reported.stdout) as { assumptions: { entries: Array<{ domain: string }> } }).assumptions.entries)
