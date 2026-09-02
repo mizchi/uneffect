@@ -372,6 +372,22 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     const lookup = ts.isPropertyAccessExpression(construction.expression) ? construction.expression.name : construction.expression;
     const symbol = targetSymbol(this.#checker, lookup);
     let contract = symbol ? this.#resolveMemberContract(lookup) : undefined;
+    if (!contract) {
+      const rooted = [...this.#rootedContracts.values()].flat().filter(({ root, path }) =>
+        hasStableRootPath(this.#checker, construction.expression, new Set([root]), path));
+      if (rooted.length === 1) contract = rooted[0]!.contract;
+      else if (rooted.length > 1) return {
+        symbol: rooted[0]!.contract.symbol,
+        span: { start: construction.getStart(), end: construction.getEnd() }, evidence: "unknown",
+      };
+      else if (symbol) {
+        const candidates = this.#rootedContracts.get(symbol) ?? [];
+        if (candidates.length > 0) return {
+          symbol: candidates[0]!.contract.symbol,
+          span: { start: construction.getStart(), end: construction.getEnd() }, evidence: "unknown",
+        };
+      }
+    }
     if (!contract && ts.isIdentifier(construction.expression)) {
       const rootSymbol = targetSymbol(this.#checker, construction.expression);
       const isLibraryGlobal = rootSymbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
@@ -380,6 +396,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     return contract ? {
       symbol: contract.symbol,
       span: { start: construction.getStart(), end: construction.getEnd() },
+      evidence: "trusted",
       semantics: contract.semantics,
       callableResult: contract.callableResult,
     } : undefined;

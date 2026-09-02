@@ -55,7 +55,7 @@ capabilities, parameter-rooted `Mutate`, and `Throw<E>`. Caller-owned exact-vers
 registry contracts may identify a nested callable by root export plus static
 `path`; direct/const-alias/destructured calls preserve receiver provenance and
 same-shaped values remain unknown. Rooted property read/write primitives use
-the same identity rule. Calls remain `trusted`, not `verified`,
+the same identity rule, as does `new root.NestedConstructor()`. Calls remain `trusted`, not `verified`,
 because persisted producer authority is not authenticated. Producer-to-emitted `.d.ts` build
 linkage and publisher/tarball authenticity remain unsupported. An opt-in runtime
 artifact ledger binds explicitly listed package-relative emitted files to exact

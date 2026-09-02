@@ -150,7 +150,7 @@ export or value with the same structural TypeScript member type does not inherit
 the contract and is reported as unknown. Paths can be nested. This is distinct
 from the existing `Type#member` spelling used for reviewed instance protocols:
 the latter describes a receiver type, while `path` identifies one exported
-runtime object. Path contracts apply to calls, while property-read/write
+runtime object. Path contracts apply to calls and nested construction, while property-read/write
 primitives use the same root-provenance check. A structurally compatible
 property reached from another root remains unknown.
 

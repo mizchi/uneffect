@@ -1192,7 +1192,7 @@ function hasExternalReturnedCallableCandidate(
 
 function hasConfiguredExternalContractCandidate(
   checker: ts.TypeChecker,
-  call: ts.CallExpression,
+  call: ts.CallExpression | ts.NewExpression,
   registry: BuiltinContractRegistry,
 ): boolean {
   const members: string[] = [];
@@ -1945,6 +1945,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       }
       if (ts.isNewExpression(child)) {
         const resolvedBuiltin = adapter.resolveConstruct(child);
+        if (resolvedBuiltin?.evidence === "unknown") unknownExternalEvidence.add(graphNode.id);
         const primitive = primitiveConstructorEffects(child, adapter, checker);
         for (const effect of primitive) {
           if (effect.kind === "throw" && (catches || asyncOwners.has(graphNode.id))) continue;
@@ -1952,6 +1953,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         }
         const networkBoundary = networkBoundaryFromEffects(child, resolvedBuiltin, primitive);
         if (networkBoundary) directNetworkBoundaries.get(graphNode.id)!.push(networkBoundary);
+        if (!resolvedBuiltin && hasConfiguredExternalContractCandidate(checker, child, registry)) {
+          unknownExternalEvidence.add(graphNode.id);
+        }
         let symbol = checker.getSymbolAtLocation(child.expression);
         if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
         const classDeclaration = symbol?.declarations?.find((declaration): declaration is ts.ClassDeclaration | ts.ClassExpression =>
@@ -2568,6 +2572,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
       if (ts.isNewExpression(node)) {
+        const resolvedBuiltin = adapter.resolveConstruct(node);
+        if (resolvedBuiltin?.evidence === "unknown") markUnknown("unknown-external-evidence", "a reviewed constructor contract does not match this receiver root");
+        if (!resolvedBuiltin && hasConfiguredExternalContractCandidate(checker, node, registry)) {
+          markUnknown("unknown-external-evidence", "a reviewed constructor contract does not match the selected runtime");
+        }
         for (const effect of primitiveConstructorEffects(node, adapter, checker)) {
           if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         }

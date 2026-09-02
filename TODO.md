@@ -932,7 +932,8 @@ introducing another domain-local control-flow or alias model.
        root-export plus nested `symbol.path` identity. Preserve provenance
        through direct calls, const aliases, and const destructuring; reject
        same-shaped call and property receivers as unknown instead of applying
-       singleton authority structurally.
+       singleton authority structurally. Apply the same rule to rooted property
+       reads/writes and nested constructors, including version-mismatch unknowns.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.
