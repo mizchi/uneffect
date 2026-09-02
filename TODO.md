@@ -482,8 +482,12 @@ introducing another domain-local control-flow or alias model.
        mutable aliases fail-closed.
      - [x] Accept conditional resource returns only when both branches resolve
        to the same acquired region identity.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend returned-resource identity through destructuring, stable
-       object properties, and conditionals selecting different resources.
+     - [x] Forward ownership through one shallow static property or tuple slot
+       of an otherwise unused local `const` aggregate, including object
+       shorthand value-symbol resolution; reject mutation, reassignment,
+       container escape, and dynamic keys.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend returned-resource identity through destructuring, nested
+       aggregate slots, and conditionals selecting different resources.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

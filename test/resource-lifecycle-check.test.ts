@@ -336,6 +336,26 @@ describe("general resource lifecycle check", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("recognizes ownership escape through a stable local aggregate slot", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-aggregate-return-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Handle {}
+        /* uneffect:acquire return */ declare function open(): Handle
+        export function objectSlot() { const handle = open(); const holder = { handle }; return holder.handle }
+        export function tupleSlot() { const handle = open(); const holder = [handle] as const; return holder[0] }
+        export function mutatedSlot() { const handle = open(); const holder = { handle }; holder.handle = open(); return holder.handle }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "objectSlot", status: "satisfied", state: "escaped" }),
+        expect.objectContaining({ owner: "tupleSlot", status: "satisfied", state: "escaped" }),
+        expect.objectContaining({ owner: "mutatedSlot", status: "unknown", state: "unknown" }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("surfaces catalog-driven WebSocket lifecycles through checkFiles", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-builtin-"));
     try {

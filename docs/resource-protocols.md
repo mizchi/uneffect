@@ -163,8 +163,12 @@ The alias-bound report describes the resource only after successful
 acquisition, so its terminal state is `escaped`; Promise rejection still does
 not create a live resource. A conditional return is accepted only when both
 branches resolve to the same acquired region. Mutable aliases, destructured
-aliases, properties, and conditionals selecting different resources remain
-outside this fragment.
+aliases, and conditionals selecting different resources remain outside this
+fragment. A shallow static property or tuple-index return from a local `const`
+object/array is also accepted when the stored value resolves to one acquired
+region and the container has no other use. Container mutation, reassignment,
+passing the container elsewhere, dynamic keys, spreads, and nested slots remain
+fail-closed.
 Equivalent optional terminal states exist for consume, release, and transfer.
 Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions

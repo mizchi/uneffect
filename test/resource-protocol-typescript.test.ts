@@ -253,6 +253,12 @@ describe("TypeScript resource protocol CFG lowering", () => {
         /* uneffect:acquire return */ function aliasReturned(): Handle { const handle = connect(); const alias = handle; return alias }
         /* uneffect:acquire return */ async function asyncAliasReturned(): Promise<Handle> { const handle = await asyncConnect(); const alias = handle; return alias }
         /* uneffect:acquire return */ function conditionalAliasReturned(flag: boolean): Handle { const handle = connect(); const alias = handle; return flag ? handle : alias }
+        /* uneffect:acquire return */ function objectSlotReturned(): Handle { const handle = connect(); const holder = { handle }; return holder.handle }
+        /* uneffect:acquire return */ function tupleSlotReturned(): Handle { const handle = connect(); const holder = [handle] as const; return holder[0] }
+        /* uneffect:acquire return */ function mutatedSlotReturned(): Handle { const handle = connect(); const holder = { handle }; holder.handle = connect(); return holder.handle }
+        declare function inspect(value: unknown): void
+        /* uneffect:acquire return */ function escapedSlotReturned(): Handle { const handle = connect(); const holder = { handle }; inspect(holder); return holder.handle }
+        /* uneffect:acquire return */ function mutableContainerReturned(): Handle { const handle = connect(); let holder = { handle }; return holder.handle }
         /* uneffect:acquire return */ function selectedResource(flag: boolean): Handle { const left = connect(); const right = connect(); return flag ? left : right }
         /* uneffect:acquire return */ function mutableReturned(): Handle { let handle = connect(); return handle }
         function direct() { connect().close() }
@@ -289,6 +295,11 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(evaluate("asyncAliasReturned")).toMatchObject({ status: "satisfied" });
       expect(evaluate("asyncAliasReturned")?.states.values().next().value).toBe("escaped");
       expect(evaluate("conditionalAliasReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("objectSlotReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("tupleSlotReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("mutatedSlotReturned")).toMatchObject({ status: "unsatisfied" });
+      expect(evaluate("escapedSlotReturned")).toMatchObject({ status: "unsatisfied" });
+      expect(evaluate("mutableContainerReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("selectedResource")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("mutableReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("nestedArgument")).toMatchObject({ status: "satisfied" });
