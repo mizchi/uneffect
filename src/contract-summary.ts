@@ -10,6 +10,7 @@ import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectC
 import { analyzeCallableSummaries, type CallableSummary } from "./callable-summary.js";
 import { analyzeResourceCallableSummaries } from "./resource-callable-typescript.js";
 import type { ResourceCallableOperation, ResourceCallableSummary } from "./resource-protocol.js";
+import { builtinContractRegistry, type BuiltinContractRegistry, type SemanticModuleLedgerEntry } from "./builtin-contracts.js";
 
 export interface ContractCallbackSummaryV1 {
   index: number;
@@ -69,6 +70,8 @@ export interface ContractSummaryBundleV1 {
   package: { name: string; version: string };
   compiler: { typescriptVersion: string; compilerOptionsDigest: string };
   producer: { fileName: string; sourceDigest: string };
+  /** Exact trusted semantics inputs used while producing this summary. */
+  modules?: readonly SemanticModuleLedgerEntry[];
   exports: ContractSummaryExportV1[];
   contentDigest: string;
 }
@@ -80,6 +83,7 @@ export interface CreateContractSummaryBundleOptions {
   source: string;
   program: ts.Program;
   artifacts: readonly VerificationArtifact[];
+  builtinRegistry?: BuiltinContractRegistry;
 }
 
 export interface ValidateContractSummaryBundleOptions {
@@ -88,6 +92,7 @@ export interface ValidateContractSummaryBundleOptions {
   fileName: string;
   source: string;
   program: ts.Program;
+  builtinRegistry?: BuiltinContractRegistry;
 }
 
 export interface BoundContractSummaryExportV1 {
@@ -195,6 +200,15 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
     || !Array.isArray(bundle.exports) || typeof bundle.contentDigest !== "string") {
     throw new Error(`malformed contract summary ${fileName}`);
   }
+  if (bundle.modules !== undefined && (!Array.isArray(bundle.modules)
+    || bundle.modules.some((module) => !module || typeof module !== "object"
+      || typeof module.name !== "string" || typeof module.version !== "string"
+      || typeof module.namespace !== "string" || module.evidence !== "trusted"
+      || typeof module.trustOwner !== "string" || typeof module.trustReason !== "string"
+      || !/^[0-9a-f]{64}$/u.test(module.digest))
+    || new Set(bundle.modules.map((module) => `${module.name}@${module.version}`)).size !== bundle.modules.length)) {
+    throw new Error(`malformed contract summary semantics-module ledger ${fileName}`);
+  }
   for (const [index, item] of bundle.exports.entries()) {
     const validCallback = (callback: ContractCallbackSummaryV1): boolean =>
       Boolean(callback && typeof callback === "object"
@@ -299,11 +313,15 @@ function installedPackageAt(declarationFileName: string, packageName: string): {
 export function bindContractSummaryBundleToProgram(
   bundle: ContractSummaryBundleV1,
   program: ts.Program,
+  builtinRegistry: BuiltinContractRegistry = builtinContractRegistry,
 ): BoundContractSummaryBundleV1 {
   const blockers: string[] = [];
   const { contentDigest, ...unsigned } = bundle;
   if (bundle.schema !== "uneffect-contract-summary/v1") blockers.push(`unsupported contract summary schema ${bundle.schema}`);
   if (bundleDigest(unsigned) !== contentDigest) blockers.push("contract summary content digest does not match its payload");
+  if (canonical(bundle.modules ?? []) !== canonical(builtinRegistry.modules ?? [])) {
+    blockers.push("contract summary semantics-module ledger does not match the consumer registry");
+  }
   if (bundle.compiler.typescriptVersion !== ts.version) {
     blockers.push(`contract summary TypeScript ${bundle.compiler.typescriptVersion} does not match consumer ${ts.version}`);
   }
@@ -547,8 +565,10 @@ function describeExport(
 export function createContractSummaryBundle(options: CreateContractSummaryBundleOptions): ContractSummaryBundleV1 {
   if (!options.packageName || !options.packageVersion) throw new Error("contract summary requires package name and version");
   const source = checkedSource(options);
-  const effectSummaries = analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries;
-  const callableSummaries = analyzeCallableSummaries(options.program).summaries;
+  const effectSummaries = analyzeProgramEffects(options.program, {
+    requireAnnotations: false, builtinRegistry: options.builtinRegistry,
+  }).summaries;
+  const callableSummaries = analyzeCallableSummaries(options.program, undefined, options.builtinRegistry).summaries;
   const resourceSummaries = analyzeResourceCallableSummaries(options.program);
   if (resourceSummaries.diagnostics.length > 0) throw new Error(`contract summary has invalid resource annotations: ${resourceSummaries.diagnostics.map(({ message }) => message).join("; ")}`);
   const exports = source.statements.flatMap((statement) => directExportCallables(statement).flatMap((exported) => {
@@ -573,6 +593,9 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
     package: { name: options.packageName, version: options.packageVersion },
     compiler: { typescriptVersion: ts.version, compilerOptionsDigest: compilerOptionsDigest(options.program) },
     producer: { fileName: options.fileName, sourceDigest: sha256(options.source) },
+    ...(options.builtinRegistry?.modules?.length
+      ? { modules: options.builtinRegistry.modules.map((module) => ({ ...module })) }
+      : {}),
     exports: exports.sort((left, right) => left.symbol.export.localeCompare(right.symbol.export)),
   };
   return { ...unsigned, contentDigest: bundleDigest(unsigned) };
@@ -583,6 +606,9 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   const { contentDigest, ...unsigned } = bundle;
   if (bundle.schema !== "uneffect-contract-summary/v1") errors.push(`unsupported contract summary schema ${bundle.schema}`);
   if (bundleDigest(unsigned) !== contentDigest) errors.push("contract summary content digest does not match its payload");
+  if (canonical(bundle.modules ?? []) !== canonical(options.builtinRegistry?.modules ?? [])) {
+    errors.push("contract summary semantics-module ledger does not match the validation registry");
+  }
   if (bundle.package.name !== options.packageName) errors.push(`contract summary package name ${bundle.package.name} does not match ${options.packageName}`);
   if (bundle.package.version !== options.packageVersion) errors.push(`contract summary package version ${bundle.package.version} does not match ${options.packageVersion}`);
   if (bundle.compiler.typescriptVersion !== ts.version) errors.push(`contract summary TypeScript ${bundle.compiler.typescriptVersion} does not match ${ts.version}`);
@@ -591,8 +617,10 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   if (bundle.producer.sourceDigest !== sha256(options.source)) errors.push("contract summary source digest does not match producer source");
   let source: ts.SourceFile | undefined;
   try { source = checkedSource(options); } catch (cause) { errors.push(cause instanceof Error ? cause.message : String(cause)); }
-  const effectSummaries = source ? analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries : [];
-  const callableSummaries = source ? analyzeCallableSummaries(options.program).summaries : [];
+  const effectSummaries = source ? analyzeProgramEffects(options.program, {
+    requireAnnotations: false, builtinRegistry: options.builtinRegistry,
+  }).summaries : [];
+  const callableSummaries = source ? analyzeCallableSummaries(options.program, undefined, options.builtinRegistry).summaries : [];
   const resourceSummaries = source ? analyzeResourceCallableSummaries(options.program) : { summaries: [], diagnostics: [] };
   for (const diagnostic of resourceSummaries.diagnostics) errors.push(`invalid resource annotation: ${diagnostic.message}`);
   if (source) for (const item of bundle.exports) {

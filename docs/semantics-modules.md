@@ -132,10 +132,12 @@ Resource primitives remain reviewed assumptions. Their package symbol and exact
 runtime version are authenticated by the registry, but Uneffect does not inspect
 the dependency implementation to prove that the declared transition is complete.
 
-Producer contract-summary bundles currently use the built-in registry only. A
-bundle must not depend on a semantics module until the bundle schema records and
-authenticates the exact module ledger/digests used by its producer; otherwise a
-consumer could not reproduce the trusted inputs behind the persisted summary.
+Producer contract-summary bundles may depend on semantics modules only when the
+caller supplies the installed registry during production. The bundle records a
+copy of the exact ordered module ledger, includes it in `contentDigest`, and
+requires byte-equivalent ledger metadata and digests during source validation
+and consumer Program binding. Omitting that registry, changing module order, or
+changing any review/digest field makes the binding `unknown`.
 
 The intended later tiers are:
 

@@ -334,7 +334,7 @@ async function verifyUneffectProjectFiles(
   const temporalProperties: ProjectTemporalProperty[] = [];
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
   const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
-    bindContractSummaryBundleToProgram(bundle, program));
+    bindContractSummaryBundleToProgram(bundle, program, options.builtinRegistry));
   const packageEffects = boundContractSummaryEffectContracts(contractSummaryBindings);
   const contractSummaryAssumptions: AssumptionEntry[] = contractSummaryBindings.flatMap((binding) => binding.exports.flatMap((item) =>
     item.callSites.map((call) => ({

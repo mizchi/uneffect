@@ -97,7 +97,7 @@ export function createCheckProgram(fileNames: readonly string[], options: CheckO
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
   const program = options.program ?? createCheckProgram(fileNames, options);
   const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
-    bindContractSummaryBundleToProgram(bundle, program));
+    bindContractSummaryBundleToProgram(bundle, program, options.builtinRegistry));
   const packageEffects = boundContractSummaryEffectContracts(contractSummaryBindings);
   const externalFunctionEffects = new Map([...(options.externalFunctionEffects ?? []), ...packageEffects]);
   const analyzedEffects = analyzeProgramEffects(program, {

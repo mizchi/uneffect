@@ -924,6 +924,10 @@ same property is proved for arbitrary TypeScript.
   same-callee/same-argument reference screen; mutation, capture, aliasing, and
   unrelated use remain unknown.
   Persisted callable summaries also retain direct Promise rejection types.
+  When producer analysis uses declarative semantics modules, the package bundle
+  persists their exact ordered trusted ledger inside its content digest;
+  validation and consumer binding require the same registry ledger before any
+  persisted summary is admitted.
   Exact declaration binding feeds package `Throw` and directly awaited
   rejection alternatives into the shared resource CFG while preserving trusted
   producer authority; floating rejection remains an ownership concern.

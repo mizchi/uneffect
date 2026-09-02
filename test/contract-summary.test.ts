@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
 import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
+import { builtinContractRegistry } from "../src/builtin-contracts.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
@@ -22,10 +23,11 @@ describe("persisted contract summary bundles", () => {
   it("publishes a strict JSON schema for distributed summaries", () => {
     const schema = JSON.parse(readFileSync("schemas/uneffect-contract-summary-v1.schema.json", "utf8")) as {
       $id: string;
-      properties: { schema: { const: string }; exports: { items: { required: string[] } } };
+      properties: { schema: { const: string }; modules: { items: { $ref: string } }; exports: { items: { required: string[] } } };
     };
     expect(schema.$id).toBe("https://github.com/mizchi/uneffect/schemas/uneffect-contract-summary-v1.schema.json");
     expect(schema.properties.schema.const).toBe("uneffect-contract-summary/v1");
+    expect(schema.properties.modules.items.$ref).toBe("#/$defs/semanticModule");
     expect(schema.properties.exports.items.required).toEqual(expect.arrayContaining(["symbol", "signatureDigest", "artifactIds"]));
   });
 
@@ -63,6 +65,34 @@ describe("persisted contract summary bundles", () => {
     expect(validateContractSummaryBundle(tampered, {
       packageName: "@example/math", packageVersion: "1.2.4", fileName, source, program,
     })).toMatchObject({ valid: false, errors: expect.arrayContaining([expect.stringContaining("content digest")]) });
+  });
+
+  it("binds the exact semantics-module ledger into producer summaries", () => {
+    const fileName = "/src/module-backed.ts";
+    const source = `/* uneffect:effect none */ export function value(): number { return 1 }`;
+    const program = programFor(fileName, source);
+    const module = {
+      name: "@acme/reviewed-semantics", version: "1.0.0", namespace: "Acme.Reviewed",
+      evidence: "trusted" as const, trustOwner: "security-platform", trustReason: "reviewed package semantics",
+      digest: "a".repeat(64),
+    };
+    const registry = { ...builtinContractRegistry, modules: [module] };
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/module-backed", packageVersion: "1.0.0", fileName, source, program,
+      artifacts: [], builtinRegistry: registry,
+    });
+    expect(bundle.modules).toEqual([module]);
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/module-backed", packageVersion: "1.0.0", fileName, source, program,
+      builtinRegistry: registry,
+    })).toEqual({ valid: true, errors: [] });
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/module-backed", packageVersion: "1.0.0", fileName, source, program,
+      builtinRegistry: builtinContractRegistry,
+    })).toMatchObject({ valid: false, errors: [expect.stringContaining("semantics-module ledger")] });
+    expect(bindContractSummaryBundleToProgram(bundle, program, builtinContractRegistry)).toMatchObject({
+      status: "unknown", blockers: [expect.stringContaining("semantics-module ledger")],
+    });
   });
 
   it("refuses to publish a counterexample as a verified package summary", async () => {
@@ -227,6 +257,23 @@ describe("persisted contract summary bundles", () => {
     }));
 
     await expect(loadContractSummaryBundle(fileName)).rejects.toThrow(/malformed contract summary export 0/);
+  });
+
+  it("rejects malformed persisted semantics-module ledgers", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-module-ledger-"));
+    const fileName = join(directory, "contract.json");
+    writeFileSync(fileName, JSON.stringify({
+      schema: "uneffect-contract-summary/v1",
+      package: { name: "@example/module", version: "1.0.0" },
+      compiler: { typescriptVersion: ts.version, compilerOptionsDigest: "0".repeat(64) },
+      producer: { fileName: "/src/index.ts", sourceDigest: "0".repeat(64) },
+      modules: [{
+        name: "broken", version: "1.0.0", namespace: "Broken", evidence: "trusted",
+        trustOwner: "owner", trustReason: "reason", digest: "not-a-digest",
+      }],
+      exports: [], contentDigest: "0".repeat(64),
+    }));
+    await expect(loadContractSummaryBundle(fileName)).rejects.toThrow(/semantics-module ledger/);
   });
 
   it("binds a producer summary to an installed package export by TypeChecker identity", async () => {
