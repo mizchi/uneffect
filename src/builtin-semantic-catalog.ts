@@ -98,6 +98,7 @@ const deferredNetworkSemantics = (options: {
   callbackCardinality?: "0..1" | "0..n";
   queue?: "next-tick" | "poll" | "close";
   resultResource?: string;
+  useReceiver?: string;
   releaseReceiver?: string;
   protocol?: { name: string; transition: string };
 }): BuiltinSemantics => ({
@@ -117,6 +118,7 @@ const deferredNetworkSemantics = (options: {
       { kind: "result" as const, refinement: { kind: "resource" as const, family: options.resultResource } },
       { kind: "acquire" as const, resource: options.resultResource, target: { kind: "result" as const } },
     ] : []),
+    ...(options.useReceiver ? [{ kind: "use" as const, resource: options.useReceiver, target: { kind: "receiver" as const } }] : []),
     ...(options.releaseReceiver ? [{ kind: "release" as const, resource: options.releaseReceiver, target: { kind: "receiver" as const } }] : []),
     ...(options.protocol ? [{ kind: "protocol" as const, name: options.protocol.name, transition: options.protocol.transition }] : []),
   ],
@@ -643,7 +645,7 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       { kind: "protocol", name: "watcher", transition: "cancel", inputs: { handle: { kind: "receiver" } } },
     ] } }),
     reviewed("node", { symbol: { module: "node:net", export: "Server#close" }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 1, queue: "close", releaseReceiver: "server", protocol: { name: "server", transition: "close" } }) }),
-    reviewed("node", { symbol: { module: "node:net", export: "Server#listen" }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 2, queue: "next-tick", scope: { kind: "network", format: "connect", target: { kind: "argument", index: 0 }, hostArgument: 1 }, protocol: { name: "server", transition: "listen" } }) }),
+    reviewed("node", { symbol: { module: "node:net", export: "Server#listen" }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 2, queue: "next-tick", scope: { kind: "network", format: "connect", target: { kind: "argument", index: 0 }, hostArgument: 1 }, useReceiver: "server", protocol: { name: "server", transition: "listen" } }) }),
     ...["connect", "createConnection"].map((name) => reviewed("node", { symbol: { module: "node:net", export: name }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 2, scope: { kind: "network", format: "connect", target: { kind: "argument", index: 0 }, hostArgument: 1 } }) })),
     reviewed("node", { symbol: { module: "node:net", export: "Socket#connect" }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 2, scope: { kind: "network", format: "connect", target: { kind: "argument", index: 0 }, hostArgument: 1 } }) }),
     reviewed("node", { symbol: { module: "node:dns", export: "lookup" }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 2, scope: { kind: "network", format: "host", target: { kind: "argument", index: 0 } } }) }),

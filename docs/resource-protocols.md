@@ -395,6 +395,12 @@ writer.write(...)` does not prove cleanup: rejection bypasses the release. A
 is treated differently—the resource is introduced only on fulfillment, so its
 rejection edge cannot manufacture a leaked handle.
 
+Node server contracts use the same resource operations: `createServer()`
+acquires a `server`, `listen()` uses it, and `close()` releases it. Receiver
+aliases are resolved by TypeChecker identity. `listen(0, host)` requests an
+OS-selected ephemeral port, so its network authority is conservatively widened
+to the host rather than emitting the invalid scope `host:0`.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 

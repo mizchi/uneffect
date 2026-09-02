@@ -446,6 +446,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Add rejection edges for directly awaited Promise-returning resource
        operations and require `finally` for cleanup across rejection, while
        keeping awaited acquisitions fulfillment-only.
+     - [x] Connect Node `createServer`/`listen`/`close` through generic receiver
+       resource operations and normalize ephemeral port zero to host authority.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

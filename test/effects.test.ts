@@ -375,6 +375,17 @@ describe("effect checker", () => {
       .toContainEqual(expect.objectContaining({ functionName: "serve", kind: "missing", effect: 'Net<"127.0.0.1:8080">' }));
   });
 
+  it("widens an ephemeral listen port to host authority instead of constructing invalid port zero", () => {
+    const source = `
+      import { createServer } from "node:net"
+      /* uneffect:effect Net<"127.0.0.1"> */
+      function serve() { createServer().listen(0, "127.0.0.1") }
+    `;
+    expect(analyzeEffects("node-net-ephemeral-listen.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-net-ephemeral-listen.ts", source.replace('Net<"127.0.0.1">', "None")))
+      .toContainEqual(expect.objectContaining({ functionName: "serve", kind: "missing", effect: 'Net<"127.0.0.1">' }));
+  });
+
   it("propagates effects from TypeChecker-resolved Node request listeners", () => {
     const source = `
       import { createServer as createHttpServer } from "node:http"

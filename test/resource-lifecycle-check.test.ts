@@ -342,4 +342,24 @@ describe("general resource lifecycle check", () => {
       ]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("tracks Node server lifecycle through catalog receiver operations", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-node-server-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        import { createServer } from "node:net"
+        export function main() {
+          const renamed = createServer()
+          renamed.listen(0, "127.0.0.1")
+          renamed.close()
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toMatchObject([
+        { owner: "main", kind: "server", status: "satisfied", state: "released", authority: "builtin-catalog" },
+      ]);
+      expect(result.diagnostics.filter((diagnostic) => "domain" in diagnostic && diagnostic.domain === "resource")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

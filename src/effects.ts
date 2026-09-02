@@ -474,10 +474,11 @@ function projectedNetworkAuthority(scope: Extract<ProjectedScope, { status: "res
     if (ts.isObjectLiteralExpression(target)) {
       const host = objectLiteralValue(target, ["host"]), port = objectLiteralValue(target, ["port"]);
       return host && ts.isStringLiteralLike(host) && port && (ts.isStringLiteralLike(port) || ts.isNumericLiteral(port))
-        ? `${host.text}:${port.text}` : undefined;
+        ? Number(port.text) === 0 ? host.text : `${host.text}:${port.text}` : undefined;
     }
     const host = scope.hostArgument === undefined ? undefined : call.arguments?.[scope.hostArgument];
-    return ts.isNumericLiteral(target) && host && ts.isStringLiteralLike(host) ? `${host.text}:${target.text}` : undefined;
+    return ts.isNumericLiteral(target) && host && ts.isStringLiteralLike(host)
+      ? Number(target.text) === 0 ? host.text : `${host.text}:${target.text}` : undefined;
   }
   if (scope.networkFormat === "http-request") {
     const projectedUrl = fetchUrlExpression(target);
