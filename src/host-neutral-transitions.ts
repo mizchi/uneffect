@@ -7,6 +7,8 @@ import type { PromiseChainModel, PromiseExecutorSettlement, SynchronousDivergenc
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js";
 import { classifyLexicalExecution } from "./lexical-execution.js";
+import { expressionAtLiteralArgumentPath } from "./call-graph.js";
+import { analyzeProgramEffects, type ExternalFunctionEffectContract } from "./effects.js";
 
 export type HostNeutralLane = "inline" | "microtask" | "host-task" | "external" | "unknown";
 export type HostNeutralCompletion = "normal" | "propagate-throw" | "throw" | "reject" | "host-report-throw" | "unknown";
@@ -97,6 +99,7 @@ export interface GenerateHostTransitionModelOptions {
   readonly fairnessBound?: number;
   readonly fairness?: "weak" | "strong";
   readonly nodeTopLevelMode?: "commonjs" | "esm";
+  readonly externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
 }
 
 export interface HostTransitionModel {
@@ -152,6 +155,10 @@ export interface HostNeutralTransitionAnalysis {
   readonly evidence: "inferred" | "unknown";
   readonly diagnostics: readonly (CallableSummaryDiagnostic | AsyncSafetyDiagnostic)[];
   readonly abortSignals: AbortSignalAnalysis;
+}
+
+export interface HostNeutralTransitionAnalysisOptions extends AsyncSafetyOptions {
+  readonly externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
 }
 
 function transitionId(fileName: string, owner: string, kind: string, index: number, start: number): string {
@@ -283,6 +290,55 @@ export function lowerCallableSummaryTransitions(summary: CallableSummary): HostN
       : invocation.completion,
     span: invocation.span,
   }));
+}
+
+/** Lower authenticated external callback contracts at their concrete call sites. */
+export function lowerExternalCallableTransitions(
+  program: ts.Program,
+  source: ts.SourceFile,
+  contracts: ReadonlyMap<string, ExternalFunctionEffectContract>,
+): { transitions: HostNeutralTransition[]; diagnostics: CallableSummaryDiagnostic[] } {
+  const checker = program.getTypeChecker();
+  const transitions: HostNeutralTransition[] = [], diagnostics: CallableSummaryDiagnostic[] = [];
+  let index = 0;
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
+      const symbol = resolvedSymbol(checker, lookup);
+      const contract = symbol?.declarations?.map((declaration) =>
+        contracts.get(`${declaration.getSourceFile().fileName}:${declaration.getStart(declaration.getSourceFile())}`)).find(Boolean);
+      if (contract?.evidence === "verified") for (const callback of contract.callbackParameters ?? []) {
+        const argument = node.arguments[callback.index];
+        const selected = argument && callback.path?.length
+          ? expressionAtLiteralArgumentPath(argument, callback.path) : argument;
+        const span = { start: node.getStart(source), end: node.getEnd() };
+        if (!selected) {
+          diagnostics.push({
+            fileName: source.fileName, functionName: lexicalOwner(node), span,
+            message: `external callback ${callback.name} of ${contract.functionName ?? node.expression.getText(source)} cannot be resolved at its declared argument path`,
+          });
+        }
+        transitions.push({
+          kind: "invoke-callback",
+          id: transitionId(source.fileName, lexicalOwner(node), "external-callback", index++, span.start),
+          fileName: source.fileName,
+          owner: lexicalOwner(node),
+          callback: selected?.getText(source) ?? "<unresolved>",
+          api: contract.functionName ?? node.expression.getText(source),
+          cardinality: callback.cardinality,
+          lane: !selected ? "unknown" : callback.timing === "inline" ? "inline"
+            : callback.timing === "promise-reaction" ? "microtask"
+            : callback.timing === "deferred" ? "host-task" : "unknown",
+          completion: !selected ? "unknown" : callback.completion === "propagate-throw" ? "propagate-throw"
+            : callback.completion === "convert-throw-to-rejection" ? "reject" : callback.completion,
+          span,
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return { transitions, diagnostics };
 }
 
 export function lowerPromiseChainTransitions(fileName: string, model: PromiseChainModel): HostNeutralTransition[] {
@@ -473,14 +529,20 @@ export function lowerAbortSignalTransitions(fileName: string, analysis: AbortSig
 export function analyzeHostNeutralTransitions(
   program: ts.Program,
   source: ts.SourceFile,
-  options: AsyncSafetyOptions = {},
+  options: HostNeutralTransitionAnalysisOptions = {},
 ): HostNeutralTransitionAnalysis {
-  const callables = analyzeCallableSummaries(program);
+  const callables = analyzeCallableSummaries(program, options.externalFunctionEffects
+    ? analyzeProgramEffects(program, { requireAnnotations: false, externalFunctionEffects: options.externalFunctionEffects })
+    : undefined);
   const async = analyzeAsyncSafetyInProgram(program, source, options);
   const abortSignals = analyzeAbortSignalsInProgram(program, source);
   const summaries = callables.summaries.filter((summary) => summary.fileName === source.fileName);
+  const external = options.externalFunctionEffects
+    ? lowerExternalCallableTransitions(program, source, options.externalFunctionEffects)
+    : { transitions: [], diagnostics: [] };
   const combined = composeHostNeutralTransitions(
     ...summaries.map(lowerCallableSummaryTransitions),
+    external.transitions,
     lowerPromiseChainTransitions(source.fileName, async.promiseChains),
     lowerResourceDisposalTransitions(source.fileName, async.disposals),
     lowerAbortSignalTransitions(source.fileName, abortSignals),
@@ -495,6 +557,7 @@ export function analyzeHostNeutralTransitions(
   });
   const diagnostics = [
     ...callables.diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName),
+    ...external.diagnostics,
     ...async.diagnostics,
   ];
   return {
@@ -515,7 +578,9 @@ export function generateHostTransitionModel(
   if (options.fairnessBound !== undefined && (!Number.isSafeInteger(options.fairnessBound) || options.fairnessBound < 0)) {
     throw new Error("fairnessBound must be a non-negative safe integer");
   }
-  const transitionAnalysis = analyzeHostNeutralTransitions(program, source);
+  const transitionAnalysis = analyzeHostNeutralTransitions(program, source, {
+    externalFunctionEffects: options.externalFunctionEffects,
+  });
   const asyncSafety = analyzeAsyncSafetyInProgram(program, source);
   const patterns = analyzeAsyncPatternsInProgram(program, source);
   for (const link of transitionAnalysis.abortSignals.compositionLinks) {

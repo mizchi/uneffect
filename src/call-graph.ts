@@ -16,6 +16,7 @@ export interface ExternalIteratorEffectContract { key: string; parameters: reado
 export interface ExternalCallableEffectParameter extends EffectParameter {
   path?: readonly (string | number)[];
   effectBound?: readonly Effect[];
+  completion?: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
 }
 export interface ExternalCallableEffectContract { key: string; parameters: readonly ExternalCallableEffectParameter[] }
 export interface CallbackEffectInstantiation {
@@ -61,6 +62,41 @@ export interface CallGraphEdge {
 }
 export interface ProgramCallGraph { nodes: CallGraphNode[]; edges: CallGraphEdge[] }
 export interface InstantiatedCallbackEffects { effects: Effect[]; evidence: EvidenceStatus; suspends: boolean }
+
+function unwrapLiteralContainerExpression(expression: ts.Expression): ts.Expression {
+  return ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)
+    || ts.isSatisfiesExpression(expression)
+    ? unwrapLiteralContainerExpression(expression.expression) : expression;
+}
+
+/** Resolve one finite callback path without evaluating spreads, getters, or computed keys. */
+export function expressionAtLiteralArgumentPath(
+  expression: ts.Expression,
+  path: readonly (string | number)[],
+): ts.Expression | undefined {
+  let current = unwrapLiteralContainerExpression(expression);
+  for (const part of path) {
+    if (typeof part === "number") {
+      if (!ts.isArrayLiteralExpression(current) || part < 0 || part >= current.elements.length) return undefined;
+      const element = current.elements[part];
+      if (!element || ts.isSpreadElement(element) || ts.isOmittedExpression(element)) return undefined;
+      current = unwrapLiteralContainerExpression(element);
+      continue;
+    }
+    if (!ts.isObjectLiteralExpression(current)) return undefined;
+    const property = current.properties.find((candidate) => {
+      if (!ts.isPropertyAssignment(candidate) && !ts.isShorthandPropertyAssignment(candidate)) return false;
+      const name = candidate.name;
+      return (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) && name.text === part;
+    });
+    if (!property) return undefined;
+    if (ts.isShorthandPropertyAssignment(property)) current = unwrapLiteralContainerExpression(property.name);
+    else if (ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name)) current = unwrapLiteralContainerExpression(property.initializer);
+    else return undefined;
+  }
+  return current;
+}
 
 function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
   const symbol = checker.getSymbolAtLocation(node);
@@ -157,39 +193,8 @@ export function buildProgramCallGraph(
     const name = callableName(declaration), symbol = name ? resolvedSymbol(checker, name) : undefined;
     if (symbol) symbolNodes.set(symbol, declaration);
   }
-  const unwrapExpression = (expression: ts.Expression): ts.Expression =>
-    ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-      || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)
-      || ts.isSatisfiesExpression(expression)
-      ? unwrapExpression(expression.expression) : expression;
-  const expressionAtLiteralPath = (
-    expression: ts.Expression,
-    path: readonly (string | number)[],
-  ): ts.Expression | undefined => {
-    let current = unwrapExpression(expression);
-    for (const part of path) {
-      if (typeof part === "number") {
-        if (!ts.isArrayLiteralExpression(current) || part < 0 || part >= current.elements.length) return undefined;
-        const element = current.elements[part];
-        if (!element || ts.isSpreadElement(element) || ts.isOmittedExpression(element)) return undefined;
-        current = unwrapExpression(element);
-        continue;
-      }
-      if (!ts.isObjectLiteralExpression(current)) return undefined;
-      const property = current.properties.find((candidate) => {
-        if (!ts.isPropertyAssignment(candidate) && !ts.isShorthandPropertyAssignment(candidate)) return false;
-        const name = candidate.name;
-        return (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) && name.text === part;
-      });
-      if (!property) return undefined;
-      if (ts.isShorthandPropertyAssignment(property)) current = unwrapExpression(property.name);
-      else if (ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name)) current = unwrapExpression(property.initializer);
-      else return undefined;
-    }
-    return current;
-  };
   const callbackDeclarationFor = (expression: ts.Expression): ts.FunctionLikeDeclaration | undefined => {
-    const current = unwrapExpression(expression);
+    const current = unwrapLiteralContainerExpression(expression);
     return ts.isArrowFunction(current) || ts.isFunctionExpression(current) ? current
       : ts.isIdentifier(current) ? symbolNodes.get(resolvedSymbol(checker, current)!) : undefined;
   };
@@ -1285,11 +1290,13 @@ export function buildProgramCallGraph(
                 effectBound: externalParameter.effectBound,
               } } : {}),
               dischargesThrow: catchesThrow && timing === "inline"
-                || projectedCallback?.completion === "convert-throw-to-rejection" });
+                || projectedCallback?.completion === "convert-throw-to-rejection"
+                || externalParameter?.completion === "convert-throw-to-rejection"
+                || externalParameter?.completion === "host-report-throw" });
           }
           for (const externalParameter of externalCallable?.parameters.filter((item) =>
             item.index === index && (item.path?.length ?? 0) > 0) ?? []) {
-            const callbackExpression = expressionAtLiteralPath(argument, externalParameter.path!);
+            const callbackExpression = expressionAtLiteralArgumentPath(argument, externalParameter.path!);
             const nestedDeclaration = callbackExpression ? callbackDeclarationFor(callbackExpression) : undefined;
             if (!callbackExpression || !nestedDeclaration) {
               edges.push({ caller, kind: "callback-argument", unresolvedName: `${argument.getText()}${externalParameter.path!.map((part) => `[${JSON.stringify(part)}]`).join("")}`,
@@ -1306,7 +1313,9 @@ export function buildProgramCallGraph(
                 parameterName: externalParameter.name,
                 effectBound: externalParameter.effectBound,
               } } : {}),
-              dischargesThrow: catchesThrow && externalParameter.timing === "inline",
+              dischargesThrow: catchesThrow && externalParameter.timing === "inline"
+                || externalParameter.completion === "convert-throw-to-rejection"
+                || externalParameter.completion === "host-report-throw",
             });
           }
         });

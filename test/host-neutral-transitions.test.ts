@@ -411,4 +411,76 @@ describe("host-neutral async transitions", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("lowers a verified external Promise-reaction callback to microtask rejection", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-external-reaction-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        declare function later(callback: () => void): Promise<void>
+        function fail() { throw new RangeError("failed") }
+        export function run() { return later(fail) }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "later")!;
+      const key = `${fileName}:${declaration.getStart(source)}`;
+      const analysis = analyzeHostNeutralTransitions(program, source, {
+        externalFunctionEffects: new Map([[key, {
+          effects: [], evidence: "verified" as const, functionName: "later",
+          callbackParameters: [{
+            index: 0, name: "callback", timing: "promise-reaction" as const,
+            cardinality: "0..1" as const, completion: "convert-throw-to-rejection" as const,
+          }],
+        }]]),
+      });
+
+      expect(analysis.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", api: "later", callback: "fail",
+        cardinality: "0..1", lane: "microtask", completion: "reject",
+      }));
+      expect(analysis.evidence).toBe("inferred");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when an external callback path is not a finite literal", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-external-reaction-unknown-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        declare function later(options: { onDone: () => void }): Promise<void>
+        export function run(options: { onDone: () => void }) { return later(options) }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "later")!;
+      const analysis = analyzeHostNeutralTransitions(program, source, {
+        externalFunctionEffects: new Map([[`${fileName}:${declaration.getStart(source)}`, {
+          effects: [], evidence: "verified" as const, functionName: "later",
+          callbackParameters: [{
+            index: 0, path: ["onDone"], name: "onDone", timing: "promise-reaction" as const,
+            cardinality: "0..1" as const, completion: "convert-throw-to-rejection" as const,
+          }],
+        }]]),
+      });
+
+      expect(analysis.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", callback: "<unresolved>", lane: "unknown", completion: "unknown",
+      }));
+      expect(analysis.evidence).toBe("unknown");
+      expect(analysis.diagnostics).toContainEqual(expect.objectContaining({
+        message: expect.stringContaining("cannot be resolved at its declared argument path"),
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

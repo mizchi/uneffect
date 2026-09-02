@@ -95,10 +95,9 @@ export function boundContractSummaryEffectContracts(
       effects: item.summary.effect.effects.flatMap((effect) => parseEffectSet(effect)),
       parameters: item.summary.effect.parameters,
       ...(item.summary.effect.callbacks ? { callbackParameters: item.summary.effect.callbacks.map((callback) => {
-        const { effectBound, timing, ...rest } = callback;
+        const { effectBound, ...rest } = callback;
         return {
           ...rest,
-          timing: timing === "promise-reaction" ? "deferred" as const : timing,
           ...(effectBound ? { effectBound: effectBound.flatMap((effect) => parseEffectSet(effect)) } : {}),
         };
       }) } : {}),
@@ -270,12 +269,6 @@ export function bindContractSummaryBundleToProgram(
     const uses = candidates.get(summary.symbol.export) ?? [];
     const declarations = [...new Set(uses.map(({ declaration }) => declaration))];
     if (declarations.length === 0) continue;
-    const unsupportedCallback = summary.effect?.callbacks?.find((callback) =>
-      callback.completion !== "propagate-throw");
-    if (unsupportedCallback) {
-      blockers.push(`contract summary callback ${summary.symbol.export}.${unsupportedCallback.name} uses unsupported consumer semantics: completion ${unsupportedCallback.completion}`);
-      continue;
-    }
     if (declarations.length !== 1) {
       blockers.push(`contract summary export ${summary.symbol.export} resolves ambiguously in the consumer Program`);
       continue;

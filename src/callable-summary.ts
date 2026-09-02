@@ -264,6 +264,10 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
     const unknownReasons = new Set<string>();
     if (unsupportedCallbackBinding) unknownReasons.add("unsupported-callback-binding");
     const callbackCalls = new Map<string, ts.CallExpression[]>();
+    const callbackForwardings = new Map<string, Array<{
+      call: ts.CallExpression;
+      invocation: Omit<CallbackInvocationSummary, "callback" | "span"> & { argument: number };
+    }>>();
     const callbackInvocations: CallbackInvocationSummary[] = [];
     const rejects = new Set<string>();
 
@@ -332,6 +336,12 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
             ...(builtin.cancellation ? { cancellation: builtin.cancellation } : {}),
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          if (argument) {
+            const forwarded = resolveCallback(argument);
+            if (forwarded) callbackForwardings.set(forwarded.key, [
+              ...(callbackForwardings.get(forwarded.key) ?? []), { call: node, invocation: builtin },
+            ]);
+          }
         }
         const rejection = directPromiseRejectType(program, checker, node);
         if (rejection) rejects.add(rejection);
@@ -357,14 +367,27 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
 
     const callbackParameters = [...callbackSymbols.values()].sort((left, right) => left.index - right.index || left.key.localeCompare(right.key)).map((parameter): CallbackParameterSummary => {
       const calls = callbackCalls.get(parameter.key) ?? [];
+      const forwardings = callbackForwardings.get(parameter.key) ?? [];
       let cardinality: CallbackCardinality = "0";
-      if (calls.length === 1) cardinality = executionCardinality(calls[0]!, declaration);
-      else if (calls.length > 1) cardinality = "unknown";
+      let timing: CallbackTiming = "inline", completion: CallbackCompletion = "propagate-throw";
+      if (calls.length === 1 && forwardings.length === 0) cardinality = executionCardinality(calls[0]!, declaration);
+      else if (calls.length === 0 && forwardings.length === 1) {
+        const forwarded = forwardings[0]!;
+        const outer = executionCardinality(forwarded.call, declaration);
+        const inner = forwarded.invocation.cardinality;
+        cardinality = inner === "0" ? "0" : inner === "unknown" || outer === "unknown" ? "unknown"
+          : inner === "0..n" || outer === "0..n" ? "0..n"
+          : inner === "0..1" || outer === "0..1" ? "0..1" : "exactly-1";
+        timing = forwarded.invocation.timing;
+        completion = forwarded.invocation.completion;
+      } else if (calls.length + forwardings.length > 1) {
+        cardinality = "unknown"; timing = "unknown"; completion = "unknown";
+      }
       if (unknownReasons.has("callback-escape") || unknownReasons.has("dynamic-callback-dispatch")) cardinality = "unknown";
       return {
-        index: parameter.index, name: parameter.name, ...(parameter.path ? { path: parameter.path } : {}), cardinality, timing: "inline", completion: "propagate-throw",
+        index: parameter.index, name: parameter.name, ...(parameter.path ? { path: parameter.path } : {}), cardinality, timing, completion,
         ...(bounds.has(parameter.name) ? { effectBound: bounds.get(parameter.name)! } : {}),
-        spans: calls.map((call) => ({ start: call.getStart(source), end: call.getEnd() })),
+        spans: [...calls, ...forwardings.map(({ call }) => call)].map((call) => ({ start: call.getStart(source), end: call.getEnd() })),
       };
     });
     const effectSummary = effectsById.get(id);

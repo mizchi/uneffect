@@ -54,10 +54,10 @@ linkage, installed tarball/runtime identity, and publisher authenticity remain
 unsupported. Direct callback parameters now preserve timing and Effect bounds
 for inline or immutable symbol-resolved arguments. Finite object/tuple paths
 compose through inline literal containers; spreads, computed/dynamic leaves,
-and container aliases fail closed. Persisted cardinality, non-synchronous
-completion modes, returned callables, and resource semantics remain
-unsupported. Unsupported persisted callback semantics block binding rather
-than being approximated.
+and container aliases fail closed. Persisted Promise-reaction callbacks lower
+to host-neutral microtask/reject transitions and discharge synchronous callback
+throws from the registering caller. Returned callables, arbitrary host-task
+queue selection, and resource semantics remain unsupported.
 Direct immutable exported arrow/function-expression callables use the same
 package export-symbol and resolved-signature binding. Mutable or compound
 export declarations remain unsupported.

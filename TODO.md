@@ -527,6 +527,10 @@ introducing another domain-local control-flow or alias model.
    - [x] Publish and consume single immutable exported arrow/function-expression
      callables by root-package export symbol plus resolved signature; exclude
      mutable and compound variable exports.
+   - [x] Preserve reviewed callback forwarding through Promise reactions and
+     lower authenticated package callbacks to the shared host-neutral
+     microtask/reject transition without leaking callback `Throw` into the
+     synchronous caller Effect.
    - [x] Add a versioned backend-neutral callable-summary API for direct
      functions and immutable local callable aliases, including may-effects,
      synchronous throws, direct Promise rejections, and mutated regions.

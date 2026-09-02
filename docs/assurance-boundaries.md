@@ -308,8 +308,10 @@ consumed through the ordinary external Effect IR. Direct callback timing and
 Effect bounds are composed for inline or immutable symbol-resolved callback
 arguments with synchronous throw propagation. Finite object/tuple paths are
 accepted only through inline literal containers and statically resolved leaves;
-dynamic selection fails closed. Persisted cardinality is not a temporal claim,
-and other completion modes block binding. Returned callables and resource
+dynamic selection fails closed. A persisted Promise reaction carries its
+cardinality into a host-neutral microtask/reject transition and discharges the
+callback's synchronous throw from the caller Effect. Arbitrary host-task queue
+identity remains profile-dependent. Returned callables and resource
 summaries remain outside this claim.
 
 The detailed tested fragments and open boundaries live in the

@@ -84,10 +84,12 @@ Direct callback parameters are also composed. For a callback passed as an
 inline function or immutable TypeChecker-resolved function identifier, its
 effects propagate into the caller using the persisted timing. A producer
 `effect_parameter` upper bound is checked against the inferred callback
-effects; a violation downgrades the caller to `unknown`. Cardinality is
-persisted as auditable metadata but is not yet projected into the temporal
-model. A nested callback path or completion mode other than synchronous
-`propagate-throw` blocks consumer binding instead of being approximated.
+effects; a violation downgrades the caller to `unknown`. `promise-reaction`
+timing and `convert-throw-to-rejection` completion lower to the shared
+host-neutral microtask/rejection transition, while the Effect call graph
+discharges the callback's synchronous `Throw`. Cardinality is preserved on
+that transition. Host-task queue selection still requires a reviewed Web or
+Node scheduling profile.
 
 This does not yet prove that the installed declaration bytes were emitted from
 the summarized producer source, or that bundled/runtime JavaScript corresponds
@@ -109,5 +111,5 @@ Finite object/tuple callback paths are supported when the consumer supplies an
 inline object/array literal whose selected leaf is an inline function or an
 immutable symbol-resolved function identifier. A spread, computed/dynamic
 selection, mutable container alias, or unresolved leaf fails closed. Returned
-callables, reentrancy/concurrency, temporal cardinality, and resource ownership
+callables, reentrancy/concurrency, and resource ownership
 remain outside this first consumer fragment.

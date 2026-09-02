@@ -897,9 +897,11 @@ same property is proved for arbitrary TypeScript.
   violations fail closed. Persisted cardinality is not yet connected to the
   temporal model. Finite object/tuple paths compose through inline object/array
   literals with statically resolved callback leaves; spreads, dynamic leaves,
-  and container aliases fail closed. Completion modes other than synchronous
-  throw propagation block consumer binding; returned callables and resource
-  ownership remain open.
+  and container aliases fail closed. Promise-reaction timing and
+  throw-to-rejection completion retain their package metadata, discharge the
+  callback's synchronous throw in the Effect graph, and lower to the shared
+  host-neutral microtask/reject transition. Returned callables, arbitrary
+  profile-specific host tasks, and resource ownership remain open.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint

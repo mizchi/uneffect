@@ -3,8 +3,9 @@ import ts from "typescript";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bindContractSummaryBundleToProgram, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
+import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
+import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
@@ -100,6 +101,11 @@ describe("persisted contract summary bundles", () => {
       /* uneffect:effect none */
       /* uneffect:effect_parameter onDone extends Console */
       export function configure({ onDone }: { onDone: () => void }): void { onDone() }
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter callback extends Console */
+      export function later(callback: () => void): Promise<void> {
+        return Promise.resolve().then(callback)
+      }
     `;
     const program = programFor(fileName, source);
     const bundle = createContractSummaryBundle({
@@ -151,6 +157,15 @@ describe("persisted contract summary bundles", () => {
           timing: "inline", completion: "propagate-throw", effectBound: ["Console"],
         })],
       },
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "later" },
+      effect: expect.objectContaining({
+        callbacks: [expect.objectContaining({
+          index: 0, name: "callback", cardinality: "0..1",
+          timing: "promise-reaction", completion: "convert-throw-to-rejection",
+          effectBound: ["Console"],
+        })],
+      }),
     })]));
     expect(bundle.exports.some(({ symbol }) => symbol.export === "mutableReport")).toBe(false);
     expect(validateContractSummaryBundle(bundle, {
@@ -297,5 +312,49 @@ describe("persisted contract summary bundles", () => {
       exports: [],
       blockers: [],
     });
+  });
+
+  it("connects a persisted Promise-reaction callback to host-neutral rejection", () => {
+    const producerFile = "/src/index.ts";
+    const producerSource = `
+      /* uneffect:effect none */
+      /* uneffect:effect_parameter callback extends Throw<Error> */
+      export function later(callback: () => void): Promise<void> {
+        return Promise.resolve().then(callback)
+      }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/later", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+    });
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-reaction-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "later");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/later", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function later(callback: () => void): Promise<void>;\n");
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { later } from "@example/later"
+      function fail(): void { throw new RangeError("failed") }
+      export function run(): Promise<void> { return later(fail) }
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding.status).toBe("verified");
+    const externalFunctionEffects = boundContractSummaryEffectContracts([binding]);
+    const analysis = analyzeHostNeutralTransitions(
+      consumerProgram, consumerProgram.getSourceFile(consumerFile)!, { externalFunctionEffects },
+    );
+
+    expect(analysis.transitions).toContainEqual(expect.objectContaining({
+      kind: "invoke-callback", api: "later", callback: "fail",
+      lane: "microtask", completion: "reject", cardinality: "0..1",
+    }));
   });
 });

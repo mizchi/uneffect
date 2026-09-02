@@ -74,7 +74,7 @@ export interface ExternalFunctionEffectContract {
     index: number;
     name: string;
     path?: readonly (string | number)[];
-    timing: "inline" | "deferred" | "unknown";
+    timing: "inline" | "deferred" | "promise-reaction" | "unknown";
     cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
     completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
     effectBound?: readonly Effect[];
@@ -1443,7 +1443,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const externalCallableEffects = new Map([...options.externalFunctionEffects ?? []].flatMap(([key, contract]) =>
     contract.callbackParameters?.length ? [[key, {
       key,
-      parameters: contract.callbackParameters.map(({ index, name, path, timing, effectBound }) => ({ index, name, path, timing, effectBound })),
+      parameters: contract.callbackParameters.map(({ index, name, path, timing, completion, effectBound }) => ({
+        index, name, path, timing: timing === "promise-reaction" ? "deferred" as const : timing, completion, effectBound,
+      })),
     }] as const] : []));
   const graph = buildProgramCallGraph(program, { externalIteratorEffects, externalCallableEffects, builtinRegistry: registry }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
   const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
