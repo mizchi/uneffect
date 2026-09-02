@@ -99,12 +99,21 @@ describe("TypeChecker symbol adapter", () => {
         const { addAction: destructuredAction } = datadogRum;
         export function reportDestructured() { destructuredAction("destructured"); }
         export function reportFake() { fake.addAction("not_datadog"); }
+        export function reportBracket() { datadogRum["addAction"]("bracket"); }
+        export function reportFakeBracket() { fake["addAction"]("fake-bracket"); }
+        export function reportDynamic(key: "addAction") { datadogRum[key]("dynamic"); }
         export function readStatus() { return datadogRum.status; }
         export function readFakeStatus() { return fake.status; }
+        export function readBracketStatus() { return datadogRum["status"]; }
+        export function readFakeBracketStatus() { return fake["status"]; }
+        export function readDynamicStatus(key: "status") { return datadogRum[key]; }
         export function writeStatus() { datadogRum.status = "ready"; }
         export function writeFakeStatus() { fake.status = "ready"; }
         export function createClient() { return new datadogRum.Client(); }
         export function createFakeClient() { return new fake.Client(); }
+        export function createBracketClient() { return new datadogRum["Client"](); }
+        export function createFakeBracketClient() { return new fake["Client"](); }
+        export function createDynamicClient(key: "Client") { return new datadogRum[key](); }
       `);
       const program = ts.createProgram([fileName], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
@@ -138,10 +147,22 @@ describe("TypeChecker symbol adapter", () => {
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportFake"))
         .toMatchObject({ evidence: "unknown", effects: [], unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportBracket"))
+        .toMatchObject({ effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportFakeBracket"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportDynamic"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "readStatus"))
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "CookieRead" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "readFakeStatus"))
         .toMatchObject({ evidence: "unknown", effects: [], unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "readBracketStatus"))
+        .toMatchObject({ effects: [expect.objectContaining({ kind: "capability", name: "CookieRead" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "readFakeBracketStatus"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "readDynamicStatus"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "writeStatus"))
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "CookieWrite" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "writeFakeStatus"))
@@ -149,6 +170,12 @@ describe("TypeChecker symbol adapter", () => {
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "createClient"))
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "createFakeClient"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "createBracketClient"))
+        .toMatchObject({ effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "createFakeBracketClient"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "createDynamicClient"))
         .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.1") }).summaries.find((item) => item.functionName === "report"))
         .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });

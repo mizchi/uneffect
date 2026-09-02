@@ -934,6 +934,8 @@ introducing another domain-local control-flow or alias model.
        same-shaped call and property receivers as unknown instead of applying
        singleton authority structurally. Apply the same rule to rooted property
        reads/writes and nested constructors, including version-mismatch unknowns.
+       Treat dot and literal-bracket paths equivalently, and retain dynamic
+       element call/property/constructor selection as explicit unknown.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

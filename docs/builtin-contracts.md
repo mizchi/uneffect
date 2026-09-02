@@ -152,7 +152,11 @@ from the existing `Type#member` spelling used for reviewed instance protocols:
 the latter describes a receiver type, while `path` identifies one exported
 runtime object. Path contracts apply to calls and nested construction, while property-read/write
 primitives use the same root-provenance check. A structurally compatible
-property reached from another root remains unknown.
+property reached from another root remains unknown. Dot access and literal
+bracket access are equivalent. Dynamic element selection remains unknown even
+when TypeScript narrows the key to one string literal; Uneffect currently
+requires the property identity to be static in the syntax and does not mistake
+an unresolved dynamic access for an empty effect.
 
 A contract may declare `result({ kind: "fresh" })` in `semantics.primitives` when every call returns a
 new caller-owned object with no pre-existing aliases. In-place mutation of that

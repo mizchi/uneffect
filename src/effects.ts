@@ -1190,15 +1190,20 @@ function hasExternalReturnedCallableCandidate(
   return inspect(call.expression);
 }
 
-function hasConfiguredExternalContractCandidate(
+function hasConfiguredExternalPathCandidate(
   checker: ts.TypeChecker,
-  call: ts.CallExpression | ts.NewExpression,
+  expression: ts.Expression,
   registry: BuiltinContractRegistry,
+  propertyOnly = false,
 ): boolean {
   const members: string[] = [];
-  let root: ts.Expression = call.expression;
-  while (ts.isPropertyAccessExpression(root)) {
-    members.unshift(root.name.text);
+  let root: ts.Expression = expression;
+  let dynamic = false;
+  while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root)) {
+    if (ts.isPropertyAccessExpression(root)) members.unshift(root.name.text);
+    else if (root.argumentExpression && (ts.isStringLiteralLike(root.argumentExpression)
+      || ts.isNumericLiteral(root.argumentExpression))) members.unshift(root.argumentExpression.text);
+    else dynamic = true;
     root = root.expression;
   }
   if (!ts.isIdentifier(root)) return false;
@@ -1212,11 +1217,22 @@ function hasConfiguredExternalContractCandidate(
   if (ts.isImportSpecifier(declaration)) members.unshift((declaration.propertyName ?? declaration.name).text);
   else if (ts.isImportClause(declaration)) members.unshift("default");
   const exportName = members.length > 1 ? `${members[0]}#${members.slice(1).join("#")}` : members[0];
-  return registry.contracts.some((contract) => contract.symbol.module === moduleName
-    && (contract.symbol.export === exportName
+  return registry.contracts.some((contract) => (!propertyOnly
+      || contract.semantics?.primitives.some((primitive) => primitive.kind === "property"))
+    && contract.symbol.module === moduleName
+    && (dynamic && contract.symbol.export === members[0] && Boolean(contract.symbol.path?.length)
+      || contract.symbol.export === exportName
       || contract.symbol.export === members[0]
         && contract.symbol.path?.length === members.length - 1
         && contract.symbol.path.every((member, index) => member === members[index + 1])));
+}
+
+function hasConfiguredExternalContractCandidate(
+  checker: ts.TypeChecker,
+  operation: ts.CallExpression | ts.NewExpression,
+  registry: BuiltinContractRegistry,
+): boolean {
+  return hasConfiguredExternalPathCandidate(checker, operation.expression, registry);
 }
 
 function addressableMutationArgumentRegion(expression: ts.Expression): string | undefined {
@@ -1898,6 +1914,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       }
       if ((ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child))
         && adapter.resolveProperty(child)?.evidence === "unknown") unknownExternalEvidence.add(graphNode.id);
+      if ((ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child))
+        && !adapter.resolveProperty(child) && hasConfiguredExternalPathCandidate(checker, child, registry, true)) {
+        unknownExternalEvidence.add(graphNode.id);
+      }
       if (ts.isElementAccessExpression(child)) for (const effect of effectsForDynamicDomProperty(child, adapter)) {
         if (observableMutation(effect, locals)) observe(effect, child);
       }
@@ -2552,6 +2572,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
         && adapter.resolveProperty(node)?.evidence === "unknown") {
         markUnknown("unknown-external-evidence", "a reviewed property contract does not match this receiver root");
+      }
+      if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
+        && !adapter.resolveProperty(node) && hasConfiguredExternalPathCandidate(checker, node, registry, true)) {
+        markUnknown("unknown-external-evidence", "a reviewed property contract cannot resolve this static path or runtime");
       }
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of globalVariableEffects(checker, node) ?? []) addEffect(effects, effect);
       if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {
