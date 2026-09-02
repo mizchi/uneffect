@@ -161,7 +161,8 @@ export function collectBuiltinResourceTransitionSites(
         const resource = identityValue.id;
         if (!resources.has(resource)) resources.set(resource, {
           id: resource, label: identityValue.label, kind: event.resource,
-          initialState: event.kind === "acquire" ? "absent" : "available", requiredTerminalStates: ["released"],
+          initialState: event.kind === "acquire" ? "absent" : "available",
+          ...(event.kind === "acquire" ? { requiredTerminalStates: ["released"] as const } : {}),
         });
         const transition = { kind: event.kind, resource, at: transitionNode.getStart(node.getSourceFile()), evidence: "trusted" } as ResourceProtocolTransition;
         (event.completion === "fulfillment" ? fulfillmentTransitions : transitions).push(transition);

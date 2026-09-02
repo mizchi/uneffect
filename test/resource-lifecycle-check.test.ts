@@ -264,6 +264,27 @@ describe("general resource lifecycle check", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("treats resource parameters as borrowed unless this function acquires them", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-borrowed-builtin-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export function borrow(socket: WebSocket) { socket.send("ping") }
+        export function closeBorrowed(socket: WebSocket) { socket.close() }
+        export function invalid(socket: WebSocket) { socket.close(); socket.send("late") }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "borrow", kind: "websocket", status: "satisfied", state: "available" }),
+        expect.objectContaining({ owner: "closeBorrowed", kind: "websocket", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "invalid", kind: "websocket", status: "unknown" }),
+      ]));
+      expect(result.diagnostics).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ domain: "resource", kind: "unclosed", functionName: "borrow" }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("accepts a using resource acquired only on one conditional branch", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-optional-using-"));
     try {

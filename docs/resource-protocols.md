@@ -422,6 +422,14 @@ The binding rule is shared by builtin catalog entries, local
 `uneffect:acquire return` declarations, and authenticated package resource
 summaries; it is not a FileHandle-specific name heuristic.
 
+A resource received as a function parameter is borrowed unless the current
+function contains an authenticated acquisition or ownership-transfer contract.
+Builtin `use` therefore checks that the resource is still available but does
+not require the borrower to close it. A builtin `release` can close a borrowed
+resource, and a later use is still rejected. This avoids turning ordinary
+helpers such as `send(socket)` into false leak reports while retaining
+use-after-close diagnostics.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 

@@ -468,6 +468,9 @@ introducing another domain-local control-flow or alias model.
        mutable and unresolved values conservative.
      - [x] Centralize static-string resolution in the TypeScript frontend
        adapter and feed the same resolver to every semantic-event consumer.
+     - [x] Distinguish borrowed builtin resource parameters from locally
+       acquired ownership: permit use without local close, but retain
+       release/use-after-release transition checking.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only
