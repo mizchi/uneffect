@@ -375,4 +375,30 @@ describe("backend-neutral callable summaries", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("classifies uncaught async throws as Promise rejections", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-callable-async-throw-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        async function escapes(): Promise<never> {
+          throw new RangeError("range")
+        }
+        async function caught(): Promise<void> {
+          try { throw new RangeError("range") } catch {}
+        }
+        async function rethrows(): Promise<never> {
+          try { throw new RangeError("range") }
+          catch { throw new TypeError("type") }
+        }
+      `);
+      const program = ts.createProgram([fileName], { strict: true, target: ts.ScriptTarget.ES2022, noEmit: true });
+      const summaries = analyzeCallableSummaries(program).summaries;
+      expect(summaries.find(({ name }) => name === "escapes")?.rejects).toEqual(["RangeError"]);
+      expect(summaries.find(({ name }) => name === "caught")?.rejects).toEqual([]);
+      expect(summaries.find(({ name }) => name === "rethrows")?.rejects).toEqual(["TypeError"]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

@@ -293,7 +293,9 @@ position. Mutation, aliasing, capture, returning, unrelated calls, or missing
 borrow evidence fail closed.
 
 The Effect payload also persists direct Promise rejection types separately as
-`rejects`. After exact package/declaration/signature binding, synchronous
+`rejects`. Direct standard `Promise.reject(...)` and an uncaught `throw` inside
+an `async` callable contribute rejection types; a locally caught throw does not,
+while a catch rethrow contributes its new error type. After exact package/declaration/signature binding, synchronous
 `Throw<E>` and a directly awaited rejection become authenticated exceptional
 edges in the shared resource CFG. A root-provenance-authorized persisted
 `Throw<E>` call statement also enters the Hoare exception CFG as a may-throw
@@ -307,6 +309,9 @@ arithmetic or another value expression is rejected instead of silently dropping
 the abrupt path. Package semantic authority remains `trusted`;
 declaration linkage does not upgrade it to a proof. A floating rejection stays
 in Promise ownership and is never rewritten into a synchronous throw edge.
+Persisted rejection sets are expanded into authenticated `Reject<E>` await
+completions; catch may discharge them, and receiver lookalikes cannot inherit
+them.
 
 Callback cardinality is path-joined for one closed mutually exclusive control
 node. An `if/else` with one unconditional call in each arm is exactly-once; if

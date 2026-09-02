@@ -332,6 +332,17 @@ function callRejectionEscapes(call: ts.CallExpression, boundary: SupportedFuncti
     || ts.isArrowFunction(boundary) && boundary.body === current;
 }
 
+function asyncThrowEscapes(statement: ts.ThrowStatement, boundary: SupportedFunction): boolean {
+  let current: ts.Node = statement;
+  for (let ancestor = statement.parent; ancestor && ancestor !== boundary; ancestor = ancestor.parent) {
+    if (ts.isTryStatement(ancestor) && ancestor.catchClause
+      && current.getStart() >= ancestor.tryBlock.getStart()
+      && current.getEnd() <= ancestor.tryBlock.getEnd()) return false;
+    current = ancestor;
+  }
+  return true;
+}
+
 export function analyzeCallableSummaries(
   program: ts.Program,
   effectAnalysis: EffectAnalysisResult = analyzeProgramEffects(program, { requireAnnotations: false }),
@@ -406,6 +417,7 @@ export function analyzeCallableSummaries(
     const callbackInvocations: CallbackInvocationSummary[] = [];
     const consumedCallbackReferences = new Set<ts.Node>();
     const rejects = new Set<string>();
+    const asyncBoundary = ts.getModifiers(declaration)?.some(({ kind }) => kind === ts.SyntaxKind.AsyncKeyword) ?? false;
 
     const bounds = new Map<string, string[]>();
     const owner = callableAnnotationOwner(declaration);
@@ -454,6 +466,11 @@ export function analyzeCallableSummaries(
           }
           else { mutableAliases.add(node.name.text); unknownReasons.add("mutable-callable-alias"); }
         }
+      }
+      if (asyncBoundary && ts.isThrowStatement(node) && asyncThrowEscapes(node, declaration)) {
+        const errorType = adapter.thrownErrorType(node.expression);
+        if (errorType === "unknown") unknownReasons.add("unknown-async-throw-type");
+        else rejects.add(errorType);
       }
       if (ts.isCallExpression(node)) {
         const callback = resolveCallback(node.expression);

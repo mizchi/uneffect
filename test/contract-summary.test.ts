@@ -1329,6 +1329,85 @@ describe("persisted contract summary bundles", () => {
       .toMatchObject({ status: "verified" });
   });
 
+  it("composes a persisted frozen member rejection through await catch", async () => {
+    const producerFile = "/src/async-risk-api.ts";
+    const producerSource = `
+      export const api = Object.freeze({
+        /* uneffect:effect none */
+        async load(): Promise<never> {
+          throw new RangeError("negative")
+        }
+      })
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const producerVerification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/async-risk-api", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: producerVerification.artifacts,
+    });
+    expect(bundle.exports[0]).toMatchObject({
+      symbol: { module: "@example/async-risk-api", export: "api", path: ["load"] },
+      effect: { rejects: ["RangeError"] },
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-member-reject-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "async-risk-api");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/async-risk-api", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare const api: Readonly<{ load(): Promise<never> }>
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    const consumerSource = `
+      import { api } from "@example/async-risk-api"
+      /* uneffect:ensures result === 1 */
+      export async function run(): Promise<number> {
+        try {
+          await api.load()
+        } catch {}
+        return 1
+      }
+    `;
+    writeFileSync(consumerFile, consumerSource);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    const verification = await verifyContractObligations(consumerFile, consumerSource, undefined, consumerProgram, {
+      externalContractBindings: binding.exports,
+    });
+    expect(verification.diagnostics).toEqual([]);
+    expect(verification.artifacts.find((artifact) => artifact.controlFlow?.exceptionFlow?.discharged.some((edge) =>
+      edge.effect === "Reject<RangeError>"))).toMatchObject({ status: "verified" });
+
+    const lookalikeFile = join(directory, "lookalike.ts");
+    const lookalikeSource = `
+      import { api } from "@example/async-risk-api"
+      async function authorize(): Promise<void> { try { await api.load() } catch {} }
+      const fake = { load(): Promise<never> { return Promise.reject(new RangeError("fake")) } } as typeof api
+      /* uneffect:ensures result === 1 */
+      export async function lookalike(): Promise<number> {
+        try { await fake.load() } catch {}
+        return 1
+      }
+    `;
+    writeFileSync(lookalikeFile, lookalikeSource);
+    const lookalikeProgram = ts.createProgram([lookalikeFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const lookalikeBinding = bindContractSummaryBundleToProgram(bundle, lookalikeProgram);
+    const lookalikeVerification = await verifyContractObligations(lookalikeFile, lookalikeSource, undefined, lookalikeProgram, {
+      externalContractBindings: lookalikeBinding.exports,
+    });
+    expect(lookalikeVerification.artifacts).toEqual([
+      expect.objectContaining({ status: "unsupported", message: expect.stringContaining("fake.load()") }),
+    ]);
+  });
+
   it("does not borrow Hoare evidence from a same-named frozen member", async () => {
     const fileName = "/src/math-apis.ts";
     const source = `

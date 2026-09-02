@@ -49,6 +49,11 @@ contracted value with its synchronous Throw path; nested arithmetic/value
 expressions remain unsupported until expression-level value/abrupt lowering is
 unified.
 
+Callable summaries classify uncaught `throw` statements in an `async` callable
+as Promise rejection types, exclude locally caught throws, and retain catch
+rethrows. Persisted rejection sets become separate authenticated await
+completion edges; structural receiver lookalikes remain unsupported.
+
 Persisted scalar contract summaries now have a consumer fragment beyond the
 compact Hoare row above: repeatable CLI `--contract-summary` inputs and the
 programmatic binder follow TypeChecker-resolved calls through named aliases,

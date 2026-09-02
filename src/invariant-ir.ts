@@ -175,7 +175,7 @@ export interface ExternalContractBinding {
     parameters: string[];
     requires: string[];
     ensures: string[];
-    effect?: { effects: string[] };
+    effect?: { effects: string[]; rejects?: string[] };
   };
 }
 
@@ -184,7 +184,7 @@ export interface InvariantLoweringOptions {
 }
 interface CallCompletionFact {
   mode: "sync" | "promise";
-  effect?: string;
+  rejectionEffects: string[];
   definitelyRejects: boolean;
   synchronousThrows: string[];
   evidence: "verified" | "trusted";
@@ -1388,7 +1388,7 @@ function typeCheckerCallCompletions(
       const errorType = adapter.thrownErrorType(argument);
       const rejectionType = errorType === "unknown" ? checker.typeToString(checker.getTypeAtLocation(argument)) : errorType;
       facts.set(key, {
-        mode: "promise", effect: `Reject<${rejectionType}>`, definitelyRejects: true, synchronousThrows: [], evidence: "verified", payloadFromFirstArgument: true,
+        mode: "promise", rejectionEffects: [`Reject<${rejectionType}>`], definitelyRejects: true, synchronousThrows: [], evidence: "verified", payloadFromFirstArgument: true,
       });
     } else if (standardPromiseMember(call, "resolve") && call.arguments.length === 1) {
       const argument = call.arguments[0]!;
@@ -1400,6 +1400,7 @@ function typeCheckerCallCompletions(
         const declarationSource = declaration.getSourceFile();
         facts.set(key, {
           mode: "promise",
+          rejectionEffects: [],
           definitelyRejects: false,
           synchronousThrows: [],
           evidence: "verified",
@@ -1429,6 +1430,7 @@ function typeCheckerCallCompletions(
             && site.span.start === call.getStart(source) && site.span.end === call.getEnd()));
         const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
         const rejected = extractAnnotations(comments, "temporal_rejects");
+        const externalRejected = external?.summary.effect?.rejects ?? [];
         const thrown = extractAnnotations(comments, "temporal_throws");
         const externalThrows = external?.summary.effect?.effects.filter((effect) => /^Throw<.+>$/.test(effect)) ?? [];
         const contractEnsures = external?.summary.ensures ?? extractAnnotations(comments, "ensures");
@@ -1453,10 +1455,14 @@ function typeCheckerCallCompletions(
         const inferred = contractEnsures.length === 0 && rejected.length === 0 && thrown.length === 0
           ? inferredLocalFulfillment(call, signature, declaration) : undefined;
         const fulfillment = declaredFulfillment ?? inferred?.fulfillment;
-        const rejectionEffect = rejected.length === 1 ? `Reject<${rejected[0]}>` : inferred?.rejectionEffect;
-        if (rejectionEffect || fulfillment || externalThrows.length > 0) facts.set(key, {
+        const rejectionEffects = [...new Set([
+          ...rejected.map((errorType) => `Reject<${errorType}>`),
+          ...externalRejected.map((errorType) => `Reject<${errorType}>`),
+          ...(inferred?.rejectionEffect ? [inferred.rejectionEffect] : []),
+        ])].sort();
+        if (rejectionEffects.length > 0 || fulfillment || externalThrows.length > 0) facts.set(key, {
           mode: "promise",
-          ...(rejectionEffect ? { effect: rejectionEffect } : {}), definitelyRejects: inferred?.definitelyRejects ?? false,
+          rejectionEffects, definitelyRejects: inferred?.definitelyRejects ?? false,
           synchronousThrows: [...new Set([...thrown.map((errorType) => `Throw<${errorType}>`), ...externalThrows])].sort(),
           evidence: external?.evidence ?? (declaredFulfillment || rejected.length === 1 || thrown.length > 0 ? "trusted" : "verified"),
           payloadFromFirstArgument: false, ...(fulfillment ? { fulfillment } : {}),
@@ -1484,6 +1490,7 @@ function typeCheckerCallCompletions(
         if (external && (fulfillment || externalThrows.length > 0)) {
           facts.set(key, {
             mode: "sync",
+            rejectionEffects: [],
             definitelyRejects: false,
             synchronousThrows: externalThrows,
             evidence: external.evidence,
@@ -1919,10 +1926,13 @@ export function lowerInvariantProgram(
             }
           } else fulfilled.push(base);
         }
-        const rejected: PathState[] = fact.effect ? [{
+        const rejected: PathState[] = fact.rejectionEffects.map((effect): PathState => ({
           ...base, completion: "reject",
-          thrown: { kind: "promise-rejection", evidence: fact.evidence, effect: fact.effect, originSpan, ...(argumentValues[0] ? { payload: argumentValues[0] } : {}) },
-        }] : [];
+          thrown: {
+            kind: "promise-rejection", evidence: fact.evidence, effect, originSpan,
+            ...(fact.payloadFromFirstArgument && argumentValues[0] ? { payload: argumentValues[0] } : {}),
+          },
+        }));
         const synchronousThrows = pending ? [] : fact.synchronousThrows.map((effect): PathState => ({
           ...base, completion: "throw", thrown: { kind: "synchronous-throw", evidence: fact.evidence, effect, originSpan },
         }));
