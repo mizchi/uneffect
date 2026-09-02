@@ -442,6 +442,11 @@ describe("host-neutral async transitions", () => {
         kind: "invoke-callback", api: "later", callback: "fail",
         cardinality: "0..1", lane: "microtask", completion: "reject",
       }));
+      expect(analysis.transitions).toContainEqual(expect.objectContaining({
+        kind: "settle-promise", promise: "later(fail)", lane: "microtask",
+        outcomes: ["fulfilled", "rejected"], mayRemainPending: true,
+        synchronousDivergenceReasons: ["opaque-call"],
+      }));
       expect(analysis.evidence).toBe("inferred");
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -478,6 +483,78 @@ describe("host-neutral async transitions", () => {
       expect(analysis.evidence).toBe("unknown");
       expect(analysis.diagnostics).toContainEqual(expect.objectContaining({
         message: expect.stringContaining("cannot be resolved at its declared argument path"),
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("joins external Promise settlement to floating ownership by binding identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-external-floating-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        declare function later(callback: () => void): Promise<void>
+        function done() {}
+        export function run() { const task = later(done) }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "later")!;
+      const analysis = analyzeHostNeutralTransitions(program, source, {
+        externalFunctionEffects: new Map([[`${fileName}:${declaration.getStart(source)}`, {
+          effects: [], evidence: "verified" as const, functionName: "later",
+          callbackParameters: [{
+            index: 0, name: "callback", timing: "promise-reaction" as const,
+            cardinality: "0..1" as const, completion: "convert-throw-to-rejection" as const,
+          }],
+        }]]),
+      });
+
+      expect(analysis.transitions).toContainEqual(expect.objectContaining({
+        kind: "settle-promise", promise: "task",
+        promiseIdentity: expect.objectContaining({ fileName }),
+        ownership: expect.objectContaining({ status: "floating", observations: [] }),
+      }));
+      expect(analysis.diagnostics).toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+      expect(analysis.evidence).toBe("unknown");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a throw-to-rejection callback contract on a non-Promise return", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-external-invalid-rejection-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        declare function schedule(callback: () => void): void
+        function done() {}
+        export function run() { schedule(done) }
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) && statement.name?.text === "schedule")!;
+      const analysis = analyzeHostNeutralTransitions(program, source, {
+        externalFunctionEffects: new Map([[`${fileName}:${declaration.getStart(source)}`, {
+          effects: [], evidence: "verified" as const, functionName: "schedule",
+          callbackParameters: [{
+            index: 0, name: "callback", timing: "promise-reaction" as const,
+            cardinality: "0..1" as const, completion: "convert-throw-to-rejection" as const,
+          }],
+        }]]),
+      });
+
+      expect(analysis.transitions.some(({ kind }) => kind === "settle-promise")).toBe(false);
+      expect(analysis.evidence).toBe("unknown");
+      expect(analysis.diagnostics).toContainEqual(expect.objectContaining({
+        message: expect.stringContaining("does not return a TypeChecker-visible Promise"),
       }));
     } finally {
       rmSync(directory, { recursive: true, force: true });

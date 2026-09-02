@@ -27,6 +27,9 @@ export interface InvokeCallbackTransition extends HostNeutralTransitionBase {
   readonly api: string;
   readonly cardinality: CallbackCardinality;
   readonly completion: HostNeutralCompletion;
+  /** Returned Promise whose settlement receives a converted callback throw. */
+  readonly promise?: string;
+  readonly promiseIdentity?: BindingIdentity;
 }
 
 export interface SettlePromiseTransition extends HostNeutralTransitionBase {
@@ -38,6 +41,11 @@ export interface SettlePromiseTransition extends HostNeutralTransitionBase {
   readonly mayRemainPending: boolean;
   readonly mayDivergeSynchronously: boolean;
   readonly synchronousDivergenceReasons: readonly SynchronousDivergenceReason[];
+  readonly ownership?: {
+    readonly generation: number;
+    readonly status: "floating" | "transferred" | "observed";
+    readonly observations: readonly string[];
+  };
 }
 
 export interface DisposeResourceTransition extends HostNeutralTransitionBase {
@@ -301,13 +309,27 @@ export function lowerExternalCallableTransitions(
   const checker = program.getTypeChecker();
   const transitions: HostNeutralTransition[] = [], diagnostics: CallableSummaryDiagnostic[] = [];
   let index = 0;
+  const promiseTarget = (call: ts.CallExpression): { promise: string; promiseIdentity?: BindingIdentity } => {
+    if (ts.isVariableDeclaration(call.parent) && call.parent.initializer === call && ts.isIdentifier(call.parent.name)) {
+      const symbol = resolvedSymbol(checker, call.parent.name);
+      const identity = bindingIdentity(symbol);
+      return { promise: call.parent.name.text, ...(identity ? { promiseIdentity: identity } : {}) };
+    }
+    return { promise: call.getText(source) };
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
       const symbol = resolvedSymbol(checker, lookup);
       const contract = symbol?.declarations?.map((declaration) =>
         contracts.get(`${declaration.getSourceFile().fileName}:${declaration.getStart(declaration.getSourceFile())}`)).find(Boolean);
-      if (contract?.evidence === "verified") for (const callback of contract.callbackParameters ?? []) {
+      if (contract?.evidence === "verified") {
+        const callbacks = contract.callbackParameters ?? [];
+        const target = promiseTarget(node);
+        const resultType = checker.getNonNullableType(checker.getTypeAtLocation(node));
+        const then = checker.getPropertyOfType(resultType, "then");
+        const returnsPromise = Boolean(then && checker.getTypeOfSymbolAtLocation(then, node).getCallSignatures().length > 0);
+        for (const callback of callbacks) {
         const argument = node.arguments[callback.index];
         const selected = argument && callback.path?.length
           ? expressionAtLiteralArgumentPath(argument, callback.path) : argument;
@@ -316,6 +338,12 @@ export function lowerExternalCallableTransitions(
           diagnostics.push({
             fileName: source.fileName, functionName: lexicalOwner(node), span,
             message: `external callback ${callback.name} of ${contract.functionName ?? node.expression.getText(source)} cannot be resolved at its declared argument path`,
+          });
+        }
+        if (callback.completion === "convert-throw-to-rejection" && !returnsPromise) {
+          diagnostics.push({
+            fileName: source.fileName, functionName: lexicalOwner(node), span,
+            message: `external callback ${callback.name} converts throws to rejection but ${contract.functionName ?? node.expression.getText(source)} does not return a TypeChecker-visible Promise`,
           });
         }
         transitions.push({
@@ -331,8 +359,26 @@ export function lowerExternalCallableTransitions(
             : callback.timing === "deferred" ? "host-task" : "unknown",
           completion: !selected ? "unknown" : callback.completion === "propagate-throw" ? "propagate-throw"
             : callback.completion === "convert-throw-to-rejection" ? "reject" : callback.completion,
+          ...(callback.completion === "convert-throw-to-rejection" && returnsPromise ? target : {}),
           span,
         });
+      }
+        if (returnsPromise && callbacks.some((callback) => callback.completion === "convert-throw-to-rejection")) {
+          transitions.push({
+            kind: "settle-promise",
+            id: transitionId(source.fileName, lexicalOwner(node), "external-promise", index++, node.getStart(source)),
+            fileName: source.fileName,
+            owner: lexicalOwner(node),
+            ...target,
+            lane: "microtask",
+            outcomes: ["fulfilled", "rejected"],
+            firstSettlementWins: true,
+            mayRemainPending: true,
+            mayDivergeSynchronously: true,
+            synchronousDivergenceReasons: ["opaque-call"],
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
+        }
       }
     }
     ts.forEachChild(node, visit);
@@ -547,6 +593,8 @@ export function analyzeHostNeutralTransitions(
     lowerResourceDisposalTransitions(source.fileName, async.disposals),
     lowerAbortSignalTransitions(source.fileName, abortSignals),
   );
+  const ownershipByIdentity = new Map(async.promiseBindings.flatMap((binding) => binding.identity
+    ? [[`${binding.identity.fileName}:${binding.identity.declarationStart}`, binding] as const] : []));
   const seenInvocations = new Set<string>();
   const transitions = combined.filter((transition) => {
     if (transition.kind !== "invoke-callback") return true;
@@ -554,6 +602,12 @@ export function analyzeHostNeutralTransitions(
     if (seenInvocations.has(key)) return false;
     seenInvocations.add(key);
     return true;
+  }).map((transition): HostNeutralTransition => {
+    if (transition.kind !== "settle-promise" || !transition.promiseIdentity) return transition;
+    const binding = ownershipByIdentity.get(`${transition.promiseIdentity.fileName}:${transition.promiseIdentity.declarationStart}`);
+    return binding ? { ...transition, ownership: {
+      generation: binding.generation, status: binding.status, observations: binding.observations,
+    } } : transition;
   });
   const diagnostics = [
     ...callables.diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName),

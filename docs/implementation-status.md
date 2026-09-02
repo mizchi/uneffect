@@ -900,8 +900,14 @@ same property is proved for arbitrary TypeScript.
   and container aliases fail closed. Promise-reaction timing and
   throw-to-rejection completion retain their package metadata, discharge the
   callback's synchronous throw in the Effect graph, and lower to the shared
-  host-neutral microtask/reject transition. Returned callables, arbitrary
-  profile-specific host tasks, and resource ownership remain open.
+  host-neutral microtask/reject transition. A directly bound returned Promise
+  gives the callback and conservative settlement transition the same
+  `BindingIdentity`; async ownership status and observations are joined onto
+  that settlement. General external settlement execution in generated Quint,
+  returned callables, arbitrary profile-specific host tasks, and resource
+  ownership remain open.
+  A throw-to-rejection callback on a non-Promise TypeChecker return is an
+  explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint

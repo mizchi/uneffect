@@ -531,6 +531,15 @@ introducing another domain-local control-flow or alias model.
      lower authenticated package callbacks to the shared host-neutral
      microtask/reject transition without leaking callback `Throw` into the
      synchronous caller Effect.
+   - [x] Join a directly bound external returned Promise to callback rejection,
+     conservative settlement, and async ownership status with one
+     source-stable `BindingIdentity`.
+   - [x] Require the concrete consumer call to have a TypeChecker-visible
+     Promise-like return before emitting external settlement identity; reject
+     contradictory throw-to-rejection contracts instead of inventing a Promise.
+   - [ ] [#63](https://github.com/mizchi/uneffect/issues/63) Project external
+     settlement transitions into executable generated Quint rather than only
+     the shared host-neutral artifact; retain opaque pending/divergence choices.
    - [x] Add a versioned backend-neutral callable-summary API for direct
      functions and immutable local callable aliases, including may-effects,
      synchronous throws, direct Promise rejections, and mutated regions.

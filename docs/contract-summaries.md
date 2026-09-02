@@ -88,8 +88,14 @@ effects; a violation downgrades the caller to `unknown`. `promise-reaction`
 timing and `convert-throw-to-rejection` completion lower to the shared
 host-neutral microtask/rejection transition, while the Effect call graph
 discharges the callback's synchronous `Throw`. Cardinality is preserved on
-that transition. Host-task queue selection still requires a reviewed Web or
-Node scheduling profile.
+that transition. When the returned Promise is assigned to a direct identifier,
+the callback and a conservative fulfilled/rejected settlement transition share
+the same source-stable binding identity and the settlement records the Promise
+ownership status (`floating`, `transferred`, or `observed`). Host-task queue
+selection still requires a reviewed Web or Node scheduling profile. A
+throw-to-rejection contract on a call whose actual TypeChecker return type is
+not Promise-like is rejected as `unknown`; Uneffect does not invent a hidden
+returned Promise.
 
 This does not yet prove that the installed declaration bytes were emitted from
 the summarized producer source, or that bundled/runtime JavaScript corresponds
@@ -111,5 +117,5 @@ Finite object/tuple callback paths are supported when the consumer supplies an
 inline object/array literal whose selected leaf is an inline function or an
 immutable symbol-resolved function identifier. A spread, computed/dynamic
 selection, mutable container alias, or unresolved leaf fails closed. Returned
-callables, reentrancy/concurrency, and resource ownership
+callables, reentrancy/concurrency, external settlement internals, and resource ownership
 remain outside this first consumer fragment.

@@ -311,7 +311,10 @@ accepted only through inline literal containers and statically resolved leaves;
 dynamic selection fails closed. A persisted Promise reaction carries its
 cardinality into a host-neutral microtask/reject transition and discharges the
 callback's synchronous throw from the caller Effect. Arbitrary host-task queue
-identity remains profile-dependent. Returned callables and resource
+identity remains profile-dependent. A directly bound returned Promise joins
+the callback, conservative settlement, and ownership status by declaration
+identity; this does not prove when or whether opaque external code settles.
+Returned callables and resource
 summaries remain outside this claim.
 
 The detailed tested fragments and open boundaries live in the

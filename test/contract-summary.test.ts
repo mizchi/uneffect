@@ -339,7 +339,10 @@ describe("persisted contract summary bundles", () => {
     writeFileSync(consumerFile, `
       import { later } from "@example/later"
       function fail(): void { throw new RangeError("failed") }
-      export function run(): Promise<void> { return later(fail) }
+      export function run(): Promise<void> {
+        const task = later(fail)
+        return task
+      }
     `);
     const consumerProgram = ts.createProgram([consumerFile], {
       strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
@@ -354,7 +357,14 @@ describe("persisted contract summary bundles", () => {
 
     expect(analysis.transitions).toContainEqual(expect.objectContaining({
       kind: "invoke-callback", api: "later", callback: "fail",
-      lane: "microtask", completion: "reject", cardinality: "0..1",
+      lane: "microtask", completion: "reject", cardinality: "0..1", promise: "task",
+      promiseIdentity: expect.objectContaining({ fileName: consumerFile }),
+    }));
+    expect(analysis.transitions).toContainEqual(expect.objectContaining({
+      kind: "settle-promise", promise: "task", lane: "microtask",
+      outcomes: ["fulfilled", "rejected"], firstSettlementWins: true,
+      promiseIdentity: expect.objectContaining({ fileName: consumerFile }),
+      ownership: expect.objectContaining({ status: "observed", observations: ["return"] }),
     }));
   });
 });
