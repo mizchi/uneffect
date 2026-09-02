@@ -62,4 +62,33 @@ describe("stable callable identity", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("resolves module namespace members and their const destructuring", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-stable-callable-namespace-"));
+    try {
+      const library = join(directory, "library.ts");
+      const entry = join(directory, "entry.ts");
+      writeFileSync(library, `export function source() {}`);
+      writeFileSync(entry, `
+        import * as api from "./library.js"
+        const { source: destructured } = api
+        api.source()
+        destructured()
+      `);
+      const program = ts.createProgram([entry, library], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const checker = program.getTypeChecker();
+      const librarySource = program.getSourceFile(library)!;
+      const declaration = librarySource.statements.find(ts.isFunctionDeclaration)!;
+      const expected = checker.getSymbolAtLocation(declaration.name!)!;
+      const source = program.getSourceFile(entry)!;
+      const calls = source.statements.filter(ts.isExpressionStatement)
+        .map((statement) => statement.expression).filter(ts.isCallExpression);
+      expect(calls.map((call) => resolveStableCallableSymbol(checker, call.expression))).toEqual([expected, expected]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

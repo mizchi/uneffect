@@ -249,10 +249,16 @@ describe("TypeScript resource protocol CFG lowering", () => {
           drain(value: object): void
         }
         export declare const sink: Sink
+        /* uneffect: consume value */
+        export declare function drainDirect(value: object): void
       `);
       writeFileSync(entry, `
         import { sink as external } from "./sdk.js"
+        import * as sdk from "./sdk.js"
+        const { drainDirect } = sdk
         function main(value: object) { external.drain(value) }
+        function namespaceCall(value: object) { sdk.drainDirect(value) }
+        function destructuredCall(value: object) { drainDirect(value) }
         function shadow(value: object) {
           const external = { drain(input: object) { return input } }
           external.drain(value)
@@ -265,11 +271,16 @@ describe("TypeScript resource protocol CFG lowering", () => {
       const source = program.getSourceFile(entry)!;
       const analysis = analyzeResourceCallableSummaries(program);
       expect(analysis.diagnostics).toEqual([]);
-      expect(analysis.summaries).toMatchObject([{ evidence: "trusted", operations: [{
+      expect(analysis.summaries).toHaveLength(2);
+      expect(analysis.summaries).toEqual(expect.arrayContaining([expect.objectContaining({ evidence: "trusted", operations: [{
         kind: "consume", subject: { kind: "parameter", index: 0, name: "value" },
-      }] }]);
+      }] })]));
       const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).map((fn) => [fn.name!.text, fn]));
       expect(collectResourceCallableTransitionSites(program, functions.get("main")!, analysis.summaries).sites)
+        .toMatchObject([{ transitions: [{ kind: "consume", evidence: "trusted" }] }]);
+      expect(collectResourceCallableTransitionSites(program, functions.get("namespaceCall")!, analysis.summaries).sites)
+        .toMatchObject([{ transitions: [{ kind: "consume", evidence: "trusted" }] }]);
+      expect(collectResourceCallableTransitionSites(program, functions.get("destructuredCall")!, analysis.summaries).sites)
         .toMatchObject([{ transitions: [{ kind: "consume", evidence: "trusted" }] }]);
       expect(collectResourceCallableTransitionSites(program, functions.get("shadow")!, analysis.summaries).sites).toEqual([]);
 

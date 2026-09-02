@@ -41,6 +41,36 @@ function objectProperty(object: ts.ObjectLiteralExpression, key: string): ts.Pro
     (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate)) && staticPropertyKey(candidate.name) === key);
 }
 
+function callableLeaf(symbol: ts.Symbol): boolean {
+  return symbol.declarations?.some((declaration) => ts.isFunctionDeclaration(declaration)
+    || ts.isMethodDeclaration(declaration) || ts.isMethodSignature(declaration)
+    || ts.isCallSignatureDeclaration(declaration)
+    || ts.isVariableDeclaration(declaration) && isConstVariable(declaration) && Boolean(declaration.initializer)
+      && (ts.isArrowFunction(unwrap(declaration.initializer!)) || ts.isFunctionExpression(unwrap(declaration.initializer!)))) === true;
+}
+
+function moduleNamespaceForReceiver(
+  checker: ts.TypeChecker,
+  input: ts.Expression,
+  seen: ReadonlySet<ts.Symbol>,
+): ts.Symbol | undefined {
+  const expression = unwrap(input);
+  if (!ts.isIdentifier(expression)) return undefined;
+  const raw = checker.getSymbolAtLocation(expression);
+  if (!raw || seen.has(raw)) return undefined;
+  if ((raw.flags & ts.SymbolFlags.Alias) !== 0 && raw.declarations?.some(ts.isNamespaceImport)) {
+    const module = checker.getAliasedSymbol(raw);
+    return (module.flags & (ts.SymbolFlags.ValueModule | ts.SymbolFlags.NamespaceModule)) !== 0 ? module : undefined;
+  }
+  const symbol = (raw.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(raw) : raw;
+  for (const declaration of symbol.declarations ?? []) {
+    if (!ts.isVariableDeclaration(declaration) || !isConstVariable(declaration) || !declaration.initializer) continue;
+    const result = moduleNamespaceForReceiver(checker, declaration.initializer, new Set(seen).add(raw));
+    if (result) return result;
+  }
+  return undefined;
+}
+
 function frozenLiteralForReceiver(
   checker: ts.TypeChecker,
   input: ts.Expression,
@@ -84,6 +114,12 @@ export function resolveStableCallableSymbol(
       || ts.isMethodSignature(declaration))) return propertySymbol;
     const key = ts.isPropertyAccessExpression(expression) ? expression.name.text : staticElementKey(expression);
     if (key === undefined) return undefined;
+    const module = moduleNamespaceForReceiver(checker, expression.expression, seen);
+    if (module) {
+      const exported = checker.getExportsOfModule(module).find((candidate) => candidate.name === key);
+      const target = exported && (exported.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(exported) : exported;
+      return target && callableLeaf(target) ? target : undefined;
+    }
     const object = frozenLiteralForReceiver(checker, expression.expression, seen);
     if (!object) return undefined;
     const property = objectProperty(object, key);
@@ -123,6 +159,12 @@ export function resolveStableCallableSymbol(
       if (!ts.isVariableDeclaration(variable) || !isConstVariable(variable) || !variable.initializer) continue;
       const key = declaration.propertyName ? staticPropertyKey(declaration.propertyName)
         : ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
+      const module = key === undefined ? undefined : moduleNamespaceForReceiver(checker, variable.initializer, nextSeen);
+      if (module) {
+        const exported = checker.getExportsOfModule(module).find((candidate) => candidate.name === key);
+        const target = exported && (exported.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(exported) : exported;
+        if (target && callableLeaf(target)) return target;
+      }
       const object = key === undefined ? undefined : frozenLiteralForReceiver(checker, variable.initializer, nextSeen);
       const property = object && objectProperty(object, key!);
       if (!property) continue;

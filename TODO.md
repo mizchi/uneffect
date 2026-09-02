@@ -1091,6 +1091,9 @@ introducing another domain-local control-flow or alias model.
       destructuring through immutable container aliases. Relocate project
       contracts to the source callable instead of generating identity- or
       `this`-changing wrappers.
+    - [x] Resolve callable properties of TypeChecker-authenticated module
+      namespace imports and their `const` destructuring aliases without
+      generalizing ordinary mutable object properties.
     - [ ] Extend stable callable containers beyond direct builtin-frozen object ([#64](https://github.com/mizchi/uneffect/issues/64))
       literals while retaining mutation, getter, proxy, and dispatch-sealing
       negative controls.
