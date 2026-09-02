@@ -3,8 +3,9 @@ import { extractAnnotations } from "./annotations.js";
 import { effectPermits, formatEffect, parseEffectSet, type Effect } from "./capabilities.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EvidenceStatus } from "./effects.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
-import { projectBuiltinCallbacks, projectedExpression } from "./builtin-semantic-interpreter.js";
+import { projectBuiltinCallbacks, projectedExpression, type BuiltinCallbackEvent } from "./builtin-semantic-interpreter.js";
 import { classifyLexicalExecution } from "./lexical-execution.js";
+import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export type CallbackCardinality = "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
 export type CallbackTiming = "inline" | "deferred" | "promise-reaction" | "unknown";
@@ -32,6 +33,8 @@ export interface CallbackInvocationSummary {
   readonly cardinality: CallbackCardinality;
   readonly timing: CallbackTiming;
   readonly completion: CallbackCompletion;
+  /** Host-neutral queue declared by a resolved catalog callback primitive. */
+  readonly queue?: BuiltinCallbackEvent["queue"];
   readonly span: { start: number; end: number };
   readonly cancellation?: { readonly kind: "abort-signal"; readonly expression: string };
 }
@@ -230,6 +233,26 @@ function builtinInvocation(
       api: name, argument: 0, cardinality: name === "queueMicrotask" ? "exactly-1" : "0..1",
       timing: "deferred", completion: "host-report-throw",
     };
+    const resolved = adapter.resolveCall(call);
+    const event = projectBuiltinCallbacks(resolved, call, checker)
+      .find((candidate) => candidate.target.status === "resolved");
+    if (resolved && event?.target.status === "resolved") {
+      const callbackExpression = event.target.expression;
+      const argument = call.arguments.findIndex((candidate) => candidate === callbackExpression);
+      if (argument >= 0) {
+        const microtask = event.timing === "deferred" && event.queue === "microtask";
+        return {
+          api: resolved.symbol.export,
+          argument,
+          cardinality: event.cardinality === "1" ? "exactly-1"
+            : event.cardinality === "1..n" ? "0..n" : event.cardinality,
+          timing: event.timing === "sync" ? "inline" : microtask ? "promise-reaction" : "deferred",
+          completion: event.completion ?? (event.timing === "sync" ? "propagate-throw"
+            : microtask ? "convert-throw-to-rejection" : "host-report-throw"),
+          queue: event.queue,
+        };
+      }
+    }
   }
   if (!ts.isPropertyAccessExpression(call.expression)) return undefined;
   const name = call.expression.name.text;
@@ -285,9 +308,13 @@ function directPromiseRejectType(program: ts.Program, checker: ts.TypeChecker, c
   return libraryDeclaration(program, symbol) ? checker.typeToString(checker.getTypeAtLocation(call.arguments[0]!)) : undefined;
 }
 
-export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: EffectAnalysisResult = analyzeProgramEffects(program, { requireAnnotations: false })): CallableSummaryAnalysis {
+export function analyzeCallableSummaries(
+  program: ts.Program,
+  effectAnalysis: EffectAnalysisResult = analyzeProgramEffects(program, { requireAnnotations: false }),
+  builtinRegistry: BuiltinContractRegistry = builtinContractRegistry,
+): CallableSummaryAnalysis {
   const checker = program.getTypeChecker();
-  const adapter = new TypeScriptFrontendAdapter(program);
+  const adapter = new TypeScriptFrontendAdapter(program, builtinRegistry);
   const effectsById = new Map(effectAnalysis.summaries.flatMap((summary) => summary.id ? [[summary.id, summary] as const] : []));
   const diagnostics: CallableSummaryDiagnostic[] = [];
   const declarations: SupportedFunction[] = [];
@@ -423,7 +450,8 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
           const argument = node.arguments[builtin.argument];
           callbackInvocations.push({
             api: builtin.api, callback: argument?.getText(source) ?? "<missing>", cardinality: builtin.cardinality,
-            timing: builtin.timing, completion: builtin.completion,
+        timing: builtin.timing, completion: builtin.completion,
+            ...(builtin.queue ? { queue: builtin.queue } : {}),
             ...(builtin.cancellation ? { cancellation: builtin.cancellation } : {}),
             span: { start: node.getStart(source), end: node.getEnd() },
           });

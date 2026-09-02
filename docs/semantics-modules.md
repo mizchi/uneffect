@@ -97,6 +97,10 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
   TypeScript CFG lifecycle checker used by the built-in catalog, in both the
   direct checker and project verification APIs, including transitions that
   occur only on Promise fulfillment;
+- callback primitives on imported top-level functions connected by resolved
+  package symbol identity to callable summaries and the host-neutral temporal
+  transition model; an `external` queue remains external rather than being
+  guessed as a Web or Node task queue;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.

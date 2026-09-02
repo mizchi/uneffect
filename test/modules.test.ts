@@ -6,8 +6,9 @@ import { builtinContractRegistry, findBuiltinContract } from "../src/builtin-con
 import { effectSchema, parseEffectExpression } from "../src/capabilities.js";
 import { installUneffectModules, parseUneffectModuleManifest } from "../src/modules.js";
 import { createEvidenceArtifact, validateEvidenceArtifact } from "../src/evidence.js";
-import { checkFiles } from "../src/check.js";
+import { checkFiles, createCheckProgram } from "../src/check.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
+import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
 import ts from "typescript";
 
 const auditModule = {
@@ -110,6 +111,7 @@ describe("declarative Uneffect modules", () => {
         export declare function inspect(handle: Handle): void
         export declare function close(handle: Handle): void
         export declare function closeAsync(handle: Handle): Promise<void>
+        export declare function schedule(callback: () => void): void
       `);
       const module = {
         ...auditModule,
@@ -126,16 +128,18 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "close" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
             { symbol: { module: "reviewed-handle", export: "openAsync" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed async acquisition", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "acquire", resource: "Acme.Handle", target: { kind: "result" }, completion: "fulfillment" }] } },
             { symbol: { module: "reviewed-handle", export: "closeAsync" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed async release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 }, completion: "fulfillment" }] } },
+            { symbol: { module: "reviewed-handle", export: "schedule" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed callback scheduling", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..1", completion: "host-report-throw" }] } },
           ],
         },
       } as const;
       const installed = installUneffectModules([module], builtinContractRegistry);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, openAsync, inspect, close, closeAsync } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync, schedule } from "reviewed-handle"
         export function valid() { const handle = open(); inspect(handle); close(handle) }
         export function leaked() { const handle = open(); inspect(handle) }
         export async function asyncValid() { const handle = await openAsync(); inspect(handle); await closeAsync(handle) }
+        export function scheduled() { schedule(() => {}) }
       `);
       const result = await checkFiles([entry], { builtinRegistry: installed.registry });
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
@@ -157,6 +161,13 @@ describe("declarative Uneffect modules", () => {
         expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "asyncValid", status: "satisfied", authority: "builtin-catalog", state: "absent-or-released" }),
       ]));
+      const program = createCheckProgram([entry]);
+      const source = program.getSourceFile(entry)!;
+      const temporal = analyzeHostNeutralTransitions(program, source, { builtinRegistry: installed.registry });
+      expect(temporal.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", callback: "() => {}", api: "schedule",
+        cardinality: "0..1", lane: "external", completion: "host-report-throw",
+      }));
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

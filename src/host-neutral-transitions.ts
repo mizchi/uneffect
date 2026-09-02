@@ -9,6 +9,7 @@ import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js
 import { classifyLexicalExecution } from "./lexical-execution.js";
 import { expressionAtExclusiveConstArgumentPath } from "./call-graph.js";
 import { analyzeProgramEffects, externalContractForCall, type ExternalFunctionEffectContract } from "./effects.js";
+import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export type HostNeutralLane = "inline" | "microtask" | "host-task" | "external" | "unknown";
 export type HostNeutralCompletion = "normal" | "propagate-throw" | "throw" | "reject" | "host-report-throw" | "unknown";
@@ -110,6 +111,7 @@ export interface GenerateHostTransitionModelOptions {
   readonly fairness?: "weak" | "strong";
   readonly nodeTopLevelMode?: "commonjs" | "esm";
   readonly externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
+  readonly builtinRegistry?: BuiltinContractRegistry;
 }
 
 export interface HostTransitionModel {
@@ -169,6 +171,7 @@ export interface HostNeutralTransitionAnalysis {
 
 export interface HostNeutralTransitionAnalysisOptions extends AsyncSafetyOptions {
   readonly externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
+  readonly builtinRegistry?: BuiltinContractRegistry;
 }
 
 function transitionId(fileName: string, owner: string, kind: string, index: number, start: number): string {
@@ -206,9 +209,13 @@ function synchronousFunctionExecution(node: ts.Node): boolean {
   return true;
 }
 
-export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.SourceFile): AbortSignalAnalysis {
+export function analyzeAbortSignalsInProgram(
+  program: ts.Program,
+  source: ts.SourceFile,
+  builtinRegistry?: BuiltinContractRegistry,
+): AbortSignalAnalysis {
   const checker = program.getTypeChecker();
-  const adapter = new TypeScriptFrontendAdapter(program);
+  const adapter = new TypeScriptFrontendAdapter(program, builtinRegistry);
   const controllers: AbortControllerSummary[] = [];
   const controllerSymbols = new Map<ts.Symbol, AbortControllerSummary>();
   const collectControllers = (node: ts.Node): void => {
@@ -263,7 +270,7 @@ export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.Sou
     ts.forEachChild(node, collectEvents);
   };
   collectEvents(source);
-  const patterns = analyzeAsyncPatternsInProgram(program, source);
+  const patterns = analyzeAsyncPatternsInProgram(program, source, { builtinRegistry });
   const compositionCalls = new Map<string, ts.CallExpression>();
   const collectCompositionCalls = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) compositionCalls.set(`${node.getStart(source)}:${node.getEnd()}`, node);
@@ -294,6 +301,7 @@ export function lowerCallableSummaryTransitions(summary: CallableSummary): HostN
     api: invocation.api,
     cardinality: invocation.cardinality,
     lane: invocation.timing === "inline" ? "inline"
+      : invocation.queue === "external" ? "external"
       : invocation.timing === "promise-reaction" ? "microtask"
       : invocation.timing === "deferred" ? "host-task" : "unknown",
     completion: invocation.completion === "propagate-throw" ? "propagate-throw"
@@ -627,11 +635,13 @@ export function analyzeHostNeutralTransitions(
   source: ts.SourceFile,
   options: HostNeutralTransitionAnalysisOptions = {},
 ): HostNeutralTransitionAnalysis {
-  const callables = analyzeCallableSummaries(program, options.externalFunctionEffects
-    ? analyzeProgramEffects(program, { requireAnnotations: false, externalFunctionEffects: options.externalFunctionEffects })
-    : undefined);
+  const callables = analyzeCallableSummaries(program, analyzeProgramEffects(program, {
+    requireAnnotations: false,
+    builtinRegistry: options.builtinRegistry,
+    externalFunctionEffects: options.externalFunctionEffects,
+  }), options.builtinRegistry);
   const async = analyzeAsyncSafetyInProgram(program, source, options);
-  const abortSignals = analyzeAbortSignalsInProgram(program, source);
+  const abortSignals = analyzeAbortSignalsInProgram(program, source, options.builtinRegistry);
   const summaries = callables.summaries.filter((summary) => summary.fileName === source.fileName);
   const external = options.externalFunctionEffects
     ? lowerExternalCallableTransitions(program, source, options.externalFunctionEffects)
@@ -684,9 +694,10 @@ export function generateHostTransitionModel(
   }
   const transitionAnalysis = analyzeHostNeutralTransitions(program, source, {
     externalFunctionEffects: options.externalFunctionEffects,
+    builtinRegistry: options.builtinRegistry,
   });
   const asyncSafety = analyzeAsyncSafetyInProgram(program, source);
-  const patterns = analyzeAsyncPatternsInProgram(program, source);
+  const patterns = analyzeAsyncPatternsInProgram(program, source, { builtinRegistry: options.builtinRegistry });
   for (const transition of transitionAnalysis.transitions) {
     if (transition.kind !== "invoke-callback" || !transition.schedulingSource) continue;
     const queue = transition.schedulingSource === "setTimeout" || transition.schedulingSource === "setInterval" ? "timer"
