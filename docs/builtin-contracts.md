@@ -8,11 +8,18 @@ Uneffect annotates existing platform APIs without requiring application wrappers
 
 The prototype exposes a `FrontendSymbolAdapter` boundary and a TypeScript implementation. The implementation indexes registry exports through the TypeChecker and compares resolved `ts.Symbol` identities, so renamed imports and namespace access resolve to the same stable `{ module, export }` key while a shadowing local function does not. `node:os.tmpdir()` call sites now receive `Path<"$TEMP">` result refinements through this path. Corsa should provide the same `ResolvedCallSite` contract from its symbol/context mapper rather than reproducing TypeScript source spelling rules.
 
-The catalog also assigns `Throw<AssertionError>` to the named `ok` and callable
-`strict` exports of `node:assert/strict`. The contract CFG consumes this
+The catalog also assigns `Throw<AssertionError>` to the named `ok`,
+`strictEqual`, `notStrictEqual`, `fail`, `ifError`, and callable `strict` exports of
+`node:assert/strict`, plus the
+reviewed `node:assert` forms. The contract CFG consumes this
 reviewed entry only for an exact TypeChecker-resolved named, namespace,
 default, or import-equals binding and only when the selected
 signature is an assertion signature. Its normal edge assumes the condition;
+`strictEqual` and `notStrictEqual` instead assume matching-sort scalar equality
+or inequality;
+`fail` has only the abrupt edge;
+`ifError` continues only on the nullish side of a tracked scalar or
+payload-free object presence fact;
 its abrupt edge remains a synchronous throw. Same-shaped user functions are
 not treated as this builtin.
 

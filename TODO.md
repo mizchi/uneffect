@@ -2318,11 +2318,25 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     safe-integer literal divisor. Split on dividend sign and encode the negative
     path as `-mod(-value, abs(divisor))`, matching JavaScript signed remainder.
 - [ ] Reintroduce `/`, dynamic/zero/Real `%`, `/=`, and `%=` only with JavaScript truncation, finite/nonzero divisor obligations, signed remainder, and domain-correct Int/Real result sorts. ([#6](https://github.com/mizchi/uneffect/issues/6))
+  - [x] Reuse the reviewed signed-Int remainder lowering for statement-level
+    `%=` with a direct nonzero safe-integer literal divisor. Dynamic, zero, and
+    Real divisors remain fail-closed; `/` and `/=` still require a sound
+    fractional-result and finite-number model.
+  - [ ] Add a finite JavaScript-number abstraction before admitting `/`, `/=`, ([#6](https://github.com/mizchi/uneffect/issues/6))
+    or dynamic/Real remainder; require explicit nonzero-divisor evidence and
+    preserve truncation, fractional results, NaN, and infinities without
+    coercing them into SMT Int arithmetic.
 - [x] Apply one lexical-scope join to bare blocks and supported `if`, loop,
   `try`, `catch`, and `finally` block bodies. Retain writes to outer and
   function-scoped `var` bindings, remove block-local `let`/`const` at exit, and
   reject lexical or catch bindings that shadow a tracked scalar until the
   environment is keyed by TypeChecker symbol identity.
+  - [x] Admit explicitly typed, uninitialized block-scoped `let` bindings for
+    `number`/`Int`/`Nat`/`Float`/`boolean` only when the exact TypeScript Program
+    has no definite-assignment error. Seed an unconstrained placeholder so
+    try/catch joins retain binding identity, then require supported assignments
+    to replace it before use; record Program-bound narrowing evidence. Inferred,
+    nullable, destructured, `var`, and erroneous declarations remain unknown.
 - [x] Split recursive scalar conditional expressions into explicit true/false
   path assumptions for direct return values, initialized identifier bindings,
   and plain assignments. Keep call-conditioned, non-scalar, and abrupt/effectful
@@ -2424,6 +2438,33 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Register non-strict `node:assert` named `ok` and default callable
     bindings through catalog `default` export semantics; do not infer narrowing
     from coercive equality helpers.
+  - [x] Register `strictEqual` and `notStrictEqual` from `node:assert/strict` and
+    `node:assert`, and split matching-sort non-nullable scalar equality or
+    inequality into normal and trusted `Throw<AssertionError>` paths. Nullable
+    and mismatched operands remain fail-closed rather than losing presence or
+    sort evidence.
+  - [x] Register `fail` from both Node assertion modules as an unconditional
+    trusted `Throw<AssertionError>` completion and route it directly through
+    the existing catch/discharge CFG. Same-named user functions remain unknown.
+  - [x] Register `ifError` from both Node assertion modules and map a tracked
+    nullable numeric/Boolean or presence-only object identifier/immutable alias
+    to `!defined` normal continuation and `defined` `Throw<AssertionError>`.
+  - [x] Represent a TypeChecker-exact union consisting only of one-or-more
+    object types plus null and/or undefined by a payload-free Boolean presence
+    fact. Keep mixed primitive/object unions and all heap contents opaque.
+  - [x] Update payload-free object presence on direct null/undefined assignment,
+    a TypeChecker-proven present object identifier, or a compatible nullable
+    identifier copy. Reuse alias-mutation fail-closed checks.
+  - [x] Admit empty object/array literals and direct standard
+    `Error`/`TypeError`/`RangeError`/`ReferenceError`/`SyntaxError`/`URIError`/
+    `EvalError` construction with zero or one static string argument as fresh
+    present objects, including conditional RHS branches. Shadowed constructors,
+    effectful arguments, non-empty literals, calls, properties, and incompatible
+    absence domains remain unknown.
+  - [x] Route identifier-only `??=` for presence-only object unions through the
+    same defined/nullish split and nullable assignment evaluator. Reviewed fresh
+    producers and non-null object identifiers can establish presence; shared
+    immutable aliases and effectful RHS values remain fail-closed.
   - [x] Lower a direct readonly discriminant payload access to its
     TypeChecker-narrowed safe-integer/Boolean literal at the exact access span;
     pre-narrow unions, mutable payloads, and same-spelled objects fail closed.
@@ -2491,6 +2532,18 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   assignment/property/destructured awaited values, opaque/non-scalar catch
   payloads, `.d.ts`/export-map/tarball consumer linkage for persisted package
   summaries, publisher authenticity, and interprocedural scalar/heap state.
+  - [x] Route direct `identifier = await call()` through the same trusted scalar
+    fulfillment, precondition, rejection, synchronous-throw, catch, and
+    relational-evidence path as initialized bindings and `return await`.
+    Property/destructured targets remain fail-closed.
+  - [x] Make direct nullable numeric/Boolean identifier await assignment
+    presence-aware: verified scalar fulfillment updates payload and presence on
+    the normal edge only, while rejection and synchronous throw retain the
+    incoming state. Shared immutable aliases and presence-only object targets
+    remain fail-closed.
+  - [ ] Add inferred Promise producers, presence-only object fulfillment, ([#25](https://github.com/mizchi/uneffect/issues/25))
+    property/destructured targets, opaque catch payloads, persisted consumer
+    linkage/authenticity, and interprocedural heap state.
 
 ## Current validation commands
 

@@ -5,15 +5,27 @@ import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/b
 describe("effect checker", () => {
   it("tracks Node strict assertion failure as a typed synchronous throw", () => {
     const diagnostics = analyzeEffects("node-assert-effect.ts", `
-      import { ok } from "node:assert/strict"
+      import { ok, strictEqual, notStrictEqual, fail, ifError } from "node:assert/strict"
       /* uneffect:effect Throw<AssertionError> */
       function checked(value: number) { ok(value >= 0) }
       function missing(value: number) { ok(value >= 0) }
+      /* uneffect:effect Throw<AssertionError> */
+      function equality(value: number) { strictEqual(value, 1) }
+      /* uneffect:effect Throw<AssertionError> */
+      function inequality(value: number) { notStrictEqual(value, 1) }
+      /* uneffect:effect Throw<AssertionError> */
+      function terminal(): never { return fail("stop") }
+      /* uneffect:effect Throw<AssertionError> */
+      function nullable(value: Error | null) { ifError(value) }
     `);
     expect(diagnostics.filter(({ functionName }) => functionName === "checked")).toEqual([]);
     expect(diagnostics).toContainEqual(expect.objectContaining({
       functionName: "missing", kind: "missing", effect: "Throw<AssertionError>",
     }));
+    expect(diagnostics.filter(({ functionName }) => functionName === "equality")).toEqual([]);
+    expect(diagnostics.filter(({ functionName }) => functionName === "inequality")).toEqual([]);
+    expect(diagnostics.filter(({ functionName }) => functionName === "terminal")).toEqual([]);
+    expect(diagnostics.filter(({ functionName }) => functionName === "nullable")).toEqual([]);
   });
 
   it("reports an invalid effect-set annotation without crashing the checker", () => {

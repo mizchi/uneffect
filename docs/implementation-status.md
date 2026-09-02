@@ -615,6 +615,12 @@ same property is proved for arbitrary TypeScript.
   try/catch, and finally share one scope join. Writes to an existing outer
   scalar and function-scoped `var` bindings survive the block; block-local
   `let`/`const` bindings are removed at every exit, including abrupt exits.
+  An explicitly typed uninitialized block-scoped `let` for the supported scalar
+  domains is admitted only from an error-free TypeScript Program. An
+  unconstrained placeholder preserves its identity across try/catch joins and
+  supported assignments replace it before TypeScript-approved uses. The
+  evidence records the Program digest; inferred, nullable, destructured, `var`,
+  and definite-assignment-error forms remain unsupported.
   Readonly object/tuple destructuring already admitted by TypeChecker remains
   supported. A lexical or catch binding that shadows a tracked scalar fails
   closed until the environment itself is keyed by TypeChecker symbol identity.
@@ -710,6 +716,10 @@ same property is proved for arbitrary TypeScript.
   Read-only immutable nullable aliases retain this evidence. Mutation through
   any name sharing that state fails closed until declaration-time snapshots are
   represented, rather than unsoundly changing the alias along with its source.
+  Direct signed Int `%` and statement-level `%=` use the same two-path
+  JavaScript remainder encoding when the divisor is a direct nonzero
+  safe-integer literal. Dynamic/zero/Real remainder and division remain
+  unsupported instead of inheriting SMT `div`/`mod` semantics.
   shadowed values and locally redefined `undefined` do not match. A Boolean
   discriminator is explicit in SMT rather than pretending the inactive union
   member has an integer value. Direct numeric or Boolean `value ?? fallback`
@@ -751,9 +761,29 @@ same property is proved for arbitrary TypeScript.
   `node:assert`, additionally split normal continuation from trusted
   `Throw<AssertionError>`; catch discharges the latter through the shared
   exception CFG, and the reviewed builtin is recorded in the assumption
-  ledger. Catalog `default` export binding is reusable by other reviewed
-  modules. Coercive assertion helpers and arbitrary user-defined assertion
-  signatures remain unsupported.
+  ledger. Reviewed `strictEqual` and `notStrictEqual` from either module add a
+  matching-sort, non-nullable scalar equality or inequality to the normal path.
+  Reviewed `fail` has no normal continuation and enters the same catch/discharge
+  path as an unconditional trusted `Throw<AssertionError>`.
+  Reviewed `ifError` connects a tracked nullable numeric/Boolean or
+  presence-only object parameter/immutable alias to the same CFG: absence
+  continues and presence throws. Object payload and heap properties stay
+  opaque; only exact unions of object members plus null and/or undefined enter
+  this fragment.
+  Plain assignment updates payload-free object presence for a direct admitted
+  nullish value, a TypeChecker-proven non-null object identifier, or a compatible
+  nullable identifier. Empty object/array literals and exact standard Error-family
+  constructors with zero or one static string argument are reviewed fresh
+  producers, including conditional branches. It does not inspect object contents
+  or treat shadowed/effectful constructors, calls, non-empty literals, or property
+  reads as pure object producers.
+  Identifier-only `??=` reuses the same presence transition: the defined branch
+  preserves the object, while only the nullish branch evaluates the reviewed
+  RHS. This does not add a separate object-specific control-flow engine.
+  Catalog `default` export
+  binding is reusable by other reviewed modules. Nullable/mismatched equality,
+  coercive assertion helpers, and arbitrary user-defined assertion signatures
+  remain unsupported.
   A bounded exception-aware extension routes direct synchronous `throw` and
   TypeChecker-resolved direct `never` calls carrying an explicit `Throw<E>`
   declaration into `try`/`catch`. Each return artifact records the throw edges
@@ -775,14 +805,19 @@ same property is proved for arbitrary TypeScript.
   separate synchronous edges. Unannotated Promise-producing calls, opaque catch
   payloads, and general exception fixed points are not accepted. A scalar
   Promise-returning callee may expose a trusted
-  `contract ensures` relation. One direct `const value = await call()` or
-  `return await call()` introduces a fresh fulfilled value, substitutes scalar
+  `contract ensures` relation. One direct `const value = await call()`,
+  `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar
   arguments into that relation, and records a source-bound `relationalCalls`
   ledger entry. Each scalar callee `requires` clause becomes a separate
   source-mapped `call-precondition` obligation. Z3 must prove it from the exact
   caller path conditions; a failed implication is a counterexample and the
-  precondition is never silently assumed. Property/destructuring targets and
-  arbitrary awaited expressions remain fail-closed. For same-file
+  precondition is never silently assumed. Assignment reuses the same rejection,
+  synchronous-throw, catch, and relational-evidence paths. A direct nullable
+  numeric or Boolean identifier target updates its scalar payload and presence
+  bit together on fulfillment; rejection and synchronous throw retain the
+  incoming state. Shared immutable aliases, presence-only object targets,
+  property/destructuring targets, and arbitrary awaited expressions remain
+  fail-closed. For same-file
   implementations, a post-solver fixed point promotes relational edges only
   when every callee obligation and every transitive relational dependency is
   verified. A failed local callee downgrades callers to `unknown`; declarations

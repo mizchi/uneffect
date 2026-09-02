@@ -343,6 +343,35 @@ TypeChecker-validated nullable parameter or immutable identifier alias. Return,
 initialized-binding, and plain-assignment forms split the Boolean presence
 state from the scalar payload. Mutable aliases, property or optional-chain
 operands, call-valued fallbacks, and non-nullable numbers remain `unknown`.
+The reviewed Node assertion slice also includes `strictEqual` and
+`notStrictEqual` from `node:assert/strict` and `node:assert`. For two
+non-nullable scalar operands of the same solver sort, normal continuation
+assumes equality or inequality and the other path throws `AssertionError`;
+nullable, mismatched, and user-defined lookalikes stay `unknown`.
+Reviewed `assert.fail` has no normal continuation and routes its trusted
+`Throw<AssertionError>` directly into the same catch/discharge CFG.
+Reviewed `assert.ifError` maps a tracked nullable numeric/Boolean or
+presence-only object parameter/immutable alias to nullish normal continuation
+and present-value throw. Exact `Error | null`-shaped unions carry only a Boolean
+presence fact—the object payload and heap remain opaque. Mixed primitive/object
+unions remain `unknown`.
+Direct assignment updates that presence for admitted null/undefined values,
+TypeChecker-proven non-null object identifiers, and compatible nullable
+identifier copies. Empty object/array literals and exact standard Error-family
+construction with at most one static string argument are reviewed fresh
+producers, including conditional branches. Shadowed/effectful constructors,
+calls, non-empty literals, property producers, and incompatible absence domains
+remain `unknown`; mutation with an immutable alias also fails closed.
+Identifier-only `??=` uses the same presence split for these object unions and
+evaluates its reviewed producer only on the nullish branch. It retains the same
+alias and effectful-RHS restrictions as plain assignment.
+Direct `identifier = await call()` uses the same trusted scalar fulfillment,
+callee-precondition, rejection, synchronous-throw, catch, and relational-call
+evidence as initialized bindings and `return await`. A nullable numeric or
+Boolean identifier target updates its payload and presence bit together on
+fulfillment; rejection and synchronous throw retain the incoming state. Shared
+immutable aliases, presence-only object targets, and property/destructuring
+assignment targets remain `unknown`.
 TypeChecker-proven Boolean `&&` and `||` in those scalar positions additionally
 preserve left-to-right short-circuit paths, including nested expressions.
 Identifier-only Boolean `&&=` and `||=` reuse the same paths and update the
@@ -371,6 +400,10 @@ payload, and inequality is its complement; null/undefined therefore remain
 distinct from false for strict and loose comparisons. Mutable scalar copies of
 still-nullable values are `unknown` rather than dropping the presence bit.
 Copies after exact TypeChecker narrowing to a scalar are supported.
+Direct Int `%` and statement-level `%=` share JavaScript's signed-remainder
+lowering for a direct nonzero safe-integer literal divisor. Dynamic or zero
+divisors, Real remainder, `/`, and `/=` remain `unknown`; they are not mapped to
+SMT integer arithmetic.
 Plain assignment of a matching non-nullish scalar to the nullable identifier
 updates payload and presence together. Nullable RHS copies, explicit nullish
 producers, mismatched sorts, and property targets remain `unknown` rather than
@@ -388,6 +421,11 @@ Supported bare, conditional, loop, try/catch, and finally blocks use one lexical
 scope join: outer writes and function-scoped `var` survive, while block-local
 `let`/`const` bindings do not escape. Shadowing a tracked scalar remains
 `unknown` pending a symbol-keyed contract environment.
+Explicitly typed uninitialized scalar `let` bindings are supported only when
+the exact TypeScript Program reports no definite-assignment error. Their
+unconstrained placeholder preserves binding identity across joins and carries
+Program-digest evidence; inferred, nullable, destructured, and `var` forms stay
+`unknown`.
 Direct TypeChecker-resolved standard `Math.abs` and bounded `Math.min`/`max`
 calls lower into scalar comparison paths. Shadowed Math objects, unsupported
 arity, effectful operands, and IEEE-754 NaN/signed-zero claims remain outside

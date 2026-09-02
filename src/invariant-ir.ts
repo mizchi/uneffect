@@ -140,7 +140,7 @@ interface ParameterTypeFact {
   programDigest: string;
 }
 interface DeclaredThrowCallFact { effects: string[]; definitelyThrows: boolean }
-interface AssertionCallFact { effect: "Throw<AssertionError>" }
+interface AssertionCallFact { effect: "Throw<AssertionError>"; condition: "truthy" | "strict-equal" | "strict-not-equal" | "nullish" | "always-throw" }
 interface MathScalarCallFact { operation: "abs" | "min" | "max" | "floor" | "ceil" | "trunc" | "round" | "sign" | "pow"; exponent?: number }
 interface AwaitFulfillmentFact {
   domain: NumericDomain;
@@ -257,6 +257,7 @@ function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: st
         const undefinedMembers = members.filter((member) => (member.flags & ts.TypeFlags.Undefined) !== 0);
         const nullMembers = members.filter((member) => (member.flags & ts.TypeFlags.Null) !== 0);
         const stringMembers = members.filter((member) => (member.flags & ts.TypeFlags.StringLike) !== 0);
+        const objectMembers = members.filter((member) => (member.flags & (ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive)) !== 0);
         const nullableScalar = numberMembers.length > 0 && booleanMembers.length === 0 ? { members: numberMembers, domain: "int" as const, label: "number" }
           : booleanMembers.length > 0 && numberMembers.length === 0 ? { members: booleanMembers, domain: "bool" as const, label: "boolean" }
             : undefined;
@@ -265,6 +266,21 @@ function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: st
           const nullish = undefinedMembers.length > 0 && nullMembers.length > 0 ? "nullish" : undefinedMembers.length > 0 ? "undefined" : "null";
           const suffix = nullish === "nullish" ? `${nullableScalar.label} | null | undefined` : `${nullableScalar.label} | ${nullish}`;
           facts.set(key, { domain: nullableScalar.domain, programDigest, guards: [{ kind: "defined", variable: `${parameterName}_uneffect_defined`, valueVariable: parameterName, label: `${parameterName}: ${suffix} via nullish guard`, nullish, spans: [] }] });
+        } else if (objectMembers.length > 0 && undefinedMembers.length + nullMembers.length > 0
+          && objectMembers.length + undefinedMembers.length + nullMembers.length === members.length) {
+          const nullish = undefinedMembers.length > 0 && nullMembers.length > 0 ? "nullish" : undefinedMembers.length > 0 ? "undefined" : "null";
+          facts.set(key, {
+            domain: "bool",
+            represented: false,
+            programDigest,
+            guards: [{
+              kind: "defined",
+              variable: `${parameterName}_uneffect_defined`,
+              label: `${parameterName}: presence-only object | ${nullish}`,
+              nullish,
+              spans: [],
+            }],
+          });
         } else if (numberMembers.length > 0 && stringMembers.length > 0 && numberMembers.length + stringMembers.length === members.length) {
           facts.set(key, { domain: "int", programDigest, guards: [{ kind: "typeof-number", variable: `${parameterName}_uneffect_is_number`, label: `${parameterName}: number | string via typeof number guard`, spans: [] }] });
         } else if (booleanMembers.length > 0 && stringMembers.length > 0 && booleanMembers.length + stringMembers.length === members.length) {
@@ -304,6 +320,9 @@ function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: st
           const root = roots[0]!;
           facts.set(key, { ...root.fact, rootPath: root.path, programDigest });
         }
+      }
+      if (!facts.has(key) && (type.flags & (ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive)) !== 0) {
+        facts.set(key, { domain: "bool", represented: false, label: `${parameterName}: opaque object`, programDigest });
       }
       const fact = facts.get(key);
       if (!fact?.guards) continue;
@@ -738,6 +757,77 @@ function typeCheckerUndefinedReads(program: ts.Program | undefined, fileName: st
   return reads;
 }
 
+/** Exact spans of reviewed expressions known to produce a non-nullish object. */
+function typeCheckerPresentObjectExpressions(program: ts.Program | undefined, fileName: string, text: string): Set<string> {
+  const reads = new Set<string>();
+  if (!program) return reads;
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return reads;
+  const errors = [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)]
+    .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) return reads;
+  const checker = program.getTypeChecker();
+  const objectLike = (type: ts.Type): boolean => {
+    const members = type.isUnion() ? type.types : [type];
+    return members.length > 0
+      && members.every((member) => (member.flags & (ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive)) !== 0);
+  };
+  const standardErrorConstructor = (node: ts.NewExpression): boolean => {
+    if (!ts.isIdentifier(node.expression)
+      || !new Set(["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError"]).has(node.expression.text)) return false;
+    const symbol = checker.getSymbolAtLocation(node.expression);
+    return Boolean(symbol?.declarations?.length)
+      && symbol!.declarations!.every((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile()))
+      && (node.arguments?.length ?? 0) <= 1
+      && (node.arguments?.length !== 1 || ts.isStringLiteral(node.arguments[0]!) || ts.isNoSubstitutionTemplateLiteral(node.arguments[0]!));
+  };
+  const visit = (node: ts.Node): void => {
+    if ((ts.isIdentifier(node) && objectLike(checker.getTypeAtLocation(node)))
+      || (ts.isObjectLiteralExpression(node) && node.properties.length === 0)
+      || (ts.isArrayLiteralExpression(node) && node.elements.length === 0)
+      || (ts.isNewExpression(node) && standardErrorConstructor(node))) {
+      reads.add(`${node.getStart(source)}:${node.getEnd()}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return reads;
+}
+
+/** Explicitly typed block-scoped scalar declarations whose Program has no definite-assignment error. */
+function typeCheckerDelayedScalarDeclarations(
+  program: ts.Program | undefined,
+  fileName: string,
+  text: string,
+): { declarations: Map<string, NumericDomain>; programDigest?: string } {
+  const declarations = new Map<string, NumericDomain>();
+  if (!program) return { declarations };
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return { declarations };
+  const errors = [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)]
+    .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) return { declarations };
+  const programDigest = createHash("sha256").update(JSON.stringify({
+    compilerOptions: program.getCompilerOptions(),
+    sources: program.getSourceFiles().filter((item) => !item.isDeclarationFile)
+      .map((item) => [item.fileName, createHash("sha256").update(item.text).digest("hex")]).sort(([left], [right]) => left!.localeCompare(right!)),
+  })).digest("hex");
+  const supportedTypes = new Map<string, NumericDomain>([
+    ["number", "int"], ["Int", "int"], ["Nat", "nat"], ["Float", "float"], ["boolean", "bool"],
+  ]);
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && !node.initializer && node.type
+      && ts.isVariableDeclarationList(node.parent)
+      && (node.parent.flags & ts.NodeFlags.Let) !== 0
+      && supportedTypes.has(node.type.getText(source))) {
+      declarations.set(`${node.getStart(source)}:${node.getEnd()}`, supportedTypes.get(node.type.getText(source))!);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return { declarations, programDigest };
+}
+
 function boundedLiteralExponent(expression: ts.Expression): number | undefined {
   let current = expression;
   while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
@@ -805,7 +895,8 @@ function typeCheckerConstantIntegerRemainders(program: ts.Program | undefined, f
     return members.length > 0 && members.every((member) => (member.flags & ts.TypeFlags.NumberLike) !== 0);
   };
   const visit = (node: ts.Node): void => {
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PercentToken) {
+    if (ts.isBinaryExpression(node) && (node.operatorToken.kind === ts.SyntaxKind.PercentToken
+      || node.operatorToken.kind === ts.SyntaxKind.PercentEqualsToken)) {
       const divisor = signedNonzeroIntegerLiteral(node.right);
       if (divisor !== undefined && numeric(checker.getTypeAtLocation(node.left)) && numeric(checker.getTypeAtLocation(node.right))) {
         remainders.set(`${node.getStart(source)}:${node.getEnd()}`, divisor);
@@ -928,15 +1019,26 @@ function typeCheckerAssertionCalls(program: ts.Program | undefined, fileName: st
   const checker = program.getTypeChecker();
   const adapter = new TypeScriptFrontendAdapter(program);
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && node.arguments.length >= 1) {
+    if (ts.isCallExpression(node)) {
       const resolved = adapter.resolveCall(node);
+      const assertionExport = resolved?.symbol.export;
       const invoked = (resolved?.symbol.module === "node:assert/strict" || resolved?.symbol.module === "node:assert")
-        && (resolved.symbol.export === "ok" || resolved.symbol.export === "strict" || resolved.symbol.export === "default")
+        && (assertionExport === "ok" || assertionExport === "strict" || assertionExport === "default"
+          || assertionExport === "strictEqual" || assertionExport === "notStrictEqual"
+          || assertionExport === "ifError" || assertionExport === "fail")
         && resolved.semantics?.primitives.some((primitive) => primitive.kind === "throw" && primitive.error === "AssertionError");
       const signature = invoked ? checker.getResolvedSignature(node) : undefined;
       const predicate = signature && checker.getTypePredicateOfSignature(signature);
-      if (predicate && (predicate.kind === ts.TypePredicateKind.AssertsIdentifier || predicate.kind === ts.TypePredicateKind.AssertsThis)) {
-        facts.set(`${node.getStart(source)}:${node.getEnd()}`, { effect: "Throw<AssertionError>" });
+      const assertionPredicate = predicate
+        && (predicate.kind === ts.TypePredicateKind.AssertsIdentifier || predicate.kind === ts.TypePredicateKind.AssertsThis);
+      if (signature && (assertionExport === "fail" || assertionExport === "notStrictEqual" || assertionPredicate)) {
+        facts.set(`${node.getStart(source)}:${node.getEnd()}`, {
+          effect: "Throw<AssertionError>",
+          condition: assertionExport === "strictEqual" ? "strict-equal"
+            : assertionExport === "notStrictEqual" ? "strict-not-equal"
+              : assertionExport === "ifError" ? "nullish"
+              : assertionExport === "fail" ? "always-throw" : "truthy",
+        });
       }
     }
     ts.forEachChild(node, visit);
@@ -1245,6 +1347,8 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
   const booleanLogicalOperations = typeCheckerBooleanLogicalOperations(program, fileName, text);
   const narrowedScalarReads = typeCheckerNarrowedScalarReads(program, fileName, text);
   const undefinedReads = typeCheckerUndefinedReads(program, fileName, text);
+  const presentObjectExpressions = typeCheckerPresentObjectExpressions(program, fileName, text);
+  const delayedScalars = typeCheckerDelayedScalarDeclarations(program, fileName, text);
   const boundedPowerExpressions = typeCheckerBoundedPowerExpressions(program, fileName, text);
   const constantIntegerRemainders = typeCheckerConstantIntegerRemainders(program, fileName, text);
   const mathScalarCalls = typeCheckerMathScalarCalls(program, fileName, text);
@@ -1366,7 +1470,11 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       }
       return paths;
     };
-    const executeAwait = (awaited: ts.AwaitExpression, incoming: PathState[], target?: { binding?: string; returnStatement?: ts.ReturnStatement }): PathState[] => {
+    const executeAwait = (
+      awaited: ts.AwaitExpression,
+      incoming: PathState[],
+      target?: { binding?: string; nullableGuard?: SemanticGuardFact; returnStatement?: ts.ReturnStatement },
+    ): PathState[] => {
       const fact = awaitRejections.get(`${awaited.getStart(source)}:${awaited.getEnd()}`);
       if (!fact) throw new Error(`await requires a verified rejection or fulfillment summary: ${awaited.expression.getText(source)}`);
       const call = ts.isCallExpression(awaited.expression) ? awaited.expression : undefined;
@@ -1377,6 +1485,14 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         if (call.arguments.length !== fact.fulfillment.parameters.length) throw new Error(`awaited contract argument count does not match ${fact.fulfillment.functionName}`);
         const fresh = `${fn}_await_result_${awaited.getStart(source)}`;
         if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: fact.fulfillment.domain, sort: sort(fact.fulfillment.domain) });
+        if (target.nullableGuard) {
+          if (!target.binding || !target.nullableGuard.valueVariable) {
+            throw new Error(`awaited scalar fulfillment requires a scalar nullable target: ${awaited.expression.getText(source)}`);
+          }
+          if (sort(fact.fulfillment.domain) !== scalarExpressionSort(variable(target.nullableGuard.valueVariable))) {
+            throw new Error(`awaited scalar fulfillment does not match nullable target: ${target.binding} = ${awaited.expression.getText(source)}`);
+          }
+        }
         fulfilled = fulfilled.map((path): PathState => {
           const summaryEnv: Environment = new Map([["result", variable(fresh)]]);
           for (let index = 0; index < fact.fulfillment!.parameters.length; index++) {
@@ -1384,6 +1500,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
           }
           const nextEnv = new Map(path.env);
           if (target.binding) nextEnv.set(target.binding, variable(fresh));
+          if (target.nullableGuard) nextEnv.set(target.nullableGuard.variable, { kind: "boolean", value: true });
           const evidence: ContractRelationalCallEvidence = {
             schema: "uneffect-contract-relational-call/v1", evidence: "trusted", typescriptVersion: ts.version,
             functionName: fact.fulfillment!.functionName,
@@ -1453,6 +1570,28 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         throw new Error(`nullable mutation would change shared immutable-alias state: ${expression.getText(source)}`);
       }
     };
+    const evaluateIntegerRemainder = (
+      left: ts.Expression,
+      divisor: number,
+      path: PathState,
+    ): Array<{ path: PathState; value: LogicExpression }> => evaluateScalar(left, path).flatMap(({ path: branch, value }) => {
+      if (scalarExpressionSort(value) !== "Int") {
+        throw new Error(`integer remainder requires an Int-valued left operand: ${left.getText(source)}`);
+      }
+      const zero: LogicExpression = { kind: "integer", value: "0" };
+      const magnitude: LogicExpression = { kind: "integer", value: String(Math.abs(divisor)) };
+      const nonNegative: LogicExpression = { kind: "binary", operator: "gte", left: value, right: zero };
+      return [
+        {
+          path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, nonNegative] },
+          value: { kind: "binary", operator: "int-mod", left: value, right: magnitude },
+        },
+        {
+          path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(nonNegative)] },
+          value: { kind: "unary", operator: "negate", operand: { kind: "binary", operator: "int-mod", left: { kind: "unary", operator: "negate", operand: value }, right: magnitude } },
+        },
+      ];
+    });
     const evaluateScalar = (expression: ts.Expression, path: PathState): Array<{ path: PathState; value: LogicExpression }> => {
       let unwrapped = expression;
       while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
@@ -1474,22 +1613,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.PercentToken) {
         const divisor = constantIntegerRemainders.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`);
         if (divisor === undefined) throw new Error(`unsupported invariant expression: ${unwrapped.getText(source)}`);
-        return evaluateScalar(unwrapped.left, path).flatMap(({ path: branch, value }) => {
-          if (scalarExpressionSort(value) !== "Int") throw new Error(`integer remainder requires an Int-valued left operand: ${unwrapped.left.getText(source)}`);
-          const zero: LogicExpression = { kind: "integer", value: "0" };
-          const magnitude: LogicExpression = { kind: "integer", value: String(Math.abs(divisor)) };
-          const nonNegative: LogicExpression = { kind: "binary", operator: "gte", left: value, right: zero };
-          return [
-            {
-              path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, nonNegative] },
-              value: { kind: "binary", operator: "int-mod", left: value, right: magnitude },
-            },
-            {
-              path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(nonNegative)] },
-              value: { kind: "unary", operator: "negate", operand: { kind: "binary", operator: "int-mod", left: { kind: "unary", operator: "negate", operand: value }, right: magnitude } },
-            },
-          ];
-        });
+        return evaluateIntegerRemainder(unwrapped.left, divisor, path);
       }
       if (ts.isBinaryExpression(unwrapped)
         && unwrapped.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
@@ -1628,27 +1752,40 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         }
         const nextEnv = new Map(path.env);
         nextEnv.set(target.variable, { kind: "boolean", value: false });
-        if (scalarExpressionSort(variable(target.valueVariable!)) === "Bool") {
+        if (target.valueVariable && scalarExpressionSort(variable(target.valueVariable)) === "Bool") {
           nextEnv.set(targetName, { kind: "boolean", value: false });
         }
         return [{ ...path, env: nextEnv }];
       }
+      if (!target.valueVariable && presentObjectExpressions.has(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`)) {
+        const nextEnv = new Map(path.env);
+        nextEnv.set(target.variable, { kind: "boolean", value: true });
+        return [{ ...path, env: nextEnv }];
+      }
       if (ts.isIdentifier(unwrapped)) {
-        const sourceGuard = semanticGuards.get(unwrapped.text)?.find((guard) => guard.kind === "defined" && guard.valueVariable);
+        const sourceGuard = semanticGuards.get(unwrapped.text)?.find((guard) => guard.kind === "defined");
         const sourceIsNarrowed = narrowedScalarReads.has(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`);
         if (sourceGuard && !sourceIsNarrowed) {
           if (target.nullish !== "nullish" && sourceGuard.nullish !== target.nullish) {
             throw new Error(`nullable source absence is not admitted by target: ${targetName} = ${unwrapped.text}`);
           }
-          const payload = substitute(variable(sourceGuard.valueVariable!), path.env);
-          if (scalarExpressionSort(payload) !== scalarExpressionSort(variable(target.valueVariable!))) {
-            throw new Error(`nullable scalar assignment requires matching payload sorts: ${targetName} = ${unwrapped.text}`);
+          if (Boolean(sourceGuard.valueVariable) !== Boolean(target.valueVariable)) {
+            throw new Error(`nullable assignment requires matching presence representation: ${targetName} = ${unwrapped.text}`);
           }
           const nextEnv = new Map(path.env);
-          nextEnv.set(targetName, payload);
+          if (sourceGuard.valueVariable && target.valueVariable) {
+            const payload = substitute(variable(sourceGuard.valueVariable), path.env);
+            if (scalarExpressionSort(payload) !== scalarExpressionSort(variable(target.valueVariable))) {
+              throw new Error(`nullable scalar assignment requires matching payload sorts: ${targetName} = ${unwrapped.text}`);
+            }
+            nextEnv.set(targetName, payload);
+          }
           nextEnv.set(target.variable, substitute(variable(sourceGuard.variable), path.env));
           return [{ ...path, env: nextEnv }];
         }
+      }
+      if (!target.valueVariable) {
+        throw new Error(`presence-only object assignment requires nullish, a present object identifier, or a compatible nullable identifier: ${targetName} = ${expression.getText(source)}`);
       }
       const nullableSource = unsafeNullableScalarCopy(unwrapped);
       if (nullableSource) throw new Error(`scalar assignment would erase nullable presence: ${targetName} = ${nullableSource}`);
@@ -1734,6 +1871,21 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       } else if (ts.isVariableStatement(statement)) {
         for (const declaration of statement.declarationList.declarations) {
           if (objectAliasDeclarations.has(`${declaration.getStart(source)}:${declaration.getEnd()}`)) continue;
+          const delayedDomain = !declaration.initializer
+            ? delayedScalars.declarations.get(`${declaration.getStart(source)}:${declaration.getEnd()}`) : undefined;
+          if (delayedDomain && ts.isIdentifier(declaration.name)) {
+            const bindingName = declaration.name.text;
+            checkerProgramDigest ??= delayedScalars.programDigest;
+            narrowingLabels.push(`${bindingName}: ${declaration.type!.getText(source)} definite assignment checked by TypeScript`);
+            const fresh = `${fn}_${bindingName}_uninitialized_${declaration.getStart(source)}`;
+            if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: delayedDomain, sort: sort(delayedDomain) });
+            paths = paths.map((path): PathState => {
+              const nextEnv = new Map(path.env);
+              nextEnv.set(bindingName, variable(fresh));
+              return { ...path, env: nextEnv };
+            });
+            continue;
+          }
           if (!ts.isIdentifier(declaration.name) || !declaration.initializer) throw new Error(`only initialized identifier variables are supported: ${declaration.getText(source)}`);
           const nullableSource = unsafeNullableScalarCopy(declaration.initializer);
           if (nullableSource) throw new Error(`mutable scalar alias would erase nullable presence: ${declaration.name.text} = ${nullableSource}`);
@@ -1744,10 +1896,17 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
           }));
         }
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
+        && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isIdentifier(statement.expression.left) && ts.isAwaitExpression(statement.expression.right)) {
+        const name = statement.expression.left.text;
+        const nullableGuard = semanticGuards.get(name)?.find((guard) => guard.kind === "defined");
+        if (nullableGuard) assertNoSharedNullableAliasMutation(name, statement.expression);
+        paths = executeAwait(statement.expression.right, paths, { binding: name, ...(nullableGuard ? { nullableGuard } : {}) });
+      } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
         && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(statement.expression.left)) {
         const name = statement.expression.left.text;
         const right = statement.expression.right;
-        const nullableTarget = semanticGuards.get(name)?.find((guard) => guard.kind === "defined" && guard.valueVariable);
+        const nullableTarget = semanticGuards.get(name)?.find((guard) => guard.kind === "defined");
         if (nullableTarget) assertNoSharedNullableAliasMutation(name, statement.expression);
         if (nullableTarget) {
           paths = paths.flatMap((path) => evaluateNullableAssignment(right, path, name, nullableTarget));
@@ -1790,7 +1949,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         const name = (operation.left as ts.Identifier).text;
         const span = `${operation.getStart(source)}:${operation.getEnd()}`;
         const guard = semanticGuards.get(name)?.find((candidate) => candidate.kind === "defined"
-          && candidate.valueVariable !== undefined && candidate.coalesceSpans?.includes(span));
+          && candidate.coalesceSpans?.includes(span));
         if (!guard) throw new Error(`unsupported invariant expression: ${operation.getText(source)}`);
         assertNoSharedNullableAliasMutation(name, operation);
         paths = paths.flatMap((path): PathState[] => {
@@ -1812,7 +1971,8 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         });
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
         && ts.isIdentifier(statement.expression.left)
-        && [ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.MinusEqualsToken, ts.SyntaxKind.AsteriskEqualsToken]
+        && [ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.MinusEqualsToken, ts.SyntaxKind.AsteriskEqualsToken,
+          ts.SyntaxKind.PercentEqualsToken]
           .includes(statement.expression.operatorToken.kind)) {
         const operation = statement.expression;
         const operators = new Map<ts.SyntaxKind, Extract<LogicExpression, { kind: "binary" }>["operator"]>([
@@ -1822,6 +1982,16 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         const operator = operators.get(operation.operatorToken.kind)!;
         const name = (operation.left as ts.Identifier).text;
         assertNoSharedNullableAliasMutation(name, operation);
+        if (operation.operatorToken.kind === ts.SyntaxKind.PercentEqualsToken) {
+          const divisor = constantIntegerRemainders.get(`${operation.getStart(source)}:${operation.getEnd()}`);
+          if (divisor === undefined) throw new Error(`unsupported invariant expression: ${operation.getText(source)}`);
+          paths = paths.flatMap((path) => evaluateIntegerRemainder(operation.left, divisor, path).map(({ path: branch, value }) => {
+            const nextEnv = new Map(branch.env);
+            nextEnv.set(name, value);
+            return { ...branch, env: nextEnv };
+          }));
+          return paths;
+        }
         paths = paths.flatMap((path) => {
           const previous = substitute(path.env.get(name) ?? variable(name), path.env);
           const previousSort = scalarExpressionSort(previous);
@@ -2120,12 +2290,46 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
         const assertion = assertionCalls.get(`${call.getStart(source)}:${call.getEnd()}`);
         if (assertion) {
           const originSpan = { start: call.getStart(source), end: call.getEnd() };
+          if (assertion.condition === "always-throw") {
+            paths = paths.map((path): PathState => ({
+              ...path,
+              env: new Map(path.env),
+              completion: "throw",
+              thrown: { kind: "synchronous-throw", evidence: "trusted", effect: assertion.effect, originSpan },
+            }));
+            return paths;
+          }
           paths = paths.flatMap((path): PathState[] => {
-            const condition = evaluateCondition(call.arguments[0]!, path.env);
-            return [
-              { ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] },
-              { ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)], completion: "throw", thrown: { kind: "synchronous-throw", evidence: "trusted", effect: assertion.effect, originSpan } },
-            ];
+            const conditions: Array<{ path: PathState; condition: LogicExpression }> = assertion.condition === "truthy"
+              ? [{ path, condition: evaluateCondition(call.arguments[0]!, path.env) }]
+              : assertion.condition === "nullish"
+                ? (() => {
+                  let argument = call.arguments[0];
+                  while (argument && (ts.isParenthesizedExpression(argument) || ts.isAsExpression(argument)
+                    || ts.isTypeAssertionExpression(argument) || ts.isNonNullExpression(argument))) argument = argument.expression;
+                  const guard = argument && ts.isIdentifier(argument)
+                    ? semanticGuards.get(argument.text)?.find((candidate) => candidate.kind === "defined") : undefined;
+                  if (!guard) throw new Error(`ifError assertion requires a tracked nullable scalar identifier: ${call.getText(source)}`);
+                  return [{ path, condition: negate(substitute(variable(guard.variable), path.env)) }];
+                })()
+              : (() => {
+                if (call.arguments.length < 2 || unsafeNullableScalarCopy(call.arguments[0]!)
+                  || unsafeNullableScalarCopy(call.arguments[1]!)) {
+                  throw new Error(`strict equality assertion requires two non-nullable scalar operands: ${call.getText(source)}`);
+                }
+                return evaluateScalar(call.arguments[0]!, path).flatMap(({ path: leftPath, value: left }) =>
+                  evaluateScalar(call.arguments[1]!, leftPath).map(({ path: rightPath, value: right }) => {
+                    if (scalarExpressionSort(left) !== scalarExpressionSort(right)) {
+                      throw new Error(`strict equality assertion requires matching scalar operands: ${call.getText(source)}`);
+                    }
+                    const equal: LogicExpression = { kind: "binary", operator: "eq", left, right };
+                    return { path: rightPath, condition: assertion.condition === "strict-not-equal" ? negate(equal) : equal };
+                  }));
+              })();
+            return conditions.flatMap(({ path: branch, condition }): PathState[] => [
+              { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, condition] },
+              { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(condition)], completion: "throw", thrown: { kind: "synchronous-throw", evidence: "trusted", effect: assertion.effect, originSpan } },
+            ]);
           });
           return paths;
         }

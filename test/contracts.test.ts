@@ -1190,6 +1190,22 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("updates an integer with JavaScript signed remainder for a nonzero literal divisor", async () => {
+    const fileName = "/signed-remainder-assignment.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result > -3 && result < 3 && ((value >= 0 && result >= 0) || (value < 0 && result <= 0)) */
+      function remainder(value: Int): Int { value %= 3; return value }
+      /* uneffect:ensures result > -5 && result < 5 */
+      function negativeDivisor(value: Int): Int { value %= -5; return value }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(4);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("does not equate unsupported JavaScript division or remainder with raw SMT arithmetic", async () => {
     const cases = [
       `
@@ -1821,6 +1837,400 @@ describe("Hoare contract checker", () => {
       .filter(({ domain }) => domain === "builtin")).toHaveLength(4);
   });
 
+  it("uses TypeChecker-resolved node:assert strictEqual as an equality guard", async () => {
+    const fileName = `${process.cwd()}/node-assert-strict-equal.ts`;
+    const source = `
+      import { strictEqual } from "node:assert/strict"
+      import * as assert from "node:assert/strict"
+      type Int = number
+      /* uneffect:ensures result === 3 */
+      function named(value: Int): Int {
+        strictEqual(value, 3)
+        return value
+      }
+      /* uneffect:ensures result === 4 */
+      function namespace(value: Int): Int {
+        assert.strictEqual(value, 4)
+        return value
+      }
+    `;
+    const program = programForFiles({ [fileName]: source });
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(collectAssumptionLedger(program, { [fileName]: source }, undefined).ledger.entries
+      .filter(({ domain }) => domain === "builtin")).toHaveLength(2);
+  });
+
+  it("uses TypeChecker-resolved node:assert notStrictEqual as an inequality guard", async () => {
+    const fileName = `${process.cwd()}/node-assert-not-strict-equal.ts`;
+    const source = `
+      import { notStrictEqual } from "node:assert/strict"
+      import * as assert from "node:assert"
+      type Int = number
+      /* uneffect:ensures result !== 0 */
+      function named(value: Int): Int {
+        notStrictEqual(value, 0)
+        return value
+      }
+      /* uneffect:ensures result !== 1 */
+      function namespace(value: Int): Int {
+        assert.notStrictEqual(value, 1)
+        return value
+      }
+    `;
+    const program = programForFiles({ [fileName]: source });
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(collectAssumptionLedger(program, { [fileName]: source }, undefined).ledger.entries
+      .filter(({ domain }) => domain === "builtin")).toHaveLength(2);
+  });
+
+  it("does not trust a same-shaped user strictEqual assertion", async () => {
+    const cases = [
+      `
+        type Int = number
+        function strictEqual<T>(actual: unknown, _expected: T): asserts actual is T {}
+        /* uneffect:ensures result === 3 */
+        function unsafe(value: Int): Int { strictEqual(value, 3); return value }
+      `,
+      `
+        type Int = number
+        function notStrictEqual(_actual: unknown, _expected: unknown): void {}
+        /* uneffect:ensures result !== 0 */
+        function unsafe(value: Int): Int { notStrictEqual(value, 0); return value }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/assert-strict-equality-lookalike-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("keeps nullable and mismatched strictEqual operands outside scalar proof", async () => {
+    const cases = [
+      `
+        import { strictEqual } from "node:assert/strict"
+        type Int = number
+        /* uneffect:ensures result === 0 */
+        function nullable(value: Int | null): Int {
+          strictEqual(value, 0)
+          return value
+        }
+      `,
+      `
+        import { notStrictEqual } from "node:assert/strict"
+        type Int = number
+        /* uneffect:ensures result !== 0 */
+        function nullableNot(value: Int | null): Int {
+          notStrictEqual(value, 0)
+          return value ?? 1
+        }
+      `,
+      `
+        import { strictEqual } from "node:assert/strict"
+        type Int = number
+        /* uneffect:ensures result === 0 */
+        function mismatched(value: Int): Int {
+          strictEqual(value, true)
+          return value
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `${process.cwd()}/node-assert-strict-equal-unsupported-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programForFiles({ [fileName]: source }));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("routes TypeChecker-resolved node:assert fail directly into catch", async () => {
+    const fileName = `${process.cwd()}/node-assert-fail.ts`;
+    const source = `
+      import { fail } from "node:assert/strict"
+      import * as assert from "node:assert"
+      type Int = number
+      /* uneffect:ensures result === 0 */
+      function named(): Int {
+        try {
+          fail("stop")
+          return -1
+        } catch {
+          return 0
+        }
+      }
+      /* uneffect:ensures result === 1 */
+      function namespace(): Int {
+        try {
+          assert.fail()
+          return -1
+        } catch {
+          return 1
+        }
+      }
+    `;
+    const program = programForFiles({ [fileName]: source });
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.every((artifact) => artifact.controlFlow?.exceptionFlow?.discharged
+      .some((edge) => edge.effect === "Throw<AssertionError>"))).toBe(true);
+  });
+
+  it("does not treat a user function named fail as node:assert", async () => {
+    const fileName = "/assert-fail-lookalike.ts";
+    const source = `
+      type Int = number
+      function fail(): never { throw new Error("stop") }
+      /* uneffect:ensures result === 0 */
+      function unsafe(): Int {
+        try { fail(); return -1 } catch { return 0 }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("uses TypeChecker-resolved node:assert ifError as a nullish guard", async () => {
+    const fileName = `${process.cwd()}/node-assert-if-error.ts`;
+    const source = `
+      import { ifError } from "node:assert/strict"
+      import * as assert from "node:assert"
+      /* uneffect:ensures result === true */
+      function named(value: boolean | null | undefined): boolean {
+        ifError(value)
+        return value == null
+      }
+      /* uneffect:ensures result === true */
+      function namespace(value: boolean | null): boolean {
+        try {
+          assert.ifError(value)
+          return value === null
+        } catch {
+          return true
+        }
+      }
+      /* uneffect:ensures result === true */
+      function alias(value: boolean | undefined): boolean {
+        const error = value
+        ifError(error)
+        return value === undefined
+      }
+    `;
+    const program = programForFiles({ [fileName]: source });
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.exceptionFlow?.discharged
+      .some((edge) => edge.effect === "Throw<AssertionError>"))).toBe(true);
+  });
+
+  it("tracks presence-only object unions through ifError and immutable aliases", async () => {
+    const fileName = `${process.cwd()}/node-assert-if-error-object.ts`;
+    const source = `
+      import { ifError } from "node:assert/strict"
+      /* uneffect:ensures result === true */
+      function errorOrNull(value: Error | null): boolean {
+        ifError(value)
+        return value === null
+      }
+      /* uneffect:ensures result === true */
+      function errorOrNullish(value: Error | null | undefined): boolean {
+        const error = value
+        ifError(error)
+        return value == null
+      }
+    `;
+    const program = programForFiles({ [fileName]: source });
+    const result = await verifyContractObligations(fileName, source, undefined, program);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.every((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("presence-only object")))).toBe(true);
+  });
+
+  it("updates presence-only object state on null, present, and compatible copy assignment", async () => {
+    const fileName = "/presence-only-object-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function clear(value: Error | null): boolean {
+        value = null
+        return value === null
+      }
+      /* uneffect:ensures result === true */
+      function set(value: Error | null, replacement: Error): boolean {
+        value = replacement
+        return value !== null
+      }
+      /* uneffect:ensures result === true */
+      function copy(target: Error | null | undefined, source: Error | null): boolean {
+        target = source
+        return (target == null) === (source == null)
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("does not mutate an immutable presence-only object alias with its source", async () => {
+    const fileName = "/presence-only-object-alias-mutation.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function unsafe(value: Error | null): boolean {
+        const old = value
+        value = null
+        return old === null
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("sets object presence from reviewed fresh allocations and conditional branches", async () => {
+    const fileName = "/presence-only-object-fresh.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function error(value: Error | null): boolean {
+        value = new Error("stop")
+        return value !== null
+      }
+      /* uneffect:ensures result === true */
+      function emptyObject(value: object | null): boolean {
+        value = {}
+        return value !== null
+      }
+      /* uneffect:ensures result === true */
+      function emptyArray(value: object | null): boolean {
+        value = []
+        return value !== null
+      }
+      /* uneffect:ensures result === choose */
+      function conditional(value: Error | null, choose: boolean): boolean {
+        value = choose ? new TypeError() : null
+        return value !== null
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("rejects shadowed or effectful object producers in presence assignment", async () => {
+    const cases = [
+      `
+        class Error {}
+        /* uneffect:ensures result === true */
+        function shadowed(value: Error | null): boolean {
+          value = new Error()
+          return value !== null
+        }
+      `,
+      `
+        declare function message(): string
+        /* uneffect:ensures result === true */
+        function effectful(value: Error | null): boolean {
+          value = new Error(message())
+          return value !== null
+        }
+      `,
+      `
+        declare function getValue(): number
+        /* uneffect:ensures result === true */
+        function literal(value: object | null): boolean {
+          value = { count: getValue() }
+          return value !== null
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/presence-only-object-producer-unsupported-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("updates presence-only object state through nullish assignment", async () => {
+    const fileName = "/presence-only-object-nullish-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      function fresh(value: Error | null): boolean {
+        value ??= new Error("missing")
+        return value !== null
+      }
+      /* uneffect:ensures result === true */
+      function copy(value: Error | null | undefined, fallback: Error): boolean {
+        value ??= fallback
+        return value != null
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("keeps aliased or effectful presence-only nullish assignment fail-closed", async () => {
+    const cases = [
+      `
+        /* uneffect:ensures result === true */
+        function aliased(value: Error | null): boolean {
+          const old = value
+          value ??= new Error()
+          return old === null
+        }
+      `,
+      `
+        declare function createError(): Error
+        /* uneffect:ensures result === true */
+        function effectful(value: Error | null): boolean {
+          value ??= createError()
+          return value !== null
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/presence-only-object-nullish-unsupported-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
+  it("keeps untracked and user-defined ifError guards outside proof", async () => {
+    const cases = [
+      `
+        function ifError(value: unknown): asserts value is null | undefined {}
+        /* uneffect:ensures result === true */
+        function lookalike(value: boolean | null): boolean {
+          ifError(value)
+          return value === null
+        }
+      `,
+      `
+        import { ifError } from "node:assert/strict"
+        /* uneffect:ensures result === true */
+        function mixedValue(value: Error | string | null): boolean {
+          ifError(value)
+          return value === null
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `${process.cwd()}/node-assert-if-error-unsupported-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programForFiles({ [fileName]: source }));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
+  });
+
   it("supports the TypeChecker-resolved CommonJS export-equals assertion binding", async () => {
     const fileName = `${process.cwd()}/node-assert-contract.cts`;
     const source = `
@@ -2315,7 +2725,17 @@ describe("Hoare contract checker", () => {
       `
         type Int = number
         /* uneffect:ensures result >= 0 */
-        function remainder(value: Int): Int { value %= 2; return value }
+        function dynamicRemainder(value: Int, divisor: Int): Int { value %= divisor; return value }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result === value */
+        function zeroRemainder(value: Int): Int { value %= 0; return value }
+      `,
+      `
+        type Float = number
+        /* uneffect:ensures result >= 0 */
+        function realRemainder(value: Float): Float { value %= 3; return value }
       `,
       `
         /* uneffect:ensures result === result */
@@ -2668,6 +3088,180 @@ describe("Hoare contract checker", () => {
     const broken = source.replace("result >= value", "result <= value - 1");
     const invalid = await verifyContractObligations(fileName, broken, undefined, programFor(fileName, broken));
     expect(invalid.artifacts).toContainEqual(expect.objectContaining({ status: "counterexample" }));
+  });
+
+  it("composes scalar fulfillment and rejection through await assignment", async () => {
+    const fileName = "/awaited-fulfillment-assignment.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result >= value */
+      /* uneffect:temporal_contract rejects RangeError */
+      declare function readRemote(value: Int): Promise<Int>
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= 0 */
+      async function normalize(value: Int): Promise<Int> {
+        try {
+          value = await readRemote(value)
+          return value
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.relationalCalls
+      ?.some((call) => call.functionName === "readRemote"))).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.exceptionFlow?.discharged
+      .some((edge) => edge.kind === "promise-rejection" && edge.effect === "Reject<RangeError>"))).toBe(true);
+  });
+
+  it("composes scalar fulfillment into nullable state without mutating rejected paths", async () => {
+    const fileName = "/awaited-nullable-fulfillment-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      /* uneffect:temporal_contract rejects RangeError */
+      declare function readRemote(): Promise<boolean>
+      /* uneffect:ensures result === true */
+      async function nullable(value: boolean | null): Promise<boolean> {
+        try {
+          value = await readRemote()
+          return value
+        } catch {
+          return true
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({
+        relationalCalls: [expect.objectContaining({ functionName: "readRemote", clauses: ["result === true"] })],
+      }),
+    }));
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({
+        exceptionFlow: expect.objectContaining({
+          discharged: [expect.objectContaining({ kind: "promise-rejection", effect: "Reject<RangeError>" })],
+        }),
+      }),
+    }));
+  });
+
+  it("keeps nullable await assignment with a shared immutable alias fail-closed", async () => {
+    const fileName = "/awaited-nullable-fulfillment-alias.ts";
+    const source = `
+      /* uneffect:ensures result === true */
+      declare function readRemote(): Promise<boolean>
+      /* uneffect:ensures result === true */
+      async function nullable(value: boolean | null): Promise<boolean> {
+        const snapshot = value
+        value = await readRemote()
+        return snapshot === null || value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("keeps property await assignment targets fail-closed", async () => {
+    const fileName = "/awaited-fulfillment-property-assignment.ts";
+    const source = `
+      /* uneffect:ensures result === value */
+      declare function readRemote(value: number): Promise<number>
+      /* uneffect:ensures result >= 0 */
+      async function property(state: { value: number }): Promise<number> {
+        state.value = await readRemote(0)
+        return state.value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("supports explicitly typed scalar let bindings assigned before use", async () => {
+    const fileName = "/definitely-assigned-local.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result >= value */
+      /* uneffect:temporal_contract rejects RangeError */
+      declare function readRemote(value: Int): Promise<Int>
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result >= 0 */
+      async function loaded(value: Int): Promise<Int> {
+        let result: Int
+        try {
+          result = await readRemote(value)
+        } catch {
+          result = 0
+        }
+        return result
+      }
+      /* uneffect:ensures result >= 0 */
+      function magnitude(value: Int): Int {
+        let result: Int
+        if (value >= 0) result = value
+        else result = -value
+        return result
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.some((artifact) => artifact.controlFlow?.narrowing?.facts
+      .some((fact) => fact.includes("definite assignment checked by TypeScript")))).toBe(true);
+  });
+
+  it("rejects uninitialized, inferred, nullable, and var delayed bindings", async () => {
+    const cases = [
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function missing(value: Int, choose: boolean): Int {
+          let result: Int
+          if (choose) result = value
+          return result
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function inferred(value: Int): Int {
+          let result
+          result = value
+          return result
+        }
+      `,
+      `
+        /* uneffect:ensures result === true */
+        function nullable(value: boolean | null): boolean {
+          let result: boolean | null
+          result = value
+          return result === null
+        }
+      `,
+      `
+        type Int = number
+        /* uneffect:ensures result >= 0 */
+        function functionScoped(value: Int): Int {
+          var result: Int
+          result = value
+          return result
+        }
+      `,
+    ];
+    for (const [index, source] of cases.entries()) {
+      const fileName = `/delayed-binding-unsupported-${index}.ts`;
+      const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    }
   });
 
   it("composes a scalar fulfillment postcondition through return await", async () => {
