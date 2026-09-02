@@ -633,6 +633,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Route semantics-module callback primitives on imported direct
        functions through callable summaries into the host-neutral temporal IR,
        preserving an explicitly external completion lane.
+     - [x] Bind reviewed registry contracts at explicit re-export boundaries so
+       renamed local/package barrels preserve the original declaration identity;
+       keep mutable aliases and same-spelled local functions untrusted.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

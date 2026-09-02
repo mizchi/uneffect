@@ -133,6 +133,8 @@ describe("declarative Uneffect modules", () => {
         },
       } as const;
       const installed = installUneffectModules([module], builtinContractRegistry);
+      const facade = join(directory, "facade.ts");
+      writeFileSync(facade, `export { schedule as later } from "reviewed-handle"`);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
         import { open, openAsync, inspect, close, closeAsync, schedule } from "reviewed-handle"
@@ -168,6 +170,34 @@ describe("declarative Uneffect modules", () => {
         kind: "invoke-callback", callback: "() => {}", api: "schedule",
         cardinality: "0..1", lane: "external", completion: "host-report-throw",
       }));
+      const barrelEntry = join(directory, "barrel-entry.ts");
+      writeFileSync(barrelEntry, `
+        import { later } from "./facade.js"
+        export function barrelScheduled() { later(() => {}) }
+      `);
+      const barrelProgram = createCheckProgram([barrelEntry]);
+      const barrelSource = barrelProgram.getSourceFile(barrelEntry)!;
+      const barrelTemporal = analyzeHostNeutralTransitions(barrelProgram, barrelSource, { builtinRegistry: installed.registry });
+      expect(barrelTemporal.transitions).toContainEqual(expect.objectContaining({
+        kind: "invoke-callback", callback: "() => {}", api: "schedule",
+        cardinality: "0..1", lane: "external", completion: "host-report-throw",
+      }));
+      const mutableEntry = join(directory, "mutable-entry.ts");
+      writeFileSync(mutableEntry, `
+        import { later } from "./facade.js"
+        let selected = later
+        selected = callback => callback()
+        export function mutableAlias() { selected(() => {}) }
+        export function sameSpelled() {
+          const schedule = (callback: () => void) => callback()
+          schedule(() => {})
+        }
+      `);
+      const mutableProgram = createCheckProgram([mutableEntry]);
+      const mutableSource = mutableProgram.getSourceFile(mutableEntry)!;
+      const mutableTemporal = analyzeHostNeutralTransitions(mutableProgram, mutableSource, { builtinRegistry: installed.registry });
+      expect(mutableTemporal.transitions.filter((transition) => transition.kind === "invoke-callback"
+        && transition.lane === "external")).toEqual([]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

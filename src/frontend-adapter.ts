@@ -161,6 +161,19 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
       }
     }
+    // Bind the original declaration identity even when consumers only see it
+    // through a local/package barrel. TypeScript resolves the downstream alias
+    // back to this export symbol, so no spelling-based propagation is needed.
+    for (const source of program.getSourceFiles()) for (const statement of source.statements) {
+      if (!ts.isExportDeclaration(statement) || !statement.moduleSpecifier
+        || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const registered = modules.get(statement.moduleSpecifier.text);
+      if (!registered) continue;
+      const contracts = registered.filter((contract) => builtinContractApplies(program, source.fileName, contract));
+      if (contracts.length === 0) continue;
+      const moduleSymbol = this.#checker.getSymbolAtLocation(statement.moduleSpecifier);
+      if (moduleSymbol) bindModuleContracts(moduleSymbol, contracts);
+    }
     for (const source of program.getSourceFiles()) {
       const visitDynamicImports = (node: ts.Node): void => {
         if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name)

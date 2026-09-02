@@ -100,7 +100,9 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
 - callback primitives on imported top-level functions connected by resolved
   package symbol identity to callable summaries and the host-neutral temporal
   transition model; an `external` queue remains external rather than being
-  guessed as a Web or Node task queue;
+  guessed as a Web or Node task queue. Local/package barrels and renamed
+  re-exports retain that declaration identity, while mutable aliases and
+  same-spelled local functions do not inherit the contract;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.
