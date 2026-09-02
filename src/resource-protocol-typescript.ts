@@ -121,6 +121,36 @@ function directlyAwaited(call: ts.CallExpression): boolean {
   return ts.isAwaitExpression(current.parent) && current.parent.expression === current;
 }
 
+/**
+ * Adds the JavaScript rejection edge for directly awaited Promise-returning
+ * calls. Acquisition calls are excluded because their resource exists only on
+ * fulfillment; representing that requires a fulfillment-edge transition.
+ */
+export function collectAwaitedRejectionTransitionSites(
+  program: ts.Program,
+  fn: ts.FunctionLikeDeclaration,
+  resourceSites: readonly ResourceTransitionSite[] = [],
+): readonly ResourceTransitionSite[] {
+  if (!fn.body) return [];
+  const checker = program.getTypeChecker();
+  const acquisitions = new Set(resourceSites.filter((site) => site.transitions.some((transition) => transition.kind === "acquire"))
+    .map((site) => site.node));
+  const sites: ResourceTransitionSite[] = [];
+  const mayBePromiseLike = (type: ts.Type): boolean => type.isUnion()
+    ? type.types.some(mayBePromiseLike)
+    : checker.getPropertyOfType(type, "then") !== undefined;
+  const visit = (node: ts.Node): void => {
+    if (node !== fn && ts.isFunctionLike(node)) return;
+    if (ts.isCallExpression(node) && directlyAwaited(node) && !acquisitions.has(node)) {
+      const type = checker.getTypeAtLocation(node);
+      if (mayBePromiseLike(type)) sites.push({ node, transitions: [], exceptionalCompletion: "throw" });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(fn.body);
+  return sites;
+}
+
 /** Converts only trusted/verified callable summaries into exceptional CFG sites. */
 export function collectCallableExceptionalTransitionSites(
   program: ts.Program,

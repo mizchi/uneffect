@@ -11,7 +11,7 @@ import {
   type ResourceProtocolState,
   type ResourceProtocolTransition,
 } from "./resource-protocol.js";
-import { collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
+import { collectAwaitedRejectionTransitionSites, collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
 
 type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.MethodSignature
   | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
@@ -400,7 +400,11 @@ export function analyzeResourceLifecyclesInSource(
     if (isFunctionWithBody(node)) {
       const declared = collectResourceCallableTransitionSites(program, node, analysis.summaries);
       const builtin = collectBuiltinResourceTransitionSites(program, node);
-      const sites = auditAcquiredResourceReferences(program, node, [...declared.sites, ...builtin.sites]);
+      const resourceSites = [...declared.sites, ...builtin.sites];
+      const sites = auditAcquiredResourceReferences(program, node, [
+        ...resourceSites,
+        ...collectAwaitedRejectionTransitionSites(program, node, resourceSites),
+      ]);
       const collected = {
         resources: [...new Map([...declared.resources, ...builtin.resources].map((resource) => [resource.id, resource] as const)).values()],
         sites,

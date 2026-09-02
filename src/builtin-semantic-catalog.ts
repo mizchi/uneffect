@@ -767,6 +767,16 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       { kind: "release", resource: "stream-writer", target: { kind: "receiver" } },
       { kind: "protocol", name: "stream", transition: "release-writable", inputs: { writer: { kind: "receiver" } } },
     ] } }),
+    ...(["write", "abort", "close"] as const).map((name) => reviewed("dom", {
+      symbol: { module: "lib.dom", export: `WritableStreamDefaultWriter#${name}` }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "use", resource: "stream-writer", target: { kind: "receiver" } },
+        { kind: "protocol", name: "stream", transition: name, inputs: { writer: { kind: "receiver" } } },
+      ] },
+    })),
+    reviewed("dom", { symbol: { module: "lib.dom", export: "ReadableStreamGenericReader#cancel" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+      { kind: "use", resource: "stream-reader", target: { kind: "receiver" } },
+      { kind: "protocol", name: "stream", transition: "cancel-readable", inputs: { reader: { kind: "receiver" } } },
+    ] } }),
     ...(["cancel", "pipeTo", "pipeThrough", "tee"] as const).map((name) => reviewed("dom", {
       symbol: { module: "lib.dom", export: `ReadableStream#${name}` }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
         { kind: "protocol", name: "stream", transition: name, inputs: {

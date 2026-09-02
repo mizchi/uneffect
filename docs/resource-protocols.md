@@ -388,6 +388,13 @@ state is `absent-or-released` and satisfies a release obligation. This does not
 generalize arbitrary unequal states: a branch that may leave a live resource,
 consume it inconsistently, or reuse it after release remains unknown.
 
+A directly awaited Promise-returning operation on a live resource contributes
+a rejection edge to the same CFG. Consequently, releasing after `await
+writer.write(...)` does not prove cleanup: rejection bypasses the release. A
+`try/finally` release covers both fulfillment and rejection. An awaited acquire
+is treated differently—the resource is introduced only on fulfillment, so its
+rejection edge cannot manufacture a leaked handle.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 

@@ -284,8 +284,7 @@ describe("general resource lifecycle check", () => {
       writeFileSync(fileName, `
         export async function readOne(stream: ReadableStream<Uint8Array>) {
           const renamed = stream.getReader()
-          await renamed.read()
-          renamed.releaseLock()
+          try { await renamed.read() } finally { renamed.releaseLock() }
         }
       `);
       const result = await checkFiles([fileName]);
@@ -293,6 +292,54 @@ describe("general resource lifecycle check", () => {
         { owner: "readOne", kind: "stream-reader", status: "satisfied", state: "released", authority: "builtin-catalog" },
       ]);
       expect(result.diagnostics.filter((diagnostic) => "domain" in diagnostic && diagnostic.domain === "resource")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("tracks stream writer and inherited reader operations through catalog primitives", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-stream-operations-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        export async function unsafeWrite(stream: WritableStream<Uint8Array>, chunk: Uint8Array) {
+          const writer = stream.getWriter()
+          await writer.write(chunk)
+          writer.releaseLock()
+        }
+        export async function safeWrite(stream: WritableStream<Uint8Array>, chunk: Uint8Array) {
+          const writer = stream.getWriter()
+          try { await writer.write(chunk) } finally { writer.releaseLock() }
+        }
+        export async function safeCancel(stream: ReadableStream<Uint8Array>) {
+          const reader = stream.getReader()
+          try { await reader.cancel("done") } finally { reader.releaseLock() }
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "unsafeWrite", kind: "stream-writer", status: "unknown", state: "unknown" }),
+        expect.objectContaining({ owner: "safeWrite", kind: "stream-writer", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "safeCancel", kind: "stream-reader", status: "satisfied", state: "released" }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("does not create an awaited acquired resource on the rejection edge", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-async-acquire-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Handle {}
+        /* uneffect:acquire return */ declare function open(): Promise<Handle>
+        /* uneffect:release handle */ declare function close(handle: Handle): void
+        export async function main() {
+          const handle = await open()
+          close(handle)
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toMatchObject([
+        { owner: "main", status: "satisfied", state: "released" },
+      ]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

@@ -443,6 +443,9 @@ introducing another domain-local control-flow or alias model.
        protocol output, using declaration-region ids instead of variable names.
      - [x] Catalog stream-reader `read()` as a resource use so ordinary
        acquire/read/release code remains analyzable instead of opaque.
+     - [x] Add rejection edges for directly awaited Promise-returning resource
+       operations and require `finally` for cleanup across rejection, while
+       keeping awaited acquisitions fulfillment-only.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

@@ -276,6 +276,7 @@ export type { ResourceDisposalTemporalProductResult, ResourceTemporalLink, Resou
 export { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "./resource-callable-typescript.js";
 export type { ResourceCallableDiagnostic, ResourceCallableSiteAnalysis, ResourceCallableSummaryAnalysis } from "./resource-callable-typescript.js";
 export { analyzeResourceLifecyclesInSource } from "./resource-callable-typescript.js";
+export { collectAwaitedRejectionTransitionSites } from "./resource-protocol-typescript.js";
 export type { ResourceLifecycleDiagnostic, ResourceLifecycleEvidence, ResourceLifecycleProgramAnalysis } from "./resource-callable-typescript.js";
 export { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";
 export { collectAssumptionLedger, evaluateAssumptionPolicy } from "./assumptions.js";
