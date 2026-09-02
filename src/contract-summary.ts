@@ -9,6 +9,16 @@ import { formatEffect, parseEffectSet } from "./capabilities.js";
 import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract } from "./effects.js";
 import { analyzeCallableSummaries, type CallableSummary } from "./callable-summary.js";
 
+export interface ContractCallbackSummaryV1 {
+  index: number;
+  name: string;
+  path?: readonly (string | number)[];
+  cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
+  timing: "inline" | "deferred" | "promise-reaction" | "unknown";
+  completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
+  effectBound?: readonly string[];
+}
+
 export interface ContractSummaryExportV1 {
   symbol: { module: string; export: string };
   functionName: string;
@@ -24,15 +34,7 @@ export interface ContractSummaryExportV1 {
   effect?: {
     effects: string[];
     parameters: string[];
-    callbacks?: Array<{
-      index: number;
-      name: string;
-      path?: readonly (string | number)[];
-      cardinality: "0" | "0..1" | "exactly-1" | "0..n" | "unknown";
-      timing: "inline" | "deferred" | "promise-reaction" | "unknown";
-      completion: "propagate-throw" | "convert-throw-to-rejection" | "host-report-throw" | "unknown";
-      effectBound?: readonly string[];
-    }>;
+    callbacks?: ContractCallbackSummaryV1[];
   };
 }
 
@@ -137,6 +139,17 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
     throw new Error(`malformed contract summary ${fileName}`);
   }
   for (const [index, item] of bundle.exports.entries()) {
+    const validCallback = (callback: ContractCallbackSummaryV1): boolean =>
+      Boolean(callback && typeof callback === "object"
+        && Number.isInteger(callback.index) && callback.index >= 0
+        && typeof callback.name === "string"
+        && (callback.path === undefined || (Array.isArray(callback.path)
+          && callback.path.every((part) => typeof part === "string" || Number.isInteger(part))))
+        && ["0", "0..1", "exactly-1", "0..n", "unknown"].includes(callback.cardinality)
+        && ["inline", "deferred", "promise-reaction", "unknown"].includes(callback.timing)
+        && ["propagate-throw", "convert-throw-to-rejection", "host-report-throw", "unknown"].includes(callback.completion)
+        && (callback.effectBound === undefined || (Array.isArray(callback.effectBound)
+          && callback.effectBound.every((entry) => typeof entry === "string"))));
     if (!item || typeof item !== "object" || !item.symbol
       || typeof item.symbol.module !== "string" || typeof item.symbol.export !== "string"
       || typeof item.functionName !== "string" || item.evidence !== "verified"
@@ -149,7 +162,9 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
       || !Array.isArray(item.artifactIds) || !item.artifactIds.every((entry) => typeof entry === "string")
       || (item.effect !== undefined && (!item.effect || typeof item.effect !== "object"
         || !Array.isArray(item.effect.effects) || !item.effect.effects.every((entry) => typeof entry === "string")
-        || !Array.isArray(item.effect.parameters) || !item.effect.parameters.every((entry) => typeof entry === "string")))) {
+        || !Array.isArray(item.effect.parameters) || !item.effect.parameters.every((entry) => typeof entry === "string")
+        || (item.effect.callbacks !== undefined && (!Array.isArray(item.effect.callbacks)
+          || !item.effect.callbacks.every(validCallback)))))) {
       throw new Error(`malformed contract summary export ${index} in ${fileName}`);
     }
   }
@@ -252,6 +267,13 @@ export function bindContractSummaryBundleToProgram(
     const uses = candidates.get(summary.symbol.export) ?? [];
     const declarations = [...new Set(uses.map(({ declaration }) => declaration))];
     if (declarations.length === 0) continue;
+    const unsupportedCallback = summary.effect?.callbacks?.find((callback) =>
+      (callback.path?.length ?? 0) > 0 || callback.completion !== "propagate-throw");
+    if (unsupportedCallback) {
+      blockers.push(`contract summary callback ${summary.symbol.export}.${unsupportedCallback.name} uses unsupported consumer semantics: ${
+        (unsupportedCallback.path?.length ?? 0) > 0 ? "nested callback path" : `completion ${unsupportedCallback.completion}`}`);
+      continue;
+    }
     if (declarations.length !== 1) {
       blockers.push(`contract summary export ${summary.symbol.export} resolves ambiguously in the consumer Program`);
       continue;
@@ -411,6 +433,7 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   let source: ts.SourceFile | undefined;
   try { source = checkedSource(options); } catch (cause) { errors.push(cause instanceof Error ? cause.message : String(cause)); }
   const effectSummaries = source ? analyzeProgramEffects(options.program, { requireAnnotations: false }).summaries : [];
+  const callableSummaries = source ? analyzeCallableSummaries(options.program).summaries : [];
   if (source) for (const item of bundle.exports) {
     const declaration = source.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node)
       && directExportName(node) === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
@@ -427,11 +450,23 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     } else if (item.effect) {
       const actual = effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
         && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
-      const effects = actual?.effects.map(formatEffect).sort();
+      const callable = callableSummaries.find((summary) => summary.fileName === source.fileName
+        && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
+      const callableFallback = callable && callable.evidence !== "unknown"
+        && callable.unknownReasons.length === 0 && callable.callbackParameters.length > 0;
+      const effects = (actual?.evidence === "verified" ? actual.effects : callableFallback ? callable.effects : undefined)
+        ?.map(formatEffect).sort();
       const parameters = declaration.parameters.every((parameter) => ts.isIdentifier(parameter.name))
         ? declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text) : undefined;
-      if (actual?.evidence !== "verified" || !effects || canonical(effects) !== canonical(item.effect.effects)
-        || !parameters || canonical(parameters) !== canonical(item.effect.parameters)) {
+      const callbacks = callable?.callbackParameters.length ? callable.callbackParameters.map((callback) => ({
+        index: callback.index, name: callback.name,
+        ...(callback.path ? { path: callback.path } : {}),
+        cardinality: callback.cardinality, timing: callback.timing, completion: callback.completion,
+        ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
+      })) : undefined;
+      if (!effects || canonical(effects) !== canonical(item.effect.effects)
+        || !parameters || canonical(parameters) !== canonical(item.effect.parameters)
+        || canonical(callbacks) !== canonical(item.effect.callbacks)) {
         errors.push(`contract summary Effect payload for ${item.symbol.export} does not match verified producer evidence`);
       }
     }

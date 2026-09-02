@@ -50,8 +50,12 @@ record the selected declaration bytes. Verified Effect-only exports also lower
 through the existing external Effect contract IR, including scoped
 capabilities, parameter-rooted `Mutate`, and `Throw<E>`. Calls remain `trusted`, not `verified`,
 because persisted producer authority is not authenticated. Producer-to-emitted `.d.ts` build
-linkage, installed tarball/runtime identity, publisher authenticity, and
-persisted callback/resource/callable semantics beyond those Effect atoms remain unsupported.
+linkage, installed tarball/runtime identity, and publisher authenticity remain
+unsupported. Direct callback parameters now preserve timing and Effect bounds
+for inline or immutable symbol-resolved arguments; persisted cardinality,
+object/tuple callback paths, non-synchronous completion modes, returned
+callables, and resource semantics remain unsupported. Unsupported persisted
+callback semantics block binding rather than being approximated.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

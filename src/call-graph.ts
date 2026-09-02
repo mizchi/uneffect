@@ -13,7 +13,14 @@ export interface EffectParameter { index: number; name: string; timing: Invocati
 export interface IteratorEffectParameter { index: number; name: string; convertsThrowToRejection: boolean }
 export interface IteratorEffectInstantiation { consumer: string; parameterIndex: number }
 export interface ExternalIteratorEffectContract { key: string; parameters: readonly IteratorEffectParameter[] }
-export interface ExternalCallableEffectContract { key: string; parameters: readonly EffectParameter[] }
+export interface ExternalCallableEffectParameter extends EffectParameter { effectBound?: readonly Effect[] }
+export interface ExternalCallableEffectContract { key: string; parameters: readonly ExternalCallableEffectParameter[] }
+export interface CallbackEffectInstantiation {
+  consumer: string;
+  parameterIndex: number;
+  parameterName: string;
+  effectBound: readonly Effect[];
+}
 export interface CallGraphNode {
   id: string;
   name: string;
@@ -44,6 +51,8 @@ export interface CallGraphEdge {
   unresolvedMutationAlias?: boolean;
   /** Identifies the polymorphic iterator contract instantiated by this execution edge. */
   iteratorEffectInstantiation?: IteratorEffectInstantiation;
+  /** Identifies a checked callback upper bound supplied by an external callable contract. */
+  callbackEffectInstantiation?: CallbackEffectInstantiation;
   /** Callback parameter positions supplied by the runtime rather than a source expression. */
   unresolvedMutationArgumentIndices?: number[];
 }
@@ -1222,14 +1231,21 @@ export function buildProgramCallGraph(
             : ts.isIdentifier(argument) ? symbolNodes.get(resolvedSymbol(checker, argument)!) : undefined;
           if (callbackDeclaration) {
             const calleeNode = targetDeclaration ? byId.get(stableId(targetDeclaration)) : undefined;
+            const externalParameter = externalCallable?.parameters.find((item) => item.index === index);
             const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing
-              ?? externalCallable?.parameters.find((item) => item.index === index)?.timing
+              ?? externalParameter?.timing
               ?? builtinTiming(node, checker, adapter, index);
             const projectedCallback = projectedCallbacks.find((event) =>
               event.target.status === "resolved" && event.target.expression === argument);
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing,
               span: { start: argument.getStart(), end: argument.getEnd() },
               ...callbackInstantiation(argument, callbackDeclaration),
+              ...(externalParameter?.effectBound ? { callbackEffectInstantiation: {
+                consumer: externalCallable!.key,
+                parameterIndex: index,
+                parameterName: externalParameter.name,
+                effectBound: externalParameter.effectBound,
+              } } : {}),
               dischargesThrow: catchesThrow && timing === "inline"
                 || projectedCallback?.completion === "convert-throw-to-rejection" });
           }

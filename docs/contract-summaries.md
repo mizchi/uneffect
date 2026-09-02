@@ -46,7 +46,9 @@ The bundle binds:
 - TypeChecker-rendered signature and SHA-256;
 - parameter names, `requires`, and `ensures` clauses;
 - every solver artifact ID supporting the export.
-- optional verified Effect atoms and declaration-order parameter names.
+- optional verified Effect atoms and declaration-order parameter names;
+- direct callback timing, cardinality, completion mode, and optional Effect
+  upper bound.
 
 Changing any covered value invalidates the bundle content digest. Validation
 also recomputes compiler, source, declaration, and signature evidence instead
@@ -77,6 +79,15 @@ call-site substitution as same-workspace summaries. The binding is supplied to
 the ordinary Effect analyzer rather than interpreted by a package-specific
 walker.
 
+Direct callback parameters are also composed. For a callback passed as an
+inline function or immutable TypeChecker-resolved function identifier, its
+effects propagate into the caller using the persisted timing. A producer
+`effect_parameter` upper bound is checked against the inferred callback
+effects; a violation downgrades the caller to `unknown`. Cardinality is
+persisted as auditable metadata but is not yet projected into the temporal
+model. A nested callback path or completion mode other than synchronous
+`propagate-throw` blocks consumer binding instead of being approximated.
+
 This does not yet prove that the installed declaration bytes were emitted from
 the summarized producer source, or that bundled/runtime JavaScript corresponds
 to that declaration. Export-map selection is inherited from TypeScript module
@@ -88,5 +99,6 @@ successfully bound scalar call carries `trusted` relational evidence: the
 declaration binding is checked, while the persisted producer authority is not
 silently upgraded to an authenticated proof.
 
-Callback timing/effect polymorphism and resource ownership are not part of this
-first Effect payload yet.
+Object/tuple callback paths, mutable or dynamically selected callbacks,
+returned callables, reentrancy/concurrency, temporal cardinality, and resource
+ownership remain outside this first consumer fragment.

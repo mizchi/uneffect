@@ -3,7 +3,7 @@ import ts from "typescript";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bindContractSummaryBundleToProgram, createContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
+import { bindContractSummaryBundleToProgram, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
 
 function programFor(fileName: string, source: string): ts.Program {
@@ -125,6 +125,32 @@ describe("persisted contract summary bundles", () => {
         })],
       },
     })]));
+    expect(validateContractSummaryBundle(bundle, {
+      packageName: "@example/report", packageVersion: "1.0.0", fileName, source, program,
+    })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects malformed persisted callback metadata", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-malformed-"));
+    const fileName = join(directory, "contract.json");
+    writeFileSync(fileName, JSON.stringify({
+      schema: "uneffect-contract-summary/v1",
+      package: { name: "@example/callback", version: "1.0.0" },
+      compiler: { typescriptVersion: ts.version, compilerOptionsDigest: "0".repeat(64) },
+      producer: { fileName: "/src/index.ts", sourceDigest: "0".repeat(64) },
+      exports: [{
+        symbol: { module: "@example/callback", export: "once" }, functionName: "once", evidence: "verified",
+        declarationSpan: { start: 0, end: 1 }, declarationDigest: "0".repeat(64),
+        signature: "(callback: () => void): void", signatureDigest: "0".repeat(64),
+        parameters: ["callback"], requires: [], ensures: [], artifactIds: [],
+        effect: { effects: [], parameters: ["callback"], callbacks: [{
+          index: -1, name: "callback", cardinality: "many", timing: "later", completion: "ignored",
+        }] },
+      }],
+      contentDigest: "0".repeat(64),
+    }));
+
+    await expect(loadContractSummaryBundle(fileName)).rejects.toThrow(/malformed contract summary export 0/);
   });
 
   it("binds a producer summary to an installed package export by TypeChecker identity", async () => {

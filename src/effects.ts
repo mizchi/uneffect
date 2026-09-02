@@ -1440,7 +1440,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const externalCallableEffects = new Map([...options.externalFunctionEffects ?? []].flatMap(([key, contract]) =>
     contract.callbackParameters?.length ? [[key, {
       key,
-      parameters: contract.callbackParameters.map(({ index, name, timing }) => ({ index, name, timing })),
+      parameters: contract.callbackParameters.map(({ index, name, timing, effectBound }) => ({ index, name, timing, effectBound })),
     }] as const] : []));
   const graph = buildProgramCallGraph(program, { externalIteratorEffects, externalCallableEffects, builtinRegistry: registry }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
   const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
@@ -1811,6 +1811,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     });
   }
   const invalidIteratorInstantiationCallers = new Set<string>();
+  const invalidCallbackInstantiationCallers = new Set<string>();
   type IteratorParameterRef = { consumer: string; parameterIndex: number };
   const parameterKey = (reference: IteratorParameterRef): string => `${reference.consumer}#${reference.parameterIndex}`;
   const forwardedConstraints = new Map<string, IteratorParameterRef[]>();
@@ -1870,6 +1871,22 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       invalidIteratorInstantiationCallers.add(edge.caller);
     }
   }
+  for (const edge of graph.edges) {
+    const instantiation = edge.callbackEffectInstantiation;
+    if (!instantiation || !edge.callee) continue;
+    for (const effect of inferred.get(edge.callee) ?? []) {
+      if (effect.kind === "throw" && edge.dischargesThrow) continue;
+      if (permits([...instantiation.effectBound], effect)) continue;
+      const caller = graphNodesById.get(edge.caller)!, source = nodes.get(edge.caller)!.getSourceFile();
+      const consumerName = options.externalFunctionEffects?.get(instantiation.consumer)?.functionName ?? instantiation.consumer;
+      diagnostics.push({
+        fileName: source.fileName, functionName: caller.name, effect: formatEffect(effect), kind: "missing", severity: "error",
+        line: source.getLineAndCharacterOfPosition(edge.span.start).line + 1,
+        message: `${caller.name} instantiates callback effect parameter ${instantiation.parameterName} of ${consumerName} with ${formatEffect(effect)} outside its declared bound`,
+      });
+      invalidCallbackInstantiationCallers.add(edge.caller);
+    }
+  }
   let invalidInstantiationChanged = true;
   while (invalidInstantiationChanged) {
     invalidInstantiationChanged = false;
@@ -1877,6 +1894,15 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       && !invalidIteratorInstantiationCallers.has(edge.caller)) {
       invalidIteratorInstantiationCallers.add(edge.caller);
       invalidInstantiationChanged = true;
+    }
+  }
+  let invalidCallbackChanged = true;
+  while (invalidCallbackChanged) {
+    invalidCallbackChanged = false;
+    for (const edge of graph.edges) if (edge.callee && invalidCallbackInstantiationCallers.has(edge.callee)
+      && !invalidCallbackInstantiationCallers.has(edge.caller)) {
+      invalidCallbackInstantiationCallers.add(edge.caller);
+      invalidCallbackChanged = true;
     }
   }
   for (const graphNode of graph.nodes) {
@@ -1926,6 +1952,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator) addUnknownReason("unknown-generator-parameter", "a caller-supplied iterator effect cannot be represented by this summary");
     if (invalidEffectParameterOwners.has(graphNode.id)) addUnknownReason("invalid-effect-parameter", "an effect_parameter annotation is invalid");
     if (invalidIteratorInstantiationCallers.has(graphNode.id)) addUnknownReason("invalid-iterator-instantiation", "an iterator effect argument exceeds or cannot satisfy its declared bound");
+    if (invalidCallbackInstantiationCallers.has(graphNode.id)) addUnknownReason("effect-diagnostic", "a callback effect argument exceeds its declared external bound");
     if (unknownExternalEvidence.has(graphNode.id)) addUnknownReason("unknown-external-evidence", "a resolved external effect contract is unknown or cannot be instantiated at this call site");
     if (unknownMutationAliasEvidence.has(graphNode.id)) addUnknownReason("unresolved-mutation-alias", "a mutable object alias cannot be reduced to one non-escaping addressable root");
     if (unresolvedScopes.length > 0) addUnknownReason("unresolved-effect-scope", `effect authority scope is unresolved: ${[...new Set(unresolvedScopes)].join(", ")}`);
@@ -1935,6 +1962,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       || (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator)
       || invalidEffectParameterOwners.has(graphNode.id)
       || invalidIteratorInstantiationCallers.has(graphNode.id)
+      || invalidCallbackInstantiationCallers.has(graphNode.id)
       || unknownExternalEvidence.has(graphNode.id)
       || unknownMutationAliasEvidence.has(graphNode.id)
       || unresolvedScopes.length > 0

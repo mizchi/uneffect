@@ -852,6 +852,33 @@ describe("evidence and optimizer obligations", () => {
     }));
   });
 
+  it("rejects a callback effect outside a verified external callback bound", () => {
+    const { program, source } = programOf(`
+      declare function once(callback: () => void): void
+      /* uneffect:effect Console */
+      function log() { console.log("called") }
+      /* uneffect:effect Console */
+      export function run() { once(log) }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "once")!;
+    const key = `${source.fileName}:${declaration.getStart(source)}`;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[key, {
+      effects: [], evidence: "verified" as const, functionName: "once",
+      callbackParameters: [{
+        index: 0, name: "callback", timing: "inline" as const,
+        cardinality: "exactly-1" as const, completion: "propagate-throw" as const,
+        effectBound: [],
+      }],
+    }]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({ evidence: "unknown" });
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "run", effect: "Console", kind: "missing", severity: "error",
+      message: expect.stringContaining("callback effect parameter callback of once"),
+    }));
+  });
+
   it("binds persisted evidence to the caller-owned builtin registry", () => {
     const { program, source } = programOf("export function identity(value: number) { return value }");
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;

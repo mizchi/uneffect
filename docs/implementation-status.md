@@ -887,8 +887,12 @@ same property is proved for arbitrary TypeScript.
   open. Verified Effect-only exports use the same envelope and lower into the
   existing external Effect contract IR. Parameter-rooted `Mutate`, scoped
   capabilities, and `Throw<E>` therefore compose without a package-specific
-  analyzer. Callback timing/effect polymorphism and resource ownership remain
-  open.
+  analyzer. Direct callback parameters preserve timing and optional Effect
+  bounds for inline or immutable symbol-resolved callback arguments; bound
+  violations fail closed. Persisted cardinality is not yet connected to the
+  temporal model. Object/tuple paths and completion modes other than
+  synchronous throw propagation block consumer binding; returned callables and
+  resource ownership remain open.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint

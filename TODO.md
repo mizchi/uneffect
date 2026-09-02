@@ -518,6 +518,9 @@ introducing another domain-local control-flow or alias model.
    region reads/writes, and callback invocation cardinality/timing. Start with
    the common `0..1`, exactly-once, and sequential `0..n` callback families.
    ([#24](https://github.com/mizchi/uneffect/issues/24))
+   - [x] Persist direct callback timing/cardinality/completion and Effect bounds
+     in package summaries; bind direct inline/immutable callback arguments and
+     fail closed when their inferred effects exceed the producer bound.
    - [x] Add a versioned backend-neutral callable-summary API for direct
      functions and immutable local callable aliases, including may-effects,
      synchronous throws, direct Promise rejections, and mutated regions.

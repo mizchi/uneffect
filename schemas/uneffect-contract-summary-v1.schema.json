@@ -67,7 +67,11 @@
             "required": ["effects", "parameters"],
             "properties": {
               "effects": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-              "parameters": { "type": "array", "items": { "type": "string" } }
+              "parameters": { "type": "array", "items": { "type": "string" } },
+              "callbacks": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/callback" }
+              }
             }
           }
         }
@@ -84,6 +88,23 @@
       "properties": {
         "start": { "type": "integer", "minimum": 0 },
         "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "callback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "name", "cardinality", "timing", "completion"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "array",
+          "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] }
+        },
+        "cardinality": { "enum": ["0", "0..1", "exactly-1", "0..n", "unknown"] },
+        "timing": { "enum": ["inline", "deferred", "promise-reaction", "unknown"] },
+        "completion": { "enum": ["propagate-throw", "convert-throw-to-rejection", "host-report-throw", "unknown"] },
+        "effectBound": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     }
   }
