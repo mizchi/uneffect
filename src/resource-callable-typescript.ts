@@ -342,6 +342,32 @@ export function collectResourceCallableTransitionSites(
     ts.forEachChild(node, visit);
   };
   visit(fn.body);
+  const acquired = new Map<string, ResourceProtocolTransition["evidence"]>();
+  for (const site of sites) for (const transition of [...site.transitions, ...(site.fulfillmentTransitions ?? [])]) {
+    if (transition.kind === "acquire") acquired.set(transition.resource, transition.evidence);
+  }
+  const collectReturnedResources = (node: ts.Node): void => {
+    if (node !== fn.body && ts.isFunctionLike(node)) return;
+    if (ts.isReturnStatement(node) && node.expression && ts.isIdentifier(node.expression)) {
+      const returnedDeclaration = resolvedSymbol(checker, node.expression)?.valueDeclaration;
+      const forwardsAlias = returnedDeclaration && ts.isVariableDeclaration(returnedDeclaration)
+        && returnedDeclaration.initializer && ts.isIdentifier(returnedDeclaration.initializer);
+      if (!forwardsAlias) {
+        ts.forEachChild(node, collectReturnedResources);
+        return;
+      }
+      const resource = resourceIdentity(node.expression);
+      const alreadyEscaped = resource && sites.some((site) => [...site.transitions, ...(site.fulfillmentTransitions ?? [])]
+        .some((transition) => transition.kind === "escape" && transition.resource === resource
+          && transition.at >= node.getStart() && transition.at <= node.getEnd()));
+      if (resource && acquired.has(resource) && !alreadyEscaped) sites.push({
+        node,
+        transitions: [{ kind: "escape", resource, at: node.expression.getEnd(), evidence: acquired.get(resource) }],
+      });
+    }
+    ts.forEachChild(node, collectReturnedResources);
+  };
+  collectReturnedResources(fn.body);
   return { resources: [...resources.values()], sites, diagnostics };
 }
 

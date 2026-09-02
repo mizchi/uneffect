@@ -157,8 +157,14 @@ release joins to `unknown`. A direct `return open()` adds an `escape` after
 acquisition. `return await openAsync()` puts both acquisition and escape on the
 fulfillment edge; rejection leaves the resource absent. The lattice records
 this as `absent-or-escaped`, which is a valid terminal state only when `escaped`
-is permitted. Equivalent optional terminal states exist for consume, release,
-and transfer. Malformed parameter names,
+is permitted. A returned immutable `const` alias chain is also normalized to
+the acquired region for both synchronous and directly awaited acquisitions.
+The alias-bound report describes the resource only after successful
+acquisition, so its terminal state is `escaped`; Promise rejection still does
+not create a live resource. Mutable aliases, destructured aliases, properties,
+and dynamically selected return values remain outside this fragment.
+Equivalent optional terminal states exist for consume, release, and transfer.
+Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions
 produce diagnostics or remain outside the fragment. Ambient function and method
 signatures are accepted when their `.d.ts` overlay is an explicit TypeScript
