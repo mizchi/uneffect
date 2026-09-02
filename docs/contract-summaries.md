@@ -9,6 +9,21 @@ verified. Hoare entries require every local obligation and transitive
 relational dependency to be `verified`; Effect entries require the declared
 upper bound to match the analyzed implementation.
 
+A same-file local function or immutable callable `const` may instead be exposed
+by a later static export list, including rename and `as default`:
+
+```ts
+/* uneffect:effect none */
+function implementation(value: number): number { return value + 1 }
+export { implementation as increment, implementation as default }
+```
+
+The producer resolves each `ExportSpecifier` to its local declaration through
+the TypeChecker and retains the local function name for Hoare evidence. Mutable
+bindings and `export { value } from "./other.js"` remain unsupported; the latter
+requires a multi-source producer evidence format rather than pretending the
+barrel source contains the implementation.
+
 ```ts
 import {
   bindContractSummaryBundleToProgram,
@@ -167,7 +182,7 @@ silently upgraded to an authenticated proof.
 
 Exported `const` callables are joined by the root package export symbol and the
 resolved call signature, not by a guessed variable name. Mutable `let`/`var`,
-multi-declaration export statements, reassigned aliases, and non-callable
+multi-declaration variable exports, reassigned aliases, and non-callable
 exports are not published.
 
 Default imports and namespace `.default` calls bind through the TypeChecker's

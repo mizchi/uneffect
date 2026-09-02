@@ -825,4 +825,82 @@ describe("persisted contract summary bundles", () => {
       fileName: producerFile, source: producerSource, program: producerProgram, artifacts: [],
     })).toThrow(/module specifier must be the package root or a subpath/u);
   });
+
+  it("publishes local export-list aliases by TypeChecker symbol identity", () => {
+    const producerFile = "/src/export-list.ts";
+    const producerSource = `
+      /* uneffect:effect none */
+      function internal(value: number): number { return value + 1 }
+      /* uneffect:effect none */
+      const localArrow = (value: number): number => value * 2
+      export { internal as normalize, internal as default, localArrow as double }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/export-list", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+    });
+    expect(bundle.exports.map(({ symbol, functionName }) => ({ symbol, functionName }))).toEqual([
+      { symbol: { module: "@example/export-list", export: "default" }, functionName: "internal" },
+      { symbol: { module: "@example/export-list", export: "double" }, functionName: "localArrow" },
+      { symbol: { module: "@example/export-list", export: "normalize" }, functionName: "internal" },
+    ]);
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-export-list-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "export-list");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/export-list", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export default function normalize(value: number): number
+      export declare function double(value: number): number
+      export declare function normalize(value: number): number
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import byDefault, { double, normalize } from "@example/export-list"
+      byDefault(1)
+      double(2)
+      normalize(2)
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, esModuleInterop: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
+      status: "verified", blockers: [], exports: [
+        expect.objectContaining({ exportName: "default", callSites: [expect.anything()] }),
+        expect.objectContaining({ exportName: "double", callSites: [expect.anything()] }),
+        expect.objectContaining({ exportName: "normalize", callSites: [expect.anything()] }),
+      ],
+    });
+
+    const mutableFile = "/src/mutable-export-list.ts";
+    const mutableSource = `
+      /* uneffect:effect none */
+      let internal = (value: number): number => value + 1
+      export { internal as normalize }
+    `;
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/mutable", packageVersion: "1.0.0", fileName: mutableFile,
+      source: mutableSource, program: programFor(mutableFile, mutableSource), artifacts: [],
+    })).toThrow(/no fully verified exported function contracts/u);
+
+    const reexportDirectory = mkdtempSync(join(tmpdir(), "uneffect-contract-reexport-"));
+    const implementationFile = join(reexportDirectory, "implementation.ts");
+    const barrelFile = join(reexportDirectory, "index.ts");
+    writeFileSync(implementationFile,
+      `/* uneffect:effect none */ export function internal(value: number): number { return value + 1 }`);
+    const barrelSource = `export { internal as normalize } from "./implementation.js"`;
+    writeFileSync(barrelFile, barrelSource);
+    const reexportProgram = ts.createProgram([barrelFile, implementationFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/reexport", packageVersion: "1.0.0", fileName: barrelFile,
+      source: barrelSource, program: reexportProgram, artifacts: [],
+    })).toThrow(/no fully verified exported function contracts/u);
+  });
 });

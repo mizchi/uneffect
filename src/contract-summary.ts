@@ -573,7 +573,7 @@ type DirectExportCallable = {
   functionName: string;
 };
 
-function directExportCallables(statement: ts.Statement): DirectExportCallable[] {
+function directExportCallables(statement: ts.Statement, checker: ts.TypeChecker): DirectExportCallable[] {
   if (ts.isFunctionDeclaration(statement)) {
     if (!statement.body || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)) return [];
     const isDefault = statement.modifiers.some(({ kind }) => kind === ts.SyntaxKind.DefaultKeyword);
@@ -589,6 +589,28 @@ function directExportCallables(statement: ts.Statement): DirectExportCallable[] 
       node: expression, owner: statement, exportName: "default", functionName: expression.name?.text ?? "default",
     }];
     return [];
+  }
+  if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier
+    && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+    return statement.exportClause.elements.flatMap((specifier): DirectExportCallable[] => {
+      const symbol = checker.getExportSpecifierLocalTargetSymbol(specifier);
+      const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+      if (!declaration || declaration.getSourceFile() !== statement.getSourceFile()) return [];
+      if (ts.isFunctionDeclaration(declaration) && declaration.body && declaration.name) return [{
+        node: declaration, owner: declaration, exportName: specifier.name.text, functionName: declaration.name.text,
+      }];
+      if (!ts.isVariableDeclaration(declaration) || !ts.isIdentifier(declaration.name) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent)
+        || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+        || !ts.isVariableStatement(declaration.parent.parent)) return [];
+      let initializer = declaration.initializer;
+      while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+        || ts.isTypeAssertionExpression(initializer) || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+      return ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer) ? [{
+        node: initializer, owner: declaration.parent.parent,
+        exportName: specifier.name.text, functionName: declaration.name.text,
+      }] : [];
+    });
   }
   if (!ts.isVariableStatement(statement)
     || !statement.modifiers?.some(({ kind }) => kind === ts.SyntaxKind.ExportKeyword)
@@ -704,7 +726,8 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
   const callableSummaries = analyzeCallableSummaries(options.program, effectAnalysis, options.builtinRegistry).summaries;
   const resourceSummaries = analyzeResourceCallableSummaries(options.program);
   if (resourceSummaries.diagnostics.length > 0) throw new Error(`contract summary has invalid resource annotations: ${resourceSummaries.diagnostics.map(({ message }) => message).join("; ")}`);
-  const exports = source.statements.flatMap((statement) => directExportCallables(statement).flatMap((exported) => {
+  const checker = options.program.getTypeChecker();
+  const exports = source.statements.flatMap((statement) => directExportCallables(statement, checker).flatMap((exported) => {
     const node = exported.node;
     const callable = callableSummaries.find((summary) => summary.fileName === source.fileName
       && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd());
@@ -780,7 +803,8 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
   for (const diagnostic of resourceSummaries.diagnostics) errors.push(`invalid resource annotation: ${diagnostic.message}`);
   if (source) for (const item of bundle.exports) {
     if (item.symbol.module !== moduleSpecifier) errors.push(`contract summary module ${item.symbol.module} does not match ${moduleSpecifier}`);
-    const exported = source.statements.flatMap(directExportCallables).find(({ node, exportName }) =>
+    const checker = options.program.getTypeChecker();
+    const exported = source.statements.flatMap((statement) => directExportCallables(statement, checker)).find(({ node, exportName }) =>
       exportName === item.symbol.export && node.getStart(source) === item.declarationSpan.start && node.getEnd() === item.declarationSpan.end);
     if (!exported) { errors.push(`contract summary export ${item.symbol.export} does not match a direct exported callable declaration`); continue; }
     const declaration = exported.node;

@@ -79,7 +79,10 @@ Direct immutable exported arrow/function-expression callables use the same
 package export-symbol and resolved-signature binding. Named default functions
 and directly authored static default callable expressions bind through the
 root package's `default` symbol; indirect/mutable default values stay excluded. Mutable or compound
-export declarations remain unsupported. Persisted rejection types and
+variable declarations remain unsupported. Same-file static export lists may
+rename a local function or immutable callable `const`, including `as default`,
+through TypeChecker ExportSpecifier identity. Cross-file re-export producers
+remain unsupported. Persisted rejection types and
 synchronous `Throw` effects feed the shared resource CFG only after exact
 declaration binding; a direct `await` admits rejection, floating Promises do
 not, and package authority stays trusted.

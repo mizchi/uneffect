@@ -694,6 +694,10 @@ introducing another domain-local control-flow or alias model.
      default arrow/function expressions through the root-package `default`
      symbol. Share annotation ownership across Effect, callable, and resource
      summaries; reject indirect or dynamic default values.
+   - [x] Resolve same-file static export-list aliases to local functions and
+     immutable callable `const` declarations by TypeChecker ExportSpecifier
+     identity, including rename and `as default`; retain cross-file re-export
+     producers as unsupported until summaries carry multi-source evidence.
    - [x] Preserve reviewed callback forwarding through Promise reactions and
      lower authenticated package callbacks to the shared host-neutral
      microtask/reject transition without leaking callback `Throw` into the
