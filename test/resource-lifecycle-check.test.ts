@@ -362,4 +362,28 @@ describe("general resource lifecycle check", () => {
       expect(result.diagnostics.filter((diagnostic) => "domain" in diagnostic && diagnostic.domain === "resource")).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("tracks Node FSWatcher use and close through catalog receiver operations", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-node-watcher-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        import { watch } from "node:fs"
+        export function valid(path: string) {
+          const renamed = watch(path, () => undefined)
+          renamed.unref()
+          renamed.close()
+        }
+        export function leaked(path: string) {
+          const watcher = watch(path, () => undefined)
+          watcher.ref()
+        }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "valid", kind: "watcher", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "leaked", kind: "watcher", status: "unsatisfied", state: "available" }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

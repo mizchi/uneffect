@@ -448,6 +448,8 @@ introducing another domain-local control-flow or alias model.
        keeping awaited acquisitions fulfillment-only.
      - [x] Connect Node `createServer`/`listen`/`close` through generic receiver
        resource operations and normalize ephemeral port zero to host authority.
+     - [x] Treat Node `FSWatcher.ref()`/`unref()` as resource uses and `close()`
+       as release, keeping event-loop liveness separate from ownership.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

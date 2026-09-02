@@ -644,6 +644,12 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       { kind: "release", resource: "watcher", target: { kind: "receiver" } },
       { kind: "protocol", name: "watcher", transition: "cancel", inputs: { handle: { kind: "receiver" } } },
     ] } }),
+    ...(["ref", "unref"] as const).map((name) => reviewed("node", {
+      symbol: { module: "node:fs", export: `FSWatcher#${name}` }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "use", resource: "watcher", target: { kind: "receiver" } },
+        { kind: "protocol", name: "watcher", transition: name, inputs: { handle: { kind: "receiver" } } },
+      ] },
+    })),
     reviewed("node", { symbol: { module: "node:net", export: "Server#close" }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 1, queue: "close", releaseReceiver: "server", protocol: { name: "server", transition: "close" } }) }),
     reviewed("node", { symbol: { module: "node:net", export: "Server#listen" }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 2, queue: "next-tick", scope: { kind: "network", format: "connect", target: { kind: "argument", index: 0 }, hostArgument: 1 }, useReceiver: "server", protocol: { name: "server", transition: "listen" } }) }),
     ...["connect", "createConnection"].map((name) => reviewed("node", { symbol: { module: "node:net", export: name }, semantics: deferredNetworkSemantics({ callbackMinimumArguments: 2, scope: { kind: "network", format: "connect", target: { kind: "argument", index: 0 }, hostArgument: 1 } }) })),

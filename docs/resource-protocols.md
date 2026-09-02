@@ -401,6 +401,11 @@ aliases are resolved by TypeChecker identity. `listen(0, host)` requests an
 OS-selected ephemeral port, so its network authority is conservatively widened
 to the host rather than emitting the invalid scope `host:0`.
 
+`node:fs` watchers are also catalog resources. `watch()` acquires a `watcher`,
+`ref()` and `unref()` use it without changing ownership, and `close()` releases
+it. Omitting `close()` remains an unsatisfied lifecycle even after `unref()`;
+event-loop liveness and resource ownership are deliberately distinct facts.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 
