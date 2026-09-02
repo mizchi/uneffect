@@ -215,6 +215,44 @@ export function collectResourceCallableTransitionSites(
     }
     return undefined;
   };
+  const summaryForExpression = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ResourceCallableSummary | undefined => {
+    const symbol = resolvedSymbol(checker, ts.isPropertyAccessExpression(expression) ? expression.name
+      : ts.isElementAccessExpression(expression) ? expression.argumentExpression : expression);
+    if (!symbol || seen.has(symbol)) return undefined;
+    const direct = summaryForDeclarationSymbol(symbol);
+    if (direct) return direct;
+    const nextSeen = new Set(seen).add(symbol);
+    for (const declaration of symbol.declarations ?? []) {
+      if (!ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) continue;
+      let initializer = declaration.initializer;
+      while (ts.isParenthesizedExpression(initializer) || ts.isNonNullExpression(initializer)
+        || ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer)) initializer = initializer.expression;
+      if (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer)) {
+        const resolved = summaryForExpression(initializer, nextSeen);
+        if (resolved) return resolved;
+      }
+      continue;
+    }
+    for (const declaration of symbol.declarations ?? []) {
+      if (!ts.isPropertyAssignment(declaration) && !ts.isShorthandPropertyAssignment(declaration)) continue;
+      const object = declaration.parent;
+      const freezeCall = object.parent;
+      const owner = freezeCall.parent;
+      if (!ts.isObjectLiteralExpression(object) || !ts.isCallExpression(freezeCall) || freezeCall.arguments[0] !== object
+        || !ts.isPropertyAccessExpression(freezeCall.expression) || freezeCall.expression.name.text !== "freeze"
+        || !ts.isVariableDeclaration(owner) || !ts.isVariableDeclarationList(owner.parent)
+        || (owner.parent.flags & ts.NodeFlags.Const) === 0) continue;
+      const freezeSymbol = resolvedSymbol(checker, freezeCall.expression.name);
+      const builtinFreeze = freezeSymbol?.declarations?.some((item) => item.getSourceFile().isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(item.getSourceFile().fileName));
+      if (!builtinFreeze) continue;
+      const initializer = ts.isPropertyAssignment(declaration) ? declaration.initializer : declaration.name;
+      const resolved = summaryForExpression(initializer, nextSeen);
+      if (resolved) return resolved;
+    }
+    return undefined;
+  };
   const factorySummaryForReceiver = (input: ts.Expression, seen = new Set<ts.Symbol>()): ResourceCallableSummary | undefined => {
     let expression = input;
     while (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
@@ -232,7 +270,7 @@ export function collectResourceCallableTransitionSites(
   const visit = (node: ts.Node): void => {
     if (node !== fn && ts.isFunctionLike(node)) return;
     if (ts.isCallExpression(node)) {
-      let summary = summaryForDeclarationSymbol(resolvedSymbol(checker, node.expression));
+      let summary = summaryForExpression(node.expression);
       if (!summary && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))) {
         const key = ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text
           : node.expression.argumentExpression && (ts.isStringLiteralLike(node.expression.argumentExpression)

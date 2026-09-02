@@ -471,6 +471,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Distinguish borrowed builtin resource parameters from locally
        acquired ownership: permit use without local close, but retain
        release/use-after-release transition checking.
+     - [x] Resolve resource callable contracts through immutable direct aliases
+       and builtin-`Object.freeze` callable properties across local/package
+       boundaries; reject mutable callable containers as unknown.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

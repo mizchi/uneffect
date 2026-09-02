@@ -430,6 +430,16 @@ resource, and a later use is still rejected. This avoids turning ordinary
 helpers such as `send(socket)` into false leak reports while retaining
 use-after-close diagnostics.
 
+Resource callable contracts follow immutable callable aliases across local and
+package boundaries. Direct `const shutdown = close` chains are accepted. A
+callable stored in an object is accepted only when the object literal is owned
+by an authenticated builtin `Object.freeze(...)` call and a `const` binding.
+An ordinary mutable object remains unknown; the checker does not infer runtime
+immutability merely because no mutation was observed in the selected file.
+This is an analyzable escape hatch, not a recommendation to introduce
+`Object.freeze` into performance-sensitive code; direct aliases require no
+runtime operation.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 
