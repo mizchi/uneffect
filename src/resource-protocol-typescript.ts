@@ -135,7 +135,8 @@ export function collectBuiltinResourceTransitionSites(
     if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
       const resolved = ts.isCallExpression(node) ? adapter.resolveCall(node) : adapter.resolveConstruct(node);
       const events = resolved?.semantics
-        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }) : [];
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }, undefined,
+          { resolveStaticString: (expression) => adapter.resolveStaticString(expression) }) : [];
       const transitions: ResourceProtocolTransition[] = [];
       const fulfillmentTransitions: ResourceProtocolTransition[] = [];
       let transitionNode: ts.Node = node;

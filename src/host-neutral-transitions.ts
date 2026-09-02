@@ -240,7 +240,8 @@ export function analyzeAbortSignalsInProgram(program: ts.Program, source: ts.Sou
     if (ts.isCallExpression(node)) {
       const resolved = adapter.resolveCall(node);
       const protocol = resolved?.semantics
-        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span })
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }, undefined,
+          { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
           .find((event) => event.kind === "protocol" && event.name === "abort-controller" && event.transition === "abort")
         : undefined;
       const controllerInput = protocol?.kind === "protocol" ? protocol.inputs.controller : undefined;

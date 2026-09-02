@@ -110,7 +110,8 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
         const genericEvents = resolvedBuiltin?.semantics
-          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, child, { symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span })
+          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, child, { symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span }, undefined,
+            { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
           : undefined;
         const inferredBuiltinEffects = genericEvents?.flatMap((event) => event.kind === "effect" ? [event.capability]
           : event.kind === "throw" ? [`Throw<${event.error}>`] : []) ?? [];

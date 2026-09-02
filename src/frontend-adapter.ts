@@ -29,6 +29,7 @@ export interface FrontendSymbolAdapter {
   ownershipKind(expression: ts.Expression): "detached" | "transferred" | "locked" | "shared";
   thrownErrorType(expression: ts.Expression): string;
   resolveConstInitializer(expression: ts.Expression): ts.Expression | undefined;
+  resolveStaticString(expression: ts.Expression): string | undefined;
   isSameReference(left: ts.Expression, right: ts.Expression): boolean;
 }
 
@@ -871,6 +872,22 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       && ts.isVariableDeclarationList(declaration.parent)
       && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
       ? declaration.initializer : undefined;
+  }
+
+  resolveStaticString(input: ts.Expression): string | undefined {
+    const seen = new Set<ts.Expression>();
+    let expression = input;
+    while (!seen.has(expression)) {
+      seen.add(expression);
+      if (ts.isStringLiteralLike(expression)) return expression.text;
+      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+        || ts.isNonNullExpression(expression)) { expression = expression.expression; continue; }
+      const initializer = this.resolveConstInitializer(expression);
+      if (!initializer) return undefined;
+      expression = initializer;
+    }
+    return undefined;
   }
 
   isSameReference(left: ts.Expression, right: ts.Expression): boolean {

@@ -972,7 +972,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   } | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
+    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) });
     const protocol = events.find((event) => event.kind === "protocol" && event.name === "timer" && event.transition === "schedule");
     const callback = semanticCallbacks(call).find((event) => event.timing === "deferred" && event.target.status === "resolved");
     if (!protocol || protocol.kind !== "protocol" || !callback || callback.target.status !== "resolved"
@@ -993,7 +994,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   } | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
+    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) });
     if (events.some((event) => event.kind === "protocol" && event.name === "timer" && event.transition === "schedule")) return undefined;
     if (events.some((event) => event.kind === "protocol" && event.name === "scheduler")) return undefined;
     // Promise reactions are emitted by the Promise state model. Adding the
@@ -1019,7 +1021,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const semanticRelease = (call: ts.CallExpression): { resource: string; target: ts.Expression } | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const release = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+    const release = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
       .find((event) => event.kind === "release" && event.target?.status === "resolved");
     return release?.kind === "release" && release.target?.status === "resolved"
       ? { resource: release.resource, target: release.target.expression } : undefined;
@@ -1030,7 +1033,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   } | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const cancellation = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+    const cancellation = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
       .find((event) => event.kind === "protocol" && event.transition === "cancel"
         && ["timeout", "immediate", "animation-frame", "watcher"].includes(event.name));
     if (!cancellation || cancellation.kind !== "protocol") return undefined;
@@ -1044,7 +1048,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   } | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
       .find((event) => event.kind === "protocol" && event.name === "promise-combinator"
         && ["all", "allSettled", "race", "any"].includes(event.transition));
     if (!protocol || protocol.kind !== "protocol" || protocol.inputs.iterable?.status !== "resolved") return undefined;
@@ -1057,7 +1062,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
       .find((event) => event.kind === "protocol" && event.name === "abort-signal");
     if (!protocol || protocol.kind !== "protocol") return undefined;
     if (protocol.transition === "timeout" && protocol.inputs.delay?.status === "resolved") {
@@ -1079,7 +1085,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   } | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
       .find((event) => event.kind === "protocol" && event.name === "event-listener"
         && (event.transition === "register" || event.transition === "unregister"));
     if (!protocol || protocol.kind !== "protocol") return undefined;
@@ -1097,7 +1104,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     | undefined => {
     const resolved = adapter.resolveCall(call);
     if (!resolved?.semantics) return undefined;
-    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span })
+    const protocol = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
       .find((event) => event.kind === "protocol" && event.name === "scheduler");
     if (!protocol || protocol.kind !== "protocol") return undefined;
     if (protocol.transition === "yield") return { transition: "yield" };

@@ -78,6 +78,10 @@ The TypeScript consumer supplies a symbol-aware static-string resolver, so
 immutable chains such as `const READ = "r" as const; const FLAGS = READ` keep
 the same precision. Mutable bindings, parameters, and unresolved expressions
 do not satisfy the condition and therefore retain both may-effects.
+That resolver is part of the shared frontend adapter and is supplied where
+TypeScript consumers interpret complete catalog events, including effect,
+resource, ownership, async, call-graph, parity, and host-transition paths;
+individual domains do not implement their own const-name lookup.
 
 Node DNS, socket, HTTP, and server lifecycle definitions use generic network
 scope, callback, result, acquire, release, and protocol primitives. Host,

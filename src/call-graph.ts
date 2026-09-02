@@ -220,7 +220,8 @@ function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker, adapter
     if (callback) return callback.timing === "sync" ? "inline" : "deferred";
   }
   if (resolved?.semantics) {
-    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span });
+    const events = interpretBuiltinCallSemantics(resolved.semantics, call, { symbol: resolved.symbol, span: resolved.span }, undefined,
+      { resolveStaticString: (expression) => adapter.resolveStaticString(expression) });
     if (events.some((event) => event.kind === "protocol" && event.name === "scheduler")) return "deferred";
   }
   return "unknown";
@@ -1412,7 +1413,8 @@ export function buildProgramCallGraph(
           }
         });
         const semanticEvents = resolvedBuiltin?.semantics
-          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, node, { symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span }) : [];
+          ? interpretBuiltinCallSemantics(resolvedBuiltin.semantics, node, { symbol: resolvedBuiltin.symbol, span: resolvedBuiltin.span }, undefined,
+            { resolveStaticString: (expression) => adapter.resolveStaticString(expression) }) : [];
         for (const event of semanticEvents) {
           if (event.kind === "unknown" && event.primitive.kind === "callback" && event.primitive.target.kind === "array-elements") {
             edges.push({ caller, kind: "callback-argument", unresolvedName: node.arguments[event.primitive.target.target.kind === "argument" ? event.primitive.target.target.index : 0]?.getText() ?? "<callback collection>", timing: "unknown", span: { start: node.getStart(), end: node.getEnd() }, arguments: [] });

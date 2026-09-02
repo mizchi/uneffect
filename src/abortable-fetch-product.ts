@@ -139,7 +139,8 @@ export function analyzeAbortableFetchesInProgram(program: ts.Program, source: ts
     if (ts.isCallExpression(node)) {
       const resolved = adapter.resolveCall(node);
       const protocol = resolved?.semantics
-        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span })
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }, undefined,
+          { resolveStaticString: (expression) => adapter.resolveStaticString(expression) })
           .find((event) => event.kind === "protocol" && event.name === "fetch" && event.transition === "start")
         : undefined;
       if (!protocol || protocol.kind !== "protocol" || protocol.inputs.input?.status !== "resolved") {

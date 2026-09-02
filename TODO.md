@@ -466,6 +466,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Resolve conditional-effect literals through immutable TypeChecker
        aliases and transparent `as const`/parenthesized expressions; keep
        mutable and unresolved values conservative.
+     - [x] Centralize static-string resolution in the TypeScript frontend
+       adapter and feed the same resolver to every semantic-event consumer.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

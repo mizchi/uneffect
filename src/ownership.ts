@@ -270,7 +270,8 @@ function collectOwnershipEventRecords(program: ts.Program, source: ts.SourceFile
     if (ts.isCallExpression(node)) {
       const resolved = adapter.resolveCall(node);
       const semanticEvents = resolved?.semantics
-        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }) : [];
+        ? interpretBuiltinCallSemantics(resolved.semantics, node, { symbol: resolved.symbol, span: resolved.span }, undefined,
+          { resolveStaticString: (expression) => adapter.resolveStaticString(expression) }) : [];
       for (const event of semanticEvents) {
         if (event.kind === "clone" && event.target.status === "resolved") {
           const value = event.target.expression;

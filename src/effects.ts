@@ -539,23 +539,8 @@ function effectsForGenericSemantics(
   checker?: ts.TypeChecker,
 ): Effect[] | undefined {
   if (!resolved.semantics) return undefined;
-  const resolveStaticString = (input: ts.Expression): string | undefined => {
-    const seen = new Set<ts.Expression>();
-    let expression = input;
-    while (!seen.has(expression)) {
-      seen.add(expression);
-      if (ts.isStringLiteralLike(expression)) return expression.text;
-      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-        || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
-        || ts.isNonNullExpression(expression)) { expression = expression.expression; continue; }
-      const initializer = adapter.resolveConstInitializer(expression);
-      if (!initializer) return undefined;
-      expression = initializer;
-    }
-    return undefined;
-  };
   const events = interpretBuiltinCallSemantics(resolved.semantics, call,
-    { symbol: resolved.symbol, span: resolved.span }, undefined, { resolveStaticString });
+    { symbol: resolved.symbol, span: resolved.span }, undefined, { resolveStaticString: (expression) => adapter.resolveStaticString(expression) });
   const domRegionSemantics = events.some((event) => event.kind === "effect" && event.capability === "Dom" && event.scope?.status === "resolved" && event.scope.kind === "region");
   const effects: Effect[] = [];
   for (const event of events) {
