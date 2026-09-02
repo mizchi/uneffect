@@ -491,34 +491,54 @@ export function collectResourceCallableTransitionSites(
     ts.forEachChild(node, visit);
   };
   visit(fn.body);
-  const acquired = new Map<string, ResourceProtocolTransition["evidence"]>();
+  const acquired = new Map<string, { evidence: ResourceProtocolTransition["evidence"]; at: number }>();
   for (const site of sites) for (const transition of [...site.transitions, ...(site.fulfillmentTransitions ?? [])]) {
-    if (transition.kind === "acquire") acquired.set(transition.resource, transition.evidence);
+    if (transition.kind === "acquire") acquired.set(transition.resource, { evidence: transition.evidence, at: transition.at });
   }
-  const returnedAliasIdentity = (expression: ts.Expression): string | undefined => {
+  const returnedAliasIdentities = (expression: ts.Expression): readonly string[] => {
     if (ts.isConditionalExpression(expression)) {
       const whenTrue = resourceIdentity(expression.whenTrue);
       const whenFalse = resourceIdentity(expression.whenFalse);
-      return whenTrue && whenTrue === whenFalse ? whenTrue : undefined;
+      return whenTrue && whenTrue === whenFalse ? [whenTrue] : [];
     }
-    if (!ts.isIdentifier(expression)) return stableAggregateResourceSlot(checker, fn, expression, resourceIdentity)?.resource;
+    if (!ts.isIdentifier(expression)) {
+      const resource = stableAggregateResourceSlot(checker, fn, expression, resourceIdentity)?.resource;
+      return resource ? [resource] : [];
+    }
     const declaration = resolvedSymbol(checker, expression)?.valueDeclaration;
-    if (declaration && ts.isBindingElement(declaration)) return resourceIdentity(expression);
-    return declaration && ts.isVariableDeclaration(declaration)
+    if (declaration && ts.isBindingElement(declaration)) {
+      const resource = resourceIdentity(expression);
+      return resource ? [resource] : [];
+    }
+    if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer) {
+      const initializer = unwrapResourceExpression(declaration.initializer);
+      if (ts.isConditionalExpression(initializer)) {
+        const whenTrue = resourceIdentity(initializer.whenTrue), whenFalse = resourceIdentity(initializer.whenFalse);
+        const trueAcquire = whenTrue && acquired.get(whenTrue), falseAcquire = whenFalse && acquired.get(whenFalse);
+        if (whenTrue && whenFalse && trueAcquire && falseAcquire
+          && trueAcquire.at >= initializer.whenTrue.getStart() && trueAcquire.at <= initializer.whenTrue.getEnd()
+          && falseAcquire.at >= initializer.whenFalse.getStart() && falseAcquire.at <= initializer.whenFalse.getEnd()) {
+          return whenTrue === whenFalse ? [whenTrue] : [whenTrue, whenFalse];
+        }
+      }
+    }
+    const resource = declaration && ts.isVariableDeclaration(declaration)
       && declaration.initializer && ts.isIdentifier(declaration.initializer)
       ? resourceIdentity(expression) : undefined;
+    return resource ? [resource] : [];
   };
   const collectReturnedResources = (node: ts.Node): void => {
     if (node !== fn.body && ts.isFunctionLike(node)) return;
     if (ts.isReturnStatement(node) && node.expression) {
-      const resource = returnedAliasIdentity(node.expression);
-      const alreadyEscaped = resource && sites.some((site) => [...site.transitions, ...(site.fulfillmentTransitions ?? [])]
-        .some((transition) => transition.kind === "escape" && transition.resource === resource
-          && transition.at >= node.getStart() && transition.at <= node.getEnd()));
-      if (resource && acquired.has(resource) && !alreadyEscaped) sites.push({
-        node,
-        transitions: [{ kind: "escape", resource, at: node.expression.getEnd(), evidence: acquired.get(resource) }],
+      const transitions = returnedAliasIdentities(node.expression).flatMap((resource) => {
+        const acquisition = acquired.get(resource);
+        const alreadyEscaped = sites.some((site) => [...site.transitions, ...(site.fulfillmentTransitions ?? [])]
+          .some((transition) => transition.kind === "escape" && transition.resource === resource
+            && transition.at >= node.getStart() && transition.at <= node.getEnd()));
+        return acquisition && !alreadyEscaped
+          ? [{ kind: "escape" as const, resource, at: node.expression!.getEnd(), evidence: acquisition.evidence }] : [];
       });
+      if (transitions.length > 0) sites.push({ node, transitions });
     }
     ts.forEachChild(node, collectReturnedResources);
   };
@@ -694,7 +714,8 @@ function isFunctionWithBody(node: ts.Node): node is ts.FunctionLikeDeclaration {
 
 function acceptedTerminal(resource: ResourceProtocolResource, state: ResourceProtocolState): boolean {
   return !resource.requiredTerminalStates?.length
-    || state === "absent-or-released" && resource.requiredTerminalStates.includes("released")
+    || state.startsWith("absent-or-") && state !== "absent-or-available"
+      && resource.requiredTerminalStates.includes(state.slice("absent-or-".length) as "released" | "consumed" | "transferred" | "escaped")
     || resource.requiredTerminalStates.includes(state as never);
 }
 

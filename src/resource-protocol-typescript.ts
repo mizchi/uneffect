@@ -308,12 +308,14 @@ function hasConditionalExpressionPlacement(node: ts.Node, statement: ts.Statemen
   return false;
 }
 
-function supportsConditionalExpressionPlacement(node: ts.Node, statement: ts.ExpressionStatement): boolean {
+function supportsConditionalExpressionPlacement(node: ts.Node, statement: ts.Statement): boolean {
   for (let current: ts.Node = node; current.parent && current.parent !== statement; current = current.parent) {
     const parent = current.parent;
     if (ts.isParenthesizedExpression(parent) || ts.isNonNullExpression(parent) || ts.isAsExpression(parent)
       || ts.isTypeAssertionExpression(parent) || ts.isAwaitExpression(parent)
       || ts.isVoidExpression(parent)) continue;
+    if (ts.isVariableDeclaration(parent) && parent.initializer === current) continue;
+    if (ts.isVariableDeclarationList(parent)) continue;
     if (ts.isConditionalExpression(parent)) continue;
     if ((ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent))
       && parent.expression === current && ts.isOptionalChain(parent)) continue;
@@ -348,8 +350,12 @@ export function lowerResourceProtocolCfgInFunction(
     }
     const statement = nearestStatement(site.node, body);
     if (!statement) return { status: "unknown", reason: "unplaced-transition", node: site.node.getText(source) };
+    const expressionContainer = ts.isExpressionStatement(statement) || ts.isVariableStatement(statement)
+      && statement.declarationList.declarations.some((declaration) => declaration.initializer
+        && site.node.getStart(source) >= declaration.initializer.getStart(source)
+        && site.node.getEnd() <= declaration.initializer.getEnd());
     if (hasConditionalExpressionPlacement(site.node, statement)
-      && (!ts.isExpressionStatement(statement) || !supportsConditionalExpressionPlacement(site.node, statement))) {
+      && (!expressionContainer || !supportsConditionalExpressionPlacement(site.node, statement))) {
       return { status: "unknown", reason: "unsupported-control-flow", node: site.node.getText(source) };
     }
     siteStatements.set(site, statement);
@@ -516,6 +522,15 @@ export function lowerResourceProtocolCfgInFunction(
     if (ts.isBlock(statement)) return lowerSequence(statement.statements, continuation, context);
     if (ts.isExpressionStatement(statement)) {
       return lowerExpression(statement.expression, continuation, context);
+    }
+    if (ts.isVariableStatement(statement) && sites.some((site) => siteStatements.get(site) === statement
+      && hasConditionalExpressionPlacement(site.node, statement))) {
+      let next = continuation;
+      for (let index = statement.declarationList.declarations.length - 1; index >= 0; index--) {
+        const initializer = statement.declarationList.declarations[index]!.initializer;
+        if (initializer) next = lowerExpression(initializer, next, context);
+      }
+      return next;
     }
     if (ts.isIfStatement(statement)) {
       const whenTrue = lowerStatement(statement.thenStatement, continuation, context);

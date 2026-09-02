@@ -350,6 +350,7 @@ describe("general resource lifecycle check", () => {
         export function tupleDestructured() { const handle = open(); const [alias] = [handle] as const; return alias }
         export function nestedDestructured() { const handle = open(); const { nested: [{ handle: alias }] } = { nested: [{ handle }] } as const; return alias }
         export function stableSourceDestructured() { const handle = open(); const holder = { nested: [{ handle }] } as const; const { nested: [{ handle: alias }] } = holder; return alias }
+        export function branchAcquired(flag: boolean) { const handle = flag ? open() : open(); return handle }
         export function mutatedSlot() { const handle = open(); const holder = { handle }; holder.handle = open(); return holder.handle }
       `);
       const result = await checkFiles([fileName]);
@@ -361,6 +362,7 @@ describe("general resource lifecycle check", () => {
         expect.objectContaining({ owner: "tupleDestructured", status: "satisfied", state: "escaped" }),
         expect.objectContaining({ owner: "nestedDestructured", status: "satisfied", state: "escaped" }),
         expect.objectContaining({ owner: "stableSourceDestructured", status: "satisfied", state: "escaped" }),
+        expect.objectContaining({ owner: "branchAcquired", status: "satisfied", state: "absent-or-escaped" }),
         expect.objectContaining({ owner: "mutatedSlot", status: "unknown", state: "unknown" }),
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }

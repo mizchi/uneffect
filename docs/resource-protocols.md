@@ -162,9 +162,12 @@ the acquired region for both synchronous and directly awaited acquisitions.
 The alias-bound report describes the resource only after successful
 acquisition, so its terminal state is `escaped`; Promise rejection still does
 not create a live resource. A conditional return is accepted only when both
-branches resolve to the same acquired region. Mutable aliases, destructured
-aliases, and conditionals selecting different resources remain outside this
-fragment. A shallow static property or tuple-index return from a local `const`
+branches resolve to the same already-acquired region. A `const` initialized by
+a conditional whose two branches acquire distinct resources is also accepted:
+each branch-local resource becomes `absent-or-escaped`. This does not admit
+selecting between two resources acquired before the condition, because the
+unselected resource would leak. Mutable aliases remain outside this fragment.
+A shallow static property or tuple-index return from a local `const`
 object/array is also accepted when the stored value resolves to one acquired
 region and the container has no other use. Container mutation, reassignment,
 passing the container elsewhere, dynamic keys, and spreads remain fail-closed.

@@ -495,8 +495,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Resolve nested destructuring through a stable local `const` aggregate
        source when its only observation is that destructuring; reject reused,
        aliased, mutated, or escaped source containers.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend returned-resource identity through conditionals selecting
-       different resources without conflating their ownership obligations.
+     - [x] Lower conditional variable initializers through the expression CFG
+       and preserve distinct branch-local acquisition identities through return
+       as `absent-or-escaped`; keep pre-acquired alternative selection leaking.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only
