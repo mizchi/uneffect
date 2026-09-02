@@ -738,7 +738,7 @@ function domPropertyAccessMode(access: ts.PropertyAccessExpression | ts.ElementA
 
 function effectsForDomProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker): Effect[] | undefined {
   const resolved = adapter.resolveProperty(access);
-  if (!resolved) return undefined;
+  if (!resolved?.semantics) return undefined;
   const mode = domPropertyAccessMode(access);
   const events = [
     ...(mode.read ? interpretBuiltinPropertySemantics(resolved.semantics, access, resolved, "read") : []),
@@ -1896,6 +1896,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child)) for (const effect of effectsForDomProperty(child, adapter, checker) ?? []) {
         if (observableMutation(effect, locals)) observe(effect, child);
       }
+      if ((ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child))
+        && adapter.resolveProperty(child)?.evidence === "unknown") unknownExternalEvidence.add(graphNode.id);
       if (ts.isElementAccessExpression(child)) for (const effect of effectsForDynamicDomProperty(child, adapter)) {
         if (observableMutation(effect, locals)) observe(effect, child);
       }
@@ -2542,6 +2544,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (adapter.mayInvokeUserCode(node) && !resolvedDynamicDependency && !resolvedAwaitedDynamicDependency) markUnknown("possible-user-code", "a top-level operation may invoke user code outside the resolved call graph");
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter, checker) ?? []) {
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+      }
+      if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
+        && adapter.resolveProperty(node)?.evidence === "unknown") {
+        markUnknown("unknown-external-evidence", "a reviewed property contract does not match this receiver root");
       }
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of globalVariableEffects(checker, node) ?? []) addEffect(effects, effect);
       if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {

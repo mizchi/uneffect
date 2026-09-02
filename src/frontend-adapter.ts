@@ -18,7 +18,8 @@ export interface ResolvedCallSite {
 export interface ResolvedPropertySite {
   symbol: BuiltinSymbolKey;
   span: SourceSpan;
-  semantics: BuiltinSemantics;
+  semantics?: BuiltinSemantics;
+  evidence?: "trusted" | "unknown";
 }
 
 export interface FrontendSymbolAdapter {
@@ -396,6 +397,22 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         ? undefined
         : this.#checker.getPropertyOfType(this.#checker.getTypeAtLocation(access.expression), literalName);
     let contract = symbol ? this.#resolveSymbolContract(symbol) : undefined;
+    if (!contract) {
+      const rooted = [...this.#rootedContracts.values()].flat().filter(({ root, path }) =>
+        hasStableRootPath(this.#checker, access, new Set([root]), path));
+      if (rooted.length === 1) contract = rooted[0]!.contract;
+      else if (rooted.length > 1) return {
+        symbol: rooted[0]!.contract.symbol, span: { start: access.getStart(), end: access.getEnd() }, evidence: "unknown",
+      };
+      else if (symbol) {
+        const candidates = this.#rootedContracts.get(symbol) ?? [];
+        if (candidates.length > 0) return {
+          symbol: candidates[0]!.contract.symbol,
+          span: { start: access.getStart(), end: access.getEnd() },
+          evidence: "unknown",
+        };
+      }
+    }
     const propertyName = ts.isPropertyAccessExpression(access) ? access.name.text : literalName;
     if (!contract && propertyName !== undefined) {
       const receiverType = this.#checker.getTypeAtLocation(access.expression);
@@ -414,6 +431,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       symbol: contract.symbol,
       span: { start: access.getStart(), end: access.getEnd() },
       semantics: contract.semantics,
+      evidence: "trusted",
     };
   }
 
@@ -425,7 +443,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         || ts.isNonNullExpression(value)) value = value.expression;
       if (ts.isPropertyAccessExpression(value) || ts.isElementAccessExpression(value)) {
         const property = this.resolveProperty(value);
-        const aliasesReceiver = property?.semantics.primitives.some((primitive) => primitive.kind === "property"
+        const aliasesReceiver = property?.semantics?.primitives.some((primitive) => primitive.kind === "property"
           && primitive.read.some((nested) => nested.kind === "result" && nested.refinement.kind === "alias"
             && nested.refinement.target.kind === "receiver"));
         if (aliasesReceiver) return resolve(value.expression) ?? value.expression;

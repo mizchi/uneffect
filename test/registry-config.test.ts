@@ -118,11 +118,6 @@ describe("versioned caller-owned registry configuration", () => {
       trustReason: "reviewed", trustOwner: "platform",
     }] }, "expected at least one member"],
     [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
-      symbol: { module: "x", export: "api", path: ["value"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
-      trustReason: "reviewed", trustOwner: "platform",
-      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "property", read: [], write: [] }] },
-    }] }, "callable semantics, not property primitives"],
-    [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
       symbol: { module: "x", export: "f" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "effect", capability: "Fetch<" }] },
     }] }, "invalid effect"],

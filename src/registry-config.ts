@@ -157,9 +157,6 @@ function builtin(value: unknown, path: string): BuiltinContract {
   if (input.semantics !== undefined) {
     semanticsValue = registrySemantics(input.semantics, `${path}.semantics`);
   }
-  if (memberPath && semanticsValue?.primitives.some((primitive) => primitive.kind === "property")) {
-    fail(`${path}.semantics`, "symbol.path currently supports callable semantics, not property primitives");
-  }
   const callableResult = input.callableResult === undefined ? undefined : record(input.callableResult, `${path}.callableResult`);
   if (callableResult) keys(callableResult, ["semantics", "capturedCallbackArguments"], `${path}.callableResult`);
   const callableResultValue: BuiltinContract["callableResult"] = callableResult ? {

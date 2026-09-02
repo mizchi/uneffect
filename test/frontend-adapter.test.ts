@@ -84,7 +84,7 @@ describe("TypeChecker symbol adapter", () => {
         name: "@datadog/browser-rum", version: "6.0.0", types: "index.d.ts",
       }));
       writeFileSync(join(packageRoot, "index.d.ts"), `
-        export declare const datadogRum: { addAction(name: string, context?: object): void };
+        export declare const datadogRum: { addAction(name: string, context?: object): void; status: string };
         export declare const fake: typeof datadogRum;
       `);
       writeFileSync(fileName, `
@@ -95,6 +95,10 @@ describe("TypeChecker symbol adapter", () => {
         const { addAction: destructuredAction } = datadogRum;
         export function reportDestructured() { destructuredAction("destructured"); }
         export function reportFake() { fake.addAction("not_datadog"); }
+        export function readStatus() { return datadogRum.status; }
+        export function readFakeStatus() { return fake.status; }
+        export function writeStatus() { datadogRum.status = "ready"; }
+        export function writeFakeStatus() { fake.status = "ready"; }
       `);
       const program = ts.createProgram([fileName], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
@@ -105,6 +109,15 @@ describe("TypeChecker symbol adapter", () => {
         runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
         semantics: { schema: "uneffect-semantic-primitives/v1" as const, primitives: [{ kind: "effect" as const, capability: "Fetch<POST, \"https://browser-intake-datadoghq.com/api/v2/**\">" }] },
         trustReason: "reviewed Datadog wrapper delivery authority", trustOwner: "telemetry-platform",
+      }, {
+        symbol: { module: "@datadog/browser-rum", export: "datadogRum", path: ["status"] },
+        runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
+        semantics: { schema: "uneffect-semantic-primitives/v1" as const, primitives: [{
+          kind: "property" as const,
+          read: [{ kind: "effect" as const, capability: "CookieRead<\"dd-session\">" }],
+          write: [{ kind: "effect" as const, capability: "CookieWrite<\"dd-session\">" }],
+        }] },
+        trustReason: "reviewed Datadog status read", trustOwner: "telemetry-platform",
       }] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "report"))
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
@@ -114,6 +127,14 @@ describe("TypeChecker symbol adapter", () => {
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Fetch" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "reportFake"))
         .toMatchObject({ evidence: "unknown", effects: [], unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "readStatus"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "CookieRead" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "readFakeStatus"))
+        .toMatchObject({ evidence: "unknown", effects: [], unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "writeStatus"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "CookieWrite" })] });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.0") }).summaries.find((item) => item.functionName === "writeFakeStatus"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
       expect(analyzeProgramEffects(program, { builtinRegistry: registry("6.0.1") }).summaries.find((item) => item.functionName === "report"))
         .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unknown-external-evidence" })] });
     } finally { rmSync(directory, { recursive: true, force: true }); }

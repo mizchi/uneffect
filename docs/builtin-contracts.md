@@ -150,9 +150,9 @@ export or value with the same structural TypeScript member type does not inherit
 the contract and is reported as unknown. Paths can be nested. This is distinct
 from the existing `Type#member` spelling used for reviewed instance protocols:
 the latter describes a receiver type, while `path` identifies one exported
-runtime object. Path contracts currently apply to calls; property-read/write
-primitives are rejected by the config loader until their root-provenance path
-is connected.
+runtime object. Path contracts apply to calls, while property-read/write
+primitives use the same root-provenance check. A structurally compatible
+property reached from another root remains unknown.
 
 A contract may declare `result({ kind: "fresh" })` in `semantics.primitives` when every call returns a
 new caller-owned object with no pre-existing aliases. In-place mutation of that
