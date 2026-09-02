@@ -345,16 +345,20 @@ describe("general resource lifecycle check", () => {
         /* uneffect:acquire return */ declare function open(): Handle
         export function objectSlot() { const handle = open(); const holder = { handle }; return holder.handle }
         export function tupleSlot() { const handle = open(); const holder = [handle] as const; return holder[0] }
+        export function nestedSlot() { const handle = open(); const holder = { nested: [{ handle }] } as const; return holder.nested[0].handle }
         export function objectDestructured() { const handle = open(); const { handle: alias } = { handle }; return alias }
         export function tupleDestructured() { const handle = open(); const [alias] = [handle] as const; return alias }
+        export function nestedDestructured() { const handle = open(); const { nested: [{ handle: alias }] } = { nested: [{ handle }] } as const; return alias }
         export function mutatedSlot() { const handle = open(); const holder = { handle }; holder.handle = open(); return holder.handle }
       `);
       const result = await checkFiles([fileName]);
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
         expect.objectContaining({ owner: "objectSlot", status: "satisfied", state: "escaped" }),
         expect.objectContaining({ owner: "tupleSlot", status: "satisfied", state: "escaped" }),
+        expect.objectContaining({ owner: "nestedSlot", status: "satisfied", state: "escaped" }),
         expect.objectContaining({ owner: "objectDestructured", status: "satisfied", state: "escaped" }),
         expect.objectContaining({ owner: "tupleDestructured", status: "satisfied", state: "escaped" }),
+        expect.objectContaining({ owner: "nestedDestructured", status: "satisfied", state: "escaped" }),
         expect.objectContaining({ owner: "mutatedSlot", status: "unknown", state: "unknown" }),
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }

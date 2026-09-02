@@ -489,9 +489,11 @@ introducing another domain-local control-flow or alias model.
      - [x] Resolve flat `const` object/tuple destructuring from direct literals,
        including renamed and shorthand object bindings, into the originating
        resource identity; keep mutable/default/rest/computed forms fail-closed.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend returned-resource identity through nested aggregate slots,
-       non-literal destructuring sources, and conditionals selecting different
-       resources.
+     - [x] Generalize direct-literal aggregate lookup to canonical nested
+       property/literal-index paths, including mixed nested destructuring and
+       parent-slot mutation screening.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend returned-resource identity through non-literal destructuring
+       sources and conditionals selecting different resources.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only

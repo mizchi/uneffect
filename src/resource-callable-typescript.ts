@@ -234,51 +234,76 @@ function aggregateLiteralValue(initializer: ts.Expression, key: string): ts.Expr
   return undefined;
 }
 
-function destructuredResourceValue(checker: ts.TypeChecker, identifier: ts.Identifier): ts.Expression | undefined {
-  const declaration = resourceValueSymbol(checker, identifier)?.valueDeclaration;
-  if (!declaration || !ts.isBindingElement(declaration) || !ts.isIdentifier(declaration.name)
-    || declaration.dotDotDotToken || declaration.initializer) return undefined;
-  const pattern = declaration.parent;
-  if (!ts.isObjectBindingPattern(pattern) && !ts.isArrayBindingPattern(pattern)) return undefined;
-  const variable = pattern.parent;
-  if (!ts.isVariableDeclaration(variable) || variable.name !== pattern || !variable.initializer
-    || !ts.isVariableDeclarationList(variable.parent)
-    || (ts.getCombinedNodeFlags(variable.parent) & ts.NodeFlags.Const) === 0) return undefined;
-  let key: string | undefined;
-  if (ts.isObjectBindingPattern(pattern)) {
-    const name = declaration.propertyName ?? declaration.name;
-    key = ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name) ? name.text : undefined;
-  } else {
-    const index = pattern.elements.indexOf(declaration);
-    if (index >= 0) key = String(index);
+function aggregateLiteralPathValue(initializer: ts.Expression, keys: readonly string[]): ts.Expression | undefined {
+  let value: ts.Expression | undefined = initializer;
+  for (const key of keys) {
+    value = value && aggregateLiteralValue(value, key);
+    if (!value) return undefined;
   }
-  return key === undefined ? undefined : aggregateLiteralValue(variable.initializer, key);
+  return value;
 }
 
-/** Resolve a shallow local aggregate slot only when its container has no other observable use. */
+function staticAggregateAccessPath(expression: ts.Expression): { root: ts.Identifier; keys: readonly string[] } | undefined {
+  let current = unwrapResourceExpression(expression);
+  const keys: string[] = [];
+  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    if (ts.isPropertyAccessExpression(current)) keys.unshift(current.name.text);
+    else if (current.argumentExpression
+      && (ts.isStringLiteralLike(current.argumentExpression) || ts.isNumericLiteral(current.argumentExpression))) {
+      keys.unshift(current.argumentExpression.text);
+    } else return undefined;
+    current = unwrapResourceExpression(current.expression);
+  }
+  return ts.isIdentifier(current) && keys.length > 0 ? { root: current, keys } : undefined;
+}
+
+function destructuredResourceValue(checker: ts.TypeChecker, identifier: ts.Identifier): ts.Expression | undefined {
+  const first = resourceValueSymbol(checker, identifier)?.valueDeclaration;
+  if (!first || !ts.isBindingElement(first) || !ts.isIdentifier(first.name)) return undefined;
+  let element: ts.BindingElement = first;
+  const keys: string[] = [];
+  let variable: ts.VariableDeclaration | undefined;
+  while (ts.isBindingElement(element)) {
+    if (element.dotDotDotToken || element.initializer) return undefined;
+    const pattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern = element.parent;
+    if (ts.isObjectBindingPattern(pattern)) {
+      const name = element.propertyName ?? element.name;
+      if (!ts.isIdentifier(name) && !ts.isStringLiteralLike(name) && !ts.isNumericLiteral(name)) return undefined;
+      keys.unshift(name.text);
+    } else if (ts.isArrayBindingPattern(pattern)) {
+      const index = pattern.elements.indexOf(element);
+      if (index < 0) return undefined;
+      keys.unshift(String(index));
+    } else return undefined;
+    const owner: ts.Node = pattern.parent;
+    if (ts.isVariableDeclaration(owner)) variable = owner;
+    else if (ts.isBindingElement(owner)) element = owner;
+    else return undefined;
+    if (variable) break;
+  }
+  if (!variable || variable.name !== element.parent || !variable.initializer
+    || !ts.isVariableDeclarationList(variable.parent)
+    || (ts.getCombinedNodeFlags(variable.parent) & ts.NodeFlags.Const) === 0) return undefined;
+  return aggregateLiteralPathValue(variable.initializer, keys);
+}
+
+/** Resolve a local aggregate path only when its container has no other observable use. */
 function stableAggregateResourceSlot(
   checker: ts.TypeChecker,
   fn: ts.FunctionLikeDeclaration,
   expression: ts.Expression,
   resourceIdentity: (value: ts.Expression) => string | undefined,
 ): StableAggregateResourceSlot | undefined {
-  const access = unwrapResourceExpression(expression);
-  let root: ts.Expression, key: string;
-  if (ts.isPropertyAccessExpression(access)) {
-    root = access.expression; key = access.name.text;
-  } else if (ts.isElementAccessExpression(access) && access.argumentExpression
-    && (ts.isStringLiteralLike(access.argumentExpression) || ts.isNumericLiteral(access.argumentExpression))) {
-    root = access.expression; key = access.argumentExpression.text;
-  } else return undefined;
-  root = unwrapResourceExpression(root);
-  if (!ts.isIdentifier(root)) return undefined;
+  const path = staticAggregateAccessPath(expression);
+  if (!path) return undefined;
+  const root = path.root;
   const rootSymbol = resolvedSymbol(checker, root);
   const declaration = rootSymbol?.valueDeclaration;
   if (!rootSymbol || !declaration || !ts.isVariableDeclaration(declaration) || !ts.isIdentifier(declaration.name)
     || !ts.isVariableDeclarationList(declaration.parent)
     || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0
     || !declaration.initializer) return undefined;
-  const storedExpression = aggregateLiteralValue(declaration.initializer, key);
+  const storedExpression = aggregateLiteralPathValue(declaration.initializer, path.keys);
   if (!storedExpression) return undefined;
   let stable = true;
   const visit = (node: ts.Node): void => {

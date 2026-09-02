@@ -167,11 +167,12 @@ aliases, and conditionals selecting different resources remain outside this
 fragment. A shallow static property or tuple-index return from a local `const`
 object/array is also accepted when the stored value resolves to one acquired
 region and the container has no other use. Container mutation, reassignment,
-passing the container elsewhere, dynamic keys, spreads, and nested slots remain
-fail-closed. Flat `const` object/tuple destructuring from a direct literal also
-preserves the stored resource identity, including renamed object bindings and
-object shorthand. Mutable bindings, defaults, rest elements, computed names,
-and non-literal destructuring sources are not admitted.
+passing the container elsewhere, dynamic keys, and spreads remain fail-closed.
+Static nested object/array paths may mix property and literal-index segments.
+Matching nested `const` object/tuple destructuring from a direct
+literal also preserves the stored resource identity, including renamed object
+bindings and object shorthand. Mutable bindings, defaults, rest elements,
+computed names, spreads, and non-literal destructuring sources are not admitted.
 Equivalent optional terminal states exist for consume, release, and transfer.
 Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions
