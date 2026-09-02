@@ -28,7 +28,7 @@ export class AssumptionRegistryError extends Error {
 
 const domains = new Set<AssumptionDomain>([
   "builtin", "module-initialization", "typed-array", "temporal-contract",
-  "dispatch-sealing", "resource-callable",
+  "dispatch-sealing", "resource-callable", "package-contract",
 ]);
 
 function fail(path: string, message: string): never {

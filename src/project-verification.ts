@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
+import { bindContractSummaryBundleToProgram, type ContractSummaryBundleV1 } from "./contract-summary.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { analyzeCallableSummaries } from "./callable-summary.js";
@@ -64,6 +65,8 @@ export interface VerifyUneffectProjectBaseOptions {
   moduleInitializationEntry?: string;
   /** Apply one solver policy to every Z3-backed project verification domain. */
   z3?: Z3ExecutionOptions;
+  /** Producer-verified package contracts to bind to installed declarations. */
+  contractSummaryBundles?: readonly ContractSummaryBundleV1[];
 }
 
 export interface VerifyUneffectProjectOptions extends VerifyUneffectProjectBaseOptions {
@@ -323,6 +326,17 @@ async function verifyUneffectProjectFiles(
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
+  const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
+    bindContractSummaryBundleToProgram(bundle, program));
+  const contractSummaryAssumptions: AssumptionEntry[] = contractSummaryBindings.flatMap((binding) => binding.exports.flatMap((item) =>
+    item.callSites.map((call) => ({
+      id: `package-contract:${binding.package.name}@${binding.package.version}:${call.fileName}:${call.span.start}`,
+      evidence: "trusted" as const,
+      domain: "package-contract" as const,
+      reason: "persisted producer contract authority is not authenticated by declaration binding",
+      dependency: { module: binding.package.name, packageVersion: binding.package.version },
+      scope: { fileName: call.fileName, functionName: item.exportName, span: call.span },
+    }))));
   const refinementManifests: RefinementBindingManifest[] = [];
   const refinementLinks: ProjectRefinementLinkEvidence[] = [];
   for (const [fileName, source] of Object.entries(options.files)) {
@@ -375,6 +389,22 @@ async function verifyUneffectProjectFiles(
   if (typescriptDiagnostics.some((item) => item.kind === "options" && item.severity === "error")) {
     for (const fileName of Object.keys(options.files)) invalidSources.add(fileName);
   }
+  for (const binding of contractSummaryBindings) if (binding.status === "unknown") {
+    const fileName = Object.keys(options.files)[0] ?? "<project>";
+    for (const message of binding.blockers) {
+      const obligationId = `contract_summary_${createHash("sha256").update(`${binding.package.name}:${message}`).digest("hex").slice(0, 20)}`;
+      const artifact: ProjectVerificationObligation = {
+        obligationId, status: "unknown", evidence: "unknown", backend: "z3", result: "unknown",
+        source: { fileName, span: { start: 0, end: 0 } }, message,
+      };
+      pendingContractObligations.push(artifact);
+      diagnostics.push({
+        fileName, functionName: "<package-contract>", clause: "unsupported", line: 1,
+        message, obligationId, artifact,
+        notes: [{ label: "because", detail: "the supplied package contract summary did not authenticate against the declaration selected by this TypeScript Program" }],
+      });
+    }
+  }
   const analyzedEffects = analyzeProgramEffects(effectProgram, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
     externalFunctionEffects: compilerContext?.externalFunctionEffects,
@@ -408,7 +438,7 @@ async function verifyUneffectProjectFiles(
   typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
   diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
   const baseAssumptions = collectAssumptionLedger(effectProgram, effectFiles, typedArrays, options.assumptionPolicy, options.builtinRegistry, options.assumptionRegistry);
-  const assumptions = mergeAssumptionLedger(program, baseAssumptions.ledger, iteratorAssumptions, options.assumptionPolicy);
+  const assumptions = mergeAssumptionLedger(program, baseAssumptions.ledger, [...iteratorAssumptions, ...contractSummaryAssumptions], options.assumptionPolicy);
   diagnostics.push(...assumptions.diagnostics);
   const runtimeInputs = Object.fromEntries(Object.entries(options.files).map(([fileName, source]) => {
     const contractSource = runtimeContractFiles[fileName] ?? source;
@@ -422,7 +452,9 @@ async function verifyUneffectProjectFiles(
   for (const [fileName, source] of Object.entries(options.files)) {
     if (fileName.endsWith(".uneffect.ts")) continue;
     const contractSource = contractFiles[fileName] ?? source;
-    const verification = await verifyContractObligations(fileName, contractSource, options.z3, program);
+    const verification = await verifyContractObligations(fileName, contractSource, options.z3, program, {
+      externalContractBindings: contractSummaryBindings.flatMap((binding) => binding.exports),
+    });
     const effectBoundArtifacts = attachContractEffectBoundaries(verification.artifacts, effects.summaries);
     pendingContractObligations.push(...effectBoundArtifacts.map((artifact) => invalidSources.has(fileName)
       ? { ...artifact, status: "unknown" as const, evidence: "unknown" as const, backend: "z3" as const, result: "unknown" as const, message: "TypeScript errors prevent proof-grade contract evidence for this source" }
@@ -526,6 +558,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     ...(options.assumptionPolicy === undefined ? {} : { assumptionPolicy: options.assumptionPolicy }),
     ...(options.assumptionRegistry === undefined ? {} : { assumptionRegistry: options.assumptionRegistry }),
     ...(options.builtinRegistry === undefined ? {} : { builtinRegistry: options.builtinRegistry }),
+    ...(options.contractSummaryBundles === undefined ? {} : { contractSummaryBundles: options.contractSummaryBundles }),
   };
   for (const project of workspace.projects) {
     if (project.fileNames.length === 0) continue;

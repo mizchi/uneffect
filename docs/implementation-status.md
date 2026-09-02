@@ -833,7 +833,9 @@ same property is proved for arbitrary TypeScript.
   return/throw guards become verified `Reject<Error>` on the rejected edge and
   add the selected Boolean guard to the normal fulfillment relation. Only the reviewed standard Error
   constructors with zero or one static string argument enter this inference;
-  calls and computed error producers remain unknown. The callable must be
+  calls and computed error producers remain unknown. A body containing only
+  one direct `throw new StandardError(...)` is represented as definitely
+  rejecting, without adding a fictitious fulfillment edge. The callable must be
   direct or an immutable alias, and both the callable and source binding must
   be free of reassignment. Direct immutable safe-integer and Boolean literal
   `const` captures are substituted into the relation by TypeChecker symbol
@@ -871,13 +873,18 @@ same property is proved for arbitrary TypeScript.
   Relation evidence carries schema v1, declaration file/span/SHA-256, and exact
   TypeScript version; stale or incompatible evidence downgrades the caller to
   `unknown`. Project verification applies this pass after solving every file.
-  Persisted package summaries, compiler-option identity, and exported-symbol
-  provenance are not consumed at call sites yet. The standalone
+  Persisted package summaries can now be consumed at call sites through a
+  TypeChecker-resolved installed declaration. The standalone
   `uneffect-contract-summary/v1` producer/validator now emits package/version,
   TypeScript/compiler-options, source/declaration/signature digests, clauses,
   and supporting artifact IDs only for fully verified direct named exports.
-  It validates integrity against the producer Program. `.d.ts`, export-map,
-  tarball, bundled-runtime, and publisher-authenticity linkage remain open.
+  It validates integrity against the producer Program. The consumer binder and
+  repeatable CLI `--contract-summary` option require matching summary content,
+  TypeScript version, exact installed package version, export signature, and
+  record the resolved `.d.ts` bytes. Named aliases and source re-exports are
+  resolved by TypeChecker call identity. Producer-to-emitted-declaration build
+  linkage, tarball/bundled-runtime identity, publisher authenticity, and Effect
+  summary consumption remain open.
   Runtime assertion generation is optional.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint

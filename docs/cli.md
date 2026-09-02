@@ -61,6 +61,10 @@ schema is published as `schemas/uneffect-check-v1.schema.json`. Both `check` and
 `--config <uneffect.registry.json>` for a versioned caller-owned semantic
 registry. `check` also accepts `--assumptions <assumptions.json>` for the
 versioned caller-owned review records referenced by source trust IDs.
+`--contract-summary <uneffect-contract.json>` binds a producer-verified scalar
+package contract to the exact installed package version and
+TypeChecker-resolved declaration; repeat it for multiple packages. Digest,
+version, compiler, and signature drift fail closed.
 `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.

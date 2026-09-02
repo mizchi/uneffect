@@ -623,6 +623,14 @@ introducing another domain-local control-flow or alias model.
    exact package, export, declaration, compiler, and source provenance. Unknown
    or stale summaries must block assurance; publisher/build authenticity stays
    a separate trust claim. ([#7](https://github.com/mizchi/uneffect/issues/7), [#20](https://github.com/mizchi/uneffect/issues/20))
+   - [x] Bind verified scalar contract summaries to TypeChecker-resolved calls
+     through named aliases and source re-exports. Require matching summary
+     content, TypeScript version, installed package version, and callable
+     signature; retain resolved declaration bytes and fail closed on drift.
+     Expose the path programmatically and through repeatable CLI
+     `--contract-summary` inputs.
+   - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Bind producer evidence to emitted declaration/build artifacts, consume
+     Effect/callable/resource summaries, and add publisher/tarball authenticity.
 6. [x] [#25](https://github.com/mizchi/uneffect/issues/25) Expand common expression semantics in measured frequency order:
    optional chaining and nullish coalescing, destructuring/default initializers,
    stable method receivers and `this`, iterator-based `for...of`, then reviewed
@@ -2588,6 +2596,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     `try/catch`, then convert any uncaught `Throw<E>` completion to
     `Reject<E>` exactly at the async function boundary. This applies uniformly
     to direct throw, declared never-call, assertion, and call-time throw edges.
+  - [x] Infer definite rejection for a local async producer whose entire body
+    is one direct `throw new StandardError(staticMessage)`, including immutable
+    callable aliases and stored Promise observation. Call-produced or computed
+    Error values remain fail-closed.
   - [ ] Add general inferred Promise producers, presence-only object fulfillment, ([#25](https://github.com/mizchi/uneffect/issues/25))
     property/destructured targets, opaque catch payloads, persisted consumer
     linkage/authenticity, and interprocedural heap state.

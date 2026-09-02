@@ -255,7 +255,7 @@
       "required": ["id", "evidence", "domain", "reason", "scope"],
       "properties": {
         "id": { "type": "string" }, "evidence": { "const": "trusted" },
-        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-contract", "dispatch-sealing", "resource-callable"] },
+        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-contract", "dispatch-sealing", "resource-callable", "package-contract"] },
         "reason": { "type": "string" }, "owner": { "type": "string" }, "expiresOn": { "type": "string", "format": "date" },
         "reviewDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "scope": {
@@ -273,7 +273,7 @@
       "required": ["assumptionId", "domain", "rule", "message", "scope"],
       "properties": {
         "assumptionId": { "type": "string" },
-        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-contract", "dispatch-sealing", "resource-callable"] },
+        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-contract", "dispatch-sealing", "resource-callable", "package-contract"] },
         "rule": { "enum": ["owner-required", "expiration-required", "invalid-expiration", "expired"] },
         "message": { "type": "string" },
         "scope": {

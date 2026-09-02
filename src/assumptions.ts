@@ -7,7 +7,7 @@ import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 import { resolveAssumptionRecord, type AssumptionRegistry } from "./assumption-registry.js";
 
-export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-contract" | "dispatch-sealing" | "resource-callable";
+export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-contract" | "dispatch-sealing" | "resource-callable" | "package-contract";
 
 export interface AssumptionScope {
   fileName: string;

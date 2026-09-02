@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { VerificationArtifact } from "./contracts.js";
@@ -43,6 +46,27 @@ export interface ValidateContractSummaryBundleOptions {
   program: ts.Program;
 }
 
+export interface BoundContractSummaryExportV1 {
+  exportName: string;
+  /** Declaration binding is verified; persisted producer authority is trusted. */
+  evidence: "trusted";
+  declarationFileName: string;
+  declarationSpan: { start: number; end: number };
+  declarationDigest: string;
+  signature: string;
+  callSites: Array<{ fileName: string; span: { start: number; end: number } }>;
+  summary: ContractSummaryExportV1;
+}
+
+export interface BoundContractSummaryBundleV1 {
+  schema: "uneffect-bound-contract-summary/v1";
+  status: "not-applicable" | "verified" | "unknown";
+  package: { name: string; version: string };
+  compiler: { producerTypeScriptVersion: string; consumerTypeScriptVersion: string; consumerCompilerOptionsDigest: string };
+  exports: BoundContractSummaryExportV1[];
+  blockers: string[];
+}
+
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 function ordered(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(ordered);
@@ -52,6 +76,161 @@ function ordered(value: unknown): unknown {
 const canonical = (value: unknown): string => JSON.stringify(ordered(value));
 const compilerOptionsDigest = (program: ts.Program): string => sha256(canonical(program.getCompilerOptions()));
 const bundleDigest = (bundle: Omit<ContractSummaryBundleV1, "contentDigest">): string => sha256(canonical(bundle));
+
+/** Load a versioned summary. Full provenance validation happens when it is bound to a Program. */
+export async function loadContractSummaryBundle(fileName: string): Promise<ContractSummaryBundleV1> {
+  let value: unknown;
+  try { value = JSON.parse(await readFile(fileName, "utf8")); }
+  catch (cause) { throw new Error(`cannot load contract summary ${fileName}: ${cause instanceof Error ? cause.message : String(cause)}`); }
+  if (!value || typeof value !== "object" || (value as { schema?: unknown }).schema !== "uneffect-contract-summary/v1") {
+    throw new Error(`unsupported contract summary schema in ${fileName}`);
+  }
+  const bundle = value as ContractSummaryBundleV1;
+  if (!bundle.package || typeof bundle.package.name !== "string" || typeof bundle.package.version !== "string"
+    || !bundle.compiler || typeof bundle.compiler.typescriptVersion !== "string"
+    || typeof bundle.compiler.compilerOptionsDigest !== "string" || !bundle.producer
+    || typeof bundle.producer.fileName !== "string" || typeof bundle.producer.sourceDigest !== "string"
+    || !Array.isArray(bundle.exports) || typeof bundle.contentDigest !== "string") {
+    throw new Error(`malformed contract summary ${fileName}`);
+  }
+  for (const [index, item] of bundle.exports.entries()) {
+    if (!item || typeof item !== "object" || !item.symbol
+      || typeof item.symbol.module !== "string" || typeof item.symbol.export !== "string"
+      || typeof item.functionName !== "string" || item.evidence !== "verified"
+      || !item.declarationSpan || !Number.isInteger(item.declarationSpan.start) || !Number.isInteger(item.declarationSpan.end)
+      || typeof item.declarationDigest !== "string" || typeof item.signature !== "string"
+      || typeof item.signatureDigest !== "string" || !Array.isArray(item.parameters)
+      || !item.parameters.every((entry) => typeof entry === "string")
+      || !Array.isArray(item.requires) || !item.requires.every((entry) => typeof entry === "string")
+      || !Array.isArray(item.ensures) || !item.ensures.every((entry) => typeof entry === "string")
+      || !Array.isArray(item.artifactIds) || !item.artifactIds.every((entry) => typeof entry === "string")) {
+      throw new Error(`malformed contract summary export ${index} in ${fileName}`);
+    }
+  }
+  return bundle;
+}
+
+function installedPackageAt(declarationFileName: string, packageName: string): { name: string; version: string } | undefined {
+  let directory = dirname(declarationFileName);
+  for (;;) {
+    const manifestFile = join(directory, "package.json");
+    if (existsSync(manifestFile)) {
+      try {
+        const manifest = JSON.parse(readFileSync(manifestFile, "utf8")) as { name?: unknown; version?: unknown };
+        if (manifest.name === packageName && typeof manifest.version === "string") {
+          return { name: packageName, version: manifest.version };
+        }
+      } catch {
+        return undefined;
+      }
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
+
+/**
+ * Bind a producer contract bundle to declarations actually resolved by a
+ * consumer Program. This authenticates identity and installed bytes; it does
+ * not authenticate the publisher or prove that runtime JavaScript matches the
+ * declaration package.
+ */
+export function bindContractSummaryBundleToProgram(
+  bundle: ContractSummaryBundleV1,
+  program: ts.Program,
+): BoundContractSummaryBundleV1 {
+  const blockers: string[] = [];
+  const { contentDigest, ...unsigned } = bundle;
+  if (bundle.schema !== "uneffect-contract-summary/v1") blockers.push(`unsupported contract summary schema ${bundle.schema}`);
+  if (bundleDigest(unsigned) !== contentDigest) blockers.push("contract summary content digest does not match its payload");
+  if (bundle.compiler.typescriptVersion !== ts.version) {
+    blockers.push(`contract summary TypeScript ${bundle.compiler.typescriptVersion} does not match consumer ${ts.version}`);
+  }
+  if (blockers.length > 0) return {
+    schema: "uneffect-bound-contract-summary/v1",
+    status: "unknown",
+    package: bundle.package,
+    compiler: {
+      producerTypeScriptVersion: bundle.compiler.typescriptVersion,
+      consumerTypeScriptVersion: ts.version,
+      consumerCompilerOptionsDigest: compilerOptionsDigest(program),
+    },
+    exports: [],
+    blockers,
+  };
+  const checker = program.getTypeChecker();
+  const candidates = new Map<string, Array<{ declaration: ts.Declaration; call: ts.CallExpression }>>();
+  for (const source of program.getSourceFiles()) {
+    if (source.isDeclarationFile) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) {
+        const declaration = checker.getResolvedSignature(node)?.declaration;
+        const name = declaration && "name" in declaration && declaration.name
+          && (ts.isIdentifier(declaration.name) || ts.isStringLiteral(declaration.name))
+          ? declaration.name.text : undefined;
+        if (declaration && name && installedPackageAt(declaration.getSourceFile().fileName, bundle.package.name)) {
+          candidates.set(name, [...(candidates.get(name) ?? []), { declaration, call: node }]);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  const exports: BoundContractSummaryExportV1[] = [];
+  for (const summary of bundle.exports) {
+    const uses = candidates.get(summary.symbol.export) ?? [];
+    const declarations = [...new Set(uses.map(({ declaration }) => declaration))];
+    if (declarations.length === 0) continue;
+    if (declarations.length !== 1) {
+      blockers.push(`contract summary export ${summary.symbol.export} resolves ambiguously in the consumer Program`);
+      continue;
+    }
+    const declaration = declarations[0]!;
+    const declarationSource = declaration.getSourceFile();
+    const installed = installedPackageAt(declarationSource.fileName, bundle.package.name);
+    if (!installed) {
+      blockers.push(`contract summary export ${summary.symbol.export} is not backed by an installed ${bundle.package.name} package manifest`);
+      continue;
+    }
+    if (installed.version !== bundle.package.version) {
+      blockers.push(`installed ${bundle.package.name} version ${installed.version} does not match summary ${bundle.package.version}`);
+      continue;
+    }
+    const signature = ts.isFunctionLike(declaration) ? checker.getSignatureFromDeclaration(declaration) : undefined;
+    const signatureText = signature ? checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation) : undefined;
+    if (!signatureText || signatureText !== summary.signature || sha256(signatureText) !== summary.signatureDigest) {
+      blockers.push(`contract summary signature for ${summary.symbol.export} does not match the installed declaration`);
+      continue;
+    }
+    const declarationText = declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd());
+    exports.push({
+      exportName: summary.symbol.export,
+      evidence: "trusted",
+      declarationFileName: declarationSource.fileName,
+      declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+      declarationDigest: sha256(declarationText),
+      signature: signatureText,
+      callSites: uses.map(({ call }) => ({
+        fileName: call.getSourceFile().fileName,
+        span: { start: call.getStart(call.getSourceFile()), end: call.getEnd() },
+      })),
+      summary,
+    });
+  }
+  return {
+    schema: "uneffect-bound-contract-summary/v1",
+    status: blockers.length > 0 ? "unknown" : exports.length > 0 ? "verified" : "not-applicable",
+    package: bundle.package,
+    compiler: {
+      producerTypeScriptVersion: bundle.compiler.typescriptVersion,
+      consumerTypeScriptVersion: ts.version,
+      consumerCompilerOptionsDigest: compilerOptionsDigest(program),
+    },
+    exports,
+    blockers,
+  };
+}
 
 function checkedSource(options: Pick<CreateContractSummaryBundleOptions, "fileName" | "source" | "program">): ts.SourceFile {
   const source = options.program.getSourceFile(options.fileName);

@@ -15,6 +15,7 @@ import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { analyzeCallableSummaries } from "./callable-summary.js";
 import { invalidateTransferredTypedArrayEvidence } from "./project-verification.js";
 import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-check.js";
+import { bindContractSummaryBundleToProgram, type ContractSummaryBundleV1 } from "./contract-summary.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -39,6 +40,8 @@ export interface CheckOptions {
   externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
   /** Verified child-program module-evaluation contracts keyed by declaration file. */
   externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;
+  /** Producer-verified package contracts bound to installed declarations. */
+  contractSummaryBundles?: readonly ContractSummaryBundleV1[];
 }
 
 export interface CheckResult {
@@ -113,13 +116,41 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   for (const summary of effects.summaries) if (summary.fileName && invalidSources.has(summary.fileName)) summary.evidence = "unknown";
   diagnostics.push(...effects.diagnostics);
   const sources = new Map<string, string>(), artifacts: VerificationArtifact[] = [];
+  const contractSummaryBindings = (options.contractSummaryBundles ?? []).map((bundle) =>
+    bindContractSummaryBundleToProgram(bundle, program));
+  const contractSummaryAssumptions: AssumptionEntry[] = contractSummaryBindings.flatMap((binding) => binding.exports.flatMap((item) =>
+    item.callSites.map((call) => ({
+      id: `package-contract:${binding.package.name}@${binding.package.version}:${call.fileName}:${call.span.start}`,
+      evidence: "trusted" as const,
+      domain: "package-contract" as const,
+      reason: "persisted producer contract authority is not authenticated by declaration binding",
+      dependency: { module: binding.package.name, packageVersion: binding.package.version },
+      scope: { fileName: call.fileName, functionName: item.exportName, span: call.span },
+    }))));
+  for (const binding of contractSummaryBindings) if (binding.status === "unknown") {
+    const fileName = fileNames[0] ?? "<project>";
+    for (const message of binding.blockers) {
+      const artifact: VerificationArtifact = {
+        obligationId: `contract-summary:${binding.package.name}:${artifacts.length}`,
+        status: "unknown", evidence: "unknown", source: { fileName, span: { start: 0, end: 0 } }, message,
+      };
+      artifacts.push(artifact);
+      diagnostics.push({
+        fileName, functionName: "<package-contract>", clause: "unsupported", line: 1,
+        message, obligationId: artifact.obligationId, artifact,
+        notes: [{ label: "because", detail: "the supplied package contract summary did not authenticate against the declaration selected by this TypeScript Program" }],
+      });
+    }
+  }
   const asyncIterators: IteratorCheckEvidence[] = [];
   const iteratorAssumptions: AssumptionEntry[] = [];
   for (const fileName of fileNames) {
     if (fileName.endsWith(".uneffect.ts")) continue;
     const text = await readFile(fileName, "utf8");
     sources.set(fileName, text);
-    const contracts = await verifyContractObligations(fileName, text, undefined, program);
+    const contracts = await verifyContractObligations(fileName, text, undefined, program, {
+      externalContractBindings: contractSummaryBindings.flatMap((binding) => binding.exports),
+    });
     diagnostics.push(...contracts.diagnostics);
     artifacts.push(...attachContractEffectBoundaries(contracts.artifacts, effects.summaries));
     const sourceFile = program.getSourceFile(fileName);
@@ -201,7 +232,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   }
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
   const collectedAssumptions = collectAssumptionLedger(program, Object.fromEntries(sources), typedArrays, {}, options.builtinRegistry, options.assumptionRegistry).ledger;
-  const assumptions = mergeAssumptionLedger(program, collectedAssumptions, iteratorAssumptions).ledger;
+  const assumptions = mergeAssumptionLedger(program, collectedAssumptions, [...iteratorAssumptions, ...contractSummaryAssumptions]).ledger;
   return {
     diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, typedArrays, ownership, asyncIterators, errors, warnings: diagnostics.length - errors,
     ...(options.project === undefined ? {} : { project: options.project }),

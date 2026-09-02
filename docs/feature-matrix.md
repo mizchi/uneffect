@@ -41,6 +41,15 @@ successful verification.
 | Native Rust/Corsa frontend | Partial | A neutral IR, Rust parser/lattice, deterministic project-wide UTF-8 spans, transitive reference parity, mandatory producer provenance, and a real corsa-bind multi-file exporter for top-level function declarations, single immutable arrow/function-expression bindings, identifier-named methods of top-level classes, named-function overload candidates/selections, direct intra-project calls, type text, and trivia exist. Standard `console.log` emits checker-inferred `Console`; exact named `node:fs/promises` `readFile`/`access`/`readdir` emit `FsRead`, while `writeFile`/`appendFile`/`mkdir` emit `FsWrite`; one exact function-local shorthand `const { readFile } = await import("node:fs/promises")` also emits `FsRead` and its import await; standard global `fetch` emits `Fetch`. Facts retain builtin/compiler/operation-span evidence and either a library declaration or exact source import binding. Direct calls used as the immediate operand of unconditional `await`, beneath exactly one enclosing `if` branch, inside exactly one catch-protected try block, or returned unconditionally with at most one `as Promise<T>` wrapper emit source-ordered owner/source/span Promise observations. The conditional slice records owner-local file-offset condition identity and polarity; the protected-try slice records caught rejection ownership; the Promise owner and project-wide span distinguish same-named cross-file records. Promise metadata parity compares all observation kinds. Workhub-shaped corpora reach full parity for these exact fragments. Same-spelled local objects, declarations, and local-module imports remain effect-free, nested callback awaits do not leak into the outer owner, and metadata drift fails checker parity. `requireCorsaCheckerFacts` passes only with authenticated checker-backed input. | Namespace/default/CommonJS imports, renamed/namespace/non-literal/mutable/multi-binding or other dynamic imports, general module initialization/resolution, sync/other/compound filesystem operations, path/URL/method scope inference, other builtin inference, computed/polymorphic methods, callback timing, method/generic overload edge cases, nested/loop handler control, awaits in catch/finally, conditional/non-call/nested-wrapper return observations, rejection-binding ownership, chains/combinators, resource records, persisted fact authentication, Content Mapper semantics, and the rest of the neutral IR are not checker-exported. Unsupported Promise observations produce an explicit evidence mismatch. `checkerMetadataEquivalent` remains a supported-atom projection, not a general claim of full semantic parity. See [#8](https://github.com/mizchi/uneffect/issues/8). |
 | Proof-guided optimization | Planned | Narrow authorization and ownership-assertion-elision prototypes establish the fail-closed shape of a transformation. | General compression, mangling, reordering, and dead-code elimination are not implemented. See [#13](https://github.com/mizchi/uneffect/issues/13). |
 
+Persisted scalar contract summaries now have a consumer fragment beyond the
+compact Hoare row above: repeatable CLI `--contract-summary` inputs and the
+programmatic binder follow TypeChecker-resolved calls through named aliases and
+source re-exports, require exact installed package version and signature, and
+record the selected declaration bytes. Calls remain `trusted`, not `verified`,
+because persisted producer authority is not authenticated. Producer-to-emitted `.d.ts` build
+linkage, installed tarball/runtime identity, publisher authenticity, and
+persisted Effect/resource/callable summaries remain unsupported.
+
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are
 summarized for signed safe-integer constant bounds when the counter changes
@@ -390,7 +399,9 @@ scalar ternary return, including an expression-bodied async arrow, is normalized
 to the same clauses; its condition must be Boolean.
 Guarded throw/return, return/throw, and exhaustive `if/else` return/throw
 producers emit verified `Reject<Error>` plus the selected normal guard; computed
-or call-produced errors do not enter this rule.
+or call-produced errors do not enter this rule. A body consisting only of one
+direct reviewed standard Error construction and `throw` emits a definitely
+rejecting producer with no invented fulfillment path.
 One scalar Promise-producing call may be stored in a `const` identifier and
 observed later through immutable identifier aliases. Call arguments and
 synchronous throws are snapshotted at creation, fulfillment/rejection occurs at

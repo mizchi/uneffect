@@ -3447,6 +3447,54 @@ describe("Hoare contract checker", () => {
     }));
   });
 
+  it("infers a definitely rejecting local async producer", async () => {
+    const fileName = "/local-async-definite-rejection.ts";
+    const source = `
+      async function fail(): Promise<never> {
+        throw new RangeError("failed")
+      }
+      const reject = fail
+      /* uneffect:ensures result === 0 */
+      async function caller(): Promise<number> {
+        try {
+          const pending = reject()
+          await pending
+          return 1
+        } catch {
+          return 0
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0]).toMatchObject({ status: "verified" });
+    expect(result.artifacts[0]?.controlFlow?.exceptionFlow?.discharged).toContainEqual(expect.objectContaining({
+      evidence: "verified",
+      kind: "promise-rejection",
+      effect: "Reject<RangeError>",
+    }));
+  });
+
+  it("does not infer definite rejection from a call-produced Error", async () => {
+    const fileName = "/local-async-definite-rejection-unsupported.ts";
+    const source = `
+      declare function makeError(): RangeError
+      async function fail(): Promise<never> {
+        throw makeError()
+      }
+      /* uneffect:ensures result === 0 */
+      async function caller(): Promise<number> {
+        try { await fail(); return 1 }
+        catch { return 0 }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
   it("keeps impure or structurally complex local async producers fail-closed", async () => {
     const cases = [
       `

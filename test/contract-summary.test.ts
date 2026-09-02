@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { createContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { bindContractSummaryBundleToProgram, createContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
 
 function programFor(fileName: string, source: string): ts.Program {
@@ -15,6 +18,16 @@ function programFor(fileName: string, source: string): ts.Program {
 }
 
 describe("persisted contract summary bundles", () => {
+  it("publishes a strict JSON schema for distributed summaries", () => {
+    const schema = JSON.parse(readFileSync("schemas/uneffect-contract-summary-v1.schema.json", "utf8")) as {
+      $id: string;
+      properties: { schema: { const: string }; exports: { items: { required: string[] } } };
+    };
+    expect(schema.$id).toBe("https://github.com/mizchi/uneffect/schemas/uneffect-contract-summary-v1.schema.json");
+    expect(schema.properties.schema.const).toBe("uneffect-contract-summary/v1");
+    expect(schema.properties.exports.items.required).toEqual(expect.arrayContaining(["symbol", "signatureDigest", "artifactIds"]));
+  });
+
   it("binds verified exported contracts to package, compiler, source, signature, and artifacts", async () => {
     const fileName = "/src/index.ts";
     const source = `
@@ -63,5 +76,96 @@ describe("persisted contract summary bundles", () => {
     expect(() => createContractSummaryBundle({
       packageName: "@example/math", packageVersion: "1.2.3", fileName, source, program, artifacts: verification.artifacts,
     })).toThrow(/not fully verified/);
+  });
+
+  it("binds a producer summary to an installed package export by TypeChecker identity", async () => {
+    const producerFile = "/src/index.ts";
+    const producerSource = `
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      export async function addOne(value: number): Promise<number> { return value + 1 }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const verification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/math", packageVersion: "1.2.3", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: verification.artifacts,
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-consumer-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "math");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/math", version: "1.2.3", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function addOne(value: number): Promise<number>;\n");
+    const barrelFile = join(directory, "barrel.ts");
+    writeFileSync(barrelFile, 'export { addOne as plusOne } from "@example/math";\n');
+    const consumerFile = join(directory, "consumer.ts");
+    const consumerSource = `
+      import { plusOne as addOne } from "./barrel.js"
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      export async function run(value: number): Promise<number> {
+        return await addOne(value)
+      }
+    `;
+    writeFileSync(consumerFile, consumerSource);
+    const options: ts.CompilerOptions = {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    };
+    const consumerProgram = ts.createProgram([consumerFile, barrelFile], options);
+
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+
+    expect(binding).toMatchObject({
+      status: "verified",
+      package: { name: "@example/math", version: "1.2.3" },
+      exports: [{ exportName: "addOne", evidence: "trusted" }],
+      blockers: [],
+    });
+    expect(binding.exports[0]?.declarationFileName.replaceAll("\\", "/")).toMatch(/\/node_modules\/@example\/math\/index\.d\.ts$/);
+    expect(binding.exports[0]?.declarationDigest).toMatch(/^[0-9a-f]{64}$/);
+
+    const tamperedBundle = {
+      ...bundle,
+      exports: bundle.exports.map((item) => ({ ...item, ensures: ["result === value + 2"] })),
+    };
+    expect(bindContractSummaryBundleToProgram(tamperedBundle, consumerProgram)).toMatchObject({
+      status: "unknown",
+      exports: [],
+      blockers: expect.arrayContaining([expect.stringContaining("content digest")]),
+    });
+
+    const consumerVerification = await verifyContractObligations(
+      consumerFile, consumerSource, undefined, consumerProgram,
+      { externalContractBindings: binding.exports },
+    );
+    expect(consumerVerification.diagnostics).toEqual([]);
+    expect(consumerVerification.artifacts).not.toHaveLength(0);
+    expect(consumerVerification.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(consumerVerification.artifacts.some((artifact) => artifact.controlFlow?.relationalCalls?.some((call) =>
+      call.functionName === "addOne" && call.evidence === "trusted"))).toBe(true);
+
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/math", version: "1.2.4", types: "index.d.ts",
+    }));
+    expect(bindContractSummaryBundleToProgram(bundle, consumerProgram)).toMatchObject({
+      status: "unknown",
+      exports: [],
+      blockers: [expect.stringContaining("version 1.2.4 does not match summary 1.2.3")],
+    });
+
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/math", version: "1.2.3", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function addOne(value: string): Promise<number>;\n");
+    const driftedProgram = ts.createProgram([consumerFile, barrelFile], options);
+    expect(bindContractSummaryBundleToProgram(bundle, driftedProgram)).toMatchObject({
+      status: "unknown",
+      exports: [],
+      blockers: [expect.stringContaining("signature for addOne does not match")],
+    });
   });
 });

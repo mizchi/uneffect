@@ -2,7 +2,7 @@ import ts from "typescript";
 import { createHash } from "node:crypto";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";
-import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type InvariantObligation } from "./invariant-ir.js";
+import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type ExternalContractBinding, type InvariantObligation } from "./invariant-ir.js";
 import { executeZ3, type Z3Execution, type Z3ExecutionOptions } from "./z3.js";
 import { formatEffect } from "./capabilities.js";
 import type { EffectSummary } from "./effects.js";
@@ -37,6 +37,10 @@ export interface ContractDiagnostic {
 export interface ContractVerificationResult {
   diagnostics: ContractDiagnostic[];
   artifacts: VerificationArtifact[];
+}
+
+export interface ContractVerificationOptions {
+  externalContractBindings?: readonly ExternalContractBinding[];
 }
 
 /** Bind a proved contract path to the Program effect summary covering that exact source return. */
@@ -162,11 +166,17 @@ function unsupportedOwner(source: ts.SourceFile, cause: unknown): { functionName
 }
 
 /** Verify every lowered obligation. Unsupported syntax and solver unknown are explicit non-proofs. */
-export async function verifyContractObligations(fileName: string, text: string, z3?: Z3ExecutionOptions, program?: ts.Program): Promise<ContractVerificationResult> {
+export async function verifyContractObligations(
+  fileName: string,
+  text: string,
+  z3?: Z3ExecutionOptions,
+  program?: ts.Program,
+  options: ContractVerificationOptions = {},
+): Promise<ContractVerificationResult> {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   let obligations: InvariantObligation[];
   try {
-    obligations = lowerInvariantProgram(fileName, text, program);
+    obligations = lowerInvariantProgram(fileName, text, program, options);
   } catch (cause) {
     const owner = unsupportedOwner(source, cause);
     const message = cause instanceof Error ? cause.message : String(cause);

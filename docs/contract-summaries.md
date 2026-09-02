@@ -7,7 +7,9 @@ relational dependencies are all `verified`.
 
 ```ts
 import {
+  bindContractSummaryBundleToProgram,
   createContractSummaryBundle,
+  loadContractSummaryBundle,
   validateContractSummaryBundle,
 } from "@mizchi/uneffect"
 
@@ -27,6 +29,9 @@ const validation = validateContractSummaryBundle(bundle, {
   source,
   program,
 })
+
+const installed = await loadContractSummaryBundle("uneffect-contract.json")
+const binding = bindContractSummaryBundleToProgram(installed, consumerProgram)
 ```
 
 The bundle binds:
@@ -46,13 +51,30 @@ of trusting the stored digest.
 
 ## Assurance boundary
 
-This v1 API produces and validates a bundle against the original producer
-source Program. It does not yet authorize a consumer call through an installed
-package. In particular, Uneffect does not yet prove that an emitted `.d.ts`,
-package export map, bundled JavaScript, or installed tarball corresponds to the
-producer source in this envelope.
+The consumer binder follows TypeChecker-resolved calls through named-import
+aliases and source re-exports. It accepts a contract only when the resolved
+declaration belongs to an installed package with the exact summarized name and
+version and its TypeChecker signature matches the producer signature. Evidence
+records the resolved declaration file, span, and SHA-256. The CLI exposes the
+same path:
+
+```sh
+npx uneffect check --project tsconfig.json \
+  --contract-summary ./uneffect-contract.json \
+  --assurance no-unknown
+```
+
+Repeat `--contract-summary` to compose packages. A content, TypeScript,
+installed-version, or signature mismatch is a blocking `unknown`; an unused
+summary is `not-applicable` rather than a proof.
+
+This does not yet prove that the installed declaration bytes were emitted from
+the summarized producer source, or that bundled/runtime JavaScript corresponds
+to that declaration. Export-map selection is inherited from TypeScript module
+resolution; Uneffect does not independently authenticate an installed tarball.
 
 The content SHA-256 provides integrity, not publisher authenticity. There is no
-signature, transparency log, or trusted publishing identity in v1. Until the
-consumer linker is implemented, package contracts remain `trusted` declarations
-at call sites rather than `verified` imported evidence.
+signature, transparency log, or trusted publishing identity in v1. A
+successfully bound scalar call carries `trusted` relational evidence: the
+declaration binding is checked, while the persisted producer authority is not
+silently upgraded to an authenticated proof.

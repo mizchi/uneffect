@@ -160,6 +160,26 @@ interface AwaitFulfillmentFact {
   declarationDigest: string;
   declarationSpan: { start: number; end: number };
 }
+
+/** An authenticated external contract bound to one declaration in this Program. */
+export interface ExternalContractBinding {
+  exportName: string;
+  evidence: "verified" | "trusted";
+  declarationFileName: string;
+  declarationSpan: { start: number; end: number };
+  declarationDigest: string;
+  signature: string;
+  summary: {
+    functionName: string;
+    parameters: string[];
+    requires: string[];
+    ensures: string[];
+  };
+}
+
+export interface InvariantLoweringOptions {
+  externalContractBindings?: readonly ExternalContractBinding[];
+}
 interface AwaitRejectionFact {
   effect?: string;
   definitelyRejects: boolean;
@@ -1081,7 +1101,12 @@ function typeCheckerDeclaredThrowCalls(program: ts.Program | undefined, fileName
   return facts;
 }
 
-function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: string, text: string): Map<string, AwaitRejectionFact> {
+function typeCheckerAwaitRejections(
+  program: ts.Program | undefined,
+  fileName: string,
+  text: string,
+  options: InvariantLoweringOptions = {},
+): Map<string, AwaitRejectionFact> {
   const facts = new Map<string, AwaitRejectionFact>();
   if (!program) return facts;
   const source = program.getSourceFile(fileName);
@@ -1171,7 +1196,7 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
     call: ts.CallExpression,
     signature: ts.Signature,
     declaration: ts.SignatureDeclaration | ts.JSDocSignature,
-  ): { fulfillment: AwaitFulfillmentFact; rejectionEffect?: string } | undefined => {
+  ): { fulfillment?: AwaitFulfillmentFact; rejectionEffect?: string; definitelyRejects: boolean } | undefined => {
     if (!(ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration))
       || !declaration.body || (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) === 0) return undefined;
     const identity = callableIdentity(declaration);
@@ -1201,8 +1226,11 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
     let whenFalse: ts.Expression | undefined;
     let requiredNormalGuard: { expression: ts.Expression; truth: boolean } | undefined;
     let rejectionExpression: ts.Expression | undefined;
+    let definiteRejectionExpression: ts.Expression | undefined;
     if (!ts.isBlock(declaration.body)) {
       whenTrue = declaration.body;
+    } else if (statements!.length === 1 && ts.isThrowStatement(statements![0])) {
+      definiteRejectionExpression = statements![0].expression;
     } else if (statements!.length === 1 && ts.isReturnStatement(statements![0])) {
       whenTrue = statements![0].expression;
     } else if (statements!.length === 1 && ts.isIfStatement(statements![0])
@@ -1253,7 +1281,7 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
         whenFalse = returned.whenFalse;
       }
     }
-    if (!whenTrue || Boolean(condition) !== Boolean(whenFalse)) return undefined;
+    if ((!whenTrue && !definiteRejectionExpression) || Boolean(condition) !== Boolean(whenFalse)) return undefined;
     if (declaration.parameters.some((parameter) => !ts.isIdentifier(parameter.name)
       || parameter.initializer !== undefined || parameter.dotDotDotToken !== undefined)) return undefined;
     const parameters = declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
@@ -1278,23 +1306,25 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
       captured.set((local.name as ts.Identifier).text, value);
       allowed.add((local.name as ts.Identifier).text);
     }
-    inspect(whenTrue);
+    if (whenTrue) inspect(whenTrue);
     if (condition) inspect(condition);
     if (whenFalse) inspect(whenFalse);
     if (requiredNormalGuard) inspect(requiredNormalGuard.expression);
     const awaitedType = checker.getAwaitedType(checker.getReturnTypeOfSignature(signature));
     const domain = awaitedType ? scalarDomain(awaitedType) : undefined;
-    if (!closed || !domain || scalarDomain(checker.getTypeAtLocation(whenTrue)) !== domain
-      || (whenFalse && scalarDomain(checker.getTypeAtLocation(whenFalse)) !== domain)
+    if (!closed || (whenTrue && (!domain || scalarDomain(checker.getTypeAtLocation(whenTrue)) !== domain))
+      || (whenFalse && (!domain || scalarDomain(checker.getTypeAtLocation(whenFalse)) !== domain))
       || (condition && scalarDomain(checker.getTypeAtLocation(condition)) !== "bool")
       || (requiredNormalGuard && scalarDomain(checker.getTypeAtLocation(requiredNormalGuard.expression)) !== "bool")) return undefined;
-    const reviewedRejection = rejectionExpression && ts.isNewExpression(rejectionExpression)
-      && reviewedPresentObjects.has(`${rejectionExpression.getStart(source)}:${rejectionExpression.getEnd()}`);
-    const rejectionType = reviewedRejection ? adapter.thrownErrorType(rejectionExpression!) : undefined;
-    if (rejectionExpression && (!reviewedRejection || rejectionType === "unknown")) return undefined;
-    let clauses: AwaitFulfillmentFact["clauses"];
+    const rejectedValue = rejectionExpression ?? definiteRejectionExpression;
+    const reviewedRejection = rejectedValue && ts.isNewExpression(rejectedValue)
+      && reviewedPresentObjects.has(`${rejectedValue.getStart(source)}:${rejectedValue.getEnd()}`);
+    const rejectionType = reviewedRejection ? adapter.thrownErrorType(rejectedValue!) : undefined;
+    if (rejectedValue && (!reviewedRejection || rejectionType === "unknown")) return undefined;
+    let clauses: AwaitFulfillmentFact["clauses"] | undefined;
     try {
-      const trueValue = substitute(parseLogicExpression(whenTrue.getText(source)), captured);
+      if (whenTrue) {
+        const trueValue = substitute(parseLogicExpression(whenTrue.getText(source)), captured);
       if (!condition || !whenFalse) {
         clauses = [{
           source: `result === ${whenTrue.getText(source)}`,
@@ -1329,20 +1359,23 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
           expression: normalGuard,
         });
       }
+      }
     } catch { return undefined; }
     const declarationSource = declaration.getSourceFile();
+    const fulfillment = whenTrue && domain && clauses ? {
+      domain,
+      functionName: identity.name,
+      parameters,
+      clauses,
+      preconditions: [],
+      declarationFileName: declarationSource.fileName,
+      declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
+      declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
+    } satisfies AwaitFulfillmentFact : undefined;
     return {
-      fulfillment: {
-        domain,
-        functionName: identity.name,
-        parameters,
-        clauses,
-        preconditions: [],
-        declarationFileName: declarationSource.fileName,
-        declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
-        declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
-      },
+      ...(fulfillment ? { fulfillment } : {}),
       ...(rejectionType ? { rejectionEffect: `Reject<${rejectionType}>` } : {}),
+      definitelyRejects: Boolean(definiteRejectionExpression),
     };
   };
   const analyzeCall = (call: ts.CallExpression, keyNode: ts.Node): void => {
@@ -1384,17 +1417,22 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
       const declaration = signature?.declaration;
       if (signature && declaration && checker.getPropertyOfType(checker.getReturnTypeOfSignature(signature), "then")) {
         const declarationSource = declaration.getSourceFile();
+        const external = options.externalContractBindings?.find((binding) =>
+          binding.declarationFileName === declarationSource.fileName
+          && binding.declarationSpan.start === declaration.getStart(declarationSource)
+          && binding.declarationSpan.end === declaration.getEnd());
         const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
         const rejected = extractAnnotations(comments, "temporal_rejects");
         const thrown = extractAnnotations(comments, "temporal_throws");
-        const contractEnsures = extractAnnotations(comments, "ensures");
-        const contractRequires = extractAnnotations(comments, "requires");
+        const contractEnsures = external?.summary.ensures ?? extractAnnotations(comments, "ensures");
+        const contractRequires = external?.summary.requires ?? extractAnnotations(comments, "requires");
         const awaitedType = checker.getAwaitedType(checker.getReturnTypeOfSignature(signature));
         const awaitedDomain = awaitedType ? scalarDomain(awaitedType) : undefined;
         const declarationName = "name" in declaration ? declaration.name : undefined;
-        const named = declarationName && ts.isIdentifier(declarationName) ? declarationName.text : undefined;
-        const parameters = declaration.parameters.every((parameter) => ts.isIdentifier(parameter.name))
-          ? declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text) : undefined;
+        const named = external?.summary.functionName
+          ?? (declarationName && ts.isIdentifier(declarationName) ? declarationName.text : undefined);
+        const parameters = external?.summary.parameters ?? (declaration.parameters.every((parameter) => ts.isIdentifier(parameter.name))
+          ? declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text) : undefined);
         const declaredFulfillment = contractEnsures.length > 0 && awaitedDomain && named && parameters ? {
           domain: awaitedDomain,
           functionName: named,
@@ -1410,9 +1448,9 @@ function typeCheckerAwaitRejections(program: ts.Program | undefined, fileName: s
         const fulfillment = declaredFulfillment ?? inferred?.fulfillment;
         const rejectionEffect = rejected.length === 1 ? `Reject<${rejected[0]}>` : inferred?.rejectionEffect;
         if (rejectionEffect || fulfillment) facts.set(key, {
-          ...(rejectionEffect ? { effect: rejectionEffect } : {}), definitelyRejects: false,
+          ...(rejectionEffect ? { effect: rejectionEffect } : {}), definitelyRejects: inferred?.definitelyRejects ?? false,
           synchronousThrows: [...new Set(thrown.map((errorType) => `Throw<${errorType}>`))].sort(),
-          evidence: declaredFulfillment || rejected.length === 1 || thrown.length > 0 ? "trusted" : "verified",
+          evidence: external?.evidence ?? (declaredFulfillment || rejected.length === 1 || thrown.length > 0 ? "trusted" : "verified"),
           payloadFromFirstArgument: false, ...(fulfillment ? { fulfillment } : {}),
         });
       }
@@ -1627,7 +1665,12 @@ function locatedLowering(cause: unknown, functionName: string, span: { start: nu
   return new InvariantLoweringError(message, { functionName, span, hint: loweringHint(message) });
 }
 
-export function lowerInvariantProgram(fileName: string, text: string, program?: ts.Program): InvariantObligation[] {
+export function lowerInvariantProgram(
+  fileName: string,
+  text: string,
+  program?: ts.Program,
+  options: InvariantLoweringOptions = {},
+): InvariantObligation[] {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const checkerFacts = typeCheckerParameterFacts(program, fileName, text);
   const booleanLogicalOperations = typeCheckerBooleanLogicalOperations(program, fileName, text);
@@ -1641,7 +1684,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
   const throwEffects = typeCheckerThrowEffects(program, fileName, text);
   const assertionCalls = typeCheckerAssertionCalls(program, fileName, text);
   const declaredThrowCalls = typeCheckerDeclaredThrowCalls(program, fileName, text);
-  const awaitRejections = typeCheckerAwaitRejections(program, fileName, text);
+  const awaitRejections = typeCheckerAwaitRejections(program, fileName, text, options);
   const pipeBindings = new Set(source.statements.flatMap((statement): string[] => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
       || statement.moduleSpecifier.text !== "effect/Function" || !statement.importClause?.namedBindings

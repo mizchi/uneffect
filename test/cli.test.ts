@@ -9,6 +9,8 @@ import { exitCode, type CliStreams } from "../src/cli-support.js";
 import { builtinContractRegistry } from "../src/builtin-contracts.js";
 import { builtinContractDigest } from "../src/evidence.js";
 import type { CheckWorkspaceJsonReport } from "../src/check-report.js";
+import { createContractSummaryBundle } from "../src/contract-summary.js";
+import { verifyContractObligations } from "../src/contracts.js";
 
 function capture(): CliStreams & { stdout: string; stderr: string } {
   const io = {
@@ -129,6 +131,60 @@ describe("uneffect command line", () => {
       expect(await runCli(["evidence", "--semantics-module", moduleFile, fileName], evidence)).toBe(exitCode.success);
       expect((JSON.parse(evidence.stdout) as { artifact: { modules: Array<{ name: string; evidence: string }> } }).artifact.modules)
         .toEqual([expect.objectContaining({ name: "@acme/audit-semantics", evidence: "trusted" })]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("loads a package contract summary and binds it to the installed declaration", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-contract-summary-"));
+    const producerFile = join(directory, "producer.ts");
+    const consumerFile = join(directory, "consumer.ts");
+    const summaryFile = join(directory, "contract-summary.json");
+    const packageDirectory = join(directory, "node_modules", "@example", "math");
+    const producerSource = `
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      export async function addOne(value: number): Promise<number> { return value + 1 }
+    `;
+    const consumerSource = `
+      import { addOne } from "@example/math"
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      export async function run(value: number): Promise<number> { return await addOne(value) }
+    `;
+    try {
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(producerFile, producerSource);
+      writeFileSync(consumerFile, consumerSource);
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+        name: "@example/math", version: "1.2.3", types: "index.d.ts",
+      }));
+      writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function addOne(value: number): Promise<number>;\n");
+      const producerProgram = ts.createProgram([producerFile], {
+        strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      });
+      const verification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
+      writeFileSync(summaryFile, JSON.stringify(createContractSummaryBundle({
+        packageName: "@example/math", packageVersion: "1.2.3", fileName: producerFile,
+        source: producerSource, program: producerProgram, artifacts: verification.artifacts,
+      })));
+
+      const checked = capture();
+      expect(await runCli(["check", "--contract-summary", summaryFile, "--evidence", consumerFile], checked)).toBe(exitCode.success);
+      expect(checked.stderr).toContain("proved run: ensures result === value + 1");
+      const reported = capture();
+      expect(await runCli(["check", "--contract-summary", summaryFile, "--json", consumerFile], reported)).toBe(exitCode.success);
+      expect((JSON.parse(reported.stdout) as { assumptions: { entries: Array<{ domain: string }> } }).assumptions.entries)
+        .toContainEqual(expect.objectContaining({ domain: "package-contract" }));
+
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+        name: "@example/math", version: "1.2.4", types: "index.d.ts",
+      }));
+      const drifted = capture();
+      expect(await runCli(["check", "--contract-summary", summaryFile, consumerFile], drifted)).toBe(exitCode.failed);
+      expect(drifted.stderr).toContain("version 1.2.4 does not match summary 1.2.3");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
