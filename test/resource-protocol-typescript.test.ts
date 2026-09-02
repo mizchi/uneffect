@@ -271,6 +271,9 @@ describe("TypeScript resource protocol CFG lowering", () => {
         /* uneffect:acquire return */ function mutableDestructuredReturned(): Handle { const handle = connect(); let { handle: alias } = { handle }; return alias }
         /* uneffect:acquire return */ function selectedResource(flag: boolean): Handle { const left = connect(); const right = connect(); return flag ? left : right }
         /* uneffect:acquire return */ function branchAcquiredResource(flag: boolean): Handle { const handle = flag ? connect() : connect(); return handle }
+        /* uneffect:acquire return */ function guardedAcquiredResource(flag: boolean): Handle | false { const handle = flag && connect(); return handle }
+        /* uneffect:acquire return */ function coerciveGuardedResource(value: string): Handle | string { const handle = value && connect(); return handle }
+        /* uneffect:acquire return */ function fallbackAcquiredResource(flag: boolean): Handle | true { const handle = flag || connect(); return handle }
         /* uneffect:acquire return */ function mutableReturned(): Handle { let handle = connect(); return handle }
         function direct() { connect().close() }
         function forwardedUse() { forwarded().close() }
@@ -323,6 +326,9 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(evaluate("mutableDestructuredReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("selectedResource")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("branchAcquiredResource")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("guardedAcquiredResource")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("coerciveGuardedResource")).toMatchObject({ status: "unsatisfied" });
+      expect(evaluate("fallbackAcquiredResource")).toMatchObject({ status: "satisfied" });
       expect(evaluate("mutableReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("nestedArgument")).toMatchObject({ status: "satisfied" });
       expect(evaluate("optional")).toMatchObject({ status: "unknown" });

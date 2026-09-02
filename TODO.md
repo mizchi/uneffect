@@ -498,6 +498,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Lower conditional variable initializers through the expression CFG
        and preserve distinct branch-local acquisition identities through return
        as `absent-or-escaped`; keep pre-acquired alternative selection leaking.
+     - [x] Preserve optional acquisition returned from Boolean-only `&&`/`||`
+       initializers as `absent-or-escaped`; reject truthiness coercion, `??`,
+       assignment forms, and pre-existing resource operands.
      - [x] Preserve `absent-or-available` and `absent-or-released` at CFG joins,
        allowing a branch-local `using` acquisition to discharge conditionally.
      - [x] Accept trusted resource contracts on ambient functions/methods only
@@ -615,8 +618,11 @@ introducing another domain-local control-flow or alias model.
      - [x] Treat direct synchronous and directly awaited acquired returns as
        caller escape, retaining acquisition/escape on fulfillment and adding
        `absent-or-consumed|released|transferred|escaped` terminal joins.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend stable return/argument identity through destructured,
-       non-direct escaping, and dynamically selected resource values.
+     - [x] Extend stable return identity through immutable aliases, nested
+       aggregate slots/destructuring, and branch-local conditional or Boolean
+       short-circuit acquisition without conflating resource identities.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
+       dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
    aliases. Represent may-effects, synchronous throws, Promise rejections,
    region reads/writes, and callback invocation cardinality/timing. Start with

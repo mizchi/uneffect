@@ -166,7 +166,10 @@ branches resolve to the same already-acquired region. A `const` initialized by
 a conditional whose two branches acquire distinct resources is also accepted:
 each branch-local resource becomes `absent-or-escaped`. This does not admit
 selecting between two resources acquired before the condition, because the
-unselected resource would leak. Mutable aliases remain outside this fragment.
+unselected resource would leak. Boolean-only `enabled && open()` and
+`enabled || open()` initializers similarly produce one optional
+`absent-or-escaped` resource. Truthiness coercion, `??`, assignment forms, and
+pre-existing resource operands are not admitted. Mutable aliases remain outside this fragment.
 A shallow static property or tuple-index return from a local `const`
 object/array is also accepted when the stored value resolves to one acquired
 region and the container has no other use. Container mutation, reassignment,

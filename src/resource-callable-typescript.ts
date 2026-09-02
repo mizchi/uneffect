@@ -521,6 +521,14 @@ export function collectResourceCallableTransitionSites(
           return whenTrue === whenFalse ? [whenTrue] : [whenTrue, whenFalse];
         }
       }
+      if (ts.isBinaryExpression(initializer)
+        && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken].includes(initializer.operatorToken.kind)) {
+        const booleanOnly = (type: ts.Type): boolean => type.isUnion()
+          ? type.types.every(booleanOnly) : (type.flags & ts.TypeFlags.BooleanLike) !== 0;
+        const guarded = resourceIdentity(initializer.right), acquisition = guarded && acquired.get(guarded);
+        if (booleanOnly(checker.getTypeAtLocation(initializer.left)) && guarded && acquisition
+          && acquisition.at >= initializer.right.getStart() && acquisition.at <= initializer.right.getEnd()) return [guarded];
+      }
     }
     const resource = declaration && ts.isVariableDeclaration(declaration)
       && declaration.initializer && ts.isIdentifier(declaration.initializer)
