@@ -566,6 +566,10 @@ introducing another domain-local control-flow or alias model.
    - [x] Distinguish inline throw propagation, Promise-reaction conversion to
      rejection, and deferred host-reported throws for reviewed Promise, timer,
      microtask, event-listener, and Array callback boundaries.
+   - [x] Join direct callback calls across one mutually exclusive `if/else` or
+     closed explicit-default `switch`: preserve exactly-once versus enclosing
+     conditional/repeated multiplicity, and reject fallthrough, nested
+     conditional calls, or independent branches as unknown.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.

@@ -133,6 +133,48 @@ function executionCardinality(call: ts.CallExpression, owner: SupportedFunction)
   return multiplicity === "repeated" ? "0..n" : multiplicity === "conditional" ? "0..1" : "exactly-1";
 }
 
+function multiplicityCardinality(node: ts.Node, owner: SupportedFunction): CallbackCardinality {
+  const multiplicity = classifyLexicalExecution(node, owner);
+  return multiplicity === "repeated" ? "0..n" : multiplicity === "conditional" ? "0..1" : "exactly-1";
+}
+
+function containsNode(root: ts.Node, node: ts.Node): boolean {
+  return root.getSourceFile() === node.getSourceFile() && root.pos <= node.pos && root.end >= node.end;
+}
+
+/** Join repeated syntax sites only when one closed control node proves them mutually exclusive. */
+function exclusiveControlCardinality(
+  calls: readonly ts.CallExpression[],
+  owner: SupportedFunction,
+): CallbackCardinality | undefined {
+  if (calls.length < 2) return undefined;
+  for (let current: ts.Node | undefined = calls[0]!.parent; current && current !== owner; current = current.parent) {
+    if (ts.isIfStatement(current) && current.elseStatement && calls.every((call) => containsNode(current, call))) {
+      const thenCalls = calls.filter((call) => containsNode(current.thenStatement, call));
+      const elseCalls = calls.filter((call) => containsNode(current.elseStatement!, call));
+      if (thenCalls.length === 1 && elseCalls.length === 1
+        && classifyLexicalExecution(thenCalls[0]!, current.thenStatement) === "exactly-once"
+        && classifyLexicalExecution(elseCalls[0]!, current.elseStatement) === "exactly-once") {
+        return multiplicityCardinality(current, owner);
+      }
+    }
+    if (ts.isSwitchStatement(current) && calls.every((call) => containsNode(current, call))) {
+      const clauses = current.caseBlock.clauses;
+      if (!clauses.some(ts.isDefaultClause) || clauses.length !== calls.length) continue;
+      const closed = clauses.every((clause, index) => {
+        const branchCalls = calls.filter((call) => containsNode(clause, call));
+        if (branchCalls.length !== 1 || classifyLexicalExecution(branchCalls[0]!, clause) !== "exactly-once") return false;
+        if (index === clauses.length - 1) return true;
+        const terminal = clause.statements.at(-1);
+        return Boolean(terminal && ((ts.isBreakStatement(terminal) && !terminal.label)
+          || ts.isReturnStatement(terminal) || ts.isThrowStatement(terminal)));
+      });
+      if (closed) return multiplicityCardinality(current, owner);
+    }
+  }
+  return undefined;
+}
+
 function libraryDeclaration(program: ts.Program, symbol: ts.Symbol | undefined): boolean {
   return symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
 }
@@ -382,6 +424,9 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
           : inner === "0..1" || outer === "0..1" ? "0..1" : "exactly-1";
         timing = forwarded.invocation.timing;
         completion = forwarded.invocation.completion;
+      } else if (calls.length > 1 && forwardings.length === 0) {
+        cardinality = exclusiveControlCardinality(calls, declaration) ?? "unknown";
+        if (cardinality === "unknown") { timing = "unknown"; completion = "unknown"; }
       } else if (calls.length + forwardings.length > 1) {
         cardinality = "unknown"; timing = "unknown"; completion = "unknown";
       }

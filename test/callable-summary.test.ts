@@ -66,6 +66,34 @@ describe("backend-neutral callable summaries", () => {
           if (ok) success()
           else failure()
         }
+        function either(callback: () => void, ok: boolean) {
+          if (ok) callback()
+          else callback()
+        }
+        function conditionalEither(callback: () => void, enabled: boolean, ok: boolean) {
+          if (enabled) {
+            if (ok) callback()
+            else callback()
+          }
+        }
+        function independent(callback: () => void, left: boolean, right: boolean) {
+          if (left) callback()
+          if (right) callback()
+        }
+        function exhaustiveSwitch(callback: () => void, kind: "a" | "b") {
+          switch (kind) {
+            case "a": callback(); break
+            case "b": callback(); break
+            default: callback()
+          }
+        }
+        function fallthroughSwitch(callback: () => void, kind: "a" | "b") {
+          switch (kind) {
+            case "a": callback()
+            case "b": callback(); break
+            default: callback()
+          }
+        }
         function unsupportedCallbackRest({ ...callbacks }: Record<string, () => void>) {
           return callbacks
         }
@@ -152,6 +180,16 @@ describe("backend-neutral callable summaries", () => {
         expect.objectContaining({ name: "success", path: ["success"], cardinality: "0..1" }),
         expect.objectContaining({ name: "failure", path: ["failure"], cardinality: "0..1" }),
       ]));
+      expect(analysis.summaries.find(({ name }) => name === "either")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "exactly-1", timing: "inline" }));
+      expect(analysis.summaries.find(({ name }) => name === "conditionalEither")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "0..1", timing: "inline" }));
+      expect(analysis.summaries.find(({ name }) => name === "independent")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "unknown", timing: "unknown" }));
+      expect(analysis.summaries.find(({ name }) => name === "exhaustiveSwitch")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "exactly-1", timing: "inline" }));
+      expect(analysis.summaries.find(({ name }) => name === "fallthroughSwitch")?.callbackParameters)
+        .toContainEqual(expect.objectContaining({ name: "callback", cardinality: "unknown", timing: "unknown" }));
       expect(analysis.summaries.find(({ name }) => name === "unsupportedCallbackRest")).toMatchObject({
         evidence: "unknown", unknownReasons: ["unsupported-callback-binding"],
       });

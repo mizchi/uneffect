@@ -334,6 +334,11 @@ retained when a Promise-producing call can do both. Indirect awaits, thenable
 assimilation, and floating rejection are not inferred by this bridge, and the
 package producer remains a trusted assumption.
 
+The callable-summary cardinality join recognizes one mutually exclusive
+`if/else` or closed explicit-default `switch`. It is a structural control proof,
+not a general path-condition solver: fallthrough, independent predicates, and
+conditional calls inside an arm stay unknown.
+
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do
 not infer support from a nearby example.

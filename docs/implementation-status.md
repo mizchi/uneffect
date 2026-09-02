@@ -922,6 +922,10 @@ same property is proved for arbitrary TypeScript.
   Exact declaration binding feeds package `Throw` and directly awaited
   rejection alternatives into the shared resource CFG while preserving trusted
   producer authority; floating rejection remains an ownership concern.
+  Direct callback calls in both arms of one `if/else`, or every non-fallthrough
+  clause of one explicit-default `switch`, join to a single cardinality while
+  retaining any enclosing conditional or loop multiplicity. Independent or
+  internally conditional sites remain unknown.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

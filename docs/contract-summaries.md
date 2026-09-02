@@ -152,3 +152,11 @@ The Effect payload also persists direct Promise rejection types separately as
 edges in the shared resource CFG. Package semantic authority remains `trusted`;
 declaration linkage does not upgrade it to a proof. A floating rejection stays
 in Promise ownership and is never rewritten into a synchronous throw edge.
+
+Callback cardinality is path-joined for one closed mutually exclusive control
+node. An `if/else` with one unconditional call in each arm is exactly-once; if
+the whole conditional is itself optional or repeated, that outer multiplicity
+is preserved. A `switch` receives the same treatment only with an explicit
+default, one unconditional callback call per clause, and no fallthrough.
+Independent conditions, fallthrough, or nested conditional calls remain
+`unknown` rather than being added as if they were exclusive.
