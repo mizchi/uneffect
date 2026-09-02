@@ -207,7 +207,7 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
         && (callback.effectBound === undefined || (Array.isArray(callback.effectBound)
           && callback.effectBound.every((entry) => typeof entry === "string"))));
     const validResourceReference = (reference: unknown): boolean => Boolean(reference && typeof reference === "object"
-      && ((reference as { kind?: unknown }).kind === "return"
+      && ((reference as { kind?: unknown }).kind === "return" || (reference as { kind?: unknown }).kind === "receiver"
         || ((reference as { kind?: unknown }).kind === "parameter"
           && Number.isInteger((reference as { index?: unknown }).index)
           && ((reference as { index: number }).index >= 0))));

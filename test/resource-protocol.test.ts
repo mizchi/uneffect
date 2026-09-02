@@ -10,6 +10,7 @@ describe("resource protocol IR", () => {
       operations: [
         { kind: "acquire", subject: { kind: "return" } },
         { kind: "use", subject: { kind: "parameter", index: 0, name: "input" } },
+        { kind: "use", subject: { kind: "receiver" } },
         { kind: "borrow", subject: { kind: "parameter", index: 0, name: "input" } },
         { kind: "consume", subject: { kind: "parameter", index: 1, name: "body" } },
         { kind: "transfer", subject: { kind: "parameter", index: 2, name: "port" }, target: { kind: "return" } },
@@ -19,6 +20,7 @@ describe("resource protocol IR", () => {
     expect(instantiateResourceCallableSummary(summary, {
       parameters: new Map([[0, "input#1"], [1, "body#1"], [2, "port#1"], [3, "callback#1"]]),
       returnResource: "returned#1",
+      receiverResource: "receiver#1",
       at: 42,
     })).toEqual({
       status: "exact",
@@ -29,6 +31,7 @@ describe("resource protocol IR", () => {
       transitions: [
         { kind: "acquire", resource: "returned#1", at: 42, evidence: "exact" },
         { kind: "use", resource: "input#1", at: 42, evidence: "exact" },
+        { kind: "use", resource: "receiver#1", at: 42, evidence: "exact" },
         { kind: "use", resource: "input#1", at: 42, evidence: "exact" },
         { kind: "consume", resource: "body#1", at: 42, evidence: "exact" },
         { kind: "transfer", resource: "port#1", target: "returned#1", at: 42, evidence: "exact" },

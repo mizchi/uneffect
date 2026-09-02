@@ -63,7 +63,8 @@ describe("resource callable contract artifacts", () => {
   });
 
   it.each(["acquire", "use", "release"] as const)("authenticates the %s lifecycle operation", (kind) => {
-    const subject = kind === "acquire" ? { kind: "return" as const } : { kind: "parameter" as const, index: 0 };
+    const subject = kind === "acquire" ? { kind: "return" as const }
+      : kind === "use" ? { kind: "receiver" as const } : { kind: "parameter" as const, index: 0 };
     const artifact = createResourceCallableContractArtifact({
       symbol: environment.symbol, runtime: environment.runtime, declarationText,
       summary: { ...base().summary, operations: [{ kind, subject }] }, trust: base().trust,

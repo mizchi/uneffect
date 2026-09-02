@@ -90,7 +90,7 @@ function validDate(value: string): boolean {
 function validReference(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const reference = value as { kind?: unknown; index?: unknown };
-  return reference.kind === "return" || (reference.kind === "parameter"
+  return reference.kind === "return" || reference.kind === "receiver" || (reference.kind === "parameter"
     && typeof reference.index === "number" && Number.isInteger(reference.index) && reference.index >= 0);
 }
 

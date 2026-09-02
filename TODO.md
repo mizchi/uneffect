@@ -430,6 +430,9 @@ introducing another domain-local control-flow or alias model.
        disposal across normal, return, throw, catch, and nested-block exits;
        keep repeated loop acquisition unknown and disposal failure in the async
        temporal model.
+     - [x] Add method-receiver resource references with `use this` and
+       `release this`, binding immutable client aliases to the acquired return
+       region by TypeChecker method and receiver identity.
      - [x] Accept trusted resource contracts on ambient functions/methods only
        from explicit root `.d.ts` overlays; reject automatic trust from
        transitively imported declaration files.

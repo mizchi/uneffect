@@ -50,6 +50,7 @@ export interface ResourceProtocolModel {
 /** A resource position in a callable contract. Names are diagnostic-only. */
 export type ResourceCallableReference =
   | { readonly kind: "parameter"; readonly index: number; readonly name?: string }
+  | { readonly kind: "receiver" }
   | { readonly kind: "return" };
 
 export interface ResourceCallableOperation {
@@ -69,6 +70,7 @@ export interface ResourceCallableSummary {
 
 export interface ResourceCallableBindings {
   readonly parameters: ReadonlyMap<number, string>;
+  readonly receiverResource?: string;
   readonly returnResource?: string;
   readonly at: number;
 }
@@ -82,7 +84,8 @@ export interface ResourceCallableInstantiation {
 }
 
 function resolveCallableResource(reference: ResourceCallableReference, bindings: ResourceCallableBindings): string | undefined {
-  return reference.kind === "return" ? bindings.returnResource : bindings.parameters.get(reference.index);
+  return reference.kind === "return" ? bindings.returnResource
+    : reference.kind === "receiver" ? bindings.receiverResource : bindings.parameters.get(reference.index);
 }
 
 /** Instantiates a callable ownership contract at one source-bound call site. */
@@ -105,7 +108,7 @@ export function instantiateResourceCallableSummary(
     if (operation.kind === "acquire") {
       resources.push({
         id: resource,
-        label: `${operation.subject.kind === "return" ? "return" : operation.subject.name ?? `parameter ${operation.subject.index}`} of ${summary.id}`,
+        label: `${operation.subject.kind === "return" ? "return" : operation.subject.kind === "receiver" ? "receiver" : operation.subject.name ?? `parameter ${operation.subject.index}`} of ${summary.id}`,
         kind: "Resource",
         initialState: "absent",
         requiredTerminalStates: ["released", "consumed", "transferred", "escaped"],

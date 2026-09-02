@@ -202,6 +202,43 @@ describe("TypeScript resource protocol CFG lowering", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("binds method lifecycle operations to the stable receiver identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-receiver-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Client {
+          /* uneffect:use this */ query(): void
+          /* uneffect:release this */ close(): void
+        }
+        /* uneffect:acquire return */ declare function connect(): Client
+        function main() { const client = connect(); const alias = client; alias.query(); alias.close() }
+        function invalid() { const client = connect(); client.close(); client.query() }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const analysis = analyzeResourceCallableSummaries(program);
+      expect(analysis.diagnostics).toEqual([]);
+      expect(analysis.summaries.flatMap((summary) => summary.operations)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "use", subject: { kind: "receiver" } }),
+        expect.objectContaining({ kind: "release", subject: { kind: "receiver" } }),
+      ]));
+      const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).filter((fn) => fn.body).map((fn) => [fn.name!.text, fn]));
+      const evaluate = (name: string) => {
+        const fn = functions.get(name)!;
+        const collected = collectResourceCallableTransitionSites(program, fn, analysis.summaries);
+        expect(collected.diagnostics).toEqual([]);
+        const lowered = lowerResourceProtocolCfgInFunction(source, fn, {
+          schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],
+        }, collected.sites);
+        if (lowered.status !== "exact") throw new Error(lowered.reason);
+        return evaluateResourceProtocolCfg(lowered.cfg);
+      };
+      expect(evaluate("main")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("invalid")).toMatchObject({ status: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("extracts trusted method contracts from declaration files and imported aliases", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-declaration-"));
     try {
@@ -253,6 +290,8 @@ describe("TypeScript resource protocol CFG lowering", () => {
         function malformed(value: object): object { return value }
         /* uneffect: acquire value */
         function malformedAcquire(value: object): object { return value }
+        /* uneffect: use this */
+        function malformedReceiver(): void {}
         /* uneffect: transfer value -> return */
         function moves(value: object): object { return value }
         function unbound(value: object) { moves(value) }
@@ -263,6 +302,7 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(analysis.diagnostics).toEqual(expect.arrayContaining([
         expect.objectContaining({ code: "invalid-resource-transfer" }),
         expect.objectContaining({ code: "invalid-resource-acquire" }),
+        expect.objectContaining({ code: "invalid-resource-receiver" }),
       ]));
       const unbound = source.statements.filter(ts.isFunctionDeclaration).find((fn) => fn.name?.text === "unbound")!;
       expect(collectResourceCallableTransitionSites(program, unbound, analysis.summaries).diagnostics)

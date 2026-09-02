@@ -149,6 +149,7 @@
     "resourceReference": {
       "oneOf": [
         { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "return" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "receiver" } } },
         { "type": "object", "additionalProperties": false, "required": ["kind", "index"], "properties": {
           "kind": { "const": "parameter" }, "index": { "type": "integer", "minimum": 0 }, "name": { "type": "string" }
         } }

@@ -332,6 +332,34 @@ currently restricted to a directly `const`-bound return value. Destructuring,
 mutable aliases, returned-member factory contracts, and contracts imported only
 through an unauthenticated transitive `.d.ts` remain unknown.
 
+Method contracts may name their receiver with `this`, which covers the common
+client/handle shape without wrapping the API:
+
+```ts
+interface Client {
+  /* uneffect:use this */
+  query(): void
+
+  /* uneffect:release this */
+  close(): void
+}
+
+/* uneffect:acquire return */
+declare function connect(): Client
+
+function run() {
+  const client = connect()
+  const alias = client
+  alias.query()
+  alias.close()
+}
+```
+
+The method symbol selects the contract and the property-access base supplies
+the receiver resource identity. Immutable aliases resolve to the same acquired
+region. `this` on a free function is rejected as a malformed resource contract;
+dynamic/computed receiver selection and mutable aliases remain unknown.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 

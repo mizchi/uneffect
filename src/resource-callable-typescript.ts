@@ -17,7 +17,7 @@ type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.Meth
   | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
 
 export interface ResourceCallableDiagnostic {
-  readonly code: "invalid-resource-reference" | "invalid-resource-acquire" | "invalid-resource-transfer" | "unresolved-resource-binding";
+  readonly code: "invalid-resource-reference" | "invalid-resource-acquire" | "invalid-resource-receiver" | "invalid-resource-transfer" | "unresolved-resource-binding";
   readonly fileName: string;
   readonly message: string;
   readonly span: { readonly start: number; readonly end: number };
@@ -77,6 +77,7 @@ function annotationOwner(node: SupportedFunction): ts.Node {
 
 function reference(text: string, declaration: SupportedFunction): ResourceCallableReference | undefined {
   if (text === "return") return { kind: "return" };
+  if (text === "this") return { kind: "receiver" };
   const index = declaration.parameters.findIndex((parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === text);
   return index < 0 ? undefined : { kind: "parameter", index, name: text };
 }
@@ -106,6 +107,12 @@ export function analyzeResourceCallableSummaries(program: ts.Program): ResourceC
             if (!subject) {
               diagnostics.push({ code: "invalid-resource-reference", fileName: source.fileName,
                 message: `unknown resource parameter ${subjectText}`, span: annotation.span });
+              continue;
+            }
+            if ((subject.kind === "receiver" || target?.kind === "receiver")
+              && !ts.isMethodDeclaration(node) && !ts.isMethodSignature(node)) {
+              diagnostics.push({ code: "invalid-resource-receiver", fileName: source.fileName,
+                message: "`this` resource references require a method declaration or signature", span: annotation.span });
               continue;
             }
             if (kind === "acquire" && subject.kind !== "return") {
@@ -210,6 +217,8 @@ export function collectResourceCallableTransitionSites(
           });
           const instantiated = instantiateResourceCallableSummary(summary, {
             parameters,
+            receiverResource: ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+              ? resourceArgumentId(checker, node.expression.expression) : undefined,
             returnResource: returnedResourceId(node),
             at: node.getStart(),
           });
@@ -218,7 +227,7 @@ export function collectResourceCallableTransitionSites(
           for (const missing of instantiated.missing) diagnostics.push({
             code: "unresolved-resource-binding",
             fileName: node.getSourceFile().fileName,
-            message: `cannot bind ${missing.reference.kind === "return" ? "return resource" : `parameter ${missing.reference.index}`} for ${summary.id}`,
+            message: `cannot bind ${missing.reference.kind === "return" ? "return resource" : missing.reference.kind === "receiver" ? "receiver resource" : `parameter ${missing.reference.index}`} for ${summary.id}`,
             span: { start: node.getStart(), end: node.getEnd() },
           });
         }
