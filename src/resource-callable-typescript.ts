@@ -153,9 +153,10 @@ function resultDeclaration(call: ts.CallExpression): ts.VariableDeclaration | un
   return ts.isVariableDeclaration(parent) && parent.initializer === current && ts.isIdentifier(parent.name) ? parent : undefined;
 }
 
-function returnedResourceId(call: ts.CallExpression): string | undefined {
+function returnedResourceId(call: ts.CallExpression, allowTemporary = false): string | undefined {
   const declaration = resultDeclaration(call);
-  return declaration ? `region:${declaration.getSourceFile().fileName}:${declaration.getStart()}` : undefined;
+  return declaration ? `region:${declaration.getSourceFile().fileName}:${declaration.getStart()}`
+    : allowTemporary ? `region:${call.getSourceFile().fileName}:${call.getStart()}` : undefined;
 }
 
 function resourceArgumentId(checker: ts.TypeChecker, input: ts.Expression): string | undefined {
@@ -200,10 +201,14 @@ export function collectResourceCallableTransitionSites(
   const resources = new Map<string, ResourceProtocolResource>();
   const diagnostics: ResourceCallableDiagnostic[] = [];
   const fulfilledAliases = new Map<ts.Symbol, string>();
+  const acquisitionCalls = new Set<ts.CallExpression>();
   const resourceIdentity = (expression: ts.Expression): string | undefined => {
     let target = expression;
     while (ts.isParenthesizedExpression(target) || ts.isNonNullExpression(target)
       || ts.isAsExpression(target) || ts.isTypeAssertionExpression(target)) target = target.expression;
+    if (ts.isCallExpression(target) && acquisitionCalls.has(target)) {
+      return `region:${target.getSourceFile().fileName}:${target.getStart()}`;
+    }
     const symbol = ts.isIdentifier(target) ? resolvedSymbol(checker, target) : undefined;
     return symbol ? fulfilledAliases.get(symbol) ?? resourceArgumentId(checker, expression) : resourceArgumentId(checker, expression);
   };
@@ -239,21 +244,32 @@ export function collectResourceCallableTransitionSites(
       || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
     return factorySummaryForReceiver(declaration.initializer, new Set(seen).add(symbol));
   };
+  const summaryForCall = (node: ts.CallExpression): ResourceCallableSummary | undefined => {
+    let summary = summaryForExpression(node.expression);
+    if (!summary && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))) {
+      const key = ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text
+        : node.expression.argumentExpression && (ts.isStringLiteralLike(node.expression.argumentExpression)
+          || ts.isNumericLiteral(node.expression.argumentExpression)) ? node.expression.argumentExpression.text : undefined;
+      const factory = key ? factorySummaryForReceiver(node.expression.expression) : undefined;
+      const member = factory?.returnMembers?.find((candidate) => candidate.key === key);
+      if (factory && member) summary = {
+        schema: "uneffect-resource-callable-summary/v1", id: `${factory.id}#${member.key}`,
+        evidence: factory.evidence, operations: member.operations,
+      };
+    }
+    return summary;
+  };
+  const collectAcquisitions = (node: ts.Node): void => {
+    if (node !== fn.body && ts.isFunctionLike(node)) return;
+    if (ts.isCallExpression(node) && summaryForCall(node)?.operations.some((operation) =>
+      operation.kind === "acquire" && operation.subject.kind === "return")) acquisitionCalls.add(node);
+    ts.forEachChild(node, collectAcquisitions);
+  };
+  collectAcquisitions(fn.body);
   const visit = (node: ts.Node): void => {
     if (node !== fn && ts.isFunctionLike(node)) return;
     if (ts.isCallExpression(node)) {
-      let summary = summaryForExpression(node.expression);
-      if (!summary && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))) {
-        const key = ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text
-          : node.expression.argumentExpression && (ts.isStringLiteralLike(node.expression.argumentExpression)
-            || ts.isNumericLiteral(node.expression.argumentExpression)) ? node.expression.argumentExpression.text : undefined;
-        const factory = key ? factorySummaryForReceiver(node.expression.expression) : undefined;
-        const member = factory?.returnMembers?.find((candidate) => candidate.key === key);
-        if (factory && member) summary = {
-          schema: "uneffect-resource-callable-summary/v1", id: `${factory.id}#${member.key}`,
-          evidence: factory.evidence, operations: member.operations,
-        };
-      }
+      const summary = summaryForCall(node);
       if (summary) {
           const parameters = new Map<number, string>();
           node.arguments.forEach((argument, index) => {
@@ -267,7 +283,7 @@ export function collectResourceCallableTransitionSites(
             parameters,
             receiverResource: ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
               ? resourceIdentity(node.expression.expression) : undefined,
-            returnResource: awaitedBinding?.id ?? returnedResourceId(node),
+            returnResource: awaitedBinding?.id ?? returnedResourceId(node, acquisitionCalls.has(node)),
             at: node.getStart(),
           });
           const hasAcquire = instantiated.transitions.some((transition) => transition.kind === "acquire");

@@ -148,7 +148,12 @@ These comments are trusted declarations, not implementation proofs. Direct
 same-Program calls are matched by TypeChecker declaration identity, so renaming
 and immutable import aliases remain identity-based and a same-named shadow does
 not inherit the contract. Arguments and a direct `const result = boundary(...)`
-return are substituted into transition sites. Malformed parameter names,
+return are substituted into transition sites. Synchronous acquisition results
+also receive source-stable temporary identities, so `open().close()`,
+`release(open())`, and an unbound leaking `open()` preserve JavaScript nested
+call evaluation order. For optional fluent calls such as `open()?.close()`, the
+receiver acquisition runs before the optional branch and the conditional
+release joins to `unknown`. Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions
 produce diagnostics or remain outside the fragment. Ambient function and method
 signatures are accepted when their `.d.ts` overlay is an explicit TypeScript

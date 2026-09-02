@@ -239,6 +239,43 @@ describe("TypeScript resource protocol CFG lowering", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("tracks synchronous acquired temporaries through fluent release calls", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-temporary-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Handle { /* uneffect:release this */ close(): void }
+        /* uneffect:acquire return */ declare function connect(): Handle
+        /* uneffect:release handle */ declare function release(handle: Handle): void
+        function direct() { connect().close() }
+        function nestedArgument() { release(connect()) }
+        function optional() { connect()?.close() }
+        function leaked() { connect() }
+      `);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
+      const source = program.getSourceFile(fileName)!;
+      const summaries = analyzeResourceCallableSummaries(program);
+      const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).filter((fn) => fn.body)
+        .map((fn) => [fn.name!.text, fn]));
+      const evaluate = (name: string) => {
+        const fn = functions.get(name)!;
+        const collected = collectResourceCallableTransitionSites(program, fn, summaries.summaries);
+        expect(collected.diagnostics).toEqual([]);
+        const lowered = lowerResourceProtocolCfgInFunction(source, fn, {
+          schema: "uneffect-resource-protocol/v1", resources: collected.resources, transitions: [],
+        }, collected.sites);
+        expect(lowered.status).toBe("exact");
+        return lowered.status === "exact" ? evaluateResourceProtocolCfg(lowered.cfg) : undefined;
+      };
+      expect(evaluate("direct")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("nestedArgument")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("optional")).toMatchObject({ status: "unknown" });
+      expect(evaluate("leaked")).toMatchObject({ status: "unsatisfied" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("extracts trusted method contracts from declaration files and imported aliases", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-declaration-"));
     try {

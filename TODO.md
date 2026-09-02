@@ -585,7 +585,11 @@ introducing another domain-local control-flow or alias model.
        call-scoped assumptions, and invalid-contract diagnostics.
      - [x] Add repeatable CLI `--resource-contract` JSON loading for package
        resource artifacts; Program binding performs the semantic authentication.
-     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend stable return/argument identity beyond the direct supported fragment.
+     - [x] Extend synchronous return/argument identity to acquired temporaries,
+       including fluent receiver release, nested call arguments, bare leaks,
+       source evaluation order, and optional receiver-before-call branching.
+     - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend stable return/argument identity through destructured, returned,
+       escaping, and dynamically selected resource values.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
    aliases. Represent may-effects, synchronous throws, Promise rejections,
    region reads/writes, and callback invocation cardinality/timing. Start with
