@@ -65,6 +65,24 @@ versioned caller-owned review records referenced by source trust IDs.
 package contract to the exact installed package version and
 TypeChecker-resolved declaration; repeat it for multiple packages. Digest,
 version, compiler, and signature drift fail closed.
+`contract-summary` publishes that envelope directly from a package project:
+
+```sh
+npx uneffect contract-summary \
+  --project tsconfig.build.json \
+  --entry src/index.ts \
+  --package-name @example/library \
+  --package-version 1.2.3 \
+  --typescript-emit-root . \
+  --out uneffect-contract.json
+```
+
+Build first. With `--typescript-emit-root`, the command re-emits the selected
+Program in memory, requires every emitted `.js` and `.d.ts` under that package
+root to match disk, and records all output digests. Use repeatable
+`--runtime-artifact package/path=file` only for additional reviewed files that
+are not plain TypeScript output. `--config` and repeatable `--semantics-module`
+use the same trusted registry inputs as `check`.
 `--resource-contract <resource.json>` binds one reviewed resource lifecycle
 artifact to the exact installed package/Node version and declaration bytes;
 repeat it for multiple exports. Accepted contracts remain trusted assumptions,

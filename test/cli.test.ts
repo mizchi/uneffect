@@ -48,6 +48,45 @@ describe("uneffect command line", () => {
     }
   });
 
+  it("publishes an exact TypeScript-emit package summary from a project", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-publish-contract-"));
+    const sourceDirectory = join(directory, "src");
+    const outputDirectory = join(directory, "dist");
+    mkdirSync(sourceDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, "index.ts");
+    writeFileSync(sourceFile, `/* uneffect:effect none */ export function value(): number { return 1 }`);
+    const projectFile = join(directory, "tsconfig.json");
+    writeFileSync(projectFile, JSON.stringify({ compilerOptions: {
+      strict: true, declaration: true, rootDir: "src", outDir: "dist",
+      target: "ES2022", module: "ESNext",
+    }, include: ["src"] }));
+    const loaded = ts.readConfigFile(projectFile, ts.sys.readFile);
+    const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, directory, undefined, projectFile);
+    expect(ts.createProgram(parsed.fileNames, parsed.options).emit().emitSkipped).toBe(false);
+    const outputFile = join(directory, "uneffect-contract.json");
+    const io = capture();
+    expect(await runCli([
+      "contract-summary", "--project", projectFile, "--entry", sourceFile,
+      "--package-name", "@example/value", "--package-version", "1.0.0",
+      "--typescript-emit-root", directory, "--out", outputFile,
+    ], io), io.stderr).toBe(exitCode.success);
+    const summary = JSON.parse(readFileSync(outputFile, "utf8")) as {
+      package: { name: string }; typescriptEmit: { outputs: Array<{ packagePath: string }> };
+    };
+    expect(summary.package.name).toBe("@example/value");
+    expect(summary.typescriptEmit.outputs.map(({ packagePath }) => packagePath).sort())
+      .toEqual(["dist/index.d.ts", "dist/index.js"]);
+
+    writeFileSync(join(outputDirectory, "index.js"), "export function value() { return 2 }\n");
+    const drifted = capture();
+    expect(await runCli([
+      "contract-summary", "--project", projectFile, "--entry", sourceFile,
+      "--package-name", "@example/value", "--package-version", "1.0.0",
+      "--typescript-emit-root", directory, "--out", outputFile,
+    ], drifted)).toBe(exitCode.failed);
+    expect(drifted.stderr).toContain("TypeScript emit is not exact");
+  });
+
   it("asks for a command instead of guessing when the argument is neither", async () => {
     const io = capture();
     expect(await runCli([], io)).toBe(exitCode.usage);

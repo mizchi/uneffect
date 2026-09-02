@@ -43,6 +43,14 @@ const installed = await loadContractSummaryBundle("uneffect-contract.json")
 const binding = bindContractSummaryBundleToProgram(installed, consumerProgram)
 ```
 
+The equivalent package-facing CLI is:
+
+```sh
+npx uneffect contract-summary --project tsconfig.build.json --entry src/index.ts \
+  --package-name @example/math --package-version 1.2.3 \
+  --typescript-emit-root . --out uneffect-contract.json
+```
+
 The bundle binds:
 
 - package name and exact version;

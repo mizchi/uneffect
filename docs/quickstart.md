@@ -387,6 +387,30 @@ npx uneffect check --assurance verified src/uneffect-example.ts
 A correctly declared call to a reviewed builtin still blocks this profile. Use
 `declared` when that reviewed contract is an accepted, owned assumption.
 
+## Publish a package boundary
+
+For a library whose distributed JavaScript is the exact TypeScript build
+output, build it and publish the checked boundary without writing an integration
+script:
+
+```sh
+pnpm exec tsc -p tsconfig.build.json
+npx uneffect contract-summary \
+  --project tsconfig.build.json \
+  --entry src/index.ts \
+  --package-name @example/library \
+  --package-version 1.0.0 \
+  --typescript-emit-root . \
+  --out uneffect-contract.json
+```
+
+Ship `uneffect-contract.json` with the package. A consumer supplies it with
+`uneffect check --contract-summary`; contracts are exposed only when package
+version, TypeChecker-selected declarations, signatures, and every recorded
+TypeScript output match. Bundled or otherwise post-transformed distributions
+need an authenticated transformation pipeline and must not use the exact
+TypeScript-emit claim.
+
 These profiles cover emitted evidence for the explicit file boundary; they are
 not whole-program or assumption-free proofs. The CLI prints both the claims
 established by a passing profile and exclusions that remain outside it; API

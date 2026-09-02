@@ -888,6 +888,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Bind exact untransformed TypeScript declaration/runtime outputs to a
        same-compiler in-memory re-emit of the producer Program and require every
        output to match the installed package before exposing contracts.
+     - [x] Expose package summary publication as a strict CLI command with
+       project/entry/package identity, exact TypeScript emit, optional reviewed
+       runtime files, registry/module inputs, and deterministic JSON output.
      - [ ] [#7](https://github.com/mizchi/uneffect/issues/7) Add authenticated
        bundler/post-transform provenance plus publisher and complete tarball
        authenticity. Plain TypeScript emit evidence does not satisfy this boundary.

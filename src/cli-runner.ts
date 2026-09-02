@@ -9,8 +9,9 @@ import { instrumentCommand } from "./instrument-command.js";
 import { asyncModelCommand, resourceCommand } from "./resource-command.js";
 import { specCommand } from "./spec-command.js";
 import { moduleOrderCommand } from "./module-order-command.js";
+import { contractSummaryCommand } from "./contract-summary-command.js";
 
-export const cliCommands: readonly CliCommand[] = [checkCommand, doctorCommand, specCommand, instrumentCommand, evidenceCommand, moduleOrderCommand, resourceCommand, asyncModelCommand];
+export const cliCommands: readonly CliCommand[] = [checkCommand, doctorCommand, specCommand, instrumentCommand, evidenceCommand, contractSummaryCommand, moduleOrderCommand, resourceCommand, asyncModelCommand];
 
 /** The published version, read from this package's own manifest. */
 /* uneffect:effect FsRead */
