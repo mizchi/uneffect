@@ -2584,6 +2584,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     aliases, and prove callee preconditions from the call-time path. Repeated
     observation is allowed; a pending Promise that leaves its lexical/function
     scope without any observation is fail-closed.
+  - [x] Preserve synchronous exception identity inside an async body for local
+    `try/catch`, then convert any uncaught `Throw<E>` completion to
+    `Reject<E>` exactly at the async function boundary. This applies uniformly
+    to direct throw, declared never-call, assertion, and call-time throw edges.
   - [ ] Add general inferred Promise producers, presence-only object fulfillment, ([#25](https://github.com/mizchi/uneffect/issues/25))
     property/destructured targets, opaque catch payloads, persisted consumer
     linkage/authenticity, and interprocedural heap state.

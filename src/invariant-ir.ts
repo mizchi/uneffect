@@ -1723,6 +1723,7 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       if (parameterDomain === "nat") baseAssumptions.push({ kind: "binary", operator: "gte", left: variable(parameter.name.text), right: { kind: "integer", value: "0" } });
     }
     const fn = node.name.text;
+    const asyncBoundary = (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Async) !== 0;
     const displayNames: Record<string, string> = {};
     const visibleBindings = (bound: Environment): ObligationBinding[] => [...bound]
       .filter(([name, expression]) => !(expression.kind === "variable" && expression.name === name))
@@ -2714,7 +2715,12 @@ export function lowerInvariantProgram(fileName: string, text: string, program?: 
       for (const path of exits.filter((item) => item.completion === "return" && item.returnEnv && item.returnStatement)) {
         for (const ensure of ensures) add("postcondition", path.returnStatement!, path.assumptions, substitute(ensure.expression, path.returnEnv!), ensure.source, path.returnEnv!, path.dischargedThrows, path.relationalCalls);
       }
-      const escapes = exits.filter((path) => (path.completion === "throw" || path.completion === "reject") && path.thrown).map((path) => path.thrown!);
+      const escapes = exits.filter((path) => (path.completion === "throw" || path.completion === "reject") && path.thrown).map((path): ContractThrowEdge => {
+        const edge = path.thrown!;
+        if (!asyncBoundary || edge.kind !== "synchronous-throw") return edge;
+        const match = /^Throw<(.*)>$/.exec(edge.effect);
+        return { ...edge, kind: "promise-rejection", effect: `Reject<${match?.[1] ?? "unknown"}>` };
+      });
       for (const obligation of obligations.slice(functionObligationStart)) obligation.controlFlow.exceptionFlow!.escapes = [...escapes];
     } catch (cause) {
       throw locatedLowering(cause, fn, { start: node.getStart(source), end: node.getEnd() });

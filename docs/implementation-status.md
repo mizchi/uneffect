@@ -796,6 +796,11 @@ same property is proved for arbitrary TypeScript.
   bounded completion model runs supported `finally` blocks on normal, return,
   throw, and rejection paths; an abrupt finalizer overrides the retained
   completion. Scalar explicit-throw payloads may bind a catch identifier.
+  Within an async body, direct throws and synchronous call/assertion failures
+  retain `synchronous-throw` identity until a local catch handles them. Any such
+  edge still uncaught at the function boundary is converted to
+  `promise-rejection` / `Reject<E>`, matching the returned Promise rather than
+  exposing a synchronous caller effect.
   A directly awaited, TypeChecker-identified builtin
   `Promise.reject(value)` produces a distinct `Reject<E>` edge which catch can
   discharge, without requiring a synchronous `Throw<E>` declaration. A

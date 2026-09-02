@@ -2990,6 +2990,56 @@ describe("Hoare contract checker", () => {
     expect(joined?.controlFlow?.effectBoundary).toMatchObject({ escaping: ["Reject<RangeError>"], blockers: [] });
   });
 
+  it("converts uncaught async-body throws to returned Promise rejection at the function boundary", async () => {
+    const fileName = "/async-throw-boundary-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:effect Throw<URIError> */
+      declare function fail(): never
+      /* uneffect:ensures result >= 0 */
+      async function direct(value: Int): Promise<Int> {
+        if (value < 0) throw new RangeError("negative")
+        if (value === 0) fail()
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    const escapes = result.artifacts[0]?.controlFlow?.exceptionFlow?.escapes ?? [];
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(escapes).toContainEqual(expect.objectContaining({ kind: "promise-rejection", effect: "Reject<RangeError>" }));
+    expect(escapes).toContainEqual(expect.objectContaining({ kind: "promise-rejection", effect: "Reject<URIError>" }));
+    expect(escapes).not.toContainEqual(expect.objectContaining({ kind: "synchronous-throw" }));
+  });
+
+  it("retains synchronous throw classification when an async-body catch handles it locally", async () => {
+    const fileName = "/async-local-catch-contract.ts";
+    const source = `
+      type Int = number
+      /* uneffect:effect Throw<RangeError> */
+      declare function fail(): never
+      /* uneffect:ensures result === value */
+      async function caught(value: Int): Promise<Int> {
+        try {
+          if (value < 0) fail()
+        } catch {
+          return value
+        }
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts).toContainEqual(expect.objectContaining({
+      controlFlow: expect.objectContaining({ exceptionFlow: expect.objectContaining({
+        discharged: [expect.objectContaining({ kind: "synchronous-throw", effect: "Throw<RangeError>" })],
+      }) }),
+    }));
+  });
+
   it("rejects a same-spelled local Promise.reject instead of granting builtin semantics", async () => {
     const fileName = "/spoofed-promise-rejection-contract.ts";
     const source = `

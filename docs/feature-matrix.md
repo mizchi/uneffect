@@ -398,6 +398,9 @@ await, and callee preconditions use only the call-time path. Repeated await is
 allowed; a Promise leaving lexical/function scope without observation is
 `unknown`. Conditional, mutable, property, destructured, and escaping Promise
 aliases remain unsupported.
+Synchronous exceptions raised inside an async body retain their identity for
+local `try/catch`; if still uncaught at function exit, the contract boundary
+converts `Throw<E>` to returned-Promise `Reject<E>`.
 Mutable/computed/object captures, mutable callables,
 default/rest/destructured parameters, multi-statement bodies, and
 Promise/thenable-valued returns remain `unknown`.
