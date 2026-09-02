@@ -898,8 +898,9 @@ introducing another domain-local control-flow or alias model.
   - [x] Require root-provenance-authenticated call-site spans for persisted Hoare composition so structural lookalikes and `typeof` casts fail closed.
   - [x] Route synchronous external contract results through the common scalar binding evaluator without misclassifying them as owned Promise bindings.
   - [x] Route authenticated persisted `Throw<E>` call statements through normal/throw completion, catch discharge, finally, and unhandled escape evidence.
-  - [x] Compose value-plus-`Throw<E>` completion for a direct scalar return or initialized binding, while keeping calls nested in larger value expressions fail-closed.
-  - [x] Apply the same value-plus-`Throw<E>` completion to direct identifier assignment, including catch joins; keep nested assignment expressions fail-closed.
+  - [x] Compose value-plus-`Throw<E>` completion for a direct scalar return or initialized binding.
+  - [x] Apply the same value-plus-`Throw<E>` completion to direct identifier assignment, including catch joins.
+  - [x] Generalize scalar expressions to propagate value/abrupt completion through supported arithmetic/comparison, prefix, ternary, short-circuit, and reviewed Math operations with left-to-right evaluation; retain specialized nullable/`typeof`/discriminant lowering when no tracked call is present.
   - [x] Persist Promise rejection sets, including uncaught `async throw` and catch rethrow classification, and compose them as authenticated `Reject<E>` await/catch edges without granting authority to receiver lookalikes.
      Expose the path programmatically and through repeatable CLI
      `--contract-summary` inputs.

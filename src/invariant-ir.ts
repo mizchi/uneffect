@@ -1979,11 +1979,25 @@ export function lowerInvariantProgram(
         throw new Error(`nullable mutation would change shared immutable-alias state: ${expression.getText(source)}`);
       }
     };
+    const containsTrackedSynchronousCall = (expression: ts.Expression): boolean => {
+      let found = false;
+      const visit = (node: ts.Node): void => {
+        if (found || node !== expression && ts.isFunctionLike(node)) return;
+        if (ts.isCallExpression(node)) {
+          const fact = callCompletions.get(`${node.getStart(source)}:${node.getEnd()}`);
+          if (fact?.mode === "sync") { found = true; return; }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(expression);
+      return found;
+    };
     const evaluateIntegerRemainder = (
       left: ts.Expression,
       divisor: number,
       path: PathState,
     ): Array<{ path: PathState; value: LogicExpression }> => evaluateScalar(left, path).flatMap(({ path: branch, value }) => {
+      if (branch.completion !== "normal") return [{ path: branch, value }];
       if (scalarExpressionSort(value) !== "Int") {
         throw new Error(`integer remainder requires an Int-valued left operand: ${left.getText(source)}`);
       }
@@ -2001,27 +2015,50 @@ export function lowerInvariantProgram(
         },
       ];
     });
-    const evaluateScalar = (
-      expression: ts.Expression,
-      path: PathState,
-      allowDirectSynchronousThrow = false,
-    ): Array<{ path: PathState; value: LogicExpression }> => {
+    const evaluateScalar = (expression: ts.Expression, path: PathState): Array<{ path: PathState; value: LogicExpression }> => {
       let unwrapped = expression;
       while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
         || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
       if (ts.isConditionalExpression(unwrapped)) {
-        const condition = evaluateCondition(unwrapped.condition, path.env);
-        const whenTrue = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] };
-        const whenFalse = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] };
-        return [
-          ...evaluateScalar(unwrapped.whenTrue, whenTrue),
-          ...evaluateScalar(unwrapped.whenFalse, whenFalse),
-        ];
+        if (!containsTrackedSynchronousCall(unwrapped.condition)) {
+          const condition = evaluateCondition(unwrapped.condition, path.env);
+          const whenTrue = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] };
+          const whenFalse = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] };
+          return [
+            ...evaluateScalar(unwrapped.whenTrue, whenTrue),
+            ...evaluateScalar(unwrapped.whenFalse, whenFalse),
+          ];
+        }
+        return evaluateScalar(unwrapped.condition, path).flatMap((evaluated) => {
+          if (evaluated.path.completion !== "normal") return [evaluated];
+          const condition = evaluated.value;
+          const whenTrue = { ...evaluated.path, env: new Map(evaluated.path.env), assumptions: [...evaluated.path.assumptions, condition] };
+          const whenFalse = { ...evaluated.path, env: new Map(evaluated.path.env), assumptions: [...evaluated.path.assumptions, negate(condition)] };
+          return [
+            ...evaluateScalar(unwrapped.whenTrue, whenTrue),
+            ...evaluateScalar(unwrapped.whenFalse, whenFalse),
+          ];
+        });
+      }
+      if (ts.isPrefixUnaryExpression(unwrapped)
+        && (unwrapped.operator === ts.SyntaxKind.MinusToken || unwrapped.operator === ts.SyntaxKind.ExclamationToken)) {
+        return evaluateScalar(unwrapped.operand, path).map((evaluated) => evaluated.path.completion !== "normal"
+          ? evaluated
+          : {
+              path: evaluated.path,
+              value: {
+                kind: "unary",
+                operator: unwrapped.operator === ts.SyntaxKind.MinusToken ? "negate" : "not",
+                operand: evaluated.value,
+              },
+            });
       }
       if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskToken) {
         const exponent = boundedPowerExpressions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`);
         if (exponent === undefined) throw new Error(`unsupported invariant expression: ${unwrapped.getText(source)}`);
-        return evaluateScalar(unwrapped.left, path).map(({ path: branch, value }) => ({ path: branch, value: repeatedPower(value, exponent) }));
+        return evaluateScalar(unwrapped.left, path).map(({ path: branch, value }) => branch.completion !== "normal"
+          ? { path: branch, value }
+          : { path: branch, value: repeatedPower(value, exponent) });
       }
       if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.PercentToken) {
         const divisor = constantIntegerRemainders.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`);
@@ -2052,40 +2089,61 @@ export function lowerInvariantProgram(
         if (!booleanLogicalOperations.has(span)) {
           throw new Error(`unsupported invariant expression: ${unwrapped.getText(source)}`);
         }
-        const left = substitute(logic(unwrapped.left, pipeBindings, semanticGuards, semanticValues), path.env);
-        const whenTrue = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, left] };
-        const whenFalse = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(left)] };
-        if (unwrapped.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+        return evaluateScalar(unwrapped.left, path).flatMap((evaluated) => {
+          if (evaluated.path.completion !== "normal") return [evaluated];
+          const left = evaluated.value;
+          const whenTrue = { ...evaluated.path, env: new Map(evaluated.path.env), assumptions: [...evaluated.path.assumptions, left] };
+          const whenFalse = { ...evaluated.path, env: new Map(evaluated.path.env), assumptions: [...evaluated.path.assumptions, negate(left)] };
+          if (unwrapped.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+            return [
+              { path: whenFalse, value: { kind: "boolean" as const, value: false } },
+              ...evaluateScalar(unwrapped.right, whenTrue),
+            ];
+          }
           return [
-            { path: whenFalse, value: { kind: "boolean", value: false } },
-            ...evaluateScalar(unwrapped.right, whenTrue),
+            { path: whenTrue, value: { kind: "boolean" as const, value: true } },
+            ...evaluateScalar(unwrapped.right, whenFalse),
           ];
+        });
+      }
+      if (ts.isBinaryExpression(unwrapped)) {
+        const operators = new Map<ts.SyntaxKind, string>([
+          [ts.SyntaxKind.PlusToken, "add"], [ts.SyntaxKind.MinusToken, "sub"], [ts.SyntaxKind.AsteriskToken, "mul"],
+          [ts.SyntaxKind.LessThanToken, "lt"], [ts.SyntaxKind.LessThanEqualsToken, "lte"],
+          [ts.SyntaxKind.GreaterThanToken, "gt"], [ts.SyntaxKind.GreaterThanEqualsToken, "gte"],
+          [ts.SyntaxKind.EqualsEqualsToken, "eq"], [ts.SyntaxKind.EqualsEqualsEqualsToken, "eq"],
+          [ts.SyntaxKind.ExclamationEqualsToken, "neq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "neq"],
+        ]);
+        const operator = operators.get(unwrapped.operatorToken.kind);
+        if (operator && containsTrackedSynchronousCall(unwrapped)) {
+          return evaluateScalar(unwrapped.left, path).flatMap((left) => {
+            if (left.path.completion !== "normal") return [left];
+            return evaluateScalar(unwrapped.right, left.path).map((right) => right.path.completion !== "normal"
+              ? right
+              : { path: right.path, value: { kind: "binary", operator, left: left.value, right: right.value } });
+          });
         }
-        return [
-          { path: whenTrue, value: { kind: "boolean", value: true } },
-          ...evaluateScalar(unwrapped.right, whenFalse),
-        ];
       }
       const mathFact = ts.isCallExpression(unwrapped)
         ? mathScalarCalls.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
       const externalFact = ts.isCallExpression(unwrapped)
         ? callCompletions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
       if (ts.isCallExpression(unwrapped) && externalFact?.mode === "sync" && externalFact.fulfillment) {
-        if (externalFact.synchronousThrows.length > 0 && !allowDirectSynchronousThrow) {
-          throw new Error(`scalar call with both value and synchronous Throw completion is unsupported: ${unwrapped.getText(source)}`);
-        }
         const fulfillment = externalFact.fulfillment;
         let argumentsByPath: Array<{ path: PathState; values: LogicExpression[] }> = [{ path, values: [] }];
         for (const argument of unwrapped.arguments) {
           argumentsByPath = argumentsByPath.flatMap((current) =>
-            evaluateScalar(argument, current.path).map(({ path: branch, value }) => ({ path: branch, values: [...current.values, value] })));
+            current.path.completion !== "normal" ? [current]
+              : evaluateScalar(argument, current.path).map(({ path: branch, value }) => ({ path: branch, values: [...current.values, value] })));
         }
-        if (argumentsByPath.some(({ values }) => values.length !== fulfillment.parameters.length)) {
+        const normalArguments = argumentsByPath.filter(({ path: branch }) => branch.completion === "normal");
+        const abruptArguments = argumentsByPath.filter(({ path: branch }) => branch.completion !== "normal");
+        if (normalArguments.some(({ values }) => values.length !== fulfillment.parameters.length)) {
           throw new Error(`contract arguments require scalar snapshots matching ${fulfillment.functionName}`);
         }
         const fresh = `${fn}_call_result_${unwrapped.getStart(source)}`;
         if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: fulfillment.domain, sort: sort(fulfillment.domain) });
-        return argumentsByPath.map(({ path: branch, values }) => {
+        const fulfilled = normalArguments.map(({ path: branch, values }) => {
           const summaryEnv: Environment = new Map([["result", variable(fresh)]]);
           fulfillment.parameters.forEach((name, index) => summaryEnv.set(name, values[index]!));
           const evidence: ContractRelationalCallEvidence = {
@@ -2109,44 +2167,63 @@ export function lowerInvariantProgram(
             value: variable(fresh),
           };
         });
+        const thrown = normalArguments.flatMap(({ path: branch }) => externalFact.synchronousThrows.map((effect) => ({
+          path: {
+            ...branch,
+            completion: "throw" as const,
+            thrown: {
+              kind: "synchronous-throw" as const,
+              evidence: externalFact.evidence,
+              effect,
+              originSpan: { start: unwrapped.getStart(source), end: unwrapped.getEnd() },
+            },
+          },
+          value: variable(fresh),
+        })));
+        return [...fulfilled, ...thrown, ...abruptArguments.map(({ path: branch }) => ({ path: branch, value: variable(fresh) }))];
       }
       if (ts.isCallExpression(unwrapped) && mathFact) {
         const fact = mathFact;
         let argumentsByPath: Array<{ path: PathState; values: LogicExpression[] }> = [{ path, values: [] }];
         for (const argument of unwrapped.arguments) {
           argumentsByPath = argumentsByPath.flatMap((current) =>
-            evaluateScalar(argument, current.path).map(({ path: branch, value }) => ({ path: branch, values: [...current.values, value] })));
+            current.path.completion !== "normal" ? [current]
+              : evaluateScalar(argument, current.path).map(({ path: branch, value }) => ({ path: branch, values: [...current.values, value] })));
         }
+        const normalArguments = argumentsByPath.filter(({ path: branch }) => branch.completion === "normal");
+        const abruptArguments = argumentsByPath
+          .filter(({ path: branch }) => branch.completion !== "normal")
+          .map(({ path: branch }) => ({ path: branch, value: { kind: "integer" as const, value: "0" } }));
         if (fact.operation === "abs") {
-          return argumentsByPath.flatMap(({ path: branch, values }) => {
+          return [...abruptArguments, ...normalArguments.flatMap(({ path: branch, values }) => {
             const value = values[0]!;
             const nonNegative: LogicExpression = { kind: "binary", operator: "gte", left: value, right: { kind: "integer", value: "0" } };
             return [
               { path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, nonNegative] }, value },
               { path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(nonNegative)] }, value: { kind: "unary", operator: "negate", operand: value } as LogicExpression },
             ];
-          });
+          })];
         }
         if (fact.operation === "floor" || fact.operation === "ceil" || fact.operation === "round") {
-          return argumentsByPath.map(({ path: branch, values }) => {
+          return [...abruptArguments, ...normalArguments.map(({ path: branch, values }) => {
             const operand = fact.operation === "round" ? {
               kind: "binary", operator: "add", left: values[0]!, right: { kind: "real", value: "0.5" },
             } as LogicExpression : values[0]!;
-            return { path: branch, value: { kind: "unary", operator: fact.operation === "ceil" ? "ceil" : "floor", operand } };
-          });
+            return { path: branch, value: { kind: "unary", operator: fact.operation === "ceil" ? "ceil" : "floor", operand } as LogicExpression };
+          })];
         }
         if (fact.operation === "trunc") {
-          return argumentsByPath.flatMap(({ path: branch, values }) => {
+          return [...abruptArguments, ...normalArguments.flatMap(({ path: branch, values }) => {
             const value = values[0]!;
             const nonNegative: LogicExpression = { kind: "binary", operator: "gte", left: value, right: { kind: "integer", value: "0" } };
             return [
               { path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, nonNegative] }, value: { kind: "unary", operator: "floor", operand: value } as LogicExpression },
               { path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(nonNegative)] }, value: { kind: "unary", operator: "ceil", operand: value } as LogicExpression },
             ];
-          });
+          })];
         }
         if (fact.operation === "sign") {
-          return argumentsByPath.flatMap(({ path: branch, values }) => {
+          return [...abruptArguments, ...normalArguments.flatMap(({ path: branch, values }) => {
             const value = values[0]!, zero: LogicExpression = { kind: "integer", value: "0" };
             const negative: LogicExpression = { kind: "binary", operator: "lt", left: value, right: zero };
             const equal: LogicExpression = { kind: "binary", operator: "eq", left: value, right: zero };
@@ -2156,12 +2233,12 @@ export function lowerInvariantProgram(
               { path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, equal] }, value: zero },
               { path: { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, positive] }, value: { kind: "integer", value: "1" } as LogicExpression },
             ];
-          });
+          })];
         }
         if (fact.operation === "pow") {
-          return argumentsByPath.map(({ path: branch, values }) => ({ path: branch, value: repeatedPower(values[0]!, fact.exponent!) }));
+          return [...abruptArguments, ...normalArguments.map(({ path: branch, values }) => ({ path: branch, value: repeatedPower(values[0]!, fact.exponent!) }))];
         }
-        return argumentsByPath.flatMap(({ path: branch, values }) => {
+        return [...abruptArguments, ...normalArguments.flatMap(({ path: branch, values }) => {
           let candidates: Array<{ path: PathState; value: LogicExpression }> = [{ path: branch, value: values[0]! }];
           for (const next of values.slice(1)) {
             candidates = candidates.flatMap((candidate) => {
@@ -2176,31 +2253,9 @@ export function lowerInvariantProgram(
             });
           }
           return candidates;
-        });
+        })];
       }
       return [{ path, value: substitute(logic(unwrapped, pipeBindings, semanticGuards, semanticValues), path.env) }];
-    };
-    const directValueThrowCompletion = (expression: ts.Expression): { call: ts.CallExpression; fact: CallCompletionFact } | undefined => {
-      let unwrapped = expression;
-      while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
-        || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
-      if (!ts.isCallExpression(unwrapped)) return undefined;
-      const fact = callCompletions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`);
-      return fact?.mode === "sync" && fact.fulfillment && fact.synchronousThrows.length > 0
-        ? { call: unwrapped, fact } : undefined;
-    };
-    const synchronousThrowCompletions = (
-      call: ts.CallExpression,
-      fact: CallCompletionFact,
-      incoming: PathState[],
-    ): PathState[] => {
-      const originSpan = { start: call.getStart(source), end: call.getEnd() };
-      return incoming.flatMap((path) => fact.synchronousThrows.map((effect): PathState => ({
-        ...path,
-        env: new Map(path.env),
-        completion: "throw",
-        thrown: { kind: "synchronous-throw", evidence: fact.evidence, effect, originSpan },
-      })));
     };
     const evaluateNullableAssignment = (
       expression: ts.Expression,
@@ -2433,13 +2488,11 @@ export function lowerInvariantProgram(
           const nullableSource = unsafeNullableScalarCopy(declaration.initializer);
           if (nullableSource) throw new Error(`mutable scalar alias would erase nullable presence: ${declaration.name.text} = ${nullableSource}`);
           const name = declaration.name.text;
-          const incoming = paths;
-          const valueThrow = directValueThrowCompletion(declaration.initializer);
-          paths = incoming.flatMap((path) => evaluateScalar(declaration.initializer!, path, Boolean(valueThrow)).map(({ path: branch, value }) => {
+          paths = paths.flatMap((path) => evaluateScalar(declaration.initializer!, path).map(({ path: branch, value }) => {
+            if (branch.completion !== "normal") return branch;
             const nextEnv = new Map(branch.env); nextEnv.set(name, value);
             return { ...branch, env: nextEnv };
           }));
-          if (valueThrow) paths.push(...synchronousThrowCompletions(valueThrow.call, valueThrow.fact, incoming));
         }
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
         && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
@@ -2459,14 +2512,12 @@ export function lowerInvariantProgram(
         } else {
           const nullableSource = unsafeNullableScalarCopy(right);
           if (nullableSource) throw new Error(`scalar assignment would erase nullable presence: ${name} = ${nullableSource}`);
-          const incoming = paths;
-          const valueThrow = directValueThrowCompletion(right);
-          paths = incoming.flatMap((path) => evaluateScalar(right, path, Boolean(valueThrow)).map(({ path: branch, value }) => {
+          paths = paths.flatMap((path) => evaluateScalar(right, path).map(({ path: branch, value }) => {
+            if (branch.completion !== "normal") return branch;
             const nextEnv = new Map(branch.env);
             nextEnv.set(name, value);
             return { ...branch, env: nextEnv };
           }));
-          if (valueThrow) paths.push(...synchronousThrowCompletions(valueThrow.call, valueThrow.fact, incoming));
         }
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
         && (statement.expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken
@@ -2828,13 +2879,11 @@ export function lowerInvariantProgram(
         paths = executeAwait(statement.expression, paths, { returnStatement: statement });
       } else if (ts.isReturnStatement(statement) && statement.expression) {
         const returnExpression = statement.expression;
-        const incoming = paths;
-        const valueThrow = directValueThrowCompletion(returnExpression);
-        paths = incoming.flatMap((path): PathState[] => evaluateScalar(returnExpression, path, Boolean(valueThrow)).map(({ path: branch, value }) => {
+        paths = paths.flatMap((path): PathState[] => evaluateScalar(returnExpression, path).map(({ path: branch, value }) => {
+          if (branch.completion !== "normal") return branch;
           const resultEnv = new Map(branch.env); resultEnv.set("result", value);
           return { ...branch, completion: "return", returnEnv: resultEnv, returnStatement: statement };
         }));
-        if (valueThrow) paths.push(...synchronousThrowCompletions(valueThrow.call, valueThrow.fact, incoming));
       } else if (ts.isExpressionStatement(statement) && ts.isAwaitExpression(statement.expression)) {
         paths = executeAwait(statement.expression, paths);
       } else if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)) {

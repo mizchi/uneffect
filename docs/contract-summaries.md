@@ -306,8 +306,11 @@ may synchronously throw composes both paths when it is the direct return
 expression, the direct initializer of one scalar binding, or the complete
 right-hand side of an identifier assignment. An escaping path
 still requires the caller's declared `Throw<E>` upper bound. A call nested in
-arithmetic or another larger value expression is rejected instead of silently dropping
-the abrupt path. Package semantic authority remains `trusted`;
+supported scalar arithmetic/comparison, prefix negation, ternary branches and
+conditions, Boolean short circuit, and reviewed `Math` scalar arguments uses the
+same value/abrupt evaluator. Binary operands and call arguments are evaluated
+left-to-right; an abrupt path skips the remaining expression. Unsupported
+property/coercion/dynamic expressions remain fail-closed. Package semantic authority remains `trusted`;
 declaration linkage does not upgrade it to a proof. A floating rejection stays
 in Promise ownership and is never rewritten into a synchronous throw edge.
 Persisted rejection sets are expanded into authenticated `Reject<E>` await

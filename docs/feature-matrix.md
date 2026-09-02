@@ -44,10 +44,12 @@ successful verification.
 Persisted `Throw<E>` call statements authorized by the package root-provenance
 binder enter the Hoare exception CFG as trusted may-throw completions. Catch,
 finally, discharge, and unhandled escape evidence are covered; structural
-lookalikes fail closed. A direct scalar return, initialized binding, or
-identifier assignment composes a contracted value with its synchronous Throw path; nested arithmetic/value
-expressions remain unsupported until expression-level value/abrupt lowering is
-unified.
+lookalikes fail closed. The scalar evaluator composes contracted values and
+synchronous Throw paths through returns, bindings, assignments, supported
+arithmetic/comparisons, prefix negation, ternaries, Boolean short circuit, and
+reviewed Math calls. It preserves left-to-right operand/argument evaluation and
+does not evaluate the remainder of an abrupt path. Existing nullable, `typeof`,
+and discriminant refinements retain their specialized TypeChecker path.
 
 Callable summaries classify uncaught `throw` statements in an `async` callable
 as Promise rejection types, exclude locally caught throws, and retain catch

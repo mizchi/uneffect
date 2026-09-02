@@ -1543,6 +1543,12 @@ describe("persisted contract summary bundles", () => {
         dangerousAdd(value: number): number {
           if (value < 0) throw new RangeError("negative")
           return value + 1
+        },
+        /* uneffect:effect Throw<RangeError> */
+        /* uneffect:ensures result === true */
+        ensureNonnegative(value: number): boolean {
+          if (value < 0) throw new RangeError("negative")
+          return true
         }
       })
     `;
@@ -1562,6 +1568,7 @@ describe("persisted contract summary bundles", () => {
       export declare const api: Readonly<{
         danger(value: number): void
         dangerousAdd(value: number): number
+        ensureNonnegative(value: number): boolean
       }>
     `);
     const consumerFile = join(directory, "consumer.ts");
@@ -1696,11 +1703,52 @@ describe("persisted contract summary bundles", () => {
     const nestedSource = `
       import { api } from "@example/danger-api"
       function authorize(value: number): void { api.danger(value) }
+      /* uneffect:effect Throw<RangeError> */
       /* uneffect:ensures result === value + 2 */
       export function nested(value: number): number {
         let result = 0
         result = api.dangerousAdd(value) + 1
         return result
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === value + 1 */
+      export function conditional(value: number, enabled: boolean): number {
+        return enabled ? api.dangerousAdd(value) : value + 1
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === true */
+      export function compared(value: number): boolean {
+        return api.dangerousAdd(value) > value
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === (value + 1) + (value + 1) */
+      export function twice(value: number): number {
+        return api.dangerousAdd(value) + api.dangerousAdd(value)
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === -(value + 1) */
+      export function negated(value: number): number {
+        return -api.dangerousAdd(value)
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === enabled */
+      export function shortCircuitLeft(value: number, enabled: boolean): boolean {
+        return api.ensureNonnegative(value) && enabled
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === enabled */
+      export function shortCircuitRight(value: number, enabled: boolean): boolean {
+        return enabled && api.ensureNonnegative(value)
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === 1 */
+      export function conditionCall(value: number): number {
+        return api.ensureNonnegative(value) ? 1 : 0
+      }
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result >= 0 */
+      export function absolute(value: number): number {
+        return Math.abs(api.dangerousAdd(value))
       }
     `;
     writeFileSync(nestedFile, nestedSource);
@@ -1712,11 +1760,16 @@ describe("persisted contract summary bundles", () => {
     const nestedVerification = await verifyContractObligations(nestedFile, nestedSource, undefined, nestedProgram, {
       externalContractBindings: nestedBinding.exports,
     });
-    expect(nestedVerification.artifacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        status: "unsupported",
-        message: expect.stringContaining("api.dangerousAdd(value)"),
-      }),
-    ]));
+    for (const functionName of ["nested", "conditional", "compared", "negated", "shortCircuitLeft", "shortCircuitRight", "conditionCall", "absolute"]) {
+      expect(nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName))
+        .toMatchObject({
+          status: "verified",
+          controlFlow: { exceptionFlow: { escapes: [expect.objectContaining({ effect: "Throw<RangeError>" })] } },
+        });
+    }
+    const twice = nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "twice");
+    expect(twice).toMatchObject({ status: "verified" });
+    expect(twice?.controlFlow?.exceptionFlow?.escapes).toHaveLength(2);
+    expect(new Set(twice?.controlFlow?.exceptionFlow?.escapes.map(({ originSpan }) => `${originSpan.start}:${originSpan.end}`)).size).toBe(2);
   });
 });
