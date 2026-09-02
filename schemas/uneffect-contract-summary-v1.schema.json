@@ -107,7 +107,18 @@
             "required": ["evidence", "operations"],
             "properties": {
               "evidence": { "const": "trusted" },
-              "operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/resourceOperation" } }
+              "operations": { "type": "array", "items": { "$ref": "#/$defs/resourceOperation" } },
+              "returnMembers": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["key", "operations"],
+                  "properties": {
+                    "key": { "type": "string", "minLength": 1 },
+                    "operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/resourceOperation" } }
+                  }
+                }
+              }
             }
           }
         }

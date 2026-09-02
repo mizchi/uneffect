@@ -138,8 +138,11 @@ as `trusted`, because the declaration is not an implementation proof. At the
 consumer, package/version/compiler/signature binding must succeed before the
 resource operations are rebound to installed declaration identities. The
 ordinary `checkFiles` and project verifier then detect leaks, duplicate release,
-and post-release use and expose the result in `resourceProtocols`. Factory
-returned-member resource protocols are not yet part of v1.
+and post-release use and expose the result in `resourceProtocols`. A static
+object-literal factory may also persist resource operations for named callable
+`returnMembers`. The consumer accepts calls through a direct factory result and
+acyclic immutable receiver aliases; dynamic member selection, receiver escape,
+and mutable aliases fail closed.
 
 A literal wrapped by the exact standard-library `Object.freeze` symbol may be
 reused across calls. This is a shallow rule: the selected callback property is

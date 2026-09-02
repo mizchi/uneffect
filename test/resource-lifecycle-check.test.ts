@@ -163,4 +163,69 @@ describe("general resource lifecycle check", () => {
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("composes package factory returned-member resource contracts", async () => {
+    const producerFile = "/src/client.ts";
+    const producerSource = `
+      export interface Client { query(): void; close(): void }
+      /* uneffect:acquire return */
+      export function createClient(): Client {
+        return {
+          /* uneffect:use this */ query() {},
+          /* uneffect:release this */ close() {},
+        }
+      }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/client", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+    });
+    expect(bundle.exports[0]?.resource).toMatchObject({
+      operations: [{ kind: "acquire" }],
+      returnMembers: [{ key: "query", operations: [{ kind: "use", subject: { kind: "receiver" } }] },
+        { key: "close", operations: [{ kind: "release", subject: { kind: "receiver" } }] }],
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-client-package-"));
+    try {
+      const packageDirectory = join(directory, "node_modules", "@example", "client");
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "@example/client", version: "1.0.0", types: "index.d.ts" }));
+      writeFileSync(join(packageDirectory, "index.d.ts"), `
+        export interface Client { query(): void; close(): void }
+        export declare function createClient(): Client
+      `);
+      const consumer = join(directory, "consumer.ts");
+      writeFileSync(consumer, `
+        import { createClient } from "@example/client"
+        export function main() { const client = createClient(); const alias = client; alias.query(); alias.close() }
+        export function invalid() { const client = createClient(); client.close(); client.query() }
+      `);
+      const result = await checkFiles([consumer], { contractSummaryBundles: [bundle] });
+      expect(result.resourceProtocols).toMatchObject([
+        { owner: "main", status: "satisfied" }, { owner: "invalid", status: "unknown" },
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("fails closed on unaccounted resource references and recognizes direct return escape", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-escape-"));
+    try {
+      const fileName = join(directory, "entry.ts");
+      writeFileSync(fileName, `
+        interface Handle {}
+        /* uneffect:acquire return */ declare function open(): Handle
+        /* uneffect:release handle */ declare function close(handle: Handle): void
+        declare function opaque(handle: Handle): void
+        export function unknown() { const handle = open(); opaque(handle); close(handle) }
+        export function escaped() { const handle = open(); return handle }
+      `);
+      const result = await checkFiles([fileName]);
+      expect(result.resourceProtocols).toEqual(expect.arrayContaining([
+        expect.objectContaining({ owner: "unknown", status: "unknown", evidence: "unknown" }),
+        expect.objectContaining({ owner: "escaped", status: "satisfied", state: "escaped" }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

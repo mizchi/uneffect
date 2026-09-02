@@ -57,6 +57,8 @@ export interface CallableSummary {
   };
   readonly returnMembers?: readonly {
     readonly key: string;
+    /** Source-stable declaration identity used to join other semantic domains. */
+    readonly declarationId: string;
     readonly effects: readonly Effect[];
     readonly throws: readonly string[];
     readonly rejects: readonly string[];
@@ -677,7 +679,7 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
             && methodReturns[0]!.expression?.kind === ts.SyntaxKind.ThisKeyword);
         }
         return !returned || returned.evidence === "unknown" ? [] : [{
-          key, effects: returned.effects, throws: returned.throws, rejects: returned.rejects,
+          key, declarationId: returned.id, effects: returned.effects, throws: returned.throws, rejects: returned.rejects,
           parameters: target.parameters.map((parameter, index) =>
             ts.isIdentifier(parameter.name) ? parameter.name.text : `arg${index}`),
           callbackParameters: returned.callbackParameters,

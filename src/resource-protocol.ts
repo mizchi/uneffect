@@ -66,6 +66,10 @@ export interface ResourceCallableSummary {
   readonly id: string;
   readonly evidence: "trusted" | "verified";
   readonly operations: readonly ResourceCallableOperation[];
+  readonly returnMembers?: readonly {
+    readonly key: string;
+    readonly operations: readonly ResourceCallableOperation[];
+  }[];
 }
 
 export interface ResourceCallableBindings {

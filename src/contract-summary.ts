@@ -57,7 +57,11 @@ export interface ContractSummaryExportV1 {
     callbacks?: ContractCallbackSummaryV1[];
   };
   /** Reviewed lifecycle declaration; linkage is authenticated but implementation semantics remain trusted. */
-  resource?: { evidence: "trusted"; operations: ResourceCallableOperation[] };
+  resource?: {
+    evidence: "trusted";
+    operations: ResourceCallableOperation[];
+    returnMembers?: Array<{ key: string; operations: ResourceCallableOperation[] }>;
+  };
 }
 
 export interface ContractSummaryBundleV1 {
@@ -161,6 +165,7 @@ export function boundContractSummaryResourceContracts(
     id: `${item.declarationFileName}:${item.declarationSpan.start}`,
     evidence: "trusted",
     operations: item.summary.resource.operations,
+    ...(item.summary.resource.returnMembers ? { returnMembers: item.summary.resource.returnMembers } : {}),
   }] : []));
 }
 
@@ -254,7 +259,11 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
         || (item.effect.callbacks !== undefined && (!Array.isArray(item.effect.callbacks)
           || !item.effect.callbacks.every(validCallback)))))
       || (item.resource !== undefined && (!item.resource || item.resource.evidence !== "trusted"
-        || !Array.isArray(item.resource.operations) || !item.resource.operations.every(validResourceOperation)))) {
+        || !Array.isArray(item.resource.operations) || !item.resource.operations.every(validResourceOperation)
+        || (item.resource.returnMembers !== undefined && (!Array.isArray(item.resource.returnMembers)
+          || !item.resource.returnMembers.every((member) => member && typeof member.key === "string"
+            && Array.isArray(member.operations) && member.operations.length > 0
+            && member.operations.every(validResourceOperation))))))) {
       throw new Error(`malformed contract summary export ${index} in ${fileName}`);
     }
   }
@@ -458,13 +467,14 @@ function describeExport(
   effectSummary?: EffectSummary,
   callableSummary?: CallableSummary,
   resourceSummary?: ResourceCallableSummary,
+  resourceReturnMembers: readonly { readonly key: string; readonly operations: readonly ResourceCallableOperation[] }[] = [],
 ): ContractSummaryExportV1 | undefined {
   const { node, owner, exportName } = exported;
   if (!node.body) return undefined;
   const comments = source.text.slice(owner.getFullStart(), owner.getStart(source));
   const ensures = extractAnnotations(comments, "ensures");
   const effectDeclared = extractAnnotations(comments, "effect").length > 0;
-  if (ensures.length === 0 && !effectDeclared && !resourceSummary?.operations.length) return undefined;
+  if (ensures.length === 0 && !effectDeclared && !resourceSummary?.operations.length && resourceReturnMembers.length === 0) return undefined;
   const requires = extractAnnotations(comments, "requires");
   const span = { start: node.getStart(source), end: node.getEnd() };
   const candidates = artifacts.filter((artifact) => artifact.source.fileName === source.fileName
@@ -525,8 +535,11 @@ function describeExport(
         ...(callback.effectBound ? { effectBound: callback.effectBound } : {}),
       })) } : {}),
     } } : {}),
-    ...(resourceSummary?.operations.length ? { resource: {
-      evidence: "trusted" as const, operations: resourceSummary.operations.map((operation) => ({ ...operation })),
+    ...(resourceSummary?.operations.length || resourceReturnMembers.length ? { resource: {
+      evidence: "trusted" as const, operations: resourceSummary?.operations.map((operation) => ({ ...operation })) ?? [],
+      ...(resourceReturnMembers.length ? { returnMembers: resourceReturnMembers.map((member) => ({
+        key: member.key, operations: member.operations.map((operation) => ({ ...operation })),
+      })) } : {}),
     } } : {}),
   };
 }
@@ -540,12 +553,18 @@ export function createContractSummaryBundle(options: CreateContractSummaryBundle
   if (resourceSummaries.diagnostics.length > 0) throw new Error(`contract summary has invalid resource annotations: ${resourceSummaries.diagnostics.map(({ message }) => message).join("; ")}`);
   const exports = source.statements.flatMap((statement) => directExportCallables(statement).flatMap((exported) => {
     const node = exported.node;
+    const callable = callableSummaries.find((summary) => summary.fileName === source.fileName
+      && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd());
+    const resourceReturnMembers = callable?.returnMembers?.flatMap((member) => {
+      const resource = resourceSummaries.summaries.find((summary) => summary.id === member.declarationId);
+      return resource?.operations.length ? [{ key: member.key, operations: resource.operations }] : [];
+    }) ?? [];
     return [describeExport(options.program, source, exported, options.packageName, options.artifacts,
       effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
         && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
-      callableSummaries.find((summary) => summary.fileName === source.fileName
-        && summary.span.start === node.getStart(source) && summary.span.end === node.getEnd()),
-      resourceSummaries.summaries.find((summary) => summary.id === `${source.fileName}:${node.getStart(source)}`))]
+      callable,
+      resourceSummaries.summaries.find((summary) => summary.id === `${source.fileName}:${node.getStart(source)}`),
+      resourceReturnMembers)]
       .filter((item): item is ContractSummaryExportV1 => item !== undefined);
   }));
   if (exports.length === 0) throw new Error("contract summary has no fully verified exported function contracts");
@@ -588,15 +607,22 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest) errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
     const leading = source.text.slice(exported.owner.getFullStart(), exported.owner.getStart(source));
     const declaresEffect = extractAnnotations(leading, "effect").length > 0;
+    const callable = callableSummaries.find((summary) => summary.fileName === source.fileName
+      && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
     const resource = resourceSummaries.summaries.find((summary) => summary.id === `${source.fileName}:${declaration.getStart(source)}`);
-    const expectedResource = resource?.operations.length ? { evidence: "trusted" as const, operations: resource.operations } : undefined;
+    const resourceReturnMembers = callable?.returnMembers?.flatMap((member) => {
+      const memberResource = resourceSummaries.summaries.find((summary) => summary.id === member.declarationId);
+      return memberResource?.operations.length ? [{ key: member.key, operations: memberResource.operations }] : [];
+    }) ?? [];
+    const expectedResource = resource?.operations.length || resourceReturnMembers.length ? {
+      evidence: "trusted" as const, operations: resource?.operations ?? [],
+      ...(resourceReturnMembers.length ? { returnMembers: resourceReturnMembers } : {}),
+    } : undefined;
     if (canonical(expectedResource) !== canonical(item.resource)) errors.push(`contract summary resource payload for ${item.symbol.export} does not match producer declaration`);
     if (declaresEffect !== Boolean(item.effect)) {
       errors.push(`contract summary Effect payload for ${item.symbol.export} does not match its declaration`);
     } else if (item.effect) {
       const actual = effectSummaries.find((summary) => summary.fileName === source.fileName && summary.span
-        && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
-      const callable = callableSummaries.find((summary) => summary.fileName === source.fileName
         && summary.span.start === declaration.getStart(source) && summary.span.end === declaration.getEnd());
       const callableFallback = callable && callable.evidence !== "unknown"
         && callable.unknownReasons.length === 0 && callable.callbackParameters.length > 0;

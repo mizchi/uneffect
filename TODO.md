@@ -433,6 +433,11 @@ introducing another domain-local control-flow or alias model.
      - [x] Add method-receiver resource references with `use this` and
        `release this`, binding immutable client aliases to the acquired return
        region by TypeChecker method and receiver identity.
+     - [x] Persist static factory returned-member resource operations in package
+       summaries and consume them through immutable receiver aliases.
+     - [x] Audit every acquired-resource reference: accept known transitions,
+       aliases, `using`, and direct return escape; fail closed on opaque calls,
+       storage, capture, and unannotated use.
      - [x] Accept trusted resource contracts on ambient functions/methods only
        from explicit root `.d.ts` overlays; reject automatic trust from
        transitively imported declaration files.

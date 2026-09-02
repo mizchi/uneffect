@@ -360,6 +360,14 @@ the receiver resource identity. Immutable aliases resolve to the same acquired
 region. `this` on a free function is rejected as a malformed resource contract;
 dynamic/computed receiver selection and mutable aliases remain unknown.
 
+Every reference to a locally acquired resource is consumed by the same audit.
+Known lifecycle call arguments/receivers, immutable alias declarations,
+`using`, and a direct returned ownership escape are accepted. Passing the
+resource to an uncontracted call, storing it, capturing it, reading an
+unannotated member, or otherwise using it outside a known transition adds an
+unknown escape transition. A later close therefore cannot manufacture a proof
+that the opaque operation preserved ownership.
+
 An acquired return bound by TypeScript Explicit Resource Management is
 connected to its implicit lexical release:
 
