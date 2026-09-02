@@ -949,6 +949,9 @@ same property is proved for arbitrary TypeScript.
   A TypeChecker reference-consumption screen prevents retained, stored,
   returned, captured, or otherwise opaque callback references from being
   summarized as zero invocations.
+  One direct callback-parameter forwarding edge composes through acyclic local
+  wrapper chains and package publication; cycles and multiple/mixed forwarding
+  remain explicit unknown.
   The host-neutral temporal collector resolves the same member calls. Generic
   deferred timing is retained as an unknown scheduled queue rather than being
   mislabeled as a timer or event source. Reviewed builtin forwarding records

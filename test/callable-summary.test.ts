@@ -151,6 +151,18 @@ describe("backend-neutral callable summaries", () => {
         function retainedCallback(callback: () => void) { retainCallback(callback) }
         function storedCallback(callback: () => void) { savedCallback = callback }
         function returnedCallback(callback: () => void) { return callback }
+        function onceLocal(callback: () => void) { callback() }
+        function wrapperCallback(callback: () => void) { onceLocal(callback) }
+        function wrapperTwice(callback: () => void) { wrapperCallback(callback) }
+        function conditionalWrapper(callback: () => void, enabled: boolean) { if (enabled) onceLocal(callback) }
+        function callbackCycleA(callback: () => void) { callbackCycleB(callback) }
+        function callbackCycleB(callback: () => void) { callbackCycleA(callback) }
+        function doubleForwarding(callback: () => void) { onceLocal(callback); onceLocal(callback) }
+        function typeOnlyCallback(callback: () => void) {
+          type Callback = typeof callback
+          const marker: Callback | undefined = undefined
+          return marker
+        }
         function fromAsync(values: AsyncIterable<number>, callback: (value: number, index: number) => number) {
           return Array.fromAsync(values, callback)
         }
@@ -288,6 +300,33 @@ describe("backend-neutral callable summaries", () => {
         expect(analysis.summaries.find(({ name }) => name === retained)).toMatchObject({
           evidence: "unknown", unknownReasons: expect.arrayContaining(["callback-escape"]),
           callbackParameters: [expect.objectContaining({ cardinality: "unknown" })],
+        });
+      }
+      expect(analysis.summaries.find(({ name }) => name === "wrapperCallback")).toMatchObject({
+        callbackParameters: [expect.objectContaining({
+          cardinality: "exactly-1", timing: "inline", completion: "propagate-throw",
+        })],
+        unknownReasons: [],
+      });
+      expect(analysis.summaries.find(({ name }) => name === "wrapperTwice")).toMatchObject({
+        callbackParameters: [expect.objectContaining({ cardinality: "exactly-1", timing: "inline" })],
+        unknownReasons: [],
+      });
+      expect(analysis.summaries.find(({ name }) => name === "conditionalWrapper")).toMatchObject({
+        callbackParameters: [expect.objectContaining({ cardinality: "0..1", timing: "inline" })],
+        unknownReasons: [],
+      });
+      expect(analysis.summaries.find(({ name }) => name === "typeOnlyCallback")).toMatchObject({
+        callbackParameters: [expect.objectContaining({ cardinality: "0" })],
+        unknownReasons: [],
+      });
+      for (const unresolved of ["callbackCycleA", "callbackCycleB", "doubleForwarding"]) {
+        expect(analysis.summaries.find(({ name }) => name === unresolved)).toMatchObject({
+          evidence: "unknown",
+          unknownReasons: expect.arrayContaining(["unresolved-callback-forwarding"]),
+          callbackParameters: [expect.objectContaining({
+            cardinality: "unknown", timing: "unknown", completion: "unknown",
+          })],
         });
       }
       expect(analysis.summaries.find(({ name }) => name === "fromAsync")?.callbackInvocations)

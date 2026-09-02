@@ -299,6 +299,8 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
     };
     collect(source);
   }
+  type LocalCallbackForwarding = { key: string; call: ts.CallExpression; targetId: string; targetIndex: number };
+  const localCallbackForwardings = new Map<string, LocalCallbackForwarding[]>();
 
   const summaries = declarations.map((declaration): CallableSummary => {
     const source = declaration.getSourceFile();
@@ -434,6 +436,25 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
             }
           }
         }
+        if (!builtin) {
+          const targetSymbol = resolvedSymbol(checker, ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression);
+          const target = targetSymbol?.valueDeclaration ?? targetSymbol?.declarations?.[0];
+          if (target && (ts.isFunctionDeclaration(target) || ts.isMethodDeclaration(target)
+            || ts.isArrowFunction(target) || ts.isFunctionExpression(target)) && target.body) {
+            node.arguments.forEach((argument, targetIndex) => {
+              const forwarded = resolveCallback(argument);
+              if (!forwarded) return;
+              const parameter = target.parameters[targetIndex];
+              if (!parameter || checker.getNonNullableType(checker.getTypeAtLocation(parameter)).getCallSignatures().length === 0) return;
+              const selected = unwrap(argument);
+              if (ts.isIdentifier(selected)) consumedCallbackReferences.add(selected);
+              localCallbackForwardings.set(id, [
+                ...(localCallbackForwardings.get(id) ?? []),
+                { key: forwarded.key, call: node, targetId: `${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`, targetIndex },
+              ]);
+            });
+          }
+        }
         const rejection = directPromiseRejectType(program, checker, node);
         if (rejection) rejects.add(rejection);
       }
@@ -460,6 +481,7 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
     const isDeclarationName = (node: ts.Identifier, symbol: ts.Symbol): boolean => symbol.declarations?.some((candidate) =>
       "name" in candidate && candidate.name === node) ?? false;
     const screenCallbackReferences = (node: ts.Node): void => {
+      if (ts.isTypeNode(node)) return;
       if (ts.isIdentifier(node)) {
         const symbol = resolvedSymbol(checker, node);
         if (symbol && callbackBindingSymbols.has(symbol) && !isDeclarationName(node, symbol)
@@ -547,8 +569,60 @@ export function analyzeCallableSummaries(program: ts.Program, effectAnalysis: Ef
       unknownReasons: [...unknownReasons].sort(),
     };
   });
-  const byId = new Map(summaries.map((summary) => [summary.id, summary] as const));
-  const withReturnedCallables = summaries.map((summary, index): CallableSummary => {
+  let composedSummaries = summaries;
+  for (let pass = 0; pass < declarations.length; pass++) {
+    const bySummaryId = new Map(composedSummaries.map((summary) => [summary.id, summary] as const));
+    let changed = false;
+    composedSummaries = composedSummaries.map((summary, index) => {
+      const forwards = localCallbackForwardings.get(summary.id) ?? [];
+      if (forwards.length === 0) return summary;
+      let callbackParameters = [...summary.callbackParameters];
+      let promoted = false;
+      for (const parameter of callbackParameters) {
+        const key = callbackArgumentKey(parameter.index, parameter.path ?? []);
+        const candidates = forwards.filter((forward) => forward.key === key);
+        if (candidates.length !== 1) continue;
+        const forwarding = candidates[0]!;
+        const targetSummary = bySummaryId.get(forwarding.targetId);
+        const target = targetSummary?.callbackParameters.find((candidate) =>
+          candidate.index === forwarding.targetIndex && !candidate.path?.length);
+        if (!target || targetSummary?.evidence === "unknown" || target.cardinality === "unknown"
+          || target.timing === "unknown" || target.completion === "unknown") continue;
+        const cardinality = composeCardinality(executionCardinality(forwarding.call, declarations[index]!), target.cardinality);
+        callbackParameters = callbackParameters.map((candidate) => candidate === parameter ? {
+          ...candidate, cardinality, timing: target.timing, completion: target.completion,
+          ...(target.schedulingSource ? { schedulingSource: target.schedulingSource } : {}),
+          ...(target.schedulingDelay !== undefined ? { schedulingDelay: target.schedulingDelay } : {}),
+          spans: [{ start: forwarding.call.getStart(), end: forwarding.call.getEnd() }],
+        } : candidate);
+        promoted = true;
+      }
+      if (!promoted) return summary;
+      const unknownReasons = summary.unknownReasons.filter((reason) => reason !== "unknown-callback-timing" && reason !== "callback-escape");
+      const next = { ...summary, callbackParameters, unknownReasons,
+        evidence: unknownReasons.length === 0 ? "inferred" as const : "unknown" as const };
+      changed ||= JSON.stringify(next) !== JSON.stringify(summary);
+      return next;
+    });
+    if (!changed) break;
+  }
+  composedSummaries = composedSummaries.map((summary) => {
+    const forwards = localCallbackForwardings.get(summary.id) ?? [];
+    if (forwards.length === 0) return summary;
+    let unresolved = false;
+    const callbackParameters = summary.callbackParameters.map((parameter) => {
+      const candidates = forwards.filter((forward) => forward.key === callbackArgumentKey(parameter.index, parameter.path ?? []));
+      if (candidates.length === 0 || candidates.some((forward) => parameter.spans.some((span) => span.start === forward.call.getStart()))) return parameter;
+      unresolved = true;
+      return { ...parameter, cardinality: "unknown" as const, timing: "unknown" as const, completion: "unknown" as const };
+    });
+    return unresolved ? {
+      ...summary, callbackParameters, evidence: "unknown",
+      unknownReasons: [...new Set([...summary.unknownReasons, "unresolved-callback-forwarding"])].sort(),
+    } : summary;
+  });
+  const byId = new Map(composedSummaries.map((summary) => [summary.id, summary] as const));
+  const withReturnedCallables = composedSummaries.map((summary, index): CallableSummary => {
     const declaration = declarations[index]!;
     const returns: ts.ReturnStatement[] = [];
     const collectReturns = (node: ts.Node): void => {

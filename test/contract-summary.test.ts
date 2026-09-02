@@ -113,6 +113,9 @@ describe("persisted contract summary bundles", () => {
       /* uneffect:effect_parameter callback extends Console */
       export function once(callback: () => void): void { callback() }
       /* uneffect:effect none */
+      /* uneffect:effect_parameter callback extends Console */
+      export function wrappedOnce(callback: () => void): void { once(callback) }
+      /* uneffect:effect none */
       /* uneffect:effect_parameter onDone extends Console */
       export function configure({ onDone }: { onDone: () => void }): void { onDone() }
       /* uneffect:effect none */
@@ -174,6 +177,14 @@ describe("persisted contract summary bundles", () => {
           index: 0, name: "onDone", path: ["onDone"], containerAccess: "borrow-readonly",
           cardinality: "exactly-1",
           timing: "inline", completion: "propagate-throw", effectBound: ["Console"],
+        })],
+      },
+    }), expect.objectContaining({
+      symbol: { module: "@example/report", export: "wrappedOnce" },
+      effect: {
+        effects: [], parameters: ["callback"],
+        callbacks: [expect.objectContaining({
+          cardinality: "exactly-1", timing: "inline", completion: "propagate-throw",
         })],
       },
     }), expect.objectContaining({

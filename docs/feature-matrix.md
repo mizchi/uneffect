@@ -103,6 +103,9 @@ remain unknown.
 Callback parameters and immutable aliases have a whole-declaration reference
 screen; any reference not consumed by a direct call, alias edge, or reviewed
 builtin forwarding becomes `callback-escape`, never zero invocations.
+Acyclic direct same-Program callback wrappers compose through a fixed point;
+one enclosing conditional scales the callee cardinality. Cycles and multiple,
+mixed, or dynamically resolved forwarding remain unknown.
 Their invocations also enter the host-neutral temporal artifact. Generic
 deferred timing has unknown host-queue identity and is deliberately omitted
 from executable Web/Node queue actions. Reviewed timer/event/animation-frame

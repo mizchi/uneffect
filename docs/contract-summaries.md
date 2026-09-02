@@ -206,6 +206,12 @@ Every callback-parameter reference and immutable alias must be consumed by a
 direct invocation, immutable alias declaration, or reviewed builtin forwarding
 site. Unknown calls, storage, return, capture, comparison, and other uses are
 `callback-escape`; cardinality becomes unknown and package publication fails.
+One direct TypeChecker-resolved same-Program wrapper may forward its callback
+parameter to another summarized callable. A fixed point composes acyclic
+wrapper chains independent of declaration order, including enclosing `0..1`
+conditionality, completion, and scheduling provenance. Cycles, multiple or
+mixed forwarding sites, and unresolved callees stay unknown. Type-only
+references such as `typeof callback` do not count as runtime escape.
 The same authenticated member callback is visible to the host-neutral temporal
 collector. `inline` and Promise-reaction lanes retain their defined projection.
 A direct reviewed forwarding to `setTimeout`, `setInterval`,

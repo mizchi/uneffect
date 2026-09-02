@@ -366,6 +366,10 @@ dynamically selected callbacks.
 Callback cardinality `0` requires a TypeChecker reference screen with no
 unconsumed use. Unknown calls, storage, return, capture, and other uses are
 escape evidence and prevent verified package publication.
+Acyclic direct same-Program callback wrappers compose by TypeChecker identity.
+The fragment admits one forwarding site per parameter; cycles, repeated/mixed
+forwarding, dynamic dispatch, and opaque callees remain unknown rather than
+assuming a call count.
 These member callbacks enter the host-neutral transition model. A deferred
 callback without reviewed host-queue provenance is retained in `scheduled` as
 unknown and is not inserted into an executable timer/event/poll queue. Direct

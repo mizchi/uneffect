@@ -570,6 +570,12 @@ introducing another domain-local control-flow or alias model.
      forwarding consume a reference; unknown calls, storage, return, capture,
      comparison, and other uses become `callback-escape` with unknown
      cardinality and cannot be published as verified package evidence.
+   - [x] Compose one direct same-Program callback-parameter forwarding edge
+     through a declaration-order-independent fixed point. Preserve enclosing
+     conditionality, timing, completion, scheduling provenance, and literal
+     delay across acyclic wrapper chains; cycles, multiple/mixed forwarding,
+     and unresolved callees remain explicit unknown. Ignore type-only callback
+     references without treating runtime identity as escaped.
    - [x] Preserve declared `effect_parameter` bounds in the summary so callers
      and future package summaries can instantiate effect-polymorphic callbacks.
    - [x] Distinguish inline throw propagation, Promise-reaction conversion to
