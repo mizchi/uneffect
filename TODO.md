@@ -701,6 +701,10 @@ introducing another domain-local control-flow or alias model.
      Program, recording export-level implementation file/source digests and
      collecting Hoare artifacts across all CLI-selected project sources.
      External-package re-export producers remain unsupported.
+   - [x] Enumerate callable members of static relative `export *` barrels from
+     the entry module's final TypeChecker export set, including transitive
+     barrels and explicit overrides; exclude default/non-callable members and
+     reject ambiguous stars through TypeScript diagnostics.
    - [x] Preserve reviewed callback forwarding through Promise reactions and
      lower authenticated package callbacks to the shared host-neutral
      microtask/reject transition without leaking callback `Throw` into the

@@ -84,6 +84,9 @@ rename a local function or immutable callable `const`, including `as default`,
 through TypeChecker ExportSpecifier identity. Static relative re-exports may
 resolve to another Program source when export-level implementation file/digest
 evidence is present; external-package re-export producers remain unsupported.
+Transitive relative `export *` barrels enumerate only the entry module's final
+TypeChecker-selected callable exports, respecting explicit overrides and
+rejecting ambiguous stars through producer TypeScript diagnostics.
 Persisted rejection types and
 synchronous `Throw` effects feed the shared resource CFG only after exact
 declaration binding; a direct `await` admits rejection, floating Promises do

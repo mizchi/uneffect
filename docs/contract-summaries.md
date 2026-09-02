@@ -27,6 +27,13 @@ full source digest in addition to the public entry source. Validation resolves
 the barrel again and checks both identities and bytes. Mutable bindings and
 external-package re-exports remain unsupported.
 
+Static relative `export *` barrels use the entry module's final TypeChecker
+export set. Callable members may pass through multiple relative barrel layers;
+each summary still points at the final implementation source. Default exports
+and non-callable values are not introduced by `export *`. An explicit local
+export overrides the star member, while ambiguous stars are TypeScript errors
+and prevent publication.
+
 ```ts
 import {
   bindContractSummaryBundleToProgram,

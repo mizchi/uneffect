@@ -938,4 +938,64 @@ describe("persisted contract summary bundles", () => {
       source: externalSource, program: externalProgram, artifacts: [],
     })).toThrow(/no fully verified exported function contracts/u);
   });
+
+  it("publishes callable export-star members selected by the entry module", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-export-star-"));
+    const implementationFile = join(directory, "implementation.ts");
+    const middleFile = join(directory, "middle.ts");
+    const entryFile = join(directory, "index.ts");
+    writeFileSync(implementationFile, `
+      /* uneffect:effect none */
+      export function normalize(value: number): number { return value + 1 }
+      /* uneffect:effect none */
+      export const double = (value: number): number => value * 2
+      export const version = "1.0.0"
+      /* uneffect:effect none */
+      export default function hidden(): void {}
+    `);
+    writeFileSync(middleFile, `export * from "./implementation.js"`);
+    const entrySource = `export * from "./middle.js"`;
+    writeFileSync(entryFile, entrySource);
+    const options: ts.CompilerOptions = {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    };
+    const program = ts.createProgram([entryFile, middleFile, implementationFile], options);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/star", packageVersion: "1.0.0", fileName: entryFile,
+      source: entrySource, program, artifacts: [],
+    });
+    expect(bundle.exports.map(({ symbol, functionName }) => ({ export: symbol.export, functionName }))).toEqual([
+      { export: "double", functionName: "double" },
+      { export: "normalize", functionName: "normalize" },
+    ]);
+
+    const overrideSource = `
+      export * from "./implementation.js"
+      /* uneffect:effect none */
+      export function normalize(): boolean { return true }
+    `;
+    writeFileSync(entryFile, overrideSource);
+    const overrideProgram = ts.createProgram([entryFile, implementationFile], options);
+    const overrideBundle = createContractSummaryBundle({
+      packageName: "@example/star", packageVersion: "1.0.0", fileName: entryFile,
+      source: overrideSource, program: overrideProgram, artifacts: [],
+    });
+    expect(overrideBundle.exports.map(({ symbol, signature }) => ({ export: symbol.export, signature }))).toEqual([
+      { export: "double", signature: "(value: number): number" },
+      { export: "normalize", signature: "(): boolean" },
+    ]);
+
+    const leftFile = join(directory, "left.ts");
+    const rightFile = join(directory, "right.ts");
+    writeFileSync(leftFile, `/* uneffect:effect none */ export function collide(): number { return 1 }`);
+    writeFileSync(rightFile, `/* uneffect:effect none */ export function collide(): number { return 2 }`);
+    const ambiguousSource = `export * from "./left.js"; export * from "./right.js"`;
+    writeFileSync(entryFile, ambiguousSource);
+    const ambiguousProgram = ts.createProgram([entryFile, leftFile, rightFile], options);
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/star", packageVersion: "1.0.0", fileName: entryFile,
+      source: ambiguousSource, program: ambiguousProgram, artifacts: [],
+    })).toThrow(/TypeScript errors/u);
+  });
 });
