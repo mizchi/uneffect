@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { createHash } from "node:crypto";
 import { functionMayFallThrough, type ContractControlFlowOptions } from "./contract-control-flow.js";
+import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
 
 export type TypeScriptFunctionEndpoint = "reachable" | "unreachable" | "unknown";
 
@@ -80,45 +81,12 @@ function internalFlowObservation(node: ts.FunctionDeclaration): { status: "obser
   return { status: "observed", count };
 }
 
-function resolveStableCallableWithChecker(checker: ts.TypeChecker, expression: ts.Expression, seen = new Set<ts.Symbol>()): SupportedFunction | undefined {
-  const symbolLocation = ts.isPropertyAccessExpression(expression) ? expression.name : ts.isElementAccessExpression(expression) ? expression.argumentExpression : expression;
-  let symbol = checker.getSymbolAtLocation(symbolLocation);
-  if (!symbol) return undefined;
-  if (symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
-  if (seen.has(symbol)) return undefined;
-  const nextSeen = new Set([...seen, symbol]);
-  for (const declaration of symbol.declarations ?? []) {
-    if (ts.isFunctionDeclaration(declaration) && declaration.body) return declaration;
-    if (ts.isVariableDeclaration(declaration)) {
-      const declarationList = declaration.parent;
-      if (!ts.isVariableDeclarationList(declarationList) || (declarationList.flags & ts.NodeFlags.Const) === 0 || !declaration.initializer) continue;
-      if (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)) return declaration.initializer;
-      if (ts.isIdentifier(declaration.initializer) || ts.isPropertyAccessExpression(declaration.initializer) || ts.isElementAccessExpression(declaration.initializer)) {
-        const resolved = resolveStableCallableWithChecker(checker, declaration.initializer, nextSeen);
-        if (resolved) return resolved;
-      }
-    }
-    if (ts.isPropertyAssignment(declaration)) {
-      const object = declaration.parent, call = object.parent;
-      if (!ts.isObjectLiteralExpression(object) || !ts.isCallExpression(call) || call.arguments[0] !== object
-        || !ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "freeze") continue;
-      const freezeSymbol = checker.getSymbolAtLocation(call.expression.name);
-      const builtinFreeze = freezeSymbol?.declarations?.some((item) => /(?:^|\/)lib\..*\.d\.ts$/.test(item.getSourceFile().fileName.replaceAll("\\", "/")));
-      const owner = call.parent;
-      if (!builtinFreeze || !ts.isVariableDeclaration(owner) || !ts.isVariableDeclarationList(owner.parent) || (owner.parent.flags & ts.NodeFlags.Const) === 0) continue;
-      const initializer = declaration.initializer;
-      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) return initializer;
-      if (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer)) {
-        const resolved = resolveStableCallableWithChecker(checker, initializer, nextSeen);
-        if (resolved) return resolved;
-      }
-    }
-    if (ts.isShorthandPropertyAssignment(declaration)) {
-      const resolved = resolveStableCallableWithChecker(checker, declaration.name, nextSeen);
-      if (resolved) return resolved;
-    }
-  }
-  return undefined;
+function resolveStableCallableWithChecker(checker: ts.TypeChecker, expression: ts.Expression): SupportedFunction | undefined {
+  const symbol = resolveStableCallableSymbol(checker, expression);
+  const declaration = symbol && stableCallableDeclaration(symbol);
+  return declaration && (ts.isFunctionDeclaration(declaration) || ts.isMethodDeclaration(declaration)
+    || ts.isArrowFunction(declaration) || ts.isFunctionExpression(declaration)) && declaration.body
+    ? declaration : undefined;
 }
 
 function staticPropertyName(name: ts.PropertyName): string | undefined {

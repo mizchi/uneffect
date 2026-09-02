@@ -552,6 +552,9 @@ introducing another domain-local control-flow or alias model.
        - [x] Preserve those exceptional summaries through immutable `const`
          callable aliases and authenticated `Object.freeze({...})` properties;
          reject reassigned and mutable-property aliases.
+       - [x] Share one TypeChecker-backed stable-callable resolver across
+         contract CFG, exception, and resource lifecycle consumers, including
+         a same-spelled `Object.freeze` negative control.
      - [x] Authenticate and compose persisted/external callable summaries before
        admitting synchronous `Throw` and directly awaited rejection edges;
        preserve producer authority as trusted, route both alternatives when a

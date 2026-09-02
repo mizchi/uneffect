@@ -63,6 +63,13 @@ targets outside the selected source project remain unsupported. Linked
 line, column, expression, and AST span through a sidecar provenance map.
 Endpoint evidence establishes reachability, not a Hoare postcondition.
 
+The stable-callable resolver is shared by contract CFG lookup, capability and
+exception summary lookup, and resource lifecycle lookup. It authenticates both
+the standard-library `Object` and `freeze` symbols; a user-defined same-spelled
+function is not evidence of immutability. Interface/class method declarations
+remain declaration-identified callable boundaries, while arbitrary data
+properties require the frozen-literal rule above.
+
 The public compiler behavior is documented by TypeScript's
 [`noImplicitReturns`](https://www.typescriptlang.org/tsconfig/noImplicitReturns.html)
 and

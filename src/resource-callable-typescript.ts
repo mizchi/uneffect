@@ -12,6 +12,7 @@ import {
   type ResourceProtocolTransition,
 } from "./resource-protocol.js";
 import { collectAwaitedRejectionTransitionSites, collectBuiltinResourceTransitionSites, lowerResourceProtocolCfgInFunction, resolveAwaitedResourceBinding, type ResourceTransitionSite } from "./resource-protocol-typescript.js";
+import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
 
 type SupportedFunction = ts.FunctionDeclaration | ts.MethodDeclaration | ts.MethodSignature
   | ts.CallSignatureDeclaration | ts.ArrowFunction | ts.FunctionExpression;
@@ -215,43 +216,14 @@ export function collectResourceCallableTransitionSites(
     }
     return undefined;
   };
-  const summaryForExpression = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ResourceCallableSummary | undefined => {
-    const symbol = resolvedSymbol(checker, ts.isPropertyAccessExpression(expression) ? expression.name
-      : ts.isElementAccessExpression(expression) ? expression.argumentExpression : expression);
-    if (!symbol || seen.has(symbol)) return undefined;
+  const summaryForExpression = (expression: ts.Expression): ResourceCallableSummary | undefined => {
+    const symbol = resolveStableCallableSymbol(checker, expression);
     const direct = summaryForDeclarationSymbol(symbol);
     if (direct) return direct;
-    const nextSeen = new Set(seen).add(symbol);
-    for (const declaration of symbol.declarations ?? []) {
-      if (!ts.isVariableDeclaration(declaration) || !declaration.initializer
-        || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) continue;
-      let initializer = declaration.initializer;
-      while (ts.isParenthesizedExpression(initializer) || ts.isNonNullExpression(initializer)
-        || ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer)) initializer = initializer.expression;
-      if (ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer) || ts.isElementAccessExpression(initializer)) {
-        const resolved = summaryForExpression(initializer, nextSeen);
-        if (resolved) return resolved;
-      }
-      continue;
-    }
-    for (const declaration of symbol.declarations ?? []) {
-      if (!ts.isPropertyAssignment(declaration) && !ts.isShorthandPropertyAssignment(declaration)) continue;
-      const object = declaration.parent;
-      const freezeCall = object.parent;
-      const owner = freezeCall.parent;
-      if (!ts.isObjectLiteralExpression(object) || !ts.isCallExpression(freezeCall) || freezeCall.arguments[0] !== object
-        || !ts.isPropertyAccessExpression(freezeCall.expression) || freezeCall.expression.name.text !== "freeze"
-        || !ts.isVariableDeclaration(owner) || !ts.isVariableDeclarationList(owner.parent)
-        || (owner.parent.flags & ts.NodeFlags.Const) === 0) continue;
-      const freezeSymbol = resolvedSymbol(checker, freezeCall.expression.name);
-      const builtinFreeze = freezeSymbol?.declarations?.some((item) => item.getSourceFile().isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(item.getSourceFile().fileName));
-      if (!builtinFreeze) continue;
-      const initializer = ts.isPropertyAssignment(declaration) ? declaration.initializer : declaration.name;
-      const resolved = summaryForExpression(initializer, nextSeen);
-      if (resolved) return resolved;
-    }
-    return undefined;
+    const declaration = symbol && stableCallableDeclaration(symbol);
+    if (!declaration) return undefined;
+    const source = declaration.getSourceFile();
+    return byId.get(`${source.fileName}:${declaration.getStart(source)}`);
   };
   const factorySummaryForReceiver = (input: ts.Expression, seen = new Set<ts.Symbol>()): ResourceCallableSummary | undefined => {
     let expression = input;

@@ -4,6 +4,7 @@ import { externalContractForCall, type ExternalFunctionEffectContract } from "./
 import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourceProtocolCfg, type ResourceProtocolModel, type ResourceProtocolResource, type ResourceProtocolTransition } from "./resource-protocol.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics, type ProjectedValue } from "./builtin-semantic-interpreter.js";
+import { resolveStableCallableSymbol } from "./stable-callable.js";
 
 export interface ResourceTransitionSite {
   readonly node: ts.Node;
@@ -240,61 +241,13 @@ export function collectCallableExceptionalTransitionSites(
     }
     return undefined;
   };
-  const isAuthenticatedObjectFreeze = (call: ts.CallExpression): boolean => {
-    if (!ts.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "freeze") return false;
-    const symbol = resolvedSymbol(checker, call.expression.name);
-    return symbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
-      && /(?:^|[/\\])lib\.(?:es\d+|esnext|d)\b.*\.d\.ts$/u.test(declaration.getSourceFile().fileName)) === true;
-  };
-  const stableSummarySymbol = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Symbol | undefined => {
-    while (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
-      || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) expression = expression.expression;
-    const location = ts.isPropertyAccessExpression(expression) ? expression.name
-      : ts.isElementAccessExpression(expression) ? expression.argumentExpression : expression;
-    const symbol = location ? resolvedSymbol(checker, location) : undefined;
-    if (!symbol || seen.has(symbol)) return undefined;
-    if (summaryForSymbol(symbol)) return symbol;
-    const nextSeen = new Set(seen).add(symbol);
-    for (const declaration of symbol.declarations ?? []) {
-      if (ts.isVariableDeclaration(declaration) && declaration.initializer
-        && ts.isVariableDeclarationList(declaration.parent)
-        && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
-        const target = stableSummarySymbol(declaration.initializer, nextSeen);
-        if (target) return target;
-      }
-      if (ts.isPropertyAssignment(declaration) || ts.isShorthandPropertyAssignment(declaration)) {
-        const literal = declaration.parent;
-        const call = literal.parent;
-        const variable = call.parent;
-        if (!ts.isObjectLiteralExpression(literal) || !ts.isCallExpression(call)
-          || call.arguments[0] !== literal || !isAuthenticatedObjectFreeze(call)
-          || !ts.isVariableDeclaration(variable) || variable.initializer !== call
-          || !ts.isVariableDeclarationList(variable.parent)
-          || (variable.parent.flags & ts.NodeFlags.Const) === 0) continue;
-        if (ts.isPropertyAssignment(declaration)) {
-          const target = stableSummarySymbol(declaration.initializer, nextSeen);
-          if (target) return target;
-        } else {
-          const value = checker.getShorthandAssignmentValueSymbol(declaration);
-          if (value && !nextSeen.has(value)) {
-            if (summaryForSymbol(value)) return value;
-            const valueDeclaration = value.valueDeclaration ?? value.declarations?.[0];
-            if (valueDeclaration && ts.isVariableDeclaration(valueDeclaration) && valueDeclaration.initializer) {
-              const target = stableSummarySymbol(valueDeclaration.initializer, new Set(nextSeen).add(value));
-              if (target) return target;
-            }
-          }
-        }
-      }
-    }
-    return undefined;
-  };
   const sites: ResourceTransitionSite[] = [];
   const visit = (node: ts.Node): void => {
     if (node !== fn && ts.isFunctionLike(node)) return;
     if (ts.isCallExpression(node)) {
       const candidate = externalContractForCall(checker, node, externalContracts);
-      const symbol = stableSummarySymbol(node.expression) ?? (candidate ? resolvedSymbol(checker, node.expression) : undefined);
+      const symbol = resolveStableCallableSymbol(checker, node.expression)
+        ?? (candidate ? resolvedSymbol(checker, node.expression) : undefined);
       const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
       if (symbol && declaration) {
         const declarationSource = declaration.getSourceFile();

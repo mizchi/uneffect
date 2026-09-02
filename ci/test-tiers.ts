@@ -44,6 +44,7 @@ export const ciTestTiers = {
     "test/resource-lifecycle-check.test.ts",
     "test/resource-protocol-typescript.test.ts",
     "test/resource-protocol.test.ts",
+    "test/stable-callable.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
     "test/test-timeouts.test.ts",
