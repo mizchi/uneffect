@@ -881,7 +881,7 @@ same property is proved for arbitrary TypeScript.
   It validates integrity against the producer Program. The consumer binder and
   repeatable CLI `--contract-summary` option require matching summary content,
   TypeScript version, exact installed package version, export signature, and
-  record the resolved `.d.ts` bytes. Named aliases and source re-exports are
+  record the resolved `.d.ts` bytes. Named aliases, namespace imports, and source re-exports are
   resolved by TypeChecker call identity. Producer-to-emitted-declaration build
   linkage, tarball/bundled-runtime identity, publisher authenticity, and Effect
   summary consumption remain open.

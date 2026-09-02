@@ -43,8 +43,9 @@ successful verification.
 
 Persisted scalar contract summaries now have a consumer fragment beyond the
 compact Hoare row above: repeatable CLI `--contract-summary` inputs and the
-programmatic binder follow TypeChecker-resolved calls through named aliases and
-source re-exports, require exact installed package version and signature, and
+programmatic binder follow TypeChecker-resolved calls through named aliases,
+namespace imports, and source re-exports, require exact root-package export,
+installed package version, and signature, and
 record the selected declaration bytes. Calls remain `trusted`, not `verified`,
 because persisted producer authority is not authenticated. Producer-to-emitted `.d.ts` build
 linkage, installed tarball/runtime identity, publisher authenticity, and

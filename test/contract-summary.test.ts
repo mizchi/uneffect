@@ -128,6 +128,15 @@ describe("persisted contract summary bundles", () => {
     expect(binding.exports[0]?.declarationFileName.replaceAll("\\", "/")).toMatch(/\/node_modules\/@example\/math\/index\.d\.ts$/);
     expect(binding.exports[0]?.declarationDigest).toMatch(/^[0-9a-f]{64}$/);
 
+    const namespaceFile = join(directory, "namespace-consumer.ts");
+    writeFileSync(namespaceFile, 'import * as math from "@example/math";\nvoid math.addOne(1);\n');
+    const namespaceProgram = ts.createProgram([namespaceFile], options);
+    expect(bindContractSummaryBundleToProgram(bundle, namespaceProgram)).toMatchObject({
+      status: "verified",
+      exports: [{ exportName: "addOne", evidence: "trusted" }],
+      blockers: [],
+    });
+
     const tamperedBundle = {
       ...bundle,
       exports: bundle.exports.map((item) => ({ ...item, ensures: ["result === value + 2"] })),
@@ -166,6 +175,24 @@ describe("persisted contract summary bundles", () => {
       status: "unknown",
       exports: [],
       blockers: [expect.stringContaining("signature for addOne does not match")],
+    });
+
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/math", version: "1.2.3", types: "index.d.ts",
+      exports: {
+        ".": { types: "./index.d.ts" },
+        "./unsafe": { types: "./unsafe.d.ts" },
+      },
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), "export declare function addOne(value: number): Promise<number>;\n");
+    writeFileSync(join(packageDirectory, "unsafe.d.ts"), "export declare function addOne(value: number): Promise<number>;\n");
+    const unsafeFile = join(directory, "unsafe-consumer.ts");
+    writeFileSync(unsafeFile, 'import { addOne } from "@example/math/unsafe";\nvoid addOne(1);\n');
+    const unsafeProgram = ts.createProgram([unsafeFile], options);
+    expect(bindContractSummaryBundleToProgram(bundle, unsafeProgram)).toMatchObject({
+      status: "not-applicable",
+      exports: [],
+      blockers: [],
     });
   });
 });

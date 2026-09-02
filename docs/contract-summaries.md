@@ -52,9 +52,9 @@ of trusting the stored digest.
 ## Assurance boundary
 
 The consumer binder follows TypeChecker-resolved calls through named-import
-aliases and source re-exports. It accepts a contract only when the resolved
+aliases, namespace imports, and source re-exports. It accepts a contract only when the resolved
 declaration belongs to an installed package with the exact summarized name and
-version and its TypeChecker signature matches the producer signature. Evidence
+version, exact root-package export identity, and its TypeChecker signature matches the producer signature. Evidence
 records the resolved declaration file, span, and SHA-256. The CLI exposes the
 same path:
 

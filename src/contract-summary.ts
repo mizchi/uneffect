@@ -160,6 +160,30 @@ export function bindContractSummaryBundleToProgram(
     blockers,
   };
   const checker = program.getTypeChecker();
+  const allowedDeclarations = new Map<string, Set<ts.Declaration>>();
+  const rememberModuleExports = (moduleSpecifier: ts.StringLiteralLike): void => {
+    if (moduleSpecifier.text !== bundle.package.name) return;
+    const moduleSymbol = checker.getSymbolAtLocation(moduleSpecifier);
+    if (!moduleSymbol) return;
+    for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+      const target = (exported.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(exported) : exported;
+      if (!target.declarations?.length) continue;
+      const selected = allowedDeclarations.get(exported.getName()) ?? new Set<ts.Declaration>();
+      for (const declaration of target.declarations) selected.add(declaration);
+      allowedDeclarations.set(exported.getName(), selected);
+    }
+  };
+  for (const source of program.getSourceFiles()) {
+    if (source.isDeclarationFile) continue;
+    const visit = (node: ts.Node): void => {
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
+        && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) {
+        rememberModuleExports(node.moduleSpecifier);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
   const candidates = new Map<string, Array<{ declaration: ts.Declaration; call: ts.CallExpression }>>();
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
@@ -169,7 +193,7 @@ export function bindContractSummaryBundleToProgram(
         const name = declaration && "name" in declaration && declaration.name
           && (ts.isIdentifier(declaration.name) || ts.isStringLiteral(declaration.name))
           ? declaration.name.text : undefined;
-        if (declaration && name && installedPackageAt(declaration.getSourceFile().fileName, bundle.package.name)) {
+        if (declaration && name && allowedDeclarations.get(name)?.has(declaration)) {
           candidates.set(name, [...(candidates.get(name) ?? []), { declaration, call: node }]);
         }
       }

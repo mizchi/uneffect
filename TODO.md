@@ -624,7 +624,7 @@ introducing another domain-local control-flow or alias model.
    or stale summaries must block assurance; publisher/build authenticity stays
    a separate trust claim. ([#7](https://github.com/mizchi/uneffect/issues/7), [#20](https://github.com/mizchi/uneffect/issues/20))
    - [x] Bind verified scalar contract summaries to TypeChecker-resolved calls
-     through named aliases and source re-exports. Require matching summary
+     through named aliases, namespace imports, and source re-exports. Require matching summary
      content, TypeScript version, installed package version, and callable
      signature; retain resolved declaration bytes and fail closed on drift.
      Expose the path programmatically and through repeatable CLI
