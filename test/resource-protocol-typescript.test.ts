@@ -252,6 +252,8 @@ describe("TypeScript resource protocol CFG lowering", () => {
         /* uneffect:acquire return */ async function asyncForwarded(): Promise<Handle> { return await asyncConnect() }
         /* uneffect:acquire return */ function aliasReturned(): Handle { const handle = connect(); const alias = handle; return alias }
         /* uneffect:acquire return */ async function asyncAliasReturned(): Promise<Handle> { const handle = await asyncConnect(); const alias = handle; return alias }
+        /* uneffect:acquire return */ function conditionalAliasReturned(flag: boolean): Handle { const handle = connect(); const alias = handle; return flag ? handle : alias }
+        /* uneffect:acquire return */ function selectedResource(flag: boolean): Handle { const left = connect(); const right = connect(); return flag ? left : right }
         /* uneffect:acquire return */ function mutableReturned(): Handle { let handle = connect(); return handle }
         function direct() { connect().close() }
         function forwardedUse() { forwarded().close() }
@@ -286,6 +288,8 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(evaluate("aliasReturned")?.states.values().next().value).toBe("escaped");
       expect(evaluate("asyncAliasReturned")).toMatchObject({ status: "satisfied" });
       expect(evaluate("asyncAliasReturned")?.states.values().next().value).toBe("escaped");
+      expect(evaluate("conditionalAliasReturned")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("selectedResource")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("mutableReturned")).toMatchObject({ status: "unsatisfied" });
       expect(evaluate("nestedArgument")).toMatchObject({ status: "satisfied" });
       expect(evaluate("optional")).toMatchObject({ status: "unknown" });

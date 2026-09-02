@@ -346,17 +346,22 @@ export function collectResourceCallableTransitionSites(
   for (const site of sites) for (const transition of [...site.transitions, ...(site.fulfillmentTransitions ?? [])]) {
     if (transition.kind === "acquire") acquired.set(transition.resource, transition.evidence);
   }
+  const returnedAliasIdentity = (expression: ts.Expression): string | undefined => {
+    if (ts.isConditionalExpression(expression)) {
+      const whenTrue = resourceIdentity(expression.whenTrue);
+      const whenFalse = resourceIdentity(expression.whenFalse);
+      return whenTrue && whenTrue === whenFalse ? whenTrue : undefined;
+    }
+    if (!ts.isIdentifier(expression)) return undefined;
+    const declaration = resolvedSymbol(checker, expression)?.valueDeclaration;
+    return declaration && ts.isVariableDeclaration(declaration)
+      && declaration.initializer && ts.isIdentifier(declaration.initializer)
+      ? resourceIdentity(expression) : undefined;
+  };
   const collectReturnedResources = (node: ts.Node): void => {
     if (node !== fn.body && ts.isFunctionLike(node)) return;
-    if (ts.isReturnStatement(node) && node.expression && ts.isIdentifier(node.expression)) {
-      const returnedDeclaration = resolvedSymbol(checker, node.expression)?.valueDeclaration;
-      const forwardsAlias = returnedDeclaration && ts.isVariableDeclaration(returnedDeclaration)
-        && returnedDeclaration.initializer && ts.isIdentifier(returnedDeclaration.initializer);
-      if (!forwardsAlias) {
-        ts.forEachChild(node, collectReturnedResources);
-        return;
-      }
-      const resource = resourceIdentity(node.expression);
+    if (ts.isReturnStatement(node) && node.expression) {
+      const resource = returnedAliasIdentity(node.expression);
       const alreadyEscaped = resource && sites.some((site) => [...site.transitions, ...(site.fulfillmentTransitions ?? [])]
         .some((transition) => transition.kind === "escape" && transition.resource === resource
           && transition.at >= node.getStart() && transition.at <= node.getEnd()));

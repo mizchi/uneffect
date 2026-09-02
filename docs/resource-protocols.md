@@ -161,8 +161,10 @@ is permitted. A returned immutable `const` alias chain is also normalized to
 the acquired region for both synchronous and directly awaited acquisitions.
 The alias-bound report describes the resource only after successful
 acquisition, so its terminal state is `escaped`; Promise rejection still does
-not create a live resource. Mutable aliases, destructured aliases, properties,
-and dynamically selected return values remain outside this fragment.
+not create a live resource. A conditional return is accepted only when both
+branches resolve to the same acquired region. Mutable aliases, destructured
+aliases, properties, and conditionals selecting different resources remain
+outside this fragment.
 Equivalent optional terminal states exist for consume, release, and transfer.
 Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions
