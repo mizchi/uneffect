@@ -47,7 +47,10 @@ programmatic binder follow TypeChecker-resolved calls through named aliases,
 namespace imports, and source re-exports, require exact root-package export,
 installed package version, and signature. Callable members already protected
 at every traversed object level by builtin `Object.freeze({ ... })` retain a static member path and
-compose through direct or immutable-alias calls; mutable objects and lookalike
+compose through direct or immutable-alias calls. Identifier-named object-literal
+members may also publish verified scalar Hoare clauses; a direct consumer `await`
+instantiates their pre/postconditions through the same declaration binding and
+source-span evidence. Mutable objects and lookalike
 freeze functions fail closed. Uneffect does not insert or recommend freezing. The binder
 records the selected declaration bytes. Verified Effect-only exports also lower
 through the existing external Effect contract IR, including scoped

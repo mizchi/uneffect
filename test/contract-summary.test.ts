@@ -1275,4 +1275,78 @@ describe("persisted contract summary bundles", () => {
       source: shallowSource, program: programFor(producerFile, shallowSource), artifacts: [],
     })).toThrow(/no fully verified exported function contracts/u);
   });
+
+  it("composes an async frozen member Hoare contract at an awaited consumer call", async () => {
+    const producerFile = "/src/math-api.ts";
+    const producerSource = `
+      export const math = Object.freeze({
+        /* uneffect:requires value >= 0 */
+        /* uneffect:ensures result === value + 1 */
+        async addOne(value: number): Promise<number> { return value + 1 }
+      })
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const producerVerification = await verifyContractObligations(producerFile, producerSource, undefined, producerProgram);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/math-api", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: producerVerification.artifacts,
+    });
+    expect(bundle.exports).toEqual([expect.objectContaining({
+      symbol: { module: "@example/math-api", export: "math", path: ["addOne"] },
+      requires: ["value >= 0"], ensures: ["result === value + 1"],
+    })]);
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-member-hoare-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "math-api");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/math-api", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare const math: Readonly<{ addOne(value: number): Promise<number> }>
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    const consumerSource = `
+      import { math } from "@example/math-api"
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      export async function run(value: number): Promise<number> {
+        return await math.addOne(value)
+      }
+    `;
+    writeFileSync(consumerFile, consumerSource);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding).toMatchObject({ status: "verified", blockers: [] });
+    const consumerVerification = await verifyContractObligations(consumerFile, consumerSource, undefined, consumerProgram, {
+      externalContractBindings: binding.exports,
+    });
+    expect(consumerVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "run"))
+      .toMatchObject({ status: "verified" });
+  });
+
+  it("does not borrow Hoare evidence from a same-named frozen member", async () => {
+    const fileName = "/src/math-apis.ts";
+    const source = `
+      export const good = Object.freeze({
+        /* uneffect:ensures result === value + 1 */
+        addOne(value: number): number { return value + 1 }
+      })
+      export const bad = Object.freeze({
+        /* uneffect:ensures result === value + 1 */
+        addOne(value: number): number { return value + 2 }
+      })
+    `;
+    const program = programFor(fileName, source);
+    const verification = await verifyContractObligations(fileName, source, undefined, program);
+    expect(verification.artifacts.filter(({ obligation }) => obligation?.functionName === "addOne"))
+      .toEqual([expect.objectContaining({ status: "verified" }), expect.objectContaining({ status: "counterexample" })]);
+    expect(() => createContractSummaryBundle({
+      packageName: "@example/math-apis", packageVersion: "1.0.0", fileName,
+      source, program, artifacts: verification.artifacts,
+    })).toThrow(/bad is not fully verified/u);
+  });
 });

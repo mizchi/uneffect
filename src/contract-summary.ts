@@ -814,8 +814,12 @@ function describeExport(
   if (ensures.length === 0 && !effectDeclared && !resourceSummary?.operations.length && resourceReturnMembers.length === 0) return undefined;
   const requires = extractAnnotations(comments, "requires");
   const span = { start: node.getStart(implementationSource), end: node.getEnd() };
+  const artifactFunctionName = ts.isMethodDeclaration(node) && ts.isIdentifier(node.name)
+    ? node.name.text
+    : functionName;
   const candidates = artifacts.filter((artifact) => artifact.source.fileName === implementationSource.fileName
-    && artifact.obligation?.functionName === functionName && artifact.source.span.start >= span.start && artifact.source.span.end <= span.end);
+    && artifact.obligation?.functionName === artifactFunctionName
+    && artifact.source.span.start >= span.start && artifact.source.span.end <= span.end);
   const covered = ensures.every((clause) => candidates.some((artifact) => artifact.obligation?.clause === "ensures" && artifact.obligation.source === clause));
   const verified = candidates.length > 0 && covered && candidates.every((artifact) => artifact.status === "verified"
     && (artifact.controlFlow?.relationalCalls?.every(({ evidence }) => evidence === "verified") ?? true));

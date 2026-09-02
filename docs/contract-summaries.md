@@ -155,7 +155,10 @@ must have its own builtin freeze; a shallowly frozen root gives no authority to
 a nested mutable object. Direct calls, immutable local
 aliases, and statically named `const` object destructuring must retain the root exported receiver identity, resolve to the
 installed member declaration, and then use the ordinary
-external Effect/resource IR. An ordinary or nested mutable object, computed key, getter,
+external Effect/resource IR. A scalar Hoare contract on an identifier-named
+member is verified against that method's own source span and can be instantiated
+after a direct `await` at the consumer; same-named sibling methods cannot lend it
+evidence. An ordinary or nested mutable object, computed key, getter,
 spread-built object, or a same-named user implementation of `Object.freeze`
 is rejected. A structurally compatible value with the same imported member
 type is not the exported receiver: its call remains explicit `unknown` rather

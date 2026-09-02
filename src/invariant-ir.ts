@@ -1694,8 +1694,27 @@ export function lowerInvariantProgram(
       .map((element) => element.name.text);
   }));
   const obligations: InvariantObligation[] = [];
-  for (const node of source.statements) {
-    if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
+  type ContractCallable = (ts.FunctionDeclaration | ts.MethodDeclaration) & {
+    readonly name: ts.Identifier;
+    readonly body: ts.Block;
+  };
+  const contractCallables: ContractCallable[] = [];
+  for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      contractCallables.push(statement as ContractCallable);
+      continue;
+    }
+    const visitObjectMethods = (node: ts.Node): void => {
+      if (ts.isMethodDeclaration(node) && ts.isObjectLiteralExpression(node.parent)
+        && ts.isIdentifier(node.name) && node.body) {
+        contractCallables.push(node as ContractCallable);
+        return;
+      }
+      ts.forEachChild(node, visitObjectMethods);
+    };
+    visitObjectMethods(statement);
+  }
+  for (const node of contractCallables) {
     const comments = source.text.slice(node.getFullStart(), node.getStart(source));
     const header = { start: node.getStart(source), end: node.getEnd() };
     let requires: LogicExpression[];
