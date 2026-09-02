@@ -281,6 +281,7 @@ describe("TypeScript resource protocol CFG lowering", () => {
         function nestedArgument() { release(connect()) }
         function aggregateArgument() { const handle = connect(); const holder = { nested: [handle] } as const; release(holder.nested[0]) }
         function destructuredArgument() { const handle = connect(); const holder = { handle } as const; const { handle: alias } = holder; release(alias) }
+        function aggregateReceiver() { const handle = connect(); const holder = { nested: [handle] } as const; holder.nested[0].close() }
         function mutatedAggregateArgument() { const handle = connect(); const holder = { handle }; holder.handle = connect(); release(holder.handle) }
         function optional() { connect()?.close() }
         function leaked() { connect() }
@@ -336,6 +337,7 @@ describe("TypeScript resource protocol CFG lowering", () => {
       expect(evaluate("nestedArgument")).toMatchObject({ status: "satisfied" });
       expect(evaluate("aggregateArgument")).toMatchObject({ status: "satisfied" });
       expect(evaluate("destructuredArgument")).toMatchObject({ status: "satisfied" });
+      expect(evaluate("aggregateReceiver")).toMatchObject({ status: "satisfied" });
       expect(collectResourceCallableTransitionSites(program, functions.get("mutatedAggregateArgument")!, summaries.summaries).diagnostics)
         .toEqual(expect.arrayContaining([expect.objectContaining({ code: "unresolved-resource-binding" })]));
       expect(evaluate("optional")).toMatchObject({ status: "unknown" });

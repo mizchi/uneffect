@@ -440,7 +440,9 @@ export function collectResourceCallableTransitionSites(
           const instantiated = instantiateResourceCallableSummary(summary, {
             parameters,
             receiverResource: ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
-              ? resourceIdentity(node.expression.expression) : undefined,
+              ? resourceIdentity(node.expression.expression)
+                ?? stableAggregateResourceSlot(checker, fn, node.expression.expression, resourceIdentity)?.resource
+              : undefined,
             returnResource: awaitedBinding?.id ?? returnedResourceId(node, acquisitionCalls.has(node)),
             at: node.getStart(),
           });

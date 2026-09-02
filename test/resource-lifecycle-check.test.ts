@@ -341,7 +341,7 @@ describe("general resource lifecycle check", () => {
     try {
       const fileName = join(directory, "entry.ts");
       writeFileSync(fileName, `
-        interface Handle {}
+        interface Handle { /* uneffect:release this */ close(): void }
         /* uneffect:acquire return */ declare function open(): Handle
         export function objectSlot() { const handle = open(); const holder = { handle }; return holder.handle }
         export function tupleSlot() { const handle = open(); const holder = [handle] as const; return holder[0] }
@@ -354,6 +354,7 @@ describe("general resource lifecycle check", () => {
         export function guardedAcquired(flag: boolean) { const handle = flag && open(); return handle }
         /* uneffect:release handle */ declare function release(handle: Handle): void
         export function aggregateArgument() { const handle = open(); const holder = { nested: [handle] } as const; release(holder.nested[0]) }
+        export function aggregateReceiver() { const handle = open(); const holder = { nested: [handle] } as const; holder.nested[0].close() }
         export function mutatedSlot() { const handle = open(); const holder = { handle }; holder.handle = open(); return holder.handle }
       `);
       const result = await checkFiles([fileName]);
@@ -368,6 +369,7 @@ describe("general resource lifecycle check", () => {
         expect.objectContaining({ owner: "branchAcquired", status: "satisfied", state: "absent-or-escaped" }),
         expect.objectContaining({ owner: "guardedAcquired", status: "satisfied", state: "absent-or-escaped" }),
         expect.objectContaining({ owner: "aggregateArgument", status: "satisfied", state: "released" }),
+        expect.objectContaining({ owner: "aggregateReceiver", status: "satisfied", state: "released" }),
         expect.objectContaining({ owner: "mutatedSlot", status: "unknown", state: "unknown" }),
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
