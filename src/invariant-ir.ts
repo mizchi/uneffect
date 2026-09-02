@@ -1991,7 +1991,11 @@ export function lowerInvariantProgram(
         },
       ];
     });
-    const evaluateScalar = (expression: ts.Expression, path: PathState): Array<{ path: PathState; value: LogicExpression }> => {
+    const evaluateScalar = (
+      expression: ts.Expression,
+      path: PathState,
+      allowDirectSynchronousThrow = false,
+    ): Array<{ path: PathState; value: LogicExpression }> => {
       let unwrapped = expression;
       while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
         || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
@@ -2057,7 +2061,7 @@ export function lowerInvariantProgram(
       const externalFact = ts.isCallExpression(unwrapped)
         ? callCompletions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
       if (ts.isCallExpression(unwrapped) && externalFact?.mode === "sync" && externalFact.fulfillment) {
-        if (externalFact.synchronousThrows.length > 0) {
+        if (externalFact.synchronousThrows.length > 0 && !allowDirectSynchronousThrow) {
           throw new Error(`scalar call with both value and synchronous Throw completion is unsupported: ${unwrapped.getText(source)}`);
         }
         const fulfillment = externalFact.fulfillment;
@@ -2165,6 +2169,28 @@ export function lowerInvariantProgram(
         });
       }
       return [{ path, value: substitute(logic(unwrapped, pipeBindings, semanticGuards, semanticValues), path.env) }];
+    };
+    const directValueThrowCompletion = (expression: ts.Expression): { call: ts.CallExpression; fact: CallCompletionFact } | undefined => {
+      let unwrapped = expression;
+      while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
+        || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
+      if (!ts.isCallExpression(unwrapped)) return undefined;
+      const fact = callCompletions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`);
+      return fact?.mode === "sync" && fact.fulfillment && fact.synchronousThrows.length > 0
+        ? { call: unwrapped, fact } : undefined;
+    };
+    const synchronousThrowCompletions = (
+      call: ts.CallExpression,
+      fact: CallCompletionFact,
+      incoming: PathState[],
+    ): PathState[] => {
+      const originSpan = { start: call.getStart(source), end: call.getEnd() };
+      return incoming.flatMap((path) => fact.synchronousThrows.map((effect): PathState => ({
+        ...path,
+        env: new Map(path.env),
+        completion: "throw",
+        thrown: { kind: "synchronous-throw", evidence: fact.evidence, effect, originSpan },
+      })));
     };
     const evaluateNullableAssignment = (
       expression: ts.Expression,
@@ -2397,10 +2423,13 @@ export function lowerInvariantProgram(
           const nullableSource = unsafeNullableScalarCopy(declaration.initializer);
           if (nullableSource) throw new Error(`mutable scalar alias would erase nullable presence: ${declaration.name.text} = ${nullableSource}`);
           const name = declaration.name.text;
-          paths = paths.flatMap((path) => evaluateScalar(declaration.initializer!, path).map(({ path: branch, value }) => {
+          const incoming = paths;
+          const valueThrow = directValueThrowCompletion(declaration.initializer);
+          paths = incoming.flatMap((path) => evaluateScalar(declaration.initializer!, path, Boolean(valueThrow)).map(({ path: branch, value }) => {
             const nextEnv = new Map(branch.env); nextEnv.set(name, value);
             return { ...branch, env: nextEnv };
           }));
+          if (valueThrow) paths.push(...synchronousThrowCompletions(valueThrow.call, valueThrow.fact, incoming));
         }
       } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
         && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
@@ -2786,10 +2815,13 @@ export function lowerInvariantProgram(
         paths = executeAwait(statement.expression, paths, { returnStatement: statement });
       } else if (ts.isReturnStatement(statement) && statement.expression) {
         const returnExpression = statement.expression;
-        paths = paths.flatMap((path): PathState[] => evaluateScalar(returnExpression, path).map(({ path: branch, value }) => {
+        const incoming = paths;
+        const valueThrow = directValueThrowCompletion(returnExpression);
+        paths = incoming.flatMap((path): PathState[] => evaluateScalar(returnExpression, path, Boolean(valueThrow)).map(({ path: branch, value }) => {
           const resultEnv = new Map(branch.env); resultEnv.set("result", value);
           return { ...branch, completion: "return", returnEnv: resultEnv, returnStatement: statement };
         }));
+        if (valueThrow) paths.push(...synchronousThrowCompletions(valueThrow.call, valueThrow.fact, incoming));
       } else if (ts.isExpressionStatement(statement) && ts.isAwaitExpression(statement.expression)) {
         paths = executeAwait(statement.expression, paths);
       } else if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)) {

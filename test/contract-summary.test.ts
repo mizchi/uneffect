@@ -1569,9 +1569,19 @@ describe("persisted contract summary bundles", () => {
     const scalarSource = `
       import { api } from "@example/danger-api"
       function authorize(value: number): void { api.danger(value) }
+      /* uneffect:effect Throw<RangeError> */
       /* uneffect:ensures result === value + 1 */
       export function scalar(value: number): number {
         return api.dangerousAdd(value)
+      }
+      /* uneffect:ensures result === value + 1 */
+      export function bound(value: number): number {
+        try {
+          const result = api.dangerousAdd(value)
+          return result
+        } catch {
+          return value + 1
+        }
       }
     `;
     writeFileSync(scalarFile, scalarSource);
@@ -1583,11 +1593,37 @@ describe("persisted contract summary bundles", () => {
     const scalarVerification = await verifyContractObligations(scalarFile, scalarSource, undefined, scalarProgram, {
       externalContractBindings: scalarBinding.exports,
     });
-    expect(scalarVerification.artifacts).toEqual([
+    expect(scalarVerification.diagnostics).toEqual([]);
+    expect(scalarVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "scalar"))
+      .toMatchObject({
+        status: "verified",
+        controlFlow: { exceptionFlow: { escapes: [expect.objectContaining({ effect: "Throw<RangeError>" })] } },
+      });
+    expect(scalarVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "bound"
+      && artifact.controlFlow?.exceptionFlow?.discharged.length)).toMatchObject({ status: "verified" });
+    const nestedFile = join(directory, "nested.ts");
+    const nestedSource = `
+      import { api } from "@example/danger-api"
+      function authorize(value: number): void { api.danger(value) }
+      /* uneffect:ensures result === value + 2 */
+      export function nested(value: number): number {
+        return api.dangerousAdd(value) + 1
+      }
+    `;
+    writeFileSync(nestedFile, nestedSource);
+    const nestedProgram = ts.createProgram([nestedFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const nestedBinding = bindContractSummaryBundleToProgram(bundle, nestedProgram);
+    const nestedVerification = await verifyContractObligations(nestedFile, nestedSource, undefined, nestedProgram, {
+      externalContractBindings: nestedBinding.exports,
+    });
+    expect(nestedVerification.artifacts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         status: "unsupported",
-        message: expect.stringContaining("both value and synchronous Throw completion"),
+        message: expect.stringContaining("api.dangerousAdd(value)"),
       }),
-    ]);
+    ]));
   });
 });

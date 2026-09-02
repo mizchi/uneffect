@@ -44,9 +44,10 @@ successful verification.
 Persisted `Throw<E>` call statements authorized by the package root-provenance
 binder enter the Hoare exception CFG as trusted may-throw completions. Catch,
 finally, discharge, and unhandled escape evidence are covered; structural
-lookalikes fail closed. A scalar expression that both yields a contracted value
-and may synchronously throw remains unsupported until value/abrupt expression
-lowering is unified.
+lookalikes fail closed. A direct scalar return or initialized binding composes a
+contracted value with its synchronous Throw path; nested arithmetic/value
+expressions remain unsupported until expression-level value/abrupt lowering is
+unified.
 
 Persisted scalar contract summaries now have a consumer fragment beyond the
 compact Hoare row above: repeatable CLI `--contract-summary` inputs and the

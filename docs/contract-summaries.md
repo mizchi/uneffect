@@ -300,8 +300,11 @@ edges in the shared resource CFG. A root-provenance-authorized persisted
 completion: `catch` discharges it, `finally` preserves or overrides it, and an
 unhandled edge remains in `exceptionFlow.escapes`. Structural lookalikes do not
 inherit that completion. A scalar call that both returns a contract value and
-may synchronously throw is currently rejected instead of silently dropping the
-abrupt path. Package semantic authority remains `trusted`;
+may synchronously throw composes both paths when it is the direct return
+expression or the direct initializer of one scalar binding. An escaping path
+still requires the caller's declared `Throw<E>` upper bound. A call nested in
+arithmetic or another value expression is rejected instead of silently dropping
+the abrupt path. Package semantic authority remains `trusted`;
 declaration linkage does not upgrade it to a proof. A floating rejection stays
 in Promise ownership and is never rewritten into a synchronous throw edge.
 
