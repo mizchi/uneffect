@@ -27,7 +27,9 @@ describe("persisted contract summary bundles", () => {
         schema: { const: string }; modules: { items: { $ref: string } };
         runtimeArtifacts: { items: { required: string[] } };
         typescriptEmit: { properties: { outputs: { items: { required: string[] } } } };
-        exports: { items: { required: string[]; properties: { implementation: { required: string[] } } } };
+        exports: { items: { required: string[]; properties: {
+          implementation: { required: string[] }; overloads: { items: { required: string[] } };
+        } } };
       };
     };
     expect(schema.$id).toBe("https://github.com/mizchi/uneffect/schemas/uneffect-contract-summary-v1.schema.json");
@@ -37,6 +39,7 @@ describe("persisted contract summary bundles", () => {
     expect(schema.properties.typescriptEmit.properties.outputs.items.required).toEqual(["kind", "packagePath", "digest"]);
     expect(schema.properties.exports.items.required).toEqual(expect.arrayContaining(["symbol", "signatureDigest", "artifactIds"]));
     expect(schema.properties.exports.items.properties.implementation.required).toEqual(["fileName", "sourceDigest"]);
+    expect(schema.properties.exports.items.properties.overloads.items.required).toEqual(["signature", "digest"]);
   });
 
   it("binds verified exported contracts to package, compiler, source, signature, and artifacts", async () => {
@@ -997,5 +1000,64 @@ describe("persisted contract summary bundles", () => {
       packageName: "@example/star", packageVersion: "1.0.0", fileName: entryFile,
       source: ambiguousSource, program: ambiguousProgram, artifacts: [],
     })).toThrow(/TypeScript errors/u);
+  });
+
+  it("binds every consumer call to a producer-declared overload signature", () => {
+    const producerFile = "/src/overload.ts";
+    const producerSource = `
+      export function parse(value: string): string
+      export function parse(value: number): number
+      /* uneffect:effect none */
+      export function parse(value: string | number): string | number { return value }
+    `;
+    const producerProgram = programFor(producerFile, producerSource);
+    const bundle = createContractSummaryBundle({
+      packageName: "@example/overload", packageVersion: "1.0.0", fileName: producerFile,
+      source: producerSource, program: producerProgram, artifacts: [],
+    });
+    expect(bundle.exports[0]).toMatchObject({
+      signature: "(value: string): string",
+      overloads: [
+        { signature: "(value: string): string", digest: expect.stringMatching(/^[0-9a-f]{64}$/u) },
+        { signature: "(value: number): number", digest: expect.stringMatching(/^[0-9a-f]{64}$/u) },
+      ],
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-contract-overload-"));
+    const packageDirectory = join(directory, "node_modules", "@example", "overload");
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+      name: "@example/overload", version: "1.0.0", types: "index.d.ts",
+    }));
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare function parse(value: string): string
+      export declare function parse(value: number): number
+    `);
+    const consumerFile = join(directory, "consumer.ts");
+    writeFileSync(consumerFile, `
+      import { parse } from "@example/overload"
+      parse("value")
+      parse(1)
+    `);
+    const consumerProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    const binding = bindContractSummaryBundleToProgram(bundle, consumerProgram);
+    expect(binding).toMatchObject({ status: "verified", blockers: [] });
+    expect(binding.exports[0]?.callSites).toHaveLength(2);
+
+    writeFileSync(join(packageDirectory, "index.d.ts"), `
+      export declare function parse(value: string): string
+      export declare function parse(value: number): number
+      export declare function parse(value: boolean): boolean
+    `);
+    const driftedProgram = ts.createProgram([consumerFile], {
+      strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    });
+    expect(bindContractSummaryBundleToProgram(bundle, driftedProgram)).toMatchObject({
+      status: "unknown", exports: [], blockers: [expect.stringContaining("signature")],
+    });
   });
 });

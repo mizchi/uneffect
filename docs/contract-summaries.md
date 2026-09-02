@@ -87,6 +87,8 @@ The bundle binds:
 - direct export name and function identity;
 - declaration span and SHA-256;
 - TypeChecker-rendered signature and SHA-256;
+- ordered public overload signatures and individual SHA-256 digests when the
+  export is overloaded;
 - parameter names, `requires`, and `ensures` clauses;
 - every solver artifact ID supporting the export.
 - optional verified Effect atoms and declaration-order parameter names;
@@ -128,6 +130,13 @@ npx uneffect check --project tsconfig.json \
 Repeat `--contract-summary` to compose packages. A content, TypeScript,
 installed-version, or signature mismatch is a blocking `unknown`; an unused
 summary is `not-applicable` rather than a proof.
+
+Overloaded exports retain the TypeChecker's ordered public call signatures;
+the implementation signature is not published as a callable overload. Consumer
+binding requires every resolved call signature to be present and also requires
+the installed declaration's complete ordered overload set to match. Added,
+removed, reordered, or changed overloads therefore fail closed even when the
+consumer happens to call only an unchanged overload.
 
 Effect-only exports are supported. Scoped capabilities, `Throw<E>`, and
 parameter-rooted `Mutate<typeof parameter.member>` use the same parser and

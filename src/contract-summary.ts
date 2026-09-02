@@ -46,6 +46,8 @@ export interface ContractSummaryExportV1 {
   declarationDigest: string;
   signature: string;
   signatureDigest: string;
+  /** Ordered public overloads; the implementation signature is not exported. */
+  overloads?: Array<{ signature: string; digest: string }>;
   parameters: string[];
   requires: string[];
   ensures: string[];
@@ -328,6 +330,12 @@ export async function loadContractSummaryBundle(fileName: string): Promise<Contr
       || !item.declarationSpan || !Number.isInteger(item.declarationSpan.start) || !Number.isInteger(item.declarationSpan.end)
       || typeof item.declarationDigest !== "string" || typeof item.signature !== "string"
       || typeof item.signatureDigest !== "string" || !Array.isArray(item.parameters)
+      || (item.overloads !== undefined && (!Array.isArray(item.overloads) || item.overloads.length < 2
+        || item.overloads.some((overload) => !overload || typeof overload.signature !== "string"
+          || typeof overload.digest !== "string" || !/^[0-9a-f]{64}$/u.test(overload.digest)
+          || sha256(overload.signature) !== overload.digest)
+        || new Set(item.overloads.map(({ signature }) => signature)).size !== item.overloads.length
+        || item.overloads[0]?.signature !== item.signature))
       || !item.parameters.every((entry) => typeof entry === "string")
       || !Array.isArray(item.requires) || !item.requires.every((entry) => typeof entry === "string")
       || !Array.isArray(item.ensures) || !item.ensures.every((entry) => typeof entry === "string")
@@ -469,7 +477,9 @@ export function bindContractSummaryBundleToProgram(
     };
     visit(source);
   }
-  const candidates = new Map<string, Array<{ declaration: ts.Declaration; signature: string; call: ts.CallExpression }>>();
+  const candidates = new Map<string, Array<{
+    declaration: ts.Declaration; signature: string; availableSignatures: string[]; call: ts.CallExpression;
+  }>>();
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const visit = (node: ts.Node): void => {
@@ -481,7 +491,10 @@ export function bindContractSummaryBundleToProgram(
         const declaration = symbol?.declarations?.[0];
         if (declaration && signature && symbol) for (const [key, symbols] of allowedSymbols) if (symbols.has(symbol)) {
           candidates.set(key, [...(candidates.get(key) ?? []), {
-            declaration, signature: checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation), call: node,
+            declaration, signature: checker.signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation),
+            availableSignatures: checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(symbol, lookup), ts.SignatureKind.Call)
+              .map((available) => checker.signatureToString(available, declaration, ts.TypeFormatFlags.NoTruncation)),
+            call: node,
           }]);
         }
       }
@@ -528,11 +541,18 @@ export function bindContractSummaryBundleToProgram(
     }
     if (!runtimeMatches) continue;
     const signatures = [...new Set(uses.map((use) => use.signature))];
-    const signatureText = signatures.length === 1 ? signatures[0] : undefined;
-    if (!signatureText || signatureText !== summary.signature || sha256(signatureText) !== summary.signatureDigest) {
+    const acceptedSignatures = summary.overloads ?? [{ signature: summary.signature, digest: summary.signatureDigest }];
+    const accepted = new Set(acceptedSignatures
+      .filter(({ signature, digest }) => sha256(signature) === digest)
+      .map(({ signature }) => signature));
+    const availableSets = [...new Set(uses.map(({ availableSignatures }) => canonical(availableSignatures)))];
+    if (signatures.length === 0 || signatures.some((signature) => !accepted.has(signature))
+      || availableSets.length !== 1
+      || availableSets[0] !== canonical(acceptedSignatures.map(({ signature }) => signature))) {
       blockers.push(`contract summary signature for ${summary.symbol.export} does not match the installed declaration`);
       continue;
     }
+    const signatureText = signatures.join(" | ");
     const declarationText = declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd());
     exports.push({
       exportName: summary.symbol.export,
@@ -667,6 +687,23 @@ function summaryParameterNames(node: DirectExportCallable["node"]): string[] {
   return node.parameters.map((parameter, index) => ts.isIdentifier(parameter.name) ? parameter.name.text : `$arg${index}`);
 }
 
+function publicSignatures(program: ts.Program, node: DirectExportCallable["node"]): Array<{ signature: string; digest: string }> {
+  const checker = program.getTypeChecker();
+  const name = ts.isFunctionDeclaration(node) && node.name ? node.name
+    : (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent)
+      && ts.isIdentifier(node.parent.name) ? node.parent.name : undefined;
+  const symbol = name ? checker.getSymbolAtLocation(name) : undefined;
+  const signatures = symbol ? checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(symbol, node), ts.SignatureKind.Call) : [];
+  const fallback = checker.getSignatureFromDeclaration(node);
+  const selected = signatures.length > 0 ? signatures : fallback ? [fallback] : [];
+  const unique = new Map<string, { signature: string; digest: string }>();
+  for (const signature of selected) {
+    const text = checker.signatureToString(signature, node, ts.TypeFormatFlags.NoTruncation);
+    unique.set(text, { signature: text, digest: sha256(text) });
+  }
+  return [...unique.values()];
+}
+
 function describeExport(
   program: ts.Program,
   source: ts.SourceFile,
@@ -701,14 +738,15 @@ function describeExport(
   if (effectDeclared && effectSummary?.evidence !== "verified" && !callableEffectFallback) {
     throw new Error(`${exportName} Effect summary is not verified and cannot be published`);
   }
-  const checker = program.getTypeChecker(), signature = checker.getSignatureFromDeclaration(node);
-  if (!signature) throw new Error(`${exportName} has no TypeChecker signature`);
-  const signatureText = checker.signatureToString(signature, node, ts.TypeFormatFlags.NoTruncation);
+  const signatures = publicSignatures(program, node);
+  const signatureText = signatures[0]?.signature;
+  if (!signatureText) throw new Error(`${exportName} has no TypeChecker signature`);
   const declarationText = implementationSource.text.slice(span.start, span.end);
   return {
     symbol: { module: moduleSpecifier, export: exportName }, functionName, evidence: "verified",
     declarationSpan: span, declarationDigest: sha256(declarationText),
     signature: signatureText, signatureDigest: sha256(signatureText),
+    ...(signatures.length > 1 ? { overloads: signatures } : {}),
     parameters: summaryParameterNames(node),
     requires, ensures, artifactIds: candidates.map(({ obligationId }) => obligationId).sort(),
     ...(implementationSource.fileName !== source.fileName ? { implementation: {
@@ -865,9 +903,12 @@ export function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, o
     }
     const declarationText = implementationSource.text.slice(item.declarationSpan.start, item.declarationSpan.end);
     if (sha256(declarationText) !== item.declarationDigest) errors.push(`contract summary declaration digest for ${item.symbol.export} does not match source`);
-    const signature = options.program.getTypeChecker().getSignatureFromDeclaration(declaration);
-    const signatureText = signature ? options.program.getTypeChecker().signatureToString(signature, declaration, ts.TypeFormatFlags.NoTruncation) : undefined;
-    if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest) errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
+    const signatures = publicSignatures(options.program, declaration);
+    const signatureText = signatures[0]?.signature;
+    if (!signatureText || signatureText !== item.signature || sha256(signatureText) !== item.signatureDigest
+      || canonical(signatures.length > 1 ? signatures : undefined) !== canonical(item.overloads)) {
+      errors.push(`contract summary signature for ${item.symbol.export} does not match TypeChecker`);
+    }
     const leading = implementationSource.text.slice(exported.owner.getFullStart(), exported.owner.getStart(implementationSource));
     const declaresEffect = extractAnnotations(leading, "effect").length > 0;
     const callable = callableSummaries.find((summary) => summary.fileName === implementationSource.fileName

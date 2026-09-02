@@ -95,6 +95,19 @@
           "declarationDigest": { "$ref": "#/$defs/sha256" },
           "signature": { "type": "string", "minLength": 1 },
           "signatureDigest": { "$ref": "#/$defs/sha256" },
+          "overloads": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["signature", "digest"],
+              "properties": {
+                "signature": { "type": "string", "minLength": 1 },
+                "digest": { "$ref": "#/$defs/sha256" }
+              }
+            }
+          },
           "parameters": { "type": "array", "items": { "type": "string" } },
           "requires": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "ensures": { "type": "array", "items": { "type": "string", "minLength": 1 } },

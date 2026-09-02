@@ -705,6 +705,10 @@ introducing another domain-local control-flow or alias model.
      the entry module's final TypeChecker export set, including transitive
      barrels and explicit overrides; exclude default/non-callable members and
      reject ambiguous stars through TypeScript diagnostics.
+   - [x] Persist ordered public overload signatures independently of the
+     implementation signature. Require both every consumer-resolved call and
+     the installed declaration's complete overload set to match, so unused
+     overload drift cannot silently retain authority.
    - [x] Preserve reviewed callback forwarding through Promise reactions and
      lower authenticated package callbacks to the shared host-neutral
      microtask/reject transition without leaking callback `Throw` into the

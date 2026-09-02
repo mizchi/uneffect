@@ -87,7 +87,9 @@ evidence is present; external-package re-export producers remain unsupported.
 Transitive relative `export *` barrels enumerate only the entry module's final
 TypeChecker-selected callable exports, respecting explicit overrides and
 rejecting ambiguous stars through producer TypeScript diagnostics.
-Persisted rejection types and
+Ordered public overload signatures are authenticated separately from the
+implementation signature; consumer calls and the installed complete overload
+set must both match. Persisted rejection types and
 synchronous `Throw` effects feed the shared resource CFG only after exact
 declaration binding; a direct `await` admits rejection, floating Promises do
 not, and package authority stays trusted.
