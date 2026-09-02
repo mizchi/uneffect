@@ -119,6 +119,11 @@ describe("declarative Uneffect modules", () => {
         export declare function riskyAsync(): Promise<void>
         export declare function createScheduler(): Scheduler
         export declare function send(transfer: ArrayBuffer[]): void
+        export declare const handles: {
+          open(): Handle
+          inspect(handle: Handle): void
+          close(handle: Handle): void
+        }
       `);
       const module = {
         ...auditModule,
@@ -143,6 +148,9 @@ describe("declarative Uneffect modules", () => {
             { symbol: { module: "reviewed-handle", export: "Handle#close" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed receiver release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "receiver" } }] } },
             { symbol: { module: "reviewed-handle", export: "Scheduler#schedule" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed member callback", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 0 }, timing: "deferred", queue: "external", cardinality: "0..1", completion: "host-report-throw" }] } },
             { symbol: { module: "reviewed-handle", export: "send" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed ownership transfer", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "transfer", target: { kind: "argument", index: 0 } }] } },
+            { symbol: { module: "reviewed-handle", export: "handles", path: ["open"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted acquisition", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "acquire", resource: "Acme.Handle", target: { kind: "result" } }] } },
+            { symbol: { module: "reviewed-handle", export: "handles", path: ["inspect"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted use", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "use", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
+            { symbol: { module: "reviewed-handle", export: "handles", path: ["close"] }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted", trustOwner: "security-platform", trustReason: "reviewed rooted release", semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "release", resource: "Acme.Handle", target: { kind: "argument", index: 0 } }] } },
           ],
         },
       } as const;
@@ -151,11 +159,13 @@ describe("declarative Uneffect modules", () => {
       writeFileSync(facade, `export { schedule as later } from "reviewed-handle"`);
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler, send } from "reviewed-handle"
+        import { open, openAsync, inspect, close, closeAsync, schedule, risky, riskyWhen, riskyAsync, createScheduler, send, handles } from "reviewed-handle"
         const scheduleAlias = schedule
         const aliasedCallback = () => {}
         export function valid() { const handle = open(); inspect(handle); close(handle) }
         export function leaked() { const handle = open(); inspect(handle) }
+        export function rootedValid() { const handle = handles.open(); handles.inspect(handle); handles.close(handle) }
+        export function rootedLeaked() { const handle = handles.open(); handles.inspect(handle) }
         export async function asyncValid() { const handle = await openAsync(); inspect(handle); await closeAsync(handle) }
         export function scheduled() { schedule(() => {}) }
         export function aliasScheduled() { scheduleAlias(aliasedCallback) }
@@ -188,6 +198,8 @@ describe("declarative Uneffect modules", () => {
       expect(result.resourceProtocols).toEqual(expect.arrayContaining([
         expect.objectContaining({ owner: "valid", status: "satisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "rootedValid", status: "satisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "rootedLeaked", status: "unsatisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "asyncValid", status: "satisfied", authority: "builtin-catalog", state: "absent-or-released" }),
         expect.objectContaining({ owner: "exceptional", status: "unknown", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "conservativeCondition", status: "unknown", authority: "builtin-catalog" }),
@@ -203,6 +215,7 @@ describe("declarative Uneffect modules", () => {
       }));
       expect(result.assumptions.entries).toEqual(expect.arrayContaining([
         expect.objectContaining({ domain: "builtin", owner: "security-platform", reason: "reviewed acquisition" }),
+        expect.objectContaining({ domain: "builtin", owner: "security-platform", reason: "reviewed rooted acquisition" }),
       ]));
       expect(result.assumptions.entries).not.toEqual(expect.arrayContaining([
         expect.objectContaining({ id: expect.stringContaining("builtin-resource:"), owner: "@mizchi/uneffect" }),
@@ -213,6 +226,8 @@ describe("declarative Uneffect modules", () => {
       expect(project.resourceProtocols).toEqual(expect.arrayContaining([
         expect.objectContaining({ owner: "valid", status: "satisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "leaked", status: "unsatisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "rootedValid", status: "satisfied", authority: "builtin-catalog" }),
+        expect.objectContaining({ owner: "rootedLeaked", status: "unsatisfied", authority: "builtin-catalog" }),
         expect.objectContaining({ owner: "asyncValid", status: "satisfied", authority: "builtin-catalog", state: "absent-or-released" }),
       ]));
       expect(project.ownership.diagnostics).toContainEqual(expect.objectContaining({

@@ -158,6 +158,13 @@ when TypeScript narrows the key to one string literal; Uneffect currently
 requires the property identity to be static in the syntax and does not mistake
 an unresolved dynamic access for an empty effect.
 
+`symbol.path` is only an identity selector; it does not introduce a separate
+semantics dialect. The same generic primitives apply, including scoped
+effects, callbacks, results, `acquire`, `use`, and `release`. Consequently an
+external package can describe `handles.open/inspect/close`, and the ordinary
+resource CFG reports a satisfied release or a leak while the assumption ledger
+retains the reviewed owner and reason.
+
 A contract may declare `result({ kind: "fresh" })` in `semantics.primitives` when every call returns a
 new caller-owned object with no pre-existing aliases. In-place mutation of that
 direct result is then local rather than a `Mutate` capability. This is separate
