@@ -1384,6 +1384,12 @@ describe("persisted contract summary bundles", () => {
       export function run(value: number): number {
         return math.addOne(value)
       }
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 2 */
+      export function staged(value: number): number {
+        const next = math.addOne(value)
+        return next + 1
+      }
     `;
     writeFileSync(consumerFile, consumerSource);
     const consumerProgram = ts.createProgram([consumerFile], {
@@ -1397,6 +1403,8 @@ describe("persisted contract summary bundles", () => {
     });
     expect(consumerVerification.diagnostics).toEqual([]);
     expect(consumerVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "run"))
+      .toMatchObject({ status: "verified" });
+    expect(consumerVerification.artifacts.find((artifact) => artifact.obligation?.functionName === "staged"))
       .toMatchObject({ status: "verified" });
 
     const invalidFile = join(directory, "invalid.ts");

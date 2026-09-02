@@ -53,7 +53,9 @@ or synchronous scalar call instantiates their pre/postconditions through the
 same declaration binding and source-span evidence. Synchronous callee
 preconditions are emitted as separate call-site obligations. Both synchronous
 and awaited Hoare composition require a root-provenance-authenticated call-site
-span; a structural lookalike or type assertion remains unsupported. Mutable objects and lookalike
+span. A synchronous result may pass through an initialized scalar binding;
+Promise-producing bindings remain subject to observation/ownership rules. A
+structural lookalike or type assertion remains unsupported. Mutable objects and lookalike
 freeze functions fail closed. Uneffect does not insert or recommend freezing. The binder
 records the selected declaration bytes. Verified Effect-only exports also lower
 through the existing external Effect contract IR, including scoped

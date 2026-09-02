@@ -97,7 +97,7 @@ export class InvariantLoweringError extends Error {
 
 type Environment = Map<string, LogicExpression>;
 interface PendingPromiseState {
-  fact: AwaitRejectionFact;
+  fact: CallCompletionFact;
   argumentValues: Array<LogicExpression | undefined>;
   originSpan: { start: number; end: number };
   observed: boolean;
@@ -181,7 +181,7 @@ export interface ExternalContractBinding {
 export interface InvariantLoweringOptions {
   externalContractBindings?: readonly ExternalContractBinding[];
 }
-interface AwaitRejectionFact {
+interface CallCompletionFact {
   effect?: string;
   definitelyRejects: boolean;
   synchronousThrows: string[];
@@ -1103,13 +1103,13 @@ function typeCheckerDeclaredThrowCalls(program: ts.Program | undefined, fileName
   return facts;
 }
 
-function typeCheckerAwaitRejections(
+function typeCheckerCallCompletions(
   program: ts.Program | undefined,
   fileName: string,
   text: string,
   options: InvariantLoweringOptions = {},
-): Map<string, AwaitRejectionFact> {
-  const facts = new Map<string, AwaitRejectionFact>();
+): Map<string, CallCompletionFact> {
+  const facts = new Map<string, CallCompletionFact>();
   if (!program) return facts;
   const source = program.getSourceFile(fileName);
   if (!source || source.text !== text) return facts;
@@ -1716,7 +1716,7 @@ export function lowerInvariantProgram(
   const throwEffects = typeCheckerThrowEffects(program, fileName, text);
   const assertionCalls = typeCheckerAssertionCalls(program, fileName, text);
   const declaredThrowCalls = typeCheckerDeclaredThrowCalls(program, fileName, text);
-  const awaitRejections = typeCheckerAwaitRejections(program, fileName, text, options);
+  const callCompletions = typeCheckerCallCompletions(program, fileName, text, options);
   const pipeBindings = new Set(source.statements.flatMap((statement): string[] => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
       || statement.moduleSpecifier.text !== "effect/Function" || !statement.importClause?.namedBindings
@@ -1857,7 +1857,7 @@ export function lowerInvariantProgram(
       target?: { binding?: string; nullableGuard?: SemanticGuardFact; returnStatement?: ts.ReturnStatement },
     ): PathState[] => {
       const directCall = ts.isCallExpression(awaited.expression) ? awaited.expression : undefined;
-      const directFact = directCall ? awaitRejections.get(`${awaited.getStart(source)}:${awaited.getEnd()}`) : undefined;
+      const directFact = directCall ? callCompletions.get(`${awaited.getStart(source)}:${awaited.getEnd()}`) : undefined;
       const binding = ts.isIdentifier(awaited.expression) ? awaited.expression.text : undefined;
       const settle = (path: PathState): PathState[] => {
         const pending = binding ? path.pendingPromises.get(binding) : undefined;
@@ -2049,7 +2049,7 @@ export function lowerInvariantProgram(
       const mathFact = ts.isCallExpression(unwrapped)
         ? mathScalarCalls.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
       const externalFact = ts.isCallExpression(unwrapped)
-        ? awaitRejections.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
+        ? callCompletions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`) : undefined;
       if (ts.isCallExpression(unwrapped) && externalFact?.synchronousFulfillment && externalFact.fulfillment) {
         const fulfillment = externalFact.fulfillment;
         let argumentsByPath: Array<{ path: PathState; values: LogicExpression[] }> = [{ path, values: [] }];
@@ -2311,10 +2311,11 @@ export function lowerInvariantProgram(
         && ts.isIdentifier(statement.declarationList.declarations[0]!.name)
         && statement.declarationList.declarations[0]!.initializer
         && ts.isCallExpression(statement.declarationList.declarations[0]!.initializer)
-        && awaitRejections.has(`${statement.declarationList.declarations[0]!.initializer.getStart(source)}:${statement.declarationList.declarations[0]!.initializer.getEnd()}`)) {
+        && callCompletions.has(`${statement.declarationList.declarations[0]!.initializer.getStart(source)}:${statement.declarationList.declarations[0]!.initializer.getEnd()}`)
+        && !callCompletions.get(`${statement.declarationList.declarations[0]!.initializer.getStart(source)}:${statement.declarationList.declarations[0]!.initializer.getEnd()}`)?.synchronousFulfillment) {
         const declaration = statement.declarationList.declarations[0]!;
         const call = declaration.initializer as ts.CallExpression;
-        const fact = awaitRejections.get(`${call.getStart(source)}:${call.getEnd()}`);
+        const fact = callCompletions.get(`${call.getStart(source)}:${call.getEnd()}`);
         if (!fact) throw new Error(`Promise binding requires a verified rejection or fulfillment summary: ${call.getText(source)}`);
         if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) throw new Error(`Promise-producing binding must be const: ${declaration.getText(source)}`);
         const name = (declaration.name as ts.Identifier).text;
