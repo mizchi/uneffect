@@ -92,7 +92,7 @@ export function resolveAwaitedResourceBinding(
   return bindingOf(reference.parent, reference.parent);
 }
 
-/** Projects generic builtin acquire/release events into the shared resource CFG. */
+/** Projects generic catalog resource and synchronous-throw events into the shared resource CFG. */
 export function collectBuiltinResourceTransitionSites(
   program: ts.Program,
   fn: ts.FunctionLikeDeclaration,
@@ -147,6 +147,7 @@ export function collectBuiltinResourceTransitionSites(
       const fulfillmentTransitions: ResourceProtocolTransition[] = [];
       let transitionNode: ts.Node = node;
       let fulfillmentHasOwnRejectionEdge = false;
+      const synchronousThrow = events.some((event) => event.kind === "throw");
       for (const event of events) {
         if ((event.kind !== "acquire" && event.kind !== "use" && event.kind !== "release") || !event.target) continue;
         const fulfilledBinding = event.completion === "fulfillment" && event.target.status === "result" && ts.isCallExpression(node)
@@ -173,9 +174,9 @@ export function collectBuiltinResourceTransitionSites(
         const transition = { kind: event.kind, resource, at: transitionNode.getStart(node.getSourceFile()), evidence: "trusted" } as ResourceProtocolTransition;
         (event.completion === "fulfillment" ? fulfillmentTransitions : transitions).push(transition);
       }
-      if (transitions.length || fulfillmentTransitions.length) sites.push({
+      if (transitions.length || fulfillmentTransitions.length || synchronousThrow) sites.push({
         node: transitionNode, transitions, ...(fulfillmentTransitions.length ? { fulfillmentTransitions } : {}),
-        ...(fulfillmentHasOwnRejectionEdge ? { exceptionalCompletion: "throw" as const } : {}),
+        ...(fulfillmentHasOwnRejectionEdge || synchronousThrow ? { exceptionalCompletion: "throw" as const } : {}),
       });
     }
     ts.forEachChild(node, visit);

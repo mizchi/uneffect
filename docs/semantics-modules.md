@@ -105,6 +105,10 @@ Version 1 intentionally supports only data understood and validated by Uneffect 
   same-spelled local functions do not inherit the contract. Acyclic immutable
   `const` callable aliases, including stable namespace properties, resolve back
   to the same reviewed symbol without depending on the local variable name;
+- synchronous `throw` primitives become exceptional edges in the same resource
+  CFG, so `try`/`catch`/`finally` cleanup is checked together with catalog
+  acquire/use/release transitions. A declared condition is conservatively a
+  may-throw edge unless a participating checker proves it false;
 - reviewed package/module initialization effects;
 - declaration fingerprints inherited from the registry format;
 - a trusted-module ledger in effect evidence.

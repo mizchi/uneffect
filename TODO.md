@@ -639,6 +639,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Resolve reviewed calls through acyclic immutable `const` callable
        aliases and stable namespace properties; do not propagate contracts
        through `let`, dynamic initializers, or symbol cycles.
+     - [x] Lower trusted catalog `throw` primitives into the shared exceptional
+       resource CFG, including catch/finally cleanup and invalid-transition
+       detection; treat unresolved declared conditions as may-throw.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable
