@@ -1175,6 +1175,63 @@ describe("evidence and optimizer obligations", () => {
     });
   });
 
+  it("tracks a write-screened factory result in a static object property", () => {
+    const { program, source } = programOf(`
+      declare function makeReporter(): (message: string) => void
+      /* uneffect:effect Console */
+      export function stable() {
+        const handlers = { report: makeReporter(), audit: makeReporter() }
+        handlers.report("ok")
+        handlers["report"]("again")
+        handlers.audit("audit")
+      }
+      /* uneffect:effect Console */
+      export function mutated() {
+        const handlers = { report: makeReporter() }
+        handlers.report = () => undefined
+        handlers.report("unknown")
+      }
+      declare function retain(value: unknown): void
+      /* uneffect:effect Console */
+      export function escaped() {
+        const handlers = { report: makeReporter() }
+        retain(handlers)
+        handlers.report("unknown")
+      }
+      declare const key: "report"
+      /* uneffect:effect Console */
+      export function computed() {
+        const handlers = { report: makeReporter() }
+        handlers[key]("unknown")
+      }
+      declare const extra: { report: (message: string) => void }
+      /* uneffect:effect Console */
+      export function spread() {
+        const handlers = { ...extra, report: makeReporter() }
+        handlers.report("unknown")
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "makeReporter")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, contractEvidence: "trusted" as const,
+        functionName: "makeReporter", returnCallable: {
+          effects: [{ kind: "capability", name: "Console", arguments: [] }], contractEvidence: "trusted" as const,
+        },
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "stable")).toMatchObject({
+      effects: [{ kind: "capability", name: "Console", arguments: [] }], evidence: "verified",
+    });
+    for (const name of ["mutated", "escaped", "computed", "spread"]) {
+      expect(result.summaries.find((summary) => summary.functionName === name)).toMatchObject({
+        evidence: "unknown", unknownReasons: [{ code: "unknown-external-evidence" }],
+      });
+    }
+  });
+
   it("binds persisted evidence to the caller-owned builtin registry", () => {
     const { program, source } = programOf("export function identity(value: number) { return value }");
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;

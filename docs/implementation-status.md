@@ -934,6 +934,10 @@ same property is proved for arbitrary TypeScript.
   `const result = factory()` binding plus acyclic immutable identifier aliases
   across TypeChecker-resolved imports/re-exports; mutable, conditional, cyclic,
   property-stored, multi-return, and further higher-order forms remain unknown.
+  Source-local `const` object registries additionally compose through direct
+  static dot or literal-key calls under a whole-file container-use screen.
+  Mutation, escape, dynamic keys, spreads, accessors, methods, and duplicate
+  keys remain unknown.
   A throw-to-rejection callback on a non-Promise TypeChecker return is an
   explicit unknown and emits no synthetic settlement.
   Runtime assertion generation is optional.

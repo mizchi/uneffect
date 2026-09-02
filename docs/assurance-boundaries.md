@@ -348,6 +348,10 @@ acyclic immutable identifier aliases, including TypeChecker-resolved
 imports/re-exports. Mutable, cyclic, property-stored, or selected results are
 explicitly unknown; callable objects, methods, currying chains, and general
 higher-order escape are outside the claim.
+One source-local plain `const` object registry is accepted without
+`Object.freeze` only under a whole-file use screen: every use must directly call
+an explicit static property. Mutation, escape, spread, getter/method syntax,
+duplicate keys, and dynamic lookup remain unknown.
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

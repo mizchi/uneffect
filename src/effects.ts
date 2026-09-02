@@ -912,7 +912,10 @@ export function externalContractForCall(
 ): ExternalFunctionEffectContract | undefined {
   if (!contracts) return undefined;
   const location = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
-  let symbol = checker.getSymbolAtLocation(location);
+  let symbol = ts.isElementAccessExpression(call.expression) && call.expression.argumentExpression
+    && (ts.isStringLiteralLike(call.expression.argumentExpression) || ts.isNumericLiteral(call.expression.argumentExpression))
+    ? checker.getPropertyOfType(checker.getTypeAtLocation(call.expression.expression), call.expression.argumentExpression.text)
+    : checker.getSymbolAtLocation(location);
   if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
   const resolveSymbol = (candidate: ts.Symbol | undefined, visited: Set<ts.Symbol>): ExternalFunctionEffectContract | undefined => {
     if (!candidate) return undefined;
@@ -924,6 +927,61 @@ export function externalContractForCall(
     if (visited.has(candidate)) return undefined;
     const nextVisited = new Set(visited).add(candidate);
     const declaration = candidate.valueDeclaration;
+    if (declaration && ts.isPropertyAssignment(declaration) && !ts.isComputedPropertyName(declaration.name)
+      && ts.isObjectLiteralExpression(declaration.parent)) {
+      const property = declaration.name.text;
+      const literalNames = declaration.parent.properties.flatMap((member) =>
+        ts.isPropertyAssignment(member) && !ts.isComputedPropertyName(member.name) ? [member.name.text] : []);
+      if (literalNames.length !== declaration.parent.properties.length
+        || new Set(literalNames).size !== literalNames.length) return undefined;
+      let container: ts.Expression = declaration.parent;
+      while (ts.isParenthesizedExpression(container.parent) || ts.isAsExpression(container.parent)
+        || ts.isTypeAssertionExpression(container.parent) || ts.isNonNullExpression(container.parent)
+        || ts.isSatisfiesExpression(container.parent)) container = container.parent;
+      const variable = container.parent;
+      if (ts.isVariableDeclaration(variable) && variable.initializer === container && ts.isIdentifier(variable.name)
+        && ts.isVariableDeclarationList(variable.parent) && (variable.parent.flags & ts.NodeFlags.Const) !== 0) {
+        let containerSymbol = checker.getSymbolAtLocation(variable.name);
+        if (containerSymbol && (containerSymbol.flags & ts.SymbolFlags.Alias) !== 0) containerSymbol = checker.getAliasedSymbol(containerSymbol);
+        let references = 0, safe = true;
+        const screen = (node: ts.Node): void => {
+          if (ts.isIdentifier(node) && checker.getSymbolAtLocation(node) === containerSymbol) {
+            references++;
+            if (node === variable.name) return;
+            const access = node.parent;
+            const staticAccess = ts.isPropertyAccessExpression(access) && access.expression === node
+              || ts.isElementAccessExpression(access) && access.expression === node
+                && Boolean(access.argumentExpression && (ts.isStringLiteralLike(access.argumentExpression)
+                  || ts.isNumericLiteral(access.argumentExpression)));
+            if (!staticAccess || !ts.isCallExpression(access.parent) || access.parent.expression !== access) safe = false;
+            return;
+          }
+          ts.forEachChild(node, screen);
+        };
+        screen(variable.getSourceFile());
+        if (safe && references >= 2) {
+          let initializer = declaration.initializer;
+          while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+            || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)
+            || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+          if (ts.isCallExpression(initializer)) {
+            const producer = externalContractForCall(checker, initializer, contracts, nextVisited);
+            if (producer?.returnCallable) return {
+              effects: producer.returnCallable.effects, rejects: producer.returnCallable.rejects,
+              evidence: producer.evidence,
+              contractEvidence: producer.returnCallable.contractEvidence ?? producer.contractEvidence,
+              functionName: `${producer.functionName ?? initializer.expression.getText()} return`,
+            };
+          }
+          if (ts.isIdentifier(initializer)) {
+            let target = checker.getSymbolAtLocation(initializer);
+            if (target && (target.flags & ts.SymbolFlags.Alias) !== 0) target = checker.getAliasedSymbol(target);
+            return resolveSymbol(target, nextVisited);
+          }
+        }
+      }
+      return undefined;
+    }
     if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
       && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
       let initializer = declaration.initializer;
@@ -956,7 +1014,7 @@ function hasExternalReturnedCallableCandidate(
   call: ts.CallExpression,
   contracts: ReadonlyMap<string, ExternalFunctionEffectContract> | undefined,
 ): boolean {
-  if (!contracts || !ts.isIdentifier(call.expression)) return false;
+  if (!contracts) return false;
   const seen = new Set<ts.Symbol>();
   const inspect = (node: ts.Node): boolean => {
     if (ts.isIdentifier(node)) {

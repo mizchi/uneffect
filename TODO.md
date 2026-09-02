@@ -580,6 +580,11 @@ introducing another domain-local control-flow or alias model.
      TypeChecker declaration identity. Feed its `Throw`/awaited rejection into
      the shared CFG; mutable, conditional, multiple-return, cyclic, and
      unresolved factory results remain unknown.
+   - [x] Resolve returned callables stored in a source-local `const` object
+     literal when a whole-file symbol screen proves every container use is a
+     direct static dot/string-literal property call. Support multiple explicit
+     properties; reject mutation, escape, computed keys, spreads, accessors,
+     methods, and duplicate keys.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.

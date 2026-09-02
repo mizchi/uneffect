@@ -87,6 +87,10 @@ metadata through a direct `const result = factory()` consumer binding and
 acyclic immutable identifier aliases across imports/re-exports. Mutable,
 selected, cyclic, property-stored, multi-return, callable-object, and fluent
 forms remain unknown.
+Source-local plain `const` object registries may hold these callables when every
+container reference is a direct static property call and all properties are
+explicit assignments. Mutation, escape, spreads, accessors, duplicate keys,
+and dynamic lookup fail closed.
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are

@@ -176,3 +176,11 @@ compose like an ordinary authenticated package call. `let`, reassignment,
 conditional or multiple returns, cyclic aliases, property storage, and dynamic
 selection remain unknown. This is not yet a general higher-order or fluent-API
 model.
+
+A source-local `const` object literal may store returned callables without a
+runtime freeze. Uneffect scans every reference to the container symbol and
+requires each use to be a direct call through a static dot or string/numeric
+literal property. Multiple explicit property assignments are supported.
+Mutation, passing or returning the container, computed keys, spreads,
+accessors, methods, and duplicate keys invalidate the proof and produce
+unknown external evidence.
