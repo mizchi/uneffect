@@ -480,7 +480,11 @@ describe("TypeScript resource protocol CFG lowering", () => {
         function shadowMain() { const riskySync = () => {}; riskySync() }
         function unauthenticatedMain() { unauthenticated() }
         async function madeMain() { await madeRisky() }
-        async function madeMemberMain() { const client = makeClient(); await client.risky() }
+        async function madeMemberMain() {
+          const client = makeClient()
+          const alias = client
+          await alias.risky()
+        }
       `);
       const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, noEmit: true });
       const source = program.getSourceFile(fileName)!;

@@ -99,6 +99,8 @@ export interface ExternalFunctionEffectContract {
   reason?: string;
   /** Internal instantiated member contract: substitute `this` with the concrete call receiver. */
   receiverBound?: boolean;
+  /** Stable factory-result root when the member receiver is reached through const aliases. */
+  receiverRegion?: string;
 }
 export type ExternalModuleEffectContract = ExternalFunctionEffectContract;
 export type NetworkTransport = "fetch" | "script" | "beacon" | "websocket";
@@ -929,31 +931,75 @@ export function externalContractForCall(
       || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)
       || ts.isSatisfiesExpression(current)) current = current.expression;
     let producer: ExternalFunctionEffectContract | undefined;
+    let receiverRegion: string | undefined;
     if (ts.isCallExpression(current)) producer = externalContractForCall(checker, current, contracts, visited);
     else if (ts.isIdentifier(current)) {
-      let receiverSymbol = checker.getSymbolAtLocation(current);
-      if (receiverSymbol && (receiverSymbol.flags & ts.SymbolFlags.Alias) !== 0) receiverSymbol = checker.getAliasedSymbol(receiverSymbol);
-      if (!receiverSymbol || visited.has(receiverSymbol)) return undefined;
-      const declaration = receiverSymbol.valueDeclaration;
-      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
-        || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
-        || !ts.isIdentifier(declaration.name)) return undefined;
-      const nextVisited = new Set(visited).add(receiverSymbol);
-      let initializer = declaration.initializer;
-      while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
-        || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)
-        || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
-      producer = ts.isCallExpression(initializer)
-        ? externalContractForCall(checker, initializer, contracts, nextVisited) : undefined;
+      const bindings: { symbol: ts.Symbol; declaration: ts.VariableDeclaration }[] = [];
+      const resolveReceiver = (identifier: ts.Identifier, aliasSeen: Set<ts.Symbol>): ExternalFunctionEffectContract | undefined => {
+        let symbol = checker.getSymbolAtLocation(identifier);
+        if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+        if (!symbol || aliasSeen.has(symbol) || visited.has(symbol)) return undefined;
+        const declaration = symbol.valueDeclaration;
+        if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+          || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+          || !ts.isIdentifier(declaration.name)) return undefined;
+        bindings.push({ symbol, declaration });
+        let initializer = declaration.initializer;
+        while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+          || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)
+          || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+        const nextSeen = new Set(aliasSeen).add(symbol);
+        if (ts.isCallExpression(initializer)) {
+          receiverRegion = declaration.name.text;
+          return externalContractForCall(checker, initializer, contracts, new Set([...visited, ...nextSeen]));
+        }
+        return ts.isIdentifier(initializer) ? resolveReceiver(initializer, nextSeen) : undefined;
+      };
+      producer = resolveReceiver(current, new Set());
       if (producer && producer.returnMembers) {
         let references = 0, safe = true;
         const allowed = new Set(producer.returnMembers.map((member) => member.key));
+        const bindingSymbols = new Set(bindings.map((binding) => binding.symbol));
+        const sourceFile = current.getSourceFile();
+        let discovered = true;
+        while (discovered) {
+          discovered = false;
+          const discoverAliases = (node: ts.Node): void => {
+            if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+              && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
+              let initializer = node.initializer;
+              while (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+                || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)
+                || ts.isSatisfiesExpression(initializer)) initializer = initializer.expression;
+              if (ts.isIdentifier(initializer)) {
+                let sourceSymbol = checker.getSymbolAtLocation(initializer);
+                if (sourceSymbol && (sourceSymbol.flags & ts.SymbolFlags.Alias) !== 0) sourceSymbol = checker.getAliasedSymbol(sourceSymbol);
+                let aliasSymbol = checker.getSymbolAtLocation(node.name);
+                if (aliasSymbol && (aliasSymbol.flags & ts.SymbolFlags.Alias) !== 0) aliasSymbol = checker.getAliasedSymbol(aliasSymbol);
+                if (sourceSymbol && bindingSymbols.has(sourceSymbol) && aliasSymbol && !bindingSymbols.has(aliasSymbol)) {
+                  bindings.push({ symbol: aliasSymbol, declaration: node });
+                  bindingSymbols.add(aliasSymbol);
+                  discovered = true;
+                }
+              }
+            }
+            ts.forEachChild(node, discoverAliases);
+          };
+          discoverAliases(sourceFile);
+        }
+        const declarationNames = new Set(bindings.map((binding) => binding.declaration.name));
         const screen = (node: ts.Node): void => {
           let symbol = ts.isIdentifier(node) ? checker.getSymbolAtLocation(node) : undefined;
           if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-          if (symbol === receiverSymbol) {
+          if (symbol && bindingSymbols.has(symbol)) {
             references++;
-            if (node === declaration.name) return;
+            if (declarationNames.has(node as ts.Identifier)) return;
+            if (ts.isVariableDeclaration(node.parent) && node.parent.initializer === node
+              && ts.isIdentifier(node.parent.name)) {
+              let alias = checker.getSymbolAtLocation(node.parent.name);
+              if (alias && (alias.flags & ts.SymbolFlags.Alias) !== 0) alias = checker.getAliasedSymbol(alias);
+              if (alias && bindingSymbols.has(alias)) return;
+            }
             const access = node.parent;
             const member = ts.isPropertyAccessExpression(access) && access.expression === node ? access.name.text
               : ts.isElementAccessExpression(access) && access.expression === node && access.argumentExpression
@@ -964,8 +1010,8 @@ export function externalContractForCall(
           }
           ts.forEachChild(node, screen);
         };
-        screen(declaration.getSourceFile());
-        if (!safe || references < 2) return undefined;
+        screen(sourceFile);
+        if (!safe || references < bindings.length * 2) return undefined;
       }
     }
     const member = producer?.returnMembers?.find((candidate) => candidate.key === key);
@@ -974,6 +1020,7 @@ export function externalContractForCall(
       contractEvidence: member.contractEvidence ?? producer!.contractEvidence,
       functionName: `${producer!.functionName ?? "factory"}.${key}`,
       receiverBound: true,
+      ...(receiverRegion ? { receiverRegion } : {}),
     } : undefined;
   };
   const memberAccess = ts.isPropertyAccessExpression(call.expression) ? {
@@ -1208,7 +1255,7 @@ function instantiateExternalEffect(
   const root = regionRoot(effect.region);
   if (root === "this" && contract.receiverBound
     && (ts.isPropertyAccessExpression(call.expression) || ts.isElementAccessExpression(call.expression))) {
-    const receiver = addressableMutationArgumentRegion(call.expression.expression);
+    const receiver = contract.receiverRegion ?? addressableMutationArgumentRegion(call.expression.expression);
     return receiver === undefined ? undefined : { kind: "mutate", region: `${receiver}${effect.region.slice("this".length)}` };
   }
   const stable = contract.mutationRoots?.find((item) => item.root === root);

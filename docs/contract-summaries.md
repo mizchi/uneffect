@@ -188,8 +188,9 @@ unknown external evidence.
 A factory may instead return one static object literal. Its explicit method and
 function-valued property bodies are persisted independently as
 `returnMembers`; non-callable data properties are allowed. A consumer's direct
-`const client = factory()` may call those members through static dot or literal
-keys when every receiver reference is such a call. Each member retains its own
+`const client = factory()` and its acyclic `const` receiver aliases may call
+those members through static dot or literal keys when every reference in the
+complete alias family is such a call or an immutable alias edge. Each member retains its own
 Effect, synchronous `Throw`, and awaited rejection. Producer spreads,
 accessors, computed or duplicate keys, and consumer mutation, escape, or
 dynamic selection fail closed. Stateful method effects are tracked, but

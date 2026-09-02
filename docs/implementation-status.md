@@ -940,7 +940,8 @@ same property is proved for arbitrary TypeScript.
   keys remain unknown.
   Direct factory-returned object literals publish explicit callable members;
   a whole-file receiver-use screen admits static calls on a `const client` and
-  composes per-member Effect/Throw/rejection metadata. General class instances,
+  its acyclic immutable aliases, then composes per-member Effect/Throw/rejection
+  metadata. Mutable or escaping aliases fail closed. General class instances,
   prototype dispatch, `this` refinements, escape, and fluent chains remain open.
   A member `Mutate<typeof this.path>` is instantiated as mutation of the
   concrete addressable client receiver; an unstable receiver fails closed.

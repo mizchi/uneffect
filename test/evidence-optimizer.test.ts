@@ -1238,9 +1238,11 @@ describe("evidence and optimizer obligations", () => {
       const sharedClient = createClient()
       /* uneffect:effect Console | Mutate<typeof sharedClient.value> */
       export function stable() {
-        sharedClient.report("ok")
-        sharedClient["report"]("again")
-        sharedClient.update()
+        const clientAlias = sharedClient
+        const secondAlias = clientAlias
+        clientAlias.report("ok")
+        secondAlias["report"]("again")
+        secondAlias.update()
       }
       /* uneffect:effect Console */
       export function mutated() {
@@ -1255,11 +1257,24 @@ describe("evidence and optimizer obligations", () => {
         retain(client)
         client.report("unknown")
       }
+      /* uneffect:effect Console */
+      export function escapedAlias() {
+        const client = createClient()
+        const alias = client
+        retain(alias)
+        client.report("unknown")
+      }
       declare const key: "report"
       /* uneffect:effect Console */
       export function computed() {
         const client = createClient()
         client[key]("unknown")
+      }
+      /* uneffect:effect Console */
+      export function mutableAlias() {
+        const client = createClient()
+        let alias = client
+        alias.report("unknown")
       }
     `);
     const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
@@ -1283,7 +1298,7 @@ describe("evidence and optimizer obligations", () => {
         { kind: "mutate", region: "sharedClient.value" },
       ]), evidence: "verified",
     });
-    for (const name of ["mutated", "escaped", "computed"]) {
+    for (const name of ["mutated", "escaped", "escapedAlias", "computed", "mutableAlias"]) {
       expect(result.summaries.find((summary) => summary.functionName === name)).toMatchObject({
         evidence: "unknown", unknownReasons: [{ code: "unknown-external-evidence" }],
       });

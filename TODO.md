@@ -594,6 +594,10 @@ introducing another domain-local control-flow or alias model.
      - [x] Instantiate a returned member's `Mutate<typeof this.path>` against
        the concrete static receiver region while retaining unsupported receiver
        identity as unknown.
+     - [x] Preserve the factory-result receiver through acyclic `const` alias
+       chains. Screen the complete alias family by TypeChecker identity,
+       normalize `this` mutation to the factory-bound root, and reject mutable
+       aliases, escape, mutation, or dynamic member selection.
    - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Compose callback summaries across open/imported package boundaries,
      reentrant or concurrent callbacks, returned callables, and mixed control
      paths without degrading all such cases to `unknown`.

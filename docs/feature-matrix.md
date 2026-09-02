@@ -92,7 +92,8 @@ container reference is a direct static property call and all properties are
 explicit assignments. Mutation, escape, spreads, accessors, duplicate keys,
 and dynamic lookup fail closed.
 A factory's direct static object return may publish per-member callable Effect
-and exception metadata for a write-screened `const client` receiver. Classes,
+and exception metadata for a write-screened `const client` receiver and its
+acyclic immutable aliases. Mutable or escaping aliases fail closed. Classes,
 prototype/`this` refinements, escaped clients, and fluent chains remain
 unknown.
 

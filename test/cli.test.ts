@@ -187,6 +187,7 @@ describe("uneffect command line", () => {
       import { addOne, choose, chooseLater, configure, createClient, once, report, reportArrow, update } from "@example/math"
       import { madeReporter } from "./reporter.js"
       const client = createClient()
+      const clientAlias = client
       /* uneffect:requires value >= 0 */
       /* uneffect:ensures result === value + 1 */
       export async function run(value: number): Promise<number> { return await addOne(value) }
@@ -215,7 +216,7 @@ describe("uneffect command line", () => {
       /* uneffect:effect Console */
       export function runMadeReporter(message: string): void { madeReporter(message) }
       /* uneffect:effect Console */
-      export function runClient(message: string): void { client.report(message) }
+      export function runClient(message: string): void { clientAlias.report(message) }
     `;
     try {
       mkdirSync(packageDirectory, { recursive: true });

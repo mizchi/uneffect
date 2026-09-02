@@ -353,9 +353,11 @@ One source-local plain `const` object registry is accepted without
 an explicit static property. Mutation, escape, spread, getter/method syntax,
 duplicate keys, and dynamic lookup remain unknown.
 Factory-returned client objects are supported only for one direct static object
-literal and a direct write-screened `const` receiver. Explicit callable members
-carry may-effects and exception metadata; general classes, prototype methods,
-`this`-dependent refinements, fluent chains, and escaped clients are outside
+literal and a write-screened `const` receiver plus acyclic immutable receiver
+aliases. The screen covers the complete alias family; mutable aliases,
+mutation, escape, or dynamic selection invalidate the evidence. Explicit
+callable members carry may-effects and exception metadata; general classes,
+prototype methods, `this`-dependent refinements, and fluent chains are outside
 the claim.
 `this`-rooted member mutation effects are substituted with the proven receiver
 region; this does not imply general method binding or relational `this`
