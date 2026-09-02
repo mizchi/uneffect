@@ -7,7 +7,7 @@ import type { PromiseChainModel, PromiseExecutorSettlement, SynchronousDivergenc
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js";
 import { classifyLexicalExecution } from "./lexical-execution.js";
-import { expressionAtLiteralArgumentPath } from "./call-graph.js";
+import { expressionAtExclusiveConstArgumentPath } from "./call-graph.js";
 import { analyzeProgramEffects, type ExternalFunctionEffectContract } from "./effects.js";
 
 export type HostNeutralLane = "inline" | "microtask" | "host-task" | "external" | "unknown";
@@ -332,7 +332,7 @@ export function lowerExternalCallableTransitions(
         for (const callback of callbacks) {
         const argument = node.arguments[callback.index];
         const selected = argument && callback.path?.length
-          ? expressionAtLiteralArgumentPath(argument, callback.path) : argument;
+          ? expressionAtExclusiveConstArgumentPath(checker, argument, callback.path) : argument;
         const span = { start: node.getStart(source), end: node.getEnd() };
         if (!selected) {
           diagnostics.push({

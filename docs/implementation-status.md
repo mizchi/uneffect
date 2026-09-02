@@ -895,9 +895,10 @@ same property is proved for arbitrary TypeScript.
   analyzer. Direct callback parameters preserve timing and optional Effect
   bounds for inline or immutable symbol-resolved callback arguments; bound
   violations fail closed. Persisted cardinality is not yet connected to the
-  temporal model. Finite object/tuple paths compose through inline object/array
-  literals with statically resolved callback leaves; spreads, dynamic leaves,
-  and container aliases fail closed. Promise-reaction timing and
+  temporal model. Finite object/tuple paths compose through inline literals or
+  an exclusive single-use `const` literal container with statically resolved
+  callback leaves; mutation, repeated use, capture, spreads, dynamic leaves,
+  and other aliases fail closed. Promise-reaction timing and
   throw-to-rejection completion retain their package metadata, discharge the
   callback's synchronous throw in the Effect graph, and lower to the shared
   host-neutral microtask/reject transition. A directly bound returned Promise

@@ -53,8 +53,9 @@ because persisted producer authority is not authenticated. Producer-to-emitted `
 linkage, installed tarball/runtime identity, and publisher authenticity remain
 unsupported. Direct callback parameters now preserve timing and Effect bounds
 for inline or immutable symbol-resolved arguments. Finite object/tuple paths
-compose through inline literal containers; spreads, computed/dynamic leaves,
-and container aliases fail closed. Persisted Promise-reaction callbacks lower
+compose through inline literals and exclusive single-use `const` literal
+containers; mutation, capture, repeated use, spreads, computed/dynamic leaves,
+and other aliases fail closed. Persisted Promise-reaction callbacks lower
 to host-neutral microtask/reject transitions and discharge synchronous callback
 throws from the registering caller. A direct Promise binding connects callback,
 conservative fulfilled/rejected settlement, and floating/observed ownership by

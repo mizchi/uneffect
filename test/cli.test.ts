@@ -178,7 +178,10 @@ describe("uneffect command line", () => {
       /* uneffect:effect Console */
       export function runOnce(): void { once(logOnce) }
       /* uneffect:effect Console */
-      export function runConfigured(): void { configure({ onDone: logOnce }) }
+      export function runConfigured(): void {
+        const options = { onDone: logOnce }
+        configure(options)
+      }
     `;
     try {
       mkdirSync(packageDirectory, { recursive: true });

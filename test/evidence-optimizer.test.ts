@@ -905,6 +905,64 @@ describe("evidence and optimizer obligations", () => {
     expect(result.diagnostics.filter(({ functionName, severity }) => functionName === "run" && severity === "error")).toEqual([]);
   });
 
+  it("instantiates a nested callback through an exclusive const options binding", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { onDone: () => void }): void
+      /* uneffect:effect Console */
+      function log() { console.log("called") }
+      /* uneffect:effect Console */
+      export function run() {
+        const options = { onDone: log }
+        configure(options)
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, functionName: "configure",
+        callbackParameters: [{
+          index: 0, path: ["onDone"], name: "onDone", timing: "inline" as const,
+          cardinality: "exactly-1" as const, completion: "propagate-throw" as const,
+          effectBound: [{ kind: "capability", name: "Console", arguments: [] }],
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      effects: [{ kind: "capability", name: "Console", arguments: [] }], evidence: "verified",
+    });
+  });
+
+  it("rejects a const options binding that is mutated before callback registration", () => {
+    const { program, source } = programOf(`
+      declare function configure(options: { onDone: () => void }): void
+      function left() {}
+      function right() {}
+      /* uneffect:effect Mutate<typeof options.onDone> */
+      export function run() {
+        const options = { onDone: left }
+        options.onDone = right
+        configure(options)
+      }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "configure")!;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[
+      `${source.fileName}:${declaration.getStart(source)}`, {
+        effects: [], evidence: "verified" as const, functionName: "configure",
+        callbackParameters: [{
+          index: 0, path: ["onDone"], name: "onDone", timing: "inline" as const,
+          cardinality: "exactly-1" as const, completion: "propagate-throw" as const, effectBound: [],
+        }],
+      },
+    ]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
+      evidence: "unknown", unknownReasons: [{ code: "unknown-callback-timing" }],
+    });
+  });
+
   it("fails closed for a dynamically selected nested external callback", () => {
     const { program, source } = programOf(`
       declare function configure(options: { onDone: () => void }): void

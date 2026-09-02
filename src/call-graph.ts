@@ -98,6 +98,48 @@ export function expressionAtLiteralArgumentPath(
   return current;
 }
 
+/**
+ * Extend literal-path resolution through a const container only when its
+ * TypeChecker symbol is used exactly by its declaration and this path. This
+ * excludes mutation, aliases, repeated calls, capture, and escape by design.
+ */
+export function expressionAtExclusiveConstArgumentPath(
+  checker: ts.TypeChecker,
+  expression: ts.Expression,
+  path: readonly (string | number)[],
+): ts.Expression | undefined {
+  const seen = new Set<ts.Symbol>();
+  const exclusiveInitializer = (identifier: ts.Identifier): ts.Expression | undefined => {
+    const symbol = resolvedSymbol(checker, identifier);
+    if (!symbol || seen.has(symbol)) return undefined;
+    const declaration = symbol.valueDeclaration;
+    if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+      || !ts.isVariableDeclarationList(declaration.parent)
+      || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+    let references = 0;
+    const scan = (node: ts.Node): void => {
+      if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === symbol) references++;
+      ts.forEachChild(node, scan);
+    };
+    scan(declaration.getSourceFile());
+    if (references !== 2) return undefined;
+    seen.add(symbol);
+    return declaration.initializer;
+  };
+  let current = unwrapLiteralContainerExpression(expression);
+  for (const part of path) {
+    if (ts.isIdentifier(current)) {
+      const initializer = exclusiveInitializer(current);
+      if (!initializer) return undefined;
+      current = unwrapLiteralContainerExpression(initializer);
+    }
+    const selected = expressionAtLiteralArgumentPath(current, [part]);
+    if (!selected) return undefined;
+    current = selected;
+  }
+  return current;
+}
+
 function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
   const symbol = checker.getSymbolAtLocation(node);
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
@@ -1296,7 +1338,7 @@ export function buildProgramCallGraph(
           }
           for (const externalParameter of externalCallable?.parameters.filter((item) =>
             item.index === index && (item.path?.length ?? 0) > 0) ?? []) {
-            const callbackExpression = expressionAtLiteralArgumentPath(argument, externalParameter.path!);
+            const callbackExpression = expressionAtExclusiveConstArgumentPath(checker, argument, externalParameter.path!);
             const nestedDeclaration = callbackExpression ? callbackDeclarationFor(callbackExpression) : undefined;
             if (!callbackExpression || !nestedDeclaration) {
               edges.push({ caller, kind: "callback-argument", unresolvedName: `${argument.getText()}${externalParameter.path!.map((part) => `[${JSON.stringify(part)}]`).join("")}`,

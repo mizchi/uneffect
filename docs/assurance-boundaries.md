@@ -307,8 +307,9 @@ tarball/runtime JavaScript, or the publisher. Verified Effect atoms are
 consumed through the ordinary external Effect IR. Direct callback timing and
 Effect bounds are composed for inline or immutable symbol-resolved callback
 arguments with synchronous throw propagation. Finite object/tuple paths are
-accepted only through inline literal containers and statically resolved leaves;
-dynamic selection fails closed. A persisted Promise reaction carries its
+accepted through inline literals or an exclusive single-use `const` literal
+container and statically resolved leaves; mutation, aliasing, repeated use, and
+dynamic selection fail closed. A persisted Promise reaction carries its
 cardinality into a host-neutral microtask/reject transition and discharges the
 callback's synchronous throw from the caller Effect. Arbitrary host-task queue
 identity remains profile-dependent. A directly bound returned Promise joins

@@ -524,6 +524,9 @@ introducing another domain-local control-flow or alias model.
    - [x] Compose finite object/tuple callback paths through inline literal
      arguments; reject spread, dynamic, unresolved, and aliased containers as
      unknown instead of flattening them into a direct callback.
+   - [x] Admit an exclusive single-use `const` object/tuple callback container
+     by TypeChecker symbol identity while rejecting mutation, repeated use,
+     capture, and escape through the same reference screen.
    - [x] Publish and consume single immutable exported arrow/function-expression
      callables by root-package export symbol plus resolved signature; exclude
      mutable and compound variable exports.

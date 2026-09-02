@@ -119,9 +119,11 @@ resolved call signature, not by a guessed variable name. Mutable `let`/`var`,
 multi-declaration export statements, reassigned aliases, and non-callable
 exports are not published.
 
-Finite object/tuple callback paths are supported when the consumer supplies an
-inline object/array literal whose selected leaf is an inline function or an
-immutable symbol-resolved function identifier. A spread, computed/dynamic
-selection, mutable container alias, or unresolved leaf fails closed. Returned
+Finite object/tuple callback paths are supported for an inline literal or a
+single-use `const` literal container whose TypeChecker symbol appears only at
+its declaration and the external call. The selected leaf may be an inline
+function or immutable symbol-resolved function identifier. A repeated use,
+mutation, alias, capture, spread, computed/dynamic selection, or unresolved
+leaf fails closed. Returned
 callables, reentrancy/concurrency, external settlement internals, and resource ownership
 remain outside this first consumer fragment.
