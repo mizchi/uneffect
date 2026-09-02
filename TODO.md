@@ -621,6 +621,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Extend stable return identity through immutable aliases, nested
        aggregate slots/destructuring, and branch-local conditional or Boolean
        short-circuit acquisition without conflating resource identities.
+     - [x] Extend authenticated resource argument identity through stable nested
+       aggregate slots and destructured aliases, sharing the return-side
+       mutation/escape screen and accounting for the originating stored value.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Extend argument and escaping identity through mutable/heap aliases,
        dynamic dispatch, and open-ended computed resource selection.
 3. [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Establish callable summaries for direct functions and immutable callable

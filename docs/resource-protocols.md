@@ -182,7 +182,10 @@ computed names, and spreads are not admitted. A nested destructuring source may
 instead be a local `const` aggregate initialized from the same supported literal
 fragment, provided the source binding's only observation is that destructuring.
 Any other read, alias, call argument, mutation, or escape makes the handoff
-unknown.
+unknown. The same stable aggregate and destructuring identities are accepted as
+arguments to authenticated `use`, `consume`, `release`, `transfer`, and
+`escape` contracts. The resource audit marks the originating stored expression
+as accounted for only when that concrete transition binds to the same region.
 Equivalent optional terminal states exist for consume, release, and transfer.
 Malformed parameter names,
 missing return bindings, dynamic calls, and unsupported resource expressions

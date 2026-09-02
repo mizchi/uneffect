@@ -430,7 +430,8 @@ export function collectResourceCallableTransitionSites(
       if (summary) {
           const parameters = new Map<number, string>();
           node.arguments.forEach((argument, index) => {
-            const identity = resourceIdentity(argument);
+            const identity = resourceIdentity(argument)
+              ?? stableAggregateResourceSlot(checker, fn, argument, resourceIdentity)?.resource;
             if (identity) parameters.set(index, identity);
           });
           const returnType = checker.getTypeAtLocation(node);
@@ -670,7 +671,13 @@ function auditAcquiredResourceReferences(
       while (ts.isParenthesizedExpression(base) || ts.isNonNullExpression(base)
         || ts.isAsExpression(base) || ts.isTypeAssertionExpression(base)) base = base.expression;
       const candidateSymbol = ts.isIdentifier(base) ? resolvedSymbol(checker, base) : undefined;
-      const resource = candidateSymbol ? aliases.get(candidateSymbol) ?? resourceArgumentId(checker, candidate) : resourceArgumentId(checker, candidate);
+      const aggregate = stableAggregateResourceSlot(checker, fn, candidate, (value) => {
+        const target = unwrapResourceExpression(value);
+        const symbol = ts.isIdentifier(target) ? resourceValueSymbol(checker, target) : undefined;
+        return symbol ? aliases.get(symbol) : undefined;
+      });
+      const resource = candidateSymbol ? aliases.get(candidateSymbol) ?? resourceArgumentId(checker, candidate)
+        : resourceArgumentId(checker, candidate) ?? aggregate?.resource;
       if (!resource || !resourcesAtSite.has(resource)) continue;
       const mark = (node: ts.Node): void => {
         if (ts.isIdentifier(node)) {
@@ -680,6 +687,7 @@ function auditAcquiredResourceReferences(
         ts.forEachChild(node, mark);
       };
       mark(candidate);
+      if (aggregate) mark(aggregate.storedExpression);
     }
   }
   const audit = (node: ts.Node): void => {
