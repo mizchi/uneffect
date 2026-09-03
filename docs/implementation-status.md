@@ -910,8 +910,10 @@ same property is proved for arbitrary TypeScript.
   local synchronous catch. Return evaluation is recursive across Boolean
   conditional expressions: each selected arm may be a supported scalar value,
   verified Promise call, stored immutable Promise, nested conditional, or
-  awaited scalar expression. Branch-specific synchronous throws, fulfillment
-  relations, and rejections remain separate. Dynamic Promise selectors are
+  awaited scalar expression. Boolean `&&`/`||` returns use the same recursive
+  evaluator: the skipped arm returns the Boolean identity and only the selected
+  right arm may create or forward a Promise. Branch-specific synchronous
+  throws, fulfillment relations, and rejections remain separate. Dynamic Promise selectors are
   still outside this bounded return shape. A scalar Promise-returning callee
   may expose a trusted `contract ensures` relation. One direct
   `const value = await call()`,

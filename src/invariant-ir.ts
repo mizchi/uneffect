@@ -2311,6 +2311,26 @@ export function lowerInvariantProgram(
       if (ts.isIdentifier(unwrapped) && incoming.some((path) => path.pendingPromises.has(unwrapped.text))) {
         return executeAwait(unwrapped, incoming, { returnStatement: statement }, true);
       }
+      if (ts.isBinaryExpression(unwrapped)
+        && (unwrapped.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+          || unwrapped.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+        const isAnd = unwrapped.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken;
+        return incoming.flatMap((path): PathState[] => evaluateScalar(unwrapped.left, path).flatMap(({ path: branch, value: condition }) => {
+          if (branch.completion !== "normal") return [branch];
+          if (scalarExpressionSort(condition) !== "Bool") {
+            throw new Error(`logical return requires a Boolean left operand: ${unwrapped.left.getText(source)}`);
+          }
+          const selectedCondition = isAnd ? condition : negate(condition);
+          const selected = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, selectedCondition] };
+          const skipped = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(selectedCondition)] };
+          const resultEnv = new Map(skipped.env);
+          resultEnv.set("result", { kind: "boolean", value: !isAnd });
+          return [
+            ...executeReturnExpression(unwrapped.right, [selected], statement),
+            { ...skipped, completion: "return", returnEnv: resultEnv, returnStatement: statement },
+          ];
+        }));
+      }
       if (ts.isConditionalExpression(unwrapped)) {
         return incoming.flatMap((path): PathState[] => evaluateScalar(unwrapped.condition, path).flatMap(({ path: branch, value: condition }) => {
           if (branch.completion !== "normal") return [branch];

@@ -1714,6 +1714,10 @@ describe("persisted contract summary bundles", () => {
       /* uneffect:temporal_contract rejects TypeError */
       /* uneffect:temporal_contract throws URIError */
       declare function remote(value: number): Promise<number>
+      /* uneffect:ensures result === enabled */
+      /* uneffect:temporal_contract rejects TypeError */
+      /* uneffect:temporal_contract throws URIError */
+      declare function remoteFlag(enabled: boolean): Promise<boolean>
       function authorize(value: number): void { api.danger(value) }
       /* uneffect:effect Throw<RangeError> */
       /* uneffect:ensures result === value + 2 */
@@ -1950,6 +1954,22 @@ describe("persisted contract summary bundles", () => {
           return 1
         }
       }
+      /* uneffect:ensures result === enabled || result === false */
+      export async function logicalForward(enabled: boolean): Promise<boolean> {
+        try {
+          return enabled && remoteFlag(enabled)
+        } catch {
+          return false
+        }
+      }
+      /* uneffect:ensures result === enabled */
+      export async function logicalOrForward(enabled: boolean): Promise<boolean> {
+        try {
+          return enabled || remoteFlag(enabled)
+        } catch {
+          return false
+        }
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -2069,6 +2089,20 @@ describe("persisted contract summary bundles", () => {
     expect(mixedConditionalForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
       .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
     expect(mixedConditionalForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
+    const logicalForwardArtifacts = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "logicalForward");
+    expect(logicalForwardArtifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(logicalForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
+    expect(logicalForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
+    const logicalOrForwardArtifacts = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "logicalOrForward");
+    expect(logicalOrForwardArtifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(logicalOrForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
+    expect(logicalOrForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
       .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
   });
 });

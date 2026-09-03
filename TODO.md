@@ -2898,6 +2898,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       mix supported scalar values, verified Promise calls, stored immutable
       Promises, nested conditionals, and awaited scalar expressions while
       preserving selection, call-time throw, fulfillment, and rejection.
+    - [x] Apply the recursive return evaluator to Boolean `&&`/`||`, returning
+      the short-circuit Boolean on the skipped path and evaluating a scalar or
+      Promise-producing right arm only on its selected path.
 - [x] Emit one source-mapped `call-precondition` obligation per callee
   `contract requires` clause and prove it from the exact caller path conditions;
   a failed implication is a counterexample rather than an assumed precondition.
