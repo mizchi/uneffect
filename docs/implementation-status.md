@@ -956,6 +956,15 @@ same property is proved for arbitrary TypeScript.
   bound to the original initializer, and their parameters receive the same
   TypeChecker-derived finite-union, nullable, and discriminant facts as function
   declarations. `let`-bound functions are not promoted.
+  An unannotated local synchronous function in the existing closed scalar
+  producer fragment is inferred directly from its body, as already done for
+  async producers. Direct returns, scalar `const` preludes, finite conditional
+  returns, and reviewed constructed Error throws produce verified fulfillment
+  and `Throw<E>` completion; mutable captures and structurally complex bodies
+  remain unknown. A body that is proven to throw on every path suppresses its
+  impossible normal successor; the error remains the actual inferred Error
+  subtype and is not confused with a same-named reviewed builtin. This permits contracts at an application boundary without
+  requiring annotations on every small pure helper.
   Persisted package summaries can now be consumed at call sites through a
   TypeChecker-resolved installed declaration. The standalone
   `uneffect-contract-summary/v1` producer/validator now emits package/version,

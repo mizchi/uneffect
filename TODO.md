@@ -2926,6 +2926,11 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       obligation and relational fixed point. Reject `let`-bound callables.
       - [x] Feed their parameters through the common TypeChecker fact importer
         so named finite unions and supported narrowing domains are preserved.
+    - [x] Reuse the closed local scalar-producer inference for unannotated
+      synchronous helpers, including reviewed guarded `Throw<E>` completion;
+      retain mutable captures and complex bodies as unknown.
+      - [x] Suppress the normal successor of an inferred definitely-throwing
+        sync helper and preserve its concrete Error subtype through catch.
 - [x] Generalize the reconciler across source files in one checked TypeScript
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project

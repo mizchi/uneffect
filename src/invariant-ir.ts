@@ -1230,9 +1230,11 @@ function typeCheckerCallCompletions(
     call: ts.CallExpression,
     signature: ts.Signature,
     declaration: ts.SignatureDeclaration | ts.JSDocSignature,
-  ): { fulfillment?: AwaitFulfillmentFact; rejectionEffect?: string; definitelyRejects: boolean } | undefined => {
+    mode: "sync" | "promise" = "promise",
+  ): { fulfillment?: AwaitFulfillmentFact; errorType?: string; definitelyRejects: boolean } | undefined => {
     if (!(ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration))
-      || !declaration.body || (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) === 0) return undefined;
+      || !declaration.body
+      || ((ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) !== 0) !== (mode === "promise")) return undefined;
     const identity = callableIdentity(declaration);
     if (!identity || !stableCallable(call, identity.symbol)) return undefined;
     const statements = ts.isBlock(declaration.body) ? [...declaration.body.statements] : undefined;
@@ -1408,7 +1410,7 @@ function typeCheckerCallCompletions(
     } satisfies AwaitFulfillmentFact : undefined;
     return {
       ...(fulfillment ? { fulfillment } : {}),
-      ...(rejectionType ? { rejectionEffect: `Reject<${rejectionType}>` } : {}),
+      ...(rejectionType ? { errorType: rejectionType } : {}),
       definitelyRejects: Boolean(definiteRejectionExpression),
     };
   };
@@ -1490,7 +1492,7 @@ function typeCheckerCallCompletions(
         const rejectionEffects = [...new Set([
           ...rejected.map((errorType) => `Reject<${errorType}>`),
           ...externalRejected.map((errorType) => `Reject<${errorType}>`),
-          ...(inferred?.rejectionEffect ? [inferred.rejectionEffect] : []),
+          ...(inferred?.errorType ? [`Reject<${inferred.errorType}>`] : []),
         ])].sort();
         if (rejectionEffects.length > 0 || fulfillment || externalThrows.length > 0) facts.set(key, {
           mode: "promise",
@@ -1524,13 +1526,15 @@ function typeCheckerCallCompletions(
                 [...annotation.matchAll(/(?:^|\|)\s*Throw<\s*([^>]+?)\s*>/g)].map((match) => `Throw<${match[1]!.trim()}>`)),
             }
           : undefined;
+        const inferred = local && local.ensures.length === 0 && local.requires.length === 0 && local.throws.length === 0
+          ? inferredLocalFulfillment(call, signature, declaration, "sync") : undefined;
         const contract = external ? {
           functionName: external.summary.functionName,
           parameters: external.summary.parameters,
           ensures: external.summary.ensures,
           requires: external.summary.requires,
         } : local;
-        const fulfillment = contract && resultDomain && contract.ensures.length > 0
+        const declaredFulfillment = contract && resultDomain && contract.ensures.length > 0
           && contract.parameters.length === declaration.parameters.length ? {
           domain: resultDomain,
           functionName: contract.functionName,
@@ -1541,14 +1545,19 @@ function typeCheckerCallCompletions(
           declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
           declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
         } satisfies AwaitFulfillmentFact : undefined;
-        const synchronousThrows = [...new Set([...externalThrows, ...(local?.throws ?? [])])].sort();
+        const fulfillment = declaredFulfillment ?? inferred?.fulfillment;
+        const synchronousThrows = [...new Set([
+          ...externalThrows,
+          ...(local?.throws ?? []),
+          ...(inferred?.errorType ? [`Throw<${inferred.errorType}>`] : []),
+        ])].sort();
         if ((external || local) && (fulfillment || synchronousThrows.length > 0)) {
           facts.set(key, {
             mode: "sync",
             rejectionEffects: [],
-            definitelyRejects: false,
+            definitelyRejects: inferred?.definitelyRejects ?? false,
             synchronousThrows,
-            evidence: external?.evidence ?? "trusted",
+            evidence: external?.evidence ?? (inferred ? "verified" : "trusted"),
             payloadFromFirstArgument: false,
             ...(fulfillment ? { fulfillment } : {}),
           });
@@ -2252,7 +2261,7 @@ export function lowerInvariantProgram(
         }
         const fresh = `${fn}_call_result_${unwrapped.getStart(source)}`;
         if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: fulfillment.domain, sort: sort(fulfillment.domain) });
-        const fulfilled = normalArguments.map(({ path: branch, values }) => {
+        const fulfilled = (externalFact.definitelyRejects ? [] : normalArguments).map(({ path: branch, values }) => {
           const summaryEnv: Environment = new Map([["result", variable(fresh)]]);
           fulfillment.parameters.forEach((name, index) => summaryEnv.set(name, values[index]!));
           const evidence: ContractRelationalCallEvidence = {
@@ -3197,7 +3206,7 @@ export function lowerInvariantProgram(
           ...path, env: new Map(path.env), completion: "throw",
           thrown: { kind: "synchronous-throw", effect, originSpan, ...(completion ? { evidence: completion.evidence } : {}) },
         })));
-        paths = [...(declared?.definitelyThrows ? [] : normalArguments), ...thrown, ...abruptArguments];
+        paths = [...(declared?.definitelyThrows || completion?.definitelyRejects ? [] : normalArguments), ...thrown, ...abruptArguments];
       } else if (!ts.isEmptyStatement(statement)) {
         throw new Error(`unsupported invariant statement: ${statement.getText(source)}`);
       }

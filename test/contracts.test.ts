@@ -1993,7 +1993,14 @@ describe("Hoare contract checker", () => {
       }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
-    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts[0]).toMatchObject({ status: "verified", evidence: "verified" });
+    expect(result.artifacts[0]?.controlFlow?.exceptionFlow?.discharged).toContainEqual(expect.objectContaining({
+      effect: "Throw<Error>",
+      evidence: "verified",
+    }));
+    expect(result.artifacts[0]?.controlFlow?.exceptionFlow?.discharged)
+      .not.toContainEqual(expect.objectContaining({ effect: "Throw<AssertionError>" }));
   });
 
   it("uses TypeChecker-resolved node:assert ifError as a nullish guard", async () => {
@@ -4280,6 +4287,60 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
     expect(result.artifacts.every(({ controlFlow }) =>
       controlFlow?.narrowing?.facts.includes("value ∈ {0, 1}"))).toBe(true);
+  });
+
+  it("infers a local pure synchronous scalar helper without an annotation", async () => {
+    const fileName = "/inferred-local-sync-helper.ts";
+    const source = `
+      function addOne(value: number): number { return value + 1 }
+      const forwarded = addOne
+      /* uneffect:ensures result === value + 2 */
+      function caller(value: number): number { return forwarded(value) + 1 }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0]).toMatchObject({
+      status: "verified",
+      controlFlow: { relationalCalls: [expect.objectContaining({
+        functionName: "addOne",
+        clauses: ["result === value + 1"],
+        evidence: "verified",
+      })] },
+    });
+
+    const capturedSource = `
+      let offset = 1
+      function add(value: number): number { return value + offset }
+      /* uneffect:ensures result === value + 1 */
+      function caller(value: number): number { return add(value) }
+    `;
+    const captured = await verifyContractObligations("/unsupported-captured-sync-helper.ts", capturedSource, undefined,
+      programFor("/unsupported-captured-sync-helper.ts", capturedSource));
+    expect(captured.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
+  it("infers a guarded local synchronous throw and discharges it in catch", async () => {
+    const fileName = "/inferred-local-sync-throw.ts";
+    const source = `
+      function nonNegative(value: number): number {
+        if (value < 0) throw new RangeError("negative")
+        return value
+      }
+      /* uneffect:ensures result >= 0 */
+      function caller(value: number): number {
+        try { return nonNegative(value) }
+        catch { return 0 }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.flatMap(({ controlFlow }) => controlFlow?.exceptionFlow?.discharged ?? []))
+      .toContainEqual(expect.objectContaining({ effect: "Throw<RangeError>", evidence: "verified" }));
   });
 
   it("reaches a fixed point across a local relational summary chain", async () => {
