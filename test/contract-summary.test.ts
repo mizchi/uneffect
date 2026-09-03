@@ -1709,6 +1709,7 @@ describe("persisted contract summary bundles", () => {
     const nestedFile = join(directory, "nested.ts");
     const nestedSource = `
       import { api } from "@example/danger-api"
+      import { strictEqual } from "node:assert/strict"
       function authorize(value: number): void { api.danger(value) }
       /* uneffect:effect Throw<RangeError> */
       /* uneffect:ensures result === value + 2 */
@@ -1829,11 +1830,23 @@ describe("persisted contract summary bundles", () => {
         }
         return true
       }
+      /* uneffect:ensures result === 5 */
+      export function asserted(value: number): number {
+        let result = 5
+        try {
+          strictEqual(api.dangerousAdd(value), value + 1)
+          result = 6
+        } catch {
+          return result
+        }
+        return 5
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
       strict: true, noEmit: true, target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      types: ["node"],
     });
     const nestedBinding = bindContractSummaryBundleToProgram(bundle, nestedProgram);
     const nestedVerification = await verifyContractObligations(nestedFile, nestedSource, undefined, nestedProgram, {
@@ -1851,9 +1864,15 @@ describe("persisted contract summary bundles", () => {
     expect(twice).toMatchObject({ status: "verified" });
     expect(twice?.controlFlow?.exceptionFlow?.escapes).toHaveLength(2);
     expect(new Set(twice?.controlFlow?.exceptionFlow?.escapes.map(({ originSpan }) => `${originSpan.start}:${originSpan.end}`)).size).toBe(2);
-    for (const functionName of ["compound", "logical", "nullish"]) {
+    for (const functionName of ["compound", "logical", "nullish", "asserted"]) {
       expect(nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName
         && artifact.controlFlow?.exceptionFlow?.discharged.length)).toMatchObject({ status: "verified" });
     }
+    expect(nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "asserted")
+      .flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? [])).toEqual(expect.arrayContaining([
+        expect.objectContaining({ effect: "Throw<RangeError>" }),
+        expect.objectContaining({ effect: "Throw<AssertionError>" }),
+      ]));
   });
 });

@@ -2940,7 +2940,7 @@ export function lowerInvariantProgram(
             return paths;
           }
           paths = paths.flatMap((path): PathState[] => {
-            const conditions: Array<{ path: PathState; condition: LogicExpression }> = assertion.condition === "truthy"
+            const conditions: Array<{ path: PathState; condition?: LogicExpression }> = assertion.condition === "truthy"
               ? [{ path, condition: evaluateCondition(call.arguments[0]!, path.env) }]
               : assertion.condition === "nullish"
                 ? (() => {
@@ -2957,19 +2957,25 @@ export function lowerInvariantProgram(
                   || unsafeNullableScalarCopy(call.arguments[1]!)) {
                   throw new Error(`strict equality assertion requires two non-nullable scalar operands: ${call.getText(source)}`);
                 }
-                return evaluateScalar(call.arguments[0]!, path).flatMap(({ path: leftPath, value: left }) =>
-                  evaluateScalar(call.arguments[1]!, leftPath).map(({ path: rightPath, value: right }) => {
+                return evaluateScalar(call.arguments[0]!, path).flatMap(({ path: leftPath, value: left }) => {
+                  if (leftPath.completion !== "normal") return [{ path: leftPath }];
+                  return evaluateScalar(call.arguments[1]!, leftPath).map(({ path: rightPath, value: right }) => {
+                    if (rightPath.completion !== "normal") return { path: rightPath };
                     if (scalarExpressionSort(left) !== scalarExpressionSort(right)) {
                       throw new Error(`strict equality assertion requires matching scalar operands: ${call.getText(source)}`);
                     }
                     const equal: LogicExpression = { kind: "binary", operator: "eq", left, right };
                     return { path: rightPath, condition: assertion.condition === "strict-not-equal" ? negate(equal) : equal };
-                  }));
+                  });
+                });
               })();
-            return conditions.flatMap(({ path: branch, condition }): PathState[] => [
-              { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, condition] },
-              { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(condition)], completion: "throw", thrown: { kind: "synchronous-throw", evidence: "trusted", effect: assertion.effect, originSpan } },
-            ]);
+            return conditions.flatMap(({ path: branch, condition }): PathState[] => {
+              if (branch.completion !== "normal" || !condition) return [branch];
+              return [
+                { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, condition] },
+                { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(condition)], completion: "throw", thrown: { kind: "synchronous-throw", evidence: "trusted", effect: assertion.effect, originSpan } },
+              ];
+            });
           });
           return paths;
         }

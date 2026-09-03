@@ -2844,6 +2844,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   synchronous throw.
 - [x] Make effect `discharge` path-sensitive over that shared exit model and
   retain rejected/unknown paths in the evidence ledger.
+- [x] Evaluate reviewed equality-assertion operands left to right through the
+  shared scalar completion model. Preserve an authenticated operand throw and
+  skip the assertion call on that edge instead of replacing it with
+  `Throw<AssertionError>`.
 - [x] Dogfood the combined model on an application adapter containing narrowing,
   early returns, caught throws, capability boundaries, and Promise ownership.
 - [x] Extend the bounded exception-aware contract CFG through supported

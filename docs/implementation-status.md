@@ -778,6 +778,10 @@ same property is proved for arbitrary TypeScript.
   exception CFG, and the reviewed builtin is recorded in the assumption
   ledger. Reviewed `strictEqual` and `notStrictEqual` from either module add a
   matching-sort, non-nullable scalar equality or inequality to the normal path.
+  Their operands use the shared left-to-right scalar evaluator: an authenticated
+  synchronous throw from an earlier operand bypasses the assertion and reaches
+  catch with its original effect and environment, rather than being relabeled
+  as `AssertionError`.
   Reviewed `fail` has no normal continuation and enters the same catch/discharge
   path as an unconditional trusted `Throw<AssertionError>`.
   Reviewed `ifError` connects a tracked nullable numeric/Boolean or
