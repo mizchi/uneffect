@@ -2983,12 +2983,20 @@ export function lowerInvariantProgram(
         const declared = declaredThrowCalls.get(`${call.getStart(source)}:${call.getEnd()}`);
         const effects = completion?.synchronousThrows ?? declared?.effects;
         if (!effects) throw new Error(`call requires a verified function summary: ${call.expression.getText(source)}`);
+        let argumentPaths = paths;
+        for (const argument of call.arguments) {
+          if (!containsTrackedSynchronousCall(argument)) continue;
+          argumentPaths = argumentPaths.flatMap((path) => path.completion !== "normal" ? [path]
+            : evaluateScalar(argument, path).map(({ path: branch }) => branch));
+        }
+        const normalArguments = argumentPaths.filter(({ completion }) => completion === "normal");
+        const abruptArguments = argumentPaths.filter(({ completion }) => completion !== "normal");
         const originSpan = { start: call.getStart(source), end: call.getEnd() };
-        const thrown = paths.flatMap((path) => effects.map((effect): PathState => ({
+        const thrown = normalArguments.flatMap((path) => effects.map((effect): PathState => ({
           ...path, env: new Map(path.env), completion: "throw",
           thrown: { kind: "synchronous-throw", effect, originSpan, ...(completion ? { evidence: completion.evidence } : {}) },
         })));
-        paths = [...(declared?.definitelyThrows ? [] : paths), ...thrown];
+        paths = [...(declared?.definitelyThrows ? [] : normalArguments), ...thrown, ...abruptArguments];
       } else if (!ts.isEmptyStatement(statement)) {
         throw new Error(`unsupported invariant statement: ${statement.getText(source)}`);
       }

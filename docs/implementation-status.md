@@ -782,6 +782,11 @@ same property is proved for arbitrary TypeScript.
   synchronous throw from an earlier operand bypasses the assertion and reaches
   catch with its original effect and environment, rather than being relabeled
   as `AssertionError`.
+  Direct expression-statement calls likewise evaluate any argument containing
+  an authenticated synchronous contract call from left to right before the
+  outer call completion. An argument throw skips the outer call and retains its
+  own source span; the outer call's may-throw edge exists only after all such
+  arguments complete normally.
   Reviewed `fail` has no normal continuation and enters the same catch/discharge
   path as an unconditional trusted `Throw<AssertionError>`.
   Reviewed `ifError` connects a tracked nullable numeric/Boolean or

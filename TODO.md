@@ -2848,6 +2848,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   shared scalar completion model. Preserve an authenticated operand throw and
   skip the assertion call on that edge instead of replacing it with
   `Throw<AssertionError>`.
+- [x] Apply the same left-to-right completion rule to authenticated calls nested
+  in direct expression-statement arguments. Skip the outer call on an argument
+  throw and retain distinct inner/outer source spans in discharge evidence.
 - [x] Dogfood the combined model on an application adapter containing narrowing,
   early returns, caught throws, capability boundaries, and Promise ownership.
 - [x] Extend the bounded exception-aware contract CFG through supported
