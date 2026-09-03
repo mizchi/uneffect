@@ -1850,6 +1850,14 @@ describe("persisted contract summary bundles", () => {
         }
         return 1
       }
+      /* uneffect:ensures result === 1 */
+      export function nestedThrow(value: number): number {
+        try {
+          throw api.dangerousAdd(value)
+        } catch {
+          return 1
+        }
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -1873,7 +1881,7 @@ describe("persisted contract summary bundles", () => {
     expect(twice).toMatchObject({ status: "verified" });
     expect(twice?.controlFlow?.exceptionFlow?.escapes).toHaveLength(2);
     expect(new Set(twice?.controlFlow?.exceptionFlow?.escapes.map(({ originSpan }) => `${originSpan.start}:${originSpan.end}`)).size).toBe(2);
-    for (const functionName of ["compound", "logical", "nullish", "asserted", "nestedStatement"]) {
+    for (const functionName of ["compound", "logical", "nullish", "asserted", "nestedStatement", "nestedThrow"]) {
       expect(nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName
         && artifact.controlFlow?.exceptionFlow?.discharged.length)).toMatchObject({ status: "verified" });
     }
@@ -1888,5 +1896,12 @@ describe("persisted contract summary bundles", () => {
       .flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? [])
       .filter(({ effect }) => effect === "Throw<RangeError>");
     expect(new Set(nestedStatementThrows.map(({ originSpan }) => `${originSpan.start}:${originSpan.end}`)).size).toBe(2);
+    const nestedThrowEffects = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "nestedThrow")
+      .flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []);
+    expect(nestedThrowEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ effect: "Throw<RangeError>" }),
+      expect.objectContaining({ effect: "Throw<unknown>" }),
+    ]));
   });
 });

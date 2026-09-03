@@ -787,6 +787,10 @@ same property is proved for arbitrary TypeScript.
   outer call completion. An argument throw skips the outer call and retains its
   own source span; the outer call's may-throw edge exists only after all such
   arguments complete normally.
+  An explicit `throw expression` uses the same rule when its expression contains
+  an authenticated synchronous scalar call. A callee throw bypasses the
+  explicit throw and keeps the callee effect/span; only normal expression
+  completion creates the explicit `Throw<E>` edge and payload.
   Reviewed `fail` has no normal continuation and enters the same catch/discharge
   path as an unconditional trusted `Throw<AssertionError>`.
   Reviewed `ifError` connects a tracked nullable numeric/Boolean or

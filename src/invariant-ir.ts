@@ -2909,11 +2909,19 @@ export function lowerInvariantProgram(
       } else if (ts.isThrowStatement(statement)) {
         const originSpan = { start: statement.getStart(source), end: statement.getEnd() };
         const effect = throwEffects.get(`${originSpan.start}:${originSpan.end}`) ?? "Throw<unknown>";
-        paths = paths.map((path) => {
-          let payload: LogicExpression | undefined;
-          try { if (statement.expression) payload = substitute(logic(statement.expression, pipeBindings, semanticGuards, semanticValues), path.env); } catch { /* non-scalar payload remains effect-only evidence */ }
-          return { ...path, completion: "throw", thrown: { kind: "synchronous-throw", effect, originSpan, ...(payload ? { payload } : {}) } };
-        });
+        if (statement.expression && containsTrackedSynchronousCall(statement.expression)) {
+          paths = paths.flatMap((path): PathState[] => evaluateScalar(statement.expression!, path).map(({ path: branch, value }) =>
+            branch.completion !== "normal" ? branch : {
+              ...branch, completion: "throw",
+              thrown: { kind: "synchronous-throw", effect, originSpan, payload: value },
+            }));
+        } else {
+          paths = paths.map((path) => {
+            let payload: LogicExpression | undefined;
+            try { if (statement.expression) payload = substitute(logic(statement.expression, pipeBindings, semanticGuards, semanticValues), path.env); } catch { /* non-scalar payload remains effect-only evidence */ }
+            return { ...path, completion: "throw", thrown: { kind: "synchronous-throw", effect, originSpan, ...(payload ? { payload } : {}) } };
+          });
+        }
       } else if (ts.isReturnStatement(statement) && statement.expression && ts.isAwaitExpression(statement.expression)) {
         paths = executeAwait(statement.expression, paths, { returnStatement: statement });
       } else if (ts.isReturnStatement(statement) && statement.expression) {

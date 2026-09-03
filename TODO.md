@@ -2851,6 +2851,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Apply the same left-to-right completion rule to authenticated calls nested
   in direct expression-statement arguments. Skip the outer call on an argument
   throw and retain distinct inner/outer source spans in discharge evidence.
+- [x] Evaluate explicit throw payload expressions through the shared scalar
+  completion model when they contain authenticated synchronous calls. A callee
+  throw bypasses the explicit throw; only normal evaluation creates the
+  explicit throw edge and payload.
 - [x] Dogfood the combined model on an application adapter containing narrowing,
   early returns, caught throws, capability boundaries, and Promise ownership.
 - [x] Extend the bounded exception-aware contract CFG through supported
