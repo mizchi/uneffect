@@ -210,6 +210,13 @@ an addressable source region. Timer, immediate, and next-tick variadic callback
 arguments preserve their call-site expressions. When a catalog omits the
 shape, callback parameter Mutation becomes `Mutate<unknown-alias>` rather than
 leaking the callback's parameter name into its caller.
+Source-local callback timing summaries are independent of declaration order.
+Direct invocation, acyclic symbol-resolved wrapper forwarding, and callback
+parameter use inside an inline function expression are composed recursively.
+Thus `values.filter(value => predicate(value))` retains the reviewed synchronous
+timing of `filter`, while the same capture beneath `setTimeout` is deferred.
+Recursive forwarding and capture beneath an unreviewed callback host remain
+`unknown`; the analysis does not assume that every callback runs inline.
 Callable String replacements are synchronous (`replace` is `0..1`,
 `replaceAll` is `0..n`). `Object.groupBy` and `Map.groupBy` synchronously
 consume their iterable and invoke the classifier, so generator Effect/Throw and

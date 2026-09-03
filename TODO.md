@@ -2228,6 +2228,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Attach `verified`, `trusted`, `inferred`, or `unknown` evidence to every summary.
 - [x] Attach a non-empty stable-coded `unknownReasons` ledger to every unknown Effect summary, require it in JSON Schema, surface it through assurance blockers, and reject unresolved top-level calls without analyzed/builtin/verified-contract evidence.
 - [x] Model reviewed synchronous ECMAScript collection callbacks as inline Effect edges, add narrow pure Node/ECMAScript helper contracts, and resolve named imports from export-equals Node declarations without name-based matching.
+- [x] Make source-local callback timing independent of declaration order, including acyclic wrapper forwarding and lexical capture beneath reviewed inline/deferred hosts, while keeping recursion and unreviewed hosts unknown.
 - [x] Bind external builtin function contracts to exact package versions, reject missing runtime bindings in caller-owned package contracts, and record the dependency version in the assumption ledger.
 - [x] Model version-bound higher-order callable results, including synchronously invoked captured callbacks, while rejecting mutable factory-result bindings.
 - [x] Include compiler revision, tsconfig hash, source hash, builtin-contract digest, and Uneffect version in artifacts.

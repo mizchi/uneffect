@@ -1890,6 +1890,46 @@ describe("multi-file call graph and effect polymorphism", () => {
     expect(result.effects).toHaveLength(1);
   });
 
+  it("infers callback timing through later-declared local wrappers", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-callback-order-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        export function outer(callback: () => void) { middle(callback) }
+        export function run() { outer(() => console.log("inline")) }
+        function middle(callback: () => void) { leaf(callback) }
+        function leaf(callback: () => void) { callback() }
+        export function deferredOuter(callback: () => void) { setTimeout(() => callback(), 0) }
+        declare function invokeLater(callback: () => void): void
+        export function opaqueOuter(callback: () => void) { invokeLater(() => callback()) }
+        export function recursive(callback: () => void) { recursive(callback) }
+        export function runRecursive() { recursive(() => console.log("unknown")) }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const graph = buildProgramCallGraph(program);
+      expect(graph.nodes.find((node) => node.name === "outer")?.effectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, timing: "inline" }));
+      expect(graph.edges.find((edge) => graph.nodes.find((node) => node.id === edge.caller)?.name === "run"
+        && edge.kind === "callback-argument")).toMatchObject({ timing: "inline" });
+      expect(graph.nodes.find((node) => node.name === "recursive")?.effectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, timing: "unknown" }));
+      expect(graph.nodes.find((node) => node.name === "deferredOuter")?.effectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, timing: "deferred" }));
+      expect(graph.nodes.find((node) => node.name === "opaqueOuter")?.effectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, timing: "unknown" }));
+      const result = analyzeProgramEffects(program);
+      expect(result.summaries.find((summary) => summary.functionName === "run"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "runRecursive"))
+        .toMatchObject({ evidence: "unknown" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("uses the reviewed synchronous TypeScript Program.emit callback contract", () => {
     const fileName = join(process.cwd(), "virtual-typescript-emit.ts");
     const sourceText = `

@@ -562,6 +562,107 @@ export function buildProgramCallGraph(
     return result;
   };
   for (const declaration of declarations) byId.get(stableId(declaration))!.iteratorEffectParameters = iteratorParametersOf(declaration);
+  const callableParameterCache = new Map<ts.FunctionLikeDeclaration, EffectParameter[]>();
+  const callableParameterVisiting = new Set<ts.FunctionLikeDeclaration>();
+  const callableParametersOf = (declaration: ts.FunctionLikeDeclaration): EffectParameter[] => {
+    const cached = callableParameterCache.get(declaration);
+    if (cached) return cached;
+    const runtimeParameters = runtimeParametersOf(declaration);
+    const parameterIndices = new Map<ts.Symbol, number>();
+    runtimeParameters.forEach((parameter, index) => {
+      if (!ts.isIdentifier(parameter.name) || !isFunctionParameter(checker, parameter)) return;
+      const symbol = resolvedSymbol(checker, parameter.name);
+      if (symbol) parameterIndices.set(symbol, index);
+    });
+    if (parameterIndices.size === 0) {
+      callableParameterCache.set(declaration, []);
+      return [];
+    }
+    if (callableParameterVisiting.has(declaration)) return [...parameterIndices.entries()].map(([symbol, index]) => ({
+      index, name: symbol.getName(), timing: "unknown",
+    }));
+    callableParameterVisiting.add(declaration);
+    const timings = new Map<number, InvocationTiming>();
+    const record = (index: number, timing: InvocationTiming): void => {
+      const previous = timings.get(index);
+      timings.set(index, previous === "unknown" || timing === "unknown" ? "unknown"
+        : previous === "deferred" || timing === "deferred" ? "deferred" : "inline");
+    };
+    const composeTiming = (outer: InvocationTiming, inner: InvocationTiming): InvocationTiming =>
+      outer === "unknown" || inner === "unknown" ? "unknown"
+        : outer === "deferred" || inner === "deferred" ? "deferred" : "inline";
+    const capturesCallableParameter = (callback: ts.ArrowFunction | ts.FunctionExpression): boolean => {
+      let captured = false;
+      const scan = (node: ts.Node): void => {
+        if (captured) return;
+        if (ts.isIdentifier(node)) {
+          const symbol = resolvedSymbol(checker, node);
+          if (symbol && parameterIndices.has(symbol)) { captured = true; return; }
+        }
+        ts.forEachChild(node, scan);
+      };
+      scan(callback.body);
+      return captured;
+    };
+    const visit = (node: ts.Node, enclosingTiming: InvocationTiming = "inline"): void => {
+      if (node !== declaration && ts.isFunctionLike(node)) return;
+      if (ts.isCallExpression(node)) {
+        const invokedSymbol = ts.isIdentifier(node.expression) ? resolvedSymbol(checker, node.expression) : undefined;
+        const invokedIndex = invokedSymbol ? parameterIndices.get(invokedSymbol) : undefined;
+        if (invokedIndex !== undefined) record(invokedIndex, enclosingTiming);
+
+        const forwarded = node.arguments.flatMap((argument, argumentIndex) => {
+          const current = unwrapLiteralContainerExpression(argument);
+          if (!ts.isIdentifier(current)) return [];
+          const argumentSymbol = resolvedSymbol(checker, current);
+          const parameterIndex = argumentSymbol ? parameterIndices.get(argumentSymbol) : undefined;
+          return parameterIndex === undefined ? [] : [{ argumentIndex, parameterIndex }];
+        });
+        const capturedCallbacks = node.arguments.flatMap((argument, argumentIndex) => {
+          const callback = unwrapLiteralContainerExpression(argument);
+          return (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) && capturesCallableParameter(callback)
+            ? [{ argumentIndex, callback }] : [];
+        });
+        if (forwarded.length > 0 || capturedCallbacks.length > 0) {
+          const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
+          const symbol = resolvedSymbol(checker, lookup);
+          const signatureDeclaration = checker.getResolvedSignature(node)?.getDeclaration();
+          let signatureTarget: ts.FunctionLikeDeclaration | undefined;
+          if (signatureDeclaration && ts.isFunctionLike(signatureDeclaration)) {
+            const candidate = signatureDeclaration as ts.FunctionLikeDeclaration;
+            if (byId.has(stableId(candidate))) signatureTarget = candidate;
+          }
+          const target = symbol ? symbolNodes.get(symbol) ?? signatureTarget : signatureTarget;
+          const external = target ? undefined : externalCallableContractForCall(checker, node, options.externalCallableEffects);
+          const argumentTiming = (argumentIndex: number): InvocationTiming => target === declaration ? "unknown"
+            : target ? callableParametersOf(target).find((item) => item.index === argumentIndex)?.timing ?? "unknown"
+              : external?.parameters.find((item) => item.index === argumentIndex)?.timing
+                ?? builtinTiming(node, checker, adapter, argumentIndex);
+          for (const { argumentIndex, parameterIndex } of forwarded) {
+            record(parameterIndex, composeTiming(enclosingTiming, argumentTiming(argumentIndex)));
+          }
+          for (const { argumentIndex, callback } of capturedCallbacks) {
+            visit(callback.body, composeTiming(enclosingTiming, argumentTiming(argumentIndex)));
+          }
+        }
+      }
+      ts.forEachChild(node, (child) => visit(child, enclosingTiming));
+    };
+    visit(declaration.body!);
+    const result = [...parameterIndices.entries()].map(([symbol, index]) => ({
+      index, name: symbol.getName(), timing: timings.get(index) ?? "unknown",
+    }));
+    callableParameterVisiting.delete(declaration);
+    callableParameterCache.set(declaration, result);
+    return result;
+  };
+  for (const declaration of declarations) {
+    byId.get(stableId(declaration))!.effectParameters = callableParametersOf(declaration);
+  }
+  const knownCallableParameters = (declaration: ts.FunctionLikeDeclaration): readonly EffectParameter[] => {
+    const known = byId.get(stableId(declaration))?.effectParameters ?? [];
+    return known.length > 0 ? known : callableParametersOf(declaration);
+  };
   const edges: CallGraphEdge[] = [];
   for (const declaration of declarations) {
     const caller = stableId(declaration), parameters = new Map<string, number>();
@@ -582,7 +683,7 @@ export function buildProgramCallGraph(
       const symbol = resolvedSymbol(checker, parameter.name);
       if (symbol) iteratorParameterIndices.set(symbol, index);
     });
-    const timings = new Map<number, InvocationTiming>();
+    const timings = new Map(byId.get(caller)!.effectParameters.map((parameter) => [parameter.index, parameter.timing]));
     const expandingImplicitClasses = new Set<ts.ClassDeclaration | ts.ClassExpression>();
     const emptyIteratorState = (): IteratorBindingState => ({ generators: [], unknown: false, pure: false });
     const mergeIteratorStates = (left: IteratorBindingState, right: IteratorBindingState): IteratorBindingState => ({
@@ -1565,7 +1666,7 @@ export function buildProgramCallGraph(
             const timing = targetDeclaration === declaration
               ? previous ?? "unknown"
               : targetDeclaration
-                ? byId.get(stableId(targetDeclaration))?.effectParameters.find((item) => item.index === index)?.timing ?? "unknown"
+                ? knownCallableParameters(targetDeclaration).find((item) => item.index === index)?.timing ?? "unknown"
                 : externalCallable?.parameters.find((item) => item.index === index)?.timing
                   ?? builtinTiming(node, checker, adapter, index);
             const joined: InvocationTiming = previous === "unknown" || timing === "unknown" ? "unknown" : previous === "deferred" || timing === "deferred" ? "deferred" : "inline";
@@ -1576,9 +1677,10 @@ export function buildProgramCallGraph(
           if (callbackDeclaration) {
             const calleeNode = targetDeclaration ? byId.get(stableId(targetDeclaration)) : undefined;
             const externalParameter = externalCallable?.parameters.find((item) => item.index === index);
-            const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing
-              ?? externalParameter?.timing
-              ?? builtinTiming(node, checker, adapter, index);
+            const timing = (targetDeclaration
+              ? knownCallableParameters(targetDeclaration).find((item) => item.index === index)?.timing
+              : calleeNode?.effectParameters.find((item) => item.index === index)?.timing)
+              ?? externalParameter?.timing ?? builtinTiming(node, checker, adapter, index);
             const projectedCallback = projectedCallbacks.find((event) =>
               event.target.status === "resolved" && event.target.expression === argument);
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing,

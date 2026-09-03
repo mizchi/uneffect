@@ -67,8 +67,12 @@ same property is proved for arbitrary TypeScript.
   direct `Promise.reject` types, mutated regions, and source spans. Reviewed
   Array/Map/Set callbacks propagate throws inline and project their
   collection receiver plus explicit `thisArg` into callback Mutation. Runtime
-  element/key/index values remain `unresolved-mutation-alias`. TypeScript's
-  erased pseudo-`this` parameter is excluded from runtime positional parameter
+  element/key/index values remain `unresolved-mutation-alias`. Source-local
+  callback-parameter timing is precomputed independently of
+  declaration order across acyclic symbol-resolved wrappers. Inline lexical
+  callback captures compose their enclosing reviewed timing; deferred hosts
+  remain deferred, and recursive or unreviewed hosts remain unknown.
+  TypeScript's erased pseudo-`this` parameter is excluded from runtime positional parameter
   indexes. Promise reactions and JSON replacers retain explicit runtime-value
   aliases; Array.from maps an explicit `thisArg`; timers, immediates, and
   next-tick callbacks project variadic call-site arguments. Missing invocation
