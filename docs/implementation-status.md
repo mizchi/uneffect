@@ -971,6 +971,12 @@ same property is proved for arbitrary TypeScript.
   SourceFile rather than the caller. A Program-wide symbol write screen rejects
   reassigned producer bindings before granting either synchronous or async
   inferred evidence.
+  Reviewed TypeChecker-identical `Math.floor`, `Math.ceil`, `Math.round`, and
+  bounded-literal `Math.pow` calls can occur inside those inferred scalar
+  expressions, including nested arithmetic. Shadowed Math members remain
+  unknown. Piecewise `abs`, `min`, `max`, `trunc`, and `sign` summaries are not
+  yet synthesized by the local-helper inference path, even though contracted
+  function bodies already model them directly.
   Persisted package summaries can now be consumed at call sites through a
   TypeChecker-resolved installed declaration. The standalone
   `uneffect-contract-summary/v1` producer/validator now emits package/version,

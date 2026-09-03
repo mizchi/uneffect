@@ -2934,6 +2934,11 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Follow named imports/static re-exports for unannotated sync and async
         scalar producers, using callee-file expressions/spans/digests and a
         Program-wide reassignment screen.
+      - [x] Lower reviewed `Math.floor`/`ceil`/`round` and bounded `Math.pow`
+        inside inferred helper expressions while rejecting shadowed Math.
+      - [ ] [#25](https://github.com/mizchi/uneffect/issues/25) Synthesize
+        piecewise inferred summaries for reviewed `Math.abs`, `min`, `max`,
+        `trunc`, and `sign`; direct contracted bodies already support them.
 - [x] Generalize the reconciler across source files in one checked TypeScript
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project

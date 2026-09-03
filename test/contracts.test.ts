@@ -4406,6 +4406,31 @@ describe("Hoare contract checker", () => {
     });
   });
 
+  it("infers reviewed Math casts inside an unannotated scalar helper", async () => {
+    const fileName = "/inferred-sync-math-helper.ts";
+    const source = `
+      type Int = number
+      type Float = number
+      function floorValue(value: Float): Int { return Math.floor(value) }
+      /* uneffect:ensures result <= value && value < result + 1 */
+      function caller(value: Float): Int { return floorValue(value) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.flatMap(({ controlFlow }) => controlFlow?.relationalCalls ?? []))
+      .toContainEqual(expect.objectContaining({ functionName: "floorValue", evidence: "verified" }));
+
+    const shadowedSource = source.replace(
+      "function floorValue(value: Float): Int { return Math.floor(value) }",
+      "const Math = { floor(value: number): number { return value + 1 } }; function floorValue(value: Float): Int { return Math.floor(value) }",
+    );
+    const shadowed = await verifyContractObligations("/unsupported-inferred-sync-math.ts", shadowedSource, undefined,
+      programFor("/unsupported-inferred-sync-math.ts", shadowedSource));
+    expect(shadowed.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+  });
+
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `

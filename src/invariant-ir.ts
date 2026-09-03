@@ -1243,6 +1243,47 @@ function typeCheckerCallCompletions(
     const declarationSource = declaration.getSourceFile();
     const declarationPresentObjects = declarationSource === source ? reviewedPresentObjects
       : typeCheckerPresentObjectExpressions(program, declarationSource.fileName, declarationSource.text);
+    const declarationMathCalls = typeCheckerMathScalarCalls(program, declarationSource.fileName, declarationSource.text);
+    const inferredExpression = (input: ts.Expression): LogicExpression => {
+      let expression = input;
+      while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+      if (ts.isCallExpression(expression)) {
+        const fact = declarationMathCalls.get(`${expression.getStart(declarationSource)}:${expression.getEnd()}`);
+        if (!fact) throw new Error("unreviewed inferred call");
+        const values = expression.arguments.map(inferredExpression);
+        if (fact.operation === "floor" || fact.operation === "ceil") {
+          return { kind: "unary", operator: fact.operation, operand: values[0]! };
+        }
+        if (fact.operation === "round") {
+          return {
+            kind: "unary", operator: "floor",
+            operand: { kind: "binary", operator: "add", left: values[0]!, right: { kind: "real", value: "0.5" } },
+          };
+        }
+        if (fact.operation === "pow") return repeatedPower(values[0]!, fact.exponent!);
+        throw new Error("piecewise inferred Math call");
+      }
+      if (ts.isPrefixUnaryExpression(expression)) {
+        const operator = expression.operator === ts.SyntaxKind.ExclamationToken ? "not"
+          : expression.operator === ts.SyntaxKind.MinusToken ? "negate" : undefined;
+        if (!operator) throw new Error("unsupported inferred unary expression");
+        return { kind: "unary", operator, operand: inferredExpression(expression.operand) };
+      }
+      if (ts.isBinaryExpression(expression)) {
+        const operator = new Map<ts.SyntaxKind, string>([
+          [ts.SyntaxKind.PlusToken, "add"], [ts.SyntaxKind.MinusToken, "sub"], [ts.SyntaxKind.AsteriskToken, "mul"],
+          [ts.SyntaxKind.LessThanToken, "lt"], [ts.SyntaxKind.LessThanEqualsToken, "lte"],
+          [ts.SyntaxKind.GreaterThanToken, "gt"], [ts.SyntaxKind.GreaterThanEqualsToken, "gte"],
+          [ts.SyntaxKind.EqualsEqualsToken, "eq"], [ts.SyntaxKind.EqualsEqualsEqualsToken, "eq"],
+          [ts.SyntaxKind.ExclamationEqualsToken, "neq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "neq"],
+          [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
+        ]).get(expression.operatorToken.kind);
+        if (!operator) throw new Error("unsupported inferred binary expression");
+        return { kind: "binary", operator, left: inferredExpression(expression.left), right: inferredExpression(expression.right) };
+      }
+      return logic(expression);
+    };
     const statements = ts.isBlock(declaration.body) ? [...declaration.body.statements] : undefined;
     const localDeclarations: ts.VariableDeclaration[] = [];
     while (statements?.[0] && ts.isVariableStatement(statements[0])) {
@@ -1332,6 +1373,11 @@ function typeCheckerCallCompletions(
     let closed = true;
     const inspect = (node: ts.Node): void => {
       if (!closed) return;
+      if (ts.isCallExpression(node)
+        && declarationMathCalls.has(`${node.getStart(declarationSource)}:${node.getEnd()}`)) {
+        node.arguments.forEach(inspect);
+        return;
+      }
       if (ts.isIdentifier(node) && !allowed.has(node.text)) {
         const literal = immutableScalarLiteral(node);
         if (literal) captured.set(node.text, literal);
@@ -1344,7 +1390,7 @@ function typeCheckerCallCompletions(
       inspect(local.initializer!);
       if (!closed || !scalarDomain(checker.getTypeAtLocation(local.initializer!))) return undefined;
       let value: LogicExpression;
-      try { value = substitute(parseLogicExpression(local.initializer!.getText(declarationSource)), captured); } catch { return undefined; }
+      try { value = substitute(inferredExpression(local.initializer!), captured); } catch { return undefined; }
       captured.set((local.name as ts.Identifier).text, value);
       allowed.add((local.name as ts.Identifier).text);
     }
@@ -1366,15 +1412,15 @@ function typeCheckerCallCompletions(
     let clauses: AwaitFulfillmentFact["clauses"] | undefined;
     try {
       if (whenTrue) {
-        const trueValue = substitute(parseLogicExpression(whenTrue.getText(declarationSource)), captured);
+        const trueValue = substitute(inferredExpression(whenTrue), captured);
       if (!condition || !whenFalse) {
         clauses = [{
           source: `result === ${whenTrue.getText(declarationSource)}`,
           expression: { kind: "binary", operator: "eq", left: variable("result"), right: trueValue },
         }];
       } else {
-        const guard = substitute(parseLogicExpression(condition.getText(declarationSource)), captured);
-        const falseValue = substitute(parseLogicExpression(whenFalse.getText(declarationSource)), captured);
+        const guard = substitute(inferredExpression(condition), captured);
+        const falseValue = substitute(inferredExpression(whenFalse), captured);
         clauses = [
           {
             source: `!(${condition.getText(declarationSource)}) || result === ${whenTrue.getText(declarationSource)}`,
@@ -1393,7 +1439,7 @@ function typeCheckerCallCompletions(
         ];
       }
       if (requiredNormalGuard) {
-        const guard = substitute(parseLogicExpression(requiredNormalGuard.expression.getText(declarationSource)), captured);
+        const guard = substitute(inferredExpression(requiredNormalGuard.expression), captured);
         const normalGuard = requiredNormalGuard.truth ? guard : { kind: "unary", operator: "not", operand: guard } satisfies LogicExpression;
         clauses.unshift({
           source: requiredNormalGuard.truth
