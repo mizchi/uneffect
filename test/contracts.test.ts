@@ -2643,12 +2643,14 @@ describe("Hoare contract checker", () => {
       /* uneffect:ensures result === value */
       function identity(value: Int): Int { return value }
       const read = identity
+      /* uneffect:ensures result === value */
+      function forwarded(value: Int): Int { return read(value) }
       /* uneffect:requires limit >= 0 */
       /* uneffect:ensures result >= 0 */
       function run(limit: Int): Int {
         let index = 0
         /* uneffect:loop_invariant index >= 0 */
-        while (read(index) < limit) index++
+        while (forwarded(index) < limit) index++
         return limit
       }
     `;
@@ -2667,7 +2669,9 @@ describe("Hoare contract checker", () => {
       function captured(limit: Int): Int {
         let index = 0
         /* uneffect:ensures result === value */
-        function observe(value: Int): Int { limit = limit; return value }
+        function touch(value: Int): Int { limit = limit; return value }
+        /* uneffect:ensures result === value */
+        function observe(value: Int): Int { return touch(value) }
         /* uneffect:loop_invariant index >= 0 */
         while (observe(index) < limit) index++
         return limit
@@ -2676,6 +2680,23 @@ describe("Hoare contract checker", () => {
     const capturedFile = "/contract-loop-call-captured-write.ts";
     const obligations = lowerInvariantProgram(capturedFile, capturedSource, programFor(capturedFile, capturedSource));
     expect(JSON.stringify(obligations)).toContain("captured_limit_loop_");
+
+    const recursiveSource = `
+      type Int = number
+      /* uneffect:ensures result === value */
+      function recurse(value: Int): Int { return value === 0 ? value : recurse(value - 1) }
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function recursive(limit: Int): Int {
+        let index = 0
+        /* uneffect:loop_invariant index >= 0 */
+        while (recurse(index) < limit) index++
+        return limit
+      }
+    `;
+    const recursiveFile = "/contract-loop-call-recursive.ts";
+    const recursive = lowerInvariantProgram(recursiveFile, recursiveSource, programFor(recursiveFile, recursiveSource));
+    expect(JSON.stringify(recursive)).toContain("recursive_limit_loop_");
   });
 
   it("keeps switch break local while continue targets the enclosing while through finally", async () => {

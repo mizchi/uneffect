@@ -476,15 +476,17 @@ same property is proved for arbitrary TypeScript.
   syntactic frame rule. A scalar binding with no assignment, declaration, or
   increment in the loop retains its entry expression and path assumptions;
   written bindings alone receive fresh loop-state variables. A
-  TypeChecker-resolved stable source-local leaf callable, including a `const`
-  alias, contributes a symbol-derived set of writes captured from outside its
-  own declaration. A callable-local binding with the same spelling does not
-  invalidate the caller frame. Nested calls, member access/construction,
-  deletion, external bodies, and unresolved dispatch still invalidate the
-  complete frame. Same-spelled loop-local bindings can therefore cause harmless
-  over-invalidation, but are never used to justify preservation. Nested
-  function declarations are non-executing CFG statements; their bodies matter
-  only when reached through a supported call.
+  TypeChecker-resolved stable source-local callable, including a `const` alias,
+  contributes a symbol-derived set of writes captured from outside its own
+  declaration. These sets compose through an acyclic stable-call graph and
+  reviewed Math leaves. A callable-local binding with the same spelling does
+  not invalidate the caller frame, while a captured child write propagates to
+  every caller. Recursion, dynamic callback dispatch, member
+  access/construction, deletion, external bodies, and unresolved calls still
+  invalidate the complete frame. Same-spelled loop-local bindings can therefore
+  cause harmless over-invalidation, but are never used to justify preservation.
+  Nested function declarations are non-executing CFG statements; their bodies
+  matter only when reached through a supported call.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

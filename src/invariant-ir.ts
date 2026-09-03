@@ -981,22 +981,39 @@ function typeCheckerCallableScalarWrites(
     .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
   if (errors.length > 0) return summaries;
   const checker = program.getTypeChecker();
-  const visitCall = (call: ts.CallExpression): void => {
-    const symbol = resolveStableCallableSymbol(checker, call.expression);
-    const declaration = symbol && stableCallableDeclaration(symbol);
-    const body = declaration && "body" in declaration ? declaration.body : undefined;
-    if (!body || declaration!.getSourceFile() !== source) return;
+  const reviewedMathCalls = typeCheckerMathScalarCalls(program, fileName, text);
+  const memo = new Map<ts.Node, readonly string[] | null>();
+  const summarize = (declaration: ReturnType<typeof stableCallableDeclaration>, stack: ReadonlySet<ts.Node>): readonly string[] | undefined => {
+    if (!declaration || !("body" in declaration) || !declaration.body || declaration.getSourceFile() !== source) return undefined;
+    const cached = memo.get(declaration);
+    if (cached !== undefined) return cached ?? undefined;
+    if (stack.has(declaration)) return undefined;
+    const nextStack = new Set(stack).add(declaration);
+    const body = declaration.body;
     const writes = new Set<string>();
     let closed = true;
-    const declarationStart = declaration!.getStart(source);
-    const declarationEnd = declaration!.getEnd();
+    const declarationStart = declaration.getStart(source);
+    const declarationEnd = declaration.getEnd();
     const localToCallable = (target: ts.Symbol): boolean => (target.declarations ?? []).some((item) =>
       item.getSourceFile() === source && item.getStart(source) >= declarationStart && item.getEnd() <= declarationEnd);
     const scan = (node: ts.Node): void => {
       if (!closed) return;
-      if (ts.isCallExpression(node) || ts.isNewExpression(node)
-        || ts.isTaggedTemplateExpression(node) || ts.isPropertyAccessExpression(node)
-        || ts.isElementAccessExpression(node)) {
+      if (ts.isCallExpression(node)) {
+        const span = `${node.getStart(source)}:${node.getEnd()}`;
+        if (!reviewedMathCalls.has(span)) {
+          const childSymbol = resolveStableCallableSymbol(checker, node.expression);
+          const child = childSymbol && stableCallableDeclaration(childSymbol);
+          const childWrites = summarize(child, nextStack);
+          if (!childWrites) { closed = false; return; }
+          for (const name of childWrites) writes.add(name);
+        }
+        // Arguments are evaluated at the call site. Inline callable bodies are
+        // conservatively scanned too; over-invalidation is safe here.
+        for (const argument of node.arguments) scan(argument);
+        return;
+      }
+      if (ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node)
+        || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
         closed = false;
         return;
       }
@@ -1026,7 +1043,15 @@ function typeCheckerCallableScalarWrites(
       ts.forEachChild(node, scan);
     };
     scan(body);
-    if (closed) summaries.set(`${call.getStart(source)}:${call.getEnd()}`, [...writes].sort());
+    const result = closed ? [...writes].sort() : null;
+    memo.set(declaration, result);
+    return result ?? undefined;
+  };
+  const visitCall = (call: ts.CallExpression): void => {
+    const symbol = resolveStableCallableSymbol(checker, call.expression);
+    const declaration = symbol && stableCallableDeclaration(symbol);
+    const writes = summarize(declaration, new Set());
+    if (writes) summaries.set(`${call.getStart(source)}:${call.getEnd()}`, writes);
   };
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) visitCall(node);

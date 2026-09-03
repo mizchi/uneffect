@@ -357,6 +357,11 @@ introducing another domain-local control-flow or alias model.
          set. Follow immutable callable aliases; keep nested calls, member
          access, construction, deletion, external bodies, and unresolved
          dispatch as whole-frame invalidation.
+         - [x] Compose captured-write sets through an acyclic graph of stable
+           source-local calls, including immutable aliases and reviewed Math
+           leaves. Propagate child writes; keep recursion, dynamic callback
+           dispatch, external calls, and unsupported member operations as
+           whole-frame invalidation.
        - [x] Treat a nested function declaration as non-executing declaration
          setup in the contract CFG; analyze its body only at a resolved call.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
