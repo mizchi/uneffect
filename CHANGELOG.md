@@ -2,6 +2,53 @@
 
 All notable changes to Uneffect are documented in this file.
 
+## 0.3.0 - 2026-09-03
+
+### Added
+
+- Added versioned package contract artifacts for effects, synchronous and
+  Promise completions, callbacks, returned callables, module initialization,
+  and resource lifecycles. Consumer checks bind them to exact exports,
+  declarations, runtime artifacts, compiler identity, and trust provenance.
+- Added a shared acquire/use/borrow/consume/release/transfer resource model for
+  Web streams, fetch bodies, Node servers and file handles, WebSockets,
+  iterators, `using`/`await using`, and package-defined resources.
+- Added broader exception-aware Hoare composition for synchronous and async
+  scalar producers, Promise forwarding, catch/finally routing, assertion
+  arguments, and persisted package summaries.
+- Added general iterable and async-iterable effect parameters, finite generator
+  expansion, Promise combinator rejection evidence, and async-generator
+  delegation.
+- Added declarative builtin semantic catalogs covering common JavaScript, DOM,
+  Web, and Node APIs, including filesystem authority inferred from open flags.
+- Added dogfood checks for Uneffect's leaf utilities and filesystem boundaries.
+
+### Changed
+
+- Unified public comment directives under the ordinary `uneffect:` surface;
+  internal capability, contract, async, resource, and refinement proof engines
+  are no longer selected as separate user-facing modes.
+- Connected Promise ownership, cancellation, external completion, callbacks,
+  event-loop scheduling, and explicit resource management to the shared
+  temporal and resource transition IR.
+- Standard JavaScript operations now resolve by authenticated TypeChecker
+  declaration identity through reassignment-free aliases. Mutable aliases and
+  same-shaped user implementations fail closed instead of inheriting builtin
+  semantics.
+- Expanded fresh-result, hidden getter/coercion, mutation, and callback effects
+  for Array, Object, Reflect, JSON, collection constructors, and non-mutating
+  copy operations.
+
+### Safety boundary
+
+Uneffect 0.3 remains an experimental, gradual checker. Package contracts may
+contain reviewed assumptions and do not prove third-party implementations.
+Resource and temporal checks cover only the emitted finite projections;
+dynamic dispatch, proxies and prototype mutation, arbitrary heap aliasing,
+complete Promise/event-loop timing, native/Wasm internals, and general
+floating-point correctness remain unsupported or unknown. A green check is not
+a whole-program JavaScript verification result.
+
 ## 0.2.1 - 2026-08-30
 
 ### Added

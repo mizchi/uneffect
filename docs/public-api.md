@@ -1,6 +1,6 @@
 # Public API and compatibility
 
-This document defines the intended package surface as of Uneffect 0.2.1. The
+This document defines the intended package surface as of Uneffect 0.3.0. The
 project is still pre-1.0: pin the exact version in verification workflows and
 read emitted exclusions together with every result.
 

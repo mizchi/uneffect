@@ -1,5 +1,8 @@
 # Continuous integration
 
+Maintainer release preparation and the current explicit npm publish procedure
+are documented in [Releasing Uneffect](./releasing.md).
+
 The CI test split is a capability partition, not a coverage reduction. The
 authoritative manifest is `ci/test-tiers.ts`; `test/ci-tiers.test.ts` fails when
 a `test/*.test.ts` file is missing from the manifest or appears in more than one

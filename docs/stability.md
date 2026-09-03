@@ -1,6 +1,6 @@
 # Stability and safe adoption
 
-Uneffect 0.2.1 is an experimental release. Public JavaScript APIs, CLI options,
+Uneffect 0.3.0 is an experimental release. Public JavaScript APIs, CLI options,
 comment grammar, and semantic behavior may change before 1.0. Versioned artifact
 schemas retain their own compatibility boundary. This page distinguishes a
 tested fragment that can be used conservatively today from experimental models

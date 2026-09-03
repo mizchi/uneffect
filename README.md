@@ -104,7 +104,7 @@ only where the relevant fragment is supported.
 
 ## Assurance boundary
 
-Uneffect 0.2 is an experimental release. It is useful as an additional,
+Uneffect 0.3 is an experimental release. It is useful as an additional,
 fail-closed review and CI layer on explicitly selected TypeScript boundaries. A
 `verified` artifact applies only to its exact claim, source snapshot,
 configuration, supported syntax fragment, and recorded backend.

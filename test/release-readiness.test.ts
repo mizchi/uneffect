@@ -2,16 +2,19 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { uneffectVersion } from "../src/evidence.js";
 
-describe("0.2.1 release metadata", () => {
+describe("0.3.0 release metadata", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
     name: string; version: string; main?: string; types?: string;
     exports: Record<string, unknown>; files: string[]; publishConfig: { access: string; provenance?: boolean };
+    bin?: Record<string, string>; engines?: Record<string, string>; scripts?: Record<string, string>;
+    repository?: { type: string; url: string };
   };
 
   it("keeps package and evidence versions synchronized", () => {
     expect(manifest.name).toBe("@mizchi/uneffect");
-    expect(manifest.version).toBe("0.2.1");
+    expect(manifest.version).toBe("0.3.0");
     expect(uneffectVersion).toBe(manifest.version);
+    expect(readFileSync("crates/uneffect-core/Cargo.toml", "utf8")).toContain(`version = "${manifest.version}"`);
   });
 
   it("publishes explicit runtime, type, schema, and license surfaces", () => {
@@ -20,15 +23,20 @@ describe("0.2.1 release metadata", () => {
     expect(manifest.exports).toHaveProperty(".");
     expect(manifest.exports).toHaveProperty("./corsa");
     expect(manifest.exports).toHaveProperty("./experimental");
+    expect(manifest.exports).toHaveProperty("./spec");
     expect(manifest.exports).toHaveProperty("./schemas/*");
     expect(manifest.files).toEqual(expect.arrayContaining(["dist/src", "README.md", "CHANGELOG.md", "LICENSE", "docs", "schemas"]));
     expect(manifest.publishConfig).toMatchObject({ access: "public", provenance: true });
+    expect(manifest.bin).toEqual({ uneffect: "dist/src/cli.js" });
+    expect(manifest.engines).toEqual({ node: ">=24" });
+    expect(manifest.repository).toEqual({ type: "git", url: "git+https://github.com/mizchi/uneffect.git" });
+    expect(manifest.scripts?.prepack).toBe("pnpm build");
   });
 
-  it("documents the experimental 0.2 release without claiming general verification", () => {
+  it("documents the experimental 0.3 release without claiming general verification", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8"), readme = readFileSync("README.md", "utf8");
-    expect(changelog).toContain("## 0.2.1");
-    expect(readme).toContain("0.2 is an experimental release");
+    expect(changelog).toContain("## 0.3.0");
+    expect(readme).toContain("0.3 is an experimental release");
     expect(readme).toContain("not a verifier for all of JavaScript");
     expect(readme).toContain("[Public API and compatibility](./docs/public-api.md)");
   });
