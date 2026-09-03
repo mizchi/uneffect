@@ -62,7 +62,11 @@ field is rejected. Project verification also composes definite ownership order:
 `examples/dogfood/worker-codec-transfer.ts` transfers the fixed buffer through
 `Worker.postMessage`, and its later DataView construction downgrades the
 backing obligation to a counterexample. This currently covers direct resources
-and builtin DataView identity. Mutable or interprocedural aliases, conditional
+and builtin DataView identity. The TypeChecker-backed path retains constructor
+identity through reassignment-free aliases such as `const View = DataView`,
+`const Buffer = ArrayBuffer`, and `const Bytes = Uint8Array`; mutable aliases
+are not authenticated even if their static signature is unchanged. Mutable
+resource aliases or interprocedural aliases, conditional
 transfer, resize transitions, and SharedArrayBuffer concurrency are not yet
 modeled.
 
@@ -208,6 +212,9 @@ const ROUND = u32Table([...PREFIX, ...SUFFIX, 5] as const)
 
 A bounded index generator is also evaluated exhaustively when its exact shape
 is `Array.from({ length: constant }, (_, index) => integerExpression)`. The
+Program-backed checker accepts an immutable callable alias of the standard
+`Array.from` by declaration identity and rejects mutable or same-shaped local
+callables. The
 length is capped at 10,000 analysis steps, and the callback expression may use
 only the existing constant-expression fragment. Other callbacks remain
 unresolved. This static evidence is paired with the `u8Table`/`u32Table`

@@ -7,6 +7,7 @@ import { resolveStableRegion } from "./region-alias.js";
 import { symbolIdentityKey } from "./binding-identity.js";
 import { resolveAssumptionRecord, type AssumptionRegistry } from "./assumption-registry.js";
 import { resolveBuiltinTypedArrayWindowMethod, type TypedArrayWindowMethod } from "./typed-array-windows.js";
+import { standardLibraryOperation } from "./frontend-adapter.js";
 
 export interface TypedArrayObligation {
   functionName: string;
@@ -144,6 +145,10 @@ interface TypedArraySemantics {
   arrayBufferResizeCalls?: ReadonlySet<number>;
   /** New-expression starts authenticated as standard ArrayBuffer construction. */
   arrayBufferConstructors?: ReadonlySet<number>;
+  /** New-expression starts authenticated as standard DataView construction. */
+  dataViewConstructors?: ReadonlySet<number>;
+  /** Call-expression starts authenticated as standard Array.from. */
+  arrayFromCalls?: ReadonlySet<number>;
   /** New-expression start -> authenticated standard typed-array element domain. */
   typedArrayConstructors?: ReadonlyMap<number, "u8" | "u32">;
   /** Identifier source start -> declaration identity. */
@@ -312,7 +317,7 @@ function hasShadowedBindings(functionNode: ts.FunctionDeclaration): boolean {
   return shadowed;
 }
 
-function collectConstantTables(source: ts.SourceFile, constants: ReadonlyMap<string, number>, seed: ReadonlyMap<string, ConstantTable> = new Map()): Map<string, ConstantTable> {
+function collectConstantTables(source: ts.SourceFile, constants: ReadonlyMap<string, number>, seed: ReadonlyMap<string, ConstantTable> = new Map(), semantics?: TypedArraySemantics): Map<string, ConstantTable> {
   const tables = new Map<string, ConstantTable>(seed);
   let changed = true;
   while (changed) {
@@ -338,8 +343,9 @@ function collectConstantTables(source: ts.SourceFile, constants: ReadonlyMap<str
         }
       } else {
         const call = ts.isCallExpression(table.expression) ? table.expression : undefined;
-        const arrayFrom = call && ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)
-          && call.expression.expression.text === "Array" && call.expression.name.text === "from";
+        const arrayFrom = call && (semantics ? semantics.arrayFromCalls?.has(call.getStart(source)) === true
+          : ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)
+            && call.expression.expression.text === "Array" && call.expression.name.text === "from");
         const sourceArgument = call?.arguments[0], callback = call?.arguments[1];
         const lengthProperty = sourceArgument && ts.isObjectLiteralExpression(sourceArgument)
           ? sourceArgument.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && property.name.getText(source) === "length") : undefined;
@@ -487,7 +493,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
   const windowsByDeclaration = new Map<number, TypedArrayWindowProvenance>();
   let solverQueries = 0;
   const constants = collectConstants(source);
-  const tables = collectConstantTables(source, constants, importedTables);
+  const tables = collectConstantTables(source, constants, importedTables, semantics);
   for (const statement of source.statements) if (ts.isVariableStatement(statement) && (statement.declarationList.flags & ts.NodeFlags.Const)) for (const declaration of statement.declarationList.declarations) {
     if (!ts.isIdentifier(declaration.name)) continue;
     const table = constantTableDeclaration(declaration, source);
@@ -543,7 +549,8 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
           const semanticAlias = semantics?.dataViewAliases?.get(current.getStart(source));
           let constructedView: string | undefined;
           if (current.initializer && ts.isNewExpression(current.initializer)
-            && current.initializer.expression.getText(source) === "DataView" && current.initializer.arguments?.[0]) {
+            && (semantics ? semantics.dataViewConstructors?.has(current.initializer.getStart(source)) === true
+              : current.initializer.expression.getText(source) === "DataView") && current.initializer.arguments?.[0]) {
             const [buffer, offset, length] = current.initializer.arguments;
             const bufferMaximum = buffer && ts.isIdentifier(buffer) ? fixedArrayBufferBytes(fixedBufferTypes.get(bindingKey(buffer, semantics)) ?? "", constants) : undefined;
             const offsetConstant = offset ? constantNumber(offset, constants) : 0;
@@ -552,7 +559,8 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
             if (lengthConstant !== undefined && Number.isSafeInteger(lengthConstant) && lengthConstant >= 0) constructedView = `BoundedDataView<${lengthConstant}>`;
           }
           const isDataViewConstruction = current.initializer && ts.isNewExpression(current.initializer)
-            && current.initializer.expression.getText(source) === "DataView" && current.initializer.arguments?.[0];
+            && (semantics ? semantics.dataViewConstructors?.has(current.initializer.getStart(source)) === true
+              : current.initializer.expression.getText(source) === "DataView") && current.initializer.arguments?.[0];
           const unsafeSemanticAlias = semanticAlias === null && !isDataViewConstruction;
           const inherited = unsafeSemanticAlias ? "__uneffect_unknown_dataview_alias__"
             : semanticAlias ?? constructedView ?? (current.initializer && ts.isIdentifier(current.initializer) ? dataViewTypes.get(bindingKey(current.initializer, semantics)) : undefined);
@@ -683,13 +691,16 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const returned = ts.isReturnStatement(current) && current.expression
         ? unwrapTransparentExpression(current.expression) : undefined;
       if (bounded && returned && ts.isNewExpression(returned)
-        && returned.expression.getText(source) === bounded.constructor && returned.arguments?.length === 1) {
+        && (semantics ? semantics.typedArrayConstructors?.get(returned.getStart(source)) === typedArrayElement(bounded.constructor)
+          : returned.expression.getText(source) === bounded.constructor) && returned.arguments?.length === 1) {
         const length = returned.arguments[0]!;
         candidates.push({ kind: "max-length", goal: `${length.getText(source)} >= 0 && ${length.getText(source)} <= ${bounded.maximum}`, node: length, value: length, upper: bounded.maximum });
       }
-      const construction = returned && ts.isNewExpression(returned) && returned.expression.getText(source) === "DataView" && returned.arguments?.[0]
+      const construction = returned && ts.isNewExpression(returned)
+        && (semantics ? semantics.dataViewConstructors?.has(returned.getStart(source)) === true : returned.expression.getText(source) === "DataView") && returned.arguments?.[0]
         ? returned
-        : ts.isNewExpression(current) && current.expression.getText(source) === "DataView" && current.arguments?.[0] ? current : undefined;
+        : ts.isNewExpression(current)
+          && (semantics ? semantics.dataViewConstructors?.has(current.getStart(source)) === true : current.expression.getText(source) === "DataView") && current.arguments?.[0] ? current : undefined;
       const trackedLocalView = construction && ts.isVariableDeclaration(construction.parent)
         && construction.parent.initializer === construction && ts.isIdentifier(construction.parent.name)
         && dataViewTypes.has(bindingKey(construction.parent.name, semantics));
@@ -971,6 +982,8 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
   const typedArrayWindowMethods = new Map<number, TypedArrayWindowMethod>();
   const arrayBufferResizeCalls = new Set<number>();
   const arrayBufferConstructors = new Set<number>();
+  const dataViewConstructors = new Set<number>();
+  const arrayFromCalls = new Set<number>();
   const typedArrayConstructors = new Map<number, "u8" | "u32">();
   const bindingKeys = new Map<number, string>();
   const constantKeys = new Map<string, string>();
@@ -987,14 +1000,12 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
       if (key) bindingKeys.set(node.getStart(source), key);
     }
     if (ts.isCallExpression(node)) {
+      if (standardLibraryOperation(checker, node) === "ArrayConstructor#from") arrayFromCalls.add(node.getStart(source));
       const method = resolveCast(node.expression);
       if (method) integerCasts.set(node.getStart(source), method);
-      if (ts.isPropertyAccessExpression(node.expression)
-        && (node.expression.name.text === "imul" || node.expression.name.text === "clz32" || node.expression.name.text === "fround")) {
-        const symbol = symbolAt(node.expression.name);
-        if (symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile()))) {
-          integerOperations.set(node.getStart(source), node.expression.name.text);
-        }
+      const standardOperation = standardLibraryOperation(checker, node);
+      if (standardOperation === "Math#imul" || standardOperation === "Math#clz32" || standardOperation === "Math#fround") {
+        integerOperations.set(node.getStart(source), standardOperation.slice("Math#".length) as "imul" | "clz32" | "fround");
       }
       const windowMethod = resolveBuiltinTypedArrayWindowMethod(program, node);
       if (windowMethod) typedArrayWindowMethods.set(node.getStart(source), windowMethod);
@@ -1005,18 +1016,12 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
         }
       }
     }
-    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)
-      && (node.expression.text === "Uint8Array" || node.expression.text === "Uint32Array")) {
-      const symbol = symbolAt(node.expression);
-      if (symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile()))) {
-        typedArrayConstructors.set(node.getStart(source), node.expression.text === "Uint8Array" ? "u8" : "u32");
-      }
-    }
-    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "ArrayBuffer") {
-      const symbol = symbolAt(node.expression);
-      if (symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile()))) {
-        arrayBufferConstructors.add(node.getStart(source));
-      }
+    if (ts.isNewExpression(node)) {
+      const operation = standardLibraryOperation(checker, node);
+      if (operation === "Uint8ArrayConstructor" || operation === "Uint32ArrayConstructor") {
+        typedArrayConstructors.set(node.getStart(source), operation === "Uint8ArrayConstructor" ? "u8" : "u32");
+      } else if (operation === "ArrayBufferConstructor") arrayBufferConstructors.add(node.getStart(source));
+      else if (operation === "DataViewConstructor") dataViewConstructors.add(node.getStart(source));
     }
     ts.forEachChild(node, visit);
   };
@@ -1071,7 +1076,7 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
     ts.forEachChild(node, collectFunctions);
   };
   collectFunctions(source);
-  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, integerOperations, dataViewAliases, typedArrayWindowMethods, arrayBufferResizeCalls, arrayBufferConstructors, typedArrayConstructors, bindingKeys, constantKeys }, z3, assumptionRegistry);
+  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts, integerOperations, dataViewAliases, typedArrayWindowMethods, arrayBufferResizeCalls, arrayBufferConstructors, dataViewConstructors, arrayFromCalls, typedArrayConstructors, bindingKeys, constantKeys }, z3, assumptionRegistry);
 }
 
 function resolveProgramModule(from: string, specifier: string, files: Readonly<Record<string, string>>): string | undefined {

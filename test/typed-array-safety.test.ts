@@ -7,6 +7,16 @@ import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array,
 import { reviewedAssumptions } from "./assumption-fixtures.js";
 import type { BoundedArrayBuffer, BoundedDataView, BoundedUint32Array, BoundedUint8Array, FixedArrayBuffer, U32, U8 } from "../src/index.js";
 
+async function verifyProgramSource(name: string, text: string) {
+  const directory = mkdtempSync(join(tmpdir(), "uneffect-typed-array-program-"));
+  const fileName = join(directory, name);
+  try {
+    writeFileSync(fileName, text);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, noEmit: true });
+    return await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}
+
 describe("bounded Uint8Array safety", () => {
   it("fails closed when a legacy numeric scope contains shadowed bindings", async () => {
     const result = await verifyTypedArraySafety("shadowed-array.ts", `
@@ -190,6 +200,35 @@ describe("bounded Uint8Array safety", () => {
       expect.objectContaining({ functionName: "outsideView", kind: "dataview-bounds", result: "counterexample" }),
       expect.objectContaining({ functionName: "outsideBacking", kind: "dataview-backing-bounds", result: "counterexample" }),
     ]));
+  });
+
+  it("authenticates numeric constructors and operations through stable aliases", async () => {
+    const result = await verifyProgramSource("numeric-builtin-aliases.ts", `
+      import type { BoundedDataView, BoundedUint8Array, FixedArrayBuffer, U32 } from "@mizchi/uneffect"
+      const Buffer = ArrayBuffer
+      const View = DataView
+      const Bytes = Uint8Array
+      const multiply = Math.imul
+      function view(): BoundedDataView<4> {
+        const buffer: FixedArrayBuffer<4> = new Buffer(4) as FixedArrayBuffer<4>
+        return new View(buffer, 0, 4) as BoundedDataView<4>
+      }
+      function bytes(): BoundedUint8Array<4> { return new Bytes(4) as BoundedUint8Array<4> }
+      function word(target: BoundedDataView<4>, left: U32, right: U32) {
+        target.setInt32(0, multiply(left, right))
+      }
+      let MutableView = DataView
+      function mutable(buffer: FixedArrayBuffer<4>) {
+        const value: BoundedDataView<4> = new MutableView(buffer, 0, 4) as BoundedDataView<4>
+        return value.getUint32(0)
+      }
+    `);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "view", kind: "dataview-backing-bounds", result: "verified" }),
+      expect.objectContaining({ functionName: "bytes", kind: "max-length", result: "verified" }),
+      expect.objectContaining({ functionName: "word", kind: "dataview-value", result: "verified" }),
+    ]));
+    expect(result.obligations).not.toContainEqual(expect.objectContaining({ functionName: "mutable", kind: "dataview-backing-bounds", result: "verified" }));
   });
 
   it("tracks bounded subarray and slice windows", async () => {
@@ -792,6 +831,20 @@ describe("bounded Uint8Array safety", () => {
     expect(result.obligations).toEqual(expect.arrayContaining([
       expect.objectContaining({ functionName: "<module>", kind: "constant-table-values", goal: "ROUND elements are U32", result: "verified" }),
       expect.objectContaining({ functionName: "<module>", kind: "constant-table-values", goal: "INVALID elements are U8", result: "counterexample" }),
+      expect.objectContaining({ functionName: "read", kind: "constant-table-index", result: "verified" }),
+    ]));
+  });
+
+  it("evaluates Array.from table generators through immutable aliases", async () => {
+    const result = await verifyProgramSource("generated-array-from-alias.ts", `
+      import type { Nat, U32 } from "@mizchi/uneffect"
+      const collect = Array.from
+      const VALUES = u32Table(collect({ length: 4 }, (_, index) => index * 3))
+      /* uneffect:requires index < VALUES.length */
+      function read(index: Nat): U32 { return VALUES[index]! }
+    `);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "<module>", kind: "constant-table-values", goal: "VALUES elements are U32", result: "verified" }),
       expect.objectContaining({ functionName: "read", kind: "constant-table-index", result: "verified" }),
     ]));
   });
