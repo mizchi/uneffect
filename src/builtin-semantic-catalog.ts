@@ -496,6 +496,14 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: "ECMAScript Object.fromEntries creates a new ordinary object while consuming its iterable input",
       trustOwner: "@mizchi/uneffect",
     }),
+    ...(["Array", "Map", "Set", "WeakMap", "WeakSet"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "global", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "result" as const, refinement: { kind: "fresh" as const } },
+      ] },
+      trustReason: `ECMAScript ${name} construction creates a fresh collection object`,
+      trustOwner: "@mizchi/uneffect",
+    })),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "ArrayConstructor#fromAsync" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [

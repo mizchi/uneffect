@@ -45,6 +45,10 @@ describe("builtin semantic overlays", () => {
       }), { kind: "result", refinement: { kind: "fresh" } }]) }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ArrayConstructor#of" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ObjectConstructor#fromEntries" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
+      ...["Array", "Map", "Set", "WeakMap", "WeakSet"].map((exportName) => expect.objectContaining({
+        platform: "javascript", symbol: { module: "global", export: exportName },
+        semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }),
+      })),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ArrayConstructor#fromAsync" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([
         expect.objectContaining({
           kind: "callback", timing: "deferred", queue: "microtask", cardinality: "0..n",

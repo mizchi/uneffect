@@ -397,6 +397,12 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       symbol: contract.symbol,
       span: { start: construction.getStart(), end: construction.getEnd() },
       evidence: "trusted",
+      result: (() => {
+        const result = contract.semantics?.primitives.find((primitive) => primitive.kind === "result"
+          && (primitive.refinement.kind === "fresh" || primitive.refinement.kind === "path"));
+        return result?.kind === "result" && (result.refinement.kind === "fresh" || result.refinement.kind === "path")
+          ? result.refinement : undefined;
+      })(),
       semantics: contract.semantics,
       callableResult: contract.callableResult,
     } : undefined;

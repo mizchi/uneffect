@@ -597,8 +597,11 @@ function effectsForGenericSemantics(
       if (event.target.status === "absent") continue;
       const mutation = projectedMutationEffect(event.target, domRegionSemantics ? adapter : undefined);
       if (!mutation) return undefined;
-      if (event.target.status === "resolved" && ts.isCallExpression(event.target.expression)
-        && adapter.resolveCall(event.target.expression)?.result?.kind === "fresh") continue;
+      if (event.target.status === "resolved"
+        && ((ts.isCallExpression(event.target.expression)
+          && adapter.resolveCall(event.target.expression)?.result?.kind === "fresh")
+          || (ts.isNewExpression(event.target.expression)
+            && adapter.resolveConstruct(event.target.expression)?.result?.kind === "fresh"))) continue;
       effects.push(mutation);
     } else if (event.kind === "invoke-user-code") effects.push(capability("InvokeUserCode"));
     else if (event.kind === "throw") effects.push({ kind: "throw", errorType: event.error });

@@ -1026,6 +1026,9 @@ introducing another domain-local control-flow or alias model.
        refinement as `toSorted`, so later local mutation does not alias input.
      - [x] Mark `Array.from`, `Array.of`, and `Object.fromEntries` results fresh
        without suppressing iterable-consumption or mapper Effects.
+     - [x] Project fresh results through catalog-backed `new` expressions and
+       apply them to standard `Array`/`Map`/`Set`/`WeakMap`/`WeakSet`
+       construction while preserving constructor iterable Effects.
    - [x] Model standard-identity `Object.assign` as enumerable reads followed
      by target writes. Compose same-Program object-literal source getters and
      matching target setters, exclude class prototype accessors, and classify

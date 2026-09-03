@@ -2656,6 +2656,14 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function indexed(entries: readonly (readonly [PropertyKey, number])[]) {
           return Object.assign(Object.fromEntries(entries), { extra: 1 })
         }
+        /* uneffect:effect none */
+        export function mappedEntries(entries: readonly (readonly [string, number])[]) {
+          return new Map(entries).set("extra", 1)
+        }
+        /* uneffect:effect none */
+        export function collected(values: readonly number[]) { return new Set(values).add(1) }
+        /* uneffect:effect none */
+        export function allocated(length: number) { return new Array<number>(length).fill(0) }
         /* uneffect:effect Console */
         function* loggedEntries() {
           console.log("entry")
@@ -2664,6 +2672,10 @@ describe("multi-file call graph and effect polymorphism", () => {
         /* uneffect:effect Console */
         export function indexedFromGenerator() {
           return Object.assign(Object.fromEntries(loggedEntries()), { extra: 1 })
+        }
+        /* uneffect:effect Console */
+        export function mapFromGenerator() {
+          return new Map(loggedEntries()).set("value", 1)
         }
       `);
       const program = ts.createProgram([source], {
@@ -2676,12 +2688,15 @@ describe("multi-file call graph and effect polymorphism", () => {
       const result = analyzeProgramEffects(program);
       expect(result.diagnostics).toEqual([]);
       expect(result.summaries.filter(({ functionName }) =>
-        ["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced", "copiedFrom", "created", "indexed"].includes(functionName)))
-        .toEqual(expect.arrayContaining(["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced", "copiedFrom", "created", "indexed"]
+        ["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced", "copiedFrom", "created", "indexed", "mappedEntries", "collected", "allocated"].includes(functionName)))
+        .toEqual(expect.arrayContaining(["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced", "copiedFrom", "created", "indexed", "mappedEntries", "collected", "allocated"]
           .map((functionName) => expect.objectContaining({ functionName, effects: [], evidence: "verified" }))));
       const generated = result.summaries.find(({ functionName }) => functionName === "indexedFromGenerator");
       expect(generated).toEqual(expect.objectContaining({ functionName: "indexedFromGenerator", evidence: "verified" }));
       expect(generated?.effects.map(formatEffect)).toEqual(["Console"]);
+      const generatedMap = result.summaries.find(({ functionName }) => functionName === "mapFromGenerator");
+      expect(generatedMap).toEqual(expect.objectContaining({ functionName: "mapFromGenerator", evidence: "verified" }));
+      expect(generatedMap?.effects.map(formatEffect)).toEqual(["Console"]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
