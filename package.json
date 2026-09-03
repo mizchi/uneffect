@@ -77,7 +77,6 @@
     "node": ">=24"
   },
   "peerDependencies": {
-    "@corsa-bind/napi": ">=1.12.4",
     "@informalsystems/quint": ">=0.32.0",
     "@oxlint/plugins": ">=1.80.0",
     "corsa-oxlint": ">=1.12.4",
@@ -85,7 +84,7 @@
     "typescript": ">=6.0.0-dev.20260820 <7"
   },
   "peerDependenciesMeta": {
-    "@corsa-bind/napi": {
+    "typescript": {
       "optional": true
     },
     "@informalsystems/quint": {
@@ -105,6 +104,10 @@
     "effect": "^3.22.1",
     "valibot": "^1.4.2",
     "z3-solver": "^4.15.4"
+  },
+  "optionalDependencies": {
+    "@corsa-bind/napi": "1.12.4",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2"
   },
   "devDependencies": {
     "@corsa-bind/napi": "1.12.4",

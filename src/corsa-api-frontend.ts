@@ -1,11 +1,13 @@
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
 import type { SemanticPositionFact, SemanticQueryFrontend } from "./semantic-query.js";
 
 export type { SemanticPositionFact, SemanticQueryFrontend } from "./semantic-query.js";
 
 export interface CorsaApiFrontendOptions {
   configFile: string;
-  corsaExecutable: string;
+  /** Explicit Corsa-compatible compiler. Defaults to Uneffect's prebuilt tsgo. */
+  corsaExecutable?: string;
   cwd?: string;
 }
 
@@ -23,13 +25,54 @@ export interface CorsaApiTypeFact {
   value?: unknown;
 }
 
+export type CorsaBuiltinOperation = "Fetch" | "Console";
+
+export interface CorsaBuiltinCallQuery {
+  readonly calleePosition: number;
+  readonly receiverPosition?: number;
+}
+
+export interface CorsaBuiltinCallResolution {
+  readonly operation: CorsaBuiltinOperation;
+  readonly compilerRevision: string;
+  readonly symbol: CorsaApiSymbolFact;
+  readonly receiver?: CorsaApiSymbolFact;
+}
+
 export interface CorsaApiFrontend extends SemanticQueryFrontend {
   readonly compilerRevision: string;
+  readonly compilerExecutable: string;
   readonly projectId: string;
   readonly rootFiles: readonly string[];
   getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;
   getTypeAtPosition(file: string, position: number): CorsaApiTypeFact | null;
   getTypesAtPositions(file: string, positions: readonly number[]): Array<CorsaApiTypeFact | null>;
+  /** Narrow checker-backed builtin slice currently admitted by migration tests. */
+  classifyBuiltinCall(file: string, query: CorsaBuiltinCallQuery): CorsaBuiltinCallResolution | null;
+}
+
+const packageRequire = createRequire(import.meta.url);
+
+function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null): symbol is CorsaApiSymbolFact {
+  return symbol !== null && (symbol.declarations ?? []).some((item) => /(?:^|[/\\])lib\.dom\.d\.ts$/.test(item));
+}
+
+/**
+ * Resolves an explicit compiler relative to the selected cwd, or the prebuilt
+ * compiler owned by Uneffect. It never searches for a consumer `typescript`
+ * package or a PATH-global `tsgo`.
+ */
+export function resolveCorsaExecutable(options: Pick<CorsaApiFrontendOptions, "corsaExecutable" | "cwd"> = {}): string {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  if (options.corsaExecutable !== undefined) return resolve(cwd, options.corsaExecutable);
+  try {
+    return join(dirname(packageRequire.resolve("@typescript/native-preview/package.json")), "bin", "tsgo");
+  } catch (cause) {
+    throw new Error(
+      "No Corsa compiler was supplied and @typescript/native-preview is unavailable; install the optional prebuilt dependency or pass corsaExecutable",
+      { cause },
+    );
+  }
 }
 
 interface CorsaProjectResponse {
@@ -50,8 +93,9 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
   const { CorsaApiClient, version } = await import("@corsa-bind/napi");
   const configFile = resolve(options.configFile);
   const cwd = resolve(options.cwd ?? process.cwd());
+  const compilerExecutable = resolveCorsaExecutable(options);
   const client = await CorsaApiClient.spawnAsync({
-    executable: resolve(options.corsaExecutable),
+    executable: compilerExecutable,
     cwd,
     mode: "jsonrpc",
   });
@@ -79,6 +123,7 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
     };
     return {
       compilerRevision: `corsa-api@${version()}`,
+      compilerExecutable,
       projectId: project.id,
       rootFiles: [...project.rootFiles],
       getSymbolAtPosition(file, position) {
@@ -99,6 +144,21 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
           positions: [...positions],
         }) as Array<CorsaApiTypeFact | null>;
         return types.map(normalizeType);
+      },
+      classifyBuiltinCall(file, query) {
+        assertOpen();
+        const source = projectFile(file);
+        const symbol = client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, query.calleePosition) as CorsaApiSymbolFact | null;
+        if (symbol?.name === "fetch" && declaredByDomLibrary(symbol) && query.receiverPosition === undefined) {
+          return { operation: "Fetch", compilerRevision: `corsa-api@${version()}`, symbol };
+        }
+        if (query.receiverPosition !== undefined && declaredByDomLibrary(symbol)) {
+          const receiver = client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, query.receiverPosition) as CorsaApiSymbolFact | null;
+          if (receiver?.name === "console" && declaredByDomLibrary(receiver)) {
+            return { operation: "Console", compilerRevision: `corsa-api@${version()}`, symbol, receiver };
+          }
+        }
+        return null;
       },
       queryPosition(file, position): SemanticPositionFact {
         assertOpen();

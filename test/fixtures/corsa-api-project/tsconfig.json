@@ -5,5 +5,5 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext"
   },
-  "files": ["index.ts"]
+  "files": ["index.ts", "fs-bridge.ts"]
 }

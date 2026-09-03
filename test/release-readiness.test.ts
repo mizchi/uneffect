@@ -8,6 +8,8 @@ describe("0.3.0 release metadata", () => {
     exports: Record<string, unknown>; files: string[]; publishConfig: { access: string; provenance?: boolean };
     bin?: Record<string, string>; engines?: Record<string, string>; scripts?: Record<string, string>;
     peerDependencies?: Record<string, string>;
+    peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    optionalDependencies?: Record<string, string>;
     repository?: { type: string; url: string };
   };
 
@@ -31,6 +33,9 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.bin).toEqual({ uneffect: "dist/src/cli.js" });
     expect(manifest.engines).toEqual({ node: ">=24" });
     expect(manifest.peerDependencies?.typescript).toBe(">=6.0.0-dev.20260820 <7");
+    expect(manifest.peerDependenciesMeta?.typescript).toEqual({ optional: true });
+    expect(manifest.optionalDependencies?.["@corsa-bind/napi"]).toBe("1.12.4");
+    expect(manifest.optionalDependencies?.["@typescript/native-preview"]).toMatch(/^7\.0\.0-dev\./);
     expect(manifest.repository).toEqual({ type: "git", url: "git+https://github.com/mizchi/uneffect.git" });
     expect(manifest.scripts?.prepack).toBe("pnpm build");
   });

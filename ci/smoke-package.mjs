@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const temporary = mkdtempSync(join(tmpdir(), "uneffect-package-smoke-"));
 
@@ -14,7 +15,8 @@ try {
   if (typeof filename !== "string") throw new Error("npm pack did not report a tarball filename");
 
   const consumer = join(temporary, "consumer");
-  execFileSync("npm", ["install", "--ignore-scripts", "--prefix", consumer, join(temporary, filename)], { stdio: "inherit" });
+  const typescriptPackage = dirname(createRequire(import.meta.url).resolve("typescript/package.json"));
+  execFileSync("npm", ["install", "--ignore-scripts", "--prefix", consumer, join(temporary, filename), typescriptPackage], { stdio: "inherit" });
   const smoke = join(consumer, "smoke.mjs");
   writeFileSync(smoke, `
     import * as root from "@mizchi/uneffect";
@@ -37,6 +39,28 @@ try {
     console.log(JSON.stringify({ typescript: ts.version, rootExports: Object.keys(root).length }));
   `);
   execFileSync(process.execPath, [smoke], { cwd: consumer, stdio: "inherit" });
+
+  const corsaConsumer = join(temporary, "corsa-consumer");
+  execFileSync("npm", ["install", "--ignore-scripts", "--prefix", corsaConsumer, join(temporary, filename)], { stdio: "inherit" });
+  writeFileSync(join(corsaConsumer, "tsconfig.json"), JSON.stringify({
+    compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" },
+    files: ["index.ts"],
+  }));
+  writeFileSync(join(corsaConsumer, "index.ts"), "export const answer = 42 as const;\n");
+  const corsaSmoke = join(corsaConsumer, "corsa-smoke.mjs");
+  writeFileSync(corsaSmoke, `
+    import { openCorsaApiFrontend } from "@mizchi/uneffect/corsa/api";
+    const file = new URL("./index.ts", import.meta.url).pathname;
+    const frontend = await openCorsaApiFrontend({ configFile: new URL("./tsconfig.json", import.meta.url).pathname });
+    try {
+      const fact = frontend.queryPosition(file, 13);
+      if (fact.symbol?.name !== "answer" || fact.type?.texts[0] !== "42") throw new Error("Corsa-only package smoke failed");
+      console.log(JSON.stringify({ corsa: frontend.compilerRevision, compiler: frontend.compilerExecutable }));
+    } finally {
+      frontend.close();
+    }
+  `);
+  execFileSync(process.execPath, [corsaSmoke], { cwd: corsaConsumer, stdio: "inherit" });
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }

@@ -171,7 +171,6 @@ import { openCorsaApiFrontend } from "@mizchi/uneffect/corsa/api";
 
 const frontend = await openCorsaApiFrontend({
   configFile: "/workspace/tsconfig.json",
-  corsaExecutable: "/workspace/node_modules/.bin/tsgo",
 });
 try {
   const symbol = frontend.getSymbolAtPosition("/workspace/src/index.ts", 120);
@@ -180,6 +179,22 @@ try {
   frontend.close();
 }
 ```
+
+`corsaExecutable` is optional. By default it resolves the fixed
+`@typescript/native-preview` prebuilt owned by Uneffect, rather than a
+consumer-local `typescript` package or a PATH-global compiler. Pass an explicit
+path when the application must select compiler provenance. The regular
+Uneffect CLI still requires the JavaScript TypeScript 6 peer; that peer is
+optional at package-install time so a `/corsa/api`-only consumer does not have
+to install it.
+
+The first checker-backed effect-resolution slice is deliberately small.
+`classifyBuiltinCall` authenticates global `fetch` as `Fetch`, and a member of
+the checker-resolved global `console` object as `Console`. Same-spelled local
+parameters fail closed. A re-exported `node:fs/promises` alias currently also
+fails closed: Corsa 1.12.4 returns the local alias symbol and does not expose an
+aliased-symbol endpoint through this facade. This is covered by a negative test
+and is not reported as `FsRead`.
 
 This probe supports project-root membership checks, symbol identity, normalized
 type text, and batched type queries. Both the Corsa implementation and a
@@ -191,9 +206,9 @@ replacement for syntax enumeration, parent/child traversal, TypeScript CFG,
 node-kind guards, or source transforms: Corsa's public Node API accepts source
 positions but does not expose a whole-project AST iterator. During migration,
 syntax can therefore remain on a parser-compatible layer while semantic queries
-move behind this adapter. The N-API package is an optional peer and ships
-platform prebuilds; the compiler executable is still explicit and pinned, so it
-does not load or mutate the consuming application's TypeScript installation.
+move behind this adapter. The N-API package and compiler are exact optional
+dependencies with platform prebuilds; the default compiler executable does not
+load or mutate the consuming application's TypeScript installation.
 The isolated `/corsa/api` subpath does not statically load the Oxlint exporter
 or the JavaScript TypeScript compiler package.
 
@@ -202,6 +217,13 @@ and querying one symbol and type took 75.98 ms mean (7 samples). The existing
 temporary-project Oxlint exporter took 757–1,031 ms for its one-sample fixtures,
 so the probe was roughly 10–14x faster. These figures measure different amounts
 of work and establish startup feasibility, not complete semantic parity.
+
+The result supports a staged architecture, not a complete frontend switch:
+keep TypeScript AST syntax enumeration, move authenticated position-based
+checker queries behind the semantic frontend, expand only when Corsa exposes
+stable alias/signature/property APIs, and replace syntax traversal separately.
+The prebuilt compiler isolates compiler installation and startup; it does not
+by itself remove the TypeScript AST dependency from the main analyzer.
 
 Schema v8 has one `fileId`, so both adapters use a deterministic virtual-project
 coordinate instead of mixing file-local offsets: source files are ordered by

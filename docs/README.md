@@ -39,6 +39,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Contract-derived property testing](./property-testing.md): deterministic generators, explicit user-predicate specialization, shrinking, and vacuity controls.
 - [Model refinement replay](./model-replay.md): normalized counterexample traces and explicit TypeScript implementation adapters.
 - [Native integration](./native-integration.md): Corsa interchange, program call graphs, published contracts, and CI tiers.
+- [Corsa migration decision](./corsa-migration.md): feasibility evidence, benefits, blockers, staged rollout, and stop conditions.
 - [Command line](./cli.md): the single `uneffect` binary, its subcommands, streams, and exit codes.
 - [Diagnostics and fixtures](./diagnostics.md): diagnostic format, the `fixtures/` corpus, and the message-quality rubric.
 - [Continuous integration](./ci.md): test-tier coverage, pinned tools, and solver/runtime isolation.

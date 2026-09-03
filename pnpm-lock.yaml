@@ -18,9 +18,6 @@ importers:
         specifier: ^4.15.4
         version: 4.16.0
     devDependencies:
-      '@corsa-bind/napi':
-        specifier: 1.12.4
-        version: 1.12.4
       '@informalsystems/quint':
         specifier: ^0.32.0
         version: 0.32.0
@@ -30,9 +27,6 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.3
-      '@typescript/native-preview':
-        specifier: 7.0.0-dev.20260707.2
-        version: 7.0.0-dev.20260707.2
       corsa-oxlint:
         specifier: 1.12.4
         version: 1.12.4(@oxlint/plugins@1.80.0)(oxlint@1.80.0(oxlint-tsgolint@7.0.2001))
@@ -48,6 +42,13 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@24.13.3)(vite@7.3.6(@types/node@24.13.3)(tsx@4.23.12))
+    optionalDependencies:
+      '@corsa-bind/napi':
+        specifier: 1.12.4
+        version: 1.12.4
+      '@typescript/native-preview':
+        specifier: 7.0.0-dev.20260707.2
+        version: 7.0.0-dev.20260707.2
 
 packages:
 
@@ -1587,6 +1588,7 @@ snapshots:
       '@typescript/native-preview-linux-x64': 7.0.0-dev.20260707.2
       '@typescript/native-preview-win32-arm64': 7.0.0-dev.20260707.2
       '@typescript/native-preview-win32-x64': 7.0.0-dev.20260707.2
+    optional: true
 
   '@vitest/expect@4.1.11':
     dependencies:
