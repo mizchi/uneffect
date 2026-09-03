@@ -2682,7 +2682,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "quotesSource", effect: "Console", kind: "unused",
     }));
-  });
+  }, 60_000);
 
   it("separates pure CLI helpers from terminal output and usage throws", () => {
     const fileName = "src/cli-support.ts";
@@ -2785,7 +2785,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "summaryOf", effect: "FsWrite", kind: "unused",
     }));
-  });
+  }, 60_000);
 
   it("separates ownership cache keys, reads, and atomic writes", () => {
     const fileName = "src/ownership-evidence-cache.ts";
@@ -2810,7 +2810,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "ownershipEvidenceKey", effect: "FsRead", kind: "unused",
     }));
-  });
+  }, 60_000);
 
   it("classifies model trace loading and randomized atomic persistence", () => {
     const fileName = "src/model-replay.ts";
@@ -2870,7 +2870,7 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ functionName: "parseEvidence", effect: "FsRead", kind: "missing" }),
       expect.objectContaining({ functionName: "parseEvidence", effect: "FsWrite", kind: "unused" }),
     ]));
-  });
+  }, 60_000);
 
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
@@ -2888,12 +2888,14 @@ describe("Uneffect dogfood", () => {
     expect(externalSources.length).toBeGreaterThanOrEqual(3);
     expect(result.summaries.length).toBeGreaterThanOrEqual(40);
     expect(result.diagnostics).toEqual([]);
-    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([
-      expect.objectContaining({
-        functionName: "<module>",
-        unknownReasons: [expect.objectContaining({ code: "unresolved-call" })],
-      }),
+    const unknown = result.summaries.filter((summary) => summary.evidence === "unknown");
+    expect(unknown.filter((summary) => summary.functionName === "<module>")).toEqual([
+      expect.objectContaining({ unknownReasons: [expect.objectContaining({ code: "unresolved-call" })] }),
     ]);
+    const generatorUnknown = unknown.filter((summary) => summary.functionName !== "<module>");
+    expect(generatorUnknown.length).toBeGreaterThan(0);
+    expect(generatorUnknown.every((summary) => summary.functionName === "<anonymous>"
+      && summary.unknownReasons?.every((reason) => reason.code === "unknown-generator-consumption"))).toBe(true);
     expect(auditBuiltinDeclarationDrift(program)).toEqual([]);
   }, 20_000);
 

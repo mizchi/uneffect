@@ -4,6 +4,13 @@ Uneffect adopts its own checks from leaf utilities toward effectful boundaries.
 This is intentionally separate from `just dogfood`: the existing command is an
 inference-coverage gate, while `just dogfood-leaf` requires explicit,
 constraint-bearing annotations and a load-bearing negative control.
+The repository-wide gate does not run every analysis domain over one giant
+Program. The dogfood suite uses focused project boundaries for effect,
+contract, async, ownership, and temporal checks; its self-effect case still
+loads all `src/*.ts` together. Open callback and generator summaries remain
+intentionally unknown. That case requires zero effect diagnostics and an
+explicit allow-listed reason code on every unknown summary, so they cannot
+silently become proof.
 
 ## First boundary: static evaluation
 

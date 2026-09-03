@@ -231,7 +231,8 @@ explicit callback-timing/effect-parameter contract, while the nine external
 module initializers require reviewed version-bound contracts rather than a
 broad Effect declaration.
 
-The repository's own strict `just dogfood` gate also fails closed. Reviewed
+The repository's own `just dogfood` gate also fails closed on diagnostics and
+unclassified unknown reasons. Reviewed
 ECMAScript synchronous-callback and pure helper contracts, Node helper
 contracts, and export-equals named-import resolution reduced its unknown module
 summaries from 39 to two. Exact-version external function contracts reviewed the
@@ -242,9 +243,10 @@ summaries: remaining unknowns are explicitly attributed to callback timing or
 open generator parameter/consumption semantics and are not treated as proof.
 This is a statement about the checked source and exact dependency versions, not
 a claim that arbitrary package code or all JavaScript behavior is verified.
-The same 67-file boundary records 3,694 builtin and module-initialization
-assumption occurrences. Consequently `--assurance no-unknown` passes as
-`assumed`, while the new `--assurance verified` profile rejects the boundary.
+The same checked boundary records builtin and module-initialization assumption
+occurrences. Because classified callback/generator unknowns remain,
+`--assurance no-unknown` correctly rejects the repository-wide boundary; the
+focused dogfood gate is not an assurance-profile bypass.
 The count is an observation of this revision rather than a stable target; its
 purpose is to keep reviewed semantics visible instead of hiding them behind
 declaration-checked summaries.

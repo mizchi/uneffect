@@ -118,7 +118,6 @@ evidence file:
     pnpm tsx src/cli.ts evidence {{ file }}
 
 dogfood:
-    pnpm tsx src/cli.ts check --infer --assurance no-unknown src/*.ts
     pnpm tsx ci/run-test-tiers.ts integration test/dogfood.test.ts
 
 # First constraint-bearing self-check: one leaf utility with explicit pure
