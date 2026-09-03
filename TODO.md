@@ -2924,6 +2924,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Normalize contracts on immutable `const` arrow and function
       expressions, including expression-bodied arrows, into the same local
       obligation and relational fixed point. Reject `let`-bound callables.
+      - [x] Feed their parameters through the common TypeChecker fact importer
+        so named finite unions and supported narrowing domains are preserved.
 - [x] Generalize the reconciler across source files in one checked TypeScript
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project

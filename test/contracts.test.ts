@@ -4265,6 +4265,23 @@ describe("Hoare contract checker", () => {
       .toMatchObject({ message: expect.stringContaining("addOne(value)") });
   });
 
+  it("imports TypeChecker parameter facts for const function expressions", async () => {
+    const fileName = "/verified-const-function-parameter-facts.ts";
+    const source = `
+      type Small = 0 | 1
+      /* uneffect:ensures result >= 0 */
+      /* uneffect:ensures result <= 1 */
+      const identity = (value: Small): number => value
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(2);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.every(({ controlFlow }) =>
+      controlFlow?.narrowing?.facts.includes("value ∈ {0, 1}"))).toBe(true);
+  });
+
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `

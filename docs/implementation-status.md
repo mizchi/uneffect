@@ -953,7 +953,9 @@ same property is proved for arbitrary TypeScript.
   Synchronous contracts authored immediately above an immutable `const` arrow
   or function expression are normalized into the same contract CFG, including
   expression-bodied arrows and nested scalar calls. Their source evidence stays
-  bound to the original initializer; `let`-bound functions are not promoted.
+  bound to the original initializer, and their parameters receive the same
+  TypeChecker-derived finite-union, nullable, and discriminant facts as function
+  declarations. `let`-bound functions are not promoted.
   Persisted package summaries can now be consumed at call sites through a
   TypeChecker-resolved installed declaration. The standalone
   `uneffect-contract-summary/v1` producer/validator now emits package/version,

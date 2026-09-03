@@ -268,8 +268,29 @@ function typeCheckerParameterFacts(program: ts.Program | undefined, fileName: st
     }
     return undefined;
   };
-  for (const node of source.statements) {
-    if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
+  type ParameterOwner = (ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration) & {
+    readonly body: ts.ConciseBody;
+  };
+  const parameterOwners: ParameterOwner[] = [];
+  for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) parameterOwners.push(statement as ParameterOwner);
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (declaration.initializer && (ts.isArrowFunction(declaration.initializer)
+          || ts.isFunctionExpression(declaration.initializer))) parameterOwners.push(declaration.initializer as ParameterOwner);
+      }
+    }
+    const visitObjectMethods = (node: ts.Node): void => {
+      if (ts.isMethodDeclaration(node) && ts.isObjectLiteralExpression(node.parent)
+        && ts.isIdentifier(node.name) && node.body) {
+        parameterOwners.push(node as ParameterOwner);
+        return;
+      }
+      ts.forEachChild(node, visitObjectMethods);
+    };
+    visitObjectMethods(statement);
+  }
+  for (const node of parameterOwners) {
     for (const parameter of node.parameters) {
       if (!ts.isIdentifier(parameter.name)) continue;
       const parameterName = parameter.name.text;
