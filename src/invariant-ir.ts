@@ -3004,7 +3004,7 @@ export function lowerInvariantProgram(
         if (assertion) {
           const originSpan = { start: call.getStart(source), end: call.getEnd() };
           if (assertion.condition === "always-throw") {
-            paths = paths.map((path): PathState => ({
+            paths = evaluateCallArguments(call, paths).map(({ path }): PathState => path.completion !== "normal" ? path : ({
               ...path,
               env: new Map(path.env),
               completion: "throw",

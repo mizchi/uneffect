@@ -2850,6 +2850,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   `Throw<AssertionError>`.
   - [x] Apply the same rule to reviewed Boolean `ok`/callable assertions,
     retaining the producer throw separately from the assertion-failure edge.
+  - [x] Evaluate reviewed `assert.fail(...)` arguments before its unconditional
+    assertion edge; an authenticated argument throw bypasses `fail` and keeps
+    its original effect/span.
 - [x] Apply the same left-to-right completion rule to authenticated calls nested
   in direct expression-statement arguments. Skip the outer call on an argument
   throw and retain distinct inner/outer source spans in discharge evidence.

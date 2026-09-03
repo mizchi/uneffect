@@ -793,8 +793,10 @@ same property is proved for arbitrary TypeScript.
   an authenticated synchronous scalar call. A callee throw bypasses the
   explicit throw and keeps the callee effect/span; only normal expression
   completion creates the explicit `Throw<E>` edge and payload.
-  Reviewed `fail` has no normal continuation and enters the same catch/discharge
-  path as an unconditional trusted `Throw<AssertionError>`.
+  Reviewed `fail` has no normal continuation after its arguments complete and
+  enters the same catch/discharge path as a trusted `Throw<AssertionError>`.
+  Its arguments still evaluate left to right: an authenticated argument throw
+  bypasses `fail` and retains its original effect/span.
   Reviewed `ifError` connects a tracked nullable numeric/Boolean or
   presence-only object parameter/immutable alias to the same CFG: absence
   continues and presence throws. Object payload and heap properties stay
