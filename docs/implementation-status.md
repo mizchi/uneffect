@@ -2204,7 +2204,10 @@ same property is proved for arbitrary TypeScript.
   Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize
-  the lazy body effects, while opaque arguments remain unknown. `no-unknown`
+  the lazy body effects. TypeChecker-identified standard strings, arrays,
+  tuples, Map/Set collections, typed arrays, and TypeScript NodeArray values
+  instantiate an empty lazy effect set; structurally iterable user values and
+  same-named user classes remain unknown. `no-unknown`
   accepts the represented parameter but reports that it is not a closed
   concrete effect set. `effect_parameter iterator extends ...` supplies an
   independently checked lazy-effect upper bound; complete valid bounds permit

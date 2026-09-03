@@ -334,7 +334,13 @@ export function buildProgramCallGraph(
       const symbol = type.aliasSymbol ?? type.getSymbol();
       if (symbol?.getName() === "NodeArray" && symbol.declarations?.some((item) =>
         /(?:^|[/\\])node_modules[/\\]typescript[/\\]lib[/\\]typescript\.d\.ts$/u.test(item.getSourceFile().fileName))) return true;
-      return reviewed.has(type.getSymbol()?.getName() ?? "");
+      const typeSymbol = type.getSymbol();
+      return reviewed.has(typeSymbol?.getName() ?? "")
+        && Boolean(typeSymbol?.declarations?.some((declaration) => {
+          const source = declaration.getSourceFile();
+          return source.isDeclarationFile
+            && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/u.test(source.fileName);
+        }));
     };
     return accepts(checker.getTypeAtLocation(expression));
   };
@@ -807,6 +813,10 @@ export function buildProgramCallGraph(
       };
       const specializeIteratorArgument = (expression: ts.Expression, convertsThrowToRejection: boolean, iteratorEffectInstantiation: IteratorEffectInstantiation): boolean => {
         if (addStoredGeneratorConsumption(expression, convertsThrowToRejection, iteratorEffectInstantiation)) return true;
+        // Iteration of engine-owned collections cannot invoke a user-defined
+        // iterator body. Keep this tied to reviewed TypeChecker identities so
+        // structurally compatible custom Iterable values remain fail-closed.
+        if (reviewedBuiltinIterable(expression)) return true;
         if (ts.isCallExpression(expression)) {
           const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
           const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);

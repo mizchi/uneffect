@@ -2345,6 +2345,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Expose directly consumed iterator parameters as explicit polymorphic effect parameters in function summaries instead of misclassifying the generic definition as opaque.
   - [x] Forward iterator-effect parameters through symbol-resolved wrapper calls, preserving Promise rejection conversion.
   - [x] Add `effect_parameter p extends ...` bounds with call-site Generator specialization, stored-iterator evidence, transitive wrapper constraint checks, Promise rejection conversion, and fail-closed syntax/parameter diagnostics.
+  - [x] Instantiate iterator effect parameters with an empty set for TypeChecker-identified engine-owned standard iterables, while keeping structural and same-named user iterables fail-closed.
   - [x] Dogfood a telemetry batching Generator through `verifyUneffectProject`, including a negative bound-regression and project-assurance failure.
   - [x] Preserve iterator-effect parameters and formatted bounds in evidence schema v2 and the public `uneffect evidence` JSON command.
   - [x] Bind evidence schema v2 to the root identity and hashes of every non-declaration Program source, not only the command-line file.

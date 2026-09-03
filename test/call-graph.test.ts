@@ -2282,6 +2282,16 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function nonIteratorConstraint(value: number) { return value }
         export function consumeKnownIteratorParameter() { consumeIteratorParameter(generate()) }
         export function consumePureIteratorParameter() { consumeIteratorParameter([1, 2, 3].values()) }
+        export function consumePureArrayIterableParameter() { consumeIterableParameter([1, 2, 3]) }
+        export function consumePureReadonlySetIterableParameter(values: ReadonlySet<number>) { consumeIterableParameter(values) }
+        const customIterable: Iterable<number> = { [Symbol.iterator]: () => generate() }
+        export function consumeCustomIterableParameter() { consumeIterableParameter(customIterable) }
+        namespace Custom {
+          export class Set implements Iterable<number> {
+            *[Symbol.iterator]() { console.log("custom"); yield 1 }
+          }
+        }
+        export function consumeSameNamedCustomSetParameter() { consumeIterableParameter(new Custom.Set()) }
         export function outerIteratorParameter(iterator: IteratorObject<unknown>) { consumeIteratorParameter(iterator) }
         export function consumeKnownOuterIteratorParameter() { outerIteratorParameter(generate()) }
         export function consumePromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
@@ -2540,6 +2550,20 @@ describe("multi-file call graph and effect polymorphism", () => {
       }));
       expect(result.summaries.find((summary) => summary.functionName === "consumePureIteratorParameter"))
         .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumePureArrayIterableParameter"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumePureReadonlySetIterableParameter"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeCustomIterableParameter"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeSameNamedCustomSetParameter"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
       expect(result.summaries.find((summary) => summary.functionName === "consumePromiseIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "constrainedPromiseIteratorParameter"))

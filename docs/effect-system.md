@@ -331,6 +331,11 @@ iterators against that bound. Bound violations are parent diagnostics; opaque
 arguments are `unknown`. A Promise-consuming child parameter retains
 `convertsThrowToRejection`, so the generator's synchronous non-throw effects
 propagate while its iteration throw is owned by rejection analysis. **Implemented.**
+Concrete strings, arrays, tuples, standard `Map`/`Set` collections, typed arrays,
+and TypeScript `NodeArray` values close the iterator parameter with an empty
+lazy effect set. This exemption requires TypeChecker identity from the
+TypeScript standard library; a structurally iterable user class, including one
+named `Set`, remains `unknown` because its iterator body can execute user code.
 The effect summary exposes the same contract as `iteratorEffectParameters` and
 uses `evidence: "inferred"` for an unannotated polymorphic consumer. This is not
 a closed proof that the function is effect-free: its lazy effects are supplied
