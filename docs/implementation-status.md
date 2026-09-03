@@ -453,6 +453,10 @@ same property is proved for arbitrary TypeScript.
   every case/default clause. Selected fallthrough statements execute in order,
   but case-local `let`/`const` bindings are removed and shadowed outer scalars
   are restored at the switch boundary.
+- Canonical scalar `for` lowering now scopes its initializer binding to the loop
+  and restores a same-named outer scalar across condition failure, break,
+  return, and throw completions. This is lexical correctness, not a general
+  frame-condition proof for other values omitted from the loop invariant.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

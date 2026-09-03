@@ -592,6 +592,10 @@ outer value is restored afterward. A Promise binding sharing the name remains
 The same scoped-statement helper treats all clauses of a supported `switch` as
 one lexical scope while executing only the selected fallthrough suffix, so an
 unbraced case-local declaration cannot leak over an outer scalar.
+A canonical `for (let name = ...; ...; ...)` likewise owns its initializer
+binding through condition, body, continue-update, and break paths, then removes
+it or restores a shadowed outer scalar on every loop exit. Loop frame relations
+not stated by the invariant are still intentionally havoced.
 Explicitly typed uninitialized scalar `let` bindings are supported only when
 the exact TypeScript Program reports no definite-assignment error. Their
 unconstrained placeholder preserves binding identity across joins and carries

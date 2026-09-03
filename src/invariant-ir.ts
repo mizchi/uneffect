@@ -3125,13 +3125,28 @@ export function lowerInvariantProgram(
         const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
         if (!invariantSource) throw new Error(`for requires /* uneffect:loop_invariant ... */ but ${statement.condition.getText(source)} has none`);
         const invariant = parseLogicExpression(invariantSource);
-        const initialized = paths.map((path): PathState => {
+        const initialized = paths.map((path) => {
+          if (path.pendingPromises.has(initializerName)) throw new Error(`for initializer shadows a tracked Promise: ${initializerName}`);
+          const outerValue = path.env.get(initializerName);
           const nextEnv = new Map(path.env);
           nextEnv.set(initializerName, substitute(logic(declaration.initializer!, pipeBindings, semanticGuards, semanticValues), nextEnv));
-          return { ...path, env: nextEnv };
+          return { path: { ...path, env: nextEnv }, outerValue };
         });
         const exited: PathState[] = [];
-        for (const path of initialized) {
+        for (const initializedPath of initialized) {
+          const { path, outerValue } = initializedPath;
+          const restoreInitializerScope = (exit: PathState): PathState => {
+            const env = new Map(exit.env);
+            const returnEnv = exit.returnEnv && new Map(exit.returnEnv);
+            if (outerValue) {
+              env.set(initializerName, outerValue);
+              returnEnv?.set(initializerName, outerValue);
+            } else {
+              env.delete(initializerName);
+              returnEnv?.delete(initializerName);
+            }
+            return { ...exit, env, ...(returnEnv ? { returnEnv } : {}) };
+          };
           add("loop-init", statement, path.assumptions, substitute(invariant, path.env), invariantSource, path.env);
           const loopEnv: Environment = new Map();
           for (const name of path.env.keys()) {
@@ -3146,7 +3161,7 @@ export function lowerInvariantProgram(
             ? evaluateScalar(statement.condition, conditionSeed)
             : [{ path: conditionSeed, value: evaluateCondition(statement.condition, loopEnv) }];
           for (const evaluated of conditions) {
-            if (evaluated.path.completion !== "normal") { exited.push(evaluated.path); continue; }
+            if (evaluated.path.completion !== "normal") { exited.push(restoreInitializerScope(evaluated.path)); continue; }
             const condition = evaluated.value;
             const bodyInput = [{ ...evaluated.path, assumptions: [...evaluated.path.assumptions, condition] }];
             const loopContext = { breakTarget: loopTarget, continueTarget: loopTarget };
@@ -3158,10 +3173,10 @@ export function lowerInvariantProgram(
                 const updated = applyScalarUpdate(statement.incrementor, bodyPath);
                 add("loop-preserve", statement, updated.assumptions, substitute(invariant, updated.env), invariantSource, updated.env);
               } else if (bodyPath.completion === "break" && bodyPath.breakTarget === loopTarget) {
-                exited.push({ ...bodyPath, completion: "normal", breakTarget: undefined });
-              } else exited.push(bodyPath);
+                exited.push(restoreInitializerScope({ ...bodyPath, completion: "normal", breakTarget: undefined }));
+              } else exited.push(restoreInitializerScope(bodyPath));
             }
-            exited.push({ ...evaluated.path, assumptions: [...evaluated.path.assumptions, negate(condition)] });
+            exited.push(restoreInitializerScope({ ...evaluated.path, assumptions: [...evaluated.path.assumptions, negate(condition)] }));
           }
         }
         paths = exited;

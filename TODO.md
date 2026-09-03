@@ -334,6 +334,9 @@ introducing another domain-local control-flow or alias model.
        fully symbol-keyed environment.
      - [x] Apply the same restoration to the switch-wide lexical scope while
        retaining selected-case fallthrough execution and targeted break.
+     - [x] Scope a canonical scalar `for` initializer through its loop and
+       restore a shadowed outer scalar on every exit; keep general loop frame
+       conditions separate from this lexical claim.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.

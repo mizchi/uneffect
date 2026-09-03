@@ -2673,6 +2673,25 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("restores an outer scalar shadowed by a for initializer", async () => {
+    const fileName = "/contract-for-shadow.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result === 5 */
+      function run(limit: Int): Int {
+        let index = 5
+        /* uneffect:loop_invariant index >= 0 */
+        for (let index = 0; index < limit; index++) {}
+        return index
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("lowers do-while exits only after one invariant-preserving body", async () => {
     const fileName = "/contract-do-while.ts";
     const source = `
