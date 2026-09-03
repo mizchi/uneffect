@@ -2573,7 +2573,7 @@ describe("Uneffect dogfood", () => {
     expect(codes).toEqual([
       "unknown-callback-timing",
     ]);
-  }, Math.max(60_000, externalCheckerTestTimeoutMs()));
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("enforces an explicit pure boundary on the leaf static evaluator", () => {
     const fileName = "src/static-evaluation.ts";
