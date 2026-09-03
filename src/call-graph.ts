@@ -48,6 +48,10 @@ export interface CallGraphEdge {
   arguments: string[];
   /** Addressable receiver used to instantiate a callee `this` mutation region. */
   receiver?: string;
+  /** The receiver is a locally constructed, non-subclassed instance with no alternate-object return. */
+  freshReceiver?: boolean;
+  /** Callback arguments proven to remain rooted at a fresh value owned by this call. */
+  freshArgumentIndices?: number[];
   dischargesThrow?: boolean;
   executesBody?: boolean;
   unknownGeneratorConsumption?: boolean;
@@ -327,6 +331,9 @@ export function buildProgramCallGraph(
     const accepts = (type: ts.Type): boolean => {
       if ((type.flags & ts.TypeFlags.StringLike) !== 0 || checker.isArrayType(type) || checker.isTupleType(type)) return true;
       if (type.isUnion()) return type.types.every(accepts);
+      const symbol = type.aliasSymbol ?? type.getSymbol();
+      if (symbol?.getName() === "NodeArray" && symbol.declarations?.some((item) =>
+        /(?:^|[/\\])node_modules[/\\]typescript[/\\]lib[/\\]typescript\.d\.ts$/u.test(item.getSourceFile().fileName))) return true;
       return reviewed.has(type.getSymbol()?.getName() ?? "");
     };
     return accepts(checker.getTypeAtLocation(expression));
@@ -630,7 +637,49 @@ export function buildProgramCallGraph(
         ? { text: region.region, unresolvedAlias: false }
         : { text: argument.getText(), unresolvedAlias: true };
     };
-    const canonicalAddressableReceiver = (receiver: ts.Expression): { text: string; unresolvedAlias: boolean } => {
+    const provablyFreshConstruction = (expression: ts.Expression): boolean => {
+      expression = unwrapLiteralContainerExpression(expression);
+      if (!ts.isNewExpression(expression)) return false;
+      if (adapter.resolveConstruct(expression)?.result?.kind === "fresh") return true;
+      const symbol = resolvedSymbol(checker, expression.expression);
+      const classDeclaration = symbol?.declarations?.find((item): item is ts.ClassDeclaration | ts.ClassExpression =>
+        ts.isClassDeclaration(item) || ts.isClassExpression(item));
+      if (!classDeclaration || classDeclaration.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)) return false;
+      const constructor = classDeclaration.members.find(ts.isConstructorDeclaration);
+      if (!constructor?.body) return true;
+      let returnsAlternateObject = false;
+      const scan = (node: ts.Node): void => {
+        if (returnsAlternateObject || node !== constructor.body && ts.isFunctionLike(node)) return;
+        if (ts.isReturnStatement(node) && node.expression) { returnsAlternateObject = true; return; }
+        ts.forEachChild(node, scan);
+      };
+      scan(constructor.body);
+      return !returnsAlternateObject;
+    };
+    const provablyFreshLocalReceiver = (receiver: ts.Identifier): boolean => {
+      const symbol = resolvedSymbol(checker, receiver), value = symbol?.valueDeclaration;
+      if (!symbol || !value || !ts.isVariableDeclaration(value) || !value.initializer
+        || !ts.isVariableDeclarationList(value.parent) || (value.parent.flags & ts.NodeFlags.Const) === 0
+        || !provablyFreshConstruction(value.initializer) || !declaration.body) return false;
+      let escapedBeforeUse = false;
+      const scan = (node: ts.Node): void => {
+        if (escapedBeforeUse || node.getStart() >= receiver.getStart() || node !== declaration.body && ts.isFunctionLike(node)) return;
+        if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === symbol && node !== value.name) {
+          const parent = node.parent;
+          const usedAsReceiver = (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent))
+            && parent.expression === node;
+          if (!usedAsReceiver) { escapedBeforeUse = true; return; }
+        }
+        ts.forEachChild(node, scan);
+      };
+      scan(declaration.body);
+      return !escapedBeforeUse;
+    };
+    const canonicalAddressableReceiver = (receiver: ts.Expression): { text: string; unresolvedAlias: boolean; fresh?: boolean } => {
+      if (provablyFreshConstruction(receiver)) return { text: receiver.getText(), unresolvedAlias: false, fresh: true };
+      if (ts.isIdentifier(receiver) && provablyFreshLocalReceiver(receiver)) {
+        return { text: receiver.getText(), unresolvedAlias: false, fresh: true };
+      }
       if (!declaration.body || !(ts.isIdentifier(receiver) || receiver.kind === ts.SyntaxKind.ThisKeyword
         || ts.isPropertyAccessExpression(receiver) || ts.isElementAccessExpression(receiver))) {
         return { text: receiver.getText(), unresolvedAlias: true };
@@ -765,17 +814,27 @@ export function buildProgramCallGraph(
       const consumeIterableExpression = (
         expression: ts.Expression, convertsThrowToRejection = false, prefersAsync = false,
       ): void => {
+        const fallback = ts.isBinaryExpression(expression)
+          && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken].includes(expression.operatorToken.kind)
+          ? [unwrapLiteralContainerExpression(expression.left), unwrapLiteralContainerExpression(expression.right)] as const : undefined;
+        const reviewedStandardFallback = fallback !== undefined
+          && (ts.isArrayLiteralExpression(fallback[0])
+            || ts.isCallExpression(fallback[0]) && standardLibraryOperation(checker, fallback[0]) !== undefined)
+          && (ts.isArrayLiteralExpression(fallback[1])
+            || ts.isCallExpression(fallback[1]) && standardLibraryOperation(checker, fallback[1]) !== undefined);
         const implicitIterator = prefersAsync
           ? implicitIteratorDeclaration(expression, "asyncIterator") ?? implicitIteratorDeclaration(expression)
           : implicitIteratorDeclaration(expression);
         if (!implicitIterator) {
           if (ts.isCallExpression(expression)) {
+            if (standardLibraryOperation(checker, expression) !== undefined) return;
             const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
             const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
             if (target?.asteriskToken || returnedGeneratorDeclarations(target)) return;
           }
           if (!addStoredGeneratorConsumption(expression, convertsThrowToRejection)
             && !reviewedBuiltinIterable(expression)
+            && !reviewedStandardFallback
             && (hasIteratorProtocol(expression) || (prefersAsync && hasIteratorProtocol(expression, "asyncIterator")))) {
             addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
           } else if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
@@ -1022,6 +1081,7 @@ export function buildProgramCallGraph(
           caller, callee: stableId(target), kind: "direct", timing: "inline",
           span: { start: call.getStart(), end: call.getEnd() }, arguments: projected.map((item) => item.text),
           ...(receiver && !receiver.unresolvedAlias ? { receiver: receiver.text } : {}),
+          ...(receiver?.fresh ? { freshReceiver: true } : {}),
           dischargesThrow: catchesThrow, executesBody: true,
           ...(!effectiveArguments || receiver?.unresolvedAlias || projected.some((item) => item.unresolvedAlias)
             ? { unresolvedMutationAlias: true } : {}),
@@ -1204,7 +1264,8 @@ export function buildProgramCallGraph(
             arguments: arguments_.map(({ text }) => text),
             ...(boundName ? { receiver: boundName } : {}),
             dischargesThrow: catchesThrow, executesBody: true,
-            ...(arguments_.some(({ unresolvedAlias }) => unresolvedAlias) ? { unresolvedMutationAlias: true } : {}),
+            ...(arguments_.some(({ unresolvedAlias }) => unresolvedAlias)
+              ? { unresolvedMutationArgumentIndices: arguments_.flatMap((item, index) => item.unresolvedAlias ? [index] : []) } : {}),
           });
         }
         if (classDeclaration && !hasExplicitConstructor && !expandingImplicitClasses.has(classDeclaration)) {
@@ -1226,13 +1287,39 @@ export function buildProgramCallGraph(
           receiver?: string;
           unresolvedMutationAlias?: true;
           unresolvedMutationArgumentIndices?: number[];
+          freshArgumentIndices?: number[];
         } => {
           const event = projectedCallbacks.find((candidate) =>
             candidate.target.status === "resolved" && candidate.target.expression === argument);
           if (!event) return { arguments: [] };
           const unresolvedMutationArgumentIndices: number[] = [];
           const runtimeParameterCount = runtimeParametersOf(callbackDeclaration ?? declaration).length;
-          const projectedArguments = event.invocationArguments;
+          const operation = standardLibraryOperation(checker, node);
+          const reduceInitial = operation && /^(?:Array|ReadonlyArray|(?:Uint|Int|Float|BigInt|BigUint)\w*Array)#reduce(?:Right)?$/u.test(operation)
+            ? node.arguments[1] : undefined;
+          const callbackReturnsFirstParameter = (() => {
+            const parameter = callbackDeclaration && runtimeParametersOf(callbackDeclaration)[0];
+            const parameterSymbol = parameter && ts.isIdentifier(parameter.name) ? resolvedSymbol(checker, parameter.name) : undefined;
+            if (!callbackDeclaration?.body || !parameterSymbol) return false;
+            if (!ts.isBlock(callbackDeclaration.body)) {
+              return ts.isIdentifier(unwrapLiteralContainerExpression(callbackDeclaration.body))
+                && resolvedSymbol(checker, unwrapLiteralContainerExpression(callbackDeclaration.body)) === parameterSymbol;
+            }
+            const returns: ts.ReturnStatement[] = [];
+            const collectReturns = (child: ts.Node): void => {
+              if (child !== callbackDeclaration.body && ts.isFunctionLike(child)) return;
+              if (ts.isReturnStatement(child)) { returns.push(child); return; }
+              ts.forEachChild(child, collectReturns);
+            };
+            collectReturns(callbackDeclaration.body);
+            return returns.length > 0 && returns.every((statement) => {
+              const value = statement.expression && unwrapLiteralContainerExpression(statement.expression);
+              return !!value && ts.isIdentifier(value) && resolvedSymbol(checker, value) === parameterSymbol;
+            });
+          })();
+          const projectedArguments = event.invocationArguments?.map((projected, index) =>
+            index === 0 && reduceInitial && callbackReturnsFirstParameter
+              ? { status: "resolved" as const, expression: reduceInitial, path: [] } : projected);
           const paddedProjectedArguments = projectedArguments
             ? [...projectedArguments, ...Array.from({ length: Math.max(0, runtimeParameterCount - projectedArguments.length) }, (_unused, index) => ({
                 status: "unknown" as const,
@@ -1241,6 +1328,7 @@ export function buildProgramCallGraph(
             : runtimeParametersOf(callbackDeclaration ?? declaration).map((_parameter, index) => ({
             status: "unknown" as const, reason: `builtin callback argument ${index} has no invocation projector`,
           }));
+          const freshArgumentIndices: number[] = [];
           const arguments_ = paddedProjectedArguments.map((projected, index) => {
             if (projected.status !== "resolved" || projected.path.length > 0) {
               unresolvedMutationArgumentIndices.push(index);
@@ -1248,6 +1336,7 @@ export function buildProgramCallGraph(
             }
             const resolved = canonicalAddressableReceiver(projected.expression);
             if (resolved.unresolvedAlias) unresolvedMutationArgumentIndices.push(index);
+            if (resolved.fresh) freshArgumentIndices.push(index);
             return resolved.text;
           });
           let receiver: string | undefined, unresolvedMutationAlias: true | undefined;
@@ -1263,6 +1352,7 @@ export function buildProgramCallGraph(
             arguments: arguments_, ...(receiver ? { receiver } : {}),
             ...(unresolvedMutationAlias ? { unresolvedMutationAlias } : {}),
             ...(unresolvedMutationArgumentIndices.length > 0 ? { unresolvedMutationArgumentIndices } : {}),
+            ...(freshArgumentIndices.length > 0 ? { freshArgumentIndices } : {}),
           };
         };
         const libraryOperation = standardLibraryOperation(checker, node);
@@ -1371,7 +1461,7 @@ export function buildProgramCallGraph(
           && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))
           ? node.expression.expression : undefined;
         const instantiatedReceiver = receiverExpression ? canonicalAddressableReceiver(receiverExpression) : undefined;
-        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: instantiatedArguments.map(({ text }) => text), ...(instantiatedReceiver && !instantiatedReceiver.unresolvedAlias ? { receiver: instantiatedReceiver.text } : {}), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters, ...((refinementActionOwner && instantiatedArguments.some(({ unresolvedAlias }) => unresolvedAlias)) || instantiatedReceiver?.unresolvedAlias || (targetDeclaration && ts.isMethodDeclaration(targetDeclaration) && !instantiatedReceiver) ? { unresolvedMutationAlias: true } : {}) });
+        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: instantiatedArguments.map(({ text }) => text), ...(instantiatedReceiver && !instantiatedReceiver.unresolvedAlias ? { receiver: instantiatedReceiver.text } : {}), ...(instantiatedReceiver?.fresh ? { freshReceiver: true } : {}), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters, ...((refinementActionOwner && instantiatedArguments.some(({ unresolvedAlias }) => unresolvedAlias)) || instantiatedReceiver?.unresolvedAlias || (targetDeclaration && ts.isMethodDeclaration(targetDeclaration) && !instantiatedReceiver) ? { unresolvedMutationAlias: true } : {}) });
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") {
           const receiver = node.expression.expression;

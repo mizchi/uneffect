@@ -9,6 +9,185 @@ import { formatEffect, parseEffectExpression } from "../src/capabilities.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 describe("multi-file call graph and effect polymorphism", () => {
+  it("does not expose receiver mutation performed on a proven fresh local instance", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-fresh-receiver-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        class Registry {
+          private entries: string[] = []
+          /* uneffect:effect Mutate<typeof this.entries> */
+          register(value: string) { this.entries.push(value); return this }
+        }
+        export function createRegistry() { return new Registry().register("clock") }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.diagnostics).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "createRegistry"))
+        .toMatchObject({ evidence: "inferred", effects: [] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps mutation in the construction phase when a fresh local is returned afterwards", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-fresh-local-receiver-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        class Builder {
+          private entries: string[] = []
+          /* uneffect:effect Mutate<typeof this.entries> */
+          add(value: string) { this.entries.push(value); return this }
+        }
+        export function build() {
+          const builder = new Builder()
+          builder.add("one")
+          builder.add("two")
+          return builder
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.diagnostics).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "build"))
+        .toMatchObject({ effects: [], evidence: "inferred" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("ends the construction phase when a fresh local escapes before mutation", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-escaped-fresh-local-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        class Builder {
+          private entries: string[] = []
+          /* uneffect:effect Mutate<typeof this.entries> */
+          add(value: string) { this.entries.push(value) }
+        }
+        declare function expose(value: Builder): void
+        export function build() {
+          const builder = new Builder()
+          expose(builder)
+          builder.add("observable")
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "build", kind: "unknown", effect: "Mutate<unknown-alias>",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a reduce accumulator local when every callback step returns the same fresh root", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-fresh-reduce-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        export function index(values: readonly string[]) {
+          return values.reduce((table, value, at) => {
+            table.set(value, at)
+            return table
+          }, new Map<string, number>())
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.diagnostics).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "index"))
+        .toMatchObject({ effects: [], evidence: "inferred" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not treat a reduce accumulator as fresh when the callback can replace its root", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-replaced-reduce-root-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        export function index(values: Array<Map<string, number>>) {
+          return values.reduce((table, value, at) => {
+            table.set("index", at)
+            return value
+          }, new Map<string, number>())
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "index", kind: "unknown", effect: "Mutate<unknown-alias>",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("treats authenticated standard-library iterator factories as reviewed iterable bodies", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-standard-iterators-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        export function collect(text: string, values: Map<string, number>) {
+          return [...text.matchAll(/x/g), ...values.values()]
+        }
+        const lookalike = { values(): IterableIterator<number> { return [1].values() } }
+        export function collectLookalike() { return [...lookalike.values()] }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.summaries.find(({ functionName }) => functionName === "collect")?.unknownReasons ?? []).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "collectLookalike")?.unknownReasons)
+        .toContainEqual(expect.objectContaining({ code: "unknown-generator-consumption" }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("treats TypeScript NodeArray iteration as part of the compiler trusted base", () => {
+    const directory = mkdtempSync(join(process.cwd(), ".tmp-uneffect-typescript-node-array-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        import type ts from "typescript"
+        export function statements(source: ts.SourceFile) { return [...source.statements] }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.summaries.find(({ functionName }) => functionName === "statements")?.unknownReasons ?? []).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes TypedArray callbacks and receiver mutations", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-typed-array-builtins-"));
     try {

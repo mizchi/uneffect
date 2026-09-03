@@ -2069,11 +2069,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           ? substituteParameterizedCapability(raw, calleeParams, edge.arguments, parameters.get(edge.caller) ?? [])
           : raw.kind === "mutate" ? (() => {
           if (raw.region === "this" || raw.region.startsWith("this.") || raw.region.startsWith("this[")) {
+            if (edge.freshReceiver) return undefined;
             return edge.receiver ? { kind: "mutate" as const, region: `${edge.receiver}${raw.region.slice("this".length)}` } : undefined;
           }
           for (let index = 0; index < calleeParams.length; index++) {
             const parameter = calleeParams[index]!;
             if (raw.region === parameter || raw.region.startsWith(`${parameter}.`) || raw.region.startsWith(`${parameter}[`)) {
+              if (edge.freshArgumentIndices?.includes(index)) return undefined;
               if (unresolvedArgumentIndices.has(index)) return undefined;
               if (edge.arguments[index]) return { kind: "mutate" as const, region: `${edge.arguments[index]}${raw.region.slice(parameter.length)}` };
               if (freshDefaultParameters.get(edge.callee)?.has(index)) return undefined;
