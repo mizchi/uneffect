@@ -2930,6 +2930,24 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("uses JavaScript signed integer remainder semantics in a for update", async () => {
+    const fileName = "/contract-for-remainder-update.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires seed >= 0 */
+      /* uneffect:ensures result >= 0 && result < 8 */
+      function reduce(seed: Int): Int {
+        /* uneffect:loop_invariant value >= 0 */
+        for (var value = seed; value >= 8; value %= 8) {}
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("evaluates branch-aware scalar expressions on arithmetic compound-assignment RHS", async () => {
     const fileName = "/contract-branching-compound-updates.ts";
     const source = `

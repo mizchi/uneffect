@@ -2657,13 +2657,16 @@ export function lowerInvariantProgram(
         return { ...branch, env: nextEnv };
       });
     };
-    const applyScalarUpdate = (update: ts.Expression | undefined, path: PathState): PathState => {
-      if (!update) return path;
+    const applyScalarUpdate = (update: ts.Expression | undefined, path: PathState): PathState[] => {
+      if (!update) return [path];
       if (ts.isCommaListExpression(update)) {
-        return update.elements.reduce((current, element) => applyScalarUpdate(element, current), path);
+        return update.elements.reduce<PathState[]>(
+          (current, element) => current.flatMap((branch) => applyScalarUpdate(element, branch)),
+          [path],
+        );
       }
       if (ts.isBinaryExpression(update) && update.operatorToken.kind === ts.SyntaxKind.CommaToken) {
-        return applyScalarUpdate(update.right, applyScalarUpdate(update.left, path));
+        return applyScalarUpdate(update.left, path).flatMap((branch) => applyScalarUpdate(update.right, branch));
       }
       const next = { ...path, env: new Map(path.env) };
       if ((ts.isPostfixUnaryExpression(update) || ts.isPrefixUnaryExpression(update))
@@ -2675,12 +2678,12 @@ export function lowerInvariantProgram(
           kind: "binary", operator: update.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "sub",
           left: previous, right: { kind: "integer", value: "1" },
         });
-        return next;
+        return [next];
       }
       if (ts.isBinaryExpression(update) && update.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(update.left)) {
         assertNoSharedNullableAliasMutation(update.left.text, update);
         next.env.set(update.left.text, substitute(logic(update.right, pipeBindings, semanticGuards, semanticValues), next.env));
-        return next;
+        return [next];
       }
       if (ts.isBinaryExpression(update) && ts.isIdentifier(update.left)) {
         const operators = new Map<ts.SyntaxKind, Extract<LogicExpression, { kind: "binary" }>["operator"]>([
@@ -2692,7 +2695,19 @@ export function lowerInvariantProgram(
           assertNoSharedNullableAliasMutation(update.left.text, update);
           const previous = next.env.get(update.left.text) ?? variable(update.left.text);
           next.env.set(update.left.text, { kind: "binary", operator, left: previous, right: substitute(logic(update.right, pipeBindings, semanticGuards, semanticValues), next.env) });
-          return next;
+          return [next];
+        }
+        if (update.operatorToken.kind === ts.SyntaxKind.PercentEqualsToken) {
+          const divisor = constantIntegerRemainders.get(`${update.getStart(source)}:${update.getEnd()}`);
+          if (divisor === undefined) throw new Error(`unsupported invariant expression: ${update.getText(source)}`);
+          const name = update.left.text;
+          assertNoSharedNullableAliasMutation(name, update);
+          return evaluateIntegerRemainder(update.left, divisor, path).map(({ path: branch, value }) => {
+            if (branch.completion !== "normal") return branch;
+            const env = new Map(branch.env);
+            env.set(name, value);
+            return { ...branch, env };
+          });
         }
       }
       throw new Error("scalar update must be one identifier assignment, arithmetic compound assignment, or ++/-- expression");
@@ -3023,7 +3038,7 @@ export function lowerInvariantProgram(
             ts.SyntaxKind.AsteriskEqualsToken, ts.SyntaxKind.SlashEqualsToken, ts.SyntaxKind.PercentEqualsToken,
             ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken,
           ].includes(statement.expression.operatorToken.kind)))) {
-        paths = paths.map((path) => applyScalarUpdate(statement.expression, path));
+        paths = paths.flatMap((path) => applyScalarUpdate(statement.expression, path));
       } else if (ts.isIfStatement(statement)) {
         const forked: PathState[] = [];
         for (const path of paths) {
@@ -3180,7 +3195,7 @@ export function lowerInvariantProgram(
         const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
         if (!invariantSource) throw new Error(`for requires /* uneffect:loop_invariant ... */ but ${statement.condition?.getText(source) ?? "true"} has none`);
         const invariant = parseLogicExpression(invariantSource);
-        const initialized = paths.map((path) => {
+        const initialized = paths.flatMap((path) => {
           const shadowedPromise = lexicalInitializer
             ? initializerNames.find((name) => path.pendingPromises.has(name))
             : undefined;
@@ -3200,9 +3215,10 @@ export function lowerInvariantProgram(
               const name = (declaration.name as ts.Identifier).text;
               nextEnv.set(name, substitute(logic(declaration.initializer!, pipeBindings, semanticGuards, semanticValues), nextEnv));
             }
-            return { path: { ...path, env: nextEnv }, outerValues };
+            return [{ path: { ...path, env: nextEnv }, outerValues }];
           }
-          return { path: initializer ? applyScalarUpdate(initializer as ts.Expression, path) : path, outerValues };
+          return (initializer ? applyScalarUpdate(initializer as ts.Expression, path) : [path])
+            .map((branch) => ({ path: branch, outerValues }));
         });
         const exited: PathState[] = [];
         for (const initializedPath of initialized) {
@@ -3242,8 +3258,9 @@ export function lowerInvariantProgram(
               : execute([statement.statement], bodyInput, loopContext);
             for (const bodyPath of bodyPaths) {
               if (bodyPath.completion === "normal" || (bodyPath.completion === "continue" && bodyPath.continueTarget === loopTarget)) {
-                const updated = applyScalarUpdate(statement.incrementor, bodyPath);
-                add("loop-preserve", statement, updated.assumptions, substitute(invariant, updated.env), invariantSource, updated.env);
+                for (const updated of applyScalarUpdate(statement.incrementor, bodyPath)) {
+                  add("loop-preserve", statement, updated.assumptions, substitute(invariant, updated.env), invariantSource, updated.env);
+                }
               } else if (bodyPath.completion === "break" && bodyPath.breakTarget === loopTarget) {
                 exited.push(restoreInitializerScope({ ...bodyPath, completion: "normal", breakTarget: undefined }));
               } else exited.push(restoreInitializerScope(bodyPath));

@@ -2708,18 +2708,18 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   loops target-owned unlabeled `break`/`continue` completions. Prove `continue`
   at the back edge (`for` after its assignment or `++/--` update), normalize
   `break` as an exit, preserve ownership through nested switch/try/finally, and
-  reject labels, missing invariants, multi-binding/sequence headers, or escaped
-  control.
+  reject labels, missing invariants, unsupported declaration/update shapes, or
+  escaped control.
 - [x] Reuse one symbolic identifier updater for statement-level and canonical
   `for` `++`, `--`, `=`, `+=`, `-=`, and `*=`. Reject property/sequence
-  mutation and keep `/=`/`%=` unsupported until JS division/remainder semantics
-  are represented rather than silently using Z3 integer `div`/`mod`; reviewed
+  mutation and keep `/=` plus general `%=` unsupported until JS division/remainder
+  semantics are represented rather than silently using Z3 integer `div`/`mod`; reviewed
   Boolean logical assignments are handled by the path evaluator below.
   - [x] Route ordinary-statement `+=`, `-=`, and `*=` right operands through
     the shared path evaluator, so conditional expressions, reviewed Math calls,
     and the supported signed-remainder fragment retain their branches. Require
-    matching numeric IR sorts; canonical loop-header updates remain deliberately
-    single-path.
+    matching numeric IR sorts; non-remainder loop-header arithmetic updates
+    remain deliberately single-path.
   - [x] Commit compound, logical, nullable, and plain assignment mutations only
     on normal RHS completion. Authenticated synchronous contract throws retain
     the pre-assignment environment when routed through catch/discharge.
@@ -2735,6 +2735,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     `%=` with a direct nonzero safe-integer literal divisor. Dynamic, zero, and
     Real divisors remain fail-closed; `/` and `/=` still require a sound
     fractional-result and finite-number model.
+  - [x] Reuse the same signed-Int remainder paths for `%=` in a canonical `for`
+    update, and sequence either branch correctly with adjacent comma updates.
   - [ ] Add a finite JavaScript-number abstraction before admitting `/`, `/=`, ([#6](https://github.com/mizchi/uneffect/issues/6))
     or dynamic/Real remainder; require explicit nonzero-divisor evidence and
     preserve truncation, fractional results, NaN, and infinities without

@@ -637,19 +637,20 @@ same property is proved for arbitrary TypeScript.
   default exclusion, fallthrough, and narrowed payload access. No unconstrained
   SMT string is invented. Open/mutable discriminants and case literals outside
   the reviewed family fail closed.
-  Invariant-backed `while`, canonical single-binding scalar `for`, and
+  Invariant-backed `while`, canonical scalar `for`, and
   `do...while` share target-owned unlabeled `break`/`continue`. Continue creates
-  a loop-preservation obligation; a `for` applies its single assignment or
-  `++/--` update first. Break contributes a concrete post-loop path, and
+  a loop-preservation obligation; a `for` applies its supported scalar update
+  sequence first. Break contributes a concrete post-loop path, and
   try/finally plus a nested switch retain the nearest owner. The do-while exit
   is reachable only after one body execution. Labels, missing invariants,
-  multi-binding/sequence headers, and general loop expressions remain outside
-  this bounded inductive fragment.
+  destructured/uninitialized declarations and general loop expressions remain
+  outside this bounded inductive fragment.
   Identifier-only `++`, `--`, `=`, `+=`, `-=`, and `*=` share one symbolic
   updater between ordinary statements and canonical `for` headers. Property,
-  logical, and comma-sequence mutation fail closed. `/=` and `%=` also remain
-  unsupported here because general JavaScript number division/remainder do not
-  equal the current integer SMT abstraction.
+  logical mutation fails closed in headers. Comma sequences apply supported
+  updates left-to-right. `/=` remains unsupported because general JavaScript
+  number division does not equal the current integer SMT abstraction; `%=` is
+  admitted only for the reviewed signed-Int/literal-divisor fragment below.
   Ordinary-statement arithmetic compound assignments evaluate their right side
   through the same path-sensitive scalar evaluator as returns and plain
   assignments. Conditional expressions, reviewed Math calls, and the supported
@@ -659,7 +660,8 @@ same property is proved for arbitrary TypeScript.
   mutates the binding, while catch observes the pre-assignment state. The same
   normal-completion gate applies to Boolean `&&=`/`||=` and nullable scalar
   `??=`. Both arithmetic operands must have the same numeric IR sort. Canonical
-  loop-header updates stay in the single-path updater.
+  loop-header updates use the same ordered path set, including the two signed
+  remainder branches.
   Direct `/` and general `%` expressions now fail closed for the same reason. A
   regression demonstrates the prior unsound mapping: SMT `mod` could prove a
   non-negative result for a negative JavaScript remainder. Reintroduction
