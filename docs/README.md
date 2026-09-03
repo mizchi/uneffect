@@ -4,6 +4,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 
 ## Documents
 
+- [Feature overview](./overview.md): pattern-oriented tour of the public annotation, specification, and programmatic surfaces.
 - [Quickstart](./quickstart.md): install, run the first check, add a scoped capability, instrument assertions, and generate a temporal model.
 - [Stability and safe adoption](./stability.md): alpha API status, supported fragments, experimental surfaces, and unsafe interpretations.
 - [Public API and compatibility](./public-api.md): stable entrypoints, experimental subpaths, temporal result contract, and pre-1.0 compatibility policy.

@@ -37,9 +37,17 @@ describe("0.3.0 release metadata", () => {
 
   it("documents the experimental 0.3 release without claiming general verification", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8"), readme = readFileSync("README.md", "utf8");
+    const overview = readFileSync("docs/overview.md", "utf8");
     expect(changelog).toContain("## 0.3.0");
     expect(readme).toContain("0.3 is an experimental release");
     expect(readme).toContain("not a verifier for all of JavaScript");
     expect(readme).toContain("[Public API and compatibility](./docs/public-api.md)");
+    expect(readme).toContain("[Feature overview](./docs/overview.md)");
+    expect(overview).toContain("# Uneffect feature overview");
+    expect(overview).toContain("## Effect tracking");
+    expect(overview).toContain("## Hoare-style contracts");
+    expect(overview).toContain("## Async, resources, and temporal models");
+    expect(overview).toContain("## Programmatic public API");
+    expect(overview).toContain("Unsupported or unknown");
   });
 });
