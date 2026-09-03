@@ -2,7 +2,7 @@ import ts from "typescript";
 import type { Effect } from "./capabilities.js";
 import type { EvidenceStatus } from "./effects.js";
 import { extractAnnotations } from "./annotations.js";
-import { isAuthenticatedProxyExpression, TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
+import { isAuthenticatedProxyExpression, standardLibraryOperation, TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import { resolveStableRegion } from "./region-alias.js";
 import { interpretBuiltinCallSemantics, projectBuiltinCallbacks } from "./builtin-semantic-interpreter.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
@@ -426,36 +426,25 @@ export function buildProgramCallGraph(
     return Boolean(source?.isDeclarationFile
       && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName));
   };
-  const standardLibraryOperation = (call: ts.CallExpression | ts.NewExpression): string | undefined => {
-    const declaration = checker.getResolvedSignature(call)?.declaration;
-    if (!declaration || !isStandardLibraryCall(call)) return undefined;
-    const owner = declaration.parent && (ts.isInterfaceDeclaration(declaration.parent) || ts.isClassDeclaration(declaration.parent))
-      ? declaration.parent.name?.text : undefined;
-    if (ts.isNewExpression(call)) return owner;
-    const name = (declaration as ts.SignatureDeclaration).name;
-    const member = name && (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name))
-      ? name.text : undefined;
-    return owner && member ? `${owner}#${member}` : member;
-  };
   const iterableConsumerArgument = (parent: ts.Node, expression: ts.Expression): boolean => {
     if (ts.isCallExpression(parent) && parent.arguments[0] === expression) {
       return [
         "ArrayConstructor#from", "ArrayConstructor#fromAsync", "ObjectConstructor#fromEntries",
         "PromiseConstructor#all", "PromiseConstructor#allSettled", "PromiseConstructor#any", "PromiseConstructor#race",
         "ObjectConstructor#groupBy", "MapConstructor#groupBy",
-      ].includes(standardLibraryOperation(parent) ?? "");
+      ].includes(standardLibraryOperation(checker, parent) ?? "");
     }
     if (ts.isNewExpression(parent) && parent.arguments?.[0] === expression) {
       return ["SetConstructor", "MapConstructor", "WeakSetConstructor", "WeakMapConstructor", "Int8ArrayConstructor", "Uint8ArrayConstructor", "Uint8ClampedArrayConstructor", "Int16ArrayConstructor",
         "Uint16ArrayConstructor", "Int32ArrayConstructor", "Uint32ArrayConstructor", "Float32ArrayConstructor", "Float64ArrayConstructor", "BigInt64ArrayConstructor", "BigUint64ArrayConstructor"]
-        .includes(standardLibraryOperation(parent) ?? "");
+        .includes(standardLibraryOperation(checker, parent) ?? "");
     }
     return false;
   };
   const promiseIterableConsumerArgument = (parent: ts.Node, expression: ts.Expression): boolean =>
     ts.isCallExpression(parent) && parent.arguments[0] === expression
     && ["ArrayConstructor#fromAsync", "PromiseConstructor#all", "PromiseConstructor#allSettled", "PromiseConstructor#any", "PromiseConstructor#race"]
-      .includes(standardLibraryOperation(parent) ?? "");
+      .includes(standardLibraryOperation(checker, parent) ?? "");
   const iteratorParameterCache = new Map<ts.FunctionLikeDeclaration, IteratorEffectParameter[]>();
   const iteratorParameterVisiting = new Set<ts.FunctionLikeDeclaration>();
   const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
@@ -1194,7 +1183,7 @@ export function buildProgramCallGraph(
       if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.[0]
         && iterableConsumerArgument(node, node.arguments[0])) consumeIterableExpression(
           node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
-          ts.isCallExpression(node) && standardLibraryOperation(node) === "ArrayConstructor#fromAsync",
+          ts.isCallExpression(node) && standardLibraryOperation(checker, node) === "ArrayConstructor#fromAsync",
         );
       if (ts.isNewExpression(node)) {
         const symbol = resolvedSymbol(checker, node.expression);
@@ -1279,40 +1268,32 @@ export function buildProgramCallGraph(
         const reflectConstruct = ts.isPropertyAccessExpression(node.expression)
           && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Reflect"
           && node.expression.name.text === "construct" && isStandardLibraryCall(node);
+        const libraryOperation = standardLibraryOperation(checker, node);
         if (reflectConstruct) addReflectConstructEdge(node);
         const directBound = boundCallableResolution(node.expression);
         if (directBound) addIndirectCallableEdge(node, node.expression, undefined, node.arguments);
-        if (node.arguments.length >= 2 && ts.isPropertyAccessExpression(node.expression)
-          && node.expression.name.text === "assign" && ts.isIdentifier(node.expression.expression)
-          && node.expression.expression.text === "Object" && isStandardLibraryCall(node)) {
+        if (node.arguments.length >= 2 && libraryOperation === "ObjectConstructor#assign") {
           for (const source of node.arguments.slice(1)) addEnumerableGetterEdges(source);
           addEnumerableSetterEdges(node.arguments[0]!, node.arguments.slice(1));
         }
-        if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "concat"
-          && isStandardLibraryCall(node)) {
-          addEnumerableGetterEdges(node.expression.expression);
+        if (libraryOperation === "Array#concat" || libraryOperation === "ReadonlyArray#concat") {
+          if (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)) {
+            addEnumerableGetterEdges(node.expression.expression);
+          }
           for (const argument of node.arguments) addEnumerableGetterEdges(argument);
         }
-        if (node.arguments[2] && ts.isPropertyAccessExpression(node.expression)
-          && node.expression.name.text === "defineProperty" && isStandardLibraryCall(node)
-          && ts.isIdentifier(node.expression.expression)
-          && (node.expression.expression.text === "Object" || node.expression.expression.text === "Reflect")) {
+        if (node.arguments[2] && (libraryOperation === "ObjectConstructor#defineProperty"
+          || libraryOperation === "defineProperty")) {
           addNamedGetterEdges(node.arguments[2], ["enumerable", "configurable", "value", "writable", "get", "set"]);
         }
-        if (node.arguments[1] && ts.isPropertyAccessExpression(node.expression)
-          && node.expression.name.text === "defineProperties" && isStandardLibraryCall(node)
-          && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object") {
+        if (node.arguments[1] && libraryOperation === "ObjectConstructor#defineProperties") {
           addDescriptorMapEdges(node.arguments[1]);
         }
-        if (node.arguments[1] && ts.isPropertyAccessExpression(node.expression)
-          && node.expression.name.text === "create" && isStandardLibraryCall(node)
-          && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object") {
+        if (node.arguments[1] && libraryOperation === "ObjectConstructor#create") {
           addDescriptorMapEdges(node.arguments[1]);
         }
-        if (node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-          && (node.expression.name.text === "values" || node.expression.name.text === "entries")
-          && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object"
-          && isStandardLibraryCall(node)) addEnumerableGetterEdges(node.arguments[0]);
+        if (node.arguments[0] && (libraryOperation === "ObjectConstructor#values"
+          || libraryOperation === "ObjectConstructor#entries")) addEnumerableGetterEdges(node.arguments[0]);
         if (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression)
           && node.expression.expression.text === "Reflect" && isStandardLibraryCall(node)
           && (node.expression.name.text === "get" || node.expression.name.text === "set")) {
@@ -1331,9 +1312,7 @@ export function buildProgramCallGraph(
           addIndirectCallableEdge(node, node.arguments[0], node.arguments[1],
             node.arguments[2] ? staticApplyArguments(node.arguments[2]) : undefined);
         }
-        if (node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-          && node.expression.name.text === "stringify" && ts.isIdentifier(node.expression.expression)
-          && node.expression.expression.text === "JSON" && isStandardLibraryCall(node)) {
+        if (node.arguments[0] && libraryOperation === "JSON#stringify") {
           const value = node.arguments[0];
           const toJSON = checker.getPropertyOfType(checker.getTypeAtLocation(value), "toJSON");
           const receiver = canonicalAddressableReceiver(value);
@@ -1348,8 +1327,7 @@ export function buildProgramCallGraph(
           }
           if (!toJSON) addEnumerableGetterEdges(value);
         }
-        if (node.arguments[0] && ts.isIdentifier(node.expression)
-          && node.expression.text === "structuredClone" && isStandardLibraryCall(node)) {
+        if (node.arguments[0] && libraryOperation === "structuredClone") {
           addStructuredCloneGetterEdges(node.arguments[0]);
         }
         for (const argument of node.arguments) invalidateObjectSlots(argument);

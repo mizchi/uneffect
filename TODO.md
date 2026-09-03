@@ -1034,6 +1034,10 @@ introducing another domain-local control-flow or alias model.
      - [x] Treat standard Array `concat` as fresh while composing explicit
        object-literal indexed/`Symbol.isConcatSpreadable` getters and conservatively
        reporting authenticated Proxy or unresolved operands as `InvokeUserCode`.
+     - [x] Share resolved lib.d.ts operation identity between catalog lookup and
+       hidden-execution call-graph rules, retaining getter/user-code semantics
+       through aliases of `Object.assign`, Object enumeration, `JSON.stringify`,
+       `structuredClone`, and Array `concat`.
    - [x] Model standard-identity `Object.assign` as enumerable reads followed
      by target writes. Compose same-Program object-literal source getters and
      matching target setters, exclude class prototype accessors, and classify

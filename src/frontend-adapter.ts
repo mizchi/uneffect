@@ -41,6 +41,23 @@ function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undef
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
 }
 
+/** Stable lib.d.ts owner/member identity, independent of source-level aliases. */
+export function standardLibraryOperation(
+  checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression,
+): string | undefined {
+  const declaration = checker.getResolvedSignature(call)?.declaration;
+  const source = declaration?.getSourceFile();
+  if (!declaration || !source?.isDeclarationFile
+    || !/(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName)) return undefined;
+  const owner = declaration.parent && (ts.isInterfaceDeclaration(declaration.parent) || ts.isClassDeclaration(declaration.parent))
+    ? declaration.parent.name?.text : undefined;
+  if (ts.isNewExpression(call)) return owner;
+  const name = (declaration as ts.SignatureDeclaration).name;
+  const member = name && (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name))
+    ? name.text : undefined;
+  return owner && member ? `${owner}#${member}` : member;
+}
+
 /** Authenticate a direct standard Proxy construction through immutable local aliases. */
 export function isAuthenticatedProxyExpression(checker: ts.TypeChecker, expression: ts.Expression): boolean {
   const seen = new Set<ts.Symbol>();
@@ -707,6 +724,8 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         property.declarations?.some(ts.isGetAccessorDeclaration)
         || (property.name.includes("isConcatSpreadable") && (property.declarations?.length ?? 0) > 0));
     };
+    const libraryOperation = ts.isCallExpression(node) || ts.isNewExpression(node)
+      ? standardLibraryOperation(this.#checker, node) : undefined;
     if (ts.isSpreadAssignment(node)) {
       const sourceType = this.#checker.getTypeAtLocation(node.expression);
       if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0
@@ -719,41 +738,23 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     if (ts.isObjectBindingPattern(node) && ts.isParameter(node.parent)) {
       if (objectBindingMayInvoke(node, this.#checker.getTypeAtLocation(node))) return true;
     }
-    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === "stringify" && ts.isIdentifier(node.expression.expression)
-      && node.expression.expression.text === "JSON") {
-      const stringify = targetSymbol(this.#checker, node.expression.name);
-      const standard = stringify?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName));
-      if (standard) {
-        const value = node.arguments[0];
-        const type = this.#checker.getTypeAtLocation(value);
-        if (directProxyReceiver(value) || jsonTypeMayInvoke(type)) return true;
-      }
-    }
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === "concat") {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
-      if (standard && [node.expression.expression, ...node.arguments].some(concatOperandMayInvoke)) return true;
-    }
-    if (ts.isCallExpression(node) && node.arguments[0] && ts.isIdentifier(node.expression)
-      && node.expression.text === "structuredClone") {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+    if (ts.isCallExpression(node) && node.arguments[0] && libraryOperation === "JSON#stringify") {
       const value = node.arguments[0];
-      if (standard && !directProxyReceiver(value)
+      const type = this.#checker.getTypeAtLocation(value);
+      if (directProxyReceiver(value) || jsonTypeMayInvoke(type)) return true;
+    }
+    if (ts.isCallExpression(node) && (libraryOperation === "Array#concat"
+      || libraryOperation === "ReadonlyArray#concat")) {
+      const receiver = ts.isPropertyAccessExpression(node.expression) ? node.expression.expression : undefined;
+      if ((!receiver || concatOperandMayInvoke(receiver)) || node.arguments.some(concatOperandMayInvoke)) return true;
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && libraryOperation === "structuredClone") {
+      const value = node.arguments[0];
+      if (!directProxyReceiver(value)
         && structuredCloneTypeMayInvoke(this.#checker.getTypeAtLocation(value))) return true;
     }
-    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object"
-      && node.expression.name.text === "create") {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
-      if (standard && node.arguments[1] && descriptorMapMayInvoke(node.arguments[1])) return true;
+    if (ts.isCallExpression(node) && node.arguments[0] && libraryOperation === "ObjectConstructor#create") {
+      if (node.arguments[1] && descriptorMapMayInvoke(node.arguments[1])) return true;
     }
     if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
       && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object"
@@ -845,31 +846,24 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         }
       }
     }
-    if (ts.isCallExpression(node) && node.arguments.length >= 2 && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === "assign" && ts.isIdentifier(node.expression.expression)
-      && node.expression.expression.text === "Object") {
-      const assign = targetSymbol(this.#checker, node.expression.name);
-      const standard = assign?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName));
-      if (standard) {
-        const target = node.arguments[0]!;
-        const sources = node.arguments.slice(1);
-        const targetType = this.#checker.getTypeAtLocation(target);
-        if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
-          || directProxyReceiver(target)) return true;
-        for (const source of sources) {
-          const sourceType = this.#checker.getTypeAtLocation(source);
-          if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
-            || directProxyReceiver(source) || hasEnumerableObjectLiteralGetter(sourceType)) return true;
-          if (sourceType.getProperties().some((sourceProperty) => {
-            const declarations = sourceProperty.declarations ?? [];
-            const potentiallyOwnEnumerable = declarations.length === 0 || declarations.some((item) =>
-              !((ts.isClassDeclaration(item.parent) || ts.isClassExpression(item.parent))
-                && (ts.isMethodDeclaration(item) || ts.isGetAccessorDeclaration(item) || ts.isSetAccessorDeclaration(item))));
-            return potentiallyOwnEnumerable
-              && this.#checker.getPropertyOfType(targetType, sourceProperty.name)?.declarations?.some(ts.isSetAccessorDeclaration);
-          })) return true;
-        }
+    if (ts.isCallExpression(node) && node.arguments.length >= 2 && libraryOperation === "ObjectConstructor#assign") {
+      const target = node.arguments[0]!;
+      const sources = node.arguments.slice(1);
+      const targetType = this.#checker.getTypeAtLocation(target);
+      if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+        || directProxyReceiver(target)) return true;
+      for (const source of sources) {
+        const sourceType = this.#checker.getTypeAtLocation(source);
+        if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
+          || directProxyReceiver(source) || hasEnumerableObjectLiteralGetter(sourceType)) return true;
+        if (sourceType.getProperties().some((sourceProperty) => {
+          const declarations = sourceProperty.declarations ?? [];
+          const potentiallyOwnEnumerable = declarations.length === 0 || declarations.some((item) =>
+            !((ts.isClassDeclaration(item.parent) || ts.isClassExpression(item.parent))
+              && (ts.isMethodDeclaration(item) || ts.isGetAccessorDeclaration(item) || ts.isSetAccessorDeclaration(item))));
+          return potentiallyOwnEnumerable
+            && this.#checker.getPropertyOfType(targetType, sourceProperty.name)?.declarations?.some(ts.isSetAccessorDeclaration);
+        })) return true;
       }
     }
     if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)

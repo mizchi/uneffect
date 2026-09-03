@@ -255,7 +255,9 @@ describe("multi-file call graph and effect polymorphism", () => {
           /* uneffect:effect Console | Throw<TypeError> | Mutate<typeof this.reads> */
           get value(): number { this.reads++; console.log("get"); if (this.reads < 0) throw new TypeError("get"); return 1 }
         };
+        const clone = structuredClone;
         export function cloneKnown(value: typeof source) { return structuredClone(value) }
+        export function cloneAlias(value: typeof source) { return clone(value) }
         export function cloneNestedLiteral(value: typeof source) { return structuredClone({ nested: value }) }
         /* uneffect:effect Clone<typeof value> | Throw<DOMException> */
         export function clonePlain(value: { count: number }) { return structuredClone(value) }
@@ -274,7 +276,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       expect(program.getSemanticDiagnostics().map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
       const result = analyzeProgramEffects(program);
-      for (const functionName of ["cloneKnown", "cloneNestedLiteral"]) {
+      for (const functionName of ["cloneKnown", "cloneAlias", "cloneNestedLiteral"]) {
         expect(result.diagnostics).toEqual(expect.arrayContaining([
           expect.objectContaining({ functionName, effect: "Console", kind: "missing" }),
           expect.objectContaining({ functionName, effect: "Throw<TypeError>", kind: "missing" }),
@@ -307,7 +309,9 @@ describe("multi-file call graph and effect polymorphism", () => {
           /* uneffect:effect Console | Throw<TypeError> | Mutate<typeof this.reads> */
           get value(): number { this.reads++; console.log("get"); if (this.reads < 0) throw new TypeError("get"); return 1 }
         };
+        const assign = Object.assign;
         export function copy(target: Target, source: typeof sourceObject) { return Object.assign(target, source) }
+        export function copyAlias(target: Target, source: typeof sourceObject) { return assign(target, source) }
         /* uneffect:effect InvokeUserCode | Mutate<typeof target> */ export function copyUnknown(target: {}, source: unknown) { return Object.assign(target, source) }
         /* uneffect:effect InvokeUserCode | Mutate<typeof target> */ export function copyGeneric<T extends object>(target: {}, source: T) { return Object.assign(target, source) }
         /* uneffect:effect InvokeUserCode | Mutate<typeof target> */ export function copyProxy(target: {}, source: typeof sourceObject) { return Object.assign(target, new Proxy(source, {})) }
@@ -332,6 +336,9 @@ describe("multi-file call graph and effect polymorphism", () => {
         expect.objectContaining({ functionName: "copy", effect: "Mutate<typeof source.reads>", kind: "missing" }),
         expect.objectContaining({ functionName: "copy", effect: "Mutate<typeof target.writes>", kind: "missing" }),
         expect.objectContaining({ functionName: "copy", effect: "Mutate<typeof target>", kind: "missing" }),
+        expect.objectContaining({ functionName: "copyAlias", effect: "InvokeUserCode", kind: "missing" }),
+        expect.objectContaining({ functionName: "copyAlias", effect: "Console", kind: "missing" }),
+        expect.objectContaining({ functionName: "copyAlias", effect: "Mutate<typeof source.reads>", kind: "missing" }),
       ]));
       expect(result.diagnostics.filter((diagnostic) =>
         ["copyUnknown", "copyGeneric", "copyProxy", "copyPlain", "copyPrototype", "caught", "lookalike"].includes(diagnostic.functionName))).toEqual([]);
@@ -356,7 +363,9 @@ describe("multi-file call graph and effect polymorphism", () => {
         class PrototypeSource {
           /* uneffect:effect Console */ get value(): number { console.log("prototype"); return 1 }
         }
+        const enumerate = Object.values;
         export function values(source: typeof sourceObject) { return Object.values(source) }
+        export function valuesAlias(source: typeof sourceObject) { return enumerate(source) }
         export function entries(source: typeof sourceObject) { return Object.entries(source) }
         export function keys(source: typeof sourceObject) { return Object.keys(source) }
         /* uneffect:effect InvokeUserCode */ export function unknown(source: any) { return Object.values(source) }
@@ -376,7 +385,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       expect(program.getSemanticDiagnostics().map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
       const result = analyzeProgramEffects(program);
-      for (const functionName of ["values", "entries"]) {
+      for (const functionName of ["values", "valuesAlias", "entries"]) {
         expect(result.diagnostics).toEqual(expect.arrayContaining([
           expect.objectContaining({ functionName, effect: "Console", kind: "missing" }),
           expect.objectContaining({ functionName, effect: "Throw<TypeError>", kind: "missing" }),
@@ -712,7 +721,9 @@ describe("multi-file call graph and effect polymorphism", () => {
           /* uneffect:effect Console | Throw<TypeError> | Mutate<typeof this.calls> */
           get value(): number { this.calls++; console.log("getter"); throw new TypeError("getter") }
         }
+        const stringify = JSON.stringify;
         export function encode(payload: Payload) { return JSON.stringify(payload) }
+        export function encodeAlias(payload: Payload) { return stringify(payload) }
         export function encodeGetter(value: typeof getterObject) { return JSON.stringify(value) }
         /* uneffect:effect InvokeUserCode */ export function encodeUnknown(value: unknown) { return JSON.stringify(value) }
         /* uneffect:effect InvokeUserCode */ export function encodeArray(values: Payload[]) { return JSON.stringify(values) }
@@ -731,6 +742,9 @@ describe("multi-file call graph and effect polymorphism", () => {
         expect.objectContaining({ functionName: "encode", effect: "Console", kind: "missing" }),
         expect.objectContaining({ functionName: "encode", effect: "Throw<RangeError>", kind: "missing" }),
         expect.objectContaining({ functionName: "encode", effect: "Mutate<typeof payload.calls>", kind: "missing" }),
+        expect.objectContaining({ functionName: "encodeAlias", effect: "InvokeUserCode", kind: "missing" }),
+        expect.objectContaining({ functionName: "encodeAlias", effect: "Console", kind: "missing" }),
+        expect.objectContaining({ functionName: "encodeAlias", effect: "Mutate<typeof payload.calls>", kind: "missing" }),
         expect.objectContaining({ functionName: "encodeGetter", effect: "Console", kind: "missing" }),
         expect.objectContaining({ functionName: "encodeGetter", effect: "Throw<TypeError>", kind: "missing" }),
         expect.objectContaining({ functionName: "encodeGetter", effect: "Mutate<typeof value.calls>", kind: "missing" }),
