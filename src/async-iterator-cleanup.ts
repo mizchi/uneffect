@@ -2,6 +2,7 @@ import ts from "typescript";
 import type { ResourceProtocolModel } from "./resource-protocol.js";
 import { analyzeResourceCallableSummaries } from "./resource-callable-typescript.js";
 import type { ResourceCallableSummary } from "./resource-protocol.js";
+import { standardLibraryOperation } from "./frontend-adapter.js";
 
 export type AsyncIteratorExit = "exhausted" | "break" | "return" | "throw" | "manual-return" | "manual-open" | "manual-exhausted" | "manual-escape" | "manual-consume" | "manual-transfer" | "delegated-return" | "delegated-throw";
 export type AsyncIteratorCleanupUnknown = "abrupt-through-finally" | "manual-iterator-not-closed" | "unawaited-iterator-operation" | "conditional-manual-protocol" | "iterator-passed-to-call" | "unstable-iterator-property" | "unstable-iterator-alias" | "delegation-step-failure";
@@ -181,6 +182,42 @@ function unwrapped(expression: ts.Expression): ts.Expression {
   while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
     || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
   return expression;
+}
+
+const synchronousIterableConsumers = new Set([
+  "ArrayConstructor#from", "ArrayConstructor#fromAsync", "ObjectConstructor#fromEntries",
+  "PromiseConstructor#all", "PromiseConstructor#allSettled", "PromiseConstructor#any", "PromiseConstructor#race",
+  "ObjectConstructor#groupBy", "MapConstructor#groupBy",
+]);
+const synchronousIterableConstructors = new Set([
+  "SetConstructor", "MapConstructor", "WeakSetConstructor", "WeakMapConstructor",
+  "Int8ArrayConstructor", "Uint8ArrayConstructor", "Uint8ClampedArrayConstructor", "Int16ArrayConstructor",
+  "Uint16ArrayConstructor", "Int32ArrayConstructor", "Uint32ArrayConstructor", "Float32ArrayConstructor",
+  "Float64ArrayConstructor", "BigInt64ArrayConstructor", "BigUint64ArrayConstructor",
+]);
+
+/** A reviewed ECMAScript operation that takes ownership of argument zero's iterator protocol. */
+function isStandardIteratorConsumer(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  argumentIndex: number,
+  protocol: "sync" | "async",
+): boolean {
+  if (argumentIndex !== 0) return false;
+  const operation = standardLibraryOperation(checker, call);
+  return protocol === "async"
+    ? operation === "ArrayConstructor#fromAsync"
+    : synchronousIterableConsumers.has(operation ?? "");
+}
+
+function isStandardIteratorConstructConsumer(
+  checker: ts.TypeChecker,
+  call: ts.NewExpression,
+  argumentIndex: number,
+  protocol: "sync" | "async",
+): boolean {
+  return protocol === "sync" && argumentIndex === 0
+    && synchronousIterableConstructors.has(standardLibraryOperation(checker, call) ?? "");
 }
 
 function awaitedCall(node: ts.CallExpression): boolean {
@@ -979,6 +1016,10 @@ function analyzeIteratorProtocolCleanupInProgram(
         }
         const argumentResolution = iteratorResolutionAtExpression(argument, node);
         if (!argumentResolution.targets.has(symbol)) continue;
+        if (isStandardIteratorConsumer(checker, node, argumentIndex, protocol)) {
+          operations.push({ kind: "consume", node: argument, awaited: true, conditional: false, evidence: "exact" });
+          continue;
+        }
         if (argumentResolution.unstable || argumentResolution.targets.size !== 1) {
           operations.push({ kind: "escape", node: argument, awaited: true, conditional: true, evidence: "unknown", unstableAlias: true });
           continue;
@@ -998,6 +1039,15 @@ function analyzeIteratorProtocolCleanupInProgram(
             kind: operation.kind === "borrow" ? "use" : operation.kind,
             node: argument, awaited: true, conditional: operation.kind === "borrow" ? false : conditionallyExecuted(node, binding.declaration), evidence: summary!.evidence === "verified" ? "exact" : "trusted",
           });
+        }
+      }
+      if (ts.isNewExpression(node) && enclosingFunction(node) === bindingOwner) for (const [argumentIndex, argument] of (node.arguments ?? []).entries()) {
+        const argumentResolution = iteratorResolutionAtExpression(argument, node);
+        if (!argumentResolution.targets.has(symbol)) continue;
+        if (isStandardIteratorConstructConsumer(checker, node, argumentIndex, protocol)) {
+          operations.push({ kind: "consume", node: argument, awaited: true, conditional: false, evidence: "exact" });
+        } else {
+          operations.push({ kind: "escape", node: argument, awaited: true, conditional: true, evidence: "unknown", uncontractedCall: true });
         }
       }
       ts.forEachChild(node, visit);

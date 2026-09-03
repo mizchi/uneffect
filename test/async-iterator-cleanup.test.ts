@@ -519,6 +519,33 @@ describe("async iterator cleanup", () => {
     expect(evaluateResourceProtocol(cleanup!.scenarios[0]!.model).status).toBe("unknown");
   });
 
+  it("recognizes the authenticated Array.from builtin as a synchronous iterator consumer", () => {
+    const [cleanup] = analyzeAllIterators(`
+      function main() {
+        const cursor = [1, 2, 3].values()
+        const materialize = Array.from
+        materialize(cursor)
+      }
+    `).filter(({ protocol }) => protocol === "sync");
+    expect(cleanup).toMatchObject({ owner: "main", unknownReasons: [], scenarios: [{
+      exit: "manual-consume",
+      model: { transitions: [{ kind: "consume", evidence: "exact" }] },
+    }] });
+    expect(evaluateResourceProtocol(cleanup!.scenarios[0]!.model).status).toBe("satisfied");
+  });
+
+  it("does not trust a same-spelled mutable Array.from replacement", () => {
+    const [cleanup] = analyzeAllIterators(`
+      function main() {
+        const cursor = [1, 2, 3].values()
+        let materialize: typeof Array.from = Array.from
+        materialize = ((value: Iterable<unknown>) => []) as typeof Array.from
+        materialize(cursor)
+      }
+    `).filter(({ protocol }) => protocol === "sync");
+    expect(cleanup).toMatchObject({ owner: "main", unknownReasons: ["iterator-passed-to-call"] });
+  });
+
   it("transfers ownership through a returned inline closure without executing its body", () => {
     const [cleanup] = analyzeProgram(`
       function makeReader(values: AsyncIterable<number>) {
