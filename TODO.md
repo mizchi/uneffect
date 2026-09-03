@@ -2887,6 +2887,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     as `return await`. Evaluate arguments and synchronous throws at call time,
     forward fulfillment into the caller result, and let rejection bypass the
     surrounding synchronous catch while still executing `finally`.
+    - [x] Apply the same forwarding to a stored immutable Promise binding (and
+      its supported immutable aliases), mark it observed at return, and retain
+      creation-time synchronous throw evidence separately from later rejection.
 - [x] Emit one source-mapped `call-precondition` obligation per callee
   `contract requires` clause and prove it from the exact caller path conditions;
   a failed implication is a counterexample rather than an assumed precondition.

@@ -901,7 +901,11 @@ same property is proved for arbitrary TypeScript.
   is forwarded to the caller and deliberately bypasses a surrounding
   synchronous `try/catch`; `return await producer(args)` instead observes that
   rejection in the current function, where catch may discharge it. Supported
-  `finally` executes for both forms. A scalar Promise-returning callee may
+  `finally` executes for both forms. The same forwarding applies after
+  `const pending = producer(args); return pending`, including immutable Promise
+  aliases: call-time synchronous throws keep their original location, the
+  returned binding counts as observed, and its later rejection bypasses the
+  local synchronous catch. A scalar Promise-returning callee may
   expose a trusted `contract ensures` relation. One direct
   `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar

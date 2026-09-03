@@ -1866,7 +1866,7 @@ export function lowerInvariantProgram(
       return paths;
     };
     const executeAwait = (
-      awaited: ts.AwaitExpression | ts.CallExpression,
+      awaited: ts.Expression,
       incoming: PathState[],
       target?: { binding?: string; nullableGuard?: SemanticGuardFact; returnStatement?: ts.ReturnStatement },
       forwardRejection = false,
@@ -2963,6 +2963,9 @@ export function lowerInvariantProgram(
         paths = executeAwait(statement.expression, paths, { returnStatement: statement });
       } else if (ts.isReturnStatement(statement) && statement.expression && ts.isCallExpression(statement.expression)
         && callCompletions.get(`${statement.expression.getStart(source)}:${statement.expression.getEnd()}`)?.mode === "promise") {
+        paths = executeAwait(statement.expression, paths, { returnStatement: statement }, true);
+      } else if (ts.isReturnStatement(statement) && statement.expression && ts.isIdentifier(statement.expression)
+        && paths.some((path) => path.pendingPromises.has(statement.expression!.getText(source)))) {
         paths = executeAwait(statement.expression, paths, { returnStatement: statement }, true);
       } else if (ts.isReturnStatement(statement) && statement.expression) {
         const returnExpression = statement.expression;
