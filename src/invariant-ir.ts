@@ -3114,15 +3114,16 @@ export function lowerInvariantProgram(
       } else if (ts.isForStatement(statement)) {
         const loopTarget = statement.getStart(source);
         const initializer = statement.initializer;
-        if (!initializer || !statement.condition) throw new Error("for requires one scalar initializer and an explicit condition");
-        const declaration = ts.isVariableDeclarationList(initializer) && initializer.declarations.length === 1
+        if (!statement.condition) throw new Error("for requires an explicit condition");
+        const declaration = initializer && ts.isVariableDeclarationList(initializer) && initializer.declarations.length === 1
           ? initializer.declarations[0] : undefined;
-        if (ts.isVariableDeclarationList(initializer)
+        if (initializer && ts.isVariableDeclarationList(initializer)
           && (!declaration || !ts.isIdentifier(declaration.name) || !declaration.initializer)) {
           throw new Error("for variable initializer requires one initialized identifier");
         }
         const initializerName = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
-        const lexicalInitializer = Boolean(declaration && (initializer as ts.VariableDeclarationList).flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
+        const lexicalInitializer = Boolean(declaration && initializer && ts.isVariableDeclarationList(initializer)
+          && initializer.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
         const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
         if (!invariantSource) throw new Error(`for requires /* uneffect:loop_invariant ... */ but ${statement.condition.getText(source)} has none`);
         const invariant = parseLogicExpression(invariantSource);
@@ -3136,7 +3137,7 @@ export function lowerInvariantProgram(
             nextEnv.set(initializerName, substitute(logic(declaration.initializer!, pipeBindings, semanticGuards, semanticValues), nextEnv));
             return { path: { ...path, env: nextEnv }, outerValue };
           }
-          return { path: applyScalarUpdate(initializer as ts.Expression, path), outerValue };
+          return { path: initializer ? applyScalarUpdate(initializer as ts.Expression, path) : path, outerValue };
         });
         const exited: PathState[] = [];
         for (const initializedPath of initialized) {

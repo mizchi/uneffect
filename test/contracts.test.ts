@@ -2718,6 +2718,25 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("lowers a for loop with an omitted initializer over an existing scalar", async () => {
+    const fileName = "/contract-for-omitted-initializer.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function run(limit: Int): Int {
+        let index = 0
+        /* uneffect:loop_invariant index >= 0 */
+        for (; index < limit; index++) {}
+        return index
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("lowers do-while exits only after one invariant-preserving body", async () => {
     const fileName = "/contract-do-while.ts";
     const source = `

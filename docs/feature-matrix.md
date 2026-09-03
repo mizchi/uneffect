@@ -598,9 +598,10 @@ it or restores a shadowed outer scalar on every loop exit. Loop frame relations
 not stated by the invariant are still intentionally havoced.
 The same loop lowering accepts one scalar assignment initializer such as
 `for (index = 0; ...)` and one function-scoped `var` declaration. Assignment
-updates the existing binding, while `var` remains visible after the loop;
-multiple declarations, comma expressions, and omitted initializers remain
-outside the fragment.
+updates the existing binding, while `var` remains visible after the loop. An
+omitted initializer is supported when the explicit condition and update operate
+on an already initialized scalar. Multiple declarations, comma expressions,
+and omitted conditions remain outside the fragment.
 Explicitly typed uninitialized scalar `let` bindings are supported only when
 the exact TypeScript Program reports no definite-assignment error. Their
 unconstrained placeholder preserves binding identity across joins and carries

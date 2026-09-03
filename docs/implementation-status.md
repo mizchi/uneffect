@@ -460,7 +460,8 @@ same property is proved for arbitrary TypeScript.
 - A canonical `for` may alternatively initialize one existing scalar with an
   assignment or declare one function-scoped `var`. Both reuse the scalar update
   evaluator; only lexical `let`/`const` declarations receive loop-exit scope
-  restoration.
+  restoration. The initializer may be omitted for an already initialized
+  scalar when condition and update remain explicit.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto
