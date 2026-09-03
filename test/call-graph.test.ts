@@ -412,7 +412,9 @@ describe("multi-file call graph and effect polymorphism", () => {
           /* uneffect:effect Console | Throw<RangeError> | Mutate<typeof this.writes> */
           set value(next: number) { this.writes++; console.log(next); if (next < 0) throw new RangeError("set") }
         }
+        const reflectGet = Reflect.get;
         export function read(box: Box) { return Reflect.get(box, "value") }
+        export function readAlias(box: Box) { return reflectGet(box, "value") }
         export function write(box: Box, next: number) { return Reflect.set(box, "value", next) }
         export function readWithReceiver(owner: Box, receiver: Box) { return Reflect.get(owner, "value", receiver) }
         export function writeWithReceiver(owner: Box, receiver: Box, next: number) { return Reflect.set(owner, "value", next, receiver) }
@@ -438,6 +440,9 @@ describe("multi-file call graph and effect polymorphism", () => {
         expect.objectContaining({ functionName: "read", effect: "Console", kind: "missing" }),
         expect.objectContaining({ functionName: "read", effect: "Throw<TypeError>", kind: "missing" }),
         expect.objectContaining({ functionName: "read", effect: "Mutate<typeof box.reads>", kind: "missing" }),
+        expect.objectContaining({ functionName: "readAlias", effect: "InvokeUserCode", kind: "missing" }),
+        expect.objectContaining({ functionName: "readAlias", effect: "Console", kind: "missing" }),
+        expect.objectContaining({ functionName: "readAlias", effect: "Mutate<typeof box.reads>", kind: "missing" }),
         expect.objectContaining({ functionName: "write", effect: "Console", kind: "missing" }),
         expect.objectContaining({ functionName: "write", effect: "Throw<RangeError>", kind: "missing" }),
         expect.objectContaining({ functionName: "write", effect: "Mutate<typeof box.writes>", kind: "missing" }),
@@ -468,11 +473,13 @@ describe("multi-file call graph and effect polymorphism", () => {
           if (value.used < 0) throw new RangeError("run"); return value.used;
         }
         const alias = run;
+        const reflectApply = Reflect.apply;
         export function viaCall(state: State, value: Value) { return run.call(state, value) }
         export function viaAlias(state: State, value: Value) { return alias.call(state, value) }
         export function viaApply(state: State, value: Value) { return run.apply(state, [value]) }
         export function viaApplyTuple(state: State, value: Value) { const args: [Value] = [value]; return run.apply(state, args) }
         export function viaReflect(state: State, value: Value) { return Reflect.apply(run, state, [value]) }
+        export function viaReflectAlias(state: State, value: Value) { return reflectApply(run, state, [value]) }
         /* uneffect:effect Console | Mutate<typeof state.calls> | Mutate<typeof value.used> */
         export function caught(state: State, value: Value) { try { return run.call(state, value) } catch { return 0 } }
         /* uneffect:effect InvokeUserCode */
@@ -493,7 +500,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       expect(program.getSemanticDiagnostics().map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
       const result = analyzeProgramEffects(program);
-      for (const functionName of ["viaCall", "viaAlias", "viaApply", "viaApplyTuple", "viaReflect"]) {
+      for (const functionName of ["viaCall", "viaAlias", "viaApply", "viaApplyTuple", "viaReflect", "viaReflectAlias"]) {
         expect(result.diagnostics).toEqual(expect.arrayContaining([
           expect.objectContaining({ functionName, effect: "Console", kind: "missing" }),
           expect.objectContaining({ functionName, effect: "Throw<RangeError>", kind: "missing" }),
@@ -581,7 +588,9 @@ describe("multi-file call graph and effect polymorphism", () => {
         }
         /* uneffect:effect Console */ function initialize(): number { console.log("field"); return 1 }
         class Implicit { field = initialize() }
+        const construct = Reflect.construct;
         export function build(value: Value) { const result = Reflect.construct(Built, [value]); return result }
+        export function buildAlias(value: Value) { const result = construct(Built, [value]); return result }
         export function implicit() { const result = Reflect.construct(Implicit, []); return result }
         /* uneffect:effect Console | Mutate<typeof value.used> */
         export function caught(value: Value) { try { const result = Reflect.construct(Built, [value]); return result } catch { return undefined } }
@@ -603,6 +612,8 @@ describe("multi-file call graph and effect polymorphism", () => {
         expect.objectContaining({ functionName: "build", effect: "Console", kind: "missing" }),
         expect.objectContaining({ functionName: "build", effect: "Throw<RangeError>", kind: "missing" }),
         expect.objectContaining({ functionName: "build", effect: "Mutate<typeof value.used>", kind: "missing" }),
+        expect.objectContaining({ functionName: "buildAlias", effect: "Console", kind: "missing" }),
+        expect.objectContaining({ functionName: "buildAlias", effect: "Mutate<typeof value.used>", kind: "missing" }),
         expect.objectContaining({ functionName: "implicit", effect: "Console", kind: "missing" }),
       ]));
       expect(result.diagnostics.filter((diagnostic) =>

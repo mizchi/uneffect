@@ -50,7 +50,10 @@ export function standardLibraryOperation(
   if (!declaration || !source?.isDeclarationFile
     || !/(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName)) return undefined;
   const owner = declaration.parent && (ts.isInterfaceDeclaration(declaration.parent) || ts.isClassDeclaration(declaration.parent))
-    ? declaration.parent.name?.text : undefined;
+    ? declaration.parent.name?.text
+    : declaration.parent && ts.isModuleBlock(declaration.parent) && ts.isModuleDeclaration(declaration.parent.parent)
+      && (ts.isIdentifier(declaration.parent.parent.name) || ts.isStringLiteral(declaration.parent.parent.name))
+      ? declaration.parent.parent.name.text : undefined;
   if (ts.isNewExpression(call)) return owner;
   const name = (declaration as ts.SignatureDeclaration).name;
   const member = name && (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name))
@@ -767,8 +770,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     }
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
       && (node.expression.name.text === "call" || node.expression.name.text === "apply")
-      && !(node.expression.name.text === "apply" && ts.isIdentifier(node.expression.expression)
-        && node.expression.expression.text === "Reflect")) {
+      && libraryOperation !== "Reflect#apply") {
       const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
       const standard = source?.isDeclarationFile
         && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
@@ -778,13 +780,8 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         if (node.expression.name.text === "apply" && (!node.arguments[1] || !isStaticApplyList(node.arguments[1]))) return true;
       }
     }
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === "construct" && ts.isIdentifier(node.expression.expression)
-      && node.expression.expression.text === "Reflect") {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
-      if (standard && node.arguments[0]) {
+    if (ts.isCallExpression(node) && libraryOperation === "Reflect#construct") {
+      if (node.arguments[0]) {
         if (directProxyReceiver(node.arguments[0]) || !hasLocalConstructor(node.arguments[0])) return true;
         if (!node.arguments[1] || !isStaticApplyList(node.arguments[1])) return true;
         if (node.arguments[2] && directProxyReceiver(node.arguments[2])) return true;
@@ -795,24 +792,16 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       const target = boundTargetExpression(node.expression);
       if (target && (!target.stable || directProxyReceiver(target.target) || !hasLocalCallableBody(target.target))) return true;
     }
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === "apply" && ts.isIdentifier(node.expression.expression)
-      && node.expression.expression.text === "Reflect") {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
-      if (standard && node.arguments[0]) {
+    if (ts.isCallExpression(node) && libraryOperation === "Reflect#apply") {
+      if (node.arguments[0]) {
         if (directProxyReceiver(node.arguments[0]) || !hasLocalCallableBody(node.arguments[0])) return true;
         if (!node.arguments[2] || !isStaticApplyList(node.arguments[2])) return true;
       }
     }
-    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-      && ["get", "set", "has", "deleteProperty"].includes(node.expression.name.text)
-      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Reflect") {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
-      if (standard) {
+    if (ts.isCallExpression(node) && node.arguments[0] && [
+      "Reflect#get", "Reflect#set", "Reflect#has", "Reflect#deleteProperty",
+    ].includes(libraryOperation ?? "")) {
+      const mode = libraryOperation!.slice("Reflect#".length);
         const target = node.arguments[0];
         const targetType = this.#checker.getTypeAtLocation(target);
         if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
@@ -826,20 +815,19 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
             if ((member.flags & ts.TypeFlags.NumberLiteral) !== 0) return [String((member as ts.NumberLiteralType).value)];
             return [];
           });
-          if (names.length !== members.length && node.expression.name.text !== "has") return true;
-          if (node.expression.name.text === "get" && names.some((name) =>
+          if (names.length !== members.length && mode !== "has") return true;
+          if (mode === "get" && names.some((name) =>
             this.#checker.getPropertyOfType(targetType, name)?.declarations?.some(ts.isGetAccessorDeclaration))) return true;
-          if (node.expression.name.text === "set" && names.some((name) =>
+          if (mode === "set" && names.some((name) =>
             this.#checker.getPropertyOfType(targetType, name)?.declarations?.some(ts.isSetAccessorDeclaration))) return true;
         }
-        const receiverIndex = node.expression.name.text === "get" ? 2 : node.expression.name.text === "set" ? 3 : -1;
+        const receiverIndex = mode === "get" ? 2 : mode === "set" ? 3 : -1;
         const receiver = receiverIndex >= 0 ? node.arguments[receiverIndex] : undefined;
         if (receiver) {
           const receiverType = this.#checker.getTypeAtLocation(receiver);
           if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
             || directProxyReceiver(receiver)) return true;
         }
-      }
     }
     if (ts.isCallExpression(node) && node.arguments.length >= 2 && libraryOperation === "ObjectConstructor#assign") {
       const target = node.arguments[0]!;
@@ -864,12 +852,12 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     if (ts.isCallExpression(node) && node.arguments[0] && [
       "ObjectConstructor#defineProperty", "ObjectConstructor#defineProperties", "ObjectConstructor#freeze",
       "ObjectConstructor#seal", "ObjectConstructor#preventExtensions", "ObjectConstructor#setPrototypeOf",
-      "defineProperty", "setPrototypeOf",
+      "Reflect#defineProperty", "Reflect#setPrototypeOf",
     ].includes(libraryOperation ?? "")) {
         const target = node.arguments[0], targetType = this.#checker.getTypeAtLocation(target);
         if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
           || directProxyReceiver(target)) return true;
-        if (libraryOperation === "ObjectConstructor#defineProperty" || libraryOperation === "defineProperty") {
+        if (libraryOperation === "ObjectConstructor#defineProperty" || libraryOperation === "Reflect#defineProperty") {
           if (node.arguments[1] && !definitelyPrimitive(node.arguments[1])) return true;
           const descriptor = node.arguments[2];
           if (descriptor) {

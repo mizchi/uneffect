@@ -195,6 +195,10 @@ reviewed `Object.assign`, Object value enumeration, `JSON.stringify`,
 `structuredClone`, Array `concat`, Object descriptor creation/mutation, and
 Object own-property inspection. Renaming one of these functions through an
 immutable alias does not discard its getter or user-code boundary.
+Namespace-owned lib declarations retain their owner as well: `Reflect#get`,
+`Reflect#set`, `Reflect#apply`, `Reflect#construct`, and descriptor mutations
+compose through immutable aliases without colliding with unrelated global
+functions named `get`, `apply`, or `construct`.
 
 Fresh default parameters use a related implementation-owned rule. An omitted
 array/object literal or TypeChecker-resolved standard `Array`, `Map`, `Set`,

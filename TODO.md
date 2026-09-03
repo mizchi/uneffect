@@ -1040,6 +1040,9 @@ introducing another domain-local control-flow or alias model.
        `structuredClone`, and Array `concat`.
        - [x] Apply the same identity path to Object descriptor creation/mutation
          and own-property inspection, including alias and lookalike controls.
+       - [x] Preserve lib namespace owners in operation identity and migrate
+         Reflect accessor, apply, construct, and descriptor rules to alias-safe
+         `Reflect#member` identities.
    - [x] Model standard-identity `Object.assign` as enumerable reads followed
      by target writes. Compose same-Program object-literal source getters and
      matching target setters, exclude class prototype accessors, and classify

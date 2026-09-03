@@ -1265,10 +1265,8 @@ export function buildProgramCallGraph(
             ...(unresolvedMutationArgumentIndices.length > 0 ? { unresolvedMutationArgumentIndices } : {}),
           };
         };
-        const reflectConstruct = ts.isPropertyAccessExpression(node.expression)
-          && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Reflect"
-          && node.expression.name.text === "construct" && isStandardLibraryCall(node);
         const libraryOperation = standardLibraryOperation(checker, node);
+        const reflectConstruct = libraryOperation === "Reflect#construct";
         if (reflectConstruct) addReflectConstructEdge(node);
         const directBound = boundCallableResolution(node.expression);
         if (directBound) addIndirectCallableEdge(node, node.expression, undefined, node.arguments);
@@ -1283,7 +1281,7 @@ export function buildProgramCallGraph(
           for (const argument of node.arguments) addEnumerableGetterEdges(argument);
         }
         if (node.arguments[2] && (libraryOperation === "ObjectConstructor#defineProperty"
-          || libraryOperation === "defineProperty")) {
+          || libraryOperation === "Reflect#defineProperty")) {
           addNamedGetterEdges(node.arguments[2], ["enumerable", "configurable", "value", "writable", "get", "set"]);
         }
         if (node.arguments[1] && libraryOperation === "ObjectConstructor#defineProperties") {
@@ -1294,10 +1292,8 @@ export function buildProgramCallGraph(
         }
         if (node.arguments[0] && (libraryOperation === "ObjectConstructor#values"
           || libraryOperation === "ObjectConstructor#entries")) addEnumerableGetterEdges(node.arguments[0]);
-        if (ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression)
-          && node.expression.expression.text === "Reflect" && isStandardLibraryCall(node)
-          && (node.expression.name.text === "get" || node.expression.name.text === "set")) {
-          addReflectAccessorEdges(node, node.expression.name.text);
+        if (libraryOperation === "Reflect#get" || libraryOperation === "Reflect#set") {
+          addReflectAccessorEdges(node, libraryOperation === "Reflect#get" ? "get" : "set");
         }
         if (ts.isPropertyAccessExpression(node.expression) && isStandardLibraryCall(node)
           && (node.expression.name.text === "call" || node.expression.name.text === "apply")) {
@@ -1306,9 +1302,7 @@ export function buildProgramCallGraph(
             mode === "call" ? node.arguments.slice(1)
               : node.arguments[1] ? staticApplyArguments(node.arguments[1]) : undefined);
         }
-        if (ts.isPropertyAccessExpression(node.expression) && isStandardLibraryCall(node)
-          && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Reflect"
-          && node.expression.name.text === "apply" && node.arguments[0]) {
+        if (libraryOperation === "Reflect#apply" && node.arguments[0]) {
           addIndirectCallableEdge(node, node.arguments[0], node.arguments[1],
             node.arguments[2] ? staticApplyArguments(node.arguments[2]) : undefined);
         }
