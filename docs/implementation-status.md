@@ -466,6 +466,10 @@ same property is proved for arbitrary TypeScript.
   It contributes no synthetic condition-false exit; only explicit abrupt exits
   reach following code. This retains Hoare partial correctness and does not
   prove termination.
+- `for` initializer and update positions accept a comma list of supported
+  scalar updates and apply them left-to-right. This covers paired counters
+  without admitting arbitrary comma-expression values or multiple declaration
+  scope semantics.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

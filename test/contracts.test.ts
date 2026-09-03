@@ -2759,6 +2759,26 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("executes comma-separated scalar for updates from left to right", async () => {
+    const fileName = "/contract-for-comma-updates.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function run(limit: Int): Int {
+        let left = 5
+        let right = 5
+        /* uneffect:loop_invariant left >= 0 && right >= 0 */
+        for (left = 0, right = 0; left < limit; left++, right++) {}
+        return left + right
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("lowers do-while exits only after one invariant-preserving body", async () => {
     const fileName = "/contract-do-while.ts";
     const source = `

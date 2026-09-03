@@ -343,6 +343,8 @@ introducing another domain-local control-flow or alias model.
        scalar while retaining an explicit condition and supported update.
      - [x] Lower invariant-backed `for (;;)` with a true guard and no synthetic
        fallthrough; only explicit abrupt completion exits the loop.
+     - [x] Sequence comma-separated scalar assignments and increments in `for`
+       initializer/update positions from left to right.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.

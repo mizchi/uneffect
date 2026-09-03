@@ -2659,6 +2659,12 @@ export function lowerInvariantProgram(
     };
     const applyScalarUpdate = (update: ts.Expression | undefined, path: PathState): PathState => {
       if (!update) return path;
+      if (ts.isCommaListExpression(update)) {
+        return update.elements.reduce((current, element) => applyScalarUpdate(element, current), path);
+      }
+      if (ts.isBinaryExpression(update) && update.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        return applyScalarUpdate(update.right, applyScalarUpdate(update.left, path));
+      }
       const next = { ...path, env: new Map(path.env) };
       if ((ts.isPostfixUnaryExpression(update) || ts.isPrefixUnaryExpression(update))
         && (update.operator === ts.SyntaxKind.PlusPlusToken || update.operator === ts.SyntaxKind.MinusMinusToken)
