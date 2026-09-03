@@ -1244,31 +1244,75 @@ function typeCheckerCallCompletions(
     const declarationPresentObjects = declarationSource === source ? reviewedPresentObjects
       : typeCheckerPresentObjectExpressions(program, declarationSource.fileName, declarationSource.text);
     const declarationMathCalls = typeCheckerMathScalarCalls(program, declarationSource.fileName, declarationSource.text);
-    const inferredExpression = (input: ts.Expression): LogicExpression => {
+    type InferredAlternative = { guards: LogicExpression[]; value: LogicExpression };
+    const combineAlternatives = (
+      left: readonly InferredAlternative[],
+      right: readonly InferredAlternative[],
+      combine: (left: LogicExpression, right: LogicExpression) => LogicExpression,
+    ): InferredAlternative[] => left.flatMap((a) => right.map((b) => ({
+      guards: [...a.guards, ...b.guards], value: combine(a.value, b.value),
+    })));
+    const inferredAlternatives = (input: ts.Expression): InferredAlternative[] => {
       let expression = input;
       while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
         || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
       if (ts.isCallExpression(expression)) {
         const fact = declarationMathCalls.get(`${expression.getStart(declarationSource)}:${expression.getEnd()}`);
         if (!fact) throw new Error("unreviewed inferred call");
-        const values = expression.arguments.map(inferredExpression);
-        if (fact.operation === "floor" || fact.operation === "ceil") {
-          return { kind: "unary", operator: fact.operation, operand: values[0]! };
-        }
-        if (fact.operation === "round") {
-          return {
-            kind: "unary", operator: "floor",
-            operand: { kind: "binary", operator: "add", left: values[0]!, right: { kind: "real", value: "0.5" } },
-          };
-        }
-        if (fact.operation === "pow") return repeatedPower(values[0]!, fact.exponent!);
-        throw new Error("piecewise inferred Math call");
+        const argumentsByPath = expression.arguments.reduce<Array<{ guards: LogicExpression[]; values: LogicExpression[] }>>(
+          (paths, argument) => paths.flatMap((path) => inferredAlternatives(argument).map((alternative) => ({
+            guards: [...path.guards, ...alternative.guards], values: [...path.values, alternative.value],
+          }))), [{ guards: [], values: [] }]);
+        return argumentsByPath.flatMap(({ guards, values }): InferredAlternative[] => {
+          const value = values[0]!;
+          const zero: LogicExpression = { kind: "integer", value: "0" };
+          if (fact.operation === "floor" || fact.operation === "ceil") {
+            return [{ guards, value: { kind: "unary", operator: fact.operation, operand: value } }];
+          }
+          if (fact.operation === "round") {
+            return [{ guards, value: {
+              kind: "unary", operator: "floor",
+              operand: { kind: "binary", operator: "add", left: value, right: { kind: "real", value: "0.5" } },
+            } }];
+          }
+          if (fact.operation === "pow") return [{ guards, value: repeatedPower(value, fact.exponent!) }];
+          if (fact.operation === "abs" || fact.operation === "trunc") {
+            const nonNegative: LogicExpression = { kind: "binary", operator: "gte", left: value, right: zero };
+            return [
+              { guards: [...guards, nonNegative], value: fact.operation === "abs" ? value : { kind: "unary", operator: "floor", operand: value } },
+              { guards: [...guards, negate(nonNegative)], value: fact.operation === "abs" ? { kind: "unary", operator: "negate", operand: value } : { kind: "unary", operator: "ceil", operand: value } },
+            ];
+          }
+          if (fact.operation === "sign") {
+            const negative: LogicExpression = { kind: "binary", operator: "lt", left: value, right: zero };
+            const equal: LogicExpression = { kind: "binary", operator: "eq", left: value, right: zero };
+            const positive: LogicExpression = { kind: "binary", operator: "gt", left: value, right: zero };
+            return [
+              { guards: [...guards, negative], value: { kind: "integer", value: "-1" } },
+              { guards: [...guards, equal], value: zero },
+              { guards: [...guards, positive], value: { kind: "integer", value: "1" } },
+            ];
+          }
+          let candidates: InferredAlternative[] = [{ guards, value }];
+          for (const next of values.slice(1)) candidates = candidates.flatMap((candidate) => {
+            const selected: LogicExpression = {
+              kind: "binary", operator: fact.operation === "min" ? "lte" : "gte", left: candidate.value, right: next,
+            };
+            return [
+              { guards: [...candidate.guards, selected], value: candidate.value },
+              { guards: [...candidate.guards, negate(selected)], value: next },
+            ];
+          });
+          return candidates;
+        });
       }
       if (ts.isPrefixUnaryExpression(expression)) {
         const operator = expression.operator === ts.SyntaxKind.ExclamationToken ? "not"
           : expression.operator === ts.SyntaxKind.MinusToken ? "negate" : undefined;
         if (!operator) throw new Error("unsupported inferred unary expression");
-        return { kind: "unary", operator, operand: inferredExpression(expression.operand) };
+        return inferredAlternatives(expression.operand).map(({ guards, value }) => ({
+          guards, value: { kind: "unary", operator, operand: value },
+        }));
       }
       if (ts.isBinaryExpression(expression)) {
         const operator = new Map<ts.SyntaxKind, string>([
@@ -1280,9 +1324,15 @@ function typeCheckerCallCompletions(
           [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
         ]).get(expression.operatorToken.kind);
         if (!operator) throw new Error("unsupported inferred binary expression");
-        return { kind: "binary", operator, left: inferredExpression(expression.left), right: inferredExpression(expression.right) };
+        return combineAlternatives(inferredAlternatives(expression.left), inferredAlternatives(expression.right),
+          (left, right) => ({ kind: "binary", operator, left, right }));
       }
-      return logic(expression);
+      return [{ guards: [], value: logic(expression) }];
+    };
+    const inferredExpression = (input: ts.Expression): LogicExpression => {
+      const alternatives = inferredAlternatives(input);
+      if (alternatives.length !== 1 || alternatives[0]!.guards.length > 0) throw new Error("piecewise inferred expression");
+      return alternatives[0]!.value;
     };
     const statements = ts.isBlock(declaration.body) ? [...declaration.body.statements] : undefined;
     const localDeclarations: ts.VariableDeclaration[] = [];
@@ -1412,13 +1462,21 @@ function typeCheckerCallCompletions(
     let clauses: AwaitFulfillmentFact["clauses"] | undefined;
     try {
       if (whenTrue) {
-        const trueValue = substitute(inferredExpression(whenTrue), captured);
       if (!condition || !whenFalse) {
-        clauses = [{
-          source: `result === ${whenTrue.getText(declarationSource)}`,
-          expression: { kind: "binary", operator: "eq", left: variable("result"), right: trueValue },
-        }];
+        const alternatives = inferredAlternatives(whenTrue).map(({ guards, value }) => ({
+          guards: guards.map((guard) => substitute(guard, captured)), value: substitute(value, captured),
+        }));
+        clauses = alternatives.map(({ guards, value }, index) => {
+          const equality: LogicExpression = { kind: "binary", operator: "eq", left: variable("result"), right: value };
+          const selected = conjunction(guards);
+          return {
+            source: alternatives.length === 1 ? `result === ${whenTrue!.getText(declarationSource)}`
+              : `branch ${index + 1} of result === ${whenTrue!.getText(declarationSource)}`,
+            expression: selected ? { kind: "binary", operator: "or", left: negate(selected), right: equality } : equality,
+          };
+        });
       } else {
+        const trueValue = substitute(inferredExpression(whenTrue), captured);
         const guard = substitute(inferredExpression(condition), captured);
         const falseValue = substitute(inferredExpression(whenFalse), captured);
         clauses = [

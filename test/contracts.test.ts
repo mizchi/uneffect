@@ -4431,6 +4431,42 @@ describe("Hoare contract checker", () => {
     expect(shadowed.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
   });
 
+  it("infers piecewise reviewed Math helpers as guarded relations", async () => {
+    const fileName = "/inferred-piecewise-math-helpers.ts";
+    const source = `
+      type Int = number
+      type Float = number
+      const magnitude = (value: Int): Int => Math.abs(value) + 1
+      function smaller(left: Int, right: Int): Int { return Math.min(left, right) }
+      function larger(left: Int, right: Int): Int { return Math.max(left, right) }
+      function truncate(value: Float): Int { return Math.trunc(value) }
+      function direction(value: Int): Int { return Math.sign(value) }
+      /* uneffect:ensures result >= 1 */
+      function magnitudeCaller(value: Int): Int { return magnitude(value) }
+      /* uneffect:ensures result <= left && result <= right */
+      function smallerCaller(left: Int, right: Int): Int { return smaller(left, right) }
+      /* uneffect:ensures result >= left && result >= right */
+      function largerCaller(left: Int, right: Int): Int { return larger(left, right) }
+      /* uneffect:ensures (value >= 0 && result <= value && value < result + 1) || (value < 0 && result >= value && value > result - 1) */
+      function truncateCaller(value: Float): Int { return truncate(value) }
+      /* uneffect:ensures result >= -1 && result <= 1 */
+      function directionCaller(value: Int): Int { return direction(value) }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts).toHaveLength(5);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.flatMap(({ controlFlow }) => controlFlow?.relationalCalls ?? []))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "magnitude", evidence: "verified" }),
+        expect.objectContaining({ functionName: "smaller", evidence: "verified" }),
+        expect.objectContaining({ functionName: "larger", evidence: "verified" }),
+        expect.objectContaining({ functionName: "truncate", evidence: "verified" }),
+        expect.objectContaining({ functionName: "direction", evidence: "verified" }),
+      ]));
+  });
+
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `
