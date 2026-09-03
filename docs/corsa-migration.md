@@ -77,6 +77,10 @@ through the generic `callJson` method rather than named, generated N-API methods
 Direct and two-hop Node ambient-module aliases still resolve to `unknown`, and
 source-position or node handles are required by several relation endpoints. CFG and a complete
 whole-project AST traversal suitable for Uneffect's analyzers remain missing.
+The typed facade exposes `overlayChanges`, but the pinned native-preview runtime
+reports that capability as unsupported. Incremental in-memory watch-mode
+measurement therefore remains blocked on the compiler runtime rather than
+being approximated with destructive on-disk fixture edits.
 
 `workspace/symbol` exists on tsgo's LSP surface, but it is a name-search API. It
 does not replace call-site identity queries and is not used as Effect evidence.
