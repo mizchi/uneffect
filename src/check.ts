@@ -18,6 +18,7 @@ import { collectIteratorChecks, type IteratorCheckEvidence } from "./iterator-ch
 import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, boundContractSummaryResourceContracts, type ContractSummaryBundleV1 } from "./contract-summary.js";
 import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, type ResourceLifecycleEvidence } from "./resource-callable-typescript.js";
 import { bindResourceCallableArtifactsToProgram, type ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
+import { standardLibraryOperation } from "./frontend-adapter.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -91,6 +92,24 @@ export function createCheckProgram(fileNames: readonly string[], options: CheckO
     rootNames: [...fileNames], options: effectiveCompilerOptions, host: options.host,
     projectReferences: options.projectReferences,
   });
+}
+
+const ownershipOperations = /^(?:structuredClone|(?:Window|Worker|MessagePort)#postMessage|DataViewConstructor|(?:ArrayBuffer|SharedArrayBuffer|(?:Uint|Int|Float|BigInt|BigUint)\w*Array)#(?:slice|subarray))$/u;
+
+/** Start the expensive ownership analysis only for checker-authenticated APIs. */
+export function sourceNeedsOwnershipAnalysis(program: ts.Program, source: ts.SourceFile): boolean {
+  const checker = program.getTypeChecker();
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      const operation = standardLibraryOperation(checker, node);
+      if (operation && ownershipOperations.test(operation)) { found = true; return; }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
 }
 
 /** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
@@ -211,10 +230,9 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   const typedFiles: TypedArrayProgramSafetyResult["files"] = {};
   const ownership: Array<OwnershipDiagnostic & { fileName: string }> = [];
   const typedArrayCandidate = (text: string): boolean => /\b(?:BoundedUint8Array|BoundedUint32Array|BoundedDataView|BoundedArrayBuffer|FixedArrayBuffer|u8Table|u32Table|U8|U32|I32|F32)\b/u.test(text);
-  const ownershipCandidate = (text: string): boolean => /\b(?:structuredClone|postMessage|DataView|subarray|slice)\b/u.test(text);
   const needsOwnership = fileNames.some((fileName) => {
     const source = program.getSourceFile(fileName);
-    return source ? ownershipCandidate(source.text) : false;
+    return source ? sourceNeedsOwnershipAnalysis(program, source) : false;
   });
   const callableSummaries = needsOwnership ? analyzeCallableSummaries(program, analyzedEffects, options.builtinRegistry).summaries : [];
   const functionAt = (source: ts.SourceFile, position: number): string => {
@@ -239,7 +257,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
       for (const window of typed.windows) window.result = "unknown";
     }
     typedFiles[fileName] = typed;
-    if (!invalidSources.has(fileName) && ownershipCandidate(sourceFile.text)) {
+    if (!invalidSources.has(fileName) && sourceNeedsOwnershipAnalysis(program, sourceFile)) {
       const found = analyzeOwnership(program, sourceFile, callableSummaries, externalFunctionEffects, options.builtinRegistry);
       ownership.push(...found.map((diagnostic) => ({ ...diagnostic, fileName })));
       diagnostics.push(...found.map((diagnostic): OwnershipCheckerDiagnostic => ({

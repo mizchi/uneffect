@@ -237,7 +237,9 @@ contracts, and export-equals named-import resolution reduced its unknown module
 summaries from 39 to two. Exact-version external function contracts reviewed the
 Valibot 1.4.2 schema factories. A version-bound callable-result contract then
 modeled Corsa 1.12.4 `RuleCreator`, including its synchronously invoked captured
-URL callback. The current repository self-analysis has zero unknown summaries.
+URL callback. The current repository self-analysis has no unclassified unknown
+summaries: remaining unknowns are explicitly attributed to callback timing or
+open generator parameter/consumption semantics and are not treated as proof.
 This is a statement about the checked source and exact dependency versions, not
 a claim that arbitrary package code or all JavaScript behavior is verified.
 The same 67-file boundary records 3,694 builtin and module-initialization

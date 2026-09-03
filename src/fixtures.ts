@@ -1,4 +1,4 @@
-/* uneffect:module_effect Throw<Error> */
+/* uneffect:module_effect Throw<Error> | InvokeUserCode */
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checkFiles, createCheckHost, type CheckOptions } from "./check.js";

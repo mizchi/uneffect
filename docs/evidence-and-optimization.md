@@ -286,7 +286,7 @@ rewritten JavaScript.
 
 ## Dogfood gate
 
-`just dogfood` analyzes every TypeScript implementation file as one Program in inference-only adoption mode, then runs a regression test requiring zero diagnostics and zero `unknown` summaries. This exercise found and fixed two frontend issues: mutations of freshly allocated locals were incorrectly escaping into caller summaries, and known synchronous TypeScript/Array callback APIs were being classified with unknown invocation timing. Annotated boundaries remain enforced in inference-only mode.
+`just dogfood` analyzes every TypeScript implementation file as one Program in inference-only adoption mode. The regression test requires zero effect diagnostics and requires every `unknown` summary to carry an allow-listed stable reason code. The current remaining families are unknown callback timing and open generator parameter/consumption; they are not presented as verified. This exercise found and fixed frontend issues where mutations of freshly allocated locals escaped into caller summaries, known synchronous TypeScript/Array callback APIs received unknown invocation timing, and ordinary string/array `slice` spellings unnecessarily started ownership analysis. Annotated boundaries remain enforced in inference-only mode.
 
 The Node service dogfood additionally reads a scoped settings file, composes
 the callback's Console and Timer capabilities into the registering function,

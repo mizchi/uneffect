@@ -14,6 +14,7 @@ export const ciTestTiers = {
     "test/capability-dsl.test.ts",
     "test/capabilities.test.ts",
     "test/ci-tiers.test.ts",
+    "test/check-candidates.test.ts",
     "test/cli.test.ts",
     "test/clock-conformance.test.ts",
     "test/completion-flow.test.ts",

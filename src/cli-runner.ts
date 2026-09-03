@@ -1,4 +1,4 @@
-/* uneffect:module_effect Throw<Error> */
+/* uneffect:module_effect Throw<Error> | InvokeUserCode */
 import { relative } from "node:path";
 import { checkCommand } from "./check-command.js";
 import { CliUsageError, exitCode, formatCommandHelp, processStreams, type CliCommand, type CliStreams } from "./cli-support.js";

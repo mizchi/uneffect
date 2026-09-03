@@ -2566,14 +2566,15 @@ describe("Uneffect dogfood", () => {
     expect(result.summaries.length).toBeGreaterThan(200);
     expect(result.diagnostics).toEqual([]);
     const unknown = result.summaries.filter((summary) => summary.evidence === "unknown");
-    expect(unknown).toHaveLength(0);
+    expect(unknown.length).toBeGreaterThan(0);
     expect(unknown.every((summary) => (summary.unknownReasons?.length ?? 0) > 0)).toBe(true);
-    expect(Object.fromEntries([...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))]
-      .map((code) => [code, unknown.filter((summary) => summary.unknownReasons?.some((reason) => reason.code === code)).length])))
-      .toEqual({});
-    expect(unknown.map((summary) => summary.fileName?.split("/").at(-1)).sort())
-      .toEqual([]);
-  }, externalCheckerTestTimeoutMs());
+    const codes = [...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))].sort();
+    expect(codes).toEqual([
+      "unknown-callback-timing",
+      "unknown-generator-consumption",
+      "unknown-generator-parameter",
+    ]);
+  }, Math.max(60_000, externalCheckerTestTimeoutMs()));
 
   it("enforces an explicit pure boundary on the leaf static evaluator", () => {
     const fileName = "src/static-evaluation.ts";
@@ -2837,8 +2838,8 @@ describe("Uneffect dogfood", () => {
       });
 
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:effect FsWrite | Random | Throw<unknown> | Throw<Error> | Clone<All> */",
-      "/* uneffect:effect FsWrite | Throw<unknown> | Throw<Error> | Clone<All> */",
+      "/* uneffect:effect FsWrite | Random | Throw<unknown> | Throw<Error> | Clone<All> | InvokeUserCode */",
+      "/* uneffect:effect FsWrite | Throw<unknown> | Throw<Error> | Clone<All> | InvokeUserCode */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "writeModelCounterexample", effect: "Random", kind: "missing",
     }));

@@ -1,4 +1,4 @@
-/* uneffect:module_effect Throw<Error> */
+/* uneffect:module_effect Throw<Error> | InvokeUserCode */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -138,7 +138,7 @@ function parseEvidence(path: string): ProjectOptimizationEvidence | undefined {
   }
 }
 
-/* uneffect:effect FsRead | FsWrite | InvokeUserCode */
+/* uneffect:effect FsRead | FsWrite */
 export async function optimizeUneffectProject(options: OptimizeUneffectProjectOptions): Promise<OptimizeUneffectProjectResult> {
   const dependencies = dependenciesOf(options);
   const proofs = Object.entries(options.files).flatMap(([fileName, source]) => stableReadProofs(fileName, source));

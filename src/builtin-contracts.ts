@@ -147,9 +147,19 @@ function packageName(moduleName: string): string {
   return moduleName.split("/").slice(0, 2).join("/");
 }
 
+const resolvedPackageVersions = new WeakMap<ts.Program, Map<string, string | null>>();
+
 function resolvedPackageVersion(program: ts.Program, containingFile: string, moduleName: string): string | undefined {
+  let cache = resolvedPackageVersions.get(program);
+  if (!cache) {
+    cache = new Map();
+    resolvedPackageVersions.set(program, cache);
+  }
+  const key = `${containingFile}\0${moduleName}`;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached === null ? undefined : cached;
   const resolved = ts.resolveModuleName(moduleName, containingFile, program.getCompilerOptions(), ts.sys).resolvedModule;
-  if (!resolved) return undefined;
+  if (!resolved) { cache.set(key, null); return undefined; }
   const expectedName = packageName(moduleName);
   let directory = dirname(resolved.resolvedFileName);
   while (true) {
@@ -158,11 +168,14 @@ function resolvedPackageVersion(program: ts.Program, containingFile: string, mod
     if (text !== undefined) {
       try {
         const value = JSON.parse(text) as { name?: unknown; version?: unknown };
-        if (value.name === expectedName && typeof value.version === "string") return value.version;
-      } catch { return undefined; }
+        if (value.name === expectedName && typeof value.version === "string") {
+          cache.set(key, value.version);
+          return value.version;
+        }
+      } catch { cache.set(key, null); return undefined; }
     }
     const parent = dirname(directory);
-    if (parent === directory) return undefined;
+    if (parent === directory) { cache.set(key, null); return undefined; }
     directory = parent;
   }
 }
