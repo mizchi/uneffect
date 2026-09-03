@@ -457,6 +457,10 @@ same property is proved for arbitrary TypeScript.
   and restores a same-named outer scalar across condition failure, break,
   return, and throw completions. This is lexical correctness, not a general
   frame-condition proof for other values omitted from the loop invariant.
+- A canonical `for` may alternatively initialize one existing scalar with an
+  assignment or declare one function-scoped `var`. Both reuse the scalar update
+  evaluator; only lexical `let`/`const` declarations receive loop-exit scope
+  restoration.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

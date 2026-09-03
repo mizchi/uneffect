@@ -337,6 +337,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Scope a canonical scalar `for` initializer through its loop and
        restore a shadowed outer scalar on every exit; keep general loop frame
        conditions separate from this lexical claim.
+     - [x] Lower one existing-binding assignment or function-scoped `var` as a
+       canonical `for` initializer through the same scalar update semantics.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.

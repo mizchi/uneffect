@@ -2692,6 +2692,32 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("lowers outer assignment and function-scoped var for initializers", async () => {
+    const fileName = "/contract-for-initializer-forms.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function assigned(limit: Int): Int {
+        let index = 5
+        /* uneffect:loop_invariant index >= 0 */
+        for (index = 0; index < limit; index++) {}
+        return index
+      }
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function functionScoped(limit: Int): Int {
+        /* uneffect:loop_invariant index >= 0 */
+        for (var index = 0; index < limit; index++) {}
+        return index
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("lowers do-while exits only after one invariant-preserving body", async () => {
     const fileName = "/contract-do-while.ts";
     const source = `

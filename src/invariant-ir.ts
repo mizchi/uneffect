@@ -3114,28 +3114,35 @@ export function lowerInvariantProgram(
       } else if (ts.isForStatement(statement)) {
         const loopTarget = statement.getStart(source);
         const initializer = statement.initializer;
-        if (!initializer || !ts.isVariableDeclarationList(initializer) || initializer.declarations.length !== 1) {
-          throw new Error("for requires one scalar variable declaration initializer");
+        if (!initializer || !statement.condition) throw new Error("for requires one scalar initializer and an explicit condition");
+        const declaration = ts.isVariableDeclarationList(initializer) && initializer.declarations.length === 1
+          ? initializer.declarations[0] : undefined;
+        if (ts.isVariableDeclarationList(initializer)
+          && (!declaration || !ts.isIdentifier(declaration.name) || !declaration.initializer)) {
+          throw new Error("for variable initializer requires one initialized identifier");
         }
-        const declaration = initializer.declarations[0]!;
-        if (!ts.isIdentifier(declaration.name) || !declaration.initializer || !statement.condition) {
-          throw new Error("for requires one initialized identifier and an explicit condition");
-        }
-        const initializerName = declaration.name.text;
+        const initializerName = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
+        const lexicalInitializer = Boolean(declaration && (initializer as ts.VariableDeclarationList).flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
         const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
         if (!invariantSource) throw new Error(`for requires /* uneffect:loop_invariant ... */ but ${statement.condition.getText(source)} has none`);
         const invariant = parseLogicExpression(invariantSource);
         const initialized = paths.map((path) => {
-          if (path.pendingPromises.has(initializerName)) throw new Error(`for initializer shadows a tracked Promise: ${initializerName}`);
-          const outerValue = path.env.get(initializerName);
-          const nextEnv = new Map(path.env);
-          nextEnv.set(initializerName, substitute(logic(declaration.initializer!, pipeBindings, semanticGuards, semanticValues), nextEnv));
-          return { path: { ...path, env: nextEnv }, outerValue };
+          if (lexicalInitializer && initializerName && path.pendingPromises.has(initializerName)) {
+            throw new Error(`for initializer shadows a tracked Promise: ${initializerName}`);
+          }
+          const outerValue = lexicalInitializer && initializerName ? path.env.get(initializerName) : undefined;
+          if (declaration && initializerName) {
+            const nextEnv = new Map(path.env);
+            nextEnv.set(initializerName, substitute(logic(declaration.initializer!, pipeBindings, semanticGuards, semanticValues), nextEnv));
+            return { path: { ...path, env: nextEnv }, outerValue };
+          }
+          return { path: applyScalarUpdate(initializer as ts.Expression, path), outerValue };
         });
         const exited: PathState[] = [];
         for (const initializedPath of initialized) {
           const { path, outerValue } = initializedPath;
           const restoreInitializerScope = (exit: PathState): PathState => {
+            if (!lexicalInitializer || !initializerName) return exit;
             const env = new Map(exit.env);
             const returnEnv = exit.returnEnv && new Map(exit.returnEnv);
             if (outerValue) {
