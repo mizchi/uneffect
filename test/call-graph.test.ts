@@ -2034,9 +2034,13 @@ describe("multi-file call graph and effect polymorphism", () => {
         }
         export function consumeIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         export function consumeIterableParameter(iterable: Iterable<unknown>) { return Array.from(iterable) }
+        export async function consumeAsyncIterableParameter(iterable: AsyncIterable<unknown>) { for await (const value of iterable) void value }
         /* uneffect:effect none */
         /* uneffect:effect_parameter iterable extends Console | Throw<Error> */
         export function constrainedIterableParameter(iterable: Iterable<readonly [PropertyKey, unknown]>) { return Object.fromEntries(iterable) }
+        /* uneffect:effect none */
+        /* uneffect:effect_parameter iterable extends Console | Throw<Error> */
+        export async function constrainedAsyncIterableParameter(iterable: AsyncIterable<unknown>) { for await (const value of iterable) void value }
         /* uneffect:effect Console */
         export function boundedIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         /* uneffect:effect_parameter iterator extends Console | Throw<Error> */
@@ -2243,8 +2247,12 @@ describe("multi-file call graph and effect polymorphism", () => {
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeIterableParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeAsyncIterableParameter"))
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable", convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "constrainedIterableParameter"))
         .toMatchObject({ evidence: "verified", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "constrainedAsyncIterableParameter"))
+        .toMatchObject({ evidence: "verified", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable", convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "boundedIteratorParameter"))
         .toMatchObject({
           evidence: "unknown",
@@ -2407,6 +2415,12 @@ describe("multi-file call graph and effect polymorphism", () => {
         function map(this: { count: number }, value: number, _index: number) { this.count++; return value }
         /* uneffect:effect Console | Mutate<typeof owner.count> */
         export function collect(owner: { count: number }) { return Array.fromAsync(generate(), map, owner) }
+        const custom = {
+          /* uneffect:effect Console */
+          async *[Symbol.asyncIterator]() { console.log("custom"); yield 1 }
+        }
+        /* uneffect:effect InvokeUserCode | Console */
+        export function collectCustom() { return Array.fromAsync(custom) }
         export function shadowed(owner: { count: number }) {
           const Array = { fromAsync(_values: unknown, callback: (value: number) => number) { return callback(1) } }
           return Array.fromAsync(generate(), value => map.call(owner, value, 0))
@@ -2440,6 +2454,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       expect(effects.summaries.find((summary) => summary.functionName === "collect")?.effects)
         .not.toContainEqual(expect.objectContaining({ kind: "throw", errorType: "RangeError" }));
+      expect(effects.diagnostics.filter((diagnostic) => diagnostic.functionName === "collectCustom")).toEqual([]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

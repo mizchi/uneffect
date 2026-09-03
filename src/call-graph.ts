@@ -304,19 +304,19 @@ export function buildProgramCallGraph(
       return source.isDeclarationFile && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
     }));
   };
-  const implicitIteratorDeclaration = (expression: ts.Expression): ts.MethodDeclaration | undefined => {
+  const implicitIteratorDeclaration = (expression: ts.Expression, member: "iterator" | "asyncIterator" = "iterator"): ts.MethodDeclaration | undefined => {
     for (const property of checker.getTypeAtLocation(expression).getProperties()) {
       for (const declaration of property.declarations ?? []) {
-        if (ts.isMethodDeclaration(declaration) && declaration.body && isGlobalSymbolMemberName(declaration.name, "iterator")) return declaration;
+        if (ts.isMethodDeclaration(declaration) && declaration.body && isGlobalSymbolMemberName(declaration.name, member)) return declaration;
       }
     }
     return undefined;
   };
-  const hasIteratorProtocol = (expression: ts.Expression): boolean =>
+  const hasIteratorProtocol = (expression: ts.Expression, member: "iterator" | "asyncIterator" = "iterator"): boolean =>
     checker.getTypeAtLocation(expression).getProperties().some((property) =>
       (property.declarations ?? []).some((declaration) => {
         const name = (declaration as ts.NamedDeclaration).name;
-        return Boolean(name && ts.isPropertyName(name) && isGlobalSymbolMemberName(name, "iterator"));
+        return Boolean(name && ts.isPropertyName(name) && isGlobalSymbolMemberName(name, member));
       }));
   const reviewedBuiltinIterable = (expression: ts.Expression): boolean => {
     const reviewed = new Set([
@@ -464,13 +464,14 @@ export function buildProgramCallGraph(
       if (!ts.isIdentifier(expression)) return;
       const index = parameterIndices.get(resolvedSymbol(checker, expression)!);
       if (index === undefined || (!checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")
-        && (!hasIteratorProtocol(expression) || reviewedBuiltinIterable(expression)))) return;
+        && ((!hasIteratorProtocol(expression) && !hasIteratorProtocol(expression, "asyncIterator"))
+          || reviewedBuiltinIterable(expression)))) return;
       const previous = consumed.get(index);
       consumed.set(index, previous === false ? false : convertsThrowToRejection);
     };
     const visit = (node: ts.Node): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
-      if (ts.isForOfStatement(node)) record(node.expression);
+      if (ts.isForOfStatement(node)) record(node.expression, node.awaitModifier !== undefined);
       if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) record(node.expression);
       if (ts.isSpreadElement(node)) record(node.expression);
       if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer) record(node.initializer);
@@ -756,15 +757,21 @@ export function buildProgramCallGraph(
           addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
         }
       };
-      const consumeIterableExpression = (expression: ts.Expression, convertsThrowToRejection = false): void => {
-        const implicitIterator = implicitIteratorDeclaration(expression);
+      const consumeIterableExpression = (
+        expression: ts.Expression, convertsThrowToRejection = false, prefersAsync = false,
+      ): void => {
+        const implicitIterator = prefersAsync
+          ? implicitIteratorDeclaration(expression, "asyncIterator") ?? implicitIteratorDeclaration(expression)
+          : implicitIteratorDeclaration(expression);
         if (!implicitIterator) {
           if (ts.isCallExpression(expression)) {
             const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
-            if (returnedGeneratorDeclarations(symbolNodes.get(resolvedSymbol(checker, lookup)!))) return;
+            const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
+            if (target?.asteriskToken || returnedGeneratorDeclarations(target)) return;
           }
           if (!addStoredGeneratorConsumption(expression, convertsThrowToRejection)
-            && !reviewedBuiltinIterable(expression) && hasIteratorProtocol(expression)) {
+            && !reviewedBuiltinIterable(expression)
+            && (hasIteratorProtocol(expression) || (prefersAsync && hasIteratorProtocol(expression, "asyncIterator")))) {
             addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
           } else if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
             consumeStoredOrUnknown(expression, convertsThrowToRejection);
@@ -1159,13 +1166,16 @@ export function buildProgramCallGraph(
           });
         }
       }
-      if (ts.isForOfStatement(node)) consumeIterableExpression(node.expression);
+      if (ts.isForOfStatement(node)) consumeIterableExpression(
+        node.expression, node.awaitModifier !== undefined, node.awaitModifier !== undefined,
+      );
       if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) consumeIterableExpression(node.expression);
       if (ts.isSpreadElement(node)) consumeIterableExpression(node.expression);
       if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer) consumeIterableExpression(node.initializer);
       if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.[0]
         && iterableConsumerArgument(node, node.arguments[0])) consumeIterableExpression(
           node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
+          ts.isCallExpression(node) && node.expression.getText() === "Array.fromAsync",
         );
       if (ts.isNewExpression(node)) {
         const symbol = resolvedSymbol(checker, node.expression);
