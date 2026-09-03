@@ -137,11 +137,12 @@ describe("Corsa API frontend", () => {
     }
   });
 
-  it("finds the 1.13.0 named symbol and alias methods on the published N-API client", async () => {
+  it("finds the 1.13.1 named checker methods on the published N-API client", async () => {
     const { CorsaApiClient } = await import("@corsa-bind/napi");
     const proto = (CorsaApiClient as unknown as { prototype: Record<string, unknown> }).prototype;
     for (const method of [
       "getSymbolsAtPositions", "getAliasedSymbol", "getImmediateAliasedSymbol", "getExportsOfModule",
+      "getTypesAtPositions", "getPropertyOfType", "isTypeAssignableTo", "getSymbolOfType",
     ]) {
       expect(typeof proto[method], method).toBe("function");
     }
@@ -151,15 +152,11 @@ describe("Corsa API frontend", () => {
     const source = readFileSync("src/corsa-api-frontend.ts", "utf8");
     for (const method of [
       "getSymbolsAtPositions", "getAliasedSymbol", "getImmediateAliasedSymbol", "getExportsOfModule",
+      "getTypesAtPositions", "getPropertyOfType", "isTypeAssignableTo",
     ]) {
       expect(source, method).not.toMatch(new RegExp(String.raw`callJson\(\s*"${method}"`));
     }
-    expect(source).toMatch(/typeof client\.getTypesAtPositions === "function"/);
-    expect(source).toMatch(/callJson\(\s*"getTypesAtPositions"/);
-    expect(source).toMatch(/typeof client\.getPropertyOfType === "function"/);
-    expect(source).toMatch(/callJson\(\s*"getPropertyOfType"/);
-    expect(source).toMatch(/typeof client\.isTypeAssignableTo === "function"/);
-    expect(source).toMatch(/callJson\(\s*"isTypeAssignableTo"/);
+    expect(source).not.toMatch(/callJson\(/);
   });
 
   it("resolves properties and assignability through typed Corsa adapters", async () => {
@@ -173,6 +170,11 @@ describe("Corsa API frontend", () => {
       expect(stringType).toMatchObject({ texts: expect.arrayContaining([expect.stringMatching(/string/i)]) });
       expect(frontend.getPropertyOfType(stringType!, "length")).toMatchObject({ name: "length" });
       expect(frontend.getPropertyOfType(stringType!, "__no_such_member__")).toBeNull();
+      const fetchType = frontend.getTypeAtPosition(file, source.indexOf("fetch("));
+      expect(frontend.getSymbolOfType(fetchType!)).toMatchObject({ name: "fetch" });
+      const documentType = frontend.getTypeAtPosition(file, source.indexOf("document.createElement"));
+      expect(frontend.getSymbolOfType(documentType!)).toMatchObject({ name: "Document" });
+      expect(frontend.getPropertyOfType(documentType!, "createElement")).toMatchObject({ name: "createElement" });
       expect(frontend.isTypeAssignableTo(stringType!, stringType!)).toBe(true);
       expect(frontend.isTypeAssignableTo(numberType!, stringType!)).toBe(false);
     } finally {

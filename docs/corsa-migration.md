@@ -4,7 +4,7 @@
 
 A staged migration to `@corsa-bind/napi` is realistic and worth continuing.
 A complete replacement of the TypeScript Compiler API is not realistic with
-the current Corsa 1.13.0 API. Corsa should remain an optional semantic sidecar
+the current Corsa 1.13.1 API. Corsa should remain an optional semantic sidecar
 until it reaches measured parity for each admitted slice.
 
 This distinction is important: the migration can remove checker queries from
@@ -16,15 +16,13 @@ because both frontends happen to return the same type text in a fixture.
 
 Upstream status checked on 2026-09-03:
 
-- npm `latest`: `@corsa-bind/napi@1.13.0` and `corsa-oxlint@1.12.4`;
+- npm `latest`: `@corsa-bind/napi@1.13.1` and `corsa-oxlint@1.12.4`;
 - npm `latest`: `typescript@7.0.2`;
 - npm `latest`: `typescript@7.0.2` native platform packages (`@typescript/typescript-*`);
 - [`corsa-bind` #475](https://github.com/ubugeeei-prod/corsa-bind/pull/475) merged
   named N-API wrappers for batched symbols, alias traversal, and module
-  exports. The 1.13.0 binary exposes them and Uneffect consumes those wrappers.
-  Published `dist/index.d.mts` still omits the new method names that
-  `index.d.ts` already declares, because the handwritten wrapper interface
-  was not updated in the 1.13.0 pack.
+  exports. `@corsa-bind/napi@1.13.1` publishes those names in `dist/index.d.mts`
+  along with `getTypesAtPositions`, `getPropertyOfType`, and `isTypeAssignableTo`.
 
 The Corsa worker is pinned to TypeScript 7 native platform binaries
 (`@typescript/typescript-<platform>-<arch>/lib/tsc`). The JavaScript TypeScript 6
@@ -41,11 +39,11 @@ alongside it. Dual TS6+Corsa memory is a migration tax, not the target.
 - Global `fetch` and members of the checker-resolved global `console` object can
   be distinguished from same-spelled local parameters. This is the first
   admitted Effect-resolution slice.
-- The published 1.13.0 binary exposes named `getSymbolsAtPositions`,
-  `getImmediateAliasedSymbol`, `getAliasedSymbol`, and `getExportsOfModule`
-  methods. The sidecar performs one symbol batch per source file and no longer
-  uses `callJson` for those relations. `getTypesAtPositions` still goes through
-  `callJson`.
+- The published 1.13.1 binary exposes named `getSymbolsAtPositions`,
+  `getImmediateAliasedSymbol`, `getAliasedSymbol`, `getExportsOfModule`,
+  `getTypesAtPositions`, `getPropertyOfType`, and `isTypeAssignableTo`.
+  Uneffect calls those methods directly. `getSignaturesOfType` stays on
+  `callJson` because that path fills `parameterTypeTexts`.
 - A re-exported `node:fs/promises` alias reaches its immediate re-export symbol,
   but full canonicalization returns Corsa's `unknown` symbol for the exercised
   two-hop fixture. A separate Red probe found that a direct named import from
@@ -78,12 +76,10 @@ alongside it. Dual TS6+Corsa memory is a migration tax, not the target.
 
 Corsa's underlying project-scoped API exposes batched symbols/types, alias
 relations, resolved signatures, property lookup, assignability, exports, and
-many other checker relations. In `@corsa-bind/napi@1.13.0`, batched symbols,
-alias traversal, and module exports have named N-API methods on the binary.
-Uneffect now has typed adapters for `getTypesAtPositions`, `getPropertyOfType`,
-and `isTypeAssignableTo` that prefer named N-API methods when present and
-still fall back to `callJson` on 1.13.0. `getSignaturesOfType` stays on
-`callJson` because that path fills `parameterTypeTexts`.
+many other checker relations. In `@corsa-bind/napi@1.13.1`, batched symbols,
+types, alias traversal, module exports, property lookup, and assignability
+have named N-API methods. `getSignaturesOfType` stays on `callJson` because
+that path fills `parameterTypeTexts`.
 Direct and two-hop Node ambient-module aliases still resolve to `unknown`, and
 source-position or node handles are required by several relation endpoints. CFG and a complete
 whole-project AST traversal suitable for Uneffect's analyzers remain missing.
@@ -117,9 +113,11 @@ The current main analyzer still needs TypeScript 6 when imported or run; only a
 - Batch semantic requests once per source file and attach Corsa facts to a
   compiler-neutral sidecar. (Implemented for the initial slice.)
 - When a sidecar is attached, admitted `Fetch`/`Console` catalog lookup uses
-  that batch in the main analyzer (`overlayCorsaBuiltinCatalog`). Other
-  builtins still go through `TypeScriptFrontendAdapter`. The TypeScript
-  adapter remains the parity oracle.
+  that batch in the main analyzer (`overlayCorsaBuiltinCatalog`), and lib.dom
+  methods such as `Document#createElement` use Corsa `getTypeAtPosition` /
+  `getSymbolOfType` / `getPropertyOfType` with declaration identity in
+  `lib.dom.d.ts`. Other builtins still go through `TypeScriptFrontendAdapter`.
+  The TypeScript adapter remains the parity oracle.
 - Run TypeScript and Corsa resolution together for `Fetch` and `Console` in CI;
   expose mismatches from `check --corsa-parity` as assurance blockers.
 - Report parity mismatch as unknown; do not silently fall back in proof-grade

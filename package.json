@@ -106,7 +106,7 @@
     "z3-solver": "^4.15.4"
   },
   "optionalDependencies": {
-    "@corsa-bind/napi": "1.13.0",
+    "@corsa-bind/napi": "1.13.1",
     "@typescript/typescript-darwin-arm64": "7.0.2",
     "@typescript/typescript-darwin-x64": "7.0.2",
     "@typescript/typescript-linux-arm64": "7.0.2",
@@ -115,7 +115,7 @@
     "@typescript/typescript-win32-x64": "7.0.2"
   },
   "devDependencies": {
-    "@corsa-bind/napi": "1.13.0",
+    "@corsa-bind/napi": "1.13.1",
     "@informalsystems/quint": "^0.32.0",
     "@oxlint/plugins": "1.80.0",
     "@types/node": "^24.0.0",

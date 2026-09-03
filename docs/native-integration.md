@@ -192,7 +192,7 @@ The first checker-backed effect-resolution slice is deliberately small.
 `classifyBuiltinCall` authenticates global `fetch` as `Fetch`, and a member of
 the checker-resolved global `console` object as `Console`. Same-spelled local
 parameters fail closed. A re-exported `node:fs/promises` alias currently also
-fails closed: Corsa 1.13.0 exposes immediate/full alias relations through named
+fails closed: Corsa 1.13.1 exposes immediate/full alias relations through named
 N-API methods, but the exercised two-hop re-export reaches the immediate
 bridge symbol and then Corsa's `unknown` symbol. This is covered by a
 negative test and is not reported as `FsRead`.

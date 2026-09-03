@@ -1,22 +1,34 @@
 import { resolve } from "node:path";
 import ts from "typescript";
 import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
-import type { CorsaApiFrontend, CorsaBuiltinCallQuery, CorsaBuiltinCallResolution } from "./corsa-api-frontend.js";
+import type { CorsaApiFrontend, CorsaApiSymbolFact, CorsaBuiltinCallQuery, CorsaBuiltinCallResolution } from "./corsa-api-frontend.js";
 import type { FrontendSymbolAdapter, ResolvedCallSite } from "./frontend-adapter.js";
 
+function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null | undefined): symbol is CorsaApiSymbolFact {
+  return symbol !== null && symbol !== undefined
+    && (symbol.declarations ?? []).some((item) => /(?:^|[/\\])lib\.dom\.d\.ts$/.test(item));
+}
+
+type CorsaCatalogFrontend = Pick<CorsaApiFrontend, "rootFiles" | "classifyBuiltinCalls">
+  & Partial<Pick<CorsaApiFrontend, "getTypeAtPosition" | "getSymbolOfType" | "getPropertyOfType">>;
+
 /**
- * Routes the admitted Fetch/Console catalog through Corsa when a sidecar is
- * attached. Other builtins stay on the TypeScript adapter. Corsa is not a
- * complete FrontendSymbolAdapter.
+ * Routes admitted Fetch/Console and lib.dom method catalog entries through
+ * Corsa when a sidecar is attached. Other builtins stay on the TypeScript
+ * adapter. Corsa is not a complete FrontendSymbolAdapter.
  */
 export function overlayCorsaBuiltinCatalog(
   adapter: FrontendSymbolAdapter,
-  corsa: Pick<CorsaApiFrontend, "rootFiles" | "classifyBuiltinCalls">,
+  corsa: CorsaCatalogFrontend,
   registry: BuiltinContractRegistry = builtinContractRegistry,
 ): FrontendSymbolAdapter {
   const roots = new Set(corsa.rootFiles.map((file) => resolve(file)));
   const globals = new Map(
     registry.contracts.filter((contract) => contract.symbol.module === "global")
+      .map((contract) => [contract.symbol.export, contract]),
+  );
+  const domMethods = new Map(
+    registry.contracts.filter((contract) => contract.symbol.module === "lib.dom" && contract.symbol.export.includes("#"))
       .map((contract) => [contract.symbol.export, contract]),
   );
   const classified = new WeakMap<ts.SourceFile, Map<ts.CallExpression, CorsaBuiltinCallResolution | null>>();
@@ -46,13 +58,27 @@ export function overlayCorsaBuiltinCatalog(
   };
 
   const fromCorsa = (call: ts.CallExpression): ResolvedCallSite | undefined => {
-    const resolution = classify(call.getSourceFile()).get(call);
-    if (!resolution) return undefined;
-    const exportName = resolution.operation === "Fetch" ? "fetch"
-      : resolution.operation === "Console"
+    const source = call.getSourceFile();
+    const resolution = classify(source).get(call);
+    const exportName = resolution?.operation === "Fetch" ? "fetch"
+      : resolution?.operation === "Console"
         ? `${resolution.receiver?.name ?? "console"}.${resolution.symbol.name}`
         : undefined;
-    const contract = exportName === undefined ? undefined : globals.get(exportName);
+    const classifiedContract = exportName === undefined ? undefined : globals.get(exportName);
+    const expression = call.expression;
+    const domContract = classifiedContract === undefined
+      && ts.isPropertyAccessExpression(expression)
+      && corsa.getTypeAtPosition && corsa.getSymbolOfType && corsa.getPropertyOfType
+      ? (() => {
+          const receiverType = corsa.getTypeAtPosition!(source.fileName, expression.expression.getStart(source));
+          if (!receiverType) return undefined;
+          const owner = corsa.getSymbolOfType!(receiverType);
+          const member = corsa.getPropertyOfType!(receiverType, expression.name.text);
+          if (!declaredByDomLibrary(owner) || !declaredByDomLibrary(member)) return undefined;
+          return domMethods.get(`${owner.name}#${member.name}`);
+        })()
+      : undefined;
+    const contract = classifiedContract ?? domContract;
     if (!contract) return undefined;
     return {
       symbol: contract.symbol,

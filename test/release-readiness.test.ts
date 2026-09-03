@@ -34,7 +34,7 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.engines).toEqual({ node: ">=24" });
     expect(manifest.peerDependencies?.typescript).toBe(">=6.0.0-dev.20260820 <7");
     expect(manifest.peerDependenciesMeta?.typescript).toEqual({ optional: true });
-    expect(manifest.optionalDependencies?.["@corsa-bind/napi"]).toBe("1.13.0");
+    expect(manifest.optionalDependencies?.["@corsa-bind/napi"]).toBe("1.13.1");
     expect(manifest.optionalDependencies?.["@typescript/typescript-darwin-arm64"]).toBe("7.0.2");
     expect(manifest.optionalDependencies?.["@typescript/native-preview"]).toBeUndefined();
     expect(manifest.repository).toEqual({ type: "git", url: "git+https://github.com/mizchi/uneffect.git" });

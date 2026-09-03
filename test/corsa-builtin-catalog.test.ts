@@ -79,6 +79,44 @@ describe("Corsa builtin catalog overlay", () => {
     expect(overlay.resolveCall(localCall)).toBeUndefined();
   });
 
+  it("resolves Document#createElement from Corsa type property identity without the TypeScript adapter", () => {
+    const text = `export const makeNode = () => document.createElement("div");
+export const shadowed = (document: { createElement(name: string): unknown }) => document.createElement("div");`;
+    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.ES2024, true, ts.ScriptKind.TS);
+    const globalCall = callNamed(source, "createElement");
+    let localCall: ts.CallExpression | undefined;
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "createElement" && node !== globalCall) localCall = node;
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    const overlay = overlayCorsaBuiltinCatalog(unusedAdapter(), {
+      rootFiles: [fileName],
+      classifyBuiltinCalls: () => [null, null],
+      getTypeAtPosition(_file, position) {
+        return position === text.indexOf("document")
+          ? { id: "Document", texts: ["Document"] }
+          : { id: "Local", texts: ["{ createElement(name: string): unknown }"] };
+      },
+      getSymbolOfType(type) {
+        return type.id === "Document"
+          ? { id: "sym-doc", name: "Document", declarations: ["/lib/lib.dom.d.ts"] }
+          : { id: "sym-local", name: "document" };
+      },
+      getPropertyOfType(type, name) {
+        if (name !== "createElement") return null;
+        return type.id === "Document"
+          ? { id: "sym-create", name: "createElement", declarations: ["/lib/lib.dom.d.ts"] }
+          : { id: "sym-local-create", name: "createElement" };
+      },
+    });
+    expect(overlay.resolveCall(globalCall)).toMatchObject({
+      symbol: { module: "lib.dom", export: "Document#createElement" }, evidence: "trusted",
+    });
+    expect(overlay.resolveCall(localCall!)).toBeUndefined();
+  });
+
   it("does not treat a Corsa miss as proof and keeps the TypeScript adapter as fallback", () => {
     const source = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.ES2024, true, ts.ScriptKind.TS);
     const fetchCall = callNamed(source, "fetch");

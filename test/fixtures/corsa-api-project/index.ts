@@ -15,3 +15,11 @@ export function shadowed(console: { log(value: string): void }, fetch: (url: str
   console.log("local");
   fetch("local");
 }
+
+export function makeNode(): HTMLDivElement {
+  return document.createElement("div");
+}
+
+export function shadowedDocument(document: { createElement(name: string): HTMLDivElement }): HTMLDivElement {
+  return document.createElement("div");
+}

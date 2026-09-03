@@ -53,6 +53,7 @@ export interface CorsaApiFrontend extends SemanticQueryFrontend {
   getTypeAtPosition(file: string, position: number): CorsaApiTypeFact | null;
   getTypesAtPositions(file: string, positions: readonly number[]): Array<CorsaApiTypeFact | null>;
   getPropertyOfType(type: CorsaApiTypeFact, name: string): CorsaApiSymbolFact | null;
+  getSymbolOfType(type: CorsaApiTypeFact): CorsaApiSymbolFact | null;
   isTypeAssignableTo(source: CorsaApiTypeFact, target: CorsaApiTypeFact): boolean | null;
   /** Narrow checker-backed builtin slice currently admitted by migration tests. */
   classifyBuiltinCall(file: string, query: CorsaBuiltinCallQuery): CorsaBuiltinCallResolution | null;
@@ -60,59 +61,6 @@ export interface CorsaApiFrontend extends SemanticQueryFrontend {
 }
 
 const packageRequire = createRequire(import.meta.url);
-
-/**
- * Named 1.13.0 N-API methods. The published binary and `index.d.ts` expose them;
- * packaged `dist/index.d.mts` still omits the names because the handwritten
- * wrapper interface was not updated in the 1.13.0 release.
- */
-type NamedCorsaCheckerClient = {
-  getSymbolsAtPositions(snapshot: string, project: string, file: string, positions: number[]): unknown;
-  getAliasedSymbol(snapshot: string, project: string, symbol: string): unknown;
-  getImmediateAliasedSymbol(snapshot: string, project: string, symbol: string): unknown;
-  getExportsOfModule(snapshot: string, project: string, symbol: string): unknown;
-  getTypesAtPositions?(snapshot: string, project: string, file: string, positions: number[]): unknown;
-  getPropertyOfType?(snapshot: string, project: string, typeHandle: string, name: string): unknown;
-  isTypeAssignableTo?(snapshot: string, project: string, source: string, target: string): unknown;
-  callJson<T>(method: string, params?: unknown): T;
-};
-
-function readTypesAtPositions(
-  client: NamedCorsaCheckerClient,
-  snapshot: string,
-  project: string,
-  file: string,
-  positions: number[],
-): Array<CorsaApiTypeFact | null> {
-  const types = typeof client.getTypesAtPositions === "function"
-    ? client.getTypesAtPositions(snapshot, project, file, positions)
-    : client.callJson("getTypesAtPositions", { snapshot, project, file, positions });
-  return Array.isArray(types) ? types as Array<CorsaApiTypeFact | null> : [];
-}
-
-function readPropertyOfType(
-  client: NamedCorsaCheckerClient,
-  snapshot: string,
-  project: string,
-  typeHandle: string,
-  name: string,
-): unknown {
-  return typeof client.getPropertyOfType === "function"
-    ? client.getPropertyOfType(snapshot, project, typeHandle, name)
-    : client.callJson("getPropertyOfType", { snapshot, project, type: typeHandle, name });
-}
-
-function readTypeAssignableTo(
-  client: NamedCorsaCheckerClient,
-  snapshot: string,
-  project: string,
-  source: string,
-  target: string,
-): unknown {
-  return typeof client.isTypeAssignableTo === "function"
-    ? client.isTypeAssignableTo(snapshot, project, source, target)
-    : client.callJson("isTypeAssignableTo", { snapshot, project, source, target });
-}
 
 function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null): symbol is CorsaApiSymbolFact {
   return symbol !== null && (symbol.declarations ?? []).some((item) => /(?:^|[/\\])lib\.dom\.d\.ts$/.test(item));
@@ -180,7 +128,7 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
     executable: compilerExecutable,
     cwd,
     mode: "jsonrpc",
-  }) as Awaited<ReturnType<typeof CorsaApiClient.spawnAsync>> & NamedCorsaCheckerClient;
+  });
   let snapshot: CorsaSnapshotResponse | undefined;
   try {
     await client.initializeAsync();
@@ -262,21 +210,22 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
       },
       getTypesAtPositions(file, positions) {
         assertOpen();
-        return readTypesAtPositions(
-          client, snapshot!.snapshot, project.id, projectFile(file), [...positions],
-        ).map(normalizeType);
+        const types = client.getTypesAtPositions(
+          snapshot!.snapshot, project.id, projectFile(file), [...positions],
+        );
+        return (Array.isArray(types) ? types : []).map((type) => normalizeType(type as CorsaApiTypeFact | null));
       },
       getPropertyOfType(type, name) {
         assertOpen();
-        return normalizeSymbol(readPropertyOfType(
-          client, snapshot!.snapshot, project.id, type.id, name,
-        ));
+        return normalizeSymbol(client.getPropertyOfType(snapshot!.snapshot, project.id, type.id, name));
+      },
+      getSymbolOfType(type) {
+        assertOpen();
+        return normalizeSymbol(client.getSymbolOfType(snapshot!.snapshot, type.id, project.id));
       },
       isTypeAssignableTo(source, target) {
         assertOpen();
-        const assignable = readTypeAssignableTo(
-          client, snapshot!.snapshot, project.id, source.id, target.id,
-        );
+        const assignable = client.isTypeAssignableTo(snapshot!.snapshot, project.id, source.id, target.id);
         return typeof assignable === "boolean" ? assignable : null;
       },
       classifyBuiltinCall(file, query) {
@@ -294,9 +243,9 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
         const symbols = (client.getSymbolsAtPositions(
           snapshot!.snapshot, project.id, source, positions,
         ) as unknown[] ?? []).map(normalizeSymbol);
-        const calleeTypes = readTypesAtPositions(
-          client, snapshot!.snapshot, project.id, source, queries.map((query) => query.calleePosition),
-        ).map(normalizeType);
+        const calleeTypes = (client.getTypesAtPositions(
+          snapshot!.snapshot, project.id, source, queries.map((query) => query.calleePosition),
+        ) ?? []).map((type) => normalizeType(type as CorsaApiTypeFact | null));
         let offset = 0;
         return queries.map((query, index) => {
           const symbol = symbols[offset++] ?? null;
