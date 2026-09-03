@@ -352,6 +352,13 @@ introducing another domain-local control-flow or alias model.
        `while`, `for`, and `do...while` loops, including their existing path
        assumptions; a call in the loop conservatively invalidates the whole
        scalar frame until callable write summaries are available.
+       - [x] Replace that whole-frame call fallback for a TypeChecker-resolved,
+         stable source-local leaf callable with a symbol-derived captured-write
+         set. Follow immutable callable aliases; keep nested calls, member
+         access, construction, deletion, external bodies, and unresolved
+         dispatch as whole-frame invalidation.
+       - [x] Treat a nested function declaration as non-executing declaration
+         setup in the contract CFG; analyze its body only at a resolved call.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.

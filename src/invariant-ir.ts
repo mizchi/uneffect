@@ -3,7 +3,7 @@ import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { InvariantSpec } from "./spec-ir.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
-import { resolveStableCallableSymbol } from "./stable-callable.js";
+import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
 
 export type LogicSort = "Int" | "Real" | "Bool";
 export type NumericDomain = "int" | "nat" | "float" | "bool";
@@ -962,6 +962,80 @@ function typeCheckerConstantIntegerRemainders(program: ts.Program | undefined, f
   return remainders;
 }
 
+/**
+ * Computes a closed write set for directly resolved, source-local leaf
+ * callables. Missing entries are deliberately unknown: calls, dynamic member
+ * operations, declarations without bodies, and source drift cannot justify a
+ * loop frame.
+ */
+function typeCheckerCallableScalarWrites(
+  program: ts.Program | undefined,
+  fileName: string,
+  text: string,
+): Map<string, readonly string[]> {
+  const summaries = new Map<string, readonly string[]>();
+  if (!program) return summaries;
+  const source = program.getSourceFile(fileName);
+  if (!source || source.text !== text) return summaries;
+  const errors = [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)]
+    .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length > 0) return summaries;
+  const checker = program.getTypeChecker();
+  const visitCall = (call: ts.CallExpression): void => {
+    const symbol = resolveStableCallableSymbol(checker, call.expression);
+    const declaration = symbol && stableCallableDeclaration(symbol);
+    const body = declaration && "body" in declaration ? declaration.body : undefined;
+    if (!body || declaration!.getSourceFile() !== source) return;
+    const writes = new Set<string>();
+    let closed = true;
+    const declarationStart = declaration!.getStart(source);
+    const declarationEnd = declaration!.getEnd();
+    const localToCallable = (target: ts.Symbol): boolean => (target.declarations ?? []).some((item) =>
+      item.getSourceFile() === source && item.getStart(source) >= declarationStart && item.getEnd() <= declarationEnd);
+    const scan = (node: ts.Node): void => {
+      if (!closed) return;
+      if (ts.isCallExpression(node) || ts.isNewExpression(node)
+        || ts.isTaggedTemplateExpression(node) || ts.isPropertyAccessExpression(node)
+        || ts.isElementAccessExpression(node)) {
+        closed = false;
+        return;
+      }
+      if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+        && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) {
+        if (!ts.isIdentifier(node.left)) {
+          closed = false;
+          return;
+        }
+        const target = checker.getSymbolAtLocation(node.left);
+        if (!target) { closed = false; return; }
+        if (!localToCallable(target)) writes.add(node.left.text);
+      } else if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+        && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
+        if (!ts.isIdentifier(node.operand)) {
+          closed = false;
+          return;
+        }
+        const target = checker.getSymbolAtLocation(node.operand);
+        if (!target) { closed = false; return; }
+        if (!localToCallable(target)) writes.add(node.operand.text);
+      } else if (ts.isDeleteExpression(node)) {
+        closed = false;
+        return;
+      }
+      ts.forEachChild(node, scan);
+    };
+    scan(body);
+    if (closed) summaries.set(`${call.getStart(source)}:${call.getEnd()}`, [...writes].sort());
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) visitCall(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return summaries;
+}
+
 /** Reviewed scalar Math calls, identified through the standard library declaration. */
 function typeCheckerMathScalarCalls(program: ts.Program | undefined, fileName: string, text: string): Map<string, MathScalarCallFact> {
   const calls = new Map<string, MathScalarCallFact>();
@@ -1905,6 +1979,7 @@ export function lowerInvariantProgram(
   const boundedPowerExpressions = typeCheckerBoundedPowerExpressions(program, fileName, text);
   const constantIntegerRemainders = typeCheckerConstantIntegerRemainders(program, fileName, text);
   const mathScalarCalls = typeCheckerMathScalarCalls(program, fileName, text);
+  const callableScalarWrites = typeCheckerCallableScalarWrites(program, fileName, text);
   const throwEffects = typeCheckerThrowEffects(program, fileName, text);
   const assertionCalls = typeCheckerAssertionCalls(program, fileName, text);
   const declaredThrowCalls = typeCheckerDeclaredThrowCalls(program, fileName, text);
@@ -2740,9 +2815,13 @@ export function lowerInvariantProgram(
         } else if (ts.isVariableDeclaration(node)) {
           addBinding(node.name);
         } else if (ts.isCallExpression(node)) {
-          // A callback or source-local callable may close over a scalar binding.
-          // Until call summaries carry write sets, preserve no frame across calls.
-          dynamicScope = true;
+          const span = `${node.getStart(source)}:${node.getEnd()}`;
+          const writes = callableScalarWrites.get(span);
+          if (writes) for (const name of writes) names.add(name);
+          else if (!mathScalarCalls.has(span)) {
+            // An unresolved callback may close over any scalar binding.
+            dynamicScope = true;
+          }
         }
         ts.forEachChild(node, visit);
       };
@@ -3458,6 +3537,10 @@ export function lowerInvariantProgram(
           thrown: { kind: "synchronous-throw", effect, originSpan, ...(completion ? { evidence: completion.evidence } : {}) },
         })));
         paths = [...(declared?.definitelyThrows || completion?.definitelyRejects ? [] : normalArguments), ...thrown, ...abruptArguments];
+      } else if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+        // FunctionDeclaration instantiation creates the callable binding but
+        // does not execute its body. Calls are handled through checker-backed
+        // completion and write summaries at their actual call sites.
       } else if (!ts.isEmptyStatement(statement)) {
         throw new Error(`unsupported invariant statement: ${statement.getText(source)}`);
       }

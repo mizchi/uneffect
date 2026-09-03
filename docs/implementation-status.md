@@ -475,10 +475,16 @@ same property is proved for arbitrary TypeScript.
 - Invariant-backed `while`, `for`, and `do...while` now share a conservative
   syntactic frame rule. A scalar binding with no assignment, declaration, or
   increment in the loop retains its entry expression and path assumptions;
-  written bindings alone receive fresh loop-state variables. Any call in the
-  loop invalidates the complete scalar frame because callable summaries do not
-  yet carry closure write sets. Same-spelled inner bindings can therefore cause
-  harmless over-invalidation, but are never used to justify preservation.
+  written bindings alone receive fresh loop-state variables. A
+  TypeChecker-resolved stable source-local leaf callable, including a `const`
+  alias, contributes a symbol-derived set of writes captured from outside its
+  own declaration. A callable-local binding with the same spelling does not
+  invalidate the caller frame. Nested calls, member access/construction,
+  deletion, external bodies, and unresolved dispatch still invalidate the
+  complete frame. Same-spelled loop-local bindings can therefore cause harmless
+  over-invalidation, but are never used to justify preservation. Nested
+  function declarations are non-executing CFG statements; their bodies matter
+  only when reached through a supported call.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

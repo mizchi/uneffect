@@ -2636,6 +2636,48 @@ describe("Hoare contract checker", () => {
     }
   });
 
+  it("preserves scalar frames across a stable read-only local callable", async () => {
+    const fileName = "/contract-loop-call-frame.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value */
+      function identity(value: Int): Int { return value }
+      const read = identity
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function run(limit: Int): Int {
+        let index = 0
+        /* uneffect:loop_invariant index >= 0 */
+        while (read(index) < limit) index++
+        return limit
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    const evidence = JSON.stringify(result.artifacts.filter(({ obligation }) => obligation?.functionName === "run"));
+    expect(evidence).not.toContain("run_limit_loop_");
+    expect(evidence).toContain("run_index_loop_");
+
+    const capturedSource = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function captured(limit: Int): Int {
+        let index = 0
+        /* uneffect:ensures result === value */
+        function observe(value: Int): Int { limit = limit; return value }
+        /* uneffect:loop_invariant index >= 0 */
+        while (observe(index) < limit) index++
+        return limit
+      }
+    `;
+    const capturedFile = "/contract-loop-call-captured-write.ts";
+    const obligations = lowerInvariantProgram(capturedFile, capturedSource, programFor(capturedFile, capturedSource));
+    expect(JSON.stringify(obligations)).toContain("captured_limit_loop_");
+  });
+
   it("keeps switch break local while continue targets the enclosing while through finally", async () => {
     const fileName = "/contract-loop-switch-finally.ts";
     const source = `
