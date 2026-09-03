@@ -1352,6 +1352,59 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("action settle_1_fulfilled");
   });
 
+  it("tracks Promise construction and settlement through stable aliases only", () => {
+    const model = analyzePromiseChains("promise-aliases.ts", `
+      const P = Promise
+      const resolveNow = P.resolve
+      const { reject: rejectNow } = Promise
+      const made = new P<number>((resolve) => resolve(1))
+      const fulfilled = resolveNow(1)
+      const rejected = rejectNow(new Error("no"))
+      made.then(value => value)
+      fulfilled.then(value => value)
+      rejected.catch(() => 0)
+
+      let MutablePromise = Promise
+      let mutableResolve = Promise.resolve
+      const mutableMade = new MutablePromise<number>((resolve) => resolve(1))
+      const uncertain = mutableResolve(1)
+      mutableMade.then(value => value)
+      uncertain.then(value => value)
+    `);
+    expect(model.executors).toEqual([
+      expect.objectContaining({ binding: "made", synchronous: true, throwBecomesRejection: true }),
+    ]);
+    expect(model.chains.find((chain) => chain.source === "fulfilled")?.initialSettlement).toBe("fulfilled");
+    expect(model.chains.find((chain) => chain.source === "rejected")?.initialSettlement).toBe("rejected");
+    expect(model.chains.find((chain) => chain.source === "uncertain")?.initialSettlement).toBeUndefined();
+    expect(model.chains.find((chain) => chain.source === "mutableMade")?.executor).toBeUndefined();
+  });
+
+  it("recognizes stable aliases of Promise capability factories", () => {
+    const model = analyzePromiseChains("promise-factory-aliases.ts", `
+      const attempt = Promise.try
+      const makeCapability = Promise.withResolvers
+      function tried() { return attempt(() => 1).then(value => value) }
+      function externallySettled() {
+        const { promise, resolve } = makeCapability<number>()
+        resolve(1)
+        return promise.then(value => value)
+      }
+      let mutableAttempt = Promise.try
+      let mutableCapability = Promise.withResolvers
+      function uncertainTry() { return mutableAttempt(() => 1).then(value => value) }
+      function uncertainCapability() {
+        const { promise } = mutableCapability<number>()
+        return promise.then(value => value)
+      }
+    `);
+    expect(model.executors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ owner: "tried", settlementSource: "promise-try" }),
+      expect.objectContaining({ owner: "externallySettled", settlementSource: "external-resolvers" }),
+    ]));
+    expect(model.executors.filter(({ owner }) => owner === "uncertainTry" || owner === "uncertainCapability")).toEqual([]);
+  });
+
   it("models Promise.withResolvers as externally settled first-wins capability", () => {
     const model = analyzePromiseChains("with-resolvers.ts", `
       const { promise: moduleTask, resolve: resolveModule } = Promise.withResolvers<number>()

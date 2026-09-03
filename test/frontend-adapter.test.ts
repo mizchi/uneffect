@@ -3,13 +3,47 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements } from "../src/frontend-adapter.js";
+import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements, standardLibraryOperation } from "../src/frontend-adapter.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 import { analyzeUneffectProject } from "../src/custom-validators.js";
 
 describe("TypeChecker symbol adapter", () => {
+  it("authenticates standard operations through immutable aliases but rejects mutable aliases", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-standard-operation-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        const P = Promise;
+        const resolve = Promise.resolve;
+        const { reject } = Promise;
+        let MutablePromise = Promise;
+        let mutableResolve = Promise.resolve;
+        P.resolve(1);
+        resolve(1);
+        reject(new Error("no"));
+        new P<number>((done) => done(1));
+        MutablePromise.resolve(1);
+        mutableResolve(1);
+        new MutablePromise<number>((done) => done(1));
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.esnext.d.ts"], noEmit: true,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const operations = source.statements.flatMap((statement) =>
+        ts.isExpressionStatement(statement)
+          && (ts.isCallExpression(statement.expression) || ts.isNewExpression(statement.expression))
+          ? [standardLibraryOperation(program.getTypeChecker(), statement.expression)] : []);
+      expect(operations).toEqual([
+        "PromiseConstructor#resolve", "PromiseConstructor#resolve", "PromiseConstructor#reject", "PromiseConstructor",
+        undefined, undefined, undefined,
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("infers fixed external script loading only after a script element is inserted", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-static-script-"));
     const fileName = join(directory, "input.ts");

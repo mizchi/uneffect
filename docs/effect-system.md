@@ -280,6 +280,13 @@ checks. Direct callback try/catch/finally preserves synchronous throw identity
 until catch routing and applies ordinary finally override precedence before the
 result is lowered to Promise settlement. Same-spelled user APIs do not receive
 this rule.
+Promise construction, `resolve`/`reject`, `try`, and `withResolvers` use the
+same authenticated lib.d.ts identity. Reassignment-free aliases such as
+`const P = Promise`, `const resolve = P.resolve`, and `const { reject } = P`
+retain the builtin model. A `let` alias is deliberately not trusted even when
+TypeScript still gives it the builtin signature: it may refer to a different
+runtime value before the call. This stable-target check is shared with the
+standard Object, Reflect, and iterable-consumer rules.
 A same-Program custom iterable generator's standard `Symbol.iterator` method
 uses this same consumption edge for all of those syntaxes, rather than only
 `for...of`. An ordinary iterator factory contributes its acquisition effects

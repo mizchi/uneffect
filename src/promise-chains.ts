@@ -3,6 +3,7 @@ import { extractAnnotations } from "./annotations.js";
 import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
 import { routeCatchPaths, routeFinallyPaths, type CompletionKind } from "./completion-flow.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
+import { standardLibraryOperation } from "./frontend-adapter.js";
 
 export type PromiseReactionKind = "then" | "catch" | "finally";
 export type PromiseExecutorSettlement = "fulfilled" | "rejected" | "assimilating";
@@ -1007,18 +1008,10 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
   };
   collectThenables(source);
   const isBuiltinWithResolvers = (call: ts.CallExpression): boolean => {
-    const declaration = checker.getResolvedSignature(call)?.declaration;
-    if (!declaration || !program.isSourceFileDefaultLibrary(declaration.getSourceFile())) return false;
-    const named = declaration as ts.SignatureDeclaration & { name?: ts.PropertyName };
-    return named.name?.getText(declaration.getSourceFile()) === "withResolvers"
-      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor";
+    return standardLibraryOperation(checker, call) === "PromiseConstructor#withResolvers";
   };
   const isBuiltinPromiseTry = (call: ts.CallExpression): boolean => {
-    const declaration = checker.getResolvedSignature(call)?.declaration;
-    if (!declaration || !program.isSourceFileDefaultLibrary(declaration.getSourceFile())) return false;
-    const named = declaration as ts.SignatureDeclaration & { name?: ts.PropertyName };
-    return named.name?.getText(declaration.getSourceFile()) === "try"
-      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor";
+    return standardLibraryOperation(checker, call) === "PromiseConstructor#try";
   };
   const namedBindingElement = (pattern: ts.ObjectBindingPattern, key: string): ts.BindingElement | undefined =>
     pattern.elements.find((element) => {
@@ -1089,7 +1082,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         });
         pendingAdoptions.push({ executor: index, symbols: adoptedSymbols, expressions: adoptedExpressions });
       }
-      if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise" && librarySymbol(checker, node.expression)) {
+      if (ts.isNewExpression(node) && standardLibraryOperation(checker, node) === "PromiseConstructor") {
         const binding = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name)
           ? node.parent.name.text : node.getText(source);
         const callback = node.arguments?.[0];
@@ -1124,11 +1117,10 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0)) return undefined;
         return builtinInitialSettlement(declaration.initializer, new Set([...seen, symbol]));
       }
-      if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)) return undefined;
-      const member = expression.expression.name;
-      if ((member.text !== "resolve" && member.text !== "reject") || !librarySymbol(checker, member)) return undefined;
-      const receiver = expression.expression.expression;
-      return ts.isIdentifier(receiver) && receiver.text === "Promise" ? (member.text === "resolve" ? "fulfilled" : "rejected") : undefined;
+      if (!ts.isCallExpression(expression)) return undefined;
+      const operation = standardLibraryOperation(checker, expression);
+      return operation === "PromiseConstructor#resolve" ? "fulfilled"
+        : operation === "PromiseConstructor#reject" ? "rejected" : undefined;
     };
     const visit = (node: ts.Node): void => {
       if (node !== ownerBody && ts.isFunctionLike(node)) return;

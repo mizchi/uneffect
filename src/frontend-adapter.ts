@@ -41,10 +41,74 @@ function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undef
   return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
 }
 
+function isTypeScriptLibraryDeclaration(declaration: ts.Declaration): boolean {
+  const source = declaration.getSourceFile();
+  return source.isDeclarationFile
+    && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+}
+
+function isConstDeclaration(declaration: ts.VariableDeclaration): boolean {
+  return ts.isVariableDeclarationList(declaration.parent)
+    && (declaration.parent.flags & ts.NodeFlags.Const) !== 0;
+}
+
+/**
+ * Authenticate the runtime target, not only its TypeScript signature. A mutable
+ * variable can retain a lib.d.ts signature after being reassigned, so signature
+ * identity alone is not sufficient evidence that a standard builtin is called.
+ */
+function hasStableStandardLibraryTarget(
+  checker: ts.TypeChecker,
+  input: ts.Expression,
+  seen: ReadonlySet<ts.Symbol> = new Set(),
+): boolean {
+  const expression = ts.isParenthesizedExpression(input) || ts.isAsExpression(input)
+    || ts.isTypeAssertionExpression(input) || ts.isNonNullExpression(input)
+    ? input.expression : input;
+  if (expression !== input) return hasStableStandardLibraryTarget(checker, expression, seen);
+
+  if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+    const location = ts.isPropertyAccessExpression(expression) ? expression.name : expression.argumentExpression;
+    const property = location ? targetSymbol(checker, location) : undefined;
+    if (!property?.declarations?.some(isTypeScriptLibraryDeclaration)) return false;
+    const declaration = property.declarations.find(isTypeScriptLibraryDeclaration);
+    const owner = declaration?.parent;
+    // Static methods remain safe only when their constructor object is reached
+    // through immutable aliases. Instance-method dispatch is authenticated by
+    // the lib.d.ts member identity (prototype replacement remains unsupported).
+    return owner && (ts.isInterfaceDeclaration(owner) || ts.isClassDeclaration(owner))
+      && owner.name?.text.endsWith("Constructor")
+      ? hasStableStandardLibraryTarget(checker, expression.expression, seen)
+      : true;
+  }
+
+  if (!ts.isIdentifier(expression)) return false;
+  const symbol = targetSymbol(checker, expression);
+  if (!symbol || seen.has(symbol)) return false;
+  if (symbol.declarations?.some(isTypeScriptLibraryDeclaration)) return true;
+  const declaration = symbol.valueDeclaration;
+  if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+    && isConstDeclaration(declaration)) {
+    return hasStableStandardLibraryTarget(checker, declaration.initializer, new Set(seen).add(symbol));
+  }
+  if (declaration && ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent)) {
+    const variable = declaration.parent.parent;
+    if (!ts.isVariableDeclaration(variable) || !variable.initializer || !isConstDeclaration(variable)) return false;
+    const key = declaration.propertyName ?? (ts.isIdentifier(declaration.name) ? declaration.name : undefined);
+    if (!key || !(ts.isIdentifier(key) || ts.isStringLiteralLike(key) || ts.isNumericLiteral(key))) return false;
+    const receiver = variable.initializer;
+    const property = checker.getPropertyOfType(checker.getTypeAtLocation(receiver), key.text);
+    return Boolean(property?.declarations?.some(isTypeScriptLibraryDeclaration)
+      && hasStableStandardLibraryTarget(checker, receiver, new Set(seen).add(symbol)));
+  }
+  return false;
+}
+
 /** Stable lib.d.ts owner/member identity, independent of source-level aliases. */
 export function standardLibraryOperation(
   checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression,
 ): string | undefined {
+  if (!hasStableStandardLibraryTarget(checker, call.expression)) return undefined;
   const declaration = checker.getResolvedSignature(call)?.declaration;
   const source = declaration?.getSourceFile();
   if (!declaration || !source?.isDeclarationFile
