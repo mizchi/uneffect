@@ -1038,6 +1038,8 @@ introducing another domain-local control-flow or alias model.
        hidden-execution call-graph rules, retaining getter/user-code semantics
        through aliases of `Object.assign`, Object enumeration, `JSON.stringify`,
        `structuredClone`, and Array `concat`.
+       - [x] Apply the same identity path to Object descriptor creation/mutation
+         and own-property inspection, including alias and lookalike controls.
    - [x] Model standard-identity `Object.assign` as enumerable reads followed
      by target writes. Compose same-Program object-literal source getters and
      matching target setters, exclude class prototype accessors, and classify

@@ -192,8 +192,9 @@ ultimate lib.d.ts symbol. A mutable alias is not trusted as the same constructor
 and therefore does not receive fresh-result refinement.
 The same resolved declaration identity drives hidden-execution expansion for
 reviewed `Object.assign`, Object value enumeration, `JSON.stringify`,
-`structuredClone`, and Array `concat`. Renaming one of these functions through
-an immutable alias does not discard its getter or user-code boundary.
+`structuredClone`, Array `concat`, Object descriptor creation/mutation, and
+Object own-property inspection. Renaming one of these functions through an
+immutable alias does not discard its getter or user-code boundary.
 
 Fresh default parameters use a related implementation-owned rule. An omitted
 array/object literal or TypeChecker-resolved standard `Array`, `Map`, `Set`,

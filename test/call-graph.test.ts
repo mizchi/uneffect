@@ -387,6 +387,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       const result = analyzeProgramEffects(program);
       for (const functionName of ["values", "valuesAlias", "entries"]) {
         expect(result.diagnostics).toEqual(expect.arrayContaining([
+          expect.objectContaining({ functionName, effect: "InvokeUserCode", kind: "missing" }),
           expect.objectContaining({ functionName, effect: "Console", kind: "missing" }),
           expect.objectContaining({ functionName, effect: "Throw<TypeError>", kind: "missing" }),
           expect.objectContaining({ functionName, effect: "Mutate<typeof source.reads>", kind: "missing" }),
@@ -624,7 +625,9 @@ describe("multi-file call graph and effect polymorphism", () => {
           /* uneffect:effect Console | Throw<TypeError> | Mutate<typeof this.reads> */
           get value(): number { this.reads++; console.log("descriptor"); if (this.reads < 0) throw new TypeError("descriptor"); return 1 }
         }
+        const defineProperty = Object.defineProperty;
         export function define(target: object, descriptor: Descriptor) { return Object.defineProperty(target, "value", descriptor) }
+        export function defineAlias(target: object, descriptor: Descriptor) { return defineProperty(target, "value", descriptor) }
         export function reflectDefine(target: object, descriptor: Descriptor) { return Reflect.defineProperty(target, "value", descriptor) }
         export function defineMany(target: object, descriptor: Descriptor) { return Object.defineProperties(target, { value: descriptor }) }
         /* uneffect:effect Mutate<typeof target> */
@@ -647,7 +650,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       expect(program.getSemanticDiagnostics().map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
       const result = analyzeProgramEffects(program);
-      for (const functionName of ["define", "reflectDefine", "defineMany"]) {
+      for (const functionName of ["define", "defineAlias", "reflectDefine", "defineMany"]) {
         expect(result.diagnostics).toEqual(expect.arrayContaining([
           expect.objectContaining({ functionName, effect: "Console", kind: "missing" }),
           expect.objectContaining({ functionName, effect: "Throw<TypeError>", kind: "missing" }),
@@ -675,7 +678,10 @@ describe("multi-file call graph and effect polymorphism", () => {
         const source = {
           /* uneffect:effect Console */ get value(): number { console.log("ordinary getter"); return 1 }
         };
+        const makeObject = Object.create;
+        const inspectOwn = Object.getOwnPropertyDescriptor;
         export function create(descriptor: Descriptor) { return Object.create(null, { value: descriptor }) }
+        export function createAlias(descriptor: Descriptor) { return makeObject(null, { value: descriptor }) }
         export function createPlain() { return Object.create(null, { value: { value: 1 } }) }
         /* uneffect:effect InvokeUserCode | Console | Mutate<typeof descriptor.reads> */
         export function caught(descriptor: Descriptor) { try { return Object.create(null, { value: descriptor }) } catch { return undefined } }
@@ -686,6 +692,7 @@ describe("multi-file call graph and effect polymorphism", () => {
         /* uneffect:effect InvokeUserCode */ export function inspectAllProxy() { return Object.getOwnPropertyDescriptors(new Proxy(source, {})) }
         /* uneffect:effect InvokeUserCode */ export function ownsProxy() { return Object.hasOwn(new Proxy(source, {}), "value") }
         /* uneffect:effect InvokeUserCode */ export function inspectUnknown(value: any) { return Object.getOwnPropertyDescriptor(value, "value") }
+        /* uneffect:effect InvokeUserCode */ export function inspectUnknownAlias(value: any) { return inspectOwn(value, "value") }
       `);
       const program = ts.createProgram([entry], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
@@ -698,9 +705,11 @@ describe("multi-file call graph and effect polymorphism", () => {
         expect.objectContaining({ functionName: "create", effect: "Console", kind: "missing" }),
         expect.objectContaining({ functionName: "create", effect: "Throw<TypeError>", kind: "missing" }),
         expect.objectContaining({ functionName: "create", effect: "Mutate<typeof descriptor.reads>", kind: "missing" }),
+        expect.objectContaining({ functionName: "createAlias", effect: "Console", kind: "missing" }),
+        expect.objectContaining({ functionName: "createAlias", effect: "Mutate<typeof descriptor.reads>", kind: "missing" }),
       ]));
       expect(result.diagnostics.filter((diagnostic) =>
-        ["createPlain", "caught", "inspect", "inspectAll", "owns", "inspectProxy", "inspectAllProxy", "ownsProxy", "inspectUnknown"].includes(diagnostic.functionName))).toEqual([]);
+        ["createPlain", "caught", "inspect", "inspectAll", "owns", "inspectProxy", "inspectAllProxy", "ownsProxy", "inspectUnknown", "inspectUnknownAlias"].includes(diagnostic.functionName))).toEqual([]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

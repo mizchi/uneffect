@@ -756,19 +756,14 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     if (ts.isCallExpression(node) && node.arguments[0] && libraryOperation === "ObjectConstructor#create") {
       if (node.arguments[1] && descriptorMapMayInvoke(node.arguments[1])) return true;
     }
-    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object"
-      && ["getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "hasOwn"].includes(node.expression.name.text)) {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
-      if (standard) {
+    if (ts.isCallExpression(node) && node.arguments[0] && [
+      "ObjectConstructor#getOwnPropertyDescriptor", "ObjectConstructor#getOwnPropertyDescriptors", "ObjectConstructor#hasOwn",
+    ].includes(libraryOperation ?? "")) {
         const target = node.arguments[0], type = this.#checker.getTypeAtLocation(target);
         if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
           || directProxyReceiver(target)) return true;
-        if (node.expression.name.text !== "getOwnPropertyDescriptors"
+        if (libraryOperation !== "ObjectConstructor#getOwnPropertyDescriptors"
           && node.arguments[1] && !definitelyPrimitive(node.arguments[1])) return true;
-      }
     }
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
       && (node.expression.name.text === "call" || node.expression.name.text === "apply")
@@ -866,20 +861,15 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         })) return true;
       }
     }
-    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-      && ts.isIdentifier(node.expression.expression)
-      && ((node.expression.expression.text === "Object"
-        && ["defineProperty", "defineProperties", "freeze", "seal", "preventExtensions", "setPrototypeOf"].includes(node.expression.name.text))
-        || (node.expression.expression.text === "Reflect"
-          && ["defineProperty", "setPrototypeOf"].includes(node.expression.name.text)))) {
-      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
-      const standard = source?.isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
-      if (standard) {
+    if (ts.isCallExpression(node) && node.arguments[0] && [
+      "ObjectConstructor#defineProperty", "ObjectConstructor#defineProperties", "ObjectConstructor#freeze",
+      "ObjectConstructor#seal", "ObjectConstructor#preventExtensions", "ObjectConstructor#setPrototypeOf",
+      "defineProperty", "setPrototypeOf",
+    ].includes(libraryOperation ?? "")) {
         const target = node.arguments[0], targetType = this.#checker.getTypeAtLocation(target);
         if ((targetType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
           || directProxyReceiver(target)) return true;
-        if (node.expression.name.text === "defineProperty") {
+        if (libraryOperation === "ObjectConstructor#defineProperty" || libraryOperation === "defineProperty") {
           if (node.arguments[1] && !definitelyPrimitive(node.arguments[1])) return true;
           const descriptor = node.arguments[2];
           if (descriptor) {
@@ -890,24 +880,18 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
               this.#checker.getPropertyOfType(descriptorType, name)?.declarations?.some(ts.isGetAccessorDeclaration))) return true;
           }
         }
-        if (node.expression.name.text === "defineProperties" && node.arguments[1]) {
+        if (libraryOperation === "ObjectConstructor#defineProperties" && node.arguments[1]) {
           if (descriptorMapMayInvoke(node.arguments[1])) return true;
         }
-      }
     }
-    if (ts.isCallExpression(node) && node.arguments[0] && ts.isPropertyAccessExpression(node.expression)
-      && ["values", "entries", "keys"].includes(node.expression.name.text)
-      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "Object") {
-      const operation = targetSymbol(this.#checker, node.expression.name);
-      const standard = operation?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
-        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName));
-      if (standard) {
+    if (ts.isCallExpression(node) && node.arguments[0] && [
+      "ObjectConstructor#values", "ObjectConstructor#entries", "ObjectConstructor#keys",
+    ].includes(libraryOperation ?? "")) {
         const source = node.arguments[0];
         const sourceType = this.#checker.getTypeAtLocation(source);
         if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0
           || directProxyReceiver(source)) return true;
-        if (node.expression.name.text !== "keys" && hasEnumerableObjectLiteralGetter(sourceType)) return true;
-      }
+        if (libraryOperation !== "ObjectConstructor#keys" && hasEnumerableObjectLiteralGetter(sourceType)) return true;
     }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       const lookup = ts.isPropertyAccessExpression(node) ? node.name : node.argumentExpression;
