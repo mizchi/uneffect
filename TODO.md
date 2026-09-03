@@ -1024,6 +1024,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Give non-destructive Array `map`/`filter`/`flatMap`, `slice`, `flat`,
        `toReversed`, `toSpliced`, and `with` the same catalog fresh-result
        refinement as `toSorted`, so later local mutation does not alias input.
+     - [x] Mark `Array.from`, `Array.of`, and `Object.fromEntries` results fresh
+       without suppressing iterable-consumption or mapper Effects.
    - [x] Model standard-identity `Object.assign` as enumerable reads followed
      by target writes. Compose same-Program object-literal source getters and
      matching target setters, exclude class prototype accessors, and classify

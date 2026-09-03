@@ -217,6 +217,10 @@ classifier Effect/Throw compose through one call. Their result is fresh, while
 the runtime element supplied to the classifier is not assigned a guessed heap
 identity. RegExp protocol hooks and capture-shape proofs remain outside this
 exact string-pattern fragment.
+`Array.from`, `Array.of`, and `Object.fromEntries` also expose fresh results.
+That refinement affects only aliasing: iterable consumption and optional
+`Array.from` mapper effects still compose normally, so freshness never implies
+that construction is pure.
 The same callback invocation model is assigned to all standard TypedArray
 owners, including BigInt arrays. Callback receiver arguments and explicit
 `thisArg` regions compose, mutating methods emit receiver Mutation, and copying

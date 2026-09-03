@@ -40,9 +40,11 @@ describe("builtin semantic overlays", () => {
         expect.objectContaining({ kind: "callback", invocationArguments: [{ kind: "runtime-value", role: "promise-fulfillment" }] }),
         expect.objectContaining({ kind: "callback", invocationArguments: [{ kind: "runtime-value", role: "promise-rejection" }] }),
       ]) }) }),
-      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ArrayConstructor#from" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ArrayConstructor#from" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({
         kind: "callback", invocationArguments: expect.arrayContaining([expect.objectContaining({ kind: "runtime-value" })]), thisArgument: { kind: "argument", index: 2, optional: true },
-      })] }) }),
+      }), { kind: "result", refinement: { kind: "fresh" } }]) }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ArrayConstructor#of" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ObjectConstructor#fromEntries" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "ArrayConstructor#fromAsync" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([
         expect.objectContaining({
           kind: "callback", timing: "deferred", queue: "microtask", cardinality: "0..n",

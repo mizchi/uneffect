@@ -182,6 +182,9 @@ direct result is then local rather than a `Mutate` capability. This is separate
 from other primitives: a fresh-returning API may still perform effects.
 The claim is trusted and exact-version-bound for packages. It is invalid for
 caches, pools, input aliases, retained objects, and views over existing memory.
+The reviewed JavaScript catalog uses this primitive for `Array.from`,
+`Array.of`, and `Object.fromEntries`. Iterator and mapper execution remains a
+separate semantic event and may still contribute Effect or Throw requirements.
 
 Fresh default parameters use a related implementation-owned rule. An omitted
 array/object literal or TypeChecker-resolved standard `Array`, `Map`, `Set`,

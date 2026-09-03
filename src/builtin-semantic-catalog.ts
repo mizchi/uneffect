@@ -472,9 +472,29 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     }),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "ArrayConstructor#from" },
-      semantics: inlineCallbackSemantics(1, true,
-        [runtimeValue("array-from-element"), runtimeValue("array-from-index")], optionalArgument(2)),
-      trustReason: "ECMAScript Array.from invokes its optional mapping callback synchronously", trustOwner: "@mizchi/uneffect",
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        ...inlineCallbackSemantics(1, true,
+          [runtimeValue("array-from-element"), runtimeValue("array-from-index")], optionalArgument(2)).primitives,
+        { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: "ECMAScript Array.from invokes its optional mapping callback synchronously and creates a new Array",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "ArrayConstructor#of" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: "ECMAScript Array.of creates a new Array",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "ObjectConstructor#fromEntries" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: "ECMAScript Object.fromEntries creates a new ordinary object while consuming its iterable input",
+      trustOwner: "@mizchi/uneffect",
     }),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "ArrayConstructor#fromAsync" },

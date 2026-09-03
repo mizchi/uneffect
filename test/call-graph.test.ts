@@ -2648,20 +2648,40 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function spliced(values: number[]) { return values.toSpliced(0, 1).reverse() }
         /* uneffect:effect none */
         export function replaced(values: number[]) { return values.with(0, 1).fill(0) }
+        /* uneffect:effect none */
+        export function copiedFrom(values: number[]) { return Array.from(values).sort() }
+        /* uneffect:effect none */
+        export function created(...values: number[]) { return Array.of(...values).reverse() }
+        /* uneffect:effect none */
+        export function indexed(entries: readonly (readonly [PropertyKey, number])[]) {
+          return Object.assign(Object.fromEntries(entries), { extra: 1 })
+        }
+        /* uneffect:effect Console */
+        function* loggedEntries() {
+          console.log("entry")
+          yield ["value", 1] as const
+        }
+        /* uneffect:effect Console */
+        export function indexedFromGenerator() {
+          return Object.assign(Object.fromEntries(loggedEntries()), { extra: 1 })
+        }
       `);
       const program = ts.createProgram([source], {
         target: ts.ScriptTarget.ES2024,
         module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext,
-        lib: ["lib.es2024.d.ts"],
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
       });
       expect(program.getSemanticDiagnostics()).toEqual([]);
       const result = analyzeProgramEffects(program);
       expect(result.diagnostics).toEqual([]);
       expect(result.summaries.filter(({ functionName }) =>
-        ["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced"].includes(functionName)))
-        .toEqual(expect.arrayContaining(["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced"]
+        ["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced", "copiedFrom", "created", "indexed"].includes(functionName)))
+        .toEqual(expect.arrayContaining(["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced", "copiedFrom", "created", "indexed"]
           .map((functionName) => expect.objectContaining({ functionName, effects: [], evidence: "verified" }))));
+      const generated = result.summaries.find(({ functionName }) => functionName === "indexedFromGenerator");
+      expect(generated).toEqual(expect.objectContaining({ functionName: "indexedFromGenerator", evidence: "verified" }));
+      expect(generated?.effects.map(formatEffect)).toEqual(["Console"]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
