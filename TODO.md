@@ -2890,9 +2890,11 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Apply the same forwarding to a stored immutable Promise binding (and
       its supported immutable aliases), mark it observed at return, and retain
       creation-time synchronous throw evidence separately from later rejection.
-    - [x] Split one direct Boolean conditional return whose two arms are verified
-      scalar Promise calls, preserving branch conditions and forwarding only
-      the selected arm's call-time and settlement completions.
+    - [x] Replace separate direct/await/stored/conditional return branches with
+      one recursive return-completion evaluator. Boolean conditional arms may
+      mix supported scalar values, verified Promise calls, stored immutable
+      Promises, nested conditionals, and awaited scalar expressions while
+      preserving selection, call-time throw, fulfillment, and rejection.
 - [x] Emit one source-mapped `call-precondition` obligation per callee
   `contract requires` clause and prove it from the exact caller path conditions;
   a failed implication is a counterexample rather than an assumed precondition.

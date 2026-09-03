@@ -2296,6 +2296,41 @@ export function lowerInvariantProgram(
       }
       return evaluated;
     };
+    const executeReturnExpression: (
+      expression: ts.Expression,
+      incoming: PathState[],
+      statement: ts.ReturnStatement,
+    ) => PathState[] = (expression, incoming, statement) => {
+      let unwrapped = expression;
+      while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
+        || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
+      if (ts.isCallExpression(unwrapped)
+        && callCompletions.get(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`)?.mode === "promise") {
+        return executeAwait(unwrapped, incoming, { returnStatement: statement }, true);
+      }
+      if (ts.isIdentifier(unwrapped) && incoming.some((path) => path.pendingPromises.has(unwrapped.text))) {
+        return executeAwait(unwrapped, incoming, { returnStatement: statement }, true);
+      }
+      if (ts.isConditionalExpression(unwrapped)) {
+        return incoming.flatMap((path): PathState[] => evaluateScalar(unwrapped.condition, path).flatMap(({ path: branch, value: condition }) => {
+          if (branch.completion !== "normal") return [branch];
+          if (scalarExpressionSort(condition) !== "Bool") {
+            throw new Error(`conditional return requires a Boolean condition: ${unwrapped.condition.getText(source)}`);
+          }
+          const whenTrue = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, condition] };
+          const whenFalse = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(condition)] };
+          return [
+            ...executeReturnExpression(unwrapped.whenTrue, [whenTrue], statement),
+            ...executeReturnExpression(unwrapped.whenFalse, [whenFalse], statement),
+          ];
+        }));
+      }
+      return incoming.flatMap((path): PathState[] => evaluateScalar(unwrapped, path).map(({ path: branch, value }) => {
+        if (branch.completion !== "normal") return branch;
+        const resultEnv = new Map(branch.env); resultEnv.set("result", value);
+        return { ...branch, completion: "return", returnEnv: resultEnv, returnStatement: statement };
+      }));
+    };
     const evaluateNullableAssignment = (
       expression: ts.Expression,
       path: PathState,
@@ -2959,38 +2994,8 @@ export function lowerInvariantProgram(
             return { ...path, completion: "throw", thrown: { kind: "synchronous-throw", effect, originSpan, ...(payload ? { payload } : {}) } };
           });
         }
-      } else if (ts.isReturnStatement(statement) && statement.expression && ts.isAwaitExpression(statement.expression)) {
-        paths = executeAwait(statement.expression, paths, { returnStatement: statement });
-      } else if (ts.isReturnStatement(statement) && statement.expression && ts.isCallExpression(statement.expression)
-        && callCompletions.get(`${statement.expression.getStart(source)}:${statement.expression.getEnd()}`)?.mode === "promise") {
-        paths = executeAwait(statement.expression, paths, { returnStatement: statement }, true);
-      } else if (ts.isReturnStatement(statement) && statement.expression && ts.isConditionalExpression(statement.expression)
-        && ts.isCallExpression(statement.expression.whenTrue) && ts.isCallExpression(statement.expression.whenFalse)
-        && callCompletions.get(`${statement.expression.whenTrue.getStart(source)}:${statement.expression.whenTrue.getEnd()}`)?.mode === "promise"
-        && callCompletions.get(`${statement.expression.whenFalse.getStart(source)}:${statement.expression.whenFalse.getEnd()}`)?.mode === "promise") {
-        const conditional = statement.expression;
-        paths = paths.flatMap((path): PathState[] => evaluateScalar(conditional.condition, path).flatMap(({ path: branch, value: condition }) => {
-          if (branch.completion !== "normal") return [branch];
-          if (scalarExpressionSort(condition) !== "Bool") {
-            throw new Error(`conditional Promise return requires a Boolean condition: ${conditional.condition.getText(source)}`);
-          }
-          const whenTrue = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, condition] };
-          const whenFalse = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(condition)] };
-          return [
-            ...executeAwait(conditional.whenTrue, [whenTrue], { returnStatement: statement }, true),
-            ...executeAwait(conditional.whenFalse, [whenFalse], { returnStatement: statement }, true),
-          ];
-        }));
-      } else if (ts.isReturnStatement(statement) && statement.expression && ts.isIdentifier(statement.expression)
-        && paths.some((path) => path.pendingPromises.has(statement.expression!.getText(source)))) {
-        paths = executeAwait(statement.expression, paths, { returnStatement: statement }, true);
       } else if (ts.isReturnStatement(statement) && statement.expression) {
-        const returnExpression = statement.expression;
-        paths = paths.flatMap((path): PathState[] => evaluateScalar(returnExpression, path).map(({ path: branch, value }) => {
-          if (branch.completion !== "normal") return branch;
-          const resultEnv = new Map(branch.env); resultEnv.set("result", value);
-          return { ...branch, completion: "return", returnEnv: resultEnv, returnStatement: statement };
-        }));
+        paths = executeReturnExpression(statement.expression, paths, statement);
       } else if (ts.isExpressionStatement(statement) && ts.isAwaitExpression(statement.expression)) {
         paths = executeAwait(statement.expression, paths);
       } else if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)) {
