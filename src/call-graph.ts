@@ -1230,6 +1230,11 @@ export function buildProgramCallGraph(
           for (const source of node.arguments.slice(1)) addEnumerableGetterEdges(source);
           addEnumerableSetterEdges(node.arguments[0]!, node.arguments.slice(1));
         }
+        if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "concat"
+          && isStandardLibraryCall(node)) {
+          addEnumerableGetterEdges(node.expression.expression);
+          for (const argument of node.arguments) addEnumerableGetterEdges(argument);
+        }
         if (node.arguments[2] && ts.isPropertyAccessExpression(node.expression)
           && node.expression.name.text === "defineProperty" && isStandardLibraryCall(node)
           && ts.isIdentifier(node.expression.expression)

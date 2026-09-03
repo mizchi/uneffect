@@ -335,6 +335,12 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     })),
     ...(["Array", "ReadonlyArray"] as const).flatMap((owner) => [
       reviewed("javascript", {
+        symbol: { module: "lib.es", export: `${owner}#concat` },
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+        trustReason: `ECMAScript ${owner}.concat returns a fresh Array; explicit spreadability and indexed accessors are inspected separately`,
+        trustOwner: "@mizchi/uneffect",
+      }),
+      reviewed("javascript", {
         symbol: { module: "lib.es", export: `${owner}#slice` },
         semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
         trustReason: `ECMAScript ${owner}.slice returns a fresh Array`, trustOwner: "@mizchi/uneffect",

@@ -1029,6 +1029,9 @@ introducing another domain-local control-flow or alias model.
      - [x] Project fresh results through catalog-backed `new` expressions and
        apply them to standard `Array`/`Map`/`Set`/`WeakMap`/`WeakSet`
        construction while preserving constructor iterable Effects.
+     - [x] Treat standard Array `concat` as fresh while composing explicit
+       object-literal indexed/`Symbol.isConcatSpreadable` getters and conservatively
+       reporting authenticated Proxy or unresolved operands as `InvokeUserCode`.
    - [x] Model standard-identity `Object.assign` as enumerable reads followed
      by target writes. Compose same-Program object-literal source getters and
      matching target setters, exclude class prototype accessors, and classify

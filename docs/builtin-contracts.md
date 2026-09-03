@@ -183,8 +183,9 @@ from other primitives: a fresh-returning API may still perform effects.
 The claim is trusted and exact-version-bound for packages. It is invalid for
 caches, pools, input aliases, retained objects, and views over existing memory.
 The reviewed JavaScript catalog uses this primitive for `Array.from`,
-`Array.of`, `Object.fromEntries`, and standard `Array`, `Map`, `Set`, `WeakMap`,
-and `WeakSet` construction. Iterator and mapper execution remains a separate
+`Array.of`, Array `concat`, `Object.fromEntries`, and standard `Array`, `Map`,
+`Set`, `WeakMap`, and `WeakSet` construction. Iterator, mapper, and explicit
+concat accessor execution remains a separate
 semantic event and may still contribute Effect or Throw requirements.
 
 Fresh default parameters use a related implementation-owned rule. An omitted

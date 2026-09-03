@@ -695,6 +695,14 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         return !descriptor || descriptorMayInvoke(descriptor);
       });
     };
+    const concatOperandMayInvoke = (expression: ts.Expression): boolean => {
+      if (directProxyReceiver(expression)) return true;
+      const type = this.#checker.getTypeAtLocation(expression);
+      if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return true;
+      return type.getProperties().some((property) =>
+        property.declarations?.some(ts.isGetAccessorDeclaration)
+        || (property.name.includes("isConcatSpreadable") && (property.declarations?.length ?? 0) > 0));
+    };
     if (ts.isSpreadAssignment(node)) {
       const sourceType = this.#checker.getTypeAtLocation(node.expression);
       if ((sourceType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0
@@ -718,6 +726,13 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         const type = this.#checker.getTypeAtLocation(value);
         if (directProxyReceiver(value) || jsonTypeMayInvoke(type)) return true;
       }
+    }
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === "concat") {
+      const source = this.#checker.getResolvedSignature(node)?.declaration?.getSourceFile();
+      const standard = source?.isDeclarationFile
+        && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName);
+      if (standard && [node.expression.expression, ...node.arguments].some(concatOperandMayInvoke)) return true;
     }
     if (ts.isCallExpression(node) && node.arguments[0] && ts.isIdentifier(node.expression)
       && node.expression.text === "structuredClone") {

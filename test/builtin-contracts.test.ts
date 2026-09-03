@@ -16,6 +16,10 @@ describe("builtin semantic overlays", () => {
     expect(builtinContractRegistry.contracts).toHaveLength(contracts.length);
     expect(builtinSemanticCatalog.definitions).toEqual(expect.arrayContaining([
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "result", refinement: { kind: "fresh" } }]) }) }),
+      ...["Array#concat", "ReadonlyArray#concat"].map((exportName) => expect.objectContaining({
+        platform: "javascript", symbol: { module: "lib.es", export: exportName },
+        semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }),
+      })),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#sort" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([{ kind: "mutate", target: { kind: "receiver" } }, expect.objectContaining({ kind: "callback", timing: "sync" })]) }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Uint8Array#forEach" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync", thisArgument: { kind: "argument", index: 1, optional: true } })] }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "BigInt64Array#sort" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "mutate", target: { kind: "receiver" } }]) }) }),

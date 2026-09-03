@@ -2701,4 +2701,46 @@ describe("multi-file call graph and effect polymorphism", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("keeps concat fresh while composing explicit spreadability and indexed getters", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-array-concat-hooks-"));
+    try {
+      const source = join(directory, "concat.ts");
+      writeFileSync(source, `
+        /* uneffect:effect none */
+        export function arrays(left: number[], right: number[]) { return left.concat(right).sort() }
+        /* uneffect:effect InvokeUserCode | Console */
+        export function hooked() {
+          const spreadable = {
+            /* uneffect:effect Console */
+            get [Symbol.isConcatSpreadable]() { console.log("spread"); return true },
+            /* uneffect:effect Console */
+            get 0() { console.log("index"); return 1 },
+            length: 1,
+            join(separator?: string) { return separator ?? "" },
+            slice() { return [] as number[] },
+          }
+          return ([] as number[]).concat(spreadable).sort()
+        }
+        /* uneffect:effect InvokeUserCode */
+        export function proxied(values: number[]) { return values.concat(new Proxy([1], {})).sort() }
+      `);
+      const program = ts.createProgram([source], {
+        target: ts.ScriptTarget.ES2024,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const result = analyzeProgramEffects(program);
+      expect(result.diagnostics).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "arrays")?.effects).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "hooked")?.effects.map(formatEffect))
+        .toEqual(expect.arrayContaining(["InvokeUserCode", "Console"]));
+      expect(result.summaries.find(({ functionName }) => functionName === "proxied")?.effects.map(formatEffect))
+        .toEqual(["InvokeUserCode"]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
