@@ -426,22 +426,36 @@ export function buildProgramCallGraph(
     return Boolean(source?.isDeclarationFile
       && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName));
   };
+  const standardLibraryOperation = (call: ts.CallExpression | ts.NewExpression): string | undefined => {
+    const declaration = checker.getResolvedSignature(call)?.declaration;
+    if (!declaration || !isStandardLibraryCall(call)) return undefined;
+    const owner = declaration.parent && (ts.isInterfaceDeclaration(declaration.parent) || ts.isClassDeclaration(declaration.parent))
+      ? declaration.parent.name?.text : undefined;
+    if (ts.isNewExpression(call)) return owner;
+    const name = (declaration as ts.SignatureDeclaration).name;
+    const member = name && (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name))
+      ? name.text : undefined;
+    return owner && member ? `${owner}#${member}` : member;
+  };
   const iterableConsumerArgument = (parent: ts.Node, expression: ts.Expression): boolean => {
-    if (ts.isCallExpression(parent) && parent.arguments[0] === expression && isStandardLibraryCall(parent)) {
-      return ["Array.from", "Array.fromAsync", "Object.fromEntries", "Promise.all", "Promise.allSettled", "Promise.any", "Promise.race"]
-        .concat(["Object.groupBy", "Map.groupBy"])
-        .includes(parent.expression.getText());
+    if (ts.isCallExpression(parent) && parent.arguments[0] === expression) {
+      return [
+        "ArrayConstructor#from", "ArrayConstructor#fromAsync", "ObjectConstructor#fromEntries",
+        "PromiseConstructor#all", "PromiseConstructor#allSettled", "PromiseConstructor#any", "PromiseConstructor#race",
+        "ObjectConstructor#groupBy", "MapConstructor#groupBy",
+      ].includes(standardLibraryOperation(parent) ?? "");
     }
-    if (ts.isNewExpression(parent) && parent.arguments?.[0] === expression && isStandardLibraryCall(parent)) {
-      return ["Set", "Map", "WeakSet", "WeakMap", "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array",
-        "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array"]
-        .includes(parent.expression.getText());
+    if (ts.isNewExpression(parent) && parent.arguments?.[0] === expression) {
+      return ["SetConstructor", "MapConstructor", "WeakSetConstructor", "WeakMapConstructor", "Int8ArrayConstructor", "Uint8ArrayConstructor", "Uint8ClampedArrayConstructor", "Int16ArrayConstructor",
+        "Uint16ArrayConstructor", "Int32ArrayConstructor", "Uint32ArrayConstructor", "Float32ArrayConstructor", "Float64ArrayConstructor", "BigInt64ArrayConstructor", "BigUint64ArrayConstructor"]
+        .includes(standardLibraryOperation(parent) ?? "");
     }
     return false;
   };
   const promiseIterableConsumerArgument = (parent: ts.Node, expression: ts.Expression): boolean =>
-    ts.isCallExpression(parent) && parent.arguments[0] === expression && isStandardLibraryCall(parent)
-    && ["Array.fromAsync", "Promise.all", "Promise.allSettled", "Promise.any", "Promise.race"].includes(parent.expression.getText());
+    ts.isCallExpression(parent) && parent.arguments[0] === expression
+    && ["ArrayConstructor#fromAsync", "PromiseConstructor#all", "PromiseConstructor#allSettled", "PromiseConstructor#any", "PromiseConstructor#race"]
+      .includes(standardLibraryOperation(parent) ?? "");
   const iteratorParameterCache = new Map<ts.FunctionLikeDeclaration, IteratorEffectParameter[]>();
   const iteratorParameterVisiting = new Set<ts.FunctionLikeDeclaration>();
   const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
@@ -1175,7 +1189,7 @@ export function buildProgramCallGraph(
       if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.[0]
         && iterableConsumerArgument(node, node.arguments[0])) consumeIterableExpression(
           node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
-          ts.isCallExpression(node) && node.expression.getText() === "Array.fromAsync",
+          ts.isCallExpression(node) && standardLibraryOperation(node) === "ArrayConstructor#fromAsync",
         );
       if (ts.isNewExpression(node)) {
         const symbol = resolvedSymbol(checker, node.expression);

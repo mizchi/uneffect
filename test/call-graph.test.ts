@@ -2034,6 +2034,10 @@ describe("multi-file call graph and effect polymorphism", () => {
         }
         export function consumeIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         export function consumeIterableParameter(iterable: Iterable<unknown>) { return Array.from(iterable) }
+        const collectIterable = Array.from
+        export function consumeAliasedIterableParameter(iterable: Iterable<unknown>) { return collectIterable(iterable) }
+        const Bag = Set
+        export function consumeAliasedConstructorParameter(iterable: Iterable<unknown>) { return new Bag(iterable) }
         export async function consumeAsyncIterableParameter(iterable: AsyncIterable<unknown>) { for await (const value of iterable) void value }
         /* uneffect:effect none */
         /* uneffect:effect_parameter iterable extends Console | Throw<Error> */
@@ -2246,6 +2250,10 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeIterableParameter"))
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeAliasedIterableParameter"))
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeAliasedConstructorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeAsyncIterableParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable", convertsThrowToRejection: true })] });

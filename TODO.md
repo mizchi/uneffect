@@ -2274,6 +2274,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Extend the same protocol rule to `AsyncIterable<T>`, local
     `Symbol.asyncIterator`, `for await`, and `Array.fromAsync`, retaining
     rejection conversion instead of synchronous Throw propagation.
+  - [x] Replace source-text matching for reviewed iterable consumers with
+    resolved lib.d.ts owner/member identity, preserving semantics through
+    immutable function and constructor aliases and rejecting lookalikes.
   - [x] Convert generator-body `Throw<T>` during Promise combinator iteration to rejection while retaining synchronous factory-call throws.
   - [x] Mark iterator-like `.next()` through unresolved parameters/properties as unknown evidence while preserving standard-library pure iterator aliases.
   - [x] Specialize iterator-consuming function parameters at call sites from known generator factories/bindings, pure standard iterators, or explicit unknown arguments.
