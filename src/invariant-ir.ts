@@ -1166,11 +1166,26 @@ function typeCheckerCallCompletions(
   };
   const stableCallable = (call: ts.CallExpression, targetSymbol: ts.Symbol): boolean => {
     if (!ts.isIdentifier(call.expression)) return false;
-    const callSymbol = checker.getSymbolAtLocation(call.expression);
-    if (!callSymbol || !targetSymbol || symbolIsWritten(callSymbol) || symbolIsWritten(targetSymbol)) return false;
-    return callSymbol.declarations?.every((candidate) => ts.isFunctionDeclaration(candidate)
-      || (ts.isVariableDeclaration(candidate) && ts.isVariableDeclarationList(candidate.parent)
-        && (candidate.parent.flags & ts.NodeFlags.Const) !== 0)) === true;
+    const rawCallSymbol = checker.getSymbolAtLocation(call.expression);
+    if (!rawCallSymbol || !targetSymbol) return false;
+    const resolveStableSymbol = (symbol: ts.Symbol, seen = new Set<ts.Symbol>()): ts.Symbol | undefined => {
+      if (seen.has(symbol) || symbolIsWritten(symbol)) return undefined;
+      seen.add(symbol);
+      if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) return resolveStableSymbol(checker.getAliasedSymbol(symbol), seen);
+      const declarations = symbol.declarations;
+      if (!declarations || declarations.length === 0) return undefined;
+      if (declarations.every((candidate) => ts.isFunctionDeclaration(candidate))) return symbol;
+      if (!declarations.every((candidate) => ts.isVariableDeclaration(candidate)
+        && ts.isVariableDeclarationList(candidate.parent) && (candidate.parent.flags & ts.NodeFlags.Const) !== 0)) return undefined;
+      if (declarations.length !== 1) return undefined;
+      const declaration = declarations[0]! as ts.VariableDeclaration;
+      if (declaration.initializer && ts.isIdentifier(declaration.initializer)) {
+        const initializerSymbol = checker.getSymbolAtLocation(declaration.initializer);
+        return initializerSymbol ? resolveStableSymbol(initializerSymbol, seen) : undefined;
+      }
+      return symbol;
+    };
+    return resolveStableSymbol(rawCallSymbol) === targetSymbol && !symbolIsWritten(targetSymbol);
   };
   const immutableScalarLiteral = (identifier: ts.Identifier): LogicExpression | undefined => {
     const symbol = checker.getSymbolAtLocation(identifier);
@@ -1478,23 +1493,45 @@ function typeCheckerCallCompletions(
             && site.span.start === call.getStart(source) && site.span.end === call.getEnd()));
         const resultDomain = scalarDomain(checker.getReturnTypeOfSignature(signature));
         const externalThrows = external?.summary.effect?.effects.filter((effect) => /^Throw<.+>$/.test(effect)) ?? [];
-        const fulfillment = external && resultDomain && external.summary.ensures.length > 0 ? {
-          domain: resultDomain,
+        const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
+        const localIdentity = (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration))
+          ? callableIdentity(declaration) : undefined;
+        const local = !declarationSource.isDeclarationFile && localIdentity && stableCallable(call, localIdentity.symbol)
+          ? {
+              functionName: localIdentity.name,
+              parameters: declaration.parameters.every((parameter) => ts.isIdentifier(parameter.name))
+                ? declaration.parameters.map((parameter) => (parameter.name as ts.Identifier).text) : [],
+              ensures: extractAnnotations(comments, "ensures"),
+              requires: extractAnnotations(comments, "requires"),
+              throws: extractAnnotations(comments, "effect").flatMap((annotation) =>
+                [...annotation.matchAll(/(?:^|\|)\s*Throw<\s*([^>]+?)\s*>/g)].map((match) => `Throw<${match[1]!.trim()}>`)),
+            }
+          : undefined;
+        const contract = external ? {
           functionName: external.summary.functionName,
           parameters: external.summary.parameters,
-          clauses: external.summary.ensures.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
-          preconditions: external.summary.requires.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
+          ensures: external.summary.ensures,
+          requires: external.summary.requires,
+        } : local;
+        const fulfillment = contract && resultDomain && contract.ensures.length > 0
+          && contract.parameters.length === declaration.parameters.length ? {
+          domain: resultDomain,
+          functionName: contract.functionName,
+          parameters: contract.parameters,
+          clauses: contract.ensures.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
+          preconditions: contract.requires.map((clause) => ({ source: clause, expression: parseLogicExpression(clause) })),
           declarationFileName: declarationSource.fileName,
           declarationDigest: createHash("sha256").update(declarationSource.text.slice(declaration.getStart(declarationSource), declaration.getEnd())).digest("hex"),
           declarationSpan: { start: declaration.getStart(declarationSource), end: declaration.getEnd() },
         } satisfies AwaitFulfillmentFact : undefined;
-        if (external && (fulfillment || externalThrows.length > 0)) {
+        const synchronousThrows = [...new Set([...externalThrows, ...(local?.throws ?? [])])].sort();
+        if ((external || local) && (fulfillment || synchronousThrows.length > 0)) {
           facts.set(key, {
             mode: "sync",
             rejectionEffects: [],
             definitelyRejects: false,
-            synchronousThrows: externalThrows,
-            evidence: external.evidence,
+            synchronousThrows,
+            evidence: external?.evidence ?? "trusted",
             payloadFromFirstArgument: false,
             ...(fulfillment ? { fulfillment } : {}),
           });

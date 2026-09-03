@@ -2911,6 +2911,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   fixed point: promote acyclic fully verified chains from `trusted` to
   `verified`, propagate a failing/unknown callee back to callers as `unknown`,
   and retain external declarations and circular proof chains as `trusted`.
+  - [x] Extend that fixed point to synchronous scalar function contracts,
+    including `Throw<E>` completion, direct same-file calls, and stable
+    TypeChecker-resolved named imports across project files. Reject mutable
+    callable aliases and downgrade callers when the sync callee fails.
 - [x] Generalize the reconciler across source files in one checked TypeScript
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project

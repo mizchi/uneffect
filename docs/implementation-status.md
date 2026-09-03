@@ -931,8 +931,14 @@ same property is proved for arbitrary TypeScript.
   bit together on fulfillment; rejection and synchronous throw retain the
   incoming state. Shared immutable aliases, presence-only object targets,
   property/destructuring targets and other object/heap-valued awaited
-  expressions remain fail-closed. For same-file
-  implementations, a post-solver fixed point promotes relational edges only
+  expressions remain fail-closed. For synchronous scalar function declarations,
+  explicit `requires`/`ensures` and
+  `Throw<E>` clauses now create the same provisional relational completion as
+  Promise producers. Direct identifier calls and TypeChecker-resolved named
+  imports are admitted only with stable symbol identity. The project fixed point
+  promotes the edge after the callee obligations verify; a counterexample
+  downgrades callers, while mutable callable aliases remain unsupported. For
+  source implementations, a post-solver fixed point promotes relational edges only
   when every callee obligation and every transitive relational dependency is
   verified. A failed local callee downgrades callers to `unknown`; declarations
   without bodies and circular proof chains remain `trusted`. The public

@@ -4116,6 +4116,71 @@ describe("Hoare contract checker", () => {
     });
   });
 
+  it("promotes local synchronous scalar and throw contracts through callers", async () => {
+    const fileName = "/verified-sync-relational-call.ts";
+    const source = `
+      /* uneffect:effect Throw<RangeError> */
+      /* uneffect:ensures result === value + 1 */
+      function addOne(value: number): number {
+        if (value < 0) throw new RangeError("negative")
+        return value + 1
+      }
+      /* uneffect:ensures result === value + 2 */
+      function caller(value: number): number {
+        try {
+          return addOne(value) + 1
+        } catch {
+          return value + 2
+        }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    const callerArtifacts = result.artifacts.filter(({ obligation }) => obligation?.functionName === "caller");
+    expect(callerArtifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(callerArtifacts.flatMap(({ controlFlow }) => controlFlow?.relationalCalls ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ functionName: "addOne", evidence: "verified" })]));
+    expect(callerArtifacts.flatMap(({ controlFlow }) => controlFlow?.exceptionFlow?.discharged ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<RangeError>" })]));
+
+    const broken = source.replace("return value + 1", "return value - 1");
+    const invalid = await verifyContractObligations(fileName, broken, undefined, programFor(fileName, broken));
+    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "addOne"))
+      .toMatchObject({ status: "counterexample" });
+    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "caller"))
+      .toMatchObject({ status: "unknown", message: expect.stringContaining("addOne contract is not verified") });
+
+    const project = await verifyUneffectProject({ files: {
+      "/sync-producer.ts": `
+        /* uneffect:ensures result === value + 1 */
+        export function addOne(value: number): number { return value + 1 }
+      `,
+      "/sync-consumer.ts": `
+        import { addOne } from "./sync-producer"
+        /* uneffect:ensures result === value + 2 */
+        export function caller(value: number): number { return addOne(value) + 1 }
+      `,
+    } });
+    expect(project.obligations.find(({ obligation }) => obligation?.functionName === "caller")).toMatchObject({
+      status: "verified",
+      controlFlow: { relationalCalls: [expect.objectContaining({ functionName: "addOne", evidence: "verified" })] },
+    });
+
+    const mutableSource = `
+      /* uneffect:ensures result === value + 1 */
+      function addOne(value: number): number { return value + 1 }
+      let selected = addOne
+      selected = value => value - 1
+      /* uneffect:ensures result === value + 1 */
+      function mutableCaller(value: number): number { return selected(value) }
+    `;
+    const mutable = await verifyContractObligations("/mutable-sync-call.ts", mutableSource, undefined,
+      programFor("/mutable-sync-call.ts", mutableSource));
+    expect(mutable.artifacts.find(({ status }) => status === "unsupported"))
+      .toMatchObject({ message: expect.stringContaining("selected(value)") });
+  });
+
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `
