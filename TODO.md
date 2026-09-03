@@ -2876,6 +2876,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   `contract ensures` summary through one direct `const value = await call()` or
   `return await call()`; record the declaration/call spans and clauses as
   `relationalCalls`.
+  - [x] Admit a verified scalar `AwaitExpression` recursively inside the
+    supported scalar expression tree. Feed fulfillment into the enclosing
+    arithmetic/Boolean/conditional expression and propagate rejection or
+    synchronous throw without evaluating the remaining expression.
 - [x] Emit one source-mapped `call-precondition` obligation per callee
   `contract requires` clause and prove it from the exact caller path conditions;
   a failed implication is a counterexample rather than an assumed precondition.

@@ -2021,6 +2021,18 @@ export function lowerInvariantProgram(
       let unwrapped = expression;
       while (ts.isParenthesizedExpression(unwrapped) || ts.isAsExpression(unwrapped)
         || ts.isTypeAssertionExpression(unwrapped) || ts.isNonNullExpression(unwrapped)) unwrapped = unwrapped.expression;
+      if (ts.isAwaitExpression(unwrapped)) {
+        const temporary = `${fn}_await_expression_${unwrapped.getStart(source)}`;
+        return executeAwait(unwrapped, [path], { binding: temporary }).map((branch) => {
+          const value = branch.env.get(temporary);
+          if (branch.completion === "normal" && !value) {
+            throw new Error(`awaited scalar expression did not produce a value: ${unwrapped.getText(source)}`);
+          }
+          const env = new Map(branch.env);
+          env.delete(temporary);
+          return { path: { ...branch, env }, value: value ?? { kind: "integer", value: "0" } };
+        });
+      }
       if (ts.isConditionalExpression(unwrapped)) {
         if (!containsTrackedSynchronousCall(unwrapped.condition)) {
           const condition = evaluateCondition(unwrapped.condition, path.env);

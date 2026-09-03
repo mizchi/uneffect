@@ -885,8 +885,14 @@ same property is proved for arbitrary TypeScript.
   or function scope without any observation is fail-closed. Conditional,
   mutable, property, destructured, and escaping Promise aliases remain unknown.
   Other unannotated Promise-producing calls, opaque catch payloads, and general
-  exception fixed points are not accepted. A scalar
-  Promise-returning callee may expose a trusted
+  exception fixed points are not accepted. A scalar `AwaitExpression` with a
+  verified scalar fulfillment may also appear inside
+  the supported scalar expression tree, including arithmetic, comparisons,
+  Boolean control, conditional expressions, return values, and reviewed call
+  arguments. Its fulfillment value feeds the enclosing expression; rejection
+  and synchronous throw bypass the remaining expression and retain the incoming
+  state. This does not generalize await to object/heap expressions or unknown
+  thenables. A scalar Promise-returning callee may expose a trusted
   `contract ensures` relation. One direct `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar
   arguments into that relation, and records a source-bound `relationalCalls`
@@ -898,8 +904,8 @@ same property is proved for arbitrary TypeScript.
   numeric or Boolean identifier target updates its scalar payload and presence
   bit together on fulfillment; rejection and synchronous throw retain the
   incoming state. Shared immutable aliases, presence-only object targets,
-  property/destructuring targets and other arbitrary awaited expressions remain
-  fail-closed. For same-file
+  property/destructuring targets and other object/heap-valued awaited
+  expressions remain fail-closed. For same-file
   implementations, a post-solver fixed point promotes relational edges only
   when every callee obligation and every transitive relational dependency is
   verified. A failed local callee downgrades callers to `unknown`; declarations

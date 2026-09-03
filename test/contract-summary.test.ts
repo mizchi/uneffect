@@ -1892,6 +1892,14 @@ describe("persisted contract summary bundles", () => {
         }
         return 1
       }
+      /* uneffect:ensures result === value + 2 || result === 1 */
+      export async function awaitedExpression(value: number): Promise<number> {
+        try {
+          return (await remote(api.dangerousAdd(value))) + 1
+        } catch {
+          return 1
+        }
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -1959,5 +1967,14 @@ describe("persisted contract summary bundles", () => {
       expect.objectContaining({ effect: "Throw<URIError>", kind: "synchronous-throw" }),
       expect.objectContaining({ effect: "Reject<TypeError>", kind: "promise-rejection" }),
     ]));
+    const awaitedExpressionArtifacts = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "awaitedExpression");
+    expect(awaitedExpressionArtifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(awaitedExpressionArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ effect: "Throw<RangeError>" }),
+        expect.objectContaining({ effect: "Throw<URIError>" }),
+        expect.objectContaining({ effect: "Reject<TypeError>" }),
+      ]));
   });
 });
