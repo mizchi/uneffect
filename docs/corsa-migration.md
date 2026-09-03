@@ -105,10 +105,19 @@ The current main analyzer still needs TypeScript 6 when imported or run; only a
 - Report parity mismatch as unknown; do not silently fall back in proof-grade
   mode.
 - Benchmark cold open, warm 100/1,000-call batches, memory, and incremental
-  snapshot updates.
+  snapshot updates. Cold open and warm batches are measured; memory and
+  incremental snapshot updates remain open.
 
 Exit criterion: all positive, shadowing, nested-scope, and rename fixtures agree,
 and Corsa is no slower than the existing checker path for the selected slice.
+
+The 2026-09-03 warm benchmark authenticated alternating global `fetch` and
+`console.log` call sites before timing. One `getSymbolsAtPositions` request
+classified 100 sites in 0.839 ms mean versus 4.433 ms for sequential requests,
+and 1,000 sites in 7.427 ms versus 46.607 ms. This is a roughly 5.3–6.3x
+same-workload improvement for Corsa RPC batching. It does not yet compare the
+complete TypeScript adapter workload or include AST traversal, memory, or
+snapshot-update cost.
 
 ### Phase 2 — stable identity API upstream
 

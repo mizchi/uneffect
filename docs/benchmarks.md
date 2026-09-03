@@ -2164,6 +2164,20 @@ over seven samples. Existing Oxlint fact-export fixtures measured 757–1,031 ms
 for one sample each, making the narrow direct query about 10–14x faster. The
 direct case does not traverse or normalize the complete fixture, so this is a
 startup-path comparison rather than a frontend-throughput claim.
+
+The companion warm semantic-query benchmark runs with:
+
+- `pnpm vitest bench bench/corsa-api.bench.ts --run`
+
+It first checks that every alternating global `fetch`/`console.log` query has
+the expected checker-authenticated operation, then measures the same positions
+through one batch and through individual RPCs. A selected Apple Silicon run
+measured 0.8390 ms for 100 batched sites versus 4.4330 ms sequentially, and
+7.4267 ms for 1,000 batched sites versus 46.6066 ms sequentially. Thus batching
+was approximately 5.28x and 6.28x faster at equal cardinality in this fixture.
+The benchmark reuses one open project; it excludes cold startup, TypeScript AST
+walking, memory, incremental updates, and a same-workload TypeScript adapter
+comparison.
 - inferred `Console` fixture exported and normalized: 672.38 ms
 - Workhub-shaped `FsRead`/`Fetch`/`FsWrite` fixture exported and normalized:
   658.23 ms
