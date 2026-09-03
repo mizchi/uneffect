@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bench, describe } from "vitest";
 import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
+import { openCorsaApiFrontend } from "../src/corsa-api-frontend.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 const fileName = "examples/dogfood/corsa-inferred-effect.ts";
@@ -21,6 +22,21 @@ const dynamicFsFiles = { [dynamicFsFileName]: readFileSync(dynamicFsFileName, "u
 const corsaExecutable = resolve("node_modules/.bin/tsgo");
 
 describe("checker-backed Corsa inferred-effect handoff", () => {
+  bench("open direct Corsa API frontend and query one symbol/type", async () => {
+    const fixture = resolve("test/fixtures/corsa-api-project/index.ts");
+    const frontend = await openCorsaApiFrontend({
+      configFile: resolve("test/fixtures/corsa-api-project/tsconfig.json"),
+      corsaExecutable,
+    });
+    try {
+      if (!frontend.getSymbolAtPosition(fixture, 13) || !frontend.getTypeAtPosition(fixture, 13)) {
+        throw new Error("direct Corsa API query returned no fact");
+      }
+    } finally {
+      frontend.close();
+    }
+  }, { time: 500, iterations: 1 });
+
   bench("export and normalize one inferred Console fixture", async () => {
     const facts = await exportCorsaCheckerFacts({ files, corsaExecutable });
     const comparison = await compareUneffectFrontends({

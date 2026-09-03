@@ -18,6 +18,9 @@ importers:
         specifier: ^4.15.4
         version: 4.16.0
     devDependencies:
+      '@corsa-bind/napi':
+        specifier: 1.12.4
+        version: 1.12.4
       '@informalsystems/quint':
         specifier: ^0.32.0
         version: 0.32.0

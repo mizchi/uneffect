@@ -14,6 +14,7 @@ Corsa/frontend migration target, not a compatible drop-in dependency.
 | --- | --- | --- |
 | `@mizchi/uneffect` | Public | Small, durable helper and high-level verification facades listed below. It intentionally excludes backend and lowering internals. |
 | `@mizchi/uneffect/corsa` | Public integration boundary | Versioned Corsa/tsgo fact export. Pin the package and frontend versions. |
+| `@mizchi/uneffect/corsa/api` | Public migration probe | Direct prebuilt Corsa project queries without constructing a JavaScript TypeScript `Program`. Syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |
 | `@mizchi/uneffect/spec` | Initial public authoring fragment | Type-checked, declarative `*.uneffect.ts` temporal, capability, and Hoare-contract specifications. Uneffect parses these modules but does not execute them. |
 | `@mizchi/uneffect/schemas/*` | Versioned data contract | Published JSON schemas. Compatibility follows the schema identifier, not an unversioned TypeScript implementation detail. |

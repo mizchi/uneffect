@@ -160,6 +160,49 @@ exporter. A cloned, deserialized, or hand-written object carrying the same
 provenance strings is rejected as unauthenticated. Persisted checker facts do
 not yet have a signed evidence format and cannot satisfy this gate.
 
+### Direct Corsa API migration probe
+
+The same optional entry point exposes `openCorsaApiFrontend`. It loads the
+prebuilt `@corsa-bind/napi` binding and opens a pinned Corsa/tsgo worker, without
+constructing a JavaScript TypeScript `Program`:
+
+```ts
+import { openCorsaApiFrontend } from "@mizchi/uneffect/corsa/api";
+
+const frontend = await openCorsaApiFrontend({
+  configFile: "/workspace/tsconfig.json",
+  corsaExecutable: "/workspace/node_modules/.bin/tsgo",
+});
+try {
+  const symbol = frontend.getSymbolAtPosition("/workspace/src/index.ts", 120);
+  const type = frontend.getTypeAtPosition("/workspace/src/index.ts", 120);
+} finally {
+  frontend.close();
+}
+```
+
+This probe supports project-root membership checks, symbol identity, normalized
+type text, and batched type queries. Both the Corsa implementation and a
+TypeScript reference implementation satisfy the small `SemanticQueryFrontend`
+contract, and parity tests compare position queries without comparing
+compiler-private handle values. It is a realistic partial replacement for
+the TypeScript 6 checker calls used by Uneffect's resolver. It is not yet a
+replacement for syntax enumeration, parent/child traversal, TypeScript CFG,
+node-kind guards, or source transforms: Corsa's public Node API accepts source
+positions but does not expose a whole-project AST iterator. During migration,
+syntax can therefore remain on a parser-compatible layer while semantic queries
+move behind this adapter. The N-API package is an optional peer and ships
+platform prebuilds; the compiler executable is still explicit and pinned, so it
+does not load or mutate the consuming application's TypeScript installation.
+The isolated `/corsa/api` subpath does not statically load the Oxlint exporter
+or the JavaScript TypeScript compiler package.
+
+On the 2026-09-03 local migration benchmark, opening the direct API frontend
+and querying one symbol and type took 75.98 ms mean (7 samples). The existing
+temporary-project Oxlint exporter took 757–1,031 ms for its one-sample fixtures,
+so the probe was roughly 10–14x faster. These figures measure different amounts
+of work and establish startup feasibility, not complete semantic parity.
+
 Schema v8 has one `fileId`, so both adapters use a deterministic virtual-project
 coordinate instead of mixing file-local offsets: source files are ordered by
 file name, encoded as UTF-8, and separated by one byte. Every symbol, trivia,

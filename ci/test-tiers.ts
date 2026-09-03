@@ -96,6 +96,7 @@ export const ciTestTiers = {
   integration: [
     "test/acceptance-roadmap.test.ts",
     "test/async-safety.test.ts",
+    "test/corsa-api-frontend.test.ts",
     "test/corsa-checker-exporter.test.ts",
     "test/dogfood.test.ts",
     "test/evidence-optimizer.test.ts",
@@ -113,6 +114,7 @@ export type CiTestTier = keyof typeof ciTestTiers;
 export const ciIntegrationShards = {
   core: [
     "test/acceptance-roadmap.test.ts",
+    "test/corsa-api-frontend.test.ts",
     "test/corsa-checker-exporter.test.ts",
     "test/evidence-optimizer.test.ts",
     "test/fixtures.test.ts",

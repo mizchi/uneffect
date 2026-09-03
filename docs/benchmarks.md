@@ -2157,6 +2157,13 @@ Corsa checker inferred-effect handoff (2026-08-29, Apple Silicon, one sample
 per case):
 
 - `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`
+
+The 2026-09-03 Corsa migration probe added an in-process N-API/client case. A
+fresh project open plus one symbol and one type query measured 75.98 ms mean
+over seven samples. Existing Oxlint fact-export fixtures measured 757–1,031 ms
+for one sample each, making the narrow direct query about 10–14x faster. The
+direct case does not traverse or normalize the complete fixture, so this is a
+startup-path comparison rather than a frontend-throughput claim.
 - inferred `Console` fixture exported and normalized: 672.38 ms
 - Workhub-shaped `FsRead`/`Fetch`/`FsWrite` fixture exported and normalized:
   658.23 ms

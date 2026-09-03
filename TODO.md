@@ -2256,6 +2256,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
   - [x] Carry mandatory fact provenance through schema v8 and fail closed when actual Corsa-checker facts are required but only reference-adapter records are available.
   - [x] Export the initial real checker-backed slice through the `corsa-oxlint` plugin context: top-level named functions and single immutable arrow/function-expression bindings, Corsa type text, direct call edges, and leading Uneffect trivia.
+  - [x] Prototype the prebuilt `@corsa-bind/napi` TypeScript facade as a direct project frontend for position-based symbol/type/batch-type queries, with explicit lifetime and fail-closed project membership. This proves that checker queries can move out of the TypeScript 6 `Program`; syntax/CFG traversal and complete neutral-IR export remain separate migration work.
   - [x] Preserve Corsa symbol identity across project imports and place every frontend span in deterministic project-wide UTF-8 coordinates.
   - [x] Qualify duplicate top-level function spellings by source path in both adapters so cross-file edges cannot alias by name.
   - [x] Stop checker-backed call collection at unsupported nested function/callback boundaries instead of mislabeling deferred or unknown work as an immediate outer call.
