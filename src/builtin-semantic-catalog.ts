@@ -313,8 +313,12 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     ...(["map", "flatMap", "filter", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex"] as const)
       .flatMap((name) => ["Array", "ReadonlyArray"].map((owner) => reviewed("javascript", {
         symbol: { module: "lib.es", export: `${owner}#${name}` },
-        semantics: inlineCallbackSemantics(0, false,
-          [runtimeValue("array-element"), runtimeValue("array-index"), receiverValue], optionalArgument(1)),
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+          ...inlineCallbackSemantics(0, false,
+            [runtimeValue("array-element"), runtimeValue("array-index"), receiverValue], optionalArgument(1)).primitives,
+          ...((name === "map" || name === "flatMap" || name === "filter")
+            ? [{ kind: "result" as const, refinement: { kind: "fresh" as const } }] : []),
+        ] },
         trustReason: `ECMAScript ${owner}.${name} invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
       }))),
     ...(["reduce", "reduceRight"] as const).flatMap((name) => ["Array", "ReadonlyArray"].map((owner) => reviewed("javascript", {
@@ -329,10 +333,22 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
         [runtimeValue(`${owner}-value`), runtimeValue(`${owner}-key`), receiverValue], optionalArgument(1)),
       trustReason: `ECMAScript ${owner}.forEach invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
     })),
-    ...(["slice", "join"] as const).flatMap((name) => ["Array", "ReadonlyArray"].map((owner) => reviewed("javascript", {
-      symbol: { module: "lib.es", export: `${owner}#${name}` },
-      trustReason: `ECMAScript ${owner}.${name} has no callback or host authority`, trustOwner: "@mizchi/uneffect",
-    }))),
+    ...(["Array", "ReadonlyArray"] as const).flatMap((owner) => [
+      reviewed("javascript", {
+        symbol: { module: "lib.es", export: `${owner}#slice` },
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+        trustReason: `ECMAScript ${owner}.slice returns a fresh Array`, trustOwner: "@mizchi/uneffect",
+      }),
+      reviewed("javascript", {
+        symbol: { module: "lib.es", export: `${owner}#join` },
+        trustReason: `ECMAScript ${owner}.join has no callback or host authority`, trustOwner: "@mizchi/uneffect",
+      }),
+      ...(["flat", "toReversed", "toSpliced", "with"] as const).map((name) => reviewed("javascript", {
+        symbol: { module: "lib.es", export: `${owner}#${name}` },
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+        trustReason: `ECMAScript ${owner}.${name} returns a fresh Array`, trustOwner: "@mizchi/uneffect",
+      })),
+    ]),
     ...(["Array", "ReadonlyArray"] as const).map((owner) => reviewed("javascript", {
       symbol: { module: "lib.es", export: `${owner}#toSorted` },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [...inlineCallbackSemantics(0, true,

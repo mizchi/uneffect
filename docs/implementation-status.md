@@ -211,6 +211,11 @@ same property is proved for arbitrary TypeScript.
   Effects compose into the caller, and the parser's own `Throw<SyntaxError>`
   escapes or is discharged by the surrounding `catch` through the shared
   exception path.
+- Non-destructive Array producers `map`, `filter`, `flatMap`, `slice`, `flat`,
+  `toSorted`, `toReversed`, `toSpliced`, and `with` publish a common fresh-result
+  refinement. A subsequent destructive method mutates only that fresh value,
+  not the source Array; direct `sort`, `reverse`, `splice`, `fill`, and other
+  mutators on the original receiver retain `Mutate<typeof source>`.
 - Standard-identity `Object.assign` composes enumerable own source getters from
   same-Program object literals and matching same-Program target setters.
   Class prototype accessors are excluded because assignment does not copy

@@ -2628,4 +2628,42 @@ describe("multi-file call graph and effect polymorphism", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("does not project mutation through fresh non-destructive Array results", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-fresh-array-results-"));
+    try {
+      const source = join(directory, "arrays.ts");
+      writeFileSync(source, `
+        /* uneffect:effect none */
+        export function mapped(values: number[]) { return values.map(value => value + 1).sort() }
+        /* uneffect:effect none */
+        export function filtered(values: number[]) { return values.filter(Boolean).reverse() }
+        /* uneffect:effect none */
+        export function flattened(values: number[][]) { return values.flatMap(value => value).splice(0, 1) }
+        /* uneffect:effect none */
+        export function copied(values: number[]) { return values.slice().fill(0) }
+        /* uneffect:effect none */
+        export function reversed(values: number[]) { return values.toReversed().sort() }
+        /* uneffect:effect none */
+        export function spliced(values: number[]) { return values.toSpliced(0, 1).reverse() }
+        /* uneffect:effect none */
+        export function replaced(values: number[]) { return values.with(0, 1).fill(0) }
+      `);
+      const program = ts.createProgram([source], {
+        target: ts.ScriptTarget.ES2024,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.es2024.d.ts"],
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const result = analyzeProgramEffects(program);
+      expect(result.diagnostics).toEqual([]);
+      expect(result.summaries.filter(({ functionName }) =>
+        ["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced"].includes(functionName)))
+        .toEqual(expect.arrayContaining(["mapped", "filtered", "flattened", "copied", "reversed", "spliced", "replaced"]
+          .map((functionName) => expect.objectContaining({ functionName, effects: [], evidence: "verified" }))));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

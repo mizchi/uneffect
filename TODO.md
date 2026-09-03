@@ -1021,6 +1021,9 @@ introducing another domain-local control-flow or alias model.
        all standard numeric and BigInt TypedArray owners. Reuse the common
        invocation-shape IR and retain numeric bounds/backing/overlap as separate
        typed-array obligations.
+     - [x] Give non-destructive Array `map`/`filter`/`flatMap`, `slice`, `flat`,
+       `toReversed`, `toSpliced`, and `with` the same catalog fresh-result
+       refinement as `toSorted`, so later local mutation does not alias input.
    - [x] Model standard-identity `Object.assign` as enumerable reads followed
      by target writes. Compose same-Program object-literal source getters and
      matching target setters, exclude class prototype accessors, and classify

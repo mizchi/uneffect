@@ -15,7 +15,7 @@ describe("builtin semantic overlays", () => {
     expect(contracts.every((item) => item.evidence === "trusted")).toBe(true);
     expect(builtinContractRegistry.contracts).toHaveLength(contracts.length);
     expect(builtinSemanticCatalog.definitions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync" })] }) }),
+      expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "result", refinement: { kind: "fresh" } }]) }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#sort" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([{ kind: "mutate", target: { kind: "receiver" } }, expect.objectContaining({ kind: "callback", timing: "sync" })]) }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Uint8Array#forEach" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync", thisArgument: { kind: "argument", index: 1, optional: true } })] }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "BigInt64Array#sort" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "mutate", target: { kind: "receiver" } }]) }) }),
@@ -255,16 +255,19 @@ describe("builtin semantic overlays", () => {
 
   it("registers synchronous collection callbacks and pure host helpers", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync" })] }) }),
-      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#flatMap" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync" })] }) }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "result", refinement: { kind: "fresh" } }]) }) }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#flatMap" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "result", refinement: { kind: "fresh" } }]) }) }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toSorted" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([{ kind: "result", refinement: { kind: "fresh" } }, expect.objectContaining({ kind: "callback" })]) }) }),
-      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#slice" } }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#slice" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toReversed" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#toSpliced" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#with" }, semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }) }),
       expect.objectContaining({ symbol: { module: "lib.es", export: "Array#join" } }),
       expect.objectContaining({ symbol: { module: "node:module", export: "createRequire" } }),
       expect.objectContaining({ symbol: { module: "node:path", export: "join" } }),
       expect.objectContaining({ symbol: { module: "lib.node", export: "Process#cwd" } }),
     ]));
-    for (const [module, name] of [["lib.es", "Array#slice"], ["lib.es", "Array#join"], ["node:module", "createRequire"], ["node:path", "join"], ["lib.node", "Process#cwd"]]) {
+    for (const [module, name] of [["lib.es", "Array#join"], ["node:module", "createRequire"], ["node:path", "join"], ["lib.node", "Process#cwd"]]) {
       expect(builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.semantics).toBeUndefined();
     }
   });
