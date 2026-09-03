@@ -884,7 +884,7 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
-  it("fails closed when a bare lexical block shadows a tracked scalar", async () => {
+  it("restores a path-stable tracked scalar after lexical shadowing", async () => {
     const fileName = "/lexical-shadow.ts";
     const source = `
       type Int = number
@@ -892,9 +892,31 @@ describe("Hoare contract checker", () => {
       function shadowed(value: Int): Int {
         {
           const value = 1
-          if (value === 1) return value
+          const observed = value + 1
         }
         return value
+      }
+      /* uneffect:ensures result === 1 */
+      function returnsInner(value: Int): Int {
+        { const value = 1; return value }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("fails closed when lexical shadowing would hide path-dependent scalar states", async () => {
+    const fileName = "/path-dependent-lexical-shadow.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value || result === value + 1 */
+      function shadowed(value: Int, enabled: boolean): Int {
+        let result = value
+        if (enabled) result += 1
+        { const result = 0 }
+        return result
       }
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
@@ -926,7 +948,7 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
-  it("fails closed when branch or catch bindings shadow tracked scalars", async () => {
+  it("restores branch-local shadowing but keeps catch binding shadowing fail-closed", async () => {
     const cases = [
       `
         type Int = number
@@ -949,7 +971,9 @@ describe("Hoare contract checker", () => {
     for (const [index, source] of cases.entries()) {
       const fileName = `/unsupported-scope-shadow-${index}.ts`;
       const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
-      expect(result.artifacts[0], fileName).toMatchObject({ status: "unsupported", evidence: "unknown" });
+      expect(result.artifacts[0], fileName).toMatchObject(index === 0
+        ? { status: "verified", evidence: "verified" }
+        : { status: "unsupported", evidence: "unknown" });
     }
   });
 

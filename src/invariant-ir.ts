@@ -2706,11 +2706,23 @@ export function lowerInvariantProgram(
         }
       }
       if (new Set(lexicalNames).size !== lexicalNames.length) throw new Error("duplicate lexical bindings in a block are unsupported");
-      const shadowed = lexicalNames.find((name) => initial.some((path) => path.env.has(name) || path.pendingPromises.has(name)));
-      if (shadowed) throw new Error(`block lexical binding shadows a tracked scalar: ${shadowed}`);
+      const shadowedNames = lexicalNames.filter((name) => initial.some((path) => path.env.has(name)));
+      const shadowedValues = new Map<string, LogicExpression>();
+      for (const name of shadowedNames) {
+        if (initial.some((path) => path.pendingPromises.has(name))) {
+          throw new Error(`block lexical binding shadows a tracked Promise: ${name}`);
+        }
+        const values = initial.map((path) => path.env.get(name));
+        const first = values[0];
+        if (!first || values.some((value) => !value || JSON.stringify(value) !== JSON.stringify(first))) {
+          throw new Error(`block lexical binding shadows a path-dependent scalar: ${name}`);
+        }
+        shadowedValues.set(name, first);
+      }
       const retained = new Set([...initial.flatMap((path) => [...path.env.keys()]), ...functionNames]);
       return execute(block.statements, initial, context).map((exit): PathState => {
         const env = new Map([...exit.env].filter(([name]) => retained.has(name)));
+        for (const [name, value] of shadowedValues) env.set(name, value);
         for (const [name, pending] of exit.pendingPromises) {
           if (lexicalNames.includes(name) && !pending.observed
             && ![...exit.pendingPromises].some(([other, candidate]) => retained.has(other) && candidate === pending)) {
@@ -2719,6 +2731,7 @@ export function lowerInvariantProgram(
         }
         const pendingPromises = new Map([...exit.pendingPromises].filter(([name]) => retained.has(name)));
         const returnEnv = exit.returnEnv && new Map([...exit.returnEnv].filter(([name]) => name === "result" || retained.has(name)));
+        if (returnEnv) for (const [name, value] of shadowedValues) returnEnv.set(name, value);
         return { ...exit, env, pendingPromises, ...(returnEnv ? { returnEnv } : {}) };
       });
     };

@@ -583,8 +583,11 @@ or another name sharing its modeled state fails closed instead of implicitly
 mutating the alias; declaration-point snapshot semantics are not yet modeled.
 Supported bare, conditional, loop, try/catch, and finally blocks use one lexical
 scope join: outer writes and function-scoped `var` survive, while block-local
-`let`/`const` bindings do not escape. Shadowing a tracked scalar remains
-`unknown` pending a symbol-keyed contract environment.
+`let`/`const` bindings do not escape. A lexical `let`/`const` may shadow a
+tracked scalar when every incoming path carries the identical outer value and
+no Promise binding shares the name; normal and abrupt exits restore the outer
+value. Path-dependent shadows and catch-binding shadows remain `unknown`
+pending a fully symbol-keyed contract environment.
 Explicitly typed uninitialized scalar `let` bindings are supported only when
 the exact TypeScript Program reports no definite-assignment error. Their
 unconstrained placeholder preserves binding identity across joins and carries
