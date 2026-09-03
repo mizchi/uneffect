@@ -2883,6 +2883,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Generalize recursive-expression detection from synchronous calls to
       tracked completions, so `(await producer(value)) + 1` works without an
       unrelated synchronous callee inside the awaited arguments.
+  - [x] Compose direct async `return promiseProducer(args)` without rewriting it
+    as `return await`. Evaluate arguments and synchronous throws at call time,
+    forward fulfillment into the caller result, and let rejection bypass the
+    surrounding synchronous catch while still executing `finally`.
 - [x] Emit one source-mapped `call-precondition` obligation per callee
   `contract requires` clause and prove it from the exact caller path conditions;
   a failed implication is a counterexample rather than an assumed precondition.

@@ -894,8 +894,16 @@ same property is proved for arbitrary TypeScript.
   state. Recursive evaluation is triggered by the await completion itself; it
   does not require a synchronous effectful call elsewhere in the expression.
   This does not generalize await to object/heap expressions or unknown
-  thenables. A scalar Promise-returning callee may expose a trusted
-  `contract ensures` relation. One direct `const value = await call()`,
+  thenables. An async function may also directly `return producer(args)` when
+  the call has a verified scalar Promise completion summary. Arguments and the
+  producer's synchronous throw occur immediately, while fulfillment becomes
+  the async function's returned scalar relation. The returned Promise rejection
+  is forwarded to the caller and deliberately bypasses a surrounding
+  synchronous `try/catch`; `return await producer(args)` instead observes that
+  rejection in the current function, where catch may discharge it. Supported
+  `finally` executes for both forms. A scalar Promise-returning callee may
+  expose a trusted `contract ensures` relation. One direct
+  `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar
   arguments into that relation, and records a source-bound `relationalCalls`
   ledger entry. Each scalar callee `requires` clause becomes a separate

@@ -1908,6 +1908,14 @@ describe("persisted contract summary bundles", () => {
           return 1
         }
       }
+      /* uneffect:ensures result === value || result === 1 */
+      export async function forwardedPromise(value: number): Promise<number> {
+        try {
+          return remote(value)
+        } catch {
+          return 1
+        }
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -1992,5 +2000,14 @@ describe("persisted contract summary bundles", () => {
         expect.objectContaining({ effect: "Throw<URIError>" }),
         expect.objectContaining({ effect: "Reject<TypeError>" }),
       ]));
+    const forwardedPromiseArtifacts = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "forwardedPromise");
+    expect(forwardedPromiseArtifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(forwardedPromiseArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
+    expect(forwardedPromiseArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
+    expect(forwardedPromiseArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
   });
 });

@@ -108,6 +108,7 @@ interface PathState {
   pendingPromises: Map<string, PendingPromiseState>;
   assumptions: LogicExpression[];
   completion: "normal" | "return" | "throw" | "reject" | "break" | "continue";
+  catchable?: boolean;
   breakTarget?: number;
   continueTarget?: number;
   thrown?: ContractThrowEdge;
@@ -1865,17 +1866,19 @@ export function lowerInvariantProgram(
       return paths;
     };
     const executeAwait = (
-      awaited: ts.AwaitExpression,
+      awaited: ts.AwaitExpression | ts.CallExpression,
       incoming: PathState[],
       target?: { binding?: string; nullableGuard?: SemanticGuardFact; returnStatement?: ts.ReturnStatement },
+      forwardRejection = false,
     ): PathState[] => {
-      const directCall = ts.isCallExpression(awaited.expression) ? awaited.expression : undefined;
+      const awaitedExpression = ts.isAwaitExpression(awaited) ? awaited.expression : awaited;
+      const directCall = ts.isCallExpression(awaitedExpression) ? awaitedExpression : undefined;
       const directFact = directCall ? callCompletions.get(`${awaited.getStart(source)}:${awaited.getEnd()}`) : undefined;
-      const binding = ts.isIdentifier(awaited.expression) ? awaited.expression.text : undefined;
+      const binding = ts.isIdentifier(awaitedExpression) ? awaitedExpression.text : undefined;
       const settle = (path: PathState, directArgumentValues?: Array<LogicExpression | undefined>): PathState[] => {
         const pending = binding ? path.pendingPromises.get(binding) : undefined;
         const fact = directFact ?? pending?.fact;
-        if (!fact) throw new Error(`await requires a verified rejection or fulfillment summary: ${awaited.expression.getText(source)}`);
+        if (!fact) throw new Error(`await requires a verified rejection or fulfillment summary: ${awaitedExpression.getText(source)}`);
         const originSpan = pending?.originSpan ?? { start: awaited.getStart(source), end: awaited.getEnd() };
         const argumentValues = pending?.argumentValues ?? directArgumentValues ?? directCall?.arguments.map((argument) => {
           try { return substitute(logic(argument, pipeBindings, semanticGuards, semanticValues), path.env); } catch { return undefined; }
@@ -1889,16 +1892,16 @@ export function lowerInvariantProgram(
         const fulfilled: PathState[] = [];
         if (!fact.definitelyRejects) {
           if (target?.binding || target?.returnStatement) {
-            if (!fact.fulfillment) throw new Error(`awaited value requires a scalar contract ensures summary: ${awaited.expression.getText(source)}`);
+            if (!fact.fulfillment) throw new Error(`awaited value requires a scalar contract ensures summary: ${awaitedExpression.getText(source)}`);
             if (argumentValues.length !== fact.fulfillment.parameters.length || argumentValues.some((value) => value === undefined)) {
               throw new Error(`awaited contract arguments require scalar snapshots matching ${fact.fulfillment.functionName}`);
             }
             const fresh = `${fn}_await_result_${awaited.getStart(source)}`;
             if (!variables.some(({ name }) => name === fresh)) variables.push({ name: fresh, domain: fact.fulfillment.domain, sort: sort(fact.fulfillment.domain) });
             if (target.nullableGuard) {
-              if (!target.binding || !target.nullableGuard.valueVariable) throw new Error(`awaited scalar fulfillment requires a scalar nullable target: ${awaited.expression.getText(source)}`);
+              if (!target.binding || !target.nullableGuard.valueVariable) throw new Error(`awaited scalar fulfillment requires a scalar nullable target: ${awaitedExpression.getText(source)}`);
               if (sort(fact.fulfillment.domain) !== scalarExpressionSort(variable(target.nullableGuard.valueVariable))) {
-                throw new Error(`awaited scalar fulfillment does not match nullable target: ${target.binding} = ${awaited.expression.getText(source)}`);
+                throw new Error(`awaited scalar fulfillment does not match nullable target: ${target.binding} = ${awaitedExpression.getText(source)}`);
               }
             }
             const summaryEnv: Environment = new Map([["result", variable(fresh)]]);
@@ -1927,7 +1930,7 @@ export function lowerInvariantProgram(
           } else fulfilled.push(base);
         }
         const rejected: PathState[] = fact.rejectionEffects.map((effect): PathState => ({
-          ...base, completion: "reject",
+          ...base, completion: "reject", catchable: !forwardRejection,
           thrown: {
             kind: "promise-rejection", evidence: fact.evidence, effect, originSpan,
             ...(fact.payloadFromFirstArgument && argumentValues[0] ? { payload: argumentValues[0] } : {}),
@@ -2890,8 +2893,8 @@ export function lowerInvariantProgram(
         paths = exited;
       } else if (ts.isTryStatement(statement)) {
         const tryPaths = executeScopedBlock(statement.tryBlock, paths.map((path) => ({ ...path, env: new Map(path.env) })), context);
-        const thrown = tryPaths.filter((path) => path.completion === "throw" || path.completion === "reject");
-        const completed = tryPaths.filter((path) => path.completion !== "throw" && path.completion !== "reject");
+        const thrown = tryPaths.filter((path) => (path.completion === "throw" || path.completion === "reject") && path.catchable !== false);
+        const completed = tryPaths.filter((path) => !thrown.includes(path));
         let handled: PathState[];
         if (!statement.catchClause) handled = tryPaths;
         else {
@@ -2958,6 +2961,9 @@ export function lowerInvariantProgram(
         }
       } else if (ts.isReturnStatement(statement) && statement.expression && ts.isAwaitExpression(statement.expression)) {
         paths = executeAwait(statement.expression, paths, { returnStatement: statement });
+      } else if (ts.isReturnStatement(statement) && statement.expression && ts.isCallExpression(statement.expression)
+        && callCompletions.get(`${statement.expression.getStart(source)}:${statement.expression.getEnd()}`)?.mode === "promise") {
+        paths = executeAwait(statement.expression, paths, { returnStatement: statement }, true);
       } else if (ts.isReturnStatement(statement) && statement.expression) {
         const returnExpression = statement.expression;
         paths = paths.flatMap((path): PathState[] => evaluateScalar(returnExpression, path).map(({ path: branch, value }) => {
