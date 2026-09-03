@@ -19,7 +19,12 @@ export interface EvidenceArtifactSummary {
   effects: string[];
   evidence: EvidenceStatus;
   parameters?: string[];
-  iteratorEffectParameters?: Array<{ index: number; name: string; convertsThrowToRejection: boolean }>;
+  iteratorEffectParameters?: Array<{
+    index: number;
+    name: string;
+    convertsThrowToRejection: boolean;
+    propertyPath?: readonly (string | number)[];
+  }>;
   iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
 }
 export interface EvidenceArtifact {

@@ -2292,6 +2292,15 @@ describe("multi-file call graph and effect polymorphism", () => {
           }
         }
         export function consumeSameNamedCustomSetParameter() { consumeIterableParameter(new Custom.Set()) }
+        export function consumeIterableOption(options: { readonly values: Iterable<number> }) {
+          return Array.from(options.values)
+        }
+        export function consumePureIterableOption() { consumeIterableOption({ values: [1, 2, 3] }) }
+        export function consumeStablePureIterableOption() {
+          const options = { values: new globalThis.Set([1, 2, 3]) }
+          consumeIterableOption(options)
+        }
+        export function consumeCustomIterableOption() { consumeIterableOption({ values: customIterable }) }
         export function outerIteratorParameter(iterator: IteratorObject<unknown>) { consumeIteratorParameter(iterator) }
         export function consumeKnownOuterIteratorParameter() { outerIteratorParameter(generate()) }
         export function consumePromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
@@ -2564,6 +2573,19 @@ describe("multi-file call graph and effect polymorphism", () => {
           evidence: "unknown",
           unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
         });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeIterableOption"))
+        .toMatchObject({
+          iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "options.values", propertyPath: ["values"] })],
+        });
+      expect(result.summaries.find((summary) => summary.functionName === "consumePureIterableOption"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeStablePureIterableOption"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeCustomIterableOption"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
       expect(result.summaries.find((summary) => summary.functionName === "consumePromiseIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "constrainedPromiseIteratorParameter"))
@@ -2589,7 +2611,10 @@ describe("multi-file call graph and effect polymorphism", () => {
         functionName: "consumeKnownOuterPromiseIteratorParameter", effect: "Throw<RangeError>", kind: "missing",
       }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeKnownMixedIteratorParameter"))
-        .toMatchObject({ evidence: "unknown" });
+        .toMatchObject({
+          evidence: "inferred",
+          iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "holder.iterator", propertyPath: ["iterator"] })],
+        });
       expect(result.summaries.find((summary) => summary.functionName === "outerIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeKnownOuterIteratorParameter"))
@@ -2598,7 +2623,10 @@ describe("multi-file call graph and effect polymorphism", () => {
         functionName: "consumeKnownOuterIteratorParameter", effect: "Console", kind: "missing",
       }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorProperty"))
-        .toMatchObject({ evidence: "unknown" });
+        .toMatchObject({
+          evidence: "inferred",
+          iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "holder.iterator", propertyPath: ["iterator"] })],
+        });
       expect(result.summaries.find((summary) => summary.functionName === "consumeStandardIterator"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics).toContainEqual(expect.objectContaining({

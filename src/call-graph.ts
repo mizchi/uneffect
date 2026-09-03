@@ -10,7 +10,13 @@ import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 export type CallableKind = "function" | "method" | "getter" | "setter" | "constructor" | "arrow" | "function-expression";
 export type InvocationTiming = "inline" | "deferred" | "unknown";
 export interface EffectParameter { index: number; name: string; timing: InvocationTiming }
-export interface IteratorEffectParameter { index: number; name: string; convertsThrowToRejection: boolean }
+export interface IteratorEffectParameter {
+  index: number;
+  name: string;
+  convertsThrowToRejection: boolean;
+  /** Static property path from the runtime argument to the consumed iterable. */
+  propertyPath?: readonly (string | number)[];
+}
 export interface IteratorEffectInstantiation { consumer: string; parameterIndex: number }
 export interface ExternalIteratorEffectContract { key: string; parameters: readonly IteratorEffectParameter[] }
 export interface ExternalCallableEffectParameter extends EffectParameter {
@@ -460,6 +466,28 @@ export function buildProgramCallGraph(
       .includes(standardLibraryOperation(checker, parent) ?? "");
   const iteratorParameterCache = new Map<ts.FunctionLikeDeclaration, IteratorEffectParameter[]>();
   const iteratorParameterVisiting = new Set<ts.FunctionLikeDeclaration>();
+  const iteratorParameterProjection = (
+    expression: ts.Expression,
+    parameterIndices: ReadonlyMap<ts.Symbol, number>,
+  ): { index: number; path: (string | number)[] } | undefined => {
+    const path: (string | number)[] = [];
+    let current = unwrapLiteralContainerExpression(expression);
+    while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+      if (ts.isPropertyAccessExpression(current)) {
+        path.unshift(current.name.text);
+        current = unwrapLiteralContainerExpression(current.expression);
+        continue;
+      }
+      const argument = current.argumentExpression && unwrapLiteralContainerExpression(current.argumentExpression);
+      if (!argument || (!ts.isStringLiteralLike(argument) && !ts.isNumericLiteral(argument))) return undefined;
+      path.unshift(ts.isNumericLiteral(argument) ? Number(argument.text) : argument.text);
+      current = unwrapLiteralContainerExpression(current.expression);
+    }
+    if (!ts.isIdentifier(current)) return undefined;
+    const symbol = resolvedSymbol(checker, current);
+    const index = symbol ? parameterIndices.get(symbol) : undefined;
+    return index === undefined ? undefined : { index, path };
+  };
   const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
     const cached = iteratorParameterCache.get(declaration);
     if (cached) return cached;
@@ -475,15 +503,24 @@ export function buildProgramCallGraph(
         if (symbol) parameterIndices.set(symbol, index);
       }
     });
-    const consumed = new Map<number, boolean>();
-    const record = (expression: ts.Expression, convertsThrowToRejection = false): void => {
-      if (!ts.isIdentifier(expression)) return;
-      const index = parameterIndices.get(resolvedSymbol(checker, expression)!);
-      if (index === undefined || (!checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")
+    const consumed = new Map<string, { index: number; path: (string | number)[]; convertsThrowToRejection: boolean }>();
+    const record = (
+      expression: ts.Expression,
+      convertsThrowToRejection = false,
+      forwardedPath: readonly (string | number)[] = [],
+    ): void => {
+      const projection = iteratorParameterProjection(expression, parameterIndices);
+      if (!projection || (forwardedPath.length === 0
+        && !checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")
         && ((!hasIteratorProtocol(expression) && !hasIteratorProtocol(expression, "asyncIterator"))
           || reviewedBuiltinIterable(expression)))) return;
-      const previous = consumed.get(index);
-      consumed.set(index, previous === false ? false : convertsThrowToRejection);
+      projection.path.push(...forwardedPath);
+      const key = `${projection.index}:${JSON.stringify(projection.path)}`;
+      const previous = consumed.get(key);
+      consumed.set(key, {
+        ...projection,
+        convertsThrowToRejection: previous?.convertsThrowToRejection === false ? false : convertsThrowToRejection,
+      });
     };
     const visit = (node: ts.Node): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
@@ -505,7 +542,7 @@ export function buildProgramCallGraph(
             : externalIteratorContractForCall(checker, node, options.externalIteratorEffects)?.parameters ?? [];
           for (const contract of contracts) {
             const argument = node.arguments[contract.index];
-            if (argument) record(argument, contract.convertsThrowToRejection);
+            if (argument) record(argument, contract.convertsThrowToRejection, contract.propertyPath);
           }
         }
       }
@@ -514,8 +551,11 @@ export function buildProgramCallGraph(
       ts.forEachChild(node, visit);
     };
     visit(declaration.body!);
-    const result = [...consumed].map(([index, convertsThrowToRejection]) => ({
-      index, name: runtimeParameters[index]!.name.getText(), convertsThrowToRejection,
+    const result = [...consumed.values()].map(({ index, path, convertsThrowToRejection }) => ({
+      index,
+      name: `${runtimeParameters[index]!.name.getText()}${path.map((part) => typeof part === "number" ? `[${part}]` : `.${part}`).join("")}`,
+      convertsThrowToRejection,
+      ...(path.length > 0 ? { propertyPath: path } : {}),
     }));
     iteratorParameterVisiting.delete(declaration);
     iteratorParameterCache.set(declaration, result);
@@ -807,8 +847,7 @@ export function buildProgramCallGraph(
         return Boolean(targets.length || state.unknown || state.pure);
       };
       const addUnknownGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false, iteratorEffectInstantiation?: IteratorEffectInstantiation): void => {
-        const parameterIndex = ts.isIdentifier(expression)
-          ? iteratorParameterIndices.get(resolvedSymbol(checker, expression)!) : undefined;
+        const parameterIndex = iteratorParameterProjection(expression, iteratorParameterIndices)?.index;
         edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true, unknownGeneratorParameterIndex: parameterIndex, iteratorEffectInstantiation });
       };
       const specializeIteratorArgument = (expression: ts.Expression, convertsThrowToRejection: boolean, iteratorEffectInstantiation: IteratorEffectInstantiation): boolean => {
@@ -1483,9 +1522,25 @@ export function buildProgramCallGraph(
         const dischargesUnknownGeneratorParameters = iteratorContracts.length > 0
           && iteratorContracts.every((contract) => {
             const argument = node.arguments[contract.index];
-            return Boolean(argument && iteratorConsumer && specializeIteratorArgument(argument, contract.convertsThrowToRejection, {
+            const iterableArgument = argument && contract.propertyPath
+              ? expressionAtExclusiveConstArgumentPath(checker, argument, contract.propertyPath)
+              : argument;
+            if (iterableArgument && iteratorConsumer && specializeIteratorArgument(iterableArgument, contract.convertsThrowToRejection, {
               consumer: iteratorConsumer, parameterIndex: contract.index,
-            }));
+            })) return true;
+            const forwarded = argument && contract.propertyPath
+              ? iteratorParameterProjection(argument, iteratorParameterIndices)
+              : undefined;
+            if (!forwarded || !iteratorConsumer) return false;
+            edges.push({
+              caller, kind: "direct", timing: "inline",
+              span: { start: argument!.getStart(), end: argument!.getEnd() }, arguments: [],
+              dischargesThrow: catchesThrow || contract.convertsThrowToRejection,
+              executesBody: true, unknownGeneratorConsumption: true,
+              unknownGeneratorParameterIndex: forwarded.index,
+              iteratorEffectInstantiation: { consumer: iteratorConsumer, parameterIndex: contract.index },
+            });
+            return true;
           });
         const instantiatedArguments = node.arguments.map(canonicalAddressableArgument);
         const receiverExpression = targetDeclaration && ts.isMethodDeclaration(targetDeclaration)

@@ -2207,7 +2207,10 @@ same property is proved for arbitrary TypeScript.
   the lazy body effects. TypeChecker-identified standard strings, arrays,
   tuples, Map/Set collections, typed arrays, and TypeScript NodeArray values
   instantiate an empty lazy effect set; structurally iterable user values and
-  same-named user classes remain unknown. `no-unknown`
+  same-named user classes remain unknown. Finite parameter property paths are
+  retained in the summary and projected through direct object literals or
+  single-use immutable bindings; computed/getter/mutable/escaping container
+  shapes remain unknown. `no-unknown`
   accepts the represented parameter but reports that it is not a closed
   concrete effect set. `effect_parameter iterator extends ...` supplies an
   independently checked lazy-effect upper bound; complete valid bounds permit
