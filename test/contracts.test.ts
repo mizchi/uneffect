@@ -2737,6 +2737,28 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("lowers an invariant-backed conditionless for loop through explicit break", async () => {
+    const fileName = "/contract-conditionless-for.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function run(limit: Int): Int {
+        let index = 0
+        /* uneffect:loop_invariant index >= 0 */
+        for (;;) {
+          if (index >= limit) break
+          index++
+        }
+        return index
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("lowers do-while exits only after one invariant-preserving body", async () => {
     const fileName = "/contract-do-while.ts";
     const source = `

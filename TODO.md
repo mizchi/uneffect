@@ -341,6 +341,8 @@ introducing another domain-local control-flow or alias model.
        canonical `for` initializer through the same scalar update semantics.
      - [x] Admit an omitted `for` initializer over an already initialized
        scalar while retaining an explicit condition and supported update.
+     - [x] Lower invariant-backed `for (;;)` with a true guard and no synthetic
+       fallthrough; only explicit abrupt completion exits the loop.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.

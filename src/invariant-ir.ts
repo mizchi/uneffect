@@ -3114,7 +3114,6 @@ export function lowerInvariantProgram(
       } else if (ts.isForStatement(statement)) {
         const loopTarget = statement.getStart(source);
         const initializer = statement.initializer;
-        if (!statement.condition) throw new Error("for requires an explicit condition");
         const declaration = initializer && ts.isVariableDeclarationList(initializer) && initializer.declarations.length === 1
           ? initializer.declarations[0] : undefined;
         if (initializer && ts.isVariableDeclarationList(initializer)
@@ -3125,7 +3124,7 @@ export function lowerInvariantProgram(
         const lexicalInitializer = Boolean(declaration && initializer && ts.isVariableDeclarationList(initializer)
           && initializer.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
         const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
-        if (!invariantSource) throw new Error(`for requires /* uneffect:loop_invariant ... */ but ${statement.condition.getText(source)} has none`);
+        if (!invariantSource) throw new Error(`for requires /* uneffect:loop_invariant ... */ but ${statement.condition?.getText(source) ?? "true"} has none`);
         const invariant = parseLogicExpression(invariantSource);
         const initialized = paths.map((path) => {
           if (lexicalInitializer && initializerName && path.pendingPromises.has(initializerName)) {
@@ -3165,9 +3164,11 @@ export function lowerInvariantProgram(
           }
           const inv = substitute(invariant, loopEnv);
           const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [inv] };
-          const conditions = containsTrackedCompletion(statement.condition)
-            ? evaluateScalar(statement.condition, conditionSeed)
-            : [{ path: conditionSeed, value: evaluateCondition(statement.condition, loopEnv) }];
+          const conditions = !statement.condition
+            ? [{ path: conditionSeed, value: { kind: "boolean", value: true } as LogicExpression }]
+            : containsTrackedCompletion(statement.condition)
+              ? evaluateScalar(statement.condition, conditionSeed)
+              : [{ path: conditionSeed, value: evaluateCondition(statement.condition, loopEnv) }];
           for (const evaluated of conditions) {
             if (evaluated.path.completion !== "normal") { exited.push(restoreInitializerScope(evaluated.path)); continue; }
             const condition = evaluated.value;
@@ -3184,7 +3185,9 @@ export function lowerInvariantProgram(
                 exited.push(restoreInitializerScope({ ...bodyPath, completion: "normal", breakTarget: undefined }));
               } else exited.push(restoreInitializerScope(bodyPath));
             }
-            exited.push(restoreInitializerScope({ ...evaluated.path, assumptions: [...evaluated.path.assumptions, negate(condition)] }));
+            if (statement.condition) {
+              exited.push(restoreInitializerScope({ ...evaluated.path, assumptions: [...evaluated.path.assumptions, negate(condition)] }));
+            }
           }
         }
         paths = exited;

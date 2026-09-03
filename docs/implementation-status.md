@@ -462,6 +462,10 @@ same property is proved for arbitrary TypeScript.
   evaluator; only lexical `let`/`const` declarations receive loop-exit scope
   restoration. The initializer may be omitted for an already initialized
   scalar when condition and update remain explicit.
+- An invariant-backed conditionless `for (;;)` uses a literal-true CFG guard.
+  It contributes no synthetic condition-false exit; only explicit abrupt exits
+  reach following code. This retains Hoare partial correctness and does not
+  prove termination.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto
