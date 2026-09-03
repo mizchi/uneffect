@@ -681,5 +681,5 @@ describe("TypeScript contract DSL", () => {
     expect(result.emittedFiles["src/double.js"]).toContain("safeInteger()");
     expect(result.emittedFiles["src/double.js"]).toContain("minValue(0)");
     expect(result.emittedFiles["src/double.js"]).toContain("Uneffect postcondition failed: result === value");
-  }, 30_000);
+  }, 60_000);
 });

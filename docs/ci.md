@@ -3,6 +3,13 @@
 Maintainer release preparation and the current explicit npm publish procedure
 are documented in [Releasing Uneffect](./releasing.md).
 
+Solver-heavy files that can retain a large WASM heap are listed in
+`ciIsolatedTestFiles`. Their individual Vitest cases run in fresh processes so
+a successful earlier proof cannot exhaust the fixed two-GiB Z3/WASM heap for a
+later proof. The runner retains bounded retry evidence only for classified
+infrastructure failures; a counterexample or ordinary assertion failure is not
+retried.
+
 The CI test split is a capability partition, not a coverage reduction. The
 authoritative manifest is `ci/test-tiers.ts`; `test/ci-tiers.test.ts` fails when
 a `test/*.test.ts` file is missing from the manifest or appears in more than one

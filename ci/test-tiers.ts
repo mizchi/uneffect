@@ -164,7 +164,11 @@ export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = 
   ],
 };
 
-export const ciIsolatedTestFiles: readonly string[] = ["test/dogfood.test.ts"];
+export const ciIsolatedTestFiles: readonly string[] = [
+  "test/contract-dsl.test.ts",
+  "test/contracts.test.ts",
+  "test/dogfood.test.ts",
+];
 
 /** Files whose child Quint process failures must be captured at file granularity. */
 export const ciExternalVerifierTestFiles: readonly string[] = [

@@ -179,6 +179,8 @@ describe("CI test tier manifest", () => {
 
   it("discovers named tests for whole-file process isolation", () => {
     expect(ciIsolatedTestFiles).toContain("test/dogfood.test.ts");
+    expect(ciIsolatedTestFiles).toContain("test/contract-dsl.test.ts");
+    expect(ciIsolatedTestFiles).toContain("test/contracts.test.ts");
     expect(ciTestTiers.quint.every((file) => ciExternalVerifierTestFiles.includes(file))).toBe(true);
     expect(ciExternalVerifierTestFiles).toContain("test/temporal-map-default.test.ts");
     expect(ciTestTiers.quint.some((file) => ciIsolatedTestFiles.includes(file))).toBe(false);
