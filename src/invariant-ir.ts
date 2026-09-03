@@ -2697,6 +2697,58 @@ export function lowerInvariantProgram(
       }
       throw new Error("scalar update must be one identifier assignment, arithmetic compound assignment, or ++/-- expression");
     };
+    const scalarWritesIn = (...roots: Array<ts.Node | undefined>): { names: Set<string>; dynamicScope: boolean } => {
+      const names = new Set<string>();
+      let dynamicScope = false;
+      const addBinding = (name: ts.BindingName): void => {
+        if (ts.isIdentifier(name)) names.add(name.text);
+        else for (const element of name.elements) if (!ts.isOmittedExpression(element)) addBinding(element.name);
+      };
+      const visit = (node: ts.Node): void => {
+        if (ts.isBinaryExpression(node)
+          && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+          && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) {
+          if (ts.isIdentifier(node.left)) names.add(node.left.text);
+          else if (ts.isArrayLiteralExpression(node.left) || ts.isObjectLiteralExpression(node.left)) {
+            // Unsupported destructuring updates conservatively invalidate every
+            // identifier they mention before the expression itself fails closed.
+            const collectIdentifier = (child: ts.Node): void => {
+              if (ts.isIdentifier(child)) names.add(child.text);
+              else ts.forEachChild(child, collectIdentifier);
+            };
+            collectIdentifier(node.left);
+          }
+        } else if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+          && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+          && ts.isIdentifier(node.operand)) {
+          names.add(node.operand.text);
+        } else if (ts.isVariableDeclaration(node)) {
+          addBinding(node.name);
+        } else if (ts.isCallExpression(node)) {
+          // A callback or source-local callable may close over a scalar binding.
+          // Until call summaries carry write sets, preserve no frame across calls.
+          dynamicScope = true;
+        }
+        ts.forEachChild(node, visit);
+      };
+      for (const root of roots) if (root) visit(root);
+      return { names, dynamicScope };
+    };
+    const loopEnvironment = (path: PathState, loopTarget: number, ...roots: Array<ts.Node | undefined>): Environment => {
+      const writes = scalarWritesIn(...roots);
+      const loopEnv: Environment = new Map();
+      for (const [name, value] of path.env) {
+        if (!writes.dynamicScope && !writes.names.has(name)) {
+          loopEnv.set(name, value);
+          continue;
+        }
+        const fresh = `${fn}_${name}_loop_${loopTarget}`;
+        displayNames[fresh] = `${name}@loop`;
+        if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
+        loopEnv.set(name, variable(fresh));
+      }
+      return loopEnv;
+    };
     const executeScopedStatements = (
       statements: readonly ts.Statement[], initial: PathState[], context: ExecutionContext,
       scopeStatements: readonly ts.Statement[] = statements,
@@ -3084,15 +3136,9 @@ export function lowerInvariantProgram(
         const exited: PathState[] = [];
         for (const path of paths) {
           add("loop-init", statement, path.assumptions, substitute(invariant, path.env), invariantSource, path.env);
-          const loopEnv: Environment = new Map();
-          for (const name of path.env.keys()) {
-            const fresh = `${fn}_${name}_loop_${statement.getStart(source)}`;
-            displayNames[fresh] = `${name}@loop`;
-            if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
-            loopEnv.set(name, variable(fresh));
-          }
+          const loopEnv = loopEnvironment(path, loopTarget, statement.expression, statement.statement);
           const inv = substitute(invariant, loopEnv);
-          const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [inv] };
+          const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [...path.assumptions, inv] };
           const conditions = containsTrackedCompletion(statement.expression)
             ? evaluateScalar(statement.expression, conditionSeed)
             : [{ path: conditionSeed, value: evaluateCondition(statement.expression, loopEnv) }];
@@ -3178,15 +3224,9 @@ export function lowerInvariantProgram(
             return { ...exit, env, ...(returnEnv ? { returnEnv } : {}) };
           };
           add("loop-init", statement, path.assumptions, substitute(invariant, path.env), invariantSource, path.env);
-          const loopEnv: Environment = new Map();
-          for (const name of path.env.keys()) {
-            const fresh = `${fn}_${name}_loop_${loopTarget}`;
-            displayNames[fresh] = `${name}@loop`;
-            if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
-            loopEnv.set(name, variable(fresh));
-          }
+          const loopEnv = loopEnvironment(path, loopTarget, statement.condition, statement.incrementor, statement.statement);
           const inv = substitute(invariant, loopEnv);
-          const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [inv] };
+          const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [...path.assumptions, inv] };
           const conditions = !statement.condition
             ? [{ path: conditionSeed, value: { kind: "boolean", value: true } as LogicExpression }]
             : containsTrackedCompletion(statement.condition)
@@ -3222,15 +3262,9 @@ export function lowerInvariantProgram(
         const exited: PathState[] = [];
         for (const path of paths) {
           add("loop-init", statement, path.assumptions, substitute(invariant, path.env), invariantSource, path.env);
-          const loopEnv: Environment = new Map();
-          for (const name of path.env.keys()) {
-            const fresh = `${fn}_${name}_loop_${loopTarget}`;
-            displayNames[fresh] = `${name}@loop`;
-            if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
-            loopEnv.set(name, variable(fresh));
-          }
+          const loopEnv = loopEnvironment(path, loopTarget, statement.statement, statement.expression);
           const inv = substitute(invariant, loopEnv);
-          const bodyInput = [{ ...path, env: new Map(loopEnv), assumptions: [inv] }];
+          const bodyInput = [{ ...path, env: new Map(loopEnv), assumptions: [...path.assumptions, inv] }];
           const loopContext = { breakTarget: loopTarget, continueTarget: loopTarget };
           const bodyPaths = ts.isBlock(statement.statement)
             ? executeScopedBlock(statement.statement, bodyInput, loopContext)

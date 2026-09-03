@@ -472,6 +472,13 @@ same property is proved for arbitrary TypeScript.
 - `for` expression-initializer and update positions accept a comma list of
   supported scalar updates and apply them left-to-right. This covers paired
   counters without admitting arbitrary comma-expression values.
+- Invariant-backed `while`, `for`, and `do...while` now share a conservative
+  syntactic frame rule. A scalar binding with no assignment, declaration, or
+  increment in the loop retains its entry expression and path assumptions;
+  written bindings alone receive fresh loop-state variables. Any call in the
+  loop invalidates the complete scalar frame because callable summaries do not
+  yet carry closure write sets. Same-spelled inner bindings can therefore cause
+  harmless over-invalidation, but are never used to justify preservation.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

@@ -2597,6 +2597,45 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.length).toBeGreaterThanOrEqual(4);
   });
 
+  it("preserves loop-invariant scalar bindings without repeating them in each invariant", async () => {
+    const fileName = "/contract-loop-frame.ts";
+    const source = `
+      type Int = number
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function whileFrame(limit: Int): Int {
+        let index = 0
+        /* uneffect:loop_invariant index >= 0 */
+        while (index < limit) index++
+        return limit
+      }
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function forFrame(limit: Int): Int {
+        /* uneffect:loop_invariant index >= 0 */
+        for (let index = 0; index < limit; index++) {}
+        return limit
+      }
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function doFrame(limit: Int): Int {
+        let index = 0
+        /* uneffect:loop_invariant index >= 0 */
+        do { index++ } while (index < limit)
+        return limit
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    for (const functionName of ["whileFrame", "forFrame", "doFrame"]) {
+      const evidence = JSON.stringify(result.artifacts.filter(({ obligation }) => obligation?.functionName === functionName));
+      expect(evidence).not.toContain(`${functionName}_limit_loop_`);
+      expect(evidence).toContain(`${functionName}_index_loop_`);
+    }
+  });
+
   it("keeps switch break local while continue targets the enclosing while through finally", async () => {
     const fileName = "/contract-loop-switch-finally.ts";
     const source = `

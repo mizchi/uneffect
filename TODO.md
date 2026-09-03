@@ -348,6 +348,10 @@ introducing another domain-local control-flow or alias model.
      - [x] Evaluate multiple initialized identifier declarations in a `for`
        initializer from left to right, retaining function-scoped `var` values
        and restoring every lexical `let`/`const` shadow on loop exit.
+     - [x] Preserve scalar bindings with no syntactic write across invariant-backed
+       `while`, `for`, and `do...while` loops, including their existing path
+       assumptions; a call in the loop conservatively invalidates the whole
+       scalar frame until callable write summaries are available.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.
