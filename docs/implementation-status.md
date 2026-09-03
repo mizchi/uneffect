@@ -449,6 +449,10 @@ same property is proved for arbitrary TypeScript.
   across normal, return, and throw exits. Catch payload shadowing follows the
   same per-path rule. A shadow over a tracked Promise stays an explicit
   non-proof.
+- Supported finite `switch` lowering shares that lexical scope machinery across
+  every case/default clause. Selected fallthrough statements execute in order,
+  but case-local `let`/`const` bindings are removed and shadowed outer scalars
+  are restored at the switch boundary.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

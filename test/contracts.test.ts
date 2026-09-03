@@ -1009,6 +1009,25 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("keeps switch-wide lexical shadows inside the case block", async () => {
+    const fileName = "/switch-lexical-shadow.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value */
+      function switched(value: Int, enabled: boolean): Int {
+        switch (enabled) {
+          case true: const value = 1; break
+          default: break
+        }
+        return value
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
   it("lowers TypeChecker-resolved Math.abs, Math.min, and Math.max into scalar paths", async () => {
     const fileName = "/math-scalar.ts";
     const source = `

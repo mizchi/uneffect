@@ -332,6 +332,8 @@ introducing another domain-local control-flow or alias model.
        outer binding on every completion; apply the same scoped restoration to
        catch payloads, while keeping Promise shadows fail-closed pending a
        fully symbol-keyed environment.
+     - [x] Apply the same restoration to the switch-wide lexical scope while
+       retaining selected-case fallthrough execution and targeted break.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.

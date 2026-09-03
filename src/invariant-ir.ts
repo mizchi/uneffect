@@ -2691,14 +2691,17 @@ export function lowerInvariantProgram(
       }
       throw new Error("scalar update must be one identifier assignment, arithmetic compound assignment, or ++/-- expression");
     };
-    const executeScopedBlock = (block: ts.Block, initial: PathState[], context: ExecutionContext): PathState[] => {
+    const executeScopedStatements = (
+      statements: readonly ts.Statement[], initial: PathState[], context: ExecutionContext,
+      scopeStatements: readonly ts.Statement[] = statements,
+    ): PathState[] => {
       const lexicalNames: string[] = [];
       const functionNames: string[] = [];
       const bindingNames = (name: ts.BindingName): string[] => {
         if (ts.isIdentifier(name)) return [name.text];
         return name.elements.flatMap((element): string[] => ts.isOmittedExpression(element) ? [] : bindingNames(element.name));
       };
-      for (const child of block.statements) {
+      for (const child of scopeStatements) {
         if (!ts.isVariableStatement(child)) continue;
         const lexical = (child.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
         for (const declaration of child.declarationList.declarations) {
@@ -2708,7 +2711,7 @@ export function lowerInvariantProgram(
       if (new Set(lexicalNames).size !== lexicalNames.length) throw new Error("duplicate lexical bindings in a block are unsupported");
       const shadowedNames = lexicalNames.filter((name) => initial.some((path) => path.env.has(name) || path.pendingPromises.has(name)));
       if (shadowedNames.length > 0 && initial.length > 1) {
-        return initial.flatMap((path) => executeScopedBlock(block, [path], context));
+        return initial.flatMap((path) => executeScopedStatements(statements, [path], context, scopeStatements));
       }
       const shadowedValues = new Map<string, LogicExpression>();
       for (const name of shadowedNames) {
@@ -2723,7 +2726,7 @@ export function lowerInvariantProgram(
         shadowedValues.set(name, first);
       }
       const retained = new Set([...initial.flatMap((path) => [...path.env.keys()]), ...functionNames]);
-      return execute(block.statements, initial, context).map((exit): PathState => {
+      return execute(statements, initial, context).map((exit): PathState => {
         const env = new Map([...exit.env].filter(([name]) => retained.has(name)));
         for (const [name, value] of shadowedValues) env.set(name, value);
         for (const [name, pending] of exit.pendingPromises) {
@@ -2738,6 +2741,8 @@ export function lowerInvariantProgram(
         return { ...exit, env, pendingPromises, ...(returnEnv ? { returnEnv } : {}) };
       });
     };
+    const executeScopedBlock = (block: ts.Block, initial: PathState[], context: ExecutionContext): PathState[] =>
+      executeScopedStatements(block.statements, initial, context);
     /** One statement of the verified subset; anything else is rejected with its own location. */
     const step = (statement: ts.Statement, incoming: PathState[], context: ExecutionContext): PathState[] => {
       let paths = incoming;
@@ -3019,6 +3024,7 @@ export function lowerInvariantProgram(
         const caseSorts = new Set(keys.map((key) => key.startsWith("b:") ? "Bool" : key.startsWith("n:") ? "Int" : "Discriminant"));
         if (caseSorts.size > 1) throw new Error("switch case literals must use one scalar sort");
         const switched: PathState[] = [];
+        const switchScopeStatements = clauses.flatMap((clause) => [...clause.statements]);
         for (const path of paths) {
           const stringSwitch = caseSorts.has("Discriminant");
           const evaluations: Array<{ path: PathState; value?: LogicExpression }> = stringSwitch
@@ -3049,7 +3055,12 @@ export function lowerInvariantProgram(
               ? conditionFor(entry)
               : conjunction(nonMatches) ?? { kind: "boolean", value: true };
             const suffix = clauses.slice(index).flatMap((item) => [...item.statements]);
-            const exits = execute(suffix, [{ ...activePath, env: new Map(activePath.env), assumptions: [...activePath.assumptions, condition] }], { ...context, breakTarget: switchTarget });
+            const exits = executeScopedStatements(
+              suffix,
+              [{ ...activePath, env: new Map(activePath.env), assumptions: [...activePath.assumptions, condition] }],
+              { ...context, breakTarget: switchTarget },
+              switchScopeStatements,
+            );
             switched.push(...exits.map((exit): PathState => exit.completion === "break" && exit.breakTarget === switchTarget
               ? { ...exit, completion: "normal", breakTarget: undefined } : exit));
           }

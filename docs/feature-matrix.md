@@ -589,6 +589,9 @@ abrupt exits restore that path's outer value. The same rule applies to a catch
 payload: the payload binding is local to the handler and the corresponding
 outer value is restored afterward. A Promise binding sharing the name remains
 `unknown` pending a fully symbol-keyed contract environment.
+The same scoped-statement helper treats all clauses of a supported `switch` as
+one lexical scope while executing only the selected fallthrough suffix, so an
+unbraced case-local declaration cannot leak over an outer scalar.
 Explicitly typed uninitialized scalar `let` bindings are supported only when
 the exact TypeScript Program reports no definite-assignment error. Their
 unconstrained placeholder preserves binding identity across joins and carries
