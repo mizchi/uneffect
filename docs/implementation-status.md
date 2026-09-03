@@ -950,6 +950,10 @@ same property is proved for arbitrary TypeScript.
   Relation evidence carries schema v1, declaration file/span/SHA-256, and exact
   TypeScript version; stale or incompatible evidence downgrades the caller to
   `unknown`. Project verification applies this pass after solving every file.
+  Synchronous contracts authored immediately above an immutable `const` arrow
+  or function expression are normalized into the same contract CFG, including
+  expression-bodied arrows and nested scalar calls. Their source evidence stays
+  bound to the original initializer; `let`-bound functions are not promoted.
   Persisted package summaries can now be consumed at call sites through a
   TypeChecker-resolved installed declaration. The standalone
   `uneffect-contract-summary/v1` producer/validator now emits package/version,

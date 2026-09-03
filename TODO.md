@@ -2921,6 +2921,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Reuse the common stable-callable resolver for a static own property
       of an existing builtin-`Object.freeze` literal; keep ordinary mutable
       object properties unsupported and do not recommend runtime freezing.
+    - [x] Normalize contracts on immutable `const` arrow and function
+      expressions, including expression-bodied arrows, into the same local
+      obligation and relational fixed point. Reject `let`-bound callables.
 - [x] Generalize the reconciler across source files in one checked TypeScript
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project

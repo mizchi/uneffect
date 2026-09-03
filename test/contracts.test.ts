@@ -4233,6 +4233,38 @@ describe("Hoare contract checker", () => {
       .toMatchObject({ message: expect.stringContaining("helpers.addOne(value)") });
   });
 
+  it("composes synchronous contracts authored on const function expressions", async () => {
+    const fileName = "/verified-sync-function-expressions.ts";
+    const source = `
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      const addOne = (value: number): number => value + 1
+      /* uneffect:ensures result === value * 2 */
+      const double = function(value: number): number { return value * 2 }
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === (value + 1) * 2 */
+      function caller(value: number): number {
+        return double(addOne(value))
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    const caller = result.artifacts.filter(({ obligation }) => obligation?.functionName === "caller");
+    expect(caller.flatMap(({ controlFlow }) => controlFlow?.relationalCalls ?? []))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "addOne", evidence: "verified" }),
+        expect.objectContaining({ functionName: "double", evidence: "verified" }),
+      ]));
+
+    const mutableSource = source.replace("const addOne =", "let addOne =");
+    const mutable = await verifyContractObligations("/unsupported-sync-function-expression.ts", mutableSource, undefined,
+      programFor("/unsupported-sync-function-expression.ts", mutableSource));
+    expect(mutable.artifacts.find(({ status }) => status === "unsupported"))
+      .toMatchObject({ message: expect.stringContaining("addOne(value)") });
+  });
+
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `

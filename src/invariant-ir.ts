@@ -1165,6 +1165,19 @@ function typeCheckerCallCompletions(
     const symbol = checker.getSymbolAtLocation(variable.name);
     return symbol ? { name: variable.name.text, symbol } : undefined;
   };
+  const callableAnnotationOwner = (declaration: LocalAsyncCallable): ts.Node => {
+    if (ts.isFunctionDeclaration(declaration)) return declaration;
+    const variable = declaration.parent;
+    if (!ts.isVariableDeclaration(variable)) return declaration;
+    const declarationList = variable.parent;
+    return ts.isVariableDeclarationList(declarationList) && ts.isVariableStatement(declarationList.parent)
+      ? declarationList.parent : variable;
+  };
+  const callableComments = (declaration: LocalAsyncCallable): string => {
+    const owner = callableAnnotationOwner(declaration);
+    const ownerSource = owner.getSourceFile();
+    return ownerSource.text.slice(owner.getFullStart(), owner.getStart(ownerSource));
+  };
   const stableCallable = (call: ts.CallExpression, targetSymbol: ts.Symbol): boolean => {
     return resolveStableCallableSymbol(checker, call.expression) === targetSymbol && !symbolIsWritten(targetSymbol);
   };
@@ -1425,7 +1438,8 @@ function typeCheckerCallCompletions(
           && binding.declarationSpan.end === declaration.getEnd()
           && binding.callSites.some((site) => site.fileName === source.fileName
             && site.span.start === call.getStart(source) && site.span.end === call.getEnd()));
-        const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
+        const comments = (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration))
+          ? callableComments(declaration) : declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
         const rejected = extractAnnotations(comments, "temporal_rejects");
         const externalRejected = external?.summary.effect?.rejects ?? [];
         const thrown = extractAnnotations(comments, "temporal_throws");
@@ -1474,7 +1488,8 @@ function typeCheckerCallCompletions(
             && site.span.start === call.getStart(source) && site.span.end === call.getEnd()));
         const resultDomain = scalarDomain(checker.getReturnTypeOfSignature(signature));
         const externalThrows = external?.summary.effect?.effects.filter((effect) => /^Throw<.+>$/.test(effect)) ?? [];
-        const comments = declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
+        const comments = (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration))
+          ? callableComments(declaration) : declarationSource.text.slice(declaration.getFullStart(), declaration.getStart(declarationSource));
         const localIdentity = (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration))
           ? callableIdentity(declaration) : undefined;
         const local = !declarationSource.isDeclarationFile && localIdentity && stableCallable(call, localIdentity.symbol)
@@ -1763,10 +1778,43 @@ export function lowerInvariantProgram(
     readonly body: ts.Block;
   };
   const contractCallables: ContractCallable[] = [];
+  const callableCommentOwners = new Map<ContractCallable, ts.Node>();
+  const normalizedVariableCallable = (declaration: ts.VariableDeclaration): ContractCallable | undefined => {
+    if (!ts.isIdentifier(declaration.name) || !declaration.initializer
+      || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+      || !(ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))) return undefined;
+    const initializer = declaration.initializer;
+    let body: ts.Block;
+    if (ts.isBlock(initializer.body)) {
+      body = initializer.body;
+    } else {
+      const returned = ts.setTextRange(ts.factory.createReturnStatement(initializer.body), initializer.body);
+      body = ts.setTextRange(ts.factory.createBlock([returned], true), initializer.body);
+    }
+    const normalized = ts.setTextRange(ts.factory.createFunctionDeclaration(
+      initializer.modifiers,
+      ts.isFunctionExpression(initializer) ? initializer.asteriskToken : undefined,
+      declaration.name,
+      initializer.typeParameters,
+      initializer.parameters,
+      initializer.type,
+      body,
+    ), initializer) as ContractCallable;
+    const list = declaration.parent;
+    callableCommentOwners.set(normalized, ts.isVariableDeclarationList(list) && ts.isVariableStatement(list.parent)
+      ? list.parent : declaration);
+    return normalized;
+  };
   for (const statement of source.statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
       contractCallables.push(statement as ContractCallable);
       continue;
+    }
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        const callable = normalizedVariableCallable(declaration);
+        if (callable) contractCallables.push(callable);
+      }
     }
     const visitObjectMethods = (node: ts.Node): void => {
       if (ts.isMethodDeclaration(node) && ts.isObjectLiteralExpression(node.parent)
@@ -1779,7 +1827,8 @@ export function lowerInvariantProgram(
     visitObjectMethods(statement);
   }
   for (const node of contractCallables) {
-    const comments = source.text.slice(node.getFullStart(), node.getStart(source));
+    const commentOwner = callableCommentOwners.get(node) ?? node;
+    const comments = source.text.slice(commentOwner.getFullStart(), commentOwner.getStart(source));
     const header = { start: node.getStart(source), end: node.getEnd() };
     let requires: LogicExpression[];
     let ensures: Array<{ source: string; expression: LogicExpression }>;

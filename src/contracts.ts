@@ -85,9 +85,18 @@ function clauseOf(obligation: InvariantObligation): ContractDiagnostic["clause"]
 export function reconcileContractArtifacts(sources: ReadonlyMap<string, string>, input: readonly VerificationArtifact[]): { artifacts: VerificationArtifact[]; diagnostics: ContractDiagnostic[] } {
   let artifacts = input.map((artifact) => artifact);
   const sourceFiles = new Map([...sources].map(([fileName, text]) => [fileName, ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)]));
-  const localBodies = new Set([...sourceFiles].flatMap(([fileName, source]) => source.statements.flatMap((statement) =>
-    ts.isFunctionDeclaration(statement) && statement.name && statement.body
-      ? [`${fileName}:${statement.getStart(source)}:${statement.getEnd()}`] : [])));
+  const localBodies = new Set([...sourceFiles].flatMap(([fileName, source]) => source.statements.flatMap((statement) => {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      return [`${fileName}:${statement.getStart(source)}:${statement.getEnd()}`];
+    }
+    if (!ts.isVariableStatement(statement)) return [];
+    return statement.declarationList.declarations.flatMap((declaration) => {
+      const initializer = declaration.initializer;
+      return ts.isIdentifier(declaration.name) && initializer
+        && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))
+        ? [`${fileName}:${initializer.getStart(source)}:${initializer.getEnd()}`] : [];
+    });
+  })));
   const declarationKey = (fileName: string, span: { start: number; end: number }): string => `${fileName}:${span.start}:${span.end}`;
   const integrityFailure = (call: NonNullable<ContractControlFlowEvidence["relationalCalls"]>[number]): string | undefined => {
     const declarationSource = sourceFiles.get(call.declarationFileName);
