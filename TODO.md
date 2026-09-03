@@ -362,6 +362,9 @@ introducing another domain-local control-flow or alias model.
            leaves. Propagate child writes; keep recursion, dynamic callback
            dispatch, external calls, and unsupported member operations as
            whole-frame invalidation.
+         - [x] Traverse an imported callable when its concrete non-declaration
+           `.ts` body is present in the same TypeScript Program and error-free;
+           `.d.ts`-only and otherwise opaque dependencies remain fail-closed.
        - [x] Treat a nested function declaration as non-executing declaration
          setup in the contract CFG; analyze its body only at a resolved call.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,

@@ -981,26 +981,38 @@ function typeCheckerCallableScalarWrites(
     .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
   if (errors.length > 0) return summaries;
   const checker = program.getTypeChecker();
-  const reviewedMathCalls = typeCheckerMathScalarCalls(program, fileName, text);
+  const reviewedMathByFile = new Map<string, Map<string, MathScalarCallFact>>();
+  const reviewedMathCalls = (candidate: ts.SourceFile): Map<string, MathScalarCallFact> => {
+    const cached = reviewedMathByFile.get(candidate.fileName);
+    if (cached) return cached;
+    const facts = typeCheckerMathScalarCalls(program, candidate.fileName, candidate.text);
+    reviewedMathByFile.set(candidate.fileName, facts);
+    return facts;
+  };
   const memo = new Map<ts.Node, readonly string[] | null>();
   const summarize = (declaration: ReturnType<typeof stableCallableDeclaration>, stack: ReadonlySet<ts.Node>): readonly string[] | undefined => {
-    if (!declaration || !("body" in declaration) || !declaration.body || declaration.getSourceFile() !== source) return undefined;
+    if (!declaration || !("body" in declaration) || !declaration.body || declaration.getSourceFile().isDeclarationFile) return undefined;
     const cached = memo.get(declaration);
     if (cached !== undefined) return cached ?? undefined;
     if (stack.has(declaration)) return undefined;
     const nextStack = new Set(stack).add(declaration);
     const body = declaration.body;
+    const declarationSource = declaration.getSourceFile();
+    const declarationErrors = [...program.getSyntacticDiagnostics(declarationSource), ...program.getSemanticDiagnostics(declarationSource)]
+      .some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+    if (declarationErrors) { memo.set(declaration, null); return undefined; }
+    const mathCalls = reviewedMathCalls(declarationSource);
     const writes = new Set<string>();
     let closed = true;
-    const declarationStart = declaration.getStart(source);
+    const declarationStart = declaration.getStart(declarationSource);
     const declarationEnd = declaration.getEnd();
     const localToCallable = (target: ts.Symbol): boolean => (target.declarations ?? []).some((item) =>
-      item.getSourceFile() === source && item.getStart(source) >= declarationStart && item.getEnd() <= declarationEnd);
+      item.getSourceFile() === declarationSource && item.getStart(declarationSource) >= declarationStart && item.getEnd() <= declarationEnd);
     const scan = (node: ts.Node): void => {
       if (!closed) return;
       if (ts.isCallExpression(node)) {
-        const span = `${node.getStart(source)}:${node.getEnd()}`;
-        if (!reviewedMathCalls.has(span)) {
+        const span = `${node.getStart(declarationSource)}:${node.getEnd()}`;
+        if (!mathCalls.has(span)) {
           const childSymbol = resolveStableCallableSymbol(checker, node.expression);
           const child = childSymbol && stableCallableDeclaration(childSymbol);
           const childWrites = summarize(child, nextStack);

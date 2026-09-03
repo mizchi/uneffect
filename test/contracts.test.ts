@@ -2699,6 +2699,55 @@ describe("Hoare contract checker", () => {
     expect(JSON.stringify(recursive)).toContain("recursive_limit_loop_");
   });
 
+  it("preserves scalar frames across a Program-visible imported callable body", () => {
+    const files = {
+      "/producer.ts": `
+        type Int = number
+        /* uneffect:ensures result === value */
+        export function identity(value: Int): Int { return value }
+      `,
+      "/consumer.ts": `
+        import { identity as read } from "./producer"
+        type Int = number
+        /* uneffect:requires limit >= 0 */
+        /* uneffect:ensures result >= 0 */
+        export function run(limit: Int): Int {
+          let index = 0
+          /* uneffect:loop_invariant index >= 0 */
+          while (read(index) < limit) index++
+          return limit
+        }
+      `,
+    };
+    const program = programForFiles(files);
+    const obligations = lowerInvariantProgram("/consumer.ts", files["/consumer.ts"], program);
+    const evidence = JSON.stringify(obligations);
+
+    expect(evidence).not.toContain("run_limit_loop_");
+    expect(evidence).toContain("run_index_loop_");
+
+    const opaqueFiles = {
+      "/external.d.ts": `
+        /* uneffect:ensures result === value */
+        export function identity(value: number): number
+      `,
+      "/opaque-consumer.ts": `
+        import { identity } from "./external"
+        /* uneffect:requires limit >= 0 */
+        /* uneffect:ensures result >= 0 */
+        export function opaque(limit: number): number {
+          let index = 0
+          /* uneffect:loop_invariant index >= 0 */
+          while (identity(index) < limit) index++
+          return limit
+        }
+      `,
+    };
+    const opaqueProgram = programForFiles(opaqueFiles);
+    expect(() => lowerInvariantProgram("/opaque-consumer.ts", opaqueFiles["/opaque-consumer.ts"], opaqueProgram))
+      .toThrow(/unsupported invariant expression/);
+  });
+
   it("keeps switch break local while continue targets the enclosing while through finally", async () => {
     const fileName = "/contract-loop-switch-finally.ts";
     const source = `
