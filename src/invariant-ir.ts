@@ -2967,7 +2967,13 @@ export function lowerInvariantProgram(
           }
           paths = paths.flatMap((path): PathState[] => {
             const conditions: Array<{ path: PathState; condition?: LogicExpression }> = assertion.condition === "truthy"
-              ? [{ path, condition: evaluateCondition(call.arguments[0]!, path.env) }]
+              ? evaluateScalar(call.arguments[0]!, path).map(({ path: branch, value }) => {
+                if (branch.completion !== "normal") return { path: branch };
+                if (scalarExpressionSort(value) !== "Bool") {
+                  throw new Error(`truthy assertion requires a Boolean-valued expression: ${call.getText(source)}`);
+                }
+                return { path: branch, condition: value };
+              })
               : assertion.condition === "nullish"
                 ? (() => {
                   let argument = call.arguments[0];

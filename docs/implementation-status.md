@@ -781,7 +781,9 @@ same property is proved for arbitrary TypeScript.
   Their operands use the shared left-to-right scalar evaluator: an authenticated
   synchronous throw from an earlier operand bypasses the assertion and reaches
   catch with its original effect and environment, rather than being relabeled
-  as `AssertionError`.
+  as `AssertionError`. Reviewed Boolean `ok`/callable assertions use the same
+  completion rule, so an effectful Boolean producer is asserted only after its
+  normal completion.
   Direct expression-statement calls likewise evaluate any argument containing
   an authenticated synchronous contract call from left to right before the
   outer call completion. An argument throw skips the outer call and retains its

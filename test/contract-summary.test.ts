@@ -1709,7 +1709,7 @@ describe("persisted contract summary bundles", () => {
     const nestedFile = join(directory, "nested.ts");
     const nestedSource = `
       import { api } from "@example/danger-api"
-      import { strictEqual } from "node:assert/strict"
+      import { ok, strictEqual } from "node:assert/strict"
       /* uneffect:ensures result === value */
       /* uneffect:temporal_contract rejects TypeError */
       /* uneffect:temporal_contract throws URIError */
@@ -1845,6 +1845,17 @@ describe("persisted contract summary bundles", () => {
         }
         return 5
       }
+      /* uneffect:ensures result === 5 */
+      export function assertedTruthy(value: number): number {
+        let result = 5
+        try {
+          ok(api.ensureNonnegative(value))
+          result = 6
+        } catch {
+          return result
+        }
+        return 5
+      }
       /* uneffect:ensures result === 1 */
       export function nestedStatement(value: number): number {
         try {
@@ -1904,12 +1915,18 @@ describe("persisted contract summary bundles", () => {
     expect(twice).toMatchObject({ status: "verified" });
     expect(twice?.controlFlow?.exceptionFlow?.escapes).toHaveLength(2);
     expect(new Set(twice?.controlFlow?.exceptionFlow?.escapes.map(({ originSpan }) => `${originSpan.start}:${originSpan.end}`)).size).toBe(2);
-    for (const functionName of ["compound", "logical", "nullish", "asserted", "nestedStatement", "nestedThrow"]) {
+    for (const functionName of ["compound", "logical", "nullish", "asserted", "assertedTruthy", "nestedStatement", "nestedThrow"]) {
       expect(nestedVerification.artifacts.find((artifact) => artifact.obligation?.functionName === functionName
         && artifact.controlFlow?.exceptionFlow?.discharged.length)).toMatchObject({ status: "verified" });
     }
     expect(nestedVerification.artifacts
       .filter((artifact) => artifact.obligation?.functionName === "asserted")
+      .flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? [])).toEqual(expect.arrayContaining([
+        expect.objectContaining({ effect: "Throw<RangeError>" }),
+        expect.objectContaining({ effect: "Throw<AssertionError>" }),
+      ]));
+    expect(nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "assertedTruthy")
       .flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? [])).toEqual(expect.arrayContaining([
         expect.objectContaining({ effect: "Throw<RangeError>" }),
         expect.objectContaining({ effect: "Throw<AssertionError>" }),
