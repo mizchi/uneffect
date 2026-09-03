@@ -3,6 +3,8 @@ import { extractLocatedAnnotations, validateUneffectAnnotations, type Annotation
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, effectSchema, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, parseParameterizedCapabilityScope, unknownCapabilityReasons, type Effect, type EffectSchema } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
+import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
+import { overlayCorsaBuiltinCatalog } from "./corsa-builtin-catalog.js";
 import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { buildProgramCallGraph, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
@@ -925,6 +927,8 @@ export interface EffectAnalysisOptions {
   externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;
   /** Specification-local schemas. They never mutate the process-global registry. */
   effectSchemas?: ReadonlyMap<string, EffectSchema>;
+  /** Optional Corsa sidecar for the admitted Fetch/Console catalog. */
+  corsaFrontend?: CorsaApiFrontend;
 }
 
 export function externalContractForCall(
@@ -1798,9 +1802,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     externalCallContracts.set(call, contract);
     return contract;
   };
+  const typescriptAdapter = new TypeScriptFrontendAdapter(program, registry);
+  const adapter = options.corsaFrontend === undefined
+    ? typescriptAdapter
+    : overlayCorsaBuiltinCatalog(typescriptAdapter, options.corsaFrontend, registry);
   const graph = buildProgramCallGraph(program, {
-    externalIteratorEffects, externalCallableEffects, builtinRegistry: registry,
-  }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry);
+    externalIteratorEffects, externalCallableEffects, builtinRegistry: registry, adapter,
+  }), nodes = callableNodes(program);
   const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
   for (const source of program.getSourceFiles()) if (!source.isDeclarationFile) {
     const problems = validateUneffectAnnotations(source.text);

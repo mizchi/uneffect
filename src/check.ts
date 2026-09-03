@@ -129,6 +129,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     builtinRegistry: options.builtinRegistry,
     externalFunctionEffects,
     externalModuleEffects: options.externalModuleEffects,
+    ...(options.corsaFrontend === undefined ? {} : { corsaFrontend: options.corsaFrontend }),
   });
   const effects = {
     summaries: analyzedEffects.summaries.filter((summary) => !summary.fileName?.endsWith(".uneffect.ts")),

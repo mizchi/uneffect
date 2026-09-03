@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, bench, describe } from "vitest";
-import { openCorsaApiFrontend, type CorsaBuiltinCallQuery } from "../src/corsa-api-frontend.js";
+import { openCorsaApiFrontend, resolveCorsaExecutable, type CorsaBuiltinCallQuery } from "../src/corsa-api-frontend.js";
 
 const fixture = resolve("test/fixtures/corsa-api-project/index.ts");
 const source = readFileSync(fixture, "utf8");
@@ -19,7 +19,7 @@ const queries100 = repeatedQueries(100);
 const queries1000 = repeatedQueries(1_000);
 const frontend = await openCorsaApiFrontend({
   configFile: resolve("test/fixtures/corsa-api-project/tsconfig.json"),
-  corsaExecutable: resolve("node_modules/.bin/tsgo"),
+  corsaExecutable: resolveCorsaExecutable(),
 });
 
 for (const queries of [queries100, queries1000]) {

@@ -2,13 +2,14 @@ import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
+import { resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 describe("corsa-bind checker fact exporter", () => {
   it("exports Workhub-shaped FsRead, Fetch/Net, and FsWrite facts in source order", async () => {
     const fileName = "examples/dogfood/corsa-workhub-builtins.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const synchronize = facts.symbols.find((symbol) => symbol.name === "synchronizeState")!;
 
     expect(synchronize.inferredEffects.map(({ effect, builtin }) => ({ effect, builtin }))).toEqual([
@@ -62,7 +63,7 @@ describe("corsa-bind checker fact exporter", () => {
         }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const synchronize = facts.symbols.find((symbol) => symbol.name === "synchronizeState")!;
 
     expect(synchronize.inferredEffects).toEqual([]);
@@ -73,7 +74,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("exports Workhub-shaped directory and append filesystem effects in source order", async () => {
     const fileName = "examples/dogfood/corsa-workhub-fs-directory.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const update = facts.symbols.find((symbol) => symbol.name === "updateArchive")!;
     expect(update.inferredEffects.map(({ effect, builtin }) => ({ effect, builtin }))).toEqual([
       { effect: "FsRead", builtin: { module: "node:fs/promises", export: "access" } },
@@ -103,7 +104,7 @@ describe("corsa-bind checker fact exporter", () => {
         access(path); readdir(path); mkdir(path); appendFile(path, "x")
       }
     ` };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.symbols.find((symbol) => symbol.name === "update")?.inferredEffects).toEqual([]);
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
     expect(compared.checkerMetadataEquivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
@@ -130,7 +131,7 @@ describe("corsa-bind checker fact exporter", () => {
         }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const synchronize = facts.symbols.find((symbol) => symbol.name === "synchronizeState")!;
 
     expect(synchronize.inferredEffects).toEqual([]);
@@ -141,7 +142,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("rejects tampered Workhub builtin metadata while retaining semantic effects", async () => {
     const fileName = "examples/dogfood/corsa-workhub-builtins.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const tampered = structuredClone(facts);
     const synchronize = tampered.symbols.find((symbol) => symbol.name === "synchronizeState")!;
     synchronize.inferredEffects.find((effect) => effect.effect === "FsRead")!.builtin.export = "readFileSync";
@@ -159,7 +160,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("rejects tampered directory and append builtin metadata", async () => {
     const fileName = "examples/dogfood/corsa-workhub-fs-directory.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const tampered = structuredClone(facts);
     const update = tampered.symbols.find((symbol) => symbol.name === "updateArchive")!;
     update.inferredEffects.find((effect) => effect.builtin.export === "mkdir")!.builtin.export = "rm";
@@ -173,7 +174,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("exports a Workhub-shaped direct await under one if branch", async () => {
     const fileName = "examples/dogfood/corsa-workhub-conditional-await.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations).toEqual([
       expect.objectContaining({
         source: "response.text()",
@@ -196,7 +197,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("exports Workhub-shaped direct try/catch await ownership", async () => {
     const fileName = "examples/dogfood/corsa-workhub-caught-await.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations).toEqual([
       expect.objectContaining({
         source: 'readFile(path, "utf8")',
@@ -229,7 +230,7 @@ describe("corsa-bind checker fact exporter", () => {
         try { try { await operation() } catch {} } catch {}
       }
     ` };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations).toEqual([
       expect.objectContaining({ source: "operation()", catchesRejection: false }),
     ]);
@@ -242,7 +243,7 @@ describe("corsa-bind checker fact exporter", () => {
         try { if (flag) await operation() } catch {}
       }
     ` };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations).toEqual([
       expect.objectContaining({
         source: "operation()",
@@ -258,7 +259,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("rejects tampered direct try/catch await ownership", async () => {
     const fileName = "examples/dogfood/corsa-workhub-caught-await.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     facts.promiseObservations[0]!.catchesRejection = false;
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
     expect(compared).toMatchObject({ equivalent: false, semanticEquivalent: false });
@@ -270,7 +271,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("exports Workhub-shaped dynamic fs import and read facts", async () => {
     const fileName = "examples/dogfood/corsa-workhub-dynamic-fs-import.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.symbols.find((symbol) => symbol.name === "loadConfigText")?.inferredEffects).toEqual([
       expect.objectContaining({
         effect: "FsRead",
@@ -310,14 +311,14 @@ describe("corsa-bind checker fact exporter", () => {
         return load(path, "utf8")
       }
     ` };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.symbols.flatMap((symbol) => symbol.inferredEffects)).toEqual([]);
   });
 
   it("rejects tampered dynamic fs import effect and observation evidence", async () => {
     const fileName = "examples/dogfood/corsa-workhub-dynamic-fs-import.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const original = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const original = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const mutations = [
       (facts: typeof original) => { facts.symbols[0]!.inferredEffects[0]!.builtin.module = "node:fs"; },
       (facts: typeof original) => { facts.symbols[0]!.inferredEffects[0]!.builtin.export = "writeFile"; },
@@ -339,7 +340,7 @@ describe("corsa-bind checker fact exporter", () => {
         return await response.text().catch(() => "")
       }
     ` };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations).toEqual([
       expect.objectContaining({
         source: 'response.text().catch(() => "")',
@@ -363,7 +364,7 @@ describe("corsa-bind checker fact exporter", () => {
         else return await right.text()
       }
     ` };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations.map((item) => ({ source: item.source, conditions: item.controlConditions }))).toEqual([
       { source: "left.text()", conditions: [expect.objectContaining({ expected: true })] },
       { source: "right.text()", conditions: [expect.objectContaining({ expected: false })] },
@@ -379,7 +380,7 @@ describe("corsa-bind checker fact exporter", () => {
       `export async function nested(a: boolean, b: boolean, response: Response) { if (a) { if (b) await response.text() } }`,
       `export async function loop(enabled: boolean, response: Response) { while (enabled) await response.text() }`,
     ]) {
-      const facts = await exportCorsaCheckerFacts({ files: { "fixture.ts": source }, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+      const facts = await exportCorsaCheckerFacts({ files: { "fixture.ts": source }, corsaExecutable: resolveCorsaExecutable() });
       expect(facts.promiseObservations).toEqual([]);
       const compared = await compareUneffectFrontends({
         files: { "fixture.ts": source }, corsaFacts: facts, requireCorsaCheckerFacts: true,
@@ -394,7 +395,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("rejects tampered single-if condition identity, polarity, and path evidence", async () => {
     const fileName = "examples/dogfood/corsa-workhub-conditional-await.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const mutations = [
       (tampered: typeof facts) => { tampered.promiseObservations[0]!.controlConditions[0]!.id += ":forged"; },
       (tampered: typeof facts) => { tampered.promiseObservations[0]!.controlConditions[0]!.expected = false; },
@@ -416,7 +417,7 @@ describe("corsa-bind checker fact exporter", () => {
       "a.ts": `export async function load(enabled: boolean, response: Response) { if (enabled) await response.text() }`,
       "b.ts": `export async function load(enabled: boolean, response: Response) { if (enabled) await response.text() }`,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
     expect(compared.equivalent, JSON.stringify(compared.schemaDrift, null, 2)).toBe(true);
     expect(facts.promiseObservations.map((item) => item.controlConditions[0]?.id)).toEqual([
@@ -429,7 +430,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("exports Workhub-shaped direct Promise return observations", async () => {
     const fileName = "examples/dogfood/corsa-workhub-promise-returns.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations.map((item) => ({
       source: item.source,
       observation: item.observation,
@@ -455,7 +456,7 @@ describe("corsa-bind checker fact exporter", () => {
       `export function nested(response: Response): Promise<unknown> { return response.json() as unknown as Promise<unknown> }`,
     ]) {
       const files = { "fixture.ts": source };
-      const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+      const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
       expect(facts.promiseObservations).toEqual([]);
       const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
       expect(compared).toMatchObject({ equivalent: false, checkerMetadataEquivalent: false });
@@ -465,7 +466,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("rejects tampered direct-return source, span, owner, and observation evidence", async () => {
     const fileName = "examples/dogfood/corsa-workhub-promise-returns.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const mutations = [
       (tampered: typeof facts) => { tampered.promiseObservations[0]!.source = "response.text()"; },
       (tampered: typeof facts) => { tampered.promiseObservations[0]!.span.end -= 1; },
@@ -492,7 +493,7 @@ describe("corsa-bind checker fact exporter", () => {
         }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     expect(facts.promiseObservations).toEqual([
       expect.objectContaining({ source: 'fetch("https://example.com/done")' }),
     ]);
@@ -504,7 +505,7 @@ describe("corsa-bind checker fact exporter", () => {
   it("rejects tampered direct-await source, span, and owner metadata", async () => {
     const fileName = "examples/dogfood/corsa-workhub-builtins.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const mutations = [
       (tampered: typeof facts) => { tampered.promiseObservations[0]!.source = "readFile(otherPath)"; },
       (tampered: typeof facts) => { tampered.promiseObservations[0]!.span.start += 1; },
@@ -528,7 +529,7 @@ describe("corsa-bind checker fact exporter", () => {
         export function main(): void { emit("first"); emit("second") }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const emit = facts.symbols.find((symbol) => symbol.name === "emit") as any;
 
     expect(emit.inferredEffects).toEqual([
@@ -569,7 +570,7 @@ describe("corsa-bind checker fact exporter", () => {
         export function main(): void { emit("x") }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const emit = facts.symbols.find((symbol) => symbol.name === "emit") as any;
 
     expect(emit.inferredEffects).toEqual([]);
@@ -589,7 +590,7 @@ describe("corsa-bind checker fact exporter", () => {
     ` };
     const facts = await exportCorsaCheckerFacts({
       files,
-      corsaExecutable: resolve("node_modules/.bin/tsgo"),
+      corsaExecutable: resolveCorsaExecutable(),
     });
 
     expect(facts).toMatchObject({
@@ -649,7 +650,7 @@ describe("corsa-bind checker fact exporter", () => {
     };
     const facts = await exportCorsaCheckerFacts({
       files,
-      corsaExecutable: resolve("node_modules/.bin/tsgo"),
+      corsaExecutable: resolveCorsaExecutable(),
     });
     expect(facts.symbols).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "emit" }),
@@ -678,7 +679,7 @@ describe("corsa-bind checker fact exporter", () => {
       "a.ts": `/* uneffect:effect Console */ export function run() { console.log("a") }`,
       "b.ts": `import { run as dependencyRun } from "./a.js"; export function run() { dependencyRun() }`,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const compared = await compareUneffectFrontends({
       files,
       corsaFacts: facts,
@@ -702,7 +703,7 @@ describe("corsa-bind checker fact exporter", () => {
       "a.ts": `/* uneffect:effect Console */ export const emit = (message: string): void => { console.log(message) }`,
       "b.ts": `import { emit } from "./a.js"; export const main = function () { emit("x") }`,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const compared = await compareUneffectFrontends({
       files,
       corsaFacts: facts,
@@ -731,7 +732,7 @@ describe("corsa-bind checker fact exporter", () => {
         export function main() { [1].forEach(() => emit()) }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
 
     expect(facts.symbols).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "emit" }),
@@ -762,7 +763,7 @@ describe("corsa-bind checker fact exporter", () => {
         export function main(logger: Logger) { logger.emit("x") }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
 
     expect(compared.equivalent, JSON.stringify({
@@ -790,7 +791,7 @@ describe("corsa-bind checker fact exporter", () => {
         export function main(logger: Logger) { logger[key]() }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
 
     expect(compared).toMatchObject({
@@ -816,7 +817,7 @@ describe("corsa-bind checker fact exporter", () => {
         export function main() { return parse("x") }
       `,
     };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const parse = facts.symbols.find((symbol) => symbol.name === "parse")!;
     const call = facts.calls[0]!;
 

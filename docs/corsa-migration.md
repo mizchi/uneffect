@@ -4,7 +4,7 @@
 
 A staged migration to `@corsa-bind/napi` is realistic and worth continuing.
 A complete replacement of the TypeScript Compiler API is not realistic with
-the current Corsa 1.12.4 API. Corsa should remain an optional semantic sidecar
+the current Corsa 1.13.0 API. Corsa should remain an optional semantic sidecar
 until it reaches measured parity for each admitted slice.
 
 This distinction is important: the migration can remove checker queries from
@@ -16,30 +16,36 @@ because both frontends happen to return the same type text in a fixture.
 
 Upstream status checked on 2026-09-03:
 
-- npm `latest`: `@corsa-bind/napi@1.12.4` and `corsa-oxlint@1.12.4`;
+- npm `latest`: `@corsa-bind/napi@1.13.0` and `corsa-oxlint@1.12.4`;
 - npm `latest`: `typescript@7.0.2`;
-- npm `latest`: `@typescript/native-preview@7.0.0-dev.20260707.2`;
-- [`corsa-bind` main](https://github.com/ubugeeei-prod/corsa-bind) is ahead of
-  the 1.12.4 tag and contains unreleased fixes, so released and main behavior
-  are recorded separately.
+- npm `latest`: `typescript@7.0.2` native platform packages (`@typescript/typescript-*`);
+- [`corsa-bind` #475](https://github.com/ubugeeei-prod/corsa-bind/pull/475) merged
+  named N-API wrappers for batched symbols, alias traversal, and module
+  exports. The 1.13.0 binary exposes them and Uneffect consumes those wrappers.
+  Published `dist/index.d.mts` still omits the new method names that
+  `index.d.ts` already declares, because the handwritten wrapper interface
+  was not updated in the 1.13.0 pack.
 
-The current Uneffect Corsa path deliberately pins the preview package under a
-different npm name. This lets the main analyzer continue using its TypeScript 6
-peer while the Corsa worker uses a native TypeScript 7-line compiler without
-forcing the application to resolve both through the same `typescript` package.
+The Corsa worker is pinned to TypeScript 7 native platform binaries
+(`@typescript/typescript-<platform>-<arch>/lib/tsc`). The JavaScript TypeScript 6
+peer remains only for AST/CFG in the main analyzer. The destination is a
+TypeScript-7-only process: one native compiler, no JS `typescript` Program
+alongside it. Dual TS6+Corsa memory is a migration tax, not the target.
 
 - `@corsa-bind/napi` opens a real project through a prebuilt `tsgo` worker and
   returns checker-owned symbol and type facts without constructing a JavaScript
   TypeScript `Program`.
 - A package-only smoke test opens that frontend with no consumer `typescript`
-  installation. Uneffect resolves its exact optional
-  `@typescript/native-preview` compiler instead of a PATH or project compiler.
+  installation. Uneffect resolves its optional TypeScript 7 native `lib/tsc`
+  instead of a PATH or project compiler.
 - Global `fetch` and members of the checker-resolved global `console` object can
   be distinguished from same-spelled local parameters. This is the first
   admitted Effect-resolution slice.
-- The published 1.12.4 binary accepts `getSymbolsAtPositions`,
-  `getImmediateAliasedSymbol`, and `getAliasedSymbol` through `callJson`. The
-  sidecar now performs one symbol batch per source file.
+- The published 1.13.0 binary exposes named `getSymbolsAtPositions`,
+  `getImmediateAliasedSymbol`, `getAliasedSymbol`, and `getExportsOfModule`
+  methods. The sidecar performs one symbol batch per source file and no longer
+  uses `callJson` for those relations. `getTypesAtPositions` still goes through
+  `callJson`.
 - A re-exported `node:fs/promises` alias reaches its immediate re-export symbol,
   but full canonicalization returns Corsa's `unknown` symbol for the exercised
   two-hop fixture. A separate Red probe found that a direct named import from
@@ -72,13 +78,18 @@ forcing the application to resolve both through the same `typescript` package.
 
 Corsa's underlying project-scoped API exposes batched symbols/types, alias
 relations, resolved signatures, property lookup, assignability, exports, and
-many other checker relations. In `@corsa-bind/napi@1.12.4`, several are reached
-through the generic `callJson` method rather than named, generated N-API methods.
+many other checker relations. In `@corsa-bind/napi@1.13.0`, batched symbols,
+alias traversal, and module exports have named N-API methods on the binary.
+Uneffect now has typed adapters for `getTypesAtPositions`, `getPropertyOfType`,
+and `isTypeAssignableTo` that prefer named N-API methods when present and
+still fall back to `callJson` on 1.13.0. `getSignaturesOfType` stays on
+`callJson` because that path fills `parameterTypeTexts`.
 Direct and two-hop Node ambient-module aliases still resolve to `unknown`, and
 source-position or node handles are required by several relation endpoints. CFG and a complete
 whole-project AST traversal suitable for Uneffect's analyzers remain missing.
-The typed facade exposes `overlayChanges`, but the pinned native-preview runtime
-reports that capability as unsupported. Incremental in-memory watch-mode
+The typed facade exposes `overlayChanges`, but TypeScript 7.0.2 and 7.1
+nightlies still ignore in-memory overlays (`describeCapabilities` is missing
+and a typed upsert does not change checker results). Incremental watch-mode
 measurement therefore remains blocked on the compiler runtime rather than
 being approximated with destructive on-disk fixture edits.
 
@@ -105,6 +116,10 @@ The current main analyzer still needs TypeScript 6 when imported or run; only a
 - Collect call-expression positions during the existing TypeScript AST walk.
 - Batch semantic requests once per source file and attach Corsa facts to a
   compiler-neutral sidecar. (Implemented for the initial slice.)
+- When a sidecar is attached, admitted `Fetch`/`Console` catalog lookup uses
+  that batch in the main analyzer (`overlayCorsaBuiltinCatalog`). Other
+  builtins still go through `TypeScriptFrontendAdapter`. The TypeScript
+  adapter remains the parity oracle.
 - Run TypeScript and Corsa resolution together for `Fetch` and `Console` in CI;
   expose mismatches from `check --corsa-parity` as assurance blockers.
 - Report parity mismatch as unknown; do not silently fall back in proof-grade

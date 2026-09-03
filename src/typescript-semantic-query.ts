@@ -1,12 +1,16 @@
 import { resolve } from "node:path";
 import ts from "typescript";
-import type { SemanticPositionFact, SemanticQueryFrontend } from "./semantic-query.js";
+import type { SemanticPositionFact, SemanticQueryFrontend, SemanticSymbolFact } from "./semantic-query.js";
 
 export interface TypeScriptSemanticQueryOptions {
   readonly configFile: string;
 }
 
-export function openTypeScriptSemanticQuery(options: TypeScriptSemanticQueryOptions): SemanticQueryFrontend {
+export interface TypeScriptSemanticQueryFrontend extends SemanticQueryFrontend {
+  getExportsAtPosition(file: string, position: number): SemanticSymbolFact[];
+}
+
+export function openTypeScriptSemanticQuery(options: TypeScriptSemanticQueryOptions): TypeScriptSemanticQueryFrontend {
   const configFile = resolve(options.configFile);
   const parsed = ts.getParsedCommandLineOfConfigFile(configFile, {}, {
     ...ts.sys,
@@ -62,6 +66,22 @@ export function openTypeScriptSemanticQuery(options: TypeScriptSemanticQueryOpti
           texts: [typeText],
         } : null,
       };
+    },
+    getExportsAtPosition(file, position) {
+      const { node } = sourceAndNode(file, position);
+      let symbol = checker.getSymbolAtLocation(node);
+      if (!symbol) return [];
+      if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+      if ((symbol.flags & ts.SymbolFlags.Module) === 0) return [];
+      return checker.getExportsOfModule(symbol).map((exported) => {
+        const declaration = exported.valueDeclaration ?? exported.declarations?.[0];
+        return {
+          id: declaration
+            ? `${resolve(declaration.getSourceFile().fileName)}:${declaration.getStart()}:${declaration.getEnd()}`
+            : `typescript-symbol:${exported.name}`,
+          name: exported.name,
+        };
+      });
     },
     close() {
       closed = true;

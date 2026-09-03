@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bench, describe } from "vitest";
 import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
-import { openCorsaApiFrontend } from "../src/corsa-api-frontend.js";
+import { openCorsaApiFrontend, resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 const fileName = "examples/dogfood/corsa-inferred-effect.ts";
@@ -19,7 +19,7 @@ const caughtAwaitFileName = "examples/dogfood/corsa-workhub-caught-await.ts";
 const caughtAwaitFiles = { [caughtAwaitFileName]: readFileSync(caughtAwaitFileName, "utf8") };
 const dynamicFsFileName = "examples/dogfood/corsa-workhub-dynamic-fs-import.ts";
 const dynamicFsFiles = { [dynamicFsFileName]: readFileSync(dynamicFsFileName, "utf8") };
-const corsaExecutable = resolve("node_modules/.bin/tsgo");
+const corsaExecutable = resolveCorsaExecutable();
 
 describe("checker-backed Corsa inferred-effect handoff", () => {
   bench("open direct Corsa API frontend and query one symbol/type", async () => {

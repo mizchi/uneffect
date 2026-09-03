@@ -5,9 +5,9 @@ import { openCorsaApiFrontend, resolveCorsaExecutable } from "../src/corsa-api-f
 import { openTypeScriptSemanticQuery } from "../src/typescript-semantic-query.js";
 
 describe("Corsa API frontend", () => {
-  it("resolves the package-owned prebuilt compiler without a consumer TypeScript install", () => {
+  it("resolves the package-owned TypeScript 7 native compiler without a consumer TypeScript 6 install", () => {
     expect(resolveCorsaExecutable({ cwd: resolve("test/fixtures/corsa-api-project") }))
-      .toMatch(/@typescript\/native-preview\/bin\/tsgo$/);
+      .toMatch(/@typescript\/typescript-[^/]+\/lib\/tsc(?:\.exe)?$/);
   });
 
   it("prefers an explicitly pinned compiler executable", () => {
@@ -21,7 +21,7 @@ describe("Corsa API frontend", () => {
     const file = resolve("test/fixtures/corsa-api-project/index.ts");
     const frontend = await openCorsaApiFrontend({
       configFile: resolve("test/fixtures/corsa-api-project/tsconfig.json"),
-      corsaExecutable: resolve("node_modules/.bin/tsgo"),
+      corsaExecutable: resolveCorsaExecutable(),
     });
 
     try {
@@ -63,6 +63,8 @@ describe("Corsa API frontend", () => {
       expect(frontend.classifyBuiltinCall(file, { calleePosition: consoleCall + "console.".length, receiverPosition: consoleCall }))
         .toMatchObject({ operation: "Console", symbol: { name: "log" }, receiver: { name: "console" } });
       expect(frontend.classifyBuiltinCall(file, { calleePosition: fetchCall })).toMatchObject({ operation: "Fetch" });
+      expect(frontend.classifyBuiltinCall(file, { calleePosition: source.indexOf("request(") }))
+        .toMatchObject({ operation: "Fetch", symbol: { name: "fetch" } });
       expect(frontend.classifyBuiltinCall(file, { calleePosition: localConsole + "console.".length, receiverPosition: localConsole })).toBeNull();
       expect(frontend.classifyBuiltinCall(file, { calleePosition: localFetch })).toBeNull();
     } finally {
@@ -84,7 +86,7 @@ describe("Corsa API frontend", () => {
   it("fails closed when a file does not belong to the project", async () => {
     const frontend = await openCorsaApiFrontend({
       configFile: resolve("test/fixtures/corsa-api-project/tsconfig.json"),
-      corsaExecutable: resolve("node_modules/.bin/tsgo"),
+      corsaExecutable: resolveCorsaExecutable(),
     });
 
     try {
@@ -99,7 +101,7 @@ describe("Corsa API frontend", () => {
     const file = resolve("test/fixtures/corsa-api-project/index.ts");
     const corsa = await openCorsaApiFrontend({
       configFile,
-      corsaExecutable: resolve("node_modules/.bin/tsgo"),
+      corsaExecutable: resolveCorsaExecutable(),
     });
     const typescript = openTypeScriptSemanticQuery({ configFile });
 
@@ -132,6 +134,69 @@ describe("Corsa API frontend", () => {
       expect(frontend.getAliasedSymbol(symbols[1]!)).toMatchObject({ name: "unknown" });
     } finally {
       frontend.close();
+    }
+  });
+
+  it("finds the 1.13.0 named symbol and alias methods on the published N-API client", async () => {
+    const { CorsaApiClient } = await import("@corsa-bind/napi");
+    const proto = (CorsaApiClient as unknown as { prototype: Record<string, unknown> }).prototype;
+    for (const method of [
+      "getSymbolsAtPositions", "getAliasedSymbol", "getImmediateAliasedSymbol", "getExportsOfModule",
+    ]) {
+      expect(typeof proto[method], method).toBe("function");
+    }
+  });
+
+  it("does not reach named checker relations through untyped callJson strings", () => {
+    const source = readFileSync("src/corsa-api-frontend.ts", "utf8");
+    for (const method of [
+      "getSymbolsAtPositions", "getAliasedSymbol", "getImmediateAliasedSymbol", "getExportsOfModule",
+    ]) {
+      expect(source, method).not.toMatch(new RegExp(String.raw`callJson\(\s*"${method}"`));
+    }
+    expect(source).toMatch(/typeof client\.getTypesAtPositions === "function"/);
+    expect(source).toMatch(/callJson\(\s*"getTypesAtPositions"/);
+    expect(source).toMatch(/typeof client\.getPropertyOfType === "function"/);
+    expect(source).toMatch(/callJson\(\s*"getPropertyOfType"/);
+    expect(source).toMatch(/typeof client\.isTypeAssignableTo === "function"/);
+    expect(source).toMatch(/callJson\(\s*"isTypeAssignableTo"/);
+  });
+
+  it("resolves properties and assignability through typed Corsa adapters", async () => {
+    const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
+    const file = resolve("test/fixtures/corsa-api-project/index.ts");
+    const source = readFileSync(file, "utf8");
+    const frontend = await openCorsaApiFrontend({ configFile });
+    try {
+      const stringType = frontend.getTypeAtPosition(file, source.indexOf("path: string"));
+      const numberType = frontend.getTypeAtPosition(file, source.indexOf("42"));
+      expect(stringType).toMatchObject({ texts: expect.arrayContaining([expect.stringMatching(/string/i)]) });
+      expect(frontend.getPropertyOfType(stringType!, "length")).toMatchObject({ name: "length" });
+      expect(frontend.getPropertyOfType(stringType!, "__no_such_member__")).toBeNull();
+      expect(frontend.isTypeAssignableTo(stringType!, stringType!)).toBe(true);
+      expect(frontend.isTypeAssignableTo(numberType!, stringType!)).toBe(false);
+    } finally {
+      frontend.close();
+    }
+  });
+
+  it("enumerates local module exports through the typed Corsa facade and TypeScript 6 checker", async () => {
+    const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
+    const file = resolve("test/fixtures/corsa-api-project/index.ts");
+    const source = readFileSync(file, "utf8");
+    const specifier = source.indexOf('"./fs-bridge.js"') + 1;
+    const frontend = await openCorsaApiFrontend({ configFile });
+    const typescript = openTypeScriptSemanticQuery({ configFile });
+    try {
+      const moduleSymbol = frontend.getSymbolAtPosition(file, specifier);
+      expect(moduleSymbol).toMatchObject({ name: expect.stringMatching(/fs-bridge/) });
+      const corsaExports = frontend.getExportsOfModule(moduleSymbol!).map((item) => item.name).sort();
+      expect(corsaExports).toEqual(["readText"]);
+      expect(typescript.getExportsAtPosition(file, specifier).map((item) => item.name).sort())
+        .toEqual(corsaExports);
+    } finally {
+      frontend.close();
+      typescript.close();
     }
   });
 });

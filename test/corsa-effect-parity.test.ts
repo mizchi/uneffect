@@ -11,7 +11,7 @@ import { runCli } from "../src/cli-runner.js";
 import { exitCode, type CliStreams } from "../src/cli-support.js";
 
 describe("Corsa effect parity sidecar", () => {
-  it("agrees for authenticated globals and reports an unsupported stable alias", async () => {
+  it("agrees for authenticated globals including a const fetch alias", async () => {
     const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
     const project = loadTypeScriptProject(configFile);
     const program = ts.createProgram(project.fileNames, project.compilerOptions);
@@ -22,17 +22,15 @@ describe("Corsa effect parity sidecar", () => {
       expect(result.entries.map(({ operation, status }) => [operation, status])).toEqual([
         ["Console", "agree"],
         ["Fetch", "agree"],
-        ["Fetch", "mismatch"],
+        ["Fetch", "agree"],
       ]);
-      expect(result.entries[2]).toMatchObject({ typescript: "Fetch" });
-      expect(result.entries[2]?.corsa).toBeUndefined();
-      expect(result.summary).toEqual({ agree: 2, mismatch: 1 });
+      expect(result.summary).toEqual({ agree: 3, mismatch: 0 });
     } finally {
       frontend.close();
     }
   });
 
-  it("attaches parity to a real project check and makes mismatches assurance blockers", async () => {
+  it("attaches parity to a real project check without a Fetch alias mismatch", async () => {
     const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
     const project = loadTypeScriptProject(configFile);
     const program = ts.createProgram(project.fileNames, project.compilerOptions);
@@ -41,10 +39,16 @@ describe("Corsa effect parity sidecar", () => {
       const checked = await checkFiles(project.fileNames, {
         program, project: project.provenance, requireAnnotations: false, corsaFrontend: frontend,
       });
-      expect(checked.corsaEffectParity?.summary).toEqual({ agree: 2, mismatch: 1 });
+      expect(checked.corsaEffectParity?.summary).toEqual({ agree: 3, mismatch: 0 });
+      const names = Object.fromEntries(checked.summaries.map((summary) => [
+        summary.functionName,
+        summary.effects.filter((effect) => effect.kind === "capability").map((effect) => effect.name),
+      ]));
+      expect(names.loadAliased).toEqual(expect.arrayContaining(["Fetch"]));
+      expect(names.shadowed ?? []).not.toEqual(expect.arrayContaining(["Fetch", "Console"]));
       const assurance = assessCheckAssurance(checked, "no-unknown");
-      expect(assurance.blockers).toContainEqual(expect.objectContaining({
-        kind: "effect", classification: "unknown", message: expect.stringContaining("Corsa effect parity mismatch"),
+      expect(assurance.blockers).not.toContainEqual(expect.objectContaining({
+        message: expect.stringContaining("Corsa effect parity mismatch"),
       }));
       expect(createCheckJsonReport(checked, assurance).corsaEffectParity).toEqual(checked.corsaEffectParity);
     } finally {
@@ -64,7 +68,7 @@ describe("Corsa effect parity sidecar", () => {
     ], io);
     expect(status).toBe(exitCode.failed);
     const report = JSON.parse(io.stdout) as { corsaEffectParity?: { summary: { agree: number; mismatch: number } }; assurance: { blockers: Array<{ message: string }> } };
-    expect(report.corsaEffectParity?.summary).toEqual({ agree: 2, mismatch: 1 });
-    expect(report.assurance.blockers.some((blocker) => blocker.message.includes("Corsa effect parity mismatch"))).toBe(true);
+    expect(report.corsaEffectParity?.summary).toEqual({ agree: 3, mismatch: 0 });
+    expect(report.assurance.blockers.some((blocker) => blocker.message.includes("Corsa effect parity mismatch"))).toBe(false);
   }, 60_000);
 });

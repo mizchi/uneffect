@@ -60,7 +60,7 @@ import { exportCorsaCheckerFacts } from "@mizchi/uneffect/corsa";
 const files = { "example.ts": "export function run(): number { return 1 }" };
 const corsaFacts = await exportCorsaCheckerFacts({
   files,
-  corsaExecutable: "node_modules/.bin/tsgo",
+  corsaExecutable: "node_modules/@typescript/typescript-darwin-arm64/lib/tsc",
 });
 const result = await compareUneffectFrontends({
   files,
@@ -180,21 +180,21 @@ try {
 }
 ```
 
-`corsaExecutable` is optional. By default it resolves the fixed
-`@typescript/native-preview` prebuilt owned by Uneffect, rather than a
-consumer-local `typescript` package or a PATH-global compiler. Pass an explicit
-path when the application must select compiler provenance. The regular
-Uneffect CLI still requires the JavaScript TypeScript 6 peer; that peer is
-optional at package-install time so a `/corsa/api`-only consumer does not have
-to install it.
+`corsaExecutable` is optional. By default it resolves Uneffect's optional
+TypeScript 7 native binary (`@typescript/typescript-<platform>-<arch>/lib/tsc`),
+not a consumer `typescript` package, not PATH, and not TypeScript 6. Pass an
+explicit path when the application must select compiler provenance. The regular
+Uneffect CLI still requires the JavaScript TypeScript 6 peer for AST/CFG; that
+peer is optional at package-install time so a `/corsa/api`-only consumer does
+not have to install it. The destination runtime is TypeScript 7 native only.
 
 The first checker-backed effect-resolution slice is deliberately small.
 `classifyBuiltinCall` authenticates global `fetch` as `Fetch`, and a member of
 the checker-resolved global `console` object as `Console`. Same-spelled local
 parameters fail closed. A re-exported `node:fs/promises` alias currently also
-fails closed: Corsa 1.12.4 exposes immediate/full alias relations through its
-generic JSON endpoint, but the exercised two-hop re-export reaches the
-immediate bridge symbol and then Corsa's `unknown` symbol. This is covered by a
+fails closed: Corsa 1.13.0 exposes immediate/full alias relations through named
+N-API methods, but the exercised two-hop re-export reaches the immediate
+bridge symbol and then Corsa's `unknown` symbol. This is covered by a
 negative test and is not reported as `FsRead`.
 
 This probe supports project-root membership checks, symbol identity, normalized
