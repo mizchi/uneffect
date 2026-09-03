@@ -10,7 +10,7 @@ evidence, and keep runtime validation at untrusted inputs.
 
 ## 1. Install
 
-Uneffect requires Node.js 24 or newer. TypeScript is a peer dependency. For an
+Uneffect requires Node.js 24 or newer. TypeScript 6 (`<7`) is a peer dependency. For an
 explicit `--project` boundary, Uneffect resolves the consumer's TypeScript
 package and compares its exact version with the analyzer module executing the
 check.

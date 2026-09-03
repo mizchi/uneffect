@@ -23,6 +23,10 @@ just package-check
 npm pack --dry-run
 ```
 
+`just package-check` also installs the real tarball into an isolated temporary
+consumer and imports the root, `experimental`, and `spec` entrypoints against a
+freshly resolved compatible TypeScript peer.
+
 Inspect the pack listing. It must contain `dist/src`, `README.md`, `LICENSE`,
 `CHANGELOG.md`, `docs`, and `schemas`, and must not contain source fixtures,
 tests, local evidence, credentials, or environment files. Smoke-test the packed

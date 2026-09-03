@@ -3,7 +3,7 @@ import { dirname, extname, join, posix } from "node:path";
 import ts from "typescript";
 import { executeZ3, type Z3ExecutionOptions, type Z3ValueRequest } from "./z3.js";
 import { extractAnnotations } from "./annotations.js";
-import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
+import { logicToSmt, parseLogicExpression, parseLogicExpressionForHints } from "./invariant-ir.js";
 import type { LogicExpression } from "./invariant-ir.js";
 
 export type PropertyBoundaryKind = "Int" | "Nat" | "U8" | "U32" | "I32";
@@ -580,7 +580,7 @@ function combineCongruences(items: readonly { modulus: number; residue: number }
 
 function refinementHints(requires: readonly string[], parameters: readonly string[], domains: readonly PropertyTestDomain[]): PropertyLiteral[][] {
   const parsed: LogicExpression[] = [];
-  for (const requirement of requires) try { parsed.push(parseLogicExpression(requirement)); } catch { /* Structured hints are derived by the solver-backed path. */ }
+  for (const requirement of requires) try { parsed.push(parseLogicExpressionForHints(requirement)); } catch { /* Structured hints are derived by the solver-backed path. */ }
   const dnf = (expression: LogicExpression): LogicExpression[][] | undefined => {
     if (expression.kind !== "binary" || (expression.operator !== "and" && expression.operator !== "or")) return [[expression]];
     const left = dnf(expression.left), right = dnf(expression.right);
@@ -625,7 +625,7 @@ function refinementHints(requires: readonly string[], parameters: readonly strin
     const addCongruence = (expression: LogicExpression): void => {
       if (expression.kind !== "binary" || expression.operator !== "eq") return;
       const read = (candidate: LogicExpression, other: LogicExpression): void => {
-        if (candidate.kind !== "binary" || candidate.operator !== "mod") return;
+        if (candidate.kind !== "binary" || candidate.operator !== "js-rem") return;
         const variable = affineVariable(candidate.left), modulus = integerValue(candidate.right), residue = integerValue(other);
         if (!variable || variable.offset !== 0 || modulus === undefined || modulus <= 0 || residue === undefined || residue <= -modulus || residue >= modulus) return;
         const index = parameters.indexOf(variable.name);

@@ -5,6 +5,7 @@
  * They may change without compatibility guarantees while async observations
  * are being lowered into the unified temporal model.
  */
+export * from "./index.js";
 export {
   analyzeAsyncPatterns,
   analyzeAsyncPatternsInProgram,

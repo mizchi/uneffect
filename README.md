@@ -12,7 +12,7 @@ JavaScript.
 ## Install
 
 Uneffect requires Node.js 24 or newer and uses the consuming project's
-TypeScript installation.
+TypeScript 6 installation. TypeScript 7 is not yet a compatible compiler API.
 
 ```sh
 npm install --save-dev @mizchi/uneffect typescript
@@ -162,6 +162,13 @@ npx uneffect spec temporal src/protocol.ts main --runtime web > protocol.qnt
 
 See the [CLI reference](./docs/cli.md) for all commands, options, exit codes,
 workspace-project behavior, and solver backend selection.
+
+For in-process use, the package root exposes only numeric/runtime helpers and
+high-level checking facades such as `checkFiles`, `verifyUneffectProject`, and
+`generateTemporalModel`. Solver adapters, lowering IRs, direct Quint
+generators, and optimizer experiments live under
+`@mizchi/uneffect/experimental` and have no compatibility guarantee. See
+[Public API and compatibility](./docs/public-api.md) for the exact boundary.
 
 ## Development
 

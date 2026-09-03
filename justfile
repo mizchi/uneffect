@@ -44,6 +44,7 @@ formal-exhaustive:
 
 package-check:
     npm pack --dry-run
+    node ci/smoke-package.mjs
     cargo package --workspace --allow-dirty --no-verify
 
 spec-ir file:

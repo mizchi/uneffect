@@ -7,6 +7,7 @@ describe("0.3.0 release metadata", () => {
     name: string; version: string; main?: string; types?: string;
     exports: Record<string, unknown>; files: string[]; publishConfig: { access: string; provenance?: boolean };
     bin?: Record<string, string>; engines?: Record<string, string>; scripts?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
     repository?: { type: string; url: string };
   };
 
@@ -18,8 +19,8 @@ describe("0.3.0 release metadata", () => {
   });
 
   it("publishes explicit runtime, type, schema, and license surfaces", () => {
-    expect(manifest.main).toBe("./dist/src/index.js");
-    expect(manifest.types).toBe("./dist/src/index.d.ts");
+    expect(manifest.main).toBe("./dist/src/public.js");
+    expect(manifest.types).toBe("./dist/src/public.d.ts");
     expect(manifest.exports).toHaveProperty(".");
     expect(manifest.exports).toHaveProperty("./corsa");
     expect(manifest.exports).toHaveProperty("./experimental");
@@ -29,6 +30,7 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.publishConfig).toMatchObject({ access: "public", provenance: true });
     expect(manifest.bin).toEqual({ uneffect: "dist/src/cli.js" });
     expect(manifest.engines).toEqual({ node: ">=24" });
+    expect(manifest.peerDependencies?.typescript).toBe(">=6.0.0-dev.20260820 <7");
     expect(manifest.repository).toEqual({ type: "git", url: "git+https://github.com/mizchi/uneffect.git" });
     expect(manifest.scripts?.prepack).toBe("pnpm build");
   });

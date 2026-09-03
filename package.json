@@ -25,12 +25,12 @@
   "license": "MIT",
   "author": "mizchi",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "main": "./dist/src/public.js",
+  "types": "./dist/src/public.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+      "types": "./dist/src/public.d.ts",
+      "import": "./dist/src/public.js"
     },
     "./corsa": {
       "types": "./dist/src/corsa-checker-exporter.d.ts",
@@ -77,7 +77,7 @@
     "@oxlint/plugins": ">=1.80.0",
     "corsa-oxlint": ">=1.12.4",
     "oxlint": ">=1.80.0",
-    "typescript": ">=6.0.0-dev.20260820"
+    "typescript": ">=6.0.0-dev.20260820 <7"
   },
   "peerDependenciesMeta": {
     "@informalsystems/quint": {

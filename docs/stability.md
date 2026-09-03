@@ -65,7 +65,10 @@ The supported import paths and compatibility policy are defined in [Public API
 and compatibility](./public-api.md). In particular, use
 `generateTemporalModel` or `spec temporal` for temporal work. The
 `@mizchi/uneffect/experimental` subpath intentionally has no compatibility
-guarantee.
+guarantee. A symbol being available from the package root stabilizes its API
+placement; it does not promote every input shape accepted by that symbol to a
+supported proof fragment. Assurance maturity remains defined by this document
+and the feature matrix.
 
 ## Experimental surfaces
 

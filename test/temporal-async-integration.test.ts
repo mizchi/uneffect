@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeAsyncSafety, generateTemporalModel, verifyUneffectProject } from "../src/index.js";
 import { createResourceDisposalTemporalProduct, lowerResourceDisposalsToProtocol } from "../src/index.js";
-import * as stable from "../src/index.js";
+import * as stable from "../src/public.js";
 import * as experimental from "../src/experimental.js";
 
 const source = `

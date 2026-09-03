@@ -1757,11 +1757,11 @@ function semanticGuardExpression(node: ts.Expression, guards: ReadonlyMap<string
     ?? discriminant(node.left, node.right) ?? discriminant(node.right, node.left);
 }
 
-function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(), semanticGuards: ReadonlyMap<string, readonly SemanticGuardFact[]> = new Map(), semanticValues: ReadonlyMap<string, LogicExpression> = new Map()): LogicExpression {
+function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(), semanticGuards: ReadonlyMap<string, readonly SemanticGuardFact[]> = new Map(), semanticValues: ReadonlyMap<string, LogicExpression> = new Map(), allowJavaScriptRemainder = false): LogicExpression {
   const narrowed = semanticValues.get(`${node.getStart()}:${node.getEnd()}`);
   if (narrowed) return narrowed;
-  if (ts.isParenthesizedExpression(node)) return logic(node.expression, pipeBindings, semanticGuards, semanticValues);
-  if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isNonNullExpression(node)) return logic(node.expression, pipeBindings, semanticGuards, semanticValues);
+  if (ts.isParenthesizedExpression(node)) return logic(node.expression, pipeBindings, semanticGuards, semanticValues, allowJavaScriptRemainder);
+  if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isNonNullExpression(node)) return logic(node.expression, pipeBindings, semanticGuards, semanticValues, allowJavaScriptRemainder);
   const guard = semanticGuardExpression(node, semanticGuards);
   if (guard) return guard;
   if (ts.isIdentifier(node)) return { kind: "variable", name: node.text };
@@ -1769,8 +1769,8 @@ function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(
   if (node.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
   if (node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
   if (ts.isPrefixUnaryExpression(node)) {
-    if (node.operator === ts.SyntaxKind.ExclamationToken) return { kind: "unary", operator: "not", operand: logic(node.operand, pipeBindings, semanticGuards, semanticValues) };
-    if (node.operator === ts.SyntaxKind.MinusToken) return { kind: "unary", operator: "negate", operand: logic(node.operand, pipeBindings, semanticGuards, semanticValues) };
+    if (node.operator === ts.SyntaxKind.ExclamationToken) return { kind: "unary", operator: "not", operand: logic(node.operand, pipeBindings, semanticGuards, semanticValues, allowJavaScriptRemainder) };
+    if (node.operator === ts.SyntaxKind.MinusToken) return { kind: "unary", operator: "negate", operand: logic(node.operand, pipeBindings, semanticGuards, semanticValues, allowJavaScriptRemainder) };
   }
   if (ts.isBinaryExpression(node)) {
     const operators = new Map<ts.SyntaxKind, string>([
@@ -1781,8 +1781,11 @@ function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(
       [ts.SyntaxKind.ExclamationEqualsToken, "neq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "neq"],
       [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
     ]);
+    if (allowJavaScriptRemainder && node.operatorToken.kind === ts.SyntaxKind.PercentToken) {
+      return { kind: "binary", operator: "js-rem", left: logic(node.left, pipeBindings, semanticGuards, semanticValues, true), right: logic(node.right, pipeBindings, semanticGuards, semanticValues, true) };
+    }
     const operator = operators.get(node.operatorToken.kind);
-    if (operator) return { kind: "binary", operator, left: logic(node.left, pipeBindings, semanticGuards, semanticValues), right: logic(node.right, pipeBindings, semanticGuards, semanticValues) };
+    if (operator) return { kind: "binary", operator, left: logic(node.left, pipeBindings, semanticGuards, semanticValues, allowJavaScriptRemainder), right: logic(node.right, pipeBindings, semanticGuards, semanticValues, allowJavaScriptRemainder) };
   }
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && pipeBindings.has(node.expression.text) && node.arguments.length >= 2) {
     let value = logic(node.arguments[0]!, pipeBindings, semanticGuards, semanticValues);
@@ -1799,6 +1802,9 @@ function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(
 }
 
 export function parseLogicExpression(text: string): LogicExpression { return logic(parseTsExpression(text)); }
+
+/** Parses scalar refinements for test-data hints without treating JavaScript `%` as SMT modulo. */
+export function parseLogicExpressionForHints(text: string): LogicExpression { return logic(parseTsExpression(text), new Set(), new Map(), new Map(), true); }
 
 /** Decides small, purely-boolean implications over the same IR emitted to Z3. */
 export function proveBooleanImplication(assumptionSources: string[], goalSource: string): boolean {

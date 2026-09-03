@@ -25,6 +25,13 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Capped the TypeScript peer range below 7 because TypeScript 7 changes the
+  compiler API package surface; unsupported compiler majors now fail at
+  installation instead of crashing during analyzer initialization.
+- Narrowed the package-root API to durable numeric helpers and high-level
+  checking, temporal, property-generation, extension, and runtime facades.
+  Low-level solver, CFG, IR, optimizer, and backend-specific generators now
+  require `@mizchi/uneffect/experimental` and carry no compatibility promise.
 - Unified public comment directives under the ordinary `uneffect:` surface;
   internal capability, contract, async, resource, and refinement proof engines
   are no longer selected as separate user-facing modes.
