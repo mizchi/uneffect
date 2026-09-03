@@ -338,11 +338,14 @@ iterators against that bound. Bound violations are parent diagnostics; opaque
 arguments are `unknown`. A Promise-consuming child parameter retains
 `convertsThrowToRejection`, so the generator's synchronous non-throw effects
 propagate while its iteration throw is owned by rejection analysis. **Implemented.**
-Concrete strings, arrays, tuples, standard `Map`/`Set` collections, typed arrays,
-and TypeScript `NodeArray` values close the iterator parameter with an empty
-lazy effect set. This exemption requires TypeChecker identity from the
-TypeScript standard library; a structurally iterable user class, including one
-named `Set`, remains `unknown` because its iterator body can execute user code.
+Concrete strings, arrays, tuples, standard `Map`/`Set` collections, their
+standard `ArrayIterator`/`MapIterator`/`SetIterator`/`StringIterator` results,
+typed arrays, and TypeScript `NodeArray` values close the iterator parameter
+with an empty lazy effect set. The iterator-result identity also closes finite
+conditional or nullish unions whose every branch is reviewed. This exemption
+requires TypeChecker identity from the TypeScript standard library; a
+structurally iterable user class, including one named `Set` or `MapIterator`,
+remains `unknown` because its iterator body can execute user code.
 An iterator parameter may also be reached through a finite static property path,
 for example `options.values`. The summary records `propertyPath: ["values"]`;
 direct object literals and single-use immutable object bindings are projected at

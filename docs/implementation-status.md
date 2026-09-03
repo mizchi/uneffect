@@ -2209,9 +2209,11 @@ same property is proved for arbitrary TypeScript.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize
   the lazy body effects. TypeChecker-identified standard strings, arrays,
-  tuples, Map/Set collections, typed arrays, and TypeScript NodeArray values
-  instantiate an empty lazy effect set; structurally iterable user values and
-  same-named user classes remain unknown. Finite parameter property paths are
+  tuples, Map/Set collections and their standard iterator objects, typed arrays,
+  and TypeScript NodeArray values instantiate an empty lazy effect set. Finite
+  conditional/nullish unions close only when every branch has reviewed
+  engine-owned identity; structurally iterable user values and same-named user
+  classes remain unknown. Finite parameter property paths are
   retained in the summary and projected through direct object literals or
   single-use immutable bindings; computed/getter/mutable/escaping container
   shapes remain unknown. `no-unknown`

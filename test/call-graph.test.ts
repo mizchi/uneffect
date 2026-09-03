@@ -2341,6 +2341,18 @@ describe("multi-file call graph and effect polymorphism", () => {
           consumeIterableOption(options)
         }
         export function consumeCustomIterableOption() { consumeIterableOption({ values: customIterable }) }
+        export function consumeNullableBuiltinIterator(values?: ReadonlyMap<string, number>) {
+          consumeIterableParameter(values?.keys() ?? [])
+        }
+        export function consumeConditionalBuiltinIterator(values: ReadonlyMap<string, number>, key?: string) {
+          consumeIterableParameter(key ? values.has(key) ? [values.get(key)!] : [] : values.values())
+        }
+        namespace Custom {
+          export class MapIterator implements Iterable<number> {
+            *[Symbol.iterator]() { console.log("custom iterator"); yield 1 }
+          }
+        }
+        export function consumeSameNamedCustomIterator() { consumeIterableParameter(new Custom.MapIterator()) }
         export function outerIteratorParameter(iterator: IteratorObject<unknown>) { consumeIteratorParameter(iterator) }
         export function consumeKnownOuterIteratorParameter() { outerIteratorParameter(generate()) }
         export function consumePromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
@@ -2622,6 +2634,15 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumeStablePureIterableOption"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeCustomIterableOption"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeNullableBuiltinIterator"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeConditionalBuiltinIterator"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeSameNamedCustomIterator"))
         .toMatchObject({
           evidence: "unknown",
           unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],

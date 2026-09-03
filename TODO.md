@@ -2347,6 +2347,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Forward iterator-effect parameters through symbol-resolved wrapper calls, preserving Promise rejection conversion.
   - [x] Add `effect_parameter p extends ...` bounds with call-site Generator specialization, stored-iterator evidence, transitive wrapper constraint checks, Promise rejection conversion, and fail-closed syntax/parameter diagnostics.
   - [x] Instantiate iterator effect parameters with an empty set for TypeChecker-identified engine-owned standard iterables, while keeping structural and same-named user iterables fail-closed.
+  - [x] Recognize TypeChecker-identified standard iterator result objects across finite conditional/nullish unions, rejecting same-named user iterator classes.
   - [x] Represent finite static iterator property paths and specialize them through direct object literals, single-use immutable bindings, and symbol-resolved wrappers.
   - [x] Dogfood a telemetry batching Generator through `verifyUneffectProject`, including a negative bound-regression and project-assurance failure.
   - [x] Preserve iterator-effect parameters and formatted bounds in evidence schema v2 and the public `uneffect evidence` JSON command.
