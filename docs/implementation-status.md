@@ -934,10 +934,12 @@ same property is proved for arbitrary TypeScript.
   expressions remain fail-closed. For synchronous scalar function declarations,
   explicit `requires`/`ensures` and
   `Throw<E>` clauses now create the same provisional relational completion as
-  Promise producers. Direct identifier calls and TypeChecker-resolved named
-  imports are admitted only with stable symbol identity. The project fixed point
-  promotes the edge after the callee obligations verify; a counterexample
-  downgrades callers, while mutable callable aliases remain unsupported. For
+  Promise producers. Direct identifier calls, TypeChecker-resolved named
+  imports, and acyclic `const` callable alias chains are admitted only with
+  stable symbol identity. The project fixed point promotes edges on both caller
+  precondition and postcondition obligations after the callee obligations
+  verify; a counterexample downgrades every dependent caller obligation, while
+  mutable callable aliases remain unsupported. For
   source implementations, a post-solver fixed point promotes relational edges only
   when every callee obligation and every transitive relational dependency is
   verified. A failed local callee downgrades callers to `unknown`; declarations

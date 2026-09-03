@@ -2915,6 +2915,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     including `Throw<E>` completion, direct same-file calls, and stable
     TypeChecker-resolved named imports across project files. Reject mutable
     callable aliases and downgrade callers when the sync callee fails.
+    - [x] Resolve acyclic `const` callable alias chains by TypeChecker symbol
+      identity and reconcile both caller precondition and postcondition
+      evidence; invalid callees downgrade every dependent obligation.
 - [x] Generalize the reconciler across source files in one checked TypeScript
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project

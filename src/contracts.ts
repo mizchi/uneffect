@@ -103,7 +103,7 @@ export function reconcileContractArtifacts(sources: ReadonlyMap<string, string>,
   while (changed) {
     changed = false;
     artifacts = artifacts.map((artifact) => {
-      if (artifact.status !== "verified" || artifact.obligation?.clause !== "ensures") return artifact;
+      if (artifact.status !== "verified") return artifact;
       const invalid = artifact.controlFlow?.relationalCalls?.map((call) => integrityFailure(call)).find((failure) => failure !== undefined);
       if (invalid) {
         changed = true;
@@ -121,7 +121,7 @@ export function reconcileContractArtifacts(sources: ReadonlyMap<string, string>,
   while (changed) {
     changed = false;
     artifacts = artifacts.map((artifact) => {
-      if (artifact.status !== "verified" || artifact.obligation?.clause !== "ensures" || !artifact.controlFlow?.relationalCalls?.some(({ evidence }) => evidence === "trusted")) return artifact;
+      if (artifact.status !== "verified" || !artifact.controlFlow?.relationalCalls?.some(({ evidence }) => evidence === "trusted")) return artifact;
       let promoted = false;
       const relationalCalls = artifact.controlFlow.relationalCalls.map((call) => {
         if (call.evidence === "verified" || !localBodies.has(declarationKey(call.declarationFileName, call.declarationSpan))) return call;

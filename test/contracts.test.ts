@@ -4148,8 +4148,12 @@ describe("Hoare contract checker", () => {
     const invalid = await verifyContractObligations(fileName, broken, undefined, programFor(fileName, broken));
     expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "addOne"))
       .toMatchObject({ status: "counterexample" });
-    expect(invalid.artifacts.find(({ obligation }) => obligation?.functionName === "caller"))
-      .toMatchObject({ status: "unknown", message: expect.stringContaining("addOne contract is not verified") });
+    const invalidCallerArtifacts = invalid.artifacts.filter(({ obligation, controlFlow }) =>
+      obligation?.functionName === "caller" && (controlFlow?.relationalCalls?.length ?? 0) > 0);
+    expect(invalidCallerArtifacts.length).toBeGreaterThan(0);
+    expect(invalidCallerArtifacts.every(({ status }) => status === "unknown")).toBe(true);
+    expect(invalidCallerArtifacts[0])
+      .toMatchObject({ message: expect.stringContaining("addOne contract is not verified") });
 
     const project = await verifyUneffectProject({ files: {
       "/sync-producer.ts": `
@@ -4179,6 +4183,32 @@ describe("Hoare contract checker", () => {
       programFor("/mutable-sync-call.ts", mutableSource));
     expect(mutable.artifacts.find(({ status }) => status === "unsupported"))
       .toMatchObject({ message: expect.stringContaining("selected(value)") });
+  });
+
+  it("composes a synchronous contract through const callable and result aliases", async () => {
+    const fileName = "/verified-sync-alias-chain.ts";
+    const source = `
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 1 */
+      function addOne(value: number): number { return value + 1 }
+      const forwarded = addOne
+      const selected = forwarded
+      /* uneffect:requires value >= 0 */
+      /* uneffect:ensures result === value + 2 */
+      function caller(value: number): number {
+        const intermediate = selected(value)
+        return intermediate + 1
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    const callerArtifacts = result.artifacts.filter(({ obligation }) => obligation?.functionName === "caller");
+    expect(callerArtifacts.find(({ obligation }) => obligation?.clause === "ensures")?.controlFlow?.relationalCalls)
+      .toEqual([expect.objectContaining({ functionName: "addOne", evidence: "verified" })]);
+    expect(callerArtifacts.find(({ obligation }) => obligation?.clause === "requires")?.controlFlow?.relationalCalls)
+      .toEqual([expect.objectContaining({ functionName: "addOne", evidence: "verified" })]);
   });
 
   it("reaches a fixed point across a local relational summary chain", async () => {
