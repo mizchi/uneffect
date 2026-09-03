@@ -907,7 +907,7 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
-  it("fails closed when lexical shadowing would hide path-dependent scalar states", async () => {
+  it("restores path-dependent scalar states after lexical shadowing", async () => {
     const fileName = "/path-dependent-lexical-shadow.ts";
     const source = `
       type Int = number
@@ -921,7 +921,8 @@ describe("Hoare contract checker", () => {
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
 
-    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
   it("applies lexical scope to branch blocks while retaining writes to outer bindings", async () => {
@@ -990,7 +991,7 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
-  it("fails closed when a catch binding shadows divergent predecessor values", async () => {
+  it("restores divergent predecessor values after a shadowing catch binding", async () => {
     const fileName = "/path-dependent-catch-shadow.ts";
     const source = `
       type Int = number
@@ -1004,7 +1005,8 @@ describe("Hoare contract checker", () => {
     `;
     const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
 
-    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
   it("lowers TypeChecker-resolved Math.abs, Math.min, and Math.max into scalar paths", async () => {

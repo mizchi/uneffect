@@ -2706,7 +2706,10 @@ export function lowerInvariantProgram(
         }
       }
       if (new Set(lexicalNames).size !== lexicalNames.length) throw new Error("duplicate lexical bindings in a block are unsupported");
-      const shadowedNames = lexicalNames.filter((name) => initial.some((path) => path.env.has(name)));
+      const shadowedNames = lexicalNames.filter((name) => initial.some((path) => path.env.has(name) || path.pendingPromises.has(name)));
+      if (shadowedNames.length > 0 && initial.length > 1) {
+        return initial.flatMap((path) => executeScopedBlock(block, [path], context));
+      }
       const shadowedValues = new Map<string, LogicExpression>();
       for (const name of shadowedNames) {
         if (initial.some((path) => path.pendingPromises.has(name))) {
@@ -3200,38 +3203,30 @@ export function lowerInvariantProgram(
           const handlerSpan = { start: statement.catchClause.getStart(source), end: statement.catchClause.getEnd() };
           const binding = statement.catchClause.variableDeclaration?.name;
           if (binding && !ts.isIdentifier(binding)) throw new Error("destructured catch bindings are unsupported by the contract CFG");
-          let shadowedCatchValue: LogicExpression | undefined;
-          if (binding && thrown.some((path) => path.env.has(binding.text))) {
-            const values = thrown.map((path) => path.env.get(binding.text));
-            const first = values[0];
-            if (!first || values.some((value) => !value || JSON.stringify(value) !== JSON.stringify(first))) {
-              throw new Error(`catch binding shadows a path-dependent scalar: ${binding.text}`);
-            }
-            if (thrown.some((path) => path.pendingPromises.has(binding.text))) {
+          const caughtPaths = thrown.flatMap((path): PathState[] => {
+            const shadowedCatchValue = binding ? path.env.get(binding.text) : undefined;
+            if (binding && path.pendingPromises.has(binding.text)) {
               throw new Error(`catch binding shadows a tracked Promise: ${binding.text}`);
             }
-            shadowedCatchValue = first;
-          }
-          const caught = thrown.map((path): PathState => {
             const edge = { ...path.thrown!, handlerSpan };
             const caughtEnv = new Map(path.env);
             if (binding && edge.payload) caughtEnv.set(binding.text, edge.payload);
-            return { ...path, env: caughtEnv, completion: "normal", thrown: undefined, returnEnv: undefined, returnStatement: undefined, dischargedThrows: [...path.dischargedThrows, edge] };
+            const caught: PathState = { ...path, env: caughtEnv, completion: "normal", thrown: undefined, returnEnv: undefined, returnStatement: undefined, dischargedThrows: [...path.dischargedThrows, edge] };
+            return executeScopedBlock(statement.catchClause!.block, [caught], context).map((exit): PathState => {
+              if (!binding) return exit;
+              const env = new Map(exit.env);
+              const returnEnv = exit.returnEnv && new Map(exit.returnEnv);
+              if (shadowedCatchValue) {
+                env.set(binding.text, shadowedCatchValue);
+                returnEnv?.set(binding.text, shadowedCatchValue);
+              } else {
+                env.delete(binding.text);
+                returnEnv?.delete(binding.text);
+              }
+              return { ...exit, env, ...(returnEnv ? { returnEnv } : {}) };
+            });
           });
-          const caughtPaths = executeScopedBlock(statement.catchClause.block, caught, context);
-          handled = [...completed, ...caughtPaths.map((path): PathState => {
-            if (!binding || !ts.isIdentifier(binding)) return path;
-            const env = new Map(path.env);
-            const returnEnv = path.returnEnv && new Map(path.returnEnv);
-            if (shadowedCatchValue) {
-              env.set(binding.text, shadowedCatchValue);
-              returnEnv?.set(binding.text, shadowedCatchValue);
-            } else {
-              env.delete(binding.text);
-              returnEnv?.delete(binding.text);
-            }
-            return { ...path, env, ...(returnEnv ? { returnEnv } : {}) };
-          })];
+          handled = [...completed, ...caughtPaths];
         }
         if (!statement.finallyBlock) paths = handled;
         else {
