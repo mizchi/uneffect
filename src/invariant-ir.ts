@@ -1171,7 +1171,10 @@ function typeCheckerCallCompletions(
       }
       ts.forEachChild(node, scan);
     };
-    scan(source);
+    for (const candidate of program.getSourceFiles()) {
+      if (!candidate.isDeclarationFile) scan(candidate);
+      if (written) break;
+    }
     return written;
   };
   type LocalAsyncCallable = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
@@ -1237,6 +1240,9 @@ function typeCheckerCallCompletions(
       || ((ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) !== 0) !== (mode === "promise")) return undefined;
     const identity = callableIdentity(declaration);
     if (!identity || !stableCallable(call, identity.symbol)) return undefined;
+    const declarationSource = declaration.getSourceFile();
+    const declarationPresentObjects = declarationSource === source ? reviewedPresentObjects
+      : typeCheckerPresentObjectExpressions(program, declarationSource.fileName, declarationSource.text);
     const statements = ts.isBlock(declaration.body) ? [...declaration.body.statements] : undefined;
     const localDeclarations: ts.VariableDeclaration[] = [];
     while (statements?.[0] && ts.isVariableStatement(statements[0])) {
@@ -1338,7 +1344,7 @@ function typeCheckerCallCompletions(
       inspect(local.initializer!);
       if (!closed || !scalarDomain(checker.getTypeAtLocation(local.initializer!))) return undefined;
       let value: LogicExpression;
-      try { value = substitute(parseLogicExpression(local.initializer!.getText(source)), captured); } catch { return undefined; }
+      try { value = substitute(parseLogicExpression(local.initializer!.getText(declarationSource)), captured); } catch { return undefined; }
       captured.set((local.name as ts.Identifier).text, value);
       allowed.add((local.name as ts.Identifier).text);
     }
@@ -1354,31 +1360,31 @@ function typeCheckerCallCompletions(
       || (requiredNormalGuard && scalarDomain(checker.getTypeAtLocation(requiredNormalGuard.expression)) !== "bool")) return undefined;
     const rejectedValue = rejectionExpression ?? definiteRejectionExpression;
     const reviewedRejection = rejectedValue && ts.isNewExpression(rejectedValue)
-      && reviewedPresentObjects.has(`${rejectedValue.getStart(source)}:${rejectedValue.getEnd()}`);
+      && declarationPresentObjects.has(`${rejectedValue.getStart(declarationSource)}:${rejectedValue.getEnd()}`);
     const rejectionType = reviewedRejection ? adapter.thrownErrorType(rejectedValue!) : undefined;
     if (rejectedValue && (!reviewedRejection || rejectionType === "unknown")) return undefined;
     let clauses: AwaitFulfillmentFact["clauses"] | undefined;
     try {
       if (whenTrue) {
-        const trueValue = substitute(parseLogicExpression(whenTrue.getText(source)), captured);
+        const trueValue = substitute(parseLogicExpression(whenTrue.getText(declarationSource)), captured);
       if (!condition || !whenFalse) {
         clauses = [{
-          source: `result === ${whenTrue.getText(source)}`,
+          source: `result === ${whenTrue.getText(declarationSource)}`,
           expression: { kind: "binary", operator: "eq", left: variable("result"), right: trueValue },
         }];
       } else {
-        const guard = substitute(parseLogicExpression(condition.getText(source)), captured);
-        const falseValue = substitute(parseLogicExpression(whenFalse.getText(source)), captured);
+        const guard = substitute(parseLogicExpression(condition.getText(declarationSource)), captured);
+        const falseValue = substitute(parseLogicExpression(whenFalse.getText(declarationSource)), captured);
         clauses = [
           {
-            source: `!(${condition.getText(source)}) || result === ${whenTrue.getText(source)}`,
+            source: `!(${condition.getText(declarationSource)}) || result === ${whenTrue.getText(declarationSource)}`,
             expression: {
               kind: "binary", operator: "or", left: { kind: "unary", operator: "not", operand: guard },
               right: { kind: "binary", operator: "eq", left: variable("result"), right: trueValue },
             },
           },
           {
-            source: `${condition.getText(source)} || result === ${whenFalse.getText(source)}`,
+            source: `${condition.getText(declarationSource)} || result === ${whenFalse.getText(declarationSource)}`,
             expression: {
               kind: "binary", operator: "or", left: guard,
               right: { kind: "binary", operator: "eq", left: variable("result"), right: falseValue },
@@ -1387,17 +1393,16 @@ function typeCheckerCallCompletions(
         ];
       }
       if (requiredNormalGuard) {
-        const guard = substitute(parseLogicExpression(requiredNormalGuard.expression.getText(source)), captured);
+        const guard = substitute(parseLogicExpression(requiredNormalGuard.expression.getText(declarationSource)), captured);
         const normalGuard = requiredNormalGuard.truth ? guard : { kind: "unary", operator: "not", operand: guard } satisfies LogicExpression;
         clauses.unshift({
           source: requiredNormalGuard.truth
-            ? requiredNormalGuard.expression.getText(source) : `!(${requiredNormalGuard.expression.getText(source)})`,
+            ? requiredNormalGuard.expression.getText(declarationSource) : `!(${requiredNormalGuard.expression.getText(declarationSource)})`,
           expression: normalGuard,
         });
       }
       }
     } catch { return undefined; }
-    const declarationSource = declaration.getSourceFile();
     const fulfillment = whenTrue && domain && clauses ? {
       domain,
       functionName: identity.name,

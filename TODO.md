@@ -2931,6 +2931,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       retain mutable captures and complex bodies as unknown.
       - [x] Suppress the normal successor of an inferred definitely-throwing
         sync helper and preserve its concrete Error subtype through catch.
+      - [x] Follow named imports/static re-exports for unannotated sync and async
+        scalar producers, using callee-file expressions/spans/digests and a
+        Program-wide reassignment screen.
 - [x] Generalize the reconciler across source files in one checked TypeScript
   Program, bind each relation to declaration file/span/SHA-256 and exact
   TypeScript version, expose the reconciler publicly, and run it from project

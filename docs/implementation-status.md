@@ -965,6 +965,12 @@ same property is proved for arbitrary TypeScript.
   impossible normal successor; the error remains the actual inferred Error
   subtype and is not confused with a same-named reviewed builtin. This permits contracts at an application boundary without
   requiring annotations on every small pure helper.
+  The same inference follows TypeChecker-resolved named imports and static
+  re-exports inside one checked Program. Expressions, source spans, reviewed
+  Error construction, and declaration digests are read from the callee
+  SourceFile rather than the caller. A Program-wide symbol write screen rejects
+  reassigned producer bindings before granting either synchronous or async
+  inferred evidence.
   Persisted package summaries can now be consumed at call sites through a
   TypeChecker-resolved installed declaration. The standalone
   `uneffect-contract-summary/v1` producer/validator now emits package/version,

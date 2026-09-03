@@ -4343,6 +4343,69 @@ describe("Hoare contract checker", () => {
       .toContainEqual(expect.objectContaining({ effect: "Throw<RangeError>", evidence: "verified" }));
   });
 
+  it("infers an unannotated synchronous helper through a project re-export", async () => {
+    const project = await verifyUneffectProject({ files: {
+      "/producer.ts": `
+        export function addOne(value: number): number { return value + 1 }
+      `,
+      "/barrel.ts": `export { addOne as increment } from "./producer"`,
+      "/consumer.ts": `
+        import { increment } from "./barrel"
+        /* uneffect:ensures result === value + 2 */
+        export function caller(value: number): number { return increment(value) + 1 }
+      `,
+    } });
+
+    expect(project.diagnostics).toEqual([]);
+    expect(project.obligations).toHaveLength(1);
+    expect(project.obligations[0]).toMatchObject({
+      status: "verified",
+      controlFlow: { relationalCalls: [expect.objectContaining({
+        functionName: "addOne",
+        declarationFileName: "/producer.ts",
+        evidence: "verified",
+      })] },
+    });
+
+    const reassigned = await verifyUneffectProject({ files: {
+      "/producer.ts": `
+        export function addOne(value: number): number { return value + 1 }
+        addOne = (value: number): number => value - 1
+      `,
+      "/consumer.ts": `
+        import { addOne } from "./producer"
+        /* uneffect:ensures result === value + 1 */
+        export function caller(value: number): number { return addOne(value) }
+      `,
+    } });
+    expect(reassigned.obligations.find(({ status }) => status === "unsupported"))
+      .toMatchObject({ message: expect.stringContaining("addOne(value)") });
+  });
+
+  it("infers an unannotated async helper from its imported source file", async () => {
+    const project = await verifyUneffectProject({ files: {
+      "/producer.ts": `
+        export async function addOne(value: number): Promise<number> { return value + 1 }
+      `,
+      "/consumer.ts": `
+        import { addOne } from "./producer"
+        /* uneffect:ensures result === value + 1 */
+        export async function caller(value: number): Promise<number> { return await addOne(value) }
+      `,
+    } });
+
+    expect(project.diagnostics).toEqual([]);
+    expect(project.obligations).toHaveLength(1);
+    expect(project.obligations[0]).toMatchObject({
+      status: "verified",
+      controlFlow: { relationalCalls: [expect.objectContaining({
+        functionName: "addOne",
+        declarationFileName: "/producer.ts",
+        evidence: "verified",
+      })] },
+    });
+  });
+
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `
