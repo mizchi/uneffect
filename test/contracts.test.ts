@@ -4211,6 +4211,28 @@ describe("Hoare contract checker", () => {
       .toEqual([expect.objectContaining({ functionName: "addOne", evidence: "verified" })]);
   });
 
+  it("composes a synchronous contract through a builtin-frozen static property", async () => {
+    const fileName = "/verified-sync-frozen-property.ts";
+    const source = `
+      /* uneffect:ensures result === value + 1 */
+      function addOne(value: number): number { return value + 1 }
+      const helpers = Object.freeze({ addOne })
+      /* uneffect:ensures result === value + 2 */
+      function caller(value: number): number { return helpers.addOne(value) + 1 }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(result.artifacts.find(({ obligation }) => obligation?.functionName === "caller")?.controlFlow?.relationalCalls)
+      .toEqual([expect.objectContaining({ functionName: "addOne", evidence: "verified" })]);
+
+    const unfrozenSource = source.replace("Object.freeze({ addOne })", "({ addOne })");
+    const unfrozen = await verifyContractObligations("/unsupported-sync-property.ts", unfrozenSource, undefined,
+      programFor("/unsupported-sync-property.ts", unfrozenSource));
+    expect(unfrozen.artifacts.find(({ status }) => status === "unsupported"))
+      .toMatchObject({ message: expect.stringContaining("helpers.addOne(value)") });
+  });
+
   it("reaches a fixed point across a local relational summary chain", async () => {
     const fileName = "/verified-relational-chain.ts";
     const source = `

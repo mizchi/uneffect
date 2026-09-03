@@ -935,8 +935,10 @@ same property is proved for arbitrary TypeScript.
   explicit `requires`/`ensures` and
   `Throw<E>` clauses now create the same provisional relational completion as
   Promise producers. Direct identifier calls, TypeChecker-resolved named
-  imports, and acyclic `const` callable alias chains are admitted only with
-  stable symbol identity. The project fixed point promotes edges on both caller
+  imports, acyclic `const` callable alias chains, and a static own property of
+  an already builtin-`Object.freeze`-protected literal are admitted only with
+  stable symbol identity. Freeze recognition is compatibility for existing
+  code, not a recommendation to add runtime freezing. The project fixed point promotes edges on both caller
   precondition and postcondition obligations after the callee obligations
   verify; a counterexample downgrades every dependent caller obligation, while
   mutable callable aliases remain unsupported. For

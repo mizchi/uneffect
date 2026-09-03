@@ -3,6 +3,7 @@ import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { InvariantSpec } from "./spec-ir.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import { resolveStableCallableSymbol } from "./stable-callable.js";
 
 export type LogicSort = "Int" | "Real" | "Bool";
 export type NumericDomain = "int" | "nat" | "float" | "bool";
@@ -1165,27 +1166,7 @@ function typeCheckerCallCompletions(
     return symbol ? { name: variable.name.text, symbol } : undefined;
   };
   const stableCallable = (call: ts.CallExpression, targetSymbol: ts.Symbol): boolean => {
-    if (!ts.isIdentifier(call.expression)) return false;
-    const rawCallSymbol = checker.getSymbolAtLocation(call.expression);
-    if (!rawCallSymbol || !targetSymbol) return false;
-    const resolveStableSymbol = (symbol: ts.Symbol, seen = new Set<ts.Symbol>()): ts.Symbol | undefined => {
-      if (seen.has(symbol) || symbolIsWritten(symbol)) return undefined;
-      seen.add(symbol);
-      if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) return resolveStableSymbol(checker.getAliasedSymbol(symbol), seen);
-      const declarations = symbol.declarations;
-      if (!declarations || declarations.length === 0) return undefined;
-      if (declarations.every((candidate) => ts.isFunctionDeclaration(candidate))) return symbol;
-      if (!declarations.every((candidate) => ts.isVariableDeclaration(candidate)
-        && ts.isVariableDeclarationList(candidate.parent) && (candidate.parent.flags & ts.NodeFlags.Const) !== 0)) return undefined;
-      if (declarations.length !== 1) return undefined;
-      const declaration = declarations[0]! as ts.VariableDeclaration;
-      if (declaration.initializer && ts.isIdentifier(declaration.initializer)) {
-        const initializerSymbol = checker.getSymbolAtLocation(declaration.initializer);
-        return initializerSymbol ? resolveStableSymbol(initializerSymbol, seen) : undefined;
-      }
-      return symbol;
-    };
-    return resolveStableSymbol(rawCallSymbol) === targetSymbol && !symbolIsWritten(targetSymbol);
+    return resolveStableCallableSymbol(checker, call.expression) === targetSymbol && !symbolIsWritten(targetSymbol);
   };
   const immutableScalarLiteral = (identifier: ts.Identifier): LogicExpression | undefined => {
     const symbol = checker.getSymbolAtLocation(identifier);
