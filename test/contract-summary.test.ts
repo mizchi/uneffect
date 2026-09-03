@@ -1970,6 +1970,14 @@ describe("persisted contract summary bundles", () => {
           return false
         }
       }
+      /* uneffect:ensures result === cached || result === value || result === 1 */
+      export async function nullishForward(cached: number | null, value: number): Promise<number> {
+        try {
+          return cached ?? remote(value)
+        } catch {
+          return 1
+        }
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -2103,6 +2111,13 @@ describe("persisted contract summary bundles", () => {
     expect(logicalOrForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
       .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
     expect(logicalOrForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
+    const nullishForwardArtifacts = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "nullishForward");
+    expect(nullishForwardArtifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(nullishForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
+    expect(nullishForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
       .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
   });
 });

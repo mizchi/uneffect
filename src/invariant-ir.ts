@@ -2311,6 +2311,25 @@ export function lowerInvariantProgram(
       if (ts.isIdentifier(unwrapped) && incoming.some((path) => path.pendingPromises.has(unwrapped.text))) {
         return executeAwait(unwrapped, incoming, { returnStatement: statement }, true);
       }
+      if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+        && ts.isIdentifier(unwrapped.left)) {
+        const span = `${unwrapped.getStart(source)}:${unwrapped.getEnd()}`;
+        const guard = semanticGuards.get(unwrapped.left.text)?.find((candidate) =>
+          candidate.kind === "defined" && candidate.valueVariable !== undefined
+          && candidate.coalesceSpans?.includes(span));
+        if (!guard) throw new Error(`unsupported nullish return: ${unwrapped.getText(source)}`);
+        return incoming.flatMap((path): PathState[] => {
+          const defined = substitute(variable(guard.variable), path.env);
+          const whenDefined = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, defined] };
+          const whenNullish = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(defined)] };
+          const resultEnv = new Map(whenDefined.env);
+          resultEnv.set("result", substitute(variable(guard.valueVariable!), whenDefined.env));
+          return [
+            { ...whenDefined, completion: "return", returnEnv: resultEnv, returnStatement: statement },
+            ...executeReturnExpression(unwrapped.right, [whenNullish], statement),
+          ];
+        });
+      }
       if (ts.isBinaryExpression(unwrapped)
         && (unwrapped.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
           || unwrapped.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {

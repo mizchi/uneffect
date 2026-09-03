@@ -913,8 +913,11 @@ same property is proved for arbitrary TypeScript.
   awaited scalar expression. Boolean `&&`/`||` returns use the same recursive
   evaluator: the skipped arm returns the Boolean identity and only the selected
   right arm may create or forward a Promise. Branch-specific synchronous
-  throws, fulfillment relations, and rejections remain separate. Dynamic Promise selectors are
-  still outside this bounded return shape. A scalar Promise-returning callee
+  throws, fulfillment relations, and rejections remain separate. A
+  TypeChecker-backed nullable scalar `left ?? right` return likewise returns
+  the tracked payload on the present path and recursively evaluates a scalar or
+  Promise-producing fallback only on the absent path. Dynamic Promise selectors
+  are still outside this bounded return shape. A scalar Promise-returning callee
   may expose a trusted `contract ensures` relation. One direct
   `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar

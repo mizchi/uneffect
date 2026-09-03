@@ -2901,6 +2901,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Apply the recursive return evaluator to Boolean `&&`/`||`, returning
       the short-circuit Boolean on the skipped path and evaluating a scalar or
       Promise-producing right arm only on its selected path.
+    - [x] Apply it to TypeChecker-backed nullable scalar `??` returns, preserving
+      the present payload and evaluating/forwarding the fallback only on the
+      nullish path.
 - [x] Emit one source-mapped `call-precondition` obligation per callee
   `contract requires` clause and prove it from the exact caller path conditions;
   a failed implication is a counterexample rather than an assumed precondition.
