@@ -312,6 +312,25 @@ export function buildProgramCallGraph(
     }
     return undefined;
   };
+  const hasIteratorProtocol = (expression: ts.Expression): boolean =>
+    checker.getTypeAtLocation(expression).getProperties().some((property) =>
+      (property.declarations ?? []).some((declaration) => {
+        const name = (declaration as ts.NamedDeclaration).name;
+        return Boolean(name && ts.isPropertyName(name) && isGlobalSymbolMemberName(name, "iterator"));
+      }));
+  const reviewedBuiltinIterable = (expression: ts.Expression): boolean => {
+    const reviewed = new Set([
+      "Array", "ReadonlyArray", "Map", "ReadonlyMap", "Set", "ReadonlySet",
+      "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
+      "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",
+    ]);
+    const accepts = (type: ts.Type): boolean => {
+      if ((type.flags & ts.TypeFlags.StringLike) !== 0 || checker.isArrayType(type) || checker.isTupleType(type)) return true;
+      if (type.isUnion()) return type.types.every(accepts);
+      return reviewed.has(type.getSymbol()?.getName() ?? "");
+    };
+    return accepts(checker.getTypeAtLocation(expression));
+  };
   const definitelyPrimitive = (expression: ts.Expression): boolean => {
     const type = checker.getTypeAtLocation(expression);
     const members = type.isUnion() ? type.types : [type];
@@ -444,7 +463,8 @@ export function buildProgramCallGraph(
     const record = (expression: ts.Expression, convertsThrowToRejection = false): void => {
       if (!ts.isIdentifier(expression)) return;
       const index = parameterIndices.get(resolvedSymbol(checker, expression)!);
-      if (index === undefined || !checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) return;
+      if (index === undefined || (!checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")
+        && (!hasIteratorProtocol(expression) || reviewedBuiltinIterable(expression)))) return;
       const previous = consumed.get(index);
       consumed.set(index, previous === false ? false : convertsThrowToRejection);
     };
@@ -739,7 +759,16 @@ export function buildProgramCallGraph(
       const consumeIterableExpression = (expression: ts.Expression, convertsThrowToRejection = false): void => {
         const implicitIterator = implicitIteratorDeclaration(expression);
         if (!implicitIterator) {
-          consumeStoredOrUnknown(expression, convertsThrowToRejection);
+          if (ts.isCallExpression(expression)) {
+            const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
+            if (returnedGeneratorDeclarations(symbolNodes.get(resolvedSymbol(checker, lookup)!))) return;
+          }
+          if (!addStoredGeneratorConsumption(expression, convertsThrowToRejection)
+            && !reviewedBuiltinIterable(expression) && hasIteratorProtocol(expression)) {
+            addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
+          } else if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
+            consumeStoredOrUnknown(expression, convertsThrowToRejection);
+          }
           return;
         }
         const receiver = canonicalAddressableReceiver(expression);

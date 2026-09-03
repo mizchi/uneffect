@@ -2268,6 +2268,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Preserve unknown evidence when an opaque or partial generator factory is stored and consumed through immutable local aliases.
   - [x] Treat spread syntax and `Array.from` as synchronous iterator consumers for direct factories and stored immutable bindings.
   - [x] Recognize destructuring, collection/typed-array constructors, `Object.fromEntries`, and Promise combinators by standard-library signature identity as iterator consumers.
+  - [x] Generalize iterator effect parameters from direct `IteratorObject`
+    values to consumed `Iterable<T>` parameters without `.next()`, while
+    retaining reviewed-pure standard String/Array/Map/Set/TypedArray iteration.
   - [x] Convert generator-body `Throw<T>` during Promise combinator iteration to rejection while retaining synchronous factory-call throws.
   - [x] Mark iterator-like `.next()` through unresolved parameters/properties as unknown evidence while preserving standard-library pure iterator aliases.
   - [x] Specialize iterator-consuming function parameters at call sites from known generator factories/bindings, pure standard iterators, or explicit unknown arguments.

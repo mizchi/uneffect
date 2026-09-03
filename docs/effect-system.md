@@ -248,6 +248,13 @@ their TypeScript standard-library signature, so a shadowed API with the same tex
 does not acquire these semantics. Promise combinators turn a generator-body
 `Throw<T>` during iteration into rejection; synchronous effects of evaluating the
 factory argument itself remain ordinary effects.
+Parameters typed as a general `Iterable<T>` participate in the same iterator
+effect-polymorphism path even when they do not expose `.next()` directly. A
+function that consumes such a parameter through a reviewed builtin needs an
+`effect_parameter` bound before declared/verified assurance can close it.
+Standard String, Array/tuple, Map, Set, and TypedArray iterable identities are
+reviewed as engine-owned iteration; a user-defined iterable remains open, and
+its local `Symbol.iterator` body is composed when resolvable.
 `Array.fromAsync` uses that same rejection conversion for iterator-step failures
 and models its optional mapper as a deferred `0..n` microtask callback. Its
 awaited element and index are runtime-provided aliases, and an explicit `thisArg`

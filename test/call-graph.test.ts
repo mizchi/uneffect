@@ -2033,6 +2033,10 @@ describe("multi-file call graph and effect polymorphism", () => {
           void Promise.all(choosePartial(log))
         }
         export function consumeIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
+        export function consumeIterableParameter(iterable: Iterable<unknown>) { return Array.from(iterable) }
+        /* uneffect:effect none */
+        /* uneffect:effect_parameter iterable extends Console | Throw<Error> */
+        export function constrainedIterableParameter(iterable: Iterable<readonly [PropertyKey, unknown]>) { return Object.fromEntries(iterable) }
         /* uneffect:effect Console */
         export function boundedIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         /* uneffect:effect_parameter iterator extends Console | Throw<Error> */
@@ -2237,6 +2241,10 @@ describe("multi-file call graph and effect polymorphism", () => {
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeIterableParameter"))
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "constrainedIterableParameter"))
+        .toMatchObject({ evidence: "verified", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
       expect(result.summaries.find((summary) => summary.functionName === "boundedIteratorParameter"))
         .toMatchObject({
           evidence: "unknown",
