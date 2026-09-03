@@ -3120,43 +3120,60 @@ export function lowerInvariantProgram(
       } else if (ts.isForStatement(statement)) {
         const loopTarget = statement.getStart(source);
         const initializer = statement.initializer;
-        const declaration = initializer && ts.isVariableDeclarationList(initializer) && initializer.declarations.length === 1
-          ? initializer.declarations[0] : undefined;
-        if (initializer && ts.isVariableDeclarationList(initializer)
-          && (!declaration || !ts.isIdentifier(declaration.name) || !declaration.initializer)) {
-          throw new Error("for variable initializer requires one initialized identifier");
+        const declarations = initializer && ts.isVariableDeclarationList(initializer)
+          ? [...initializer.declarations] : [];
+        if (declarations.some((declaration) => !ts.isIdentifier(declaration.name) || !declaration.initializer)) {
+          throw new Error("for variable initializer requires initialized identifiers");
         }
-        const initializerName = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
-        const lexicalInitializer = Boolean(declaration && initializer && ts.isVariableDeclarationList(initializer)
+        const initializerNames = declarations.map((declaration) => (declaration.name as ts.Identifier).text);
+        if (new Set(initializerNames).size !== initializerNames.length) {
+          throw new Error("for variable initializer has duplicate bindings");
+        }
+        const lexicalInitializer = Boolean(initializer && ts.isVariableDeclarationList(initializer)
           && initializer.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
         const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
         if (!invariantSource) throw new Error(`for requires /* uneffect:loop_invariant ... */ but ${statement.condition?.getText(source) ?? "true"} has none`);
         const invariant = parseLogicExpression(invariantSource);
         const initialized = paths.map((path) => {
-          if (lexicalInitializer && initializerName && path.pendingPromises.has(initializerName)) {
-            throw new Error(`for initializer shadows a tracked Promise: ${initializerName}`);
+          const shadowedPromise = lexicalInitializer
+            ? initializerNames.find((name) => path.pendingPromises.has(name))
+            : undefined;
+          if (shadowedPromise) {
+            throw new Error(`for initializer shadows a tracked Promise: ${shadowedPromise}`);
           }
-          const outerValue = lexicalInitializer && initializerName ? path.env.get(initializerName) : undefined;
-          if (declaration && initializerName) {
+          const outerValues = new Map<string, LogicExpression>();
+          if (lexicalInitializer) {
+            for (const name of initializerNames) {
+              const value = path.env.get(name);
+              if (value) outerValues.set(name, value);
+            }
+          }
+          if (declarations.length > 0) {
             const nextEnv = new Map(path.env);
-            nextEnv.set(initializerName, substitute(logic(declaration.initializer!, pipeBindings, semanticGuards, semanticValues), nextEnv));
-            return { path: { ...path, env: nextEnv }, outerValue };
+            for (const declaration of declarations) {
+              const name = (declaration.name as ts.Identifier).text;
+              nextEnv.set(name, substitute(logic(declaration.initializer!, pipeBindings, semanticGuards, semanticValues), nextEnv));
+            }
+            return { path: { ...path, env: nextEnv }, outerValues };
           }
-          return { path: initializer ? applyScalarUpdate(initializer as ts.Expression, path) : path, outerValue };
+          return { path: initializer ? applyScalarUpdate(initializer as ts.Expression, path) : path, outerValues };
         });
         const exited: PathState[] = [];
         for (const initializedPath of initialized) {
-          const { path, outerValue } = initializedPath;
+          const { path, outerValues } = initializedPath;
           const restoreInitializerScope = (exit: PathState): PathState => {
-            if (!lexicalInitializer || !initializerName) return exit;
+            if (!lexicalInitializer) return exit;
             const env = new Map(exit.env);
             const returnEnv = exit.returnEnv && new Map(exit.returnEnv);
-            if (outerValue) {
-              env.set(initializerName, outerValue);
-              returnEnv?.set(initializerName, outerValue);
-            } else {
-              env.delete(initializerName);
-              returnEnv?.delete(initializerName);
+            for (const name of initializerNames) {
+              const outerValue = outerValues.get(name);
+              if (outerValue) {
+                env.set(name, outerValue);
+                returnEnv?.set(name, outerValue);
+              } else {
+                env.delete(name);
+                returnEnv?.delete(name);
+              }
             }
             return { ...exit, env, ...(returnEnv ? { returnEnv } : {}) };
           };

@@ -457,19 +457,21 @@ same property is proved for arbitrary TypeScript.
   and restores a same-named outer scalar across condition failure, break,
   return, and throw completions. This is lexical correctness, not a general
   frame-condition proof for other values omitted from the loop invariant.
-- A canonical `for` may alternatively initialize one existing scalar with an
-  assignment or declare one function-scoped `var`. Both reuse the scalar update
-  evaluator; only lexical `let`/`const` declarations receive loop-exit scope
-  restoration. The initializer may be omitted for an already initialized
-  scalar when condition and update remain explicit.
+- A canonical `for` may alternatively initialize existing scalars with an
+  assignment expression or declare one or more function-scoped `var` bindings.
+  Multiple initialized identifier declarations are evaluated left-to-right, so
+  later initializers may read earlier bindings. Only lexical `let`/`const`
+  declarations receive loop-exit scope restoration, and every declared lexical
+  shadow is restored together. The initializer may be omitted for an already
+  initialized scalar when condition and update remain explicit. Destructuring
+  and uninitialized declarations remain fail-closed.
 - An invariant-backed conditionless `for (;;)` uses a literal-true CFG guard.
   It contributes no synthetic condition-false exit; only explicit abrupt exits
   reach following code. This retains Hoare partial correctness and does not
   prove termination.
-- `for` initializer and update positions accept a comma list of supported
-  scalar updates and apply them left-to-right. This covers paired counters
-  without admitting arbitrary comma-expression values or multiple declaration
-  scope semantics.
+- `for` expression-initializer and update positions accept a comma list of
+  supported scalar updates and apply them left-to-right. This covers paired
+  counters without admitting arbitrary comma-expression values.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto
