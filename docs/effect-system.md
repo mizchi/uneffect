@@ -350,7 +350,9 @@ An iterator parameter may also be reached through a finite static property path,
 for example `options.values`. The summary records `propertyPath: ["values"]`;
 direct object literals and single-use immutable object bindings are projected at
 the call site, and symbol-resolved wrappers forward the same lazy-effect
-parameter. Computed keys, getters, mutation, escaping/reused containers, and
+parameter. A verified child-project summary preserves this path through exact
+declaration-output authentication and applies the same parent-side projection.
+Computed keys, getters, mutation, escaping/reused containers, and
 paths that cannot be projected remain fail-closed.
 The effect summary exposes the same contract as `iteratorEffectParameters` and
 uses `evidence: "inferred"` for an unannotated polymorphic consumer. This is not

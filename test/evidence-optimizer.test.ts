@@ -368,13 +368,19 @@ describe("evidence and optimizer obligations", () => {
         export function consume(iterator: Iterator<unknown>) {
           for (;;) { const step = iterator.next(); if (step.done) return }
         }
+        /* uneffect:effect_parameter options extends Console | Throw<Error> */
+        export function consumeOptions(options: { readonly iterator: Iterator<unknown> }) {
+          for (;;) { const step = options.iterator.next(); if (step.done) return }
+        }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        import { consume } from "../../a/src/a.js"
+        import { consume, consumeOptions } from "../../a/src/a.js"
         /* uneffect:effect Console | Throw<RangeError> */
         function* generate() { console.log("item"); throw new RangeError("stop") }
         /* uneffect:effect Console | Throw<RangeError> */
         export function run() { consume(generate()) }
+        /* uneffect:effect Console | Throw<RangeError> */
+        export function runOptions() { consumeOptions({ iterator: generate() }) }
       `);
       writeFileSync(join(aDirectory, "tsconfig.json"), JSON.stringify({
         compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
@@ -396,6 +402,13 @@ describe("evidence and optimizer obligations", () => {
           expect.objectContaining({ kind: "throw", errorType: "RangeError" }),
         ]),
       });
+      expect(verification.effects.summaries.find((item) => item.functionName === "runOptions")).toMatchObject({
+        evidence: "verified",
+        effects: expect.arrayContaining([
+          expect.objectContaining({ kind: "capability", name: "Console" }),
+          expect.objectContaining({ kind: "throw", errorType: "RangeError" }),
+        ]),
+      });
       expect(result.effectComposition).toMatchObject({
         status: "verified",
         links: expect.arrayContaining([expect.objectContaining({
@@ -404,7 +417,20 @@ describe("evidence and optimizer obligations", () => {
         })]),
         blockers: [],
       });
+      expect(result.effectComposition.links).toContainEqual(expect.objectContaining({
+        callee: "consumeOptions",
+        iteratorEffectParameters: [expect.objectContaining({
+          index: 0, name: "options.iterator", propertyPath: ["iterator"], convertsThrowToRejection: false,
+        })],
+      }));
 
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { consume } from "../../a/src/a.js"
+        /* uneffect:effect Console | Throw<RangeError> */
+        function* generate() { console.log("item"); throw new RangeError("stop") }
+        /* uneffect:effect Console | Throw<RangeError> */
+        export function run() { consume(generate()) }
+      `);
       writeFileSync(join(aDirectory, "src", "a.ts"), `
         /* uneffect:effect_parameter iterator extends Console */
         export function consume(iterator: Iterator<unknown>) {

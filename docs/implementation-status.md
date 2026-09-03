@@ -2215,7 +2215,8 @@ same property is proved for arbitrary TypeScript.
   engine-owned identity; structurally iterable user values and same-named user
   classes remain unknown. Finite parameter property paths are
   retained in the summary and projected through direct object literals or
-  single-use immutable bindings; computed/getter/mutable/escaping container
+  single-use immutable bindings. Verified child-project summaries preserve the
+  same path after exact declaration-output authentication; computed/getter/mutable/escaping container
   shapes remain unknown. `no-unknown`
   accepts the represented parameter but reports that it is not a closed
   concrete effect set. `effect_parameter iterator extends ...` supplies an
