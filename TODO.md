@@ -2880,6 +2880,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     supported scalar expression tree. Feed fulfillment into the enclosing
     arithmetic/Boolean/conditional expression and propagate rejection or
     synchronous throw without evaluating the remaining expression.
+    - [x] Generalize recursive-expression detection from synchronous calls to
+      tracked completions, so `(await producer(value)) + 1` works without an
+      unrelated synchronous callee inside the awaited arguments.
 - [x] Emit one source-mapped `call-precondition` obligation per callee
   `contract requires` clause and prove it from the exact caller path conditions;
   a failed implication is a counterexample rather than an assumed precondition.

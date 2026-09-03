@@ -891,7 +891,9 @@ same property is proved for arbitrary TypeScript.
   Boolean control, conditional expressions, return values, and reviewed call
   arguments. Its fulfillment value feeds the enclosing expression; rejection
   and synchronous throw bypass the remaining expression and retain the incoming
-  state. This does not generalize await to object/heap expressions or unknown
+  state. Recursive evaluation is triggered by the await completion itself; it
+  does not require a synchronous effectful call elsewhere in the expression.
+  This does not generalize await to object/heap expressions or unknown
   thenables. A scalar Promise-returning callee may expose a trusted
   `contract ensures` relation. One direct `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar

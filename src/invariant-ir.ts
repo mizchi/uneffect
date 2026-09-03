@@ -1981,10 +1981,14 @@ export function lowerInvariantProgram(
         throw new Error(`nullable mutation would change shared immutable-alias state: ${expression.getText(source)}`);
       }
     };
-    const containsTrackedSynchronousCall = (expression: ts.Expression): boolean => {
+    const containsTrackedCompletion = (expression: ts.Expression): boolean => {
       let found = false;
       const visit = (node: ts.Node): void => {
         if (found || node !== expression && ts.isFunctionLike(node)) return;
+        if (ts.isAwaitExpression(node) && callCompletions.has(`${node.getStart(source)}:${node.getEnd()}`)) {
+          found = true;
+          return;
+        }
         if (ts.isCallExpression(node)) {
           const fact = callCompletions.get(`${node.getStart(source)}:${node.getEnd()}`);
           if (fact?.mode === "sync") { found = true; return; }
@@ -2034,7 +2038,7 @@ export function lowerInvariantProgram(
         });
       }
       if (ts.isConditionalExpression(unwrapped)) {
-        if (!containsTrackedSynchronousCall(unwrapped.condition)) {
+        if (!containsTrackedCompletion(unwrapped.condition)) {
           const condition = evaluateCondition(unwrapped.condition, path.env);
           const whenTrue = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, condition] };
           const whenFalse = { ...path, env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] };
@@ -2129,7 +2133,7 @@ export function lowerInvariantProgram(
           [ts.SyntaxKind.ExclamationEqualsToken, "neq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "neq"],
         ]);
         const operator = operators.get(unwrapped.operatorToken.kind);
-        if (operator && containsTrackedSynchronousCall(unwrapped)) {
+        if (operator && containsTrackedCompletion(unwrapped)) {
           return evaluateScalar(unwrapped.left, path).flatMap((left) => {
             if (left.path.completion !== "normal") return [left];
             return evaluateScalar(unwrapped.right, left.path).map((right) => right.path.completion !== "normal"
@@ -2279,7 +2283,7 @@ export function lowerInvariantProgram(
       for (const argument of call.arguments) {
         evaluated = evaluated.flatMap((current) => {
           if (current.path.completion !== "normal") return [current];
-          if (containsTrackedSynchronousCall(argument)) {
+          if (containsTrackedCompletion(argument)) {
             return evaluateScalar(argument, current.path).map(({ path, value }) => ({ path, values: [...current.values, value] }));
           }
           let value: LogicExpression | undefined;
@@ -2655,7 +2659,7 @@ export function lowerInvariantProgram(
       } else if (ts.isIfStatement(statement)) {
         const forked: PathState[] = [];
         for (const path of paths) {
-          const conditions = containsTrackedSynchronousCall(statement.expression)
+          const conditions = containsTrackedCompletion(statement.expression)
             ? evaluateScalar(statement.expression, path)
             : [{ path, value: evaluateCondition(statement.expression, path.env) }];
           for (const evaluated of conditions) {
@@ -2714,7 +2718,7 @@ export function lowerInvariantProgram(
           const stringSwitch = caseSorts.has("Discriminant");
           const evaluations: Array<{ path: PathState; value?: LogicExpression }> = stringSwitch
             ? [{ path }]
-            : containsTrackedSynchronousCall(statement.expression)
+            : containsTrackedCompletion(statement.expression)
               ? evaluateScalar(statement.expression, path)
               : [{ path, value: substitute(logic(statement.expression, pipeBindings, semanticGuards, semanticValues), path.env) }];
           for (const evaluated of evaluations) {
@@ -2767,7 +2771,7 @@ export function lowerInvariantProgram(
           }
           const inv = substitute(invariant, loopEnv);
           const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [inv] };
-          const conditions = containsTrackedSynchronousCall(statement.expression)
+          const conditions = containsTrackedCompletion(statement.expression)
             ? evaluateScalar(statement.expression, conditionSeed)
             : [{ path: conditionSeed, value: evaluateCondition(statement.expression, loopEnv) }];
           for (const evaluated of conditions) {
@@ -2822,7 +2826,7 @@ export function lowerInvariantProgram(
           }
           const inv = substitute(invariant, loopEnv);
           const conditionSeed: PathState = { ...path, env: new Map(loopEnv), assumptions: [inv] };
-          const conditions = containsTrackedSynchronousCall(statement.condition)
+          const conditions = containsTrackedCompletion(statement.condition)
             ? evaluateScalar(statement.condition, conditionSeed)
             : [{ path: conditionSeed, value: evaluateCondition(statement.condition, loopEnv) }];
           for (const evaluated of conditions) {
@@ -2871,7 +2875,7 @@ export function lowerInvariantProgram(
               const preserved = substitute(invariant, bodyPath.env);
               add("loop-preserve", statement, bodyPath.assumptions, preserved, invariantSource, bodyPath.env);
               const conditionSeed: PathState = { ...bodyPath, completion: "normal", continueTarget: undefined, assumptions: [...bodyPath.assumptions, preserved] };
-              const conditions = containsTrackedSynchronousCall(statement.expression)
+              const conditions = containsTrackedCompletion(statement.expression)
                 ? evaluateScalar(statement.expression, conditionSeed)
                 : [{ path: conditionSeed, value: evaluateCondition(statement.expression, bodyPath.env) }];
               for (const evaluated of conditions) {
@@ -2939,7 +2943,7 @@ export function lowerInvariantProgram(
       } else if (ts.isThrowStatement(statement)) {
         const originSpan = { start: statement.getStart(source), end: statement.getEnd() };
         const effect = throwEffects.get(`${originSpan.start}:${originSpan.end}`) ?? "Throw<unknown>";
-        if (statement.expression && containsTrackedSynchronousCall(statement.expression)) {
+        if (statement.expression && containsTrackedCompletion(statement.expression)) {
           paths = paths.flatMap((path): PathState[] => evaluateScalar(statement.expression!, path).map(({ path: branch, value }) =>
             branch.completion !== "normal" ? branch : {
               ...branch, completion: "throw",
