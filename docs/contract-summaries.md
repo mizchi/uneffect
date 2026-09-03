@@ -160,8 +160,10 @@ member is verified against that method's own source span and can be instantiated
 at a synchronous scalar call or after a direct `await` at the consumer;
 callee preconditions become call-site obligations rather than assumptions, and
 the synchronous result may flow through an initialized scalar binding before
-the caller returns. Promise-producing calls remain in the ownership/await path,
-and same-named sibling methods cannot lend evidence. Hoare lowering accepts only the
+the caller returns. Promise-producing calls remain in the ownership/completion
+path; direct await, stored await, direct async return, and return of a supported
+stored immutable Promise preserve their distinct observation timing. Same-named
+sibling methods cannot lend evidence. Hoare lowering accepts only the
 call-site spans authenticated by the root-provenance binder, so a structural
 lookalike or `as typeof exportedRoot` cast cannot recover the member contract.
 An ordinary or nested mutable object, computed key, getter,

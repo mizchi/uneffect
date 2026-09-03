@@ -523,19 +523,24 @@ observed later through immutable identifier aliases. Call arguments and
 synchronous throws are snapshotted at creation, fulfillment/rejection occurs at
 await, and callee preconditions use only the call-time path. Repeated await is
 allowed; a Promise leaving lexical/function scope without observation is
-`unknown`. Conditional, mutable, property, destructured, and escaping Promise
-aliases remain unsupported.
+`unknown`. A direct async `return producer(args)` or return of that supported
+stored immutable binding forwards scalar fulfillment and rejection. A local
+synchronous catch sees call-time throws but not the forwarded rejection;
+`return await` observes both locally. Conditional, mutable, property,
+destructured, and other escaping Promise aliases remain unsupported.
 Synchronous exceptions raised inside an async body retain their identity for
 local `try/catch`; if still uncaught at function exit, the contract boundary
 converts `Throw<E>` to returned-Promise `Reject<E>`.
 Mutable/computed/object captures, mutable callables,
 default/rest/destructured parameters, multi-statement bodies, and
-Promise/thenable-valued returns remain `unknown`.
+opaque or otherwise unmodeled Promise/thenable-valued returns remain `unknown`.
 TypeChecker-proven Boolean `&&` and `||` in those scalar positions additionally
 preserve left-to-right short-circuit paths, including nested expressions.
 Identifier-only Boolean `&&=` and `||=` reuse the same paths and update the
 binding only when the right operand is reached. Non-Boolean truthiness and
-call/effect-valued operands remain `unknown`. Identifier-only scalar `??=`
+unauthenticated call/effect-valued operands remain `unknown`; authenticated
+scalar completion calls are evaluated and mutate only on normal completion.
+Identifier-only scalar `??=`
 uses the TypeChecker-backed nullable presence state, evaluates its right side
 only on the nullish path, and passes that RHS through the shared nullable
 assignment evaluator. Scalar values establish presence; compatible nullable
