@@ -206,6 +206,11 @@ same property is proved for arbitrary TypeScript.
   Replacer callbacks keep their existing synchronous callback summary. Hooks
   returned dynamically from `toJSON`, arbitrary runtime graph identity, and
   unbounded reflective traversal are not concrete body proofs.
+- Standard-identity `JSON.parse` records its optional reviver as a synchronous
+  `0..n` callback with key, value, and holder invocation projections. Reviver
+  Effects compose into the caller, and the parser's own `Throw<SyntaxError>`
+  escapes or is discharged by the surrounding `catch` through the shared
+  exception path.
 - Standard-identity `Object.assign` composes enumerable own source getters from
   same-Program object literals and matching same-Program target setters.
   Class prototype accessors are excluded because assignment does not copy

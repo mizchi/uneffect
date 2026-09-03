@@ -994,6 +994,9 @@ introducing another domain-local control-flow or alias model.
      getters; classify unknown/Proxy and recursively typed container values
      whose elements may expose hooks as `InvokeUserCode`. Preserve the existing
      synchronous replacer callback contract.
+   - [x] Model `JSON.parse` revivers as synchronous repeated callbacks with
+     runtime key/value/holder projections, and route parser
+     `Throw<SyntaxError>` through normal catch/discharge semantics.
    - [x] Model standard `structuredClone` clone failure as
      `Throw<DOMException>`, compose same-Program own enumerable getters through
      finite object/array literals, retain opaque generic graphs as

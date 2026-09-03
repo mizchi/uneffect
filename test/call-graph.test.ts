@@ -2559,4 +2559,73 @@ describe("multi-file call graph and effect polymorphism", () => {
     const result = analyzeProgramEffects(program, { requireAnnotations: false });
     expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
   });
+
+  it("composes JSON.parse reviver effects as synchronous repeated callbacks", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-json-reviver-"));
+    try {
+      const source = join(directory, "json.ts");
+      writeFileSync(source, `
+        /* uneffect:effect Console */
+        function revive(key: string, value: unknown) { console.log(key); return value }
+        /* uneffect:effect Console | Throw<SyntaxError> */
+        export function decode(text: string) { return JSON.parse(text, revive) }
+        /* uneffect:effect Console */
+        export function caught(text: string) { try { return JSON.parse(text, revive) } catch { return undefined } }
+      `);
+      const program = ts.createProgram([source], {
+        target: ts.ScriptTarget.ES2024,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+      });
+      const graph = buildProgramCallGraph(program);
+      expect(graph.edges).toContainEqual(expect.objectContaining({
+        kind: "callback-argument",
+        timing: "inline",
+      }));
+      const result = analyzeProgramEffects(program);
+      expect(result.diagnostics.filter(({ functionName }) => functionName === "decode")).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "decode")?.effects.map(formatEffect))
+        .toEqual(expect.arrayContaining(["Console", "Throw<SyntaxError>"]));
+      expect(result.diagnostics.filter(({ functionName }) => functionName === "caught")).toEqual([]);
+      expect(result.summaries.find(({ functionName }) => functionName === "caught")?.effects.map(formatEffect))
+        .toEqual(["Console"]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps common primitive String and Number transforms authority-free", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-primitive-transforms-"));
+    try {
+      const source = join(directory, "transforms.ts");
+      writeFileSync(source, `
+        export function normalize(value: string) {
+          return value.trim().toLowerCase().replaceAll("_", "-")
+        }
+        export function inspect(value: string, needle: string) {
+          return value.includes(needle) || value.startsWith(needle) || value.endsWith(needle)
+        }
+        export function finite(value: number) {
+          return Number.isFinite(value) && Number.isInteger(value) && !Number.isNaN(value)
+        }
+      `);
+      const program = ts.createProgram([source], {
+        target: ts.ScriptTarget.ES2024,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.es2024.d.ts"],
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.summaries.filter(({ functionName }) => ["normalize", "inspect", "finite"].includes(functionName)))
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ functionName: "normalize", effects: [], evidence: "inferred" }),
+          expect.objectContaining({ functionName: "inspect", effects: [], evidence: "inferred" }),
+          expect.objectContaining({ functionName: "finite", effects: [], evidence: "inferred" }),
+        ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

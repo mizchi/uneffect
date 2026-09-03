@@ -477,6 +477,16 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustOwner: "@mizchi/uneffect",
     }),
     reviewed("javascript", {
+      symbol: { module: "lib.es", export: "JSON#parse" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        ...inlineCallbackSemantics(1, true,
+          [runtimeValue("json-property-key"), runtimeValue("json-property-value")], runtimeValue("json-holder")).primitives,
+        { kind: "throw", error: "SyntaxError" },
+      ] },
+      trustReason: "ECMAScript JSON.parse may throw SyntaxError and invokes a callable reviver synchronously for parsed properties and the root value",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("javascript", {
       symbol: { module: "lib.es", export: "JSON#stringify" },
       semantics: inlineCallbackSemantics(1, true,
         [runtimeValue("json-property-key"), runtimeValue("json-property-value")], runtimeValue("json-holder")),
