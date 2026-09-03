@@ -47,10 +47,10 @@ function receiverOf(call: ts.CallExpression): ts.Expression | undefined {
 }
 
 interface ProjectionContext {
-  receiver?: ts.Expression;
-  arguments?: readonly ts.Expression[];
-  assignedValue?: ts.Expression;
-  resolveStaticString?: (expression: ts.Expression) => string | undefined;
+  readonly receiver?: ts.Expression;
+  readonly arguments?: readonly ts.Expression[];
+  readonly assignedValue?: ts.Expression;
+  readonly resolveStaticString?: (expression: ts.Expression) => string | undefined;
 }
 
 function projectValue(projector: ValueProjector, context: ProjectionContext, depth = 0): ProjectedValue {

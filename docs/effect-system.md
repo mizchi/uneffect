@@ -217,6 +217,18 @@ Thus `values.filter(value => predicate(value))` retains the reviewed synchronous
 timing of `filter`, while the same capture beneath `setTimeout` is deferred.
 Recursive forwarding and capture beneath an unreviewed callback host remain
 `unknown`; the analysis does not assume that every callback runs inline.
+A source-local consumer may invoke a one-level readonly function-valued
+property such as `options.onDone()`. Its `EffectParameter` records
+`path: ["onDone"]`; direct object literals and single-use immutable containers
+are projected with the same zero-runtime identity screen used by external
+callable contracts. A mutable function property is not accepted as stable and
+produces `unknown` when its target cannot otherwise be resolved. Concrete class
+methods, standard-library calls, and reviewed catalog methods continue through
+their ordinary receiver/call semantics rather than this property rule. Multiple
+readonly callbacks on the same options argument retain separate `(index,path)`
+entries. A bounded fixed point forwards them through mutually recursive local
+helpers; unresolved recursion timing remains `unknown`. Nested paths and reused
+intermediate containers are not flattened into this one-level guarantee.
 Callable String replacements are synchronous (`replace` is `0..1`,
 `replaceAll` is `0..n`). `Object.groupBy` and `Map.groupBy` synchronously
 consume their iterable and invoke the classifier, so generator Effect/Throw and

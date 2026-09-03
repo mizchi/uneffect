@@ -1902,6 +1902,25 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function deferredOuter(callback: () => void) { setTimeout(() => callback(), 0) }
         declare function invokeLater(callback: () => void): void
         export function opaqueOuter(callback: () => void) { invokeLater(() => callback()) }
+        export function withOptions(options: { readonly callback: () => void }) { options.callback() }
+        export function forwardOptions(options: { readonly callback: () => void }) { withOptions(options) }
+        export function runOptions() { forwardOptions({ callback: () => console.log("option") }) }
+        export function runStableOptions() {
+          const options = { callback: () => console.log("stable option") }
+          forwardOptions(options)
+        }
+        declare const opaqueOptions: { readonly callback: () => void }
+        export function runOpaqueOptions() { forwardOptions(opaqueOptions) }
+        export function mutableOptions(options: { callback: () => void }) { options.callback() }
+        export function withManyOptions(options: { readonly onSuccess: () => void; readonly onError: () => void }) {
+          options.onSuccess(); options.onError()
+        }
+        export function forwardManyOptions(options: { readonly onSuccess: () => void; readonly onError: () => void }) {
+          withManyOptions(options)
+        }
+        export function runManyOptions() {
+          forwardManyOptions({ onSuccess: () => console.log("ok"), onError: () => console.log("error") })
+        }
         export function recursive(callback: () => void) { recursive(callback) }
         export function runRecursive() { recursive(() => console.log("unknown")) }
       `);
@@ -1920,11 +1939,31 @@ describe("multi-file call graph and effect polymorphism", () => {
         .toContainEqual(expect.objectContaining({ index: 0, timing: "deferred" }));
       expect(graph.nodes.find((node) => node.name === "opaqueOuter")?.effectParameters)
         .toContainEqual(expect.objectContaining({ index: 0, timing: "unknown" }));
+      expect(graph.nodes.find((node) => node.name === "withOptions")?.effectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "options.callback", path: ["callback"], timing: "inline" }));
+      expect(graph.nodes.find((node) => node.name === "forwardOptions")?.effectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "options.callback", path: ["callback"], timing: "inline" }));
+      expect(graph.nodes.find((node) => node.name === "mutableOptions")?.effectParameters).toEqual([]);
+      expect(graph.nodes.find((node) => node.name === "forwardManyOptions")?.effectParameters)
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ index: 0, path: ["onSuccess"], timing: "inline" }),
+          expect.objectContaining({ index: 0, path: ["onError"], timing: "inline" }),
+        ]));
       const result = analyzeProgramEffects(program);
       expect(result.summaries.find((summary) => summary.functionName === "run"))
         .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
       expect(result.summaries.find((summary) => summary.functionName === "runRecursive"))
         .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "runOptions"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "runStableOptions"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "runOpaqueOptions"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "mutableOptions"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "runManyOptions"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

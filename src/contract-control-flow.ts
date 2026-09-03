@@ -13,8 +13,8 @@ import {
 
 export type ContractExit = "normal" | "return" | "throw" | `break:${string}` | `continue:${string}`;
 export interface ContractControlFlowOptions {
-  isNeverCall?: (call: ts.CallExpression) => boolean;
-  constantBoolean?: (expression: ts.Expression) => boolean | undefined;
+  readonly isNeverCall?: (call: ts.CallExpression) => boolean;
+  readonly constantBoolean?: (expression: ts.Expression) => boolean | undefined;
 }
 
 const NORMAL = completionSet({ completion: "normal" });

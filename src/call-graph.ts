@@ -9,7 +9,13 @@ import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export type CallableKind = "function" | "method" | "getter" | "setter" | "constructor" | "arrow" | "function-expression";
 export type InvocationTiming = "inline" | "deferred" | "unknown";
-export interface EffectParameter { index: number; name: string; timing: InvocationTiming }
+export interface EffectParameter {
+  index: number;
+  name: string;
+  timing: InvocationTiming;
+  /** Static property path from the runtime argument to the invoked callback. */
+  path?: readonly (string | number)[];
+}
 export interface IteratorEffectParameter {
   index: number;
   name: string;
@@ -305,6 +311,12 @@ export function buildProgramCallGraph(
       ? `${nameNode?.getText() ?? "<anonymous-class>"}.constructor` : nameNode?.getText() ?? "<anonymous>", kind: kindOf(declaration), fileName: declaration.getSourceFile().fileName, span: { start: declaration.getStart(), end: declaration.getEnd() }, overloads, effectParameters: [], iteratorEffectParameters: [] };
   });
   const byId = new Map(nodes.map((node) => [node.id, node]));
+  const runtimeParameterOwners = new Map<ts.Symbol, { declaration: ts.FunctionLikeDeclaration; index: number }>();
+  for (const declaration of declarations) runtimeParametersOf(declaration).forEach((parameter, index) => {
+    if (!ts.isIdentifier(parameter.name)) return;
+    const symbol = resolvedSymbol(checker, parameter.name);
+    if (symbol) runtimeParameterOwners.set(symbol, { declaration, index });
+  });
   const isGlobalSymbolMemberName = (name: ts.PropertyName, member: string): boolean => {
     if (!ts.isComputedPropertyName(name) || !ts.isPropertyAccessExpression(name.expression)
       || name.expression.name.text !== member) return false;
@@ -489,6 +501,27 @@ export function buildProgramCallGraph(
     const index = symbol ? parameterIndices.get(symbol) : undefined;
     return index === undefined ? undefined : { index, path };
   };
+  const ownedParameterProjection = (
+    expression: ts.Expression,
+  ): { owner: ts.FunctionLikeDeclaration; index: number; path: (string | number)[] } | undefined => {
+    const path: (string | number)[] = [];
+    let current = unwrapLiteralContainerExpression(expression);
+    while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+      if (ts.isPropertyAccessExpression(current)) {
+        path.unshift(current.name.text);
+        current = unwrapLiteralContainerExpression(current.expression);
+        continue;
+      }
+      const argument = current.argumentExpression && unwrapLiteralContainerExpression(current.argumentExpression);
+      if (!argument || (!ts.isStringLiteralLike(argument) && !ts.isNumericLiteral(argument))) return undefined;
+      path.unshift(ts.isNumericLiteral(argument) ? Number(argument.text) : argument.text);
+      current = unwrapLiteralContainerExpression(current.expression);
+    }
+    if (!ts.isIdentifier(current)) return undefined;
+    const symbol = resolvedSymbol(checker, current);
+    const owned = symbol ? runtimeParameterOwners.get(symbol) : undefined;
+    return owned ? { owner: owned.declaration, index: owned.index, path } : undefined;
+  };
   const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
     const cached = iteratorParameterCache.get(declaration);
     if (cached) return cached;
@@ -571,7 +604,7 @@ export function buildProgramCallGraph(
     const runtimeParameters = runtimeParametersOf(declaration);
     const parameterIndices = new Map<ts.Symbol, number>();
     runtimeParameters.forEach((parameter, index) => {
-      if (!ts.isIdentifier(parameter.name) || !isFunctionParameter(checker, parameter)) return;
+      if (!ts.isIdentifier(parameter.name)) return;
       const symbol = resolvedSymbol(checker, parameter.name);
       if (symbol) parameterIndices.set(symbol, index);
     });
@@ -579,19 +612,38 @@ export function buildProgramCallGraph(
       callableParameterCache.set(declaration, []);
       return [];
     }
-    if (callableParameterVisiting.has(declaration)) return [...parameterIndices.entries()].map(([symbol, index]) => ({
-      index, name: symbol.getName(), timing: "unknown",
-    }));
+    if (callableParameterVisiting.has(declaration)) {
+      const prior = byId.get(stableId(declaration))?.effectParameters ?? [];
+      return prior.length > 0 ? prior : runtimeParameters.flatMap((parameter, index) =>
+        ts.isIdentifier(parameter.name) && isFunctionParameter(checker, parameter)
+          ? [{ index, name: parameter.name.text, timing: "unknown" as const }] : []);
+    }
     callableParameterVisiting.add(declaration);
-    const timings = new Map<number, InvocationTiming>();
-    const record = (index: number, timing: InvocationTiming): void => {
-      const previous = timings.get(index);
-      timings.set(index, previous === "unknown" || timing === "unknown" ? "unknown"
-        : previous === "deferred" || timing === "deferred" ? "deferred" : "inline");
+    const consumed = new Map<string, { index: number; path: (string | number)[]; timing: InvocationTiming }>();
+    const record = (projection: { index: number; path: (string | number)[] }, timing: InvocationTiming): void => {
+      const key = `${projection.index}:${JSON.stringify(projection.path)}`;
+      const previous = consumed.get(key)?.timing;
+      consumed.set(key, { ...projection, timing: previous === "unknown" || timing === "unknown" ? "unknown"
+        : previous === "deferred" || timing === "deferred" ? "deferred" : "inline" });
     };
     const composeTiming = (outer: InvocationTiming, inner: InvocationTiming): InvocationTiming =>
       outer === "unknown" || inner === "unknown" ? "unknown"
         : outer === "deferred" || inner === "deferred" ? "deferred" : "inline";
+    const reviewedCallbackProjection = (
+      expression: ts.LeftHandSideExpression,
+      projection: { index: number; path: (string | number)[] },
+    ): boolean => {
+      if (projection.path.length === 0) return true;
+      if (projection.path.length !== 1) return false;
+      const property = ts.isPropertyAccessExpression(expression)
+        ? resolvedSymbol(checker, expression.name)
+        : ts.isElementAccessExpression(expression) && expression.argumentExpression
+          ? checker.getPropertyOfType(checker.getTypeAtLocation(expression.expression), String(projection.path[0]))
+          : undefined;
+      return Boolean(property?.declarations?.some((item) =>
+        (ts.isPropertySignature(item) || ts.isPropertyDeclaration(item))
+        && item.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ReadonlyKeyword)));
+    };
     const capturesCallableParameter = (callback: ts.ArrowFunction | ts.FunctionExpression): boolean => {
       let captured = false;
       const scan = (node: ts.Node): void => {
@@ -608,16 +660,19 @@ export function buildProgramCallGraph(
     const visit = (node: ts.Node, enclosingTiming: InvocationTiming = "inline"): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
-        const invokedSymbol = ts.isIdentifier(node.expression) ? resolvedSymbol(checker, node.expression) : undefined;
-        const invokedIndex = invokedSymbol ? parameterIndices.get(invokedSymbol) : undefined;
-        if (invokedIndex !== undefined) record(invokedIndex, enclosingTiming);
+        const invoked = iteratorParameterProjection(node.expression, parameterIndices);
+        if (invoked && reviewedCallbackProjection(node.expression, invoked)) record(invoked, enclosingTiming);
 
         const forwarded = node.arguments.flatMap((argument, argumentIndex) => {
           const current = unwrapLiteralContainerExpression(argument);
           if (!ts.isIdentifier(current)) return [];
           const argumentSymbol = resolvedSymbol(checker, current);
           const parameterIndex = argumentSymbol ? parameterIndices.get(argumentSymbol) : undefined;
-          return parameterIndex === undefined ? [] : [{ argumentIndex, parameterIndex }];
+          return parameterIndex === undefined ? [] : [{
+            argumentIndex,
+            projection: { index: parameterIndex, path: [] as (string | number)[] },
+            callable: checker.getTypeAtLocation(current).getCallSignatures().length > 0,
+          }];
         });
         const capturedCallbacks = node.arguments.flatMap((argument, argumentIndex) => {
           const callback = unwrapLiteralContainerExpression(argument);
@@ -639,8 +694,22 @@ export function buildProgramCallGraph(
             : target ? callableParametersOf(target).find((item) => item.index === argumentIndex)?.timing ?? "unknown"
               : external?.parameters.find((item) => item.index === argumentIndex)?.timing
                 ?? builtinTiming(node, checker, adapter, argumentIndex);
-          for (const { argumentIndex, parameterIndex } of forwarded) {
-            record(parameterIndex, composeTiming(enclosingTiming, argumentTiming(argumentIndex)));
+          for (const { argumentIndex, projection, callable } of forwarded) {
+            const contracts: readonly EffectParameter[] = target && target !== declaration
+              ? callableParametersOf(target).filter((item) => item.index === argumentIndex)
+              : external?.parameters.filter((item) => item.index === argumentIndex) ?? [];
+            if (!callable && contracts.length === 0) continue;
+            const projectedContracts = contracts.length > 0 ? contracts : [{
+              index: argumentIndex, name: `$arg${argumentIndex}`, timing: argumentTiming(argumentIndex),
+            }];
+            for (const contract of projectedContracts) {
+              const forwardedProjection = { index: projection.index, path: [...projection.path, ...(contract.path ?? [])] };
+              const key = `${forwardedProjection.index}:${JSON.stringify(forwardedProjection.path)}`;
+              const timing = target === declaration
+                ? consumed.get(key)?.timing ?? "unknown"
+                : contract.timing;
+              record(forwardedProjection, composeTiming(enclosingTiming, timing));
+            }
           }
           for (const { argumentIndex, callback } of capturedCallbacks) {
             visit(callback.body, composeTiming(enclosingTiming, argumentTiming(argumentIndex)));
@@ -650,15 +719,27 @@ export function buildProgramCallGraph(
       ts.forEachChild(node, (child) => visit(child, enclosingTiming));
     };
     visit(declaration.body!);
-    const result = [...parameterIndices.entries()].map(([symbol, index]) => ({
-      index, name: symbol.getName(), timing: timings.get(index) ?? "unknown",
+    const result = [...consumed.values()].map(({ index, path, timing }) => ({
+      index,
+      name: `${runtimeParameters[index]!.name.getText()}${path.map((part) => typeof part === "number" ? `[${part}]` : `.${part}`).join("")}`,
+      timing,
+      ...(path.length > 0 ? { path } : {}),
     }));
     callableParameterVisiting.delete(declaration);
     callableParameterCache.set(declaration, result);
     return result;
   };
-  for (const declaration of declarations) {
-    byId.get(stableId(declaration))!.effectParameters = callableParametersOf(declaration);
+  const callableFixedPointLimit = Math.min(8, declarations.length + 1);
+  for (let pass = 0; pass < callableFixedPointLimit; pass += 1) {
+    callableParameterCache.clear();
+    let changed = false;
+    for (const declaration of declarations) {
+      const node = byId.get(stableId(declaration))!;
+      const next = callableParametersOf(declaration);
+      if (JSON.stringify(node.effectParameters) !== JSON.stringify(next)) changed = true;
+      node.effectParameters = next;
+    }
+    if (!changed) break;
   }
   const knownCallableParameters = (declaration: ts.FunctionLikeDeclaration): readonly EffectParameter[] => {
     const known = byId.get(stableId(declaration))?.effectParameters ?? [];
@@ -1600,7 +1681,11 @@ export function buildProgramCallGraph(
         }
         const targetDeclaration = symbol ? symbolNodes.get(symbol) ?? signatureTarget : signatureTarget;
         const overloadIndex = symbol && signatureDeclaration ? symbol.declarations?.filter((item) => (ts.isFunctionDeclaration(item) || ts.isMethodDeclaration(item)) && !item.body).indexOf(signatureDeclaration) : -1;
-        const parameterIndex = ts.isIdentifier(node.expression) ? parameters.get(node.expression.text) : undefined;
+        const invokedProjection = iteratorParameterProjection(node.expression, iteratorParameterIndices);
+        const invokedCallbackParameter = invokedProjection && byId.get(caller)!.effectParameters.find((parameter) =>
+          parameter.index === invokedProjection.index
+          && JSON.stringify(parameter.path ?? []) === JSON.stringify(invokedProjection.path));
+        const parameterIndex = invokedCallbackParameter?.index;
         const consumptionSyntax = (
           (ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node && node.parent.name.text === "next"
             && ts.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent)
@@ -1650,6 +1735,33 @@ export function buildProgramCallGraph(
           ? node.expression.expression : undefined;
         const instantiatedReceiver = receiverExpression ? canonicalAddressableReceiver(receiverExpression) : undefined;
         edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: instantiatedArguments.map(({ text }) => text), ...(instantiatedReceiver && !instantiatedReceiver.unresolvedAlias ? { receiver: instantiatedReceiver.text } : {}), ...(instantiatedReceiver?.fresh ? { freshReceiver: true } : {}), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters, ...((refinementActionOwner && instantiatedArguments.some(({ unresolvedAlias }) => unresolvedAlias)) || instantiatedReceiver?.unresolvedAlias || (targetDeclaration && ts.isMethodDeclaration(targetDeclaration) && !instantiatedReceiver) ? { unresolvedMutationAlias: true } : {}) });
+        const iteratorProtocolMethod = (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))
+          && ["next", "return", "throw"].includes(propertyKey(node.expression) ?? "")
+          && checker.getPropertyOfType(checker.getTypeAtLocation(node.expression.expression), "next") !== undefined;
+        const unresolvedFunctionProperty = (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))
+          && (() => {
+            const property = ts.isPropertyAccessExpression(node.expression)
+              ? resolvedSymbol(checker, node.expression.name)
+              : checker.getPropertyOfType(checker.getTypeAtLocation(node.expression.expression), propertyKey(node.expression) ?? "");
+            return property?.declarations?.some((item) => ts.isPropertySignature(item) || ts.isPropertyDeclaration(item)) === true;
+          })();
+        const capturedProjection = ownedParameterProjection(node.expression);
+        const capturedInvocationRepresented = capturedProjection !== undefined
+          && capturedProjection.owner !== declaration
+          && (byId.get(stableId(capturedProjection.owner))?.effectParameters.some((parameter) =>
+            parameter.index === capturedProjection.index
+            && JSON.stringify(parameter.path ?? []) === JSON.stringify(capturedProjection.path)) ?? false);
+        if (invokedProjection && invokedProjection.path.length > 0 && !invokedCallbackParameter
+          && !targetDeclaration && !iteratorProtocolMethod && !isStandardLibraryCall(node)
+          && !resolvedBuiltin?.semantics && unresolvedFunctionProperty) {
+          edges.push({ caller, kind: "callback-argument", unresolvedName: node.expression.getText(), timing: "unknown",
+            span: { start: node.expression.getStart(), end: node.expression.getEnd() }, arguments: [] });
+        } else if (!invokedProjection && capturedProjection && !capturedInvocationRepresented
+          && !targetDeclaration && !iteratorProtocolMethod && !isStandardLibraryCall(node)
+          && !resolvedBuiltin?.semantics && unresolvedFunctionProperty) {
+          edges.push({ caller, kind: "callback-argument", unresolvedName: node.expression.getText(), timing: "unknown",
+            span: { start: node.expression.getStart(), end: node.expression.getEnd() }, arguments: [] });
+        }
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") {
           const receiver = node.expression.expression;
@@ -1697,6 +1809,38 @@ export function buildProgramCallGraph(
                 || projectedCallback?.completion === "convert-throw-to-rejection"
                 || externalParameter?.completion === "convert-throw-to-rejection"
                 || externalParameter?.completion === "host-report-throw" });
+          }
+          for (const localParameter of targetDeclaration
+            ? knownCallableParameters(targetDeclaration).filter((item) => item.index === index && (item.path?.length ?? 0) > 0)
+            : []) {
+            const callbackExpression = expressionAtExclusiveConstArgumentPath(checker, argument, localParameter.path!, {
+              call: node, argumentIndex: index, preservesContainer: false,
+            });
+            const nestedDeclaration = callbackExpression ? callbackDeclarationFor(callbackExpression) : undefined;
+            if (!callbackExpression || !nestedDeclaration) {
+              const forwarded = iteratorParameterProjection(argument, iteratorParameterIndices);
+              const forwardedPath = [...(forwarded?.path ?? []), ...localParameter.path!];
+              const represented = forwarded && byId.get(caller)!.effectParameters.some((parameter) =>
+                parameter.index === forwarded.index
+                && JSON.stringify(parameter.path ?? []) === JSON.stringify(forwardedPath));
+              const captured = ownedParameterProjection(argument);
+              const capturedPath = [...(captured?.path ?? []), ...localParameter.path!];
+              const capturedRepresented = captured?.owner !== declaration && Boolean(captured
+                && byId.get(stableId(captured.owner))?.effectParameters.some((parameter) =>
+                  parameter.index === captured.index
+                  && JSON.stringify(parameter.path ?? []) === JSON.stringify(capturedPath)));
+              if (represented || capturedRepresented) continue;
+              edges.push({ caller, kind: "callback-argument",
+                unresolvedName: `${argument.getText()}${localParameter.path!.map((part) => `[${JSON.stringify(part)}]`).join("")}`,
+                timing: "unknown", span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
+              continue;
+            }
+            edges.push({
+              caller, callee: stableId(nestedDeclaration), kind: "callback-argument", timing: localParameter.timing,
+              span: { start: callbackExpression.getStart(), end: callbackExpression.getEnd() },
+              ...callbackInstantiation(callbackExpression, nestedDeclaration),
+              dischargesThrow: catchesThrow && localParameter.timing === "inline",
+            });
           }
           for (const externalParameter of externalCallable?.parameters.filter((item) =>
             item.index === index && (item.path?.length ?? 0) > 0) ?? []) {
@@ -1796,7 +1940,6 @@ export function buildProgramCallGraph(
       }
     }
     visit(declaration.body!, false);
-    byId.get(caller)!.effectParameters = [...parameters].map(([name, index]) => ({ index, name, timing: timings.get(index) ?? "unknown" }));
   }
   return { nodes, edges };
 }

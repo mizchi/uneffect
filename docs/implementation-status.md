@@ -72,6 +72,13 @@ same property is proved for arbitrary TypeScript.
   declaration order across acyclic symbol-resolved wrappers. Inline lexical
   callback captures compose their enclosing reviewed timing; deferred hosts
   remain deferred, and recursive or unreviewed hosts remain unknown.
+  One-level readonly function-valued parameter properties retain a static path
+  through acyclic wrappers and are projected from direct literals or single-use
+  immutable containers. Multiple paths sharing one argument are preserved, and
+  a bounded finite-summary fixed point handles mutually recursive forwarding.
+  Mutable/unresolved function properties, nested paths, and reused intermediate
+  containers remain unknown;
+  methods and reviewed builtin calls retain their existing call semantics.
   TypeScript's erased pseudo-`this` parameter is excluded from runtime positional parameter
   indexes. Promise reactions and JSON replacers retain explicit runtime-value
   aliases; Array.from maps an explicit `thisArg`; timers, immediates, and
