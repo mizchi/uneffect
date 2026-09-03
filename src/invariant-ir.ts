@@ -1872,12 +1872,12 @@ export function lowerInvariantProgram(
       const directCall = ts.isCallExpression(awaited.expression) ? awaited.expression : undefined;
       const directFact = directCall ? callCompletions.get(`${awaited.getStart(source)}:${awaited.getEnd()}`) : undefined;
       const binding = ts.isIdentifier(awaited.expression) ? awaited.expression.text : undefined;
-      const settle = (path: PathState): PathState[] => {
+      const settle = (path: PathState, directArgumentValues?: Array<LogicExpression | undefined>): PathState[] => {
         const pending = binding ? path.pendingPromises.get(binding) : undefined;
         const fact = directFact ?? pending?.fact;
         if (!fact) throw new Error(`await requires a verified rejection or fulfillment summary: ${awaited.expression.getText(source)}`);
         const originSpan = pending?.originSpan ?? { start: awaited.getStart(source), end: awaited.getEnd() };
-        const argumentValues = pending?.argumentValues ?? directCall?.arguments.map((argument) => {
+        const argumentValues = pending?.argumentValues ?? directArgumentValues ?? directCall?.arguments.map((argument) => {
           try { return substitute(logic(argument, pipeBindings, semanticGuards, semanticValues), path.env); } catch { return undefined; }
         }) ?? [];
         const pendingPromises = new Map(path.pendingPromises);
@@ -1938,7 +1938,9 @@ export function lowerInvariantProgram(
         }));
         return [...fulfilled, ...rejected, ...synchronousThrows];
       };
-      return incoming.flatMap(settle);
+      if (!directCall) return incoming.flatMap((path) => settle(path));
+      const evaluated = evaluateCallArguments(directCall, incoming);
+      return evaluated.flatMap(({ path, values }) => path.completion !== "normal" ? [path] : settle(path, values));
     };
     const scalarExpressionSort = (expression: LogicExpression): LogicSort | undefined => {
       if (expression.kind === "boolean") return "Bool";
@@ -2257,6 +2259,24 @@ export function lowerInvariantProgram(
       }
       return [{ path, value: substitute(logic(unwrapped, pipeBindings, semanticGuards, semanticValues), path.env) }];
     };
+    const evaluateCallArguments = (
+      call: ts.CallExpression,
+      incoming: PathState[],
+    ): Array<{ path: PathState; values: Array<LogicExpression | undefined> }> => {
+      let evaluated: Array<{ path: PathState; values: Array<LogicExpression | undefined> }> = incoming.map((path) => ({ path, values: [] }));
+      for (const argument of call.arguments) {
+        evaluated = evaluated.flatMap((current) => {
+          if (current.path.completion !== "normal") return [current];
+          if (containsTrackedSynchronousCall(argument)) {
+            return evaluateScalar(argument, current.path).map(({ path, value }) => ({ path, values: [...current.values, value] }));
+          }
+          let value: LogicExpression | undefined;
+          try { value = substitute(logic(argument, pipeBindings, semanticGuards, semanticValues), current.path.env); } catch { /* non-scalar arguments remain unavailable to relational contracts */ }
+          return [{ path: current.path, values: [...current.values, value] }];
+        });
+      }
+      return evaluated;
+    };
     const evaluateNullableAssignment = (
       expression: ts.Expression,
       path: PathState,
@@ -2421,10 +2441,8 @@ export function lowerInvariantProgram(
         if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) throw new Error(`Promise-producing binding must be const: ${declaration.getText(source)}`);
         const name = (declaration.name as ts.Identifier).text;
         const originSpan = { start: call.getStart(source), end: call.getEnd() };
-        paths = paths.flatMap((path): PathState[] => {
-          const argumentValues = call.arguments.map((argument): LogicExpression | undefined => {
-            try { return substitute(logic(argument, pipeBindings, semanticGuards, semanticValues), path.env); } catch { return undefined; }
-          });
+        paths = evaluateCallArguments(call, paths).flatMap(({ path, values: argumentValues }): PathState[] => {
+          if (path.completion !== "normal") return [path];
           if (fact.fulfillment && (argumentValues.length !== fact.fulfillment.parameters.length || argumentValues.some((value) => value === undefined))) {
             throw new Error(`Promise-producing call arguments require scalar snapshots matching ${fact.fulfillment.functionName}`);
           }
@@ -2991,12 +3009,7 @@ export function lowerInvariantProgram(
         const declared = declaredThrowCalls.get(`${call.getStart(source)}:${call.getEnd()}`);
         const effects = completion?.synchronousThrows ?? declared?.effects;
         if (!effects) throw new Error(`call requires a verified function summary: ${call.expression.getText(source)}`);
-        let argumentPaths = paths;
-        for (const argument of call.arguments) {
-          if (!containsTrackedSynchronousCall(argument)) continue;
-          argumentPaths = argumentPaths.flatMap((path) => path.completion !== "normal" ? [path]
-            : evaluateScalar(argument, path).map(({ path: branch }) => branch));
-        }
+        const argumentPaths = evaluateCallArguments(call, paths).map(({ path }) => path);
         const normalArguments = argumentPaths.filter(({ completion }) => completion === "normal");
         const abruptArguments = argumentPaths.filter(({ completion }) => completion !== "normal");
         const originSpan = { start: call.getStart(source), end: call.getEnd() };

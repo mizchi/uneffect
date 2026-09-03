@@ -1710,6 +1710,10 @@ describe("persisted contract summary bundles", () => {
     const nestedSource = `
       import { api } from "@example/danger-api"
       import { strictEqual } from "node:assert/strict"
+      /* uneffect:ensures result === value */
+      /* uneffect:temporal_contract rejects TypeError */
+      /* uneffect:temporal_contract throws URIError */
+      declare function remote(value: number): Promise<number>
       function authorize(value: number): void { api.danger(value) }
       /* uneffect:effect Throw<RangeError> */
       /* uneffect:ensures result === value + 2 */
@@ -1858,6 +1862,25 @@ describe("persisted contract summary bundles", () => {
           return 1
         }
       }
+      /* uneffect:ensures result === 1 */
+      export async function nestedAwait(value: number): Promise<number> {
+        try {
+          await remote(api.dangerousAdd(value))
+        } catch {
+          return 1
+        }
+        return 1
+      }
+      /* uneffect:ensures result === 1 */
+      export async function nestedStoredAwait(value: number): Promise<number> {
+        try {
+          const pending = remote(api.dangerousAdd(value))
+          await pending
+        } catch {
+          return 1
+        }
+        return 1
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -1902,6 +1925,22 @@ describe("persisted contract summary bundles", () => {
     expect(nestedThrowEffects).toEqual(expect.arrayContaining([
       expect.objectContaining({ effect: "Throw<RangeError>" }),
       expect.objectContaining({ effect: "Throw<unknown>" }),
+    ]));
+    const nestedAwaitEffects = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "nestedAwait")
+      .flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []);
+    expect(nestedAwaitEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ effect: "Throw<RangeError>", kind: "synchronous-throw" }),
+      expect.objectContaining({ effect: "Throw<URIError>", kind: "synchronous-throw" }),
+      expect.objectContaining({ effect: "Reject<TypeError>", kind: "promise-rejection" }),
+    ]));
+    const nestedStoredAwaitEffects = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "nestedStoredAwait")
+      .flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []);
+    expect(nestedStoredAwaitEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ effect: "Throw<RangeError>", kind: "synchronous-throw" }),
+      expect.objectContaining({ effect: "Throw<URIError>", kind: "synchronous-throw" }),
+      expect.objectContaining({ effect: "Reject<TypeError>", kind: "promise-rejection" }),
     ]));
   });
 });

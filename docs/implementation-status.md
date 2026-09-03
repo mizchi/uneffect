@@ -873,6 +873,11 @@ same property is proved for arbitrary TypeScript.
   may be stored as `const pending = producer(args)` and awaited later through
   immutable identifier aliases. Its argument values and synchronous throw
   edges are captured at creation; fulfillment and rejection occur at await.
+  Direct awaited calls and stored Promise creation share one left-to-right
+  argument evaluator. An authenticated synchronous argument throw prevents the
+  Promise-producing call, retains the argument's effect/span and incoming
+  state, and therefore cannot also produce the outer synchronous throw or a
+  later rejection/fulfillment edge.
   Callee preconditions are proved from the call-time path, not conditions learned
   later. Repeated observation is allowed, while a Promise that leaves lexical
   or function scope without any observation is fail-closed. Conditional,

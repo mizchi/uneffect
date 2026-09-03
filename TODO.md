@@ -2866,6 +2866,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   `temporal_contract rejects E` declaration to may-reject contract paths, while
   preserving declared `temporal_contract throws E` as separate synchronous
   edges and rejecting annotations attached to non-Promise return types.
+- [x] Evaluate direct-await and stored-Promise call arguments left to right
+  through one completion helper. An authenticated argument throw skips Promise
+  creation and preserves its own effect/span; outer synchronous throw,
+  fulfillment, and rejection remain reachable only after normal arguments.
 - [x] Compose scalar fulfilled values from a trusted callee
   `contract ensures` summary through one direct `const value = await call()` or
   `return await call()`; record the declaration/call spans and clauses as
