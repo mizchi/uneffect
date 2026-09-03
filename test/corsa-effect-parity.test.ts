@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 import { analyzeCorsaEffectParity } from "../src/corsa-effect-parity.js";
 import { openCorsaApiFrontend } from "../src/corsa-api-frontend.js";
 import { loadTypeScriptProject } from "../src/typescript-project.js";
+import { assessCheckAssurance } from "../src/assurance.js";
+import { checkFiles } from "../src/check.js";
+import { createCheckJsonReport } from "../src/check-report.js";
+import { runCli } from "../src/cli-runner.js";
+import { exitCode, type CliStreams } from "../src/cli-support.js";
 
 describe("Corsa effect parity sidecar", () => {
   it("agrees for authenticated globals and reports an unsupported stable alias", async () => {
@@ -26,4 +31,40 @@ describe("Corsa effect parity sidecar", () => {
       frontend.close();
     }
   });
+
+  it("attaches parity to a real project check and makes mismatches assurance blockers", async () => {
+    const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
+    const project = loadTypeScriptProject(configFile);
+    const program = ts.createProgram(project.fileNames, project.compilerOptions);
+    const frontend = await openCorsaApiFrontend({ configFile });
+    try {
+      const checked = await checkFiles(project.fileNames, {
+        program, project: project.provenance, requireAnnotations: false, corsaFrontend: frontend,
+      });
+      expect(checked.corsaEffectParity?.summary).toEqual({ agree: 2, mismatch: 1 });
+      const assurance = assessCheckAssurance(checked, "no-unknown");
+      expect(assurance.blockers).toContainEqual(expect.objectContaining({
+        kind: "effect", classification: "unknown", message: expect.stringContaining("Corsa effect parity mismatch"),
+      }));
+      expect(createCheckJsonReport(checked, assurance).corsaEffectParity).toEqual(checked.corsaEffectParity);
+    } finally {
+      frontend.close();
+    }
+  }, 60_000);
+
+  it("exposes the sidecar through the project-check CLI and JSON report", async () => {
+    const io = {
+      stdout: "", stderr: "",
+      out(text: string) { io.stdout += text; },
+      err(text: string) { io.stderr += text; },
+    } satisfies CliStreams & { stdout: string; stderr: string };
+    const status = await runCli([
+      "check", "--project", resolve("test/fixtures/corsa-api-project/tsconfig.json"),
+      "--corsa-parity", "--infer", "--assurance", "no-unknown", "--json",
+    ], io);
+    expect(status).toBe(exitCode.failed);
+    const report = JSON.parse(io.stdout) as { corsaEffectParity?: { summary: { agree: number; mismatch: number } }; assurance: { blockers: Array<{ message: string }> } };
+    expect(report.corsaEffectParity?.summary).toEqual({ agree: 2, mismatch: 1 });
+    expect(report.assurance.blockers.some((blocker) => blocker.message.includes("Corsa effect parity mismatch"))).toBe(true);
+  }, 60_000);
 });

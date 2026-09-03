@@ -19,6 +19,8 @@ import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts
 import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, type ResourceLifecycleEvidence } from "./resource-callable-typescript.js";
 import { bindResourceCallableArtifactsToProgram, type ResourceCallableContractArtifact } from "./resource-callable-artifact.js";
 import { standardLibraryOperation } from "./frontend-adapter.js";
+import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
+import { analyzeCorsaEffectParity, type CorsaEffectParityResult } from "./corsa-effect-parity.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -49,6 +51,8 @@ export interface CheckOptions {
   resourceCallableArtifacts?: readonly ResourceCallableContractArtifact[];
   /** UTC review date used for deterministic resource-artifact expiry checks. */
   resourceArtifactAsOf?: string;
+  /** Optional dual-frontend evidence; Corsa mismatches remain assurance unknowns. */
+  corsaFrontend?: CorsaApiFrontend;
 }
 
 export interface CheckResult {
@@ -64,6 +68,7 @@ export interface CheckResult {
   ownership: Array<OwnershipDiagnostic & { fileName: string }>;
   asyncIterators: IteratorCheckEvidence[];
   resourceProtocols: ResourceLifecycleEvidence[];
+  corsaEffectParity?: CorsaEffectParityResult;
   errors: number;
   warnings: number;
   project?: TypeScriptProjectProvenance;
@@ -295,8 +300,11 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
   const collectedAssumptions = collectAssumptionLedger(program, Object.fromEntries(sources), typedArrays, {}, options.builtinRegistry, options.assumptionRegistry).ledger;
   const assumptions = mergeAssumptionLedger(program, collectedAssumptions, [...iteratorAssumptions, ...resourceAssumptions, ...contractSummaryAssumptions]).ledger;
+  const corsaEffectParity = options.corsaFrontend === undefined
+    ? undefined : analyzeCorsaEffectParity(program, options.corsaFrontend);
   return {
     diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, typedArrays, ownership, asyncIterators, resourceProtocols, errors, warnings: diagnostics.length - errors,
+    ...(corsaEffectParity === undefined ? {} : { corsaEffectParity }),
     ...(options.project === undefined ? {} : { project: options.project }),
   };
 }

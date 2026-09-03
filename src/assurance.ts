@@ -59,7 +59,7 @@ const commonExclusions = [
  * a proof claim.
  */
 export function assessCheckAssurance(
-  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics" | "project" | "typedArrays" | "ownership" | "asyncIterators" | "resourceProtocols">> & { assumptions?: AssumptionLedger },
+  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics" | "project" | "typedArrays" | "ownership" | "asyncIterators" | "resourceProtocols" | "corsaEffectParity">> & { assumptions?: AssumptionLedger },
   profile: AssuranceProfile,
 ): AssuranceAssessment {
   const blockers: AssuranceBlocker[] = [];
@@ -94,6 +94,10 @@ export function assessCheckAssurance(
   if (result.project && result.project.compiler.parity !== "exact") blockers.push({
     kind: "typescript", classification: "unknown", fileName: result.project.projectFile, functionName: "<typescript-project>",
     message: result.project.compiler.reason ?? "consumer TypeScript compiler parity is unknown",
+  });
+  for (const entry of result.corsaEffectParity?.entries ?? []) if (entry.status === "mismatch") blockers.push({
+    kind: "effect", classification: "unknown", fileName: entry.fileName, functionName: "<corsa-parity>",
+    message: `Corsa effect parity mismatch at ${entry.fileName}:${entry.start}: TypeScript=${entry.typescript ?? "none"}, Corsa=${entry.corsa ?? "none"}`,
   });
   for (const diagnostic of result.diagnostics ?? []) if ("domain" in diagnostic && diagnostic.domain === "typescript" && diagnostic.severity === "error") blockers.push({
     kind: "typescript", classification: "violation", fileName: diagnostic.fileName, functionName: diagnostic.functionName,

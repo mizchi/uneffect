@@ -14,6 +14,20 @@ because both frontends happen to return the same type text in a fixture.
 
 ## Evidence from the current prototype
 
+Upstream status checked on 2026-09-03:
+
+- npm `latest`: `@corsa-bind/napi@1.12.4` and `corsa-oxlint@1.12.4`;
+- npm `latest`: `typescript@7.0.2`;
+- npm `latest`: `@typescript/native-preview@7.0.0-dev.20260707.2`;
+- [`corsa-bind` main](https://github.com/ubugeeei-prod/corsa-bind) is ahead of
+  the 1.12.4 tag and contains unreleased fixes, so released and main behavior
+  are recorded separately.
+
+The current Uneffect Corsa path deliberately pins the preview package under a
+different npm name. This lets the main analyzer continue using its TypeScript 6
+peer while the Corsa worker uses a native TypeScript 7-line compiler without
+forcing the application to resolve both through the same `typescript` package.
+
 - `@corsa-bind/napi` opens a real project through a prebuilt `tsgo` worker and
   returns checker-owned symbol and type facts without constructing a JavaScript
   TypeScript `Program`.
@@ -23,8 +37,13 @@ because both frontends happen to return the same type text in a fixture.
 - Global `fetch` and members of the checker-resolved global `console` object can
   be distinguished from same-spelled local parameters. This is the first
   admitted Effect-resolution slice.
-- A re-exported `node:fs/promises` alias is not currently canonicalized by the
-  direct API. It remains unclassified rather than being guessed as `FsRead`.
+- The published 1.12.4 binary accepts `getSymbolsAtPositions`,
+  `getImmediateAliasedSymbol`, and `getAliasedSymbol` through `callJson`. The
+  sidecar now performs one symbol batch per source file.
+- A re-exported `node:fs/promises` alias reaches its immediate re-export symbol,
+  but full canonicalization returns Corsa's `unknown` symbol for the exercised
+  two-hop fixture. It remains unclassified rather than being guessed as
+  `FsRead`.
 - The earlier local benchmark measured about 76 ms for frontend startup plus a
   symbol/type query, versus 757–1,031 ms for the temporary-project Oxlint export
   path. The workloads differ, so this establishes feasibility, not a general
@@ -50,12 +69,16 @@ because both frontends happen to return the same type text in a fixture.
 
 ## Current blockers
 
-Corsa's public facade exposes position-based symbols and types, type arguments,
-constraints, and type rendering. It does not yet expose all operations Uneffect
-uses: aliased-symbol canonicalization, resolved signatures, general property
-lookup, assignability, awaited types, module exports, CFG, or whole-project AST
-traversal. Symbol batching is also absent, while the existing batched type query
-uses a generic JSON endpoint.
+Corsa's underlying project-scoped API exposes batched symbols/types, alias
+relations, resolved signatures, property lookup, assignability, exports, and
+many other checker relations. In `@corsa-bind/napi@1.12.4`, several are reached
+through the generic `callJson` method rather than named, generated N-API methods.
+The two-hop Node alias fixture still resolves to `unknown`, and source-position
+or node handles are required by several relation endpoints. CFG and a complete
+whole-project AST traversal suitable for Uneffect's analyzers remain missing.
+
+`workspace/symbol` exists on tsgo's LSP surface, but it is a name-search API. It
+does not replace call-site identity queries and is not used as Effect evidence.
 
 Consequently, full Effect propagation, Hoare/refinement analysis, Promise
 ownership, resource CFGs, and temporal extraction cannot be switched wholesale.
@@ -75,8 +98,10 @@ The current main analyzer still needs TypeScript 6 when imported or run; only a
 ### Phase 1 — semantic sidecar in the main analyzer
 
 - Collect call-expression positions during the existing TypeScript AST walk.
-- Batch semantic requests and attach Corsa facts to a compiler-neutral sidecar.
-- Run TypeScript and Corsa resolution together for `Fetch` and `Console` in CI.
+- Batch semantic requests once per source file and attach Corsa facts to a
+  compiler-neutral sidecar. (Implemented for the initial slice.)
+- Run TypeScript and Corsa resolution together for `Fetch` and `Console` in CI;
+  expose mismatches from `check --corsa-parity` as assurance blockers.
 - Report parity mismatch as unknown; do not silently fall back in proof-grade
   mode.
 - Benchmark cold open, warm 100/1,000-call batches, memory, and incremental
@@ -87,8 +112,10 @@ and Corsa is no slower than the existing checker path for the selected slice.
 
 ### Phase 2 — stable identity API upstream
 
-- Add or require typed Corsa endpoints for batch symbols, aliased symbols,
-  resolved signatures, property identity, exports, and awaited types.
+- Prefer named, typed Corsa facade methods for the existing batch-symbol,
+  alias, resolved-signature, property, export, and awaited-type relations;
+  retain versioned `callJson` adapters only where the facade has not surfaced
+  them yet.
 - Migrate named and re-exported Node/Deno/DOM builtin catalog entries one family
   at a time, beginning with `node:fs/promises`.
 - Record API/compiler revisions in evidence and reject revision drift.

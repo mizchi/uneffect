@@ -44,6 +44,7 @@ export function analyzeCorsaEffectParity(program: ts.Program, corsa: CorsaApiFro
 
   for (const source of program.getSourceFiles()) {
     if (!roots.has(resolve(source.fileName))) continue;
+    const calls: Array<{ node: ts.CallExpression; typescript?: CorsaBuiltinOperation; query: { calleePosition: number; receiverPosition?: number } }> = [];
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
         const typescript = selectedTypeScriptOperation(adapter.resolveCall(node));
@@ -51,7 +52,15 @@ export function analyzeCorsaEffectParity(program: ts.Program, corsa: CorsaApiFro
         const query = ts.isPropertyAccessExpression(expression)
           ? { calleePosition: expression.name.getStart(source), receiverPosition: expression.expression.getStart(source) }
           : { calleePosition: expression.getStart(source) };
-        const corsaOperation = corsa.classifyBuiltinCall(source.fileName, query)?.operation;
+        calls.push({ node, ...(typescript === undefined ? {} : { typescript }), query });
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(source, visit);
+    const corsaOperations = corsa.classifyBuiltinCalls(source.fileName, calls.map((call) => call.query));
+    for (const [index, call] of calls.entries()) {
+        const { node, typescript } = call;
+        const corsaOperation = corsaOperations[index]?.operation;
         if (typescript !== undefined || corsaOperation !== undefined) {
           const operation = typescript ?? corsaOperation!;
           entries.push({
@@ -64,10 +73,7 @@ export function analyzeCorsaEffectParity(program: ts.Program, corsa: CorsaApiFro
             ...(corsaOperation === undefined ? {} : { corsa: corsaOperation }),
           });
         }
-      }
-      ts.forEachChild(node, visit);
-    };
-    ts.forEachChild(source, visit);
+    }
   }
 
   entries.sort((left, right) => left.fileName.localeCompare(right.fileName) || left.start - right.start);

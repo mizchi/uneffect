@@ -14,6 +14,7 @@ export interface CorsaApiFrontendOptions {
 export interface CorsaApiSymbolFact {
   id: string;
   name: string;
+  flags?: number;
   declarations?: string[];
   valueDeclaration?: string;
 }
@@ -45,16 +46,33 @@ export interface CorsaApiFrontend extends SemanticQueryFrontend {
   readonly projectId: string;
   readonly rootFiles: readonly string[];
   getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;
+  getSymbolsAtPositions(file: string, positions: readonly number[]): Array<CorsaApiSymbolFact | null>;
+  getAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
+  getImmediateAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
   getTypeAtPosition(file: string, position: number): CorsaApiTypeFact | null;
   getTypesAtPositions(file: string, positions: readonly number[]): Array<CorsaApiTypeFact | null>;
   /** Narrow checker-backed builtin slice currently admitted by migration tests. */
   classifyBuiltinCall(file: string, query: CorsaBuiltinCallQuery): CorsaBuiltinCallResolution | null;
+  classifyBuiltinCalls(file: string, queries: readonly CorsaBuiltinCallQuery[]): Array<CorsaBuiltinCallResolution | null>;
 }
 
 const packageRequire = createRequire(import.meta.url);
 
 function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null): symbol is CorsaApiSymbolFact {
   return symbol !== null && (symbol.declarations ?? []).some((item) => /(?:^|[/\\])lib\.dom\.d\.ts$/.test(item));
+}
+
+function normalizeSymbol(input: unknown): CorsaApiSymbolFact | null {
+  if (!input || typeof input !== "object") return null;
+  const value = input as { id?: unknown; name?: unknown; flags?: unknown; declarations?: unknown; valueDeclaration?: unknown };
+  if ((typeof value.id !== "string" && typeof value.id !== "number") || typeof value.name !== "string") return null;
+  return {
+    id: String(value.id), name: value.name,
+    ...(typeof value.flags === "number" ? { flags: value.flags } : {}),
+    ...(Array.isArray(value.declarations) && value.declarations.every((item) => typeof item === "string")
+      ? { declarations: value.declarations as string[] } : {}),
+    ...(typeof value.valueDeclaration === "string" ? { valueDeclaration: value.valueDeclaration } : {}),
+  };
 }
 
 /**
@@ -121,6 +139,17 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
     const assertOpen = (): void => {
       if (closed) throw new Error("Corsa API frontend is closed");
     };
+    const classify = (
+      symbol: CorsaApiSymbolFact | null, receiver: CorsaApiSymbolFact | null | undefined,
+    ): CorsaBuiltinCallResolution | null => {
+      if (symbol?.name === "fetch" && declaredByDomLibrary(symbol) && receiver === undefined) {
+        return { operation: "Fetch", compilerRevision: `corsa-api@${version()}`, symbol };
+      }
+      if (receiver?.name === "console" && declaredByDomLibrary(receiver) && declaredByDomLibrary(symbol)) {
+        return { operation: "Console", compilerRevision: `corsa-api@${version()}`, symbol, receiver };
+      }
+      return null;
+    };
     return {
       compilerRevision: `corsa-api@${version()}`,
       compilerExecutable,
@@ -128,7 +157,28 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
       rootFiles: [...project.rootFiles],
       getSymbolAtPosition(file, position) {
         assertOpen();
-        return client.getSymbolAtPosition(snapshot!.snapshot, project.id, projectFile(file), position) as CorsaApiSymbolFact | null;
+        return normalizeSymbol(client.getSymbolAtPosition(snapshot!.snapshot, project.id, projectFile(file), position));
+      },
+      getSymbolsAtPositions(file, positions) {
+        assertOpen();
+        const symbols = client.callJson("getSymbolsAtPositions", {
+          snapshot: snapshot!.snapshot, project: project.id, file: projectFile(file), positions: [...positions],
+        }) as unknown[];
+        return symbols.map(normalizeSymbol);
+      },
+      getAliasedSymbol(symbol) {
+        assertOpen();
+        if (((symbol.flags ?? 0) & 2_097_152) === 0) return null;
+        return normalizeSymbol(client.callJson("getAliasedSymbol", {
+          snapshot: snapshot!.snapshot, project: project.id, symbol: Number(symbol.id),
+        }));
+      },
+      getImmediateAliasedSymbol(symbol) {
+        assertOpen();
+        if (((symbol.flags ?? 0) & 2_097_152) === 0) return null;
+        return normalizeSymbol(client.callJson("getImmediateAliasedSymbol", {
+          snapshot: snapshot!.snapshot, project: project.id, symbol: Number(symbol.id),
+        }));
       },
       getTypeAtPosition(file, position) {
         assertOpen();
@@ -148,22 +198,29 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
       classifyBuiltinCall(file, query) {
         assertOpen();
         const source = projectFile(file);
-        const symbol = client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, query.calleePosition) as CorsaApiSymbolFact | null;
-        if (symbol?.name === "fetch" && declaredByDomLibrary(symbol) && query.receiverPosition === undefined) {
-          return { operation: "Fetch", compilerRevision: `corsa-api@${version()}`, symbol };
-        }
-        if (query.receiverPosition !== undefined && declaredByDomLibrary(symbol)) {
-          const receiver = client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, query.receiverPosition) as CorsaApiSymbolFact | null;
-          if (receiver?.name === "console" && declaredByDomLibrary(receiver)) {
-            return { operation: "Console", compilerRevision: `corsa-api@${version()}`, symbol, receiver };
-          }
-        }
-        return null;
+        const symbol = normalizeSymbol(client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, query.calleePosition));
+        const receiver = query.receiverPosition === undefined ? undefined
+          : normalizeSymbol(client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, query.receiverPosition));
+        return classify(symbol, receiver);
+      },
+      classifyBuiltinCalls(file, queries) {
+        assertOpen();
+        const source = projectFile(file);
+        const positions = queries.flatMap((query) => [query.calleePosition, ...(query.receiverPosition === undefined ? [] : [query.receiverPosition])]);
+        const symbols = (client.callJson("getSymbolsAtPositions", {
+          snapshot: snapshot!.snapshot, project: project.id, file: source, positions,
+        }) as unknown[]).map(normalizeSymbol);
+        let offset = 0;
+        return queries.map((query) => {
+          const symbol = symbols[offset++] ?? null;
+          const receiver = query.receiverPosition === undefined ? undefined : symbols[offset++] ?? null;
+          return classify(symbol, receiver);
+        });
       },
       queryPosition(file, position): SemanticPositionFact {
         assertOpen();
         const source = projectFile(file);
-        const symbol = client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, position) as CorsaApiSymbolFact | null;
+        const symbol = normalizeSymbol(client.getSymbolAtPosition(snapshot!.snapshot, project.id, source, position));
         const type = normalizeType(client.getTypeAtPosition(snapshot!.snapshot, project.id, source, position) as CorsaApiTypeFact | null);
         return { symbol, type };
       },

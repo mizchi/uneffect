@@ -25,10 +25,32 @@
     "ownership": { "type": "array", "items": { "$ref": "#/$defs/ownershipDiagnostic" } },
     "asyncIterators": { "type": "array", "items": { "$ref": "#/$defs/asyncIterator" } },
     "resourceProtocols": { "type": "array", "items": { "$ref": "#/$defs/resourceProtocol" } },
+    "corsaEffectParity": { "$ref": "#/$defs/corsaEffectParity" },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] },
     "project": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/project" }] }
   },
   "$defs": {
+    "corsaEffectParity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "typescriptRevision", "corsaRevision", "entries", "summary"],
+      "properties": {
+        "schema": { "const": "uneffect-corsa-effect-parity/v1" },
+        "typescriptRevision": { "type": "string" }, "corsaRevision": { "type": "string" },
+        "entries": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["fileName", "start", "end", "operation", "status"],
+          "properties": {
+            "fileName": { "type": "string" }, "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 },
+            "operation": { "enum": ["Fetch", "Console"] }, "status": { "enum": ["agree", "mismatch"] },
+            "typescript": { "enum": ["Fetch", "Console"] }, "corsa": { "enum": ["Fetch", "Console"] }
+          }
+        } },
+        "summary": {
+          "type": "object", "additionalProperties": false, "required": ["agree", "mismatch"],
+          "properties": { "agree": { "type": "integer", "minimum": 0 }, "mismatch": { "type": "integer", "minimum": 0 } }
+        }
+      }
+    },
     "note": {
       "type": "object", "additionalProperties": false, "required": ["label", "detail"],
       "properties": { "label": { "type": "string" }, "detail": { "type": "string" } }

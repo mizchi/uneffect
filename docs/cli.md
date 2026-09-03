@@ -43,6 +43,10 @@ npx quint run protocol.qnt
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
 are listed, its `include`/`files` roots; report exact TypeScript package/version
 parity),
+`--corsa-parity` (run the admitted Corsa `Fetch`/`Console` sidecar against the
+same project and make a frontend mismatch an assurance `unknown` blocker),
+`--corsa-executable <tsgo>` (override Uneffect's fixed prebuilt compiler; valid
+only with `--corsa-parity`),
 `--module-entry <entry.ts>` (with project-only checking, emit the supported
 `uneffect-workspace-module-order/v1` composition and fail closed when its exact
 cross-project TLA shape cannot be established),

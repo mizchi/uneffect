@@ -115,4 +115,23 @@ describe("Corsa API frontend", () => {
       typescript.close();
     }
   });
+
+  it("uses the checker symbol batch endpoint and exposes bounded alias traversal", async () => {
+    const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
+    const file = resolve("test/fixtures/corsa-api-project/index.ts");
+    const source = readFileSync(file, "utf8");
+    const frontend = await openCorsaApiFrontend({ configFile });
+    try {
+      const positions = [source.indexOf("console.log(path)"), source.indexOf("readText(path")];
+      const symbols = frontend.getSymbolsAtPositions(file, positions);
+      expect(symbols.map((symbol) => symbol?.name)).toEqual(["console", "readText"]);
+      expect(symbols[0]).toEqual(frontend.getSymbolAtPosition(file, positions[0]!));
+      const immediate = frontend.getImmediateAliasedSymbol(symbols[1]!);
+      expect(immediate).toMatchObject({ name: "readText" });
+      expect(immediate?.declarations?.[0]).toMatch(/fs-bridge\.ts$/);
+      expect(frontend.getAliasedSymbol(symbols[1]!)).toMatchObject({ name: "unknown" });
+    } finally {
+      frontend.close();
+    }
+  });
 });

@@ -192,12 +192,13 @@ The first checker-backed effect-resolution slice is deliberately small.
 `classifyBuiltinCall` authenticates global `fetch` as `Fetch`, and a member of
 the checker-resolved global `console` object as `Console`. Same-spelled local
 parameters fail closed. A re-exported `node:fs/promises` alias currently also
-fails closed: Corsa 1.12.4 returns the local alias symbol and does not expose an
-aliased-symbol endpoint through this facade. This is covered by a negative test
-and is not reported as `FsRead`.
+fails closed: Corsa 1.12.4 exposes immediate/full alias relations through its
+generic JSON endpoint, but the exercised two-hop re-export reaches the
+immediate bridge symbol and then Corsa's `unknown` symbol. This is covered by a
+negative test and is not reported as `FsRead`.
 
 This probe supports project-root membership checks, symbol identity, normalized
-type text, and batched type queries. Both the Corsa implementation and a
+type text, batched symbol/type queries, and bounded alias traversal. Both the Corsa implementation and a
 TypeScript reference implementation satisfy the small `SemanticQueryFrontend`
 contract, and parity tests compare position queries without comparing
 compiler-private handle values. It is a realistic partial replacement for
@@ -220,8 +221,8 @@ of work and establish startup feasibility, not complete semantic parity.
 
 The result supports a staged architecture, not a complete frontend switch:
 keep TypeScript AST syntax enumeration, move authenticated position-based
-checker queries behind the semantic frontend, expand only when Corsa exposes
-stable alias/signature/property APIs, and replace syntax traversal separately.
+checker queries behind the semantic frontend, validate the existing
+alias/signature/property relations against real code, and replace syntax traversal separately.
 The prebuilt compiler isolates compiler installation and startup; it does not
 by itself remove the TypeScript AST dependency from the main analyzer.
 
