@@ -2262,7 +2262,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Benchmark authenticated warm Corsa classification at 100 and 1,000
     call sites using one symbol batch versus sequential RPCs; retain memory,
     incremental snapshot, and equal-work TypeScript comparisons under #8.
-  - [ ] [#8](https://github.com/mizchi/uneffect/issues/8) Validate and wrap the existing project-scoped Corsa alias, resolved-signature, property/export, and assignability endpoints with typed/versioned adapters before migrating named or re-exported Node builtin effects. The published 1.12.4 N-API exposes symbol batching and alias traversal through `callJson`; the tested two-hop `node:fs/promises` alias still ends at the unknown symbol.
+  - [ ] [#8](https://github.com/mizchi/uneffect/issues/8) Validate and wrap the existing project-scoped Corsa alias, resolved-signature, property/export, and assignability endpoints with typed/versioned adapters before migrating named or re-exported Node builtin effects. The published 1.12.4 N-API exposes symbol batching and alias traversal through `callJson`; tested direct and two-hop `node:fs/promises` aliases still end at the unknown symbol.
   - [x] Preserve Corsa symbol identity across project imports and place every frontend span in deterministic project-wide UTF-8 coordinates.
   - [x] Qualify duplicate top-level function spellings by source path in both adapters so cross-file edges cannot alias by name.
   - [x] Stop checker-backed call collection at unsupported nested function/callback boundaries instead of mislabeling deferred or unknown work as an immediate outer call.

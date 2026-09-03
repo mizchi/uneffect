@@ -42,8 +42,9 @@ forcing the application to resolve both through the same `typescript` package.
   sidecar now performs one symbol batch per source file.
 - A re-exported `node:fs/promises` alias reaches its immediate re-export symbol,
   but full canonicalization returns Corsa's `unknown` symbol for the exercised
-  two-hop fixture. It remains unclassified rather than being guessed as
-  `FsRead`.
+  two-hop fixture. A separate Red probe found that a direct named import from
+  this ambient Node module also returns `unknown`, with no immediate target.
+  Both remain unclassified rather than being guessed as `FsRead`.
 - The earlier local benchmark measured about 76 ms for frontend startup plus a
   symbol/type query, versus 757–1,031 ms for the temporary-project Oxlint export
   path. The workloads differ, so this establishes feasibility, not a general
@@ -73,8 +74,8 @@ Corsa's underlying project-scoped API exposes batched symbols/types, alias
 relations, resolved signatures, property lookup, assignability, exports, and
 many other checker relations. In `@corsa-bind/napi@1.12.4`, several are reached
 through the generic `callJson` method rather than named, generated N-API methods.
-The two-hop Node alias fixture still resolves to `unknown`, and source-position
-or node handles are required by several relation endpoints. CFG and a complete
+Direct and two-hop Node ambient-module aliases still resolve to `unknown`, and
+source-position or node handles are required by several relation endpoints. CFG and a complete
 whole-project AST traversal suitable for Uneffect's analyzers remain missing.
 
 `workspace/symbol` exists on tsgo's LSP surface, but it is a name-search API. It
