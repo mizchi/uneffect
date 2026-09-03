@@ -329,8 +329,9 @@ introducing another domain-local control-flow or alias model.
        admit immutable alias chains while retaining helper, escape, computed
        access, generic dispatch, and Mutate-correlation negative controls.
      - [x] Admit path-stable lexical scalar shadowing while restoring the outer
-       binding on every completion; keep divergent-path, Promise, and catch
-       shadows fail-closed pending a fully symbol-keyed environment.
+       binding on every completion; apply the same scoped restoration to catch
+       payloads, while keeping divergent-path and Promise shadows fail-closed
+       pending a fully symbol-keyed environment.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.

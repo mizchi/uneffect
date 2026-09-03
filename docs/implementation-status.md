@@ -446,8 +446,9 @@ same property is proved for arbitrary TypeScript.
 - The contract CFG admits path-stable lexical scalar shadowing in ordinary and
   branch blocks. It evaluates the inner binding within its scope and restores
   the outer scalar across normal, return, and throw exits. A shadow over
-  divergent incoming values, a tracked Promise, or a catch binding stays an
-  explicit non-proof until the environment is fully symbol-keyed.
+  divergent incoming values or a tracked Promise stays an explicit non-proof.
+  Catch payload shadowing follows the same stable-entry rule and restores the
+  outer binding after the handler.
 - Fetch authority combines method sets, restricted URL patterns, and a separate
   Deno-compatible network-host requirement.
 - TypeChecker-resolved `Navigator.sendBeacon` projects its first argument onto

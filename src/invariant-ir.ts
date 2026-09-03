@@ -3198,21 +3198,38 @@ export function lowerInvariantProgram(
         if (!statement.catchClause) handled = tryPaths;
         else {
           const handlerSpan = { start: statement.catchClause.getStart(source), end: statement.catchClause.getEnd() };
+          const binding = statement.catchClause.variableDeclaration?.name;
+          if (binding && !ts.isIdentifier(binding)) throw new Error("destructured catch bindings are unsupported by the contract CFG");
+          let shadowedCatchValue: LogicExpression | undefined;
+          if (binding && thrown.some((path) => path.env.has(binding.text))) {
+            const values = thrown.map((path) => path.env.get(binding.text));
+            const first = values[0];
+            if (!first || values.some((value) => !value || JSON.stringify(value) !== JSON.stringify(first))) {
+              throw new Error(`catch binding shadows a path-dependent scalar: ${binding.text}`);
+            }
+            if (thrown.some((path) => path.pendingPromises.has(binding.text))) {
+              throw new Error(`catch binding shadows a tracked Promise: ${binding.text}`);
+            }
+            shadowedCatchValue = first;
+          }
           const caught = thrown.map((path): PathState => {
             const edge = { ...path.thrown!, handlerSpan };
             const caughtEnv = new Map(path.env);
-            const binding = statement.catchClause?.variableDeclaration?.name;
-            if (binding && !ts.isIdentifier(binding)) throw new Error("destructured catch bindings are unsupported by the contract CFG");
-            if (binding && caughtEnv.has(binding.text)) throw new Error(`catch binding shadows a tracked scalar: ${binding.text}`);
             if (binding && edge.payload) caughtEnv.set(binding.text, edge.payload);
             return { ...path, env: caughtEnv, completion: "normal", thrown: undefined, returnEnv: undefined, returnStatement: undefined, dischargedThrows: [...path.dischargedThrows, edge] };
           });
           const caughtPaths = executeScopedBlock(statement.catchClause.block, caught, context);
-          const binding = statement.catchClause.variableDeclaration?.name;
           handled = [...completed, ...caughtPaths.map((path): PathState => {
             if (!binding || !ts.isIdentifier(binding)) return path;
-            const env = new Map(path.env); env.delete(binding.text);
-            const returnEnv = path.returnEnv && new Map(path.returnEnv); returnEnv?.delete(binding.text);
+            const env = new Map(path.env);
+            const returnEnv = path.returnEnv && new Map(path.returnEnv);
+            if (shadowedCatchValue) {
+              env.set(binding.text, shadowedCatchValue);
+              returnEnv?.set(binding.text, shadowedCatchValue);
+            } else {
+              env.delete(binding.text);
+              returnEnv?.delete(binding.text);
+            }
             return { ...path, env, ...(returnEnv ? { returnEnv } : {}) };
           })];
         }

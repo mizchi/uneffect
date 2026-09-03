@@ -586,8 +586,10 @@ scope join: outer writes and function-scoped `var` survive, while block-local
 `let`/`const` bindings do not escape. A lexical `let`/`const` may shadow a
 tracked scalar when every incoming path carries the identical outer value and
 no Promise binding shares the name; normal and abrupt exits restore the outer
-value. Path-dependent shadows and catch-binding shadows remain `unknown`
-pending a fully symbol-keyed contract environment.
+value. The same rule applies to a catch payload: the payload binding is local
+to the handler and the stable outer value is restored afterward. Path-dependent
+lexical or catch shadows remain `unknown` pending a fully symbol-keyed contract
+environment.
 Explicitly typed uninitialized scalar `let` bindings are supported only when
 the exact TypeScript Program reports no definite-assignment error. Their
 unconstrained placeholder preserves binding identity across joins and carries

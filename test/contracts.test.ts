@@ -948,7 +948,7 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
-  it("restores branch-local shadowing but keeps catch binding shadowing fail-closed", async () => {
+  it("restores path-stable branch and catch binding shadows", async () => {
     const cases = [
       `
         type Int = number
@@ -971,10 +971,40 @@ describe("Hoare contract checker", () => {
     for (const [index, source] of cases.entries()) {
       const fileName = `/unsupported-scope-shadow-${index}.ts`;
       const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
-      expect(result.artifacts[0], fileName).toMatchObject(index === 0
-        ? { status: "verified", evidence: "verified" }
-        : { status: "unsupported", evidence: "unknown" });
+      expect(result.artifacts[0], fileName).toMatchObject({ status: "verified", evidence: "verified" });
     }
+  });
+
+  it("uses a shadowing catch payload inside the handler and restores the outer scalar", async () => {
+    const fileName = "/catch-payload-shadow.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === 1 */
+      function caught(value: Int): Int {
+        try { throw 1 } catch (value) { return value }
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
+  });
+
+  it("fails closed when a catch binding shadows divergent predecessor values", async () => {
+    const fileName = "/path-dependent-catch-shadow.ts";
+    const source = `
+      type Int = number
+      /* uneffect:ensures result === value || result === value + 1 */
+      function caught(value: Int, enabled: boolean): Int {
+        let result = value
+        if (enabled) result += 1
+        try { if (enabled) throw 1; throw 2 } catch (result) {}
+        return result
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0]).toMatchObject({ status: "unsupported", evidence: "unknown" });
   });
 
   it("lowers TypeChecker-resolved Math.abs, Math.min, and Math.max into scalar paths", async () => {
