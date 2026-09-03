@@ -1,7 +1,6 @@
 import ts from "typescript";
 import { symbolIdentityKey } from "./binding-identity.js";
-import { basename, dirname } from "node:path";
-import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
+import { standardLibraryOperation, TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import type { BuiltinContractRegistry, PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
 import type { TemporalComposition } from "./temporal-compose.js";
@@ -124,17 +123,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const adapter = new TypeScriptFrontendAdapter(program, options.builtinRegistry);
   const checker = program.getTypeChecker();
   const printer = ts.createPrinter({ removeComments: true });
-  const defaultLibDirectory = dirname(ts.getDefaultLibFilePath(program.getCompilerOptions()));
   const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [], abortCompositions: AbortCompositionPattern[] = [], timerEscapes: TimerHandleEscape[] = [];
   const branchKind = (element: ts.Expression | ts.OmittedExpression): "value" | "thenable" | "unknown" => {
     if (ts.isOmittedExpression(element)) return "value";
     if (ts.isYieldExpression(element) && !element.expression) return "value";
-    if (ts.isCallExpression(element) && ts.isPropertyAccessExpression(element.expression)
-      && ["resolve", "reject"].includes(element.expression.name.text)) {
-      const symbol = resolvedSymbol(element.expression.name);
-      if (symbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
-        && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor")) return "thenable";
-    }
+    if (ts.isCallExpression(element)
+      && ["PromiseConstructor#resolve", "PromiseConstructor#reject"].includes(standardLibraryOperation(checker, element) ?? "")) return "thenable";
     const type = checker.getTypeAtLocation(element);
     const members = type.isUnion() ? type.types : [type];
     if (members.some((member) => Boolean(member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)))) return "unknown";
@@ -143,7 +137,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   };
   const branchText = (element: ts.Expression | ts.OmittedExpression): string => ts.isOmittedExpression(element) ? "<hole>"
     : ts.isYieldExpression(element) && !element.expression ? "undefined"
-      : element.pos < 0 ? printer.printNode(ts.EmitHint.Expression, element, source) : element.getText(element.getSourceFile());
+      : element.pos < 0 || !element.getSourceFile()
+        ? printer.printNode(ts.EmitHint.Expression, element, source) : element.getText(element.getSourceFile());
   const resolvedSymbol = (node: ts.Node): ts.Symbol | undefined => {
     const symbol = checker.getSymbolAtLocation(node);
     return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
@@ -197,11 +192,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     return immutableInitializer(declaration.initializer, seen);
   };
   const rejectionReason = (expression: ts.Expression | ts.OmittedExpression): PromiseRejectionReason | null => {
-    if (ts.isOmittedExpression(expression) || !ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "reject") return null;
-    const symbol = resolvedSymbol(expression.expression.name);
-    const standard = symbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
-      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor");
-    if (!standard || !expression.arguments[0]) return null;
+    if (ts.isOmittedExpression(expression) || !ts.isCallExpression(expression)
+      || standardLibraryOperation(checker, expression) !== "PromiseConstructor#reject"
+      || !expression.arguments[0]) return null;
     const argument = immutableInitializer(expression.arguments[0]), literal = literalReason(argument);
     if (literal !== undefined) return { kind: "literal", value: literal };
     if (ts.isNewExpression(argument) && ts.isIdentifier(argument.expression)) {
@@ -325,14 +318,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   }
   function expandStaticSet(expression: ts.Expression): (ts.Expression | ts.OmittedExpression)[] | undefined {
     while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
-    if (!ts.isNewExpression(expression) || !ts.isIdentifier(expression.expression) || expression.expression.text !== "Set"
+    if (!ts.isNewExpression(expression) || standardLibraryOperation(checker, expression) !== "SetConstructor"
       || (expression.arguments?.length ?? 0) > 1
-      || !(resolvedSymbol(expression.expression)?.declarations?.some((declaration) => {
-        const declarationFile = declaration.getSourceFile();
-        return declarationFile.isDeclarationFile
-          && dirname(declarationFile.fileName) === defaultLibDirectory
-          && /^lib\..*\.d\.ts$/.test(basename(declarationFile.fileName));
-      }) ?? false)) return undefined;
+    ) return undefined;
     const entries = expression.arguments?.[0] ? expandStaticArray(expression.arguments[0]) : [];
     if (!entries) return undefined;
     const seen = new Set<string | ts.Symbol>();
@@ -445,12 +433,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (ts.isCallExpression(expression)) {
         const args = expression.arguments.map((argument) => substitute(argument, bindings, new Set(seen)));
         return args.every((argument, index) => argument === expression.arguments[index]) ? expression
-          : ts.factory.createCallExpression(expression.expression, expression.typeArguments, args);
+          : ts.factory.updateCallExpression(expression, expression.expression, expression.typeArguments, args);
       }
       if (ts.isNewExpression(expression)) {
         const args = expression.arguments?.map((argument) => substitute(argument, bindings, new Set(seen)));
         return args?.every((argument, index) => argument === expression.arguments?.[index]) !== false ? expression
-          : ts.factory.createNewExpression(expression.expression, expression.typeArguments, args);
+          : ts.factory.updateNewExpression(expression, expression.expression, expression.typeArguments, args);
       }
       if (ts.isBinaryExpression(expression)
         && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken

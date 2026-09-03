@@ -992,6 +992,28 @@ describe("builtin async temporal patterns", () => {
     expect(run(combined, "asyncSafe").status).toBe(0);
   });
 
+  it("preserves finite Set and Promise element semantics through stable aliases only", () => {
+    const model = analyzeAsyncPatterns("iterable-builtin-aliases.ts", `
+      const Bag = Set
+      const fulfill = Promise.resolve
+      const reject = Promise.reject
+      let MutableBag = Set
+      let mutableReject = Promise.reject
+      async function load() {
+        await Promise.all(new Bag([fulfill(1), 2]))
+        try { await Promise.any([reject("no")]) } catch {}
+        await Promise.all(new MutableBag([fulfill(1)]))
+        try { await Promise.any([mutableReject("unknown")]) } catch {}
+      }
+    `);
+    expect(model.combinators).toMatchObject([
+      { staticIterable: true, iteratorKind: "set", branches: ["fulfill(1)", "2"], branchKinds: ["thenable", "value"] },
+      { staticIterable: true, aggregateErrorReasons: [{ kind: "literal", value: "no" }] },
+      { staticIterable: false, iteratorKind: "dynamic", iteratorEffects: ["InvokeUserCode"] },
+      { staticIterable: true, aggregateErrorReasons: [null] },
+    ]);
+  });
+
   it("keeps finite generator if/else paths under one correlated iterable choice", () => {
     const model = analyzeAsyncPatterns("conditional-generator.ts", `
       function* values(flag: boolean, remote: PromiseLike<string>) {

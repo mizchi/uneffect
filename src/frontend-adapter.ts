@@ -108,8 +108,10 @@ function hasStableStandardLibraryTarget(
 export function standardLibraryOperation(
   checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression,
 ): string | undefined {
-  if (!hasStableStandardLibraryTarget(checker, call.expression)) return undefined;
-  const declaration = checker.getResolvedSignature(call)?.declaration;
+  const original = ts.getOriginalNode(call);
+  const semanticCall = (ts.isCallExpression(original) || ts.isNewExpression(original)) ? original : call;
+  if (!hasStableStandardLibraryTarget(checker, semanticCall.expression)) return undefined;
+  const declaration = checker.getResolvedSignature(semanticCall)?.declaration;
   const source = declaration?.getSourceFile();
   if (!declaration || !source?.isDeclarationFile
     || !/(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName)) return undefined;
@@ -118,7 +120,7 @@ export function standardLibraryOperation(
     : declaration.parent && ts.isModuleBlock(declaration.parent) && ts.isModuleDeclaration(declaration.parent.parent)
       && (ts.isIdentifier(declaration.parent.parent.name) || ts.isStringLiteral(declaration.parent.parent.name))
       ? declaration.parent.parent.name.text : undefined;
-  if (ts.isNewExpression(call)) return owner;
+  if (ts.isNewExpression(semanticCall)) return owner;
   const name = (declaration as ts.SignatureDeclaration).name;
   const member = name && (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name))
     ? name.text : undefined;
