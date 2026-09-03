@@ -905,8 +905,12 @@ same property is proved for arbitrary TypeScript.
   `const pending = producer(args); return pending`, including immutable Promise
   aliases: call-time synchronous throws keep their original location, the
   returned binding counts as observed, and its later rejection bypasses the
-  local synchronous catch. A scalar Promise-returning callee may
-  expose a trusted `contract ensures` relation. One direct
+  local synchronous catch. A direct Boolean conditional whose two branches are
+  verified scalar Promise calls forwards only the selected branch under its
+  exact path condition; branch-specific synchronous throws, fulfillment
+  relations, and rejections remain separate. Nested/dynamic Promise selectors
+  are still outside this bounded return shape. A scalar Promise-returning callee
+  may expose a trusted `contract ensures` relation. One direct
   `const value = await call()`,
   `identifier = await call()`, or `return await call()` introduces a fresh fulfilled value, substitutes scalar
   arguments into that relation, and records a source-bound `relationalCalls`

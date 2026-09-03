@@ -1925,6 +1925,14 @@ describe("persisted contract summary bundles", () => {
           return 1
         }
       }
+      /* uneffect:ensures result === value || result === 1 */
+      export async function conditionalForward(value: number, enabled: boolean): Promise<number> {
+        try {
+          return enabled ? remote(value) : Promise.resolve(value)
+        } catch {
+          return 1
+        }
+      }
     `;
     writeFileSync(nestedFile, nestedSource);
     const nestedProgram = ts.createProgram([nestedFile], {
@@ -2024,6 +2032,13 @@ describe("persisted contract summary bundles", () => {
     expect(forwardedStoredPromiseArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
       .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
     expect(forwardedStoredPromiseArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
+    const conditionalForwardArtifacts = nestedVerification.artifacts
+      .filter((artifact) => artifact.obligation?.functionName === "conditionalForward");
+    expect(conditionalForwardArtifacts.every(({ status }) => status === "verified")).toBe(true);
+    expect(conditionalForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.discharged ?? []))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Throw<URIError>" })]));
+    expect(conditionalForwardArtifacts.flatMap((artifact) => artifact.controlFlow?.exceptionFlow?.escapes ?? []))
       .toEqual(expect.arrayContaining([expect.objectContaining({ effect: "Reject<TypeError>" })]));
   });
 });

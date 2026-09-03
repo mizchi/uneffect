@@ -3608,6 +3608,22 @@ describe("Hoare contract checker", () => {
     }));
   });
 
+  it("rejects JavaScript truthiness in conditional Promise forwarding", async () => {
+    const fileName = "/conditional-promise-forward-truthiness.ts";
+    const source = `
+      /* uneffect:ensures result === value */
+      declare function remote(value: number): Promise<number>
+      /* uneffect:ensures result === value */
+      async function forward(flag: number, value: number): Promise<number> {
+        return flag ? remote(value) : Promise.resolve(value)
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+
+    expect(result.artifacts[0])
+      .toMatchObject({ status: "unsupported", message: expect.stringContaining("Boolean condition") });
+  });
+
   it("does not apply a temporal rejection summary to a non-Promise return", async () => {
     const fileName = "/invalid-declared-rejection-contract.ts";
     const source = `

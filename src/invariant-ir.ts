@@ -2964,6 +2964,23 @@ export function lowerInvariantProgram(
       } else if (ts.isReturnStatement(statement) && statement.expression && ts.isCallExpression(statement.expression)
         && callCompletions.get(`${statement.expression.getStart(source)}:${statement.expression.getEnd()}`)?.mode === "promise") {
         paths = executeAwait(statement.expression, paths, { returnStatement: statement }, true);
+      } else if (ts.isReturnStatement(statement) && statement.expression && ts.isConditionalExpression(statement.expression)
+        && ts.isCallExpression(statement.expression.whenTrue) && ts.isCallExpression(statement.expression.whenFalse)
+        && callCompletions.get(`${statement.expression.whenTrue.getStart(source)}:${statement.expression.whenTrue.getEnd()}`)?.mode === "promise"
+        && callCompletions.get(`${statement.expression.whenFalse.getStart(source)}:${statement.expression.whenFalse.getEnd()}`)?.mode === "promise") {
+        const conditional = statement.expression;
+        paths = paths.flatMap((path): PathState[] => evaluateScalar(conditional.condition, path).flatMap(({ path: branch, value: condition }) => {
+          if (branch.completion !== "normal") return [branch];
+          if (scalarExpressionSort(condition) !== "Bool") {
+            throw new Error(`conditional Promise return requires a Boolean condition: ${conditional.condition.getText(source)}`);
+          }
+          const whenTrue = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, condition] };
+          const whenFalse = { ...branch, env: new Map(branch.env), assumptions: [...branch.assumptions, negate(condition)] };
+          return [
+            ...executeAwait(conditional.whenTrue, [whenTrue], { returnStatement: statement }, true),
+            ...executeAwait(conditional.whenFalse, [whenFalse], { returnStatement: statement }, true),
+          ];
+        }));
       } else if (ts.isReturnStatement(statement) && statement.expression && ts.isIdentifier(statement.expression)
         && paths.some((path) => path.pendingPromises.has(statement.expression!.getText(source)))) {
         paths = executeAwait(statement.expression, paths, { returnStatement: statement }, true);
