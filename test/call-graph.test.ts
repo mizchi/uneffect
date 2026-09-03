@@ -2037,7 +2037,9 @@ describe("multi-file call graph and effect polymorphism", () => {
         const collectIterable = Array.from
         export function consumeAliasedIterableParameter(iterable: Iterable<unknown>) { return collectIterable(iterable) }
         const Bag = Set
-        export function consumeAliasedConstructorParameter(iterable: Iterable<unknown>) { return new Bag(iterable) }
+        export function consumeAliasedConstructorParameter(iterable: Iterable<unknown>) { return new Bag(iterable).add(undefined) }
+        let MutableBag = Set
+        export function mutableConstructorAlias() { return new MutableBag([1]).add(2) }
         export async function consumeAsyncIterableParameter(iterable: AsyncIterable<unknown>) { for await (const value of iterable) void value }
         /* uneffect:effect none */
         /* uneffect:effect_parameter iterable extends Console | Throw<Error> */
@@ -2254,7 +2256,10 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumeAliasedIterableParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeAliasedConstructorParameter"))
-        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
+        .toMatchObject({ evidence: "inferred", effects: [], iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "mutableConstructorAlias", effect: "Mutate<typeof new MutableBag([1])>", kind: "missing",
+      }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeAsyncIterableParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable", convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "constrainedIterableParameter"))

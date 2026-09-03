@@ -187,6 +187,9 @@ The reviewed JavaScript catalog uses this primitive for `Array.from`,
 `Set`, `WeakMap`, and `WeakSet` construction. Iterator, mapper, and explicit
 concat accessor execution remains a separate
 semantic event and may still contribute Effect or Throw requirements.
+Global constructor contracts resolve through immutable local aliases by the
+ultimate lib.d.ts symbol. A mutable alias is not trusted as the same constructor
+and therefore does not receive fresh-result refinement.
 
 Fresh default parameters use a related implementation-owned rule. An omitted
 array/object literal or TypeChecker-resolved standard `Array`, `Map`, `Set`,

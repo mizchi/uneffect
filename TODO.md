@@ -1029,6 +1029,8 @@ introducing another domain-local control-flow or alias model.
      - [x] Project fresh results through catalog-backed `new` expressions and
        apply them to standard `Array`/`Map`/`Set`/`WeakMap`/`WeakSet`
        construction while preserving constructor iterable Effects.
+       - [x] Resolve the global constructor contract through acyclic immutable
+         aliases; reject mutable aliases and retain their observable Mutation.
      - [x] Treat standard Array `concat` as fresh while composing explicit
        object-literal indexed/`Symbol.isConcatSpreadable` getters and conservatively
        reporting authenticated Proxy or unresolved operands as `InvokeUserCode`.

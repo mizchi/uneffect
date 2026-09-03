@@ -254,6 +254,10 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         if (contract) break;
       }
     }
+    if (!contract && symbol.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+      && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName))) {
+      contract = this.#globalContracts.get(symbol.name);
+    }
     if (!contract) {
       const declaration = symbol.valueDeclaration;
       if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
