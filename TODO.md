@@ -2276,6 +2276,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Extend the same protocol rule to `AsyncIterable<T>`, local
     `Symbol.asyncIterator`, `for await`, and `Array.fromAsync`, retaining
     rejection conversion instead of synchronous Throw propagation.
+    - [x] Route `yield*` by its containing generator kind: sync iterator for
+      ordinary generators and async-first iterator plus rejection conversion
+      for async generators.
   - [x] Replace source-text matching for reviewed iterable consumers with
     resolved lib.d.ts owner/member identity, preserving semantics through
     immutable function and constructor aliases and rejecting lookalikes.

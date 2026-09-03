@@ -486,7 +486,9 @@ export function buildProgramCallGraph(
     const visit = (node: ts.Node): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
       if (ts.isForOfStatement(node)) record(node.expression, node.awaitModifier !== undefined);
-      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) record(node.expression);
+      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) record(
+        node.expression, (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) !== 0,
+      );
       if (ts.isSpreadElement(node)) record(node.expression);
       if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer) record(node.initializer);
       if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.[0]
@@ -1183,7 +1185,10 @@ export function buildProgramCallGraph(
       if (ts.isForOfStatement(node)) consumeIterableExpression(
         node.expression, node.awaitModifier !== undefined, node.awaitModifier !== undefined,
       );
-      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) consumeIterableExpression(node.expression);
+      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) {
+        const asynchronous = (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) !== 0;
+        consumeIterableExpression(node.expression, asynchronous, asynchronous);
+      }
       if (ts.isSpreadElement(node)) consumeIterableExpression(node.expression);
       if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer) consumeIterableExpression(node.initializer);
       if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.[0]

@@ -259,6 +259,9 @@ its local `Symbol.iterator` or `Symbol.asyncIterator` body is composed when
 resolvable. `for await` and `Array.fromAsync` mark abrupt iterator completion as
 Promise rejection; ordinary Promise combinators continue to accept only the
 synchronous Iterable protocol.
+`yield*` follows its containing generator: synchronous generators consume
+`Symbol.iterator`, while async generators prefer `Symbol.asyncIterator` and
+fall back to the synchronous protocol with rejection conversion.
 Reviewed consumers are identified by their resolved lib.d.ts owner and member,
 not source spelling. Immutable aliases such as `const collect = Array.from` and
 constructor aliases such as `const Bag = Set` therefore retain consumption

@@ -2041,6 +2041,7 @@ describe("multi-file call graph and effect polymorphism", () => {
         let MutableBag = Set
         export function mutableConstructorAlias() { return new MutableBag([1]).add(2) }
         export async function consumeAsyncIterableParameter(iterable: AsyncIterable<unknown>) { for await (const value of iterable) void value }
+        export async function* delegateAsyncIterableParameter(iterable: AsyncIterable<unknown>) { yield* iterable }
         /* uneffect:effect none */
         /* uneffect:effect_parameter iterable extends Console | Throw<Error> */
         export function constrainedIterableParameter(iterable: Iterable<readonly [PropertyKey, unknown]>) { return Object.fromEntries(iterable) }
@@ -2261,6 +2262,8 @@ describe("multi-file call graph and effect polymorphism", () => {
         functionName: "mutableConstructorAlias", effect: "Mutate<typeof new MutableBag([1])>", kind: "missing",
       }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeAsyncIterableParameter"))
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable", convertsThrowToRejection: true })] });
+      expect(result.summaries.find((summary) => summary.functionName === "delegateAsyncIterableParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable", convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "constrainedIterableParameter"))
         .toMatchObject({ evidence: "verified", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterable" })] });
