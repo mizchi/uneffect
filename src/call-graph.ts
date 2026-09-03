@@ -656,24 +656,45 @@ export function buildProgramCallGraph(
       scan(constructor.body);
       return !returnsAlternateObject;
     };
-    const provablyFreshLocalReceiver = (receiver: ts.Identifier): boolean => {
-      const symbol = resolvedSymbol(checker, receiver), value = symbol?.valueDeclaration;
-      if (!symbol || !value || !ts.isVariableDeclaration(value) || !value.initializer
-        || !ts.isVariableDeclarationList(value.parent) || (value.parent.flags & ts.NodeFlags.Const) === 0
-        || !provablyFreshConstruction(value.initializer) || !declaration.body) return false;
-      let escapedBeforeUse = false;
-      const scan = (node: ts.Node): void => {
-        if (escapedBeforeUse || node.getStart() >= receiver.getStart() || node !== declaration.body && ts.isFunctionLike(node)) return;
-        if (ts.isIdentifier(node) && resolvedSymbol(checker, node) === symbol && node !== value.name) {
-          const parent = node.parent;
-          const usedAsReceiver = (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent))
-            && parent.expression === node;
-          if (!usedAsReceiver) { escapedBeforeUse = true; return; }
+    let freshLocalEscapeCache: Map<ts.Symbol, number[]> | undefined;
+    const freshLocalEscapes = (): Map<ts.Symbol, number[]> => {
+      if (freshLocalEscapeCache) return freshLocalEscapeCache;
+      const fresh = new Map<ts.Symbol, number[]>();
+      if (!declaration.body) return fresh;
+      const collect = (node: ts.Node): void => {
+        if (node !== declaration.body && ts.isFunctionLike(node)) return;
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+          && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0
+          && provablyFreshConstruction(node.initializer)) {
+          const symbol = resolvedSymbol(checker, node.name);
+          if (symbol) fresh.set(symbol, []);
         }
-        ts.forEachChild(node, scan);
+        ts.forEachChild(node, collect);
       };
-      scan(declaration.body);
-      return !escapedBeforeUse;
+      collect(declaration.body);
+      const classify = (node: ts.Node): void => {
+        if (node !== declaration.body && ts.isFunctionLike(node)) return;
+        if (ts.isIdentifier(node)) {
+          const symbol = resolvedSymbol(checker, node), escapes = symbol && fresh.get(symbol);
+          const value = symbol?.valueDeclaration;
+          const declarationName = value && ts.isVariableDeclaration(value) ? value.name : undefined;
+          if (escapes && node !== declarationName) {
+            const parent = node.parent;
+            const usedAsReceiver = (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent))
+              && parent.expression === node;
+            if (!usedAsReceiver) escapes.push(node.getStart());
+          }
+        }
+        ts.forEachChild(node, classify);
+      };
+      classify(declaration.body);
+      freshLocalEscapeCache = fresh;
+      return fresh;
+    };
+    const provablyFreshLocalReceiver = (receiver: ts.Identifier): boolean => {
+      const symbol = resolvedSymbol(checker, receiver);
+      const escapes = symbol && freshLocalEscapes().get(symbol);
+      return Boolean(escapes && !escapes.some((position) => position < receiver.getStart()));
     };
     const canonicalAddressableReceiver = (receiver: ts.Expression): { text: string; unresolvedAlias: boolean; fresh?: boolean } => {
       if (provablyFreshConstruction(receiver)) return { text: receiver.getText(), unresolvedAlias: false, fresh: true };
