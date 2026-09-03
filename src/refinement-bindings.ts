@@ -1699,6 +1699,7 @@ function validateRefinementActionBodiesInSource(
       }),
     });
   };
+  /* uneffect:effect_parameter visibleNames extends none */
   const projectLocalSnapshot = (
     snapshot: ReadonlyMap<string, TemporalExpression>,
     visibleNames: Iterable<string>,
@@ -1711,6 +1712,7 @@ function validateRefinementActionBodiesInSource(
     }
     return projected;
   };
+  /* uneffect:effect_parameter visibleNames extends none */
   const joinVisibleLocalSnapshots = (
     condition: TemporalExpression,
     whenTrue: ReadonlyMap<string, TemporalExpression>,
@@ -1807,6 +1809,7 @@ function validateRefinementActionBodiesInSource(
     const joined = joinLocalSnapshots(predicate, projected, normalLocals);
     return joined ? new Map(joined) : undefined;
   };
+  /* uneffect:effect_parameter visibleNames extends none */
   const projectCompletionLocalSnapshots = (
     completion: ActionCompletion,
     visibleNames: Iterable<string>,

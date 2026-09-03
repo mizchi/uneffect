@@ -136,6 +136,7 @@ export function extractLocatedAnnotations(text: string, directive: UneffectDirec
   return values;
 }
 
+/* uneffect:effect_parameter additionalDirectives extends none */
 export function validateUneffectAnnotations(text: string, baseOffset = 0, additionalDirectives: Iterable<string> = []): AnnotationDiagnostic[] {
   const diagnostics: AnnotationDiagnostic[] = [];
   const additional = new Set(additionalDirectives);

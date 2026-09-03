@@ -77,6 +77,7 @@ export interface HandlerJoinFixedPoint {
   readonly outgoing: readonly HandlerCompletionKind[];
 }
 
+/* uneffect:effect_parameter values extends none */
 const orderedCompletions = (values: Iterable<HandlerCompletionKind>): HandlerCompletionKind[] => {
   const order: readonly HandlerCompletionKind[] = ["normal", "return", "throw", "break", "continue"];
   const selected = new Set(values);

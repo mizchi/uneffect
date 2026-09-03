@@ -7,10 +7,14 @@ constraint-bearing annotations and a load-bearing negative control.
 The repository-wide gate does not run every analysis domain over one giant
 Program. The dogfood suite uses focused project boundaries for effect,
 contract, async, ownership, and temporal checks; its self-effect case still
-loads all `src/*.ts` together. Open callback and generator summaries remain
-intentionally unknown. That case requires zero effect diagnostics and an
-explicit allow-listed reason code on every unknown summary, so they cannot
-silently become proof.
+loads all `src/*.ts` together. Open callback-timing summaries remain
+intentionally unknown: reused intermediates and nested optional callback
+paths still lack a stable-container proof. Iterator-parameter and generator-
+consumption unknowns in `src/` were closed by bounded iterator forwarding and
+omitted default-argument instantiation; arbitrary `Iterable<T>` values stay
+fail-closed. That case requires zero effect diagnostics and an explicit
+allow-listed reason code on every unknown summary, so they cannot silently
+become proof.
 
 ## First boundary: static evaluation
 

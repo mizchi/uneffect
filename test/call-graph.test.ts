@@ -1969,6 +1969,138 @@ describe("multi-file call graph and effect polymorphism", () => {
     }
   });
 
+  it("infers iterator effect parameters through later-declared wrappers and mutual recursion", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-iterator-order-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        export function* generate() { console.log("gen"); yield 1; throw new RangeError("boom") }
+        declare const opaqueValues: Iterable<number>
+        export function outer(values: Iterable<number>) { middle(values) }
+        function middle(values: Iterable<number>) { leaf(values) }
+        /* uneffect:effect_parameter values extends none */
+        function leaf(values: Iterable<number>) { for (const value of values) void value }
+        export function ping(values: Iterable<number>) { pong(values); for (const value of values) void value }
+        export function pong(values: Iterable<number>) { ping(values) }
+        export function outerOptions(options: { readonly values: Iterable<number> }) { middleOptions(options) }
+        function middleOptions(options: { readonly values: Iterable<number> }) { leafOptions(options) }
+        function leafOptions(options: { readonly values: Iterable<number> }) { for (const value of options.values) void value }
+        export function outerPromise(values: Iterable<number>) { middlePromise(values) }
+        function middlePromise(values: Iterable<number>) { leafPromise(values) }
+        function leafPromise(values: Iterable<number>) { void Promise.all(values) }
+        export function runKnown() { outer(generate()) }
+        export function runPure() { outer([1, 2, 3]) }
+        export function runOpaque() { outer(opaqueValues) }
+        export function runKnownPing() { ping(generate()) }
+        export function runOpaquePing() { ping(opaqueValues) }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const graph = buildProgramCallGraph(program);
+      for (const name of ["outer", "middle", "leaf", "ping", "pong"]) {
+        expect(graph.nodes.find((node) => node.name === name)?.iteratorEffectParameters, name)
+          .toContainEqual(expect.objectContaining({ index: 0, name: "values" }));
+      }
+      expect(graph.nodes.find((node) => node.name === "outerOptions")?.iteratorEffectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "options.values", propertyPath: ["values"] }));
+      expect(graph.nodes.find((node) => node.name === "middleOptions")?.iteratorEffectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "options.values", propertyPath: ["values"] }));
+      expect(graph.nodes.find((node) => node.name === "outerPromise")?.iteratorEffectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, convertsThrowToRejection: true }));
+      expect(graph.nodes.find((node) => node.name === "middlePromise")?.iteratorEffectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, convertsThrowToRejection: true }));
+      const result = analyzeProgramEffects(program);
+      expect(result.summaries.find((summary) => summary.functionName === "leaf"))
+        .toMatchObject({ evidence: "verified", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "values" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "outer"))
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "values" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "pong"))
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "values" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "runPure"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "runOpaque"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
+      expect(result.summaries.find((summary) => summary.functionName === "runOpaquePing"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "runKnown", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "runKnownPing", effect: "Console", kind: "missing",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("instantiates omitted iterator arguments from reviewed default initializers", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-iterator-default-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        export function* generate() { console.log("gen"); yield 1 }
+        declare const opaqueValues: Iterable<number>
+        export function consume(text: string, values: Iterable<number> = []) {
+          return new Set(values)
+        }
+        /* uneffect:effect_parameter values extends none */
+        export function bounded(text: string, values: Iterable<number> = []) {
+          return new Set(values)
+        }
+        export function omitDefault(text: string) { consume(text) }
+        export function omitBounded(text: string) { bounded(text) }
+        export function passPure(text: string) { consume(text, [1, 2, 3]) }
+        export function passOpaque(text: string) { consume(text, opaqueValues) }
+        export function passOpaqueBounded(text: string) { bounded(text, opaqueValues) }
+        export function passKnown(text: string) { consume(text, generate()) }
+        function* defaultGen() { console.log("default"); yield 1 }
+        export function consumeDefaultGen(values: Iterable<number> = defaultGen()) {
+          return new Set(values)
+        }
+        export function omitDefaultGen() { consumeDefaultGen() }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const result = analyzeProgramEffects(program);
+      expect(result.summaries.find((summary) => summary.functionName === "omitDefault"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "omitBounded"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "passPure"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "passOpaque"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
+      expect(result.summaries.find((summary) => summary.functionName === "passOpaqueBounded"))
+        .toMatchObject({
+          evidence: "unknown",
+          unknownReasons: [expect.objectContaining({ code: "unknown-generator-parameter" })],
+        });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "passKnown", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "omitDefaultGen", effect: "Console", kind: "missing",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("uses the reviewed synchronous TypeScript Program.emit callback contract", () => {
     const fileName = join(process.cwd(), "virtual-typescript-emit.ts");
     const sourceText = `

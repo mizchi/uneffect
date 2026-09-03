@@ -281,9 +281,12 @@ export function buildProgramCallGraph(
     externalIteratorEffects?: ReadonlyMap<string, ExternalIteratorEffectContract>;
     externalCallableEffects?: ReadonlyMap<string, ExternalCallableEffectContract>;
     builtinRegistry?: BuiltinContractRegistry;
+    adapter?: FrontendSymbolAdapter;
   } = {},
 ): ProgramCallGraph {
-  const checker = program.getTypeChecker(), adapter = new TypeScriptFrontendAdapter(program, options.builtinRegistry), declarations: ts.FunctionLikeDeclaration[] = [];
+  const checker = program.getTypeChecker();
+  const adapter = options.adapter ?? new TypeScriptFrontendAdapter(program, options.builtinRegistry);
+  const declarations: ts.FunctionLikeDeclaration[] = [];
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const visit = (node: ts.Node): void => {
@@ -525,9 +528,9 @@ export function buildProgramCallGraph(
   const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
     const cached = iteratorParameterCache.get(declaration);
     if (cached) return cached;
-    // Recursive forwarding without a fixed-point proof stays opaque. Returning
-    // no contract here lets the ordinary unknown-consumption edge fail closed.
-    if (iteratorParameterVisiting.has(declaration)) return [];
+    if (iteratorParameterVisiting.has(declaration)) {
+      return byId.get(stableId(declaration))?.iteratorEffectParameters ?? [];
+    }
     iteratorParameterVisiting.add(declaration);
     const parameterIndices = new Map<ts.Symbol, number>();
     const runtimeParameters = runtimeParametersOf(declaration);
@@ -595,7 +598,18 @@ export function buildProgramCallGraph(
     iteratorParameterCache.set(declaration, result);
     return result;
   };
-  for (const declaration of declarations) byId.get(stableId(declaration))!.iteratorEffectParameters = iteratorParametersOf(declaration);
+  const iteratorFixedPointLimit = Math.min(8, declarations.length + 1);
+  for (let pass = 0; pass < iteratorFixedPointLimit; pass += 1) {
+    iteratorParameterCache.clear();
+    let changed = false;
+    for (const declaration of declarations) {
+      const node = byId.get(stableId(declaration))!;
+      const next = iteratorParametersOf(declaration);
+      if (JSON.stringify(node.iteratorEffectParameters) !== JSON.stringify(next)) changed = true;
+      node.iteratorEffectParameters = next;
+    }
+    if (!changed) break;
+  }
   const callableParameterCache = new Map<ts.FunctionLikeDeclaration, EffectParameter[]>();
   const callableParameterVisiting = new Set<ts.FunctionLikeDeclaration>();
   const callableParametersOf = (declaration: ts.FunctionLikeDeclaration): EffectParameter[] => {
@@ -1708,7 +1722,8 @@ export function buildProgramCallGraph(
         const iteratorConsumer = targetDeclaration ? stableId(targetDeclaration) : externalIterator?.key;
         const dischargesUnknownGeneratorParameters = iteratorContracts.length > 0
           && iteratorContracts.every((contract) => {
-            const argument = node.arguments[contract.index];
+            const argument = node.arguments[contract.index]
+              ?? (targetDeclaration ? runtimeParametersOf(targetDeclaration)[contract.index]?.initializer : undefined);
             const iterableArgument = argument && contract.propertyPath
               ? expressionAtExclusiveConstArgumentPath(checker, argument, contract.propertyPath)
               : argument;

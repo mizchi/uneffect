@@ -18,6 +18,7 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintT
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementBindingCoverageWithManifest, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram, validateRefinementStateProjectionWithManifest } from "../src/refinement-bindings.js";
 import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
+import { resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
@@ -476,7 +477,7 @@ describe("Uneffect dogfood", () => {
   it("exports a real checker-inferred Console effect and ordered calls from dogfood", async () => {
     const fileName = "examples/dogfood/corsa-inferred-effect.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
     const emit = facts.symbols.find((symbol) => symbol.name === "emit")!;
     const lookalike = facts.symbols.find((symbol) => symbol.name === "sameSpelledLookalike")!;
     expect(emit.inferredEffects).toEqual([
@@ -2571,8 +2572,6 @@ describe("Uneffect dogfood", () => {
     const codes = [...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))].sort();
     expect(codes).toEqual([
       "unknown-callback-timing",
-      "unknown-generator-consumption",
-      "unknown-generator-parameter",
     ]);
   }, Math.max(60_000, externalCheckerTestTimeoutMs()));
 
