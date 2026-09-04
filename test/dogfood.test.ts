@@ -2674,7 +2674,9 @@ describe("Uneffect dogfood", () => {
     expect(selected).toHaveLength(selectedNames.size);
     expect(selected.map((summary) => ({ name: summary.functionName, evidence: summary.evidence, effects: summary.effects })))
       .toEqual(expect.arrayContaining([...selectedNames].map((name) => ({ name, evidence: "verified", effects: [] }))));
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
+  it("rejects an unused Console allowance on diagnostic quality scoring", () => {
     const source = readFileSync("src/diagnostic-quality.ts", "utf8");
     expect(analyzeEffects("src/diagnostic-quality.ts", source.replace(
       "/* uneffect:effect none */",
