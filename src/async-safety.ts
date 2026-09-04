@@ -1753,11 +1753,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       const switchIsExhaustive = (statement: ts.SwitchStatement): boolean => {
         if (statement.caseBlock.clauses.some(ts.isDefaultClause)) return true;
+        const cases = statement.caseBlock.clauses.filter(ts.isCaseClause);
+        // Type assertions and ambient declarations can claim a literal type
+        // without proving the runtime case value. Only finite evaluated case
+        // expressions may discharge the no-match edge.
+        if (cases.some((clause) => !staticPrimitive(clause.expression, new Map()))) return false;
         const type = checker.getTypeAtLocation(statement.expression);
         if (!type.isUnion()) return false;
         const possible = new Set(type.types.map((item) => checker.typeToString(item)));
-        const covered = new Set(statement.caseBlock.clauses.flatMap((clause) =>
-          ts.isCaseClause(clause) ? [checker.typeToString(checker.getTypeAtLocation(clause.expression))] : []));
+        const covered = new Set(cases.map((clause) =>
+          checker.typeToString(checker.getTypeAtLocation(clause.expression))));
         return possible.size > 0 && [...possible].every((item) => covered.has(item));
       };
       type StaticSwitchSelection =

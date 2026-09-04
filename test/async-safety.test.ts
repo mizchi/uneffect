@@ -952,6 +952,32 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("does not trust asserted case types as runtime exhaustiveness evidence", () => {
+    const result = analyzeAsyncSafety("switch-runtime-exhaustiveness.ts", `
+      declare function task(): Promise<number>
+      declare function runtimeLabel(): string
+      async function literalCases(kind: "a" | "b") {
+        const pending = task()
+        switch (kind) {
+          case "a": await pending; break
+          case "b": await pending; break
+        }
+      }
+      async function assertedCaseMayMiss(kind: "a" | "b") {
+        const pending = task()
+        const claimedA = runtimeLabel() as "a"
+        switch (kind) {
+          case claimedA: await pending; break
+          case "b": await pending; break
+        }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "literalCases", status: "observed" },
+      { owner: "assertedCaseMayMiss", status: "floating" },
+    ]);
+  });
+
   it("runs finally on normal, caught, and early-return Promise ownership paths", () => {
     const result = analyzeAsyncSafety("finally-promises.ts", `
       declare function task(): Promise<number>
