@@ -48,6 +48,8 @@ describe("Corsa effect parity sidecar", () => {
       expect(names.shadowed ?? []).not.toEqual(expect.arrayContaining(["Fetch", "Console"]));
       expect(names.makeNode).toEqual(expect.arrayContaining(["Dom"]));
       expect(names.shadowedDocument ?? []).not.toEqual(expect.arrayContaining(["Dom"]));
+      expect(names.connect).toEqual(expect.arrayContaining(["Net"]));
+      expect(names.shadowedSocket ?? []).not.toEqual(expect.arrayContaining(["Net"]));
       const assurance = assessCheckAssurance(checked, "no-unknown");
       expect(assurance.blockers).not.toContainEqual(expect.objectContaining({
         message: expect.stringContaining("Corsa effect parity mismatch"),

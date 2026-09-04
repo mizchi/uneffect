@@ -153,6 +153,31 @@ export const shadowed = (document: { cookie: string }) => document.cookie;`;
     expect(overlay.resolveProperty(accesses[1]!)).toBeUndefined();
   });
 
+  it("resolves new WebSocket from Corsa constructor identity without the TypeScript adapter", () => {
+    const text = `export const open = () => new WebSocket("wss://example.com");
+export const shadowed = (WebSocket: { new (url: string): unknown }) => new WebSocket("wss://example.com");`;
+    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.ES2024, true, ts.ScriptKind.TS);
+    const constructions: ts.NewExpression[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isNewExpression(node)) constructions.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    const overlay = overlayCorsaBuiltinCatalog(unusedAdapter(), {
+      rootFiles: [fileName],
+      classifyBuiltinCalls: () => [],
+      getSymbolAtPosition(_file, position) {
+        return position === text.indexOf("WebSocket")
+          ? { id: "sym-ws", name: "WebSocket", declarations: ["/lib/lib.dom.d.ts"] }
+          : { id: "sym-local-ws", name: "WebSocket" };
+      },
+    });
+    expect(overlay.resolveConstruct(constructions[0]!)).toMatchObject({
+      symbol: { module: "global", export: "WebSocket" }, evidence: "trusted",
+    });
+    expect(overlay.resolveConstruct(constructions[1]!)).toBeUndefined();
+  });
+
   it("does not treat a Corsa miss as proof and keeps the TypeScript adapter as fallback", () => {
     const source = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.ES2024, true, ts.ScriptKind.TS);
     const fetchCall = callNamed(source, "fetch");

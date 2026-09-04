@@ -23,3 +23,11 @@ export function makeNode(): HTMLDivElement {
 export function shadowedDocument(document: { createElement(name: string): HTMLDivElement }): HTMLDivElement {
   return document.createElement("div");
 }
+
+export function connect(): WebSocket {
+  return new WebSocket("wss://example.com");
+}
+
+export function shadowedSocket(WebSocket: { new (url: string): WebSocket }): WebSocket {
+  return new WebSocket("wss://example.com");
+}

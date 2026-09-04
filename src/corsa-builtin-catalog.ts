@@ -10,12 +10,12 @@ function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null | undefined): sy
 }
 
 type CorsaCatalogFrontend = Pick<CorsaApiFrontend, "rootFiles" | "classifyBuiltinCalls">
-  & Partial<Pick<CorsaApiFrontend, "getTypeAtPosition" | "getSymbolOfType" | "getPropertyOfType">>;
+  & Partial<Pick<CorsaApiFrontend, "getTypeAtPosition" | "getSymbolOfType" | "getPropertyOfType" | "getSymbolAtPosition">>;
 
 /**
- * Routes admitted Fetch/Console and lib.dom method catalog entries through
- * Corsa when a sidecar is attached. Other builtins stay on the TypeScript
- * adapter. Corsa is not a complete FrontendSymbolAdapter.
+ * Routes admitted Fetch/Console, lib.dom methods/properties, and DOM
+ * constructors through Corsa when a sidecar is attached. Other builtins stay
+ * on the TypeScript adapter. Corsa is not a complete FrontendSymbolAdapter.
  */
 export function overlayCorsaBuiltinCatalog(
   adapter: FrontendSymbolAdapter,
@@ -89,6 +89,23 @@ export function overlayCorsaBuiltinCatalog(
     };
   };
 
+  const fromCorsaConstruct = (construction: ts.NewExpression) => {
+    if (!ts.isIdentifier(construction.expression) || !corsa.getSymbolAtPosition) return undefined;
+    const source = construction.getSourceFile();
+    if (!roots.has(resolve(source.fileName))) return undefined;
+    const symbol = corsa.getSymbolAtPosition(source.fileName, construction.expression.getStart(source));
+    if (!declaredByDomLibrary(symbol)) return undefined;
+    const contract = globals.get(symbol.name);
+    if (!contract) return undefined;
+    return {
+      symbol: contract.symbol,
+      span: { start: construction.getStart(), end: construction.getEnd() },
+      evidence: "trusted" as const,
+      semantics: contract.semantics,
+      callableResult: contract.callableResult,
+    };
+  };
+
   const fromCorsaProperty = (access: ts.PropertyAccessExpression | ts.ElementAccessExpression) => {
     if (!ts.isPropertyAccessExpression(access)
       || !corsa.getTypeAtPosition || !corsa.getSymbolOfType || !corsa.getPropertyOfType) return undefined;
@@ -113,7 +130,7 @@ export function overlayCorsaBuiltinCatalog(
     resolveCall(call) {
       return fromCorsa(call) ?? adapter.resolveCall(call);
     },
-    resolveConstruct: (construction) => adapter.resolveConstruct(construction),
+    resolveConstruct: (construction) => fromCorsaConstruct(construction) ?? adapter.resolveConstruct(construction),
     resolveProperty: (access) => fromCorsaProperty(access) ?? adapter.resolveProperty(access),
     resolveDomReceiverRegion: (expression) => adapter.resolveDomReceiverRegion(expression),
     isDomReceiver: (expression) => adapter.isDomReceiver(expression),
