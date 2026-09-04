@@ -2684,7 +2684,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "quotesSource", effect: "Console", kind: "unused",
     }));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("separates pure CLI helpers from terminal output and usage throws", () => {
     const fileName = "src/cli-support.ts";
@@ -2816,7 +2816,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "summaryOf", effect: "FsWrite", kind: "unused",
     }));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("separates ownership cache keys, reads, and atomic writes", () => {
     const fileName = "src/ownership-evidence-cache.ts";
@@ -2841,7 +2841,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "ownershipEvidenceKey", effect: "FsRead", kind: "unused",
     }));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("classifies model trace loading and randomized atomic persistence", () => {
     const fileName = "src/model-replay.ts";
@@ -2874,7 +2874,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "writeModelCounterexample", effect: "Random", kind: "missing",
     }));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("tracks persisted optimizer evidence reads independently from regeneration writes", () => {
     const fileName = "src/project-optimizer.ts";
@@ -2901,7 +2901,7 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ functionName: "parseEvidence", effect: "FsRead", kind: "missing" }),
       expect.objectContaining({ functionName: "parseEvidence", effect: "FsWrite", kind: "unused" }),
     ]));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
     const entry = "node_modules/effect/src/Function.ts";
@@ -3036,7 +3036,7 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ domain: "ownership", fileName }),
       expect.objectContaining({ domain: "typed-array", fileName }),
     ]));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("checks telemetry Promise ownership across delivery modes and shutdown cleanup", () => {
     const fileName = "examples/dogfood/telemetry-delivery.ts";

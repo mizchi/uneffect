@@ -18,5 +18,6 @@ describe("external checker test timeout policy", () => {
     ]) {
       expect(dogfood).toMatch(new RegExp(`it\\("${title}",[\\s\\S]*?\\}, Math\\.max\\(120_000, externalCheckerTestTimeoutMs\\(\\)\\)\\);`, "u"));
     }
+    expect(dogfood).not.toContain("}, 60_000);");
   });
 });
