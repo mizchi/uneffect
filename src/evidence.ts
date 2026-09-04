@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { generateOwnershipObligationQuint, generateOwnershipObligationSmt, type OwnershipGuardObligation } from "./async-safety.js";
 import { builtinContractRegistry, type BuiltinContractRegistry, type SemanticModuleLedgerEntry } from "./builtin-contracts.js";
 import { formatEffect, parseEffectExpression, parseParameterizedCapabilityScope, unknownCapabilityReasons } from "./capabilities.js";

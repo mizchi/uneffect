@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectSet } from "./capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";

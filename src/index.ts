@@ -33,6 +33,8 @@ export { generateObligationSmt, InvariantLoweringError, logicToSmt, lowerInvaria
 export type { ContractControlFlowEvidence } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationBinding, ObligationVariable } from "./invariant-ir.js";
 export { checkFiles, createCheckHost, createCheckProgram } from "./check.js";
+export { checkCorsaProject } from "./corsa-check.js";
+export type { CorsaCheckOptions, CorsaCheckResult } from "./corsa-check.js";
 export { environmentSummary, formatEnvironmentReport, readPackageManifest, runEnvironmentChecks } from "./environment.js";
 export type { EnvironmentCheck, EnvironmentCheckOptions, EnvironmentStatus, PackageManifest } from "./environment.js";
 export type { CheckOptions, CheckResult } from "./check.js";
@@ -62,7 +64,8 @@ export type {
   LocatedEffect,
 } from "./spec-ir.js";
 export type { AnnotationDiagnostic, LocatedAnnotation, SourceSpan } from "./annotations.js";
-export { extractLocatedAnnotations, uneffectDialects, validateUneffectAnnotations } from "./annotations.js";
+export { extractLocatedAnnotations, registerUneffectPlugin, uneffectDialects, UneffectPluginError, uneffectPluginDirectives, validateUneffectAnnotations } from "./annotations.js";
+export type { UneffectPluginDirective, UneffectPluginDirectiveKind } from "./annotations.js";
 export { assumptionRegistrySchema, AssumptionRegistryError, loadAssumptionRegistry, parseAssumptionRegistry, resolveAssumptionRecord } from "./assumption-registry.js";
 export type { AssumptionRecord, AssumptionRegistry } from "./assumption-registry.js";
 export { generateQuint, generateSmtLib } from "./spec-backends.js";

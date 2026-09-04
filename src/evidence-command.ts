@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { exitCode, formatCommandHelp, parseCommandArgs, singleFileArgument, type CliCommand } from "./cli-support.js";
 import { analyzeEffectSummariesInProgram } from "./effects.js";
 import { assessEvidenceArtifactEligibility, createEvidenceArtifact } from "./evidence.js";

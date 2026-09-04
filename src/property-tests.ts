@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, posix } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { executeZ3, type Z3ExecutionOptions, type Z3ValueRequest } from "./z3.js";
 import { extractAnnotations } from "./annotations.js";
 import { logicToSmt, parseLogicExpression, parseLogicExpressionForHints } from "./invariant-ir.js";

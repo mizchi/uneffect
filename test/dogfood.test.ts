@@ -1,7 +1,7 @@
 import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
 import { analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";

@@ -1,6 +1,6 @@
 import type { RefinementBindingManifest } from "../src/refinement-bindings.js";
 import type { TemporalSpec } from "../src/spec-ir.js";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 /** Explicit test-fixture manifest; never parses source comments. */
 export function refinementManifest(

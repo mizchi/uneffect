@@ -1,5 +1,6 @@
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import ts from "typescript";
+import type ts from "@typescript/typescript6";
 import { builtinSemanticCatalog, materializeBuiltinSemanticDefinitions } from "./builtin-semantic-catalog.js";
 import type { BuiltinSemantics } from "./builtin-semantic-schema.js";
 
@@ -147,6 +148,11 @@ function packageName(moduleName: string): string {
   return moduleName.split("/").slice(0, 2).join("/");
 }
 
+const typescriptRequire = createRequire(import.meta.url);
+function typescript(): typeof import("@typescript/typescript6") {
+  return typescriptRequire("@typescript/typescript6") as typeof import("@typescript/typescript6");
+}
+
 const resolvedPackageVersions = new WeakMap<ts.Program, Map<string, string | null>>();
 
 function resolvedPackageVersion(program: ts.Program, containingFile: string, moduleName: string): string | undefined {
@@ -158,6 +164,7 @@ function resolvedPackageVersion(program: ts.Program, containingFile: string, mod
   const key = `${containingFile}\0${moduleName}`;
   const cached = cache.get(key);
   if (cached !== undefined) return cached === null ? undefined : cached;
+  const ts = typescript();
   const resolved = ts.resolveModuleName(moduleName, containingFile, program.getCompilerOptions(), ts.sys).resolvedModule;
   if (!resolved) { cache.set(key, null); return undefined; }
   const expectedName = packageName(moduleName);
@@ -222,7 +229,8 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     },
     ...([
       ["@oxlint/plugins", "1.80.0"], ["corsa-oxlint", "1.12.4"], ["effect", "3.22.1"],
-      ["typescript", "6.0.3"], ["valibot", "1.4.2"], ["z3-solver", "4.16.0"],
+      ["oxc-parser", "0.148.0"], ["typescript", "6.0.3"], ["@typescript/typescript6", "6.0.2"],
+      ["valibot", "1.4.2"], ["z3-solver", "4.16.0"],
     ] as const).map(([module, packageVersion]): ModuleInitializationContract => ({
       module, runtime: { kind: "package", version: packageVersion }, effects: [], evidence: "trusted",
       trustReason: "reviewed package module initialization boundary", trustOwner: "@mizchi/uneffect",

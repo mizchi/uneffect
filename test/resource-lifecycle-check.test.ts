@@ -6,7 +6,7 @@ import { checkFiles } from "../src/check.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { createContractSummaryBundle } from "../src/contract-summary.js";
 import { createResourceCallableContractArtifact } from "../src/resource-callable-artifact.js";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };

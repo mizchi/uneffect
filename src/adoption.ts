@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { Effect } from "effect";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { analyzeUneffectProject } from "./custom-validators.js";
 import { analyzeProgramEffects } from "./effects.js";
 import { auditBuiltinDeclarationDrift, type DeclarationDriftDiagnostic } from "./frontend-adapter.js";

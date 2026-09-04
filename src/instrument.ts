@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import { analyzeAsyncSafety, type AsyncSafetyResult, type OwnershipGuardObligation } from "./async-safety.js";
 import { validateOwnershipEvidence, verifyOwnershipObligationWithZ3, type OwnershipEvidenceArtifact } from "./evidence.js";

@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { symbolIdentityKey } from "./binding-identity.js";
 import { standardLibraryOperation, TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import type { BuiltinContractRegistry, PromiseCombinator } from "./builtin-contracts.js";

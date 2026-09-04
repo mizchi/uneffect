@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { generateQuint } from "../src/spec-backends.js";
 import { bool, defineTemporal, int, parseTemporalDsl, resolveTemporalDslLink, validateTemporalDslHelperIdentities } from "../src/temporal-dsl.js";
 import { generateTemporalModel } from "../src/temporal-model.js";

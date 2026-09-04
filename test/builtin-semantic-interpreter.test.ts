@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics, projectedExpression } from "../src/builtin-semantic-interpreter.js";
 import type { BuiltinSemantics } from "../src/builtin-semantic-schema.js";

@@ -23,7 +23,7 @@ payload-free object presence fact;
 its abrupt edge remains a synchronous throw. Same-shaped user functions are
 not treated as this builtin.
 
-The standalone analyzer and CLI also construct a TypeScript Program; there is no fallback recognizer based on callee source text. Array/Map/Set/WeakMap/WeakSet mutation methods are declaration-symbol overlays, so a user-defined method named `push`, `set`, or `add` is not classified as a collection mutation. Standard `Map`, `ReadonlyMap`, `Set`, and `ReadonlySet` `forEach` callbacks are synchronous `0..n` callback edges; a same-spelled local method does not receive that timing.
+Default `check` (project or file-specified) classifies admitted catalog builtins through Corsa identity and Oxc syntax, not a JavaScript TypeScript 6 Program. The `--typescript-program` path and the standalone `checkFiles` analyzer still construct a TypeScript Program. Neither path falls back to callee source text. Array/Map/Set/WeakMap/WeakSet mutation methods are declaration-symbol overlays, so a user-defined method named `push`, `set`, or `add` is not classified as a collection mutation. Standard `Map`, `ReadonlyMap`, `Set`, and `ReadonlySet` `forEach` callbacks are synchronous `0..n` callback edges; a same-spelled local method does not receive that timing.
 
 A builtin contract may carry more than one semantic projection. In the current
 Node slice, reviewed one-shot completion APIs in `node:fs` still emit
@@ -45,6 +45,11 @@ composed into the registering function (for example, `FsRead | Console`), and
 renamed or namespace imports do not degrade the summary to unknown timing.
 The legacy `analyzeEffects(fileName, text)` convenience path remains a shallow
 single-source check; proof/adoption tooling uses `analyzeProgramEffects`.
+
+`oxc-parser@0.148.0` has a reviewed empty initialization contract plus a
+`parseSync` overlay: the parser loads a native binding and returns an ESTree AST
+without executing the parsed program. Other Oxc entry points and other package
+versions remain unknown until reviewed.
 
 `typescript`'s reviewed `Program#emit` overlay marks only argument 1, the
 `writeFile` callback, as synchronous/inline. Uneffect uses this contract when

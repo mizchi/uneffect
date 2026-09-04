@@ -927,6 +927,12 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustOwner: "@mizchi/uneffect",
     }),
     reviewed("package", {
+      symbol: { module: "oxc-parser", export: "parseSync" },
+      runtime: { kind: "package", version: "0.148.0" },
+      trustReason: "Oxc 0.148.0 parseSync parses source text into an ESTree AST without executing the parsed program",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("package", {
       symbol: { module: "effect", export: "Effect#catchAll" }, runtime: { kind: "package", version: "3.22.1" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{
         kind: "callback", target: { kind: "argument-from-end", offset: 1 }, timing: "deferred", queue: "current", cardinality: "0..1", callable: "required",
@@ -937,30 +943,35 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       symbol: { module: "valibot", export: name }, runtime: { kind: "package", version: "1.4.2" },
       trustReason: `Valibot 1.4.2 ${name} constructs schema metadata without executing validation`, trustOwner: "@mizchi/uneffect",
     })),
-    reviewed("package", {
-      symbol: { module: "typescript", export: "Program#emit" }, runtime: { kind: "package", version: "6.0.3" },
-      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 1 }, timing: "sync", queue: "current", cardinality: "0..1", callable: "optional" }] },
-      trustReason: "TypeScript Program.emit invokes writeFile during the synchronous emit operation", trustOwner: "@mizchi/uneffect",
-    }),
     ...([
-      ["Node#forEachChild", [0, 1], [1]], ["forEachChild", [1, 2], [2]],
-      ["visitNode", [1]], ["visitEachChild", [1]],
-    ] as const).map(([name, callbackArguments, optionalCallbackArguments]) => reviewed("package", {
-      symbol: { module: "typescript", export: name }, runtime: { kind: "package", version: "6.0.3" },
-      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: callbackArguments.map((index) => ({
-        kind: "callback" as const, target: { kind: "argument" as const, index }, timing: "sync" as const, queue: "current" as const, cardinality: "0..n" as const,
-        ...((optionalCallbackArguments as readonly number[] | undefined)?.includes(index) ? { callable: "optional" as const } : { callable: "required" as const }),
-      })) },
-      trustReason: `TypeScript 6.0.3 ${name} invokes its visitor callbacks synchronously`, trustOwner: "@mizchi/uneffect",
-    })),
-    reviewed("package", {
-      symbol: { module: "typescript", export: "transform" }, runtime: { kind: "package", version: "6.0.3" },
-      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{
-        kind: "callback", target: { kind: "array-elements", target: { kind: "argument", index: 1 } },
-        timing: "sync", queue: "current", cardinality: "0..n", callable: "required", returnDepth: 1,
-      }] },
-      trustReason: "TypeScript 6.0.3 transform synchronously invokes each array-literal TransformerFactory and its returned Transformer", trustOwner: "@mizchi/uneffect",
-    }),
+      { module: "typescript", version: "6.0.3" },
+      { module: "@typescript/typescript6", version: "6.0.2" },
+    ] as const).flatMap(({ module, version }) => [
+      reviewed("package", {
+        symbol: { module, export: "Program#emit" }, runtime: { kind: "package", version },
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "callback", target: { kind: "argument", index: 1 }, timing: "sync", queue: "current", cardinality: "0..1", callable: "optional" }] },
+        trustReason: `TypeScript Compiler API ${version} Program.emit invokes writeFile during the synchronous emit operation`, trustOwner: "@mizchi/uneffect",
+      }),
+      ...([
+        ["Node#forEachChild", [0, 1], [1]], ["forEachChild", [1, 2], [2]],
+        ["visitNode", [1]], ["visitEachChild", [1]],
+      ] as const).map(([name, callbackArguments, optionalCallbackArguments]) => reviewed("package", {
+        symbol: { module, export: name }, runtime: { kind: "package", version },
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: callbackArguments.map((index) => ({
+          kind: "callback" as const, target: { kind: "argument" as const, index }, timing: "sync" as const, queue: "current" as const, cardinality: "0..n" as const,
+          ...((optionalCallbackArguments as readonly number[] | undefined)?.includes(index) ? { callable: "optional" as const } : { callable: "required" as const }),
+        })) },
+        trustReason: `TypeScript Compiler API ${version} ${name} invokes its visitor callbacks synchronously`, trustOwner: "@mizchi/uneffect",
+      })),
+      reviewed("package", {
+        symbol: { module, export: "transform" }, runtime: { kind: "package", version },
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{
+          kind: "callback", target: { kind: "array-elements", target: { kind: "argument", index: 1 } },
+          timing: "sync", queue: "current", cardinality: "0..n", callable: "required", returnDepth: 1,
+        }] },
+        trustReason: `TypeScript Compiler API ${version} transform synchronously invokes each array-literal TransformerFactory and its returned Transformer`, trustOwner: "@mizchi/uneffect",
+      }),
+    ]),
   ],
 };
 

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { attachContractEffectBoundaries, verifyContractObligations, type VerificationArtifact } from "./contracts.js";
 import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type OwnershipCheckerDiagnostic, type ResourceCheckerDiagnostic, type TypedArrayCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";

@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import { parseSpec, type TemporalAssignment, type TemporalProperty, type TemporalResponse, type TemporalState } from "./spec-ir.js";
 import { formatTemporalValueType, generateQuintExpression, parseTemporalExpression, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";

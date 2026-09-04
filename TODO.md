@@ -119,10 +119,11 @@ silent aliases.
      dispatch-sealing, and temporal-contract project-ledger handoffs.
    - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Migrate checked-in trust fixtures to registry IDs, then reject `trust_owner` and
      `trust_expires` source directives.
-6. [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Express React roles
+6. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Express React roles
    through namespaced plugin directives (`react.component`, `react.hook`, and
    resource lifecycle directives), with the same collision and provenance
-   rules available to third-party plugins.
+   rules available to third-party plugins. Hyphenated `react-component` /
+   `react-hook` / `react-resource` headers remain valid.
 7. [x] [#62](https://github.com/mizchi/uneffect/issues/62) Remove every legacy
    dialect from `UneffectDialect`, README tables, CLI help, schemas, and skills;
    retain only `uneffect:` and `.uneffect.ts` as public authoring entrypoints.

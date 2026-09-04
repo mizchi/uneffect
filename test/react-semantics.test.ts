@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
@@ -22,6 +22,21 @@ describe("React Function Component semantics", () => {
       }
     `);
 
+    expect(result.components.map(({ name }) => name)).toEqual(["Checked"]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ component: "Checked", kind: "render-effect", phase: "render", effect: "Console" }),
+    ]);
+  });
+
+  it("opts in a component through the namespaced react.component plugin directive", () => {
+    const result = analyzeReactSemantics("namespaced-component.tsx", `
+      declare namespace JSX { interface IntrinsicElements { button: unknown } }
+      /* uneffect:react.component */
+      function Checked() {
+        console.log("render")
+        return <button />
+      }
+    `);
     expect(result.components.map(({ name }) => name)).toEqual(["Checked"]);
     expect(result.diagnostics).toEqual([
       expect.objectContaining({ component: "Checked", kind: "render-effect", phase: "render", effect: "Console" }),

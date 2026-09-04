@@ -3,8 +3,8 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
-import { cliCommands, cliVersion, formatCliHelp, runCli } from "../src/cli-runner.js";
+import ts from "@typescript/typescript6";
+import { cliVersion, formatCliHelp, loadCliCommands, runCli } from "../src/cli-runner.js";
 import { exitCode, type CliStreams } from "../src/cli-support.js";
 import { builtinContractRegistry } from "../src/builtin-contracts.js";
 import { builtinContractDigest } from "../src/evidence.js";
@@ -37,9 +37,13 @@ describe("uneffect command line", () => {
   });
 
   it("lists every command in the help, and documents each one", async () => {
+    const cliCommands = await loadCliCommands();
     const io = capture();
     expect(await runCli(["--help"], io)).toBe(exitCode.success);
-    for (const command of cliCommands) expect(io.stdout).toContain(command.name);
+    for (const command of cliCommands) {
+      expect(io.stdout).toContain(command.name);
+      expect(io.stdout).toContain(command.summary);
+    }
     expect(cliCommands.filter((command) => command.summary.length === 0 || command.arguments.length === 0)).toEqual([]);
     for (const command of cliCommands) {
       const help = capture();
@@ -113,13 +117,13 @@ describe("uneffect command line", () => {
 
   it("rejects a misspelled option instead of ignoring it", async () => {
     const io = capture();
-    expect(await runCli(["check", "--stict", "fixtures/effects/missing-console.ts"], io)).toBe(exitCode.usage);
+    expect(await runCli(["check", "--typescript-program", "--stict", "fixtures/effects/missing-console.ts"], io)).toBe(exitCode.usage);
     expect(io.stderr).toContain("--stict");
     expect(io.stderr).toContain("usage: uneffect check");
     const misplacedBuildGate = capture();
-    expect(await runCli(["check", "--require-build-artifacts", "fixtures/effects/missing-console.ts"], misplacedBuildGate)).toBe(exitCode.usage);
+    expect(await runCli(["check", "--typescript-program", "--require-build-artifacts", "fixtures/effects/missing-console.ts"], misplacedBuildGate)).toBe(exitCode.usage);
     const misplacedExactBuildGate = capture();
-    expect(await runCli(["check", "--require-exact-build-artifacts", "fixtures/effects/missing-console.ts"], misplacedExactBuildGate)).toBe(exitCode.usage);
+    expect(await runCli(["check", "--typescript-program", "--require-exact-build-artifacts", "fixtures/effects/missing-console.ts"], misplacedExactBuildGate)).toBe(exitCode.usage);
     expect(misplacedBuildGate.stderr).toContain("requires --project without positional files");
   });
 
@@ -140,7 +144,7 @@ describe("uneffect command line", () => {
 
       writeFileSync(config, registry(nodeMajor));
       const matched = capture();
-      expect(await runCli(["check", "--config", config, "--evidence", "--assurance", "no-unknown", fileName], matched)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--config", config, "--evidence", "--assurance", "no-unknown", fileName], matched)).toBe(exitCode.success);
       expect(matched.stderr).toContain("<module>: Console (trusted)");
       expect(matched.stderr).toContain("assurance no-unknown: passed (assumed)");
 
@@ -151,12 +155,12 @@ describe("uneffect command line", () => {
 
       writeFileSync(config, registry(nodeMajor + 1));
       const drifted = capture();
-      expect(await runCli(["check", "--config", config, "--assurance", "no-unknown", fileName], drifted)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--config", config, "--assurance", "no-unknown", fileName], drifted)).toBe(exitCode.failed);
       expect(drifted.stderr).toContain("<module>: effect summary is unknown");
 
       writeFileSync(config, '{"schema":"uneffect-registry/v1","builtinRegistryVersion":2,"ignored":true}');
       const malformed = capture();
-      expect(await runCli(["check", "--config", config, fileName], malformed)).toBe(exitCode.usage);
+      expect(await runCli(["check", "--typescript-program", "--config", config, fileName], malformed)).toBe(exitCode.usage);
       expect(malformed.stderr).toContain("unknown key");
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -181,7 +185,7 @@ describe("uneffect command line", () => {
         },
       }));
       const checked = capture();
-      expect(await runCli(["check", "--semantics-module", moduleFile, "--assurance", "no-unknown", fileName], checked)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--semantics-module", moduleFile, "--assurance", "no-unknown", fileName], checked)).toBe(exitCode.success);
       const evidence = capture();
       expect(await runCli(["evidence", "--semantics-module", moduleFile, fileName], evidence)).toBe(exitCode.success);
       expect((JSON.parse(evidence.stdout) as { artifact: { modules: Array<{ name: string; evidence: string }> } }).artifact.modules)
@@ -334,7 +338,7 @@ describe("uneffect command line", () => {
       writeFileSync(summaryFile, JSON.stringify(contractBundle));
 
       const checked = capture();
-      expect(await runCli(["check", "--contract-summary", summaryFile, "--evidence", consumerFile], checked), checked.stderr).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--contract-summary", summaryFile, "--evidence", consumerFile], checked), checked.stderr).toBe(exitCode.success);
       expect(checked.stderr).toContain("proved run: ensures result === value + 1");
       expect(checked.stderr).toContain("effects reportIt: Console");
       expect(checked.stderr).toContain("effects reportArrowIt: Console");
@@ -348,7 +352,7 @@ describe("uneffect command line", () => {
       expect(checked.stderr).toContain("effects runClientCallback: Console");
       expect(checked.stderr).toContain("effects runClientScheduled: Timer | Console");
       const reported = capture();
-      expect(await runCli(["check", "--contract-summary", summaryFile, "--json", consumerFile], reported)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--contract-summary", summaryFile, "--json", consumerFile], reported)).toBe(exitCode.success);
       expect((JSON.parse(reported.stdout) as { assumptions: { entries: Array<{ domain: string }> } }).assumptions.entries)
         .toContainEqual(expect.objectContaining({ domain: "package-contract" }));
 
@@ -356,7 +360,7 @@ describe("uneffect command line", () => {
         name: "@example/math", version: "1.2.4", types: "index.d.ts",
       }));
       const drifted = capture();
-      expect(await runCli(["check", "--contract-summary", summaryFile, consumerFile], drifted)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--contract-summary", summaryFile, consumerFile], drifted)).toBe(exitCode.failed);
       expect(drifted.stderr).toContain("version 1.2.4 does not match summary 1.2.3");
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -391,7 +395,7 @@ describe("uneffect command line", () => {
       const consumer = join(directory, "consumer.ts");
       writeFileSync(consumer, `import { open, close } from "reviewed-resource"; export function main() { const value = open(); close(value) }`);
       const io = capture();
-      expect(await runCli(["check", "--infer", "--json",
+      expect(await runCli(["check", "--typescript-program", "--infer", "--json",
         "--resource-contract", artifactFiles[0]!, "--resource-contract", artifactFiles[1]!, consumer], io), io.stderr)
         .toBe(exitCode.success);
       const report = JSON.parse(io.stdout) as { resourceProtocols: Array<{ owner: string; status: string }>; assumptions: { entries: Array<{ owner?: string }> } };
@@ -414,50 +418,50 @@ describe("uneffect command line", () => {
       writeFileSync(emptyFile, `export type Empty = never`);
 
       const gradual = capture();
-      expect(await runCli(["check", unknownFile], gradual)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", unknownFile], gradual)).toBe(exitCode.success);
       expect(gradual.stderr).toContain("no diagnostics");
 
       const noUnknown = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", unknownFile], noUnknown)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "no-unknown", unknownFile], noUnknown)).toBe(exitCode.success);
       expect(noUnknown.stderr).toContain("assurance no-unknown: passed");
       expect(noUnknown.stderr).toContain("unbounded iterator-effect parameters describe caller-supplied lazy effects");
 
       const tracked = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", inferredFile], tracked)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "no-unknown", inferredFile], tracked)).toBe(exitCode.success);
       expect(tracked.stderr).toContain("assurance no-unknown: passed");
 
       const inferred = capture();
-      expect(await runCli(["check", "--assurance", "declared", inferredFile], inferred)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "declared", inferredFile], inferred)).toBe(exitCode.failed);
       expect(inferred.stderr).toContain("identity: effect summary is inferred, not declaration-checked");
 
       const declared = capture();
-      expect(await runCli(["check", "--assurance", "declared", declaredFile], declared)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "declared", declaredFile], declared)).toBe(exitCode.success);
       expect(declared.stderr).toContain("assurance declared: passed");
       expect(declared.stderr).toContain("claim: every emitted function effect summary is declaration-checked");
       expect(declared.stderr).toContain("excluded: unannotated semantic domains are not checked by this profile");
 
       const verifiedWithBuiltin = capture();
-      expect(await runCli(["check", "--assurance", "verified", declaredFile], verifiedWithBuiltin)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "verified", declaredFile], verifiedWithBuiltin)).toBe(exitCode.failed);
       expect(verifiedWithBuiltin.stderr).toContain("assurance verified: failed (unknown)");
       expect(verifiedWithBuiltin.stderr).toContain("reviewed Console log semantic overlay");
 
       const pureDeclaredFile = join(directory, "pure-declared.ts");
       writeFileSync(pureDeclaredFile, `/* uneffect:module_effect none */\n/* uneffect:effect none */ export function identity(value: number) { return value }`);
       const verifiedPure = capture();
-      expect(await runCli(["check", "--assurance", "verified", pureDeclaredFile], verifiedPure)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "verified", pureDeclaredFile], verifiedPure)).toBe(exitCode.success);
       expect(verifiedPure.stderr).toContain("assurance verified: passed (verified)");
       expect(verifiedPure.stderr).toContain("claim: the emitted assumption ledger is empty");
 
       const empty = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", emptyFile], empty)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "no-unknown", emptyFile], empty)).toBe(exitCode.success);
       expect(empty.stderr).toContain("coverage: 1 effect summary, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 resource-protocol obligations, 0 assumptions, 1 selected file");
 
       const mixed = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", inferredFile, emptyFile], mixed)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "no-unknown", inferredFile, emptyFile], mixed)).toBe(exitCode.success);
       expect(mixed.stderr).toContain("coverage: 3 effect summaries, 0 contract artifacts, 0 typed-array obligations, 0 typed-array windows, 0 ownership diagnostics, 0 async-iterator obligations, 0 resource-protocol obligations, 0 assumptions, 2 selected files");
 
       const invalid = capture();
-      expect(await runCli(["check", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);
       expect(invalid.stderr).toContain("unknown assurance profile absolute");
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -472,12 +476,12 @@ describe("uneffect command line", () => {
       writeFileSync(semanticFile, `export const count: number = "not-a-number"`);
 
       const syntax = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", syntaxFile], syntax)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "no-unknown", syntaxFile], syntax)).toBe(exitCode.failed);
       expect(syntax.stderr).toContain("error typescript/syntax");
       expect(syntax.stderr).toContain("assurance no-unknown: failed");
       expect(syntax.stderr).toContain("TypeScript source has syntax errors");
       const syntaxJson = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", "--json", syntaxFile], syntaxJson)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "no-unknown", "--json", syntaxFile], syntaxJson)).toBe(exitCode.failed);
       const syntaxReport = JSON.parse(syntaxJson.stdout);
       expect(syntaxReport.assurance).toMatchObject({ passed: false, claims: [] });
       expect(syntaxReport.effects.filter((effect: { evidence: string }) => effect.evidence === "unknown"))
@@ -486,7 +490,7 @@ describe("uneffect command line", () => {
         })]));
 
       const semantic = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", semanticFile], semantic)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--assurance", "no-unknown", semanticFile], semantic)).toBe(exitCode.failed);
       expect(semantic.stderr).toContain("error typescript/semantic");
       expect(semantic.stderr).toContain("TypeScript source has semantic errors");
     } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -512,11 +516,11 @@ describe("uneffect command line", () => {
       }));
 
       const explicit = capture();
-      expect(await runCli(["check", "--project", project, "--infer", fileName], explicit)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", fileName], explicit)).toBe(exitCode.success);
       expect(explicit.stderr).not.toContain("typescript/semantic");
 
       const discovered = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--evidence"], discovered)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--evidence", "--typescript-program"], discovered)).toBe(exitCode.success);
       expect(discovered.stderr).toContain("effects identity:");
       expect(discovered.stderr).toContain('effects readEnv: Env<"PROJECT_KEY"> (inferred)');
     } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -529,10 +533,10 @@ describe("uneffect command line", () => {
       writeFileSync(malformed, "{");
       writeFileSync(empty, JSON.stringify({ include: ["missing/**/*.ts"] }));
       const bad = capture();
-      expect(await runCli(["check", "--project", malformed], bad)).toBe(exitCode.usage);
+      expect(await runCli(["check", "--typescript-program", "--project", malformed], bad)).toBe(exitCode.usage);
       expect(bad.stderr).toContain("cannot read TypeScript project");
       const none = capture();
-      expect(await runCli(["check", "--project", empty], none)).toBe(exitCode.usage);
+      expect(await runCli(["check", "--typescript-program", "--project", empty], none)).toBe(exitCode.usage);
       expect(none.stderr).toContain("does not select any source files");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
@@ -543,7 +547,7 @@ describe("uneffect command line", () => {
     try {
       writeFileSync(fileName, `export async function send(url: string) { await fetch(url, { method: "POST" }) }`);
       const io = capture();
-      expect(await runCli(["check", "--infer", "--json", "--assurance", "no-unknown", fileName], io)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--infer", "--json", "--assurance", "no-unknown", fileName], io)).toBe(exitCode.failed);
       expect(io.stderr).toBe("");
       expect(JSON.parse(io.stdout)).toMatchObject({
         schema: "uneffect-check/v1",
@@ -578,13 +582,13 @@ describe("uneffect command line", () => {
       });
 
       const gradual = capture();
-      expect(await runCli(["check", "--infer", "--json", fileName], gradual)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--infer", "--json", fileName], gradual)).toBe(exitCode.success);
       expect(JSON.parse(gradual.stdout)).toMatchObject({ outcome: "passed", assurance: null });
 
       const contracted = join(directory, "contracted.ts");
       writeFileSync(contracted, "/* uneffect:ensures result === x */ export function identity(x: number) { return x }");
       const proof = capture();
-      expect(await runCli(["check", "--json", contracted], proof)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--json", contracted], proof)).toBe(exitCode.success);
       expect(JSON.parse(proof.stdout)).toMatchObject({
         contracts: [expect.objectContaining({
           status: "verified",
@@ -624,7 +628,7 @@ describe("uneffect command line", () => {
         }
       `);
       const io = capture();
-      expect(await runCli(["check", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
       const report = JSON.parse(io.stdout);
       expect(report).toMatchObject({
         outcome: "failed",
@@ -644,7 +648,7 @@ describe("uneffect command line", () => {
         ]),
       });
       const assured = capture();
-      expect(await runCli(["check", "--infer", "--json", "--assurance", "no-unknown", fileName], assured)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--infer", "--json", "--assurance", "no-unknown", fileName], assured)).toBe(exitCode.failed);
       expect(JSON.parse(assured.stdout).assurance).toMatchObject({
         passed: false,
         blockers: expect.arrayContaining([
@@ -674,7 +678,7 @@ describe("uneffect command line", () => {
         }],
       }));
       const io = capture();
-      expect(await runCli(["check", "--infer", "--json", "--assumptions", registryFile, fileName], io))
+      expect(await runCli(["check", "--typescript-program", "--infer", "--json", "--assumptions", registryFile, fileName], io))
         .toBe(exitCode.success);
       expect(JSON.parse(io.stdout).assumptions.entries).toContainEqual(expect.objectContaining({
         id: "runtime-summary-v1", domain: "temporal-contract", owner: "runtime-team",
@@ -691,7 +695,7 @@ describe("uneffect command line", () => {
     try {
       writeFileSync(fileName, `/* uneffect:effect none | Console */ export function invalid() {}`);
       const io = capture();
-      expect(await runCli(["check", "--json", fileName], io)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--json", fileName], io)).toBe(exitCode.failed);
       expect(io.stderr).toBe("");
       expect(JSON.parse(io.stdout)).toMatchObject({
         schema: "uneffect-check/v1",
@@ -715,7 +719,7 @@ describe("uneffect command line", () => {
     try {
       writeFileSync(fileName, `${annotation} export function report() { console.log("x") }`);
       const io = capture();
-      expect(await runCli(["check", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
       expect(io.stderr).toBe("");
       const report = JSON.parse(io.stdout);
       expect(report.diagnostics).toContainEqual(expect.objectContaining({
@@ -743,7 +747,7 @@ describe("uneffect command line", () => {
       writeFileSync(project, JSON.stringify({ compilerOptions: { noEmit: true, types: [] }, include: ["src/**/*.ts"] }));
 
       const unresolvedIo = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], unresolvedIo)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--typescript-program", "--json"], unresolvedIo)).toBe(exitCode.failed);
       expect(JSON.parse(unresolvedIo.stdout)).toMatchObject({
         project: { compiler: { analyzerVersion: ts.version, consumerVersion: null, parity: "unknown" } },
         assurance: { status: "unknown", passed: false, blockers: [expect.objectContaining({ kind: "typescript", classification: "unknown" })] },
@@ -753,7 +757,7 @@ describe("uneffect command line", () => {
       writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}");
       writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: "0.0.0-drift", main: "index.js" }));
       const driftedIo = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], driftedIo)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--typescript-program", "--json"], driftedIo)).toBe(exitCode.failed);
       expect(JSON.parse(driftedIo.stdout)).toMatchObject({
         project: { compiler: { analyzerVersion: ts.version, consumerVersion: "0.0.0-drift", parity: "mismatch" } },
         assurance: { status: "unknown", passed: false },
@@ -761,7 +765,7 @@ describe("uneffect command line", () => {
 
       writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
       const exactIo = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], exactIo)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--typescript-program", "--json"], exactIo)).toBe(exitCode.success);
       expect(JSON.parse(exactIo.stdout)).toMatchObject({
         outcome: "passed", project: { compiler: { analyzerVersion: ts.version, consumerVersion: ts.version, parity: "exact" } },
         assurance: { status: "verified", passed: true },
@@ -787,7 +791,7 @@ describe("uneffect command line", () => {
       writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
 
       const valid = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], valid)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], valid)).toBe(exitCode.success);
       expect(valid.stderr).toBe("");
       const validReport = JSON.parse(valid.stdout) as CheckWorkspaceJsonReport;
       expect(validReport).toMatchObject({ schema: "uneffect-workspace-check/v1", outcome: "passed", rootProjectFile: project, blockers: [] });
@@ -824,14 +828,14 @@ describe("uneffect command line", () => {
         },
       });
       const staleArtifacts = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
       expect(JSON.parse(staleArtifacts.stdout)).toMatchObject({
         buildArtifacts: { status: "stale" },
         blockers: expect.arrayContaining([expect.objectContaining({ kind: "build-artifact", classification: "unknown" })]),
       });
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const freshArtifacts = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], freshArtifacts)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], freshArtifacts)).toBe(exitCode.success);
       expect(JSON.parse(freshArtifacts.stdout)).toMatchObject({
         outcome: "passed", buildArtifacts: { status: "fresh" }, assurance: { status: "assumed", passed: true },
       });
@@ -854,7 +858,7 @@ describe("uneffect command line", () => {
       }));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const composedEffects = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedEffects)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedEffects)).toBe(exitCode.success);
       expect(JSON.parse(composedEffects.stdout)).toMatchObject({
         effectComposition: {
           status: "verified",
@@ -870,7 +874,7 @@ describe("uneffect command line", () => {
       const declarationText = readFileSync(declarationFile, "utf8");
       appendFileSync(declarationFile, "// tampered after a successful build\n");
       const tamperedEffects = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], tamperedEffects)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], tamperedEffects)).toBe(exitCode.failed);
       expect(JSON.parse(tamperedEffects.stdout)).toMatchObject({
         effectComposition: {
           status: "unknown",
@@ -881,7 +885,7 @@ describe("uneffect command line", () => {
       writeFileSync(declarationFile, declarationText);
 
       const exactArtifacts = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-exact-build-artifacts", "--json"], exactArtifacts)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--require-exact-build-artifacts", "--json"], exactArtifacts)).toBe(exitCode.failed);
       expect(JSON.parse(exactArtifacts.stdout)).toMatchObject({
         outputIntegrity: { status: "error", outputs: [] },
         blockers: expect.arrayContaining([expect.objectContaining({ kind: "build-output", message: expect.stringContaining("does not emit runtime JavaScript") })]),
@@ -902,7 +906,7 @@ describe("uneffect command line", () => {
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const composedIterator = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedIterator)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedIterator)).toBe(exitCode.success);
       expect(JSON.parse(composedIterator.stdout)).toMatchObject({
         effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
           callee: "consume",
@@ -923,7 +927,7 @@ describe("uneffect command line", () => {
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const composedStableMutation = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedStableMutation)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedStableMutation)).toBe(exitCode.success);
       expect(JSON.parse(composedStableMutation.stdout)).toMatchObject({
         effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
           callee: "setShared",
@@ -947,7 +951,7 @@ describe("uneffect command line", () => {
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const composedModuleMutation = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedModuleMutation)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedModuleMutation)).toBe(exitCode.success);
       expect(JSON.parse(composedModuleMutation.stdout)).toMatchObject({
         effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
           kind: "module", callee: "<module>", mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared" })],
@@ -967,7 +971,7 @@ describe("uneffect command line", () => {
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const composedAmbientMutation = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedAmbientMutation)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedAmbientMutation)).toBe(exitCode.success);
       expect(JSON.parse(composedAmbientMutation.stdout)).toMatchObject({
         effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
           kind: "module", mutationRoots: [{ kind: "ambient", root: "globalThis", identity: "ecmascript:realm.globalThis" }],
@@ -983,7 +987,7 @@ describe("uneffect command line", () => {
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const inferredChildEffects = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], inferredChildEffects)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], inferredChildEffects)).toBe(exitCode.failed);
       const inferredChildReport = JSON.parse(inferredChildEffects.stdout) as CheckWorkspaceJsonReport;
       expect(inferredChildReport.effectComposition).toMatchObject({
         status: "unknown",
@@ -1002,7 +1006,7 @@ describe("uneffect command line", () => {
         export function relay() { report() }
       `);
       const missingParentEffect = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--json"], missingParentEffect)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--json"], missingParentEffect)).toBe(exitCode.failed);
       expect((JSON.parse(missingParentEffect.stdout) as CheckWorkspaceJsonReport).projects
         .find((item) => item.project?.projectFile === join(b, "tsconfig.json"))?.diagnostics).toContainEqual(expect.objectContaining({
           code: "effect/missing", functionName: "relay", message: expect.stringContaining("Console"),
@@ -1015,14 +1019,14 @@ describe("uneffect command line", () => {
       }));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const validText = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown"], validText)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown"], validText)).toBe(exitCode.success);
       expect(validText.stderr).toContain(`project ${join(a, "tsconfig.json")}`);
       expect(validText.stderr).toContain("build artifacts: fresh (TypeScript SolutionBuilder dry run)");
       expect(validText.stderr).toContain("workspace: passed; 2 checked compiler domain(s), 0 blocker(s)");
 
       writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/missing" }] }));
       const missing = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], missing)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], missing)).toBe(exitCode.failed);
       expect(JSON.parse(missing.stdout)).toMatchObject({
         schema: "uneffect-workspace-check/v1", outcome: "failed",
         blockers: expect.arrayContaining([expect.objectContaining({ kind: "missing-reference", classification: "unknown" })]),
@@ -1031,7 +1035,7 @@ describe("uneffect command line", () => {
       writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/a" }] }));
       writeFileSync(join(a, "tsconfig.json"), "{");
       const malformed = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], malformed)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], malformed)).toBe(exitCode.failed);
       expect(JSON.parse(malformed.stdout)).toMatchObject({
         outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "invalid-reference", classification: "unknown" })]),
       });
@@ -1039,7 +1043,7 @@ describe("uneffect command line", () => {
       writeFileSync(join(a, "tsconfig.json"), JSON.stringify({ compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", types: [] }, include: ["src/**/*.ts"] }));
       writeFileSync(project, JSON.stringify({ files: ["packages/a/src/a.ts"], references: [{ path: "./packages/a" }] }));
       const duplicate = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], duplicate)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], duplicate)).toBe(exitCode.failed);
       expect(JSON.parse(duplicate.stdout)).toMatchObject({
         outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "duplicate-root-file", classification: "unknown" })]),
       });
@@ -1047,7 +1051,7 @@ describe("uneffect command line", () => {
       writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/a" }] }));
       writeFileSync(join(a, "tsconfig.json"), JSON.stringify({ files: [], references: [{ path: "../.." }] }));
       const cycle = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], cycle)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], cycle)).toBe(exitCode.failed);
       expect(JSON.parse(cycle.stdout)).toMatchObject({
         outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "reference-cycle", classification: "unknown" })]),
       });
@@ -1114,7 +1118,7 @@ describe("uneffect command line", () => {
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const io = capture();
       expect(
-        await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], io),
+        await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], io),
         `${io.stdout}\n${io.stderr}`,
       ).toBe(exitCode.success);
       expect(JSON.parse(io.stdout)).toMatchObject({
@@ -1155,19 +1159,19 @@ describe("uneffect command line", () => {
       }));
 
       const valid = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--declaration-transforms", manifestFile, "--json"], valid)).toBe(exitCode.success);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--declaration-transforms", manifestFile, "--json"], valid)).toBe(exitCode.success);
       expect(JSON.parse(valid.stdout)).toMatchObject({ outcome: "passed", blockers: [] });
 
       writeFileSync(sourceFile, source.replace("return 1", "return 2"));
       const drifted = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--declaration-transforms", manifestFile, "--json"], drifted)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--typescript-program", "--project", project, "--infer", "--assurance", "no-unknown", "--declaration-transforms", manifestFile, "--json"], drifted)).toBe(exitCode.failed);
       expect(JSON.parse(drifted.stdout)).toMatchObject({
         outcome: "failed",
         blockers: expect.arrayContaining([expect.objectContaining({ kind: "declaration-transform", classification: "violation", subject: generatedFile })]),
       });
 
       const misplaced = capture();
-      expect(await runCli(["check", "--declaration-transforms", manifestFile, generatedFile], misplaced)).toBe(exitCode.usage);
+      expect(await runCli(["check", "--typescript-program", "--declaration-transforms", manifestFile, generatedFile], misplaced)).toBe(exitCode.usage);
       expect(misplaced.stderr).toContain("requires --project without positional files");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
@@ -1191,7 +1195,7 @@ describe("uneffect command line", () => {
 
   it("reports an unreadable file as a bad argument, not as a toolchain failure", async () => {
     const io = capture();
-    expect(await runCli(["check", "no-such-file.ts"], io)).toBe(exitCode.usage);
+    expect(await runCli(["check", "--typescript-program", "no-such-file.ts"], io)).toBe(exitCode.usage);
     expect(io.stderr).toContain("cannot read no-such-file.ts");
     expect(io.stderr).not.toContain("uneffect doctor");
   });

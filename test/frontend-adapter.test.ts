@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements, standardLibraryOperation } from "../src/frontend-adapter.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";

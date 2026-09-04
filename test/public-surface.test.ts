@@ -5,6 +5,7 @@ import * as experimental from "../src/experimental.js";
 describe("0.3 public surface", () => {
   it("keeps durable high-level facades on the package root", () => {
     expect(publicApi.checkFiles).toBeTypeOf("function");
+    expect(publicApi.checkCorsaProject).toBeTypeOf("function");
     expect(publicApi.verifyUneffectProject).toBeTypeOf("function");
     expect(publicApi.generateTemporalModel).toBeTypeOf("function");
     expect(publicApi.analyzeEffects).toBeTypeOf("function");

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
 import { builtinSemanticCatalog, compileBuiltinSemanticCatalog } from "../src/builtin-semantic-catalog.js";
@@ -145,6 +145,10 @@ describe("builtin semantic overlays", () => {
   it("binds reviewed module initialization to the observed runtime version", () => {
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.22.1" }))
       .toMatchObject({ module: "effect", runtime: { kind: "package", version: "3.22.1" } });
+    expect(findModuleInitializationContract(builtinContractRegistry, "oxc-parser", { packageVersion: "0.148.0" }))
+      .toMatchObject({ module: "oxc-parser", runtime: { kind: "package", version: "0.148.0" } });
+    expect(findModuleInitializationContract(builtinContractRegistry, "oxc-parser", { packageVersion: "0.147.0" }))
+      .toBeUndefined();
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.23.0" }))
       .toBeUndefined();
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", {}))
@@ -289,7 +293,16 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ symbol: { module: "typescript", export: "visitNode" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 1 } })] }) }),
       expect.objectContaining({ symbol: { module: "typescript", export: "visitEachChild" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", target: { kind: "argument", index: 1 } })] }) }),
       expect.objectContaining({ symbol: { module: "typescript", export: "transform" }, runtime: { kind: "package", version: "6.0.3" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", target: expect.objectContaining({ kind: "array-elements" }), returnDepth: 1 })] }) }),
+      expect.objectContaining({ symbol: { module: "@typescript/typescript6", export: "forEachChild" }, runtime: { kind: "package", version: "6.0.2" } }),
+      expect.objectContaining({ symbol: { module: "@typescript/typescript6", export: "Node#forEachChild" }, runtime: { kind: "package", version: "6.0.2" } }),
     ]));
+  });
+
+  it("pins reviewed oxc-parser parseSync to the exact package version", () => {
+    expect(findBuiltinContract(builtinContractRegistry, { module: "oxc-parser", export: "parseSync" })).toMatchObject({
+      runtime: { kind: "package", version: "0.148.0" },
+      evidence: "trusted",
+    });
   });
 
   it("binds reviewed Valibot schema factories to the exact package version", () => {

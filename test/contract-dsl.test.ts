@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { parseContractDsl, prepareContractDslLinks } from "../src/contract-dsl.js";
 import { instrumentContractPredicates, isContractRuntimeError } from "../src/contract-runtime.js";
 import { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow } from "../src/typescript-control-flow.js";

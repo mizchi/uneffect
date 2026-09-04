@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
 import { routeCatchPaths, routeFinallyPaths, type CompletionKind } from "./completion-flow.js";

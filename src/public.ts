@@ -27,6 +27,7 @@ export {
   boundedUint8ArraySchema,
   boundedUint32ArraySchema,
   builtinContractRegistry,
+  checkCorsaProject,
   checkFiles,
   checkUneffectProperty,
   capabilityPermits,

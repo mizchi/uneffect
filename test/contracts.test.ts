@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "../src/contracts.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { collectAssumptionLedger } from "../src/assumptions.js";

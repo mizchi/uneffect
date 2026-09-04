@@ -39,6 +39,66 @@ export function isCoreUneffectDirective(directive: string): boolean {
   return unifiedDirectives.has(directive);
 }
 
+export type UneffectPluginDirectiveKind = "marker" | "payload";
+export interface UneffectPluginDirective {
+  name: string;
+  kind: UneffectPluginDirectiveKind;
+  owner: string;
+}
+
+const namespacedPluginDirective = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_.]*$/;
+const builtinPluginAuthority = {};
+const pluginDirectives = new Map<string, UneffectPluginDirective>();
+
+export class UneffectPluginError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UneffectPluginError";
+  }
+}
+
+/**
+ * Register namespaced plugin directives. Third-party plugins cannot occupy a
+ * core directive or a namespace that is already a core directive, and cannot
+ * steal a name already owned by another plugin.
+ */
+export function registerUneffectPlugin(
+  plugin: { name: string; directives: ReadonlyArray<{ name: string; kind: UneffectPluginDirectiveKind }> },
+  authority?: object,
+): void {
+  if (!/^[a-z][a-z0-9_]*$/.test(plugin.name)) throw new UneffectPluginError(`invalid plugin name \`${plugin.name}\``);
+  for (const directive of plugin.directives) {
+    if (!namespacedPluginDirective.test(directive.name) || !directive.name.startsWith(`${plugin.name}.`)) {
+      throw new UneffectPluginError(`plugin directive \`${directive.name}\` must be namespaced under \`${plugin.name}\``);
+    }
+    const head = directive.name.slice(0, plugin.name.length);
+    if (isCoreUneffectDirective(head) && authority !== builtinPluginAuthority) {
+      throw new UneffectPluginError(`plugin directive \`${directive.name}\` collides with a core Uneffect directive`);
+    }
+    const owner = pluginDirectives.get(directive.name);
+    if (owner) throw new UneffectPluginError(`plugin directive \`${directive.name}\` is already owned by \`${owner.owner}\``);
+    pluginDirectives.set(directive.name, { name: directive.name, kind: directive.kind, owner: plugin.name });
+  }
+}
+
+registerUneffectPlugin({
+  name: "react",
+  directives: [
+    { name: "react.component", kind: "marker" },
+    { name: "react.hook", kind: "marker" },
+    { name: "react.acquire", kind: "payload" },
+    { name: "react.release", kind: "payload" },
+  ],
+}, builtinPluginAuthority);
+
+export function uneffectPluginDirectives(): readonly UneffectPluginDirective[] {
+  return [...pluginDirectives.values()];
+}
+
+function reactPluginRole(name: string): string {
+  return name.slice("react.".length);
+}
+
 const dialectDirectives: Record<UneffectDialect, ReadonlySet<string>> = {
   unified: unifiedDirectives,
   trust: new Set(["trust"]), "react-component": new Set(), "react-hook": new Set(),
@@ -110,12 +170,42 @@ export function extractLocatedAnnotations(text: string, directive: UneffectDirec
     if (directive === "react" && (block.dialect === "react-component" || block.dialect === "react-hook")) {
       values.push({ value: block.dialect === "react-component" ? "component" : "hook", span: block.dialectSpan });
     }
+    const dialectPlugin = pluginDirectives.get(block.dialect);
+    if (dialectPlugin && (directive === block.dialect || (directive === "react" && dialectPlugin.owner === "react"))) {
+      if (dialectPlugin.kind === "marker") {
+        if (directive === "react") values.push({ value: reactPluginRole(dialectPlugin.name), span: block.dialectSpan });
+        continue;
+      }
+      for (const line of block.lines) {
+        const payload = line.cleaned.trim();
+        if (!payload) continue;
+        const value = directive === "react" ? `${reactPluginRole(dialectPlugin.name)} ${payload}` : payload;
+        const start = line.start + line.cleaned.indexOf(payload);
+        values.push({ value, span: { start, end: start + payload.length } });
+      }
+      continue;
+    }
     if (directive === "react" && block.dialect === "react-resource" && block.lines.length === 0) {
       values.push({ value: "", span: block.dialectSpan });
     }
     for (const line of block.lines) {
       const candidate = line.cleaned.trim(); if (!candidate) continue;
       const match = /^([^\s]+)(?:\s+(.+))?$/.exec(candidate)!;
+      const linePlugin = block.dialect === "unified" ? pluginDirectives.get(match[1]!) : undefined;
+      if (linePlugin && (directive === linePlugin.name || (directive === "react" && linePlugin.owner === "react"))) {
+        if (linePlugin.kind === "marker") {
+          if (directive === "react" && !match[2]) {
+            values.push({ value: reactPluginRole(linePlugin.name), span: { start: line.start + line.cleaned.indexOf(match[1]!), end: line.start + line.cleaned.indexOf(match[1]!) + match[1]!.length } });
+          }
+          continue;
+        }
+        if (!match[2]?.trim()) continue;
+        const payload = match[2].trim();
+        const value = directive === "react" ? `${reactPluginRole(linePlugin.name)} ${payload}` : payload;
+        const start = line.start + line.cleaned.indexOf(payload);
+        values.push({ value, span: { start, end: start + payload.length } });
+        continue;
+      }
       if (directive === "react" && block.dialect === "react-resource") {
         const value = [match[1], match[2]?.trim()].filter(Boolean).join(" "), start = line.start + line.cleaned.indexOf(match[1]!);
         values.push({ value, span: { start, end: start + value.length } });
@@ -142,9 +232,20 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0, additi
   const additional = new Set(additionalDirectives);
   for (const block of payloadBlocks(text, baseOffset)) {
     const allowed = dialectDirectives[block.dialect as UneffectDialect];
+    const dialectPlugin = pluginDirectives.get(block.dialect);
     if (!allowed && additional.has(block.dialect)) {
       const payload = block.lines.map((line) => line.cleaned.trim()).find(Boolean);
       if (!payload) diagnostics.push({ kind: "missing-payload", directive: block.dialect, dialect: "unified", span: block.dialectSpan, message: `Uneffect directive \`${block.dialect}\` requires a payload` });
+      continue;
+    }
+    if (dialectPlugin) {
+      const payload = block.lines.map((line) => line.cleaned.trim()).find(Boolean);
+      if (dialectPlugin.kind === "marker" && payload) {
+        diagnostics.push({ kind: "unknown-directive", directive: block.dialect, dialect: "unified", span: block.dialectSpan, message: `Uneffect plugin directive \`${block.dialect}\` does not take a payload` });
+      }
+      if (dialectPlugin.kind === "payload" && !payload) {
+        diagnostics.push({ kind: "missing-payload", directive: block.dialect, dialect: "unified", span: block.dialectSpan, message: `Uneffect plugin directive \`${block.dialect}\` requires a payload` });
+      }
       continue;
     }
     if (!allowed) { diagnostics.push({ kind: "unknown-dialect", directive: block.dialect, span: block.dialectSpan, message: `unknown Uneffect dialect \`${block.dialect || "(missing)"}\`` }); continue; }
@@ -153,6 +254,12 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0, additi
       const candidate = line.cleaned.trim(); if (!candidate) continue;
       const match = /^([^\s]+)(?:\s+(.*))?$/.exec(candidate)!, name = match[1]!, leading = line.cleaned.indexOf(candidate);
       const span = { start: line.start + leading, end: line.start + leading + candidate.length };
+      const linePlugin = pluginDirectives.get(name);
+      if (block.dialect === "unified" && linePlugin) {
+        if (linePlugin.kind === "marker" && match[2]?.trim()) diagnostics.push({ kind: "unknown-directive", directive: name, dialect: "unified", span, message: `Uneffect plugin directive \`${name}\` does not take a payload` });
+        else if (linePlugin.kind === "payload" && !match[2]?.trim()) diagnostics.push({ kind: "missing-payload", directive: name, dialect: "unified", span, message: `Uneffect plugin directive \`${name}\` requires a payload` });
+        continue;
+      }
       if (!accepted.has(name)) diagnostics.push({ kind: "wrong-dialect", directive: name, dialect: block.dialect, span, message: `Uneffect directive \`${name}\` is not valid in an \`uneffect:${block.dialect}\` block` });
       else if (block.dialect === "unified" && name === "temporal_contract") {
         const clause = /^([^\s]+)(?:\s+(.*))?$/.exec(match[2]?.trim() ?? ""), clauseName = clause?.[1] ?? "temporal_contract";

@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { createHash } from "node:crypto";
 import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinResultRefinement, type BuiltinSymbolKey } from "./builtin-contracts.js";
 import type { SourceSpan } from "./annotations.js";

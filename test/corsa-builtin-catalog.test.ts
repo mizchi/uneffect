@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { overlayCorsaBuiltinCatalog } from "../src/corsa-builtin-catalog.js";
 import type { CorsaApiFrontend, CorsaBuiltinCallResolution } from "../src/corsa-api-frontend.js";

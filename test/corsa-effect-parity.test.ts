@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { analyzeCorsaEffectParity } from "../src/corsa-effect-parity.js";
 import { openCorsaApiFrontend } from "../src/corsa-api-frontend.js";

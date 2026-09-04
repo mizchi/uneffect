@@ -1,5 +1,5 @@
 /* uneffect:module_effect none */
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 export interface ResolvedDisposalProtocol {
   syncSymbol?: ts.Symbol;

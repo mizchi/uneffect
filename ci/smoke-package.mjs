@@ -15,14 +15,14 @@ try {
   if (typeof filename !== "string") throw new Error("npm pack did not report a tarball filename");
 
   const consumer = join(temporary, "consumer");
-  const typescriptPackage = dirname(createRequire(import.meta.url).resolve("typescript/package.json"));
-  execFileSync("npm", ["install", "--ignore-scripts", "--prefix", consumer, join(temporary, filename), typescriptPackage], { stdio: "inherit" });
+  const typescript6Package = dirname(createRequire(import.meta.url).resolve("@typescript/typescript6/package.json"));
+  execFileSync("npm", ["install", "--ignore-scripts", "--prefix", consumer, join(temporary, filename), typescript6Package], { stdio: "inherit" });
   const smoke = join(consumer, "smoke.mjs");
   writeFileSync(smoke, `
     import * as root from "@mizchi/uneffect";
     import * as experimental from "@mizchi/uneffect/experimental";
     import * as spec from "@mizchi/uneffect/spec";
-    import ts from "typescript";
+    import ts from "@typescript/typescript6";
 
     const requiredRoot = ["analyzeEffects", "analyzeProgramEffects", "verifyUneffectProject", "generateTemporalModel"];
     for (const name of requiredRoot) if (typeof root[name] !== "function") throw new Error(\`missing public root API: \${name}\`);

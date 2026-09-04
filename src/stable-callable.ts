@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
   const symbol = checker.getSymbolAtLocation(node);

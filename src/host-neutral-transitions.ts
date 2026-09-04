@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { bindingIdentity, type BindingIdentity } from "./binding-identity.js";
 import { analyzeAsyncSafetyInProgram, type AsyncSafetyDiagnostic, type AsyncSafetyOptions, type ResourceDisposal } from "./async-safety.js";
 import { analyzeAsyncPatternsInProgram, generateNodeEventLoopQuint, generateWebEventLoopQuint, type AsyncPatternModel, type TimerPattern } from "./async-patterns.js";

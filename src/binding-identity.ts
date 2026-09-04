@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 /** Stable within one source snapshot; names are deliberately excluded. */
 export interface BindingIdentity {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractAnnotations, extractLocatedAnnotations, uneffectDialects, validateUneffectAnnotations } from "../src/annotations.js";
+import { extractAnnotations, extractLocatedAnnotations, registerUneffectPlugin, uneffectDialects, UneffectPluginError, validateUneffectAnnotations } from "../src/annotations.js";
 import { analyzeEffects } from "../src/effects.js";
 import { parseSpec } from "../src/spec-ir.js";
 
@@ -91,6 +91,63 @@ describe("Uneffect annotation marker", () => {
   });
   it("uses react-component as an unambiguous semantic marker", () => {
     expect(extractAnnotations("/* uneffect:react-component */", "react")).toEqual(["component"]);
+  });
+
+  it("expresses React roles through namespaced plugin directives", () => {
+    const source = [
+      "/* uneffect:react.component */",
+      "/* uneffect:react.hook */",
+      "/* uneffect:react.acquire Subscription */",
+      "/* uneffect:react.release Subscription parameter 0 */",
+    ].join("\n");
+    expect(extractAnnotations(source, "react")).toEqual([
+      "component", "hook", "acquire Subscription", "release Subscription parameter 0",
+    ]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
+  it("accepts namespaced React markers inside a unified block", () => {
+    const source = `/* uneffect:
+      react.component
+      react.acquire Observer result
+    */`;
+    expect(extractAnnotations(source, "react")).toEqual(["component", "acquire Observer result"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
+  it("rejects an unexpected payload on a React marker plugin directive", () => {
+    expect(validateUneffectAnnotations("/* uneffect:react.component extra */"))
+      .toMatchObject([{ kind: "unknown-directive", directive: "react.component" }]);
+  });
+
+  it("requires a payload for namespaced React resource lifecycle directives", () => {
+    expect(validateUneffectAnnotations("/* uneffect:react.acquire */"))
+      .toMatchObject([{ kind: "missing-payload", directive: "react.acquire" }]);
+  });
+
+  it("rejects third-party plugins that collide with core directives or owned names", () => {
+    expect(() => registerUneffectPlugin({
+      name: "effect",
+      directives: [{ name: "effect.trace", kind: "marker" }],
+    })).toThrow(UneffectPluginError);
+    expect(() => registerUneffectPlugin({
+      name: "react",
+      directives: [{ name: "react.component", kind: "marker" }],
+    })).toThrow(/already owned by `react`/);
+    expect(() => registerUneffectPlugin({
+      name: "demo",
+      directives: [{ name: "other.flag", kind: "marker" }],
+    })).toThrow(/must be namespaced under `demo`/);
+  });
+
+  it("accepts a third-party namespaced marker with the same provenance rules", () => {
+    registerUneffectPlugin({
+      name: "demo",
+      directives: [{ name: "demo.flag", kind: "marker" }],
+    });
+    expect(validateUneffectAnnotations("/* uneffect:demo.flag */")).toEqual([]);
+    expect(validateUneffectAnnotations("/* uneffect:demo.flag extra */"))
+      .toMatchObject([{ kind: "unknown-directive", directive: "demo.flag" }]);
   });
   it("rejects removed capability, contract, temporal, refinement, and runtime dialect headers", () => {
     for (const dialect of ["capability", "contract", "temporal", "refinement", "runtime"]) {

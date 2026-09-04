@@ -11,7 +11,7 @@ import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
 import { analyzeCallableSummaries } from "../src/callable-summary.js";
 import { analyzeProgramEffects } from "../src/effects.js";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 const auditModule = {
   $schema: "./node_modules/@mizchi/uneffect/schemas/uneffect-module-v1.schema.json",

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { buildProgramCallGraph, instantiateCallbackEffects } from "../src/call-graph.js";
 import { analyzeProgramEffects } from "../src/effects.js";
@@ -2104,7 +2104,7 @@ describe("multi-file call graph and effect polymorphism", () => {
   it("uses the reviewed synchronous TypeScript Program.emit callback contract", () => {
     const fileName = join(process.cwd(), "virtual-typescript-emit.ts");
     const sourceText = `
-      import type ts from "typescript"
+      import type ts from "@typescript/typescript6"
       export function capture(program: ts.Program) {
         program.emit(undefined, (_fileName, _text) => {}, undefined, true)
       }
@@ -2128,7 +2128,7 @@ describe("multi-file call graph and effect polymorphism", () => {
   it("composes reviewed synchronous TypeScript traversal callbacks by symbol identity", () => {
     const fileName = join(process.cwd(), "virtual-typescript-traversal.ts");
     const sourceText = `
-      import ts from "typescript"
+      import ts from "@typescript/typescript6"
       export function traverse(node: ts.Node, context: ts.TransformationContext) {
         node.forEachChild((child) => console.log(child.kind))
         ts.forEachChild(node, (child) => console.log(child.kind))
@@ -2208,7 +2208,7 @@ describe("multi-file call graph and effect polymorphism", () => {
   it("composes a reviewed TypeScript transform callback array during module initialization", () => {
     const fileName = join(process.cwd(), "virtual-typescript-module-transform.ts");
     const sourceText = `
-      import ts from "typescript"
+      import ts from "@typescript/typescript6"
       declare const source: ts.SourceFile
       ts.forEachChild(source, (child) => console.log(child.kind))
       ts.transform(source, [(context) => (root) => {
@@ -2231,6 +2231,68 @@ describe("multi-file call graph and effect polymorphism", () => {
       evidence: "trusted",
       effects: [expect.objectContaining({ kind: "capability", name: "Console" })],
     });
+  });
+
+  it("keeps a recursive forEachChild visitor inferred under the typescript6 compiler API", () => {
+    const fileName = join(process.cwd(), "virtual-typescript6-visitor.ts");
+    const sourceText = `
+      import ts from "@typescript/typescript6"
+      export function walk(root: ts.Node): void {
+        const visit = (node: ts.Node): void => {
+          console.log(node.kind)
+          ts.forEachChild(node, visit)
+        }
+        visit(root)
+      }
+      export function scan(root: ts.Node): void {
+        function visit(node: ts.Node): void {
+          console.log(node.kind)
+          node.forEachChild(visit)
+        }
+        visit(root)
+      }
+    `;
+    const options: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+    };
+    const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, language, onError, fresh) => name === fileName
+      ? ts.createSourceFile(fileName, sourceText, language, true)
+      : original(name, language, onError, fresh);
+    const program = ts.createProgram([fileName], options, host);
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    for (const name of ["walk", "scan", "visit"]) {
+      expect(result.summaries.find((summary) => summary.functionName === name)).toMatchObject({
+        evidence: "inferred",
+        effects: [expect.objectContaining({ kind: "capability", name: "Console" })],
+      });
+    }
+    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+  });
+
+  it("treats reviewed oxc-parser initialization and parseSync as trusted", () => {
+    const fileName = join(process.cwd(), "virtual-oxc-parser.ts");
+    const sourceText = `
+      import { parseSync } from "oxc-parser"
+      export function parse(source: string) {
+        return parseSync("file.ts", source, { lang: "ts" })
+      }
+    `;
+    const options: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+    };
+    const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, language, onError, fresh) => name === fileName
+      ? ts.createSourceFile(fileName, sourceText, language, true)
+      : original(name, language, onError, fresh);
+    const program = ts.createProgram([fileName], options, host);
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.summaries.find((summary) => summary.functionName === "<module>"))
+      .toMatchObject({ evidence: "trusted", effects: [] });
+    expect(result.summaries.find((summary) => summary.functionName === "parse"))
+      .toMatchObject({ evidence: "inferred", effects: [] });
   });
 
   it("propagates effects across files, re-exports, methods, overloads, arrows, and callback arguments", () => {

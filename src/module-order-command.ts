@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { analyzeModuleInitializationOrder } from "./module-initialization.js";
 import { exitCode, formatCommandHelp, parseCommandArgs, singleFileArgument, type CliCommand } from "./cli-support.js";
 

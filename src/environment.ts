@@ -1,11 +1,13 @@
 /* uneffect:module_effect none */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
-import ts from "typescript";
 import { executeZ3 } from "./z3.js";
+import { readPackageManifest, type PackageManifest } from "./package-manifest.js";
+
+export type { PackageManifest } from "./package-manifest.js";
+export { readPackageManifest } from "./package-manifest.js";
 
 export type EnvironmentStatus = "ok" | "warning" | "error";
 
@@ -20,28 +22,7 @@ export interface EnvironmentCheck {
   remedy?: string;
 }
 
-export interface PackageManifest {
-  name?: string;
-  version?: string;
-  engines?: { node?: string };
-  peerDependencies?: Record<string, string>;
-}
-
 const require_ = createRequire(import.meta.url);
-
-/** Read this package's own manifest, from either the source tree or the published `dist/src`. */
-/* uneffect:effect FsRead */
-export async function readPackageManifest(): Promise<PackageManifest> {
-  for (const candidate of ["../package.json", "../../package.json"]) {
-    try {
-      const manifest = JSON.parse(await readFile(join(import.meta.dirname, candidate), "utf8")) as PackageManifest;
-      if (manifest.name === "@mizchi/uneffect") return manifest;
-    } catch {
-      continue;
-    }
-  }
-  return {};
-}
 
 /** Shorten a resolved path to something a reader can place: relative inside the project, absolute outside. */
 function displayPath(path: string): string {
@@ -105,18 +86,39 @@ function nodeCheck(manifest: PackageManifest): EnvironmentCheck {
   };
 }
 
+function typescript7NativePackage(): string {
+  const platform = process.platform === "win32" ? "win32" : process.platform;
+  return `@typescript/typescript-${platform}-${process.arch}`;
+}
+
 function typescriptCheck(manifest: PackageManifest): EnvironmentCheck {
+  const pkg = typescript7NativePackage();
+  const native = resolvePackage(pkg);
   const required = manifest.peerDependencies?.typescript;
-  const minimum = minimumMajor(required);
-  const major = Number(ts.versionMajorMinor.split(".")[0]);
-  const location = resolvePackage("typescript").path;
-  const satisfied = minimum === undefined || major >= minimum;
+  if (native.version) {
+    return {
+      name: "typescript",
+      status: "ok",
+      detail: `${native.version} native ${pkg}${native.path ? ` at ${native.path}` : ""}`,
+      requiredBy: "default `check` via Corsa",
+    };
+  }
+  const js = resolvePackage("typescript");
+  if (js.version) {
+    return {
+      name: "typescript",
+      status: "warning",
+      detail: `${js.version}${js.path ? ` at ${js.path}` : ""}${required ? ` (peer: ${required})` : ""}; default check wants ${pkg}`,
+      requiredBy: "default `check` via Corsa",
+      remedy: `install ${pkg} for the Corsa TypeScript 7 worker`,
+    };
+  }
   return {
     name: "typescript",
-    status: satisfied ? "ok" : "error",
-    detail: `${ts.version}${location ? ` at ${location}` : ""}${required ? ` (peer: ${required})` : ""}`,
-    requiredBy: "every command; the analyzer reads your program through this compiler",
-    remedy: satisfied ? undefined : `install typescript ${required ?? "6 or newer"} in the project, so the peer dependency resolves to a supported compiler`,
+    status: "error",
+    detail: `${pkg} is not installed`,
+    requiredBy: "default `check` via Corsa",
+    remedy: `install ${pkg} or typescript ${required ?? ">=7"}`,
   };
 }
 

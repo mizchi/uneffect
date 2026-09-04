@@ -57,8 +57,11 @@ by the roadmap.
 `uneffectDialects` is the machine-readable public inventory of recognized
 comment headers. Its current values are `unified`, `trust`,
 `react-component`, `react-hook`, and `react-resource`. The ordinary form
-`/* uneffect:effect ... */` belongs to `unified`; the remaining values are
-explicit namespaced markers. Removed `capability`, `contract`, `temporal`,
+`/* uneffect:effect ... */` belongs to `unified`. React roles also have
+namespaced plugin directives `react.component`, `react.hook`,
+`react.acquire`, and `react.release`, registered with the same collision and
+provenance rules as third-party plugins. The remaining dialect values are
+explicit hyphenated markers. Removed `capability`, `contract`, `temporal`,
 `refinement`, `runtime`, `async`, and `resource` headers are not compatibility
 aliases and fail closed as unknown dialects. Typed refinement metadata belongs
 in an attached `.uneffect.ts` module.
