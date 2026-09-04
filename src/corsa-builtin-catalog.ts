@@ -89,12 +89,32 @@ export function overlayCorsaBuiltinCatalog(
     };
   };
 
+  const fromCorsaProperty = (access: ts.PropertyAccessExpression | ts.ElementAccessExpression) => {
+    if (!ts.isPropertyAccessExpression(access)
+      || !corsa.getTypeAtPosition || !corsa.getSymbolOfType || !corsa.getPropertyOfType) return undefined;
+    const source = access.getSourceFile();
+    if (!roots.has(resolve(source.fileName))) return undefined;
+    const receiverType = corsa.getTypeAtPosition(source.fileName, access.expression.getStart(source));
+    if (!receiverType) return undefined;
+    const owner = corsa.getSymbolOfType(receiverType);
+    const member = corsa.getPropertyOfType(receiverType, access.name.text);
+    if (!declaredByDomLibrary(owner) || !declaredByDomLibrary(member)) return undefined;
+    const contract = domMethods.get(`${owner.name}#${member.name}`);
+    if (!contract) return undefined;
+    return {
+      symbol: contract.symbol,
+      span: { start: access.getStart(), end: access.getEnd() },
+      evidence: "trusted" as const,
+      semantics: contract.semantics,
+    };
+  };
+
   return {
     resolveCall(call) {
       return fromCorsa(call) ?? adapter.resolveCall(call);
     },
     resolveConstruct: (construction) => adapter.resolveConstruct(construction),
-    resolveProperty: (access) => adapter.resolveProperty(access),
+    resolveProperty: (access) => fromCorsaProperty(access) ?? adapter.resolveProperty(access),
     resolveDomReceiverRegion: (expression) => adapter.resolveDomReceiverRegion(expression),
     isDomReceiver: (expression) => adapter.isDomReceiver(expression),
     mayInvokeUserCode: (node) => adapter.mayInvokeUserCode(node),

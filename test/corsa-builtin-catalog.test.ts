@@ -117,6 +117,42 @@ export const shadowed = (document: { createElement(name: string): unknown }) => 
     expect(overlay.resolveCall(localCall!)).toBeUndefined();
   });
 
+  it("resolves Document#cookie from Corsa property identity without the TypeScript adapter", () => {
+    const text = `export const read = () => document.cookie;
+export const shadowed = (document: { cookie: string }) => document.cookie;`;
+    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.ES2024, true, ts.ScriptKind.TS);
+    const accesses: ts.PropertyAccessExpression[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(node) && node.name.text === "cookie") accesses.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    const overlay = overlayCorsaBuiltinCatalog(unusedAdapter(), {
+      rootFiles: [fileName],
+      classifyBuiltinCalls: () => [],
+      getTypeAtPosition(_file, position) {
+        return position === text.indexOf("document")
+          ? { id: "Document", texts: ["Document"] }
+          : { id: "Local", texts: ["{ cookie: string }"] };
+      },
+      getSymbolOfType(type) {
+        return type.id === "Document"
+          ? { id: "sym-doc", name: "Document", declarations: ["/lib/lib.dom.d.ts"] }
+          : { id: "sym-local", name: "document" };
+      },
+      getPropertyOfType(type, name) {
+        if (name !== "cookie") return null;
+        return type.id === "Document"
+          ? { id: "sym-cookie", name: "cookie", declarations: ["/lib/lib.dom.d.ts"] }
+          : { id: "sym-local-cookie", name: "cookie" };
+      },
+    });
+    expect(overlay.resolveProperty(accesses[0]!)).toMatchObject({
+      symbol: { module: "lib.dom", export: "Document#cookie" }, evidence: "trusted",
+    });
+    expect(overlay.resolveProperty(accesses[1]!)).toBeUndefined();
+  });
+
   it("does not treat a Corsa miss as proof and keeps the TypeScript adapter as fallback", () => {
     const source = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.ES2024, true, ts.ScriptKind.TS);
     const fetchCall = callNamed(source, "fetch");

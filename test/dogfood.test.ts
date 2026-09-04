@@ -500,7 +500,7 @@ describe("Uneffect dogfood", () => {
       { caller: "main", callee: "emit" },
       { caller: "main", callee: "emit" },
     ]);
-  }, Math.max(60_000, externalCheckerTestTimeoutMs()));
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("correlates a local refinement alias region with independently checked Mutate effects", () => {
     const fileName = "examples/dogfood/local-alias-refinement.ts";

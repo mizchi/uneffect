@@ -525,10 +525,12 @@ export function buildProgramCallGraph(
     const owned = symbol ? runtimeParameterOwners.get(symbol) : undefined;
     return owned ? { owner: owned.declaration, index: owned.index, path } : undefined;
   };
+  let iteratorUsedVisitingFallback = false;
   const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
     const cached = iteratorParameterCache.get(declaration);
     if (cached) return cached;
     if (iteratorParameterVisiting.has(declaration)) {
+      iteratorUsedVisitingFallback = true;
       return byId.get(stableId(declaration))?.iteratorEffectParameters ?? [];
     }
     iteratorParameterVisiting.add(declaration);
@@ -598,9 +600,14 @@ export function buildProgramCallGraph(
     iteratorParameterCache.set(declaration, result);
     return result;
   };
+  for (const declaration of declarations) {
+    const node = byId.get(stableId(declaration))!;
+    node.iteratorEffectParameters ??= [];
+  }
   const iteratorFixedPointLimit = Math.min(8, declarations.length + 1);
   for (let pass = 0; pass < iteratorFixedPointLimit; pass += 1) {
     iteratorParameterCache.clear();
+    iteratorUsedVisitingFallback = false;
     let changed = false;
     for (const declaration of declarations) {
       const node = byId.get(stableId(declaration))!;
@@ -608,7 +615,7 @@ export function buildProgramCallGraph(
       if (JSON.stringify(node.iteratorEffectParameters) !== JSON.stringify(next)) changed = true;
       node.iteratorEffectParameters = next;
     }
-    if (!changed) break;
+    if (!iteratorUsedVisitingFallback || !changed) break;
   }
   const callableParameterCache = new Map<ts.FunctionLikeDeclaration, EffectParameter[]>();
   const callableParameterVisiting = new Set<ts.FunctionLikeDeclaration>();
