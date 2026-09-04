@@ -59,6 +59,10 @@ function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null | undefined): sy
     && (symbol.declarations ?? []).some((item) => /(?:^|[/\\])lib\.dom\.d\.ts$/.test(item));
 }
 
+function declaredByEcmaScriptLibrary(symbol: CorsaApiSymbolFact | null | undefined): boolean {
+  return (symbol?.declarations ?? []).some((item) => /(?:^|[/\\])lib\.es[\w.]*\.d\.ts$/i.test(item));
+}
+
 function capabilityEffect(name: string): Effect {
   const schema = effectSchema(name);
   return {
@@ -156,6 +160,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       span: { start: number; end: number };
       parameters: string[];
       names: string[];
+      unclassified: boolean;
     }>();
     for (const fileName of rootFiles) {
       const sourceText = readFileSync(fileName, "utf8");
@@ -172,17 +177,27 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         calleePosition: site.calleePosition,
         ...(site.receiverPosition === undefined ? {} : { receiverPosition: site.receiverPosition }),
       })));
+      const ensure = (owner: { name: string; start: number; end: number; parameters: readonly string[] }) => {
+        const key = `${fileName}:${owner.start}:${owner.name}`;
+        const current = byFunction.get(key) ?? {
+          functionName: owner.name, fileName, span: { start: owner.start, end: owner.end },
+          parameters: [...owner.parameters], names: [], unclassified: false,
+        };
+        byFunction.set(key, current);
+        return current;
+      };
       const record = (site: SyntaxSite, contract: BuiltinContract | undefined): void => {
         if (!contract) return;
         const owner = enclosingFunction(syntax.functions, site.start);
         if (!owner) return;
-        const key = `${fileName}:${owner.start}:${owner.name}`;
-        const current = byFunction.get(key) ?? {
-          functionName: owner.name, fileName, span: { start: owner.start, end: owner.end },
-          parameters: [...owner.parameters], names: [],
-        };
-        current.names.push(...effectNamesFromSemantics(contract.semantics, site.kind));
-        byFunction.set(key, current);
+        ensure(owner).names.push(...effectNamesFromSemantics(contract.semantics, site.kind));
+      };
+      const recordUnclassified = (site: SyntaxSite): void => {
+        const owner = enclosingFunction(syntax.functions, site.start);
+        if (!owner) return;
+        const symbol = frontend.getSymbolAtPosition(fileName, site.calleePosition);
+        if (declaredByEcmaScriptLibrary(symbol)) return;
+        ensure(owner).unclassified = true;
       };
       for (const [index, site] of callSites.entries()) {
         const resolution = classified[index];
@@ -191,25 +206,31 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
             ? `${resolution.receiver?.name ?? "console"}.${resolution.symbol.name}`
             : undefined;
         const classifiedContract = exportName === undefined ? undefined : globals.get(exportName);
-        record(site, classifiedContract ?? (site.receiverPosition === undefined ? undefined : resolveDomContract(frontend, fileName, site, domMethods)));
+        const contract = classifiedContract
+          ?? (site.receiverPosition === undefined ? undefined : resolveDomContract(frontend, fileName, site, domMethods));
+        if (contract) record(site, contract);
+        else recordUnclassified(site);
       }
       for (const site of syntax.sites) {
-        if (site.kind === "construct") record(site, resolveConstructContract(frontend, fileName, site, globals));
-        else if (site.kind === "property") record(site, resolveDomContract(frontend, fileName, site, domMethods));
+        if (site.kind === "construct") {
+          const contract = resolveConstructContract(frontend, fileName, site, globals);
+          if (contract) record(site, contract);
+          else recordUnclassified(site);
+        } else if (site.kind === "property") record(site, resolveDomContract(frontend, fileName, site, domMethods));
       }
       for (const fn of syntax.functions) {
         const key = `${fileName}:${fn.start}:${fn.name}`;
         if (byFunction.has(key)) continue;
         byFunction.set(key, {
           functionName: fn.name, fileName, span: { start: fn.start, end: fn.end },
-          parameters: [...fn.parameters], names: [],
+          parameters: [...fn.parameters], names: [], unclassified: false,
         });
       }
     }
     const summaries: EffectSummary[] = [...byFunction.values()]
       .map((item) => {
         const effects = uniqueEffects(item.names);
-        const evidence: EvidenceStatus = effects.length > 0 ? "trusted" : "inferred";
+        const evidence: EvidenceStatus = item.unclassified ? "unknown" : effects.length > 0 ? "trusted" : "inferred";
         return {
           functionName: item.functionName,
           effects,
@@ -217,6 +238,12 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           fileName: item.fileName,
           span: item.span,
           parameters: item.parameters,
+          ...(item.unclassified ? {
+            unknownReasons: [{
+              code: "unresolved-call" as const,
+              message: "a call is outside the admitted Corsa builtin catalog",
+            }],
+          } : {}),
         };
       })
       .sort((left, right) => (left.fileName ?? "").localeCompare(right.fileName ?? "")

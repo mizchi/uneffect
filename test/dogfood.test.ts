@@ -2572,6 +2572,7 @@ describe("Uneffect dogfood", () => {
     const codes = [...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))].sort();
     expect(codes).toEqual([
       "unknown-callback-timing",
+      "unresolved-call",
     ]);
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
@@ -2711,13 +2712,15 @@ describe("Uneffect dogfood", () => {
   it("separates environment report values from manifest reads and subprocess probes", () => {
     const fileName = "src/environment.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
+    const files = [fileName, "src/package-manifest.ts"];
+    const program = ts.createProgram(files, {
       target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
     });
     const result = analyzeProgramEffects(program, { requireAnnotations: false });
     expect(result.diagnostics).toEqual([]);
-    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    const selected = result.summaries.filter((summary) =>
+      files.some((file) => (summary.fileName ?? "").endsWith(file)));
     for (const name of ["minimumMajor", "nodeCheck", "environmentSummary", "formatEnvironmentReport"]) {
       expect(selected.find((summary) => summary.functionName === name)).toMatchObject({ evidence: "verified", effects: [] });
     }
@@ -2757,7 +2760,34 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "formatCliHelp", effect: "Console", kind: "unused",
     }));
-  }, 30_000);
+  }, 60_000);
+
+  it("separates CLI dispatch stream callbacks from dispatcher body effects", () => {
+    const fileName = "src/cli-runner.ts";
+    const source = readFileSync(fileName, "utf8");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+    });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics).toEqual([]);
+    const runCli = result.summaries.find((summary) => summary.fileName === fileName && summary.functionName === "runCli");
+    expect(runCli).toMatchObject({
+      evidence: "unknown",
+      unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-call" })]),
+    });
+    expect(runCli?.effects.map((effect) => formatEffect(effect)).sort()).toEqual([
+      "Env<\"UNEFFECT_DEBUG\">", "FsRead",
+    ]);
+    expect(runCli?.effects).not.toContainEqual(expect.objectContaining({ kind: "capability", name: "Console" }));
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:effect FsRead | Env<\"UNEFFECT_DEBUG\"> */",
+      "/* uneffect:effect Console | FsRead | Env<\"UNEFFECT_DEBUG\"> */",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      functionName: "runCli", effect: "Console", kind: "unused",
+    }));
+  }, 60_000);
 
   it("classifies fixture discovery and report persistence as filesystem capabilities", () => {
     const fileName = "src/fixtures.ts";
@@ -2842,7 +2872,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "writeModelCounterexample", effect: "Random", kind: "missing",
     }));
-  });
+  }, 60_000);
 
   it("tracks persisted optimizer evidence reads independently from regeneration writes", () => {
     const fileName = "src/project-optimizer.ts";

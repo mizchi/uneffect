@@ -41,11 +41,17 @@ Run the gate with:
 just dogfood-leaf
 ```
 
-The gate uses `--infer` deliberately. Runtime imports load a wider internal
-Program whose unannotated dependencies are still adoption candidates. Inference
-mode continues to enforce every annotation in the twelve selected files while not
-requiring unrelated dependencies to be annotated in the same change. The
-`no-unknown` profile still rejects unknown summaries in the analyzed Program.
+The gate uses `--typescript-program --infer` deliberately. Default `uneffect check`
+is Corsa plus Oxc and fail-closes unclassified calls as `unresolved-call`; it
+does not enforce Node builtin annotations. The leaf gate therefore loads a
+TypeScript Program so those annotations stay load-bearing. Runtime imports load
+a wider internal Program whose unannotated dependencies are still adoption
+candidates. Inference mode continues to enforce every annotation in the selected
+files while not requiring unrelated dependencies to be annotated in the same
+change. `src/cli-runner.ts` stays in the dogfood tests; it is not in the
+`--assurance no-unknown` file list while `runCli` still has `unresolved-call`
+from `command.run`. The `no-unknown` profile still rejects unknown summaries in
+the analyzed Program.
 
 ## Second boundary: byte coordinates
 
@@ -104,11 +110,13 @@ selection have not yet received a complete explicit contract.
 ## Seventh boundary: CLI entry values
 
 `src/cli-runner.ts` verifies help construction as `none` and version lookup as
-`FsRead`. The central `runCli` dispatcher is intentionally still inferred: it
-invokes injected stream methods and command implementations, so declaring it as
-plain `Console` would falsely identify arbitrary callbacks as the standard
-terminal. A general callable-parameter effect contract is required before that
-boundary can be stated precisely.
+`FsRead`. `runCli` declares `FsRead | Env<"UNEFFECT_DEBUG">` with
+`effect_parameter io extends Console`. `CliStreams` uses readonly function
+properties so `io.out` / `io.err` are reviewed nested callable parameters
+rather than `Console` on the dispatcher itself. `command.run` remains an
+unresolved local interface method: the dispatcher summary is `unknown` with
+`unresolved-call` rather than a proof, and it is not collapsed into `Console`.
+A negative control that adds `Console` to `runCli` is unused.
 
 ## Eighth boundary: fixture filesystem access
 
@@ -156,9 +164,8 @@ dogfood case and remains part of the general callback-composition work.
 
 ## Next adoption order
 
-1. Add callable-parameter effect summaries for `CliStreams` and `CliCommand.run`,
-   then use them to constrain `runCli` without collapsing callbacks into
-   `Console`.
+1. `CliCommand.run` as a callable on the resolved command object, without
+   unioning every command implementation into `runCli`.
 2. `doctor-command.ts`: compose environment inspection with CLI rendering while
    preserving the distinction between `FsRead`, `Run`, and `Console`.
 

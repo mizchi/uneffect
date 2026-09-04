@@ -2,11 +2,11 @@ import ts from "@typescript/typescript6";
 import { extractLocatedAnnotations, validateUneffectAnnotations, type AnnotationDiagnostic } from "./annotations.js";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, effectSchema, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, parseParameterizedCapabilityScope, unknownCapabilityReasons, type Effect, type EffectSchema } from "./capabilities.js";
-import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
+import { TypeScriptFrontendAdapter, standardLibraryOperation, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
 import { overlayCorsaBuiltinCatalog } from "./corsa-builtin-catalog.js";
 import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry } from "./builtin-contracts.js";
-import { buildProgramCallGraph, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
+import { buildProgramCallGraph, expressionAtExclusiveConstArgumentPath, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
@@ -362,6 +362,93 @@ function freshDefaultParameter(expression: ts.Expression, checker: ts.TypeChecke
 }
 
 function capability(name: string): Effect { return parseEffectExpression(name); }
+
+function unresolvedUserCall(
+  checker: ts.TypeChecker,
+  adapter: FrontendSymbolAdapter,
+  call: ts.CallExpression,
+  caller: ts.FunctionLikeDeclaration,
+): boolean {
+  if (adapter.resolveCall(call) || standardLibraryOperation(checker, call)
+    || primitiveEffects(call, adapter, checker).length > 0) return false;
+  const signature = checker.getResolvedSignature(call)?.declaration;
+  if (signature && "body" in signature && signature.body && !signature.getSourceFile().isDeclarationFile) return false;
+  if (signature?.getSourceFile().isDeclarationFile) return false;
+  if (ts.isPropertyAccessExpression(call.expression) && call.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    return false;
+  }
+  let current: ts.Expression | undefined = ts.isPropertyAccessExpression(call.expression)
+    || ts.isElementAccessExpression(call.expression) ? call.expression.expression : undefined;
+  while (current && (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)
+    || ts.isParenthesizedExpression(current) || ts.isNonNullExpression(current)
+    || ts.isAsExpression(current) || ts.isTypeAssertionExpression(current))) {
+    current = ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)
+      ? current.expression : current.expression;
+  }
+  if (current && ts.isIdentifier(current)) {
+    const symbol = checker.getSymbolAtLocation(current);
+    let enclosing: ts.Node | undefined = caller;
+    while (enclosing) {
+      if (ts.isFunctionLike(enclosing)
+        && (symbol?.declarations ?? []).some((item) => ts.isParameter(item) && item.parent === enclosing)) return false;
+      enclosing = enclosing.parent;
+    }
+  }
+  const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name
+    : ts.isElementAccessExpression(call.expression) ? call.expression.argumentExpression
+      : call.expression;
+  const declarations = checker.getSymbolAtLocation(lookup)?.declarations ?? [];
+  return declarations.some((declaration) => {
+    if (declaration.getSourceFile().isDeclarationFile) return false;
+    if (ts.isMethodSignature(declaration) || ts.isCallSignatureDeclaration(declaration)) return true;
+    if (ts.isFunctionDeclaration(declaration) && !declaration.body) return true;
+    return false;
+  });
+}
+
+function callExpressionsBySpan(program: ts.Program): Map<string, ts.CallExpression> {
+  const calls = new Map<string, ts.CallExpression>();
+  for (const source of program.getSourceFiles()) {
+    if (source.isDeclarationFile) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node)) calls.set(`${source.fileName}:${node.getStart(source)}:${node.getEnd()}`, node);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return calls;
+}
+
+function constBindingProperty(
+  checker: ts.TypeChecker,
+  expression: ts.Expression,
+  path: readonly (string | number)[],
+): ts.Expression | undefined {
+  let current: ts.Expression = expression;
+  const unwrap = (): void => {
+    while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+      || ts.isNonNullExpression(current) || ts.isTypeAssertionExpression(current)) current = current.expression;
+  };
+  unwrap();
+  if (ts.isIdentifier(current)) {
+    const symbol = checker.getSymbolAtLocation(current);
+    const declaration = symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0
+      ? checker.getAliasedSymbol(symbol).valueDeclaration : symbol?.valueDeclaration;
+    if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+      || !ts.isVariableDeclarationList(declaration.parent)
+      || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+    current = declaration.initializer;
+  }
+  for (const part of path) {
+    unwrap();
+    if (!ts.isObjectLiteralExpression(current) || typeof part !== "string") return undefined;
+    const property = current.properties.find((item) => ts.isPropertyAssignment(item)
+      && (ts.isIdentifier(item.name) || ts.isStringLiteralLike(item.name)) && item.name.text === part);
+    if (!property || !ts.isPropertyAssignment(property)) return undefined;
+    current = property.initializer;
+  }
+  return current;
+}
 function unresolvedGenericScopeReasons(effect: Effect): string[] {
   return unknownCapabilityReasons(effect).filter((reason) => reason.startsWith("generic-projector-")
     || reason === "dynamic-filesystem-path" || reason === "dynamic-program" || reason === "dynamic-scope" || reason === "unsupported-scope");
@@ -1869,13 +1956,19 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       ts.isIdentifier(parameter.name) ? parameter.name.text : parameter.name.getText(source));
     parameters.set(graphNode.id, parameterNames);
     const iteratorIndices = new Set(graphNode.iteratorEffectParameters.map((parameter) => parameter.index));
+    const callableIndices = new Set(graphNode.effectParameters.map((parameter) => parameter.index));
     const bounds = new Map<number, { name: string; effects: Effect[] }>();
     for (const annotation of effectParameterAnnotations(source, node, options.effectSchemas)) {
       const index = annotation.name === undefined ? -1 : parameterNames.indexOf(annotation.name);
       if (annotation.problem) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `invalid effect_parameter for ${annotation.name}: ${annotation.problem}` });
       else if (annotation.name === undefined) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `invalid effect_parameter syntax; expected <parameter> extends <Effect union>` });
       else if (index < 0) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `effect_parameter names unknown parameter ${annotation.name}` });
-      else if (!iteratorIndices.has(index)) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `effect_parameter ${annotation.name} is not a consumed iterator parameter` });
+      else if (!iteratorIndices.has(index) && !callableIndices.has(index)) {
+        effectParameterProblems.push({
+          id: graphNode.id, payload: annotation.payload, start: annotation.start,
+          message: `effect_parameter ${annotation.name} is not a consumed iterator or callable parameter`,
+        });
+      }
       else if (bounds.has(index)) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `duplicate effect_parameter bound for ${annotation.name}` });
       else {
         bounds.set(index, { name: annotation.name, effects: annotation.effects });
@@ -2033,6 +2126,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const inferredNetworkBoundaries = new Map([...directNetworkBoundaries].map(([id, boundaries]) => [id, [...boundaries]]));
   const unknownTiming = new Set<string>(), unknownGeneratorEvidence = new Set<string>(), unknownGeneratorParameterEvidence = new Set<string>();
   const unknownMutationAliasEvidence = new Set<string>();
+  const unknownUnresolvedCalls = new Set<string>();
+  const callsBySpan = callExpressionsBySpan(program);
   const unknownMutationAliasSpans = new Map<string, { start: number; end: number }>();
   let changed = true;
   while (changed) {
@@ -2052,6 +2147,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         changed = true;
       }
       if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
+      if (edge.kind === "direct" && !edge.callee && edge.unresolvedName) {
+        const source = nodes.get(edge.caller)?.getSourceFile();
+        const call = source ? callsBySpan.get(`${source.fileName}:${edge.span.start}:${edge.span.end}`) : undefined;
+        if (call && unresolvedUserCall(checker, adapter, call, nodes.get(edge.caller)!)) {
+          unknownUnresolvedCalls.add(edge.caller);
+        }
+      }
       if (!edge.callee || !inferred.has(edge.callee)) continue;
       if (edge.executesBody === false) continue;
       const calleeParams = parameters.get(edge.callee) ?? [];
@@ -2337,6 +2439,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (invalidCallbackInstantiationCallers.has(graphNode.id)) addUnknownReason("effect-diagnostic", "a callback effect argument exceeds its declared external bound");
     if (unknownExternalEvidence.has(graphNode.id)) addUnknownReason("unknown-external-evidence", "a resolved external effect contract is unknown or cannot be instantiated at this call site");
     if (unknownMutationAliasEvidence.has(graphNode.id)) addUnknownReason("unresolved-mutation-alias", "a mutable object alias cannot be reduced to one non-escaping addressable root");
+    if (unknownUnresolvedCalls.has(graphNode.id)) addUnknownReason("unresolved-call", "a call target has no analyzed body, reviewed builtin, or standard-library identity");
     if (unresolvedScopes.length > 0) addUnknownReason("unresolved-effect-scope", `effect authority scope is unresolved: ${[...new Set(unresolvedScopes)].join(", ")}`);
     if (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator) addUnknownReason("unbounded-iterator-effect-parameter", "a declared function consumes caller-supplied iterator effects without an effect_parameter upper bound");
     const evidence: EvidenceStatus = invalidSources.has(source.fileName) || invalidAnnotationSources.has(source.fileName)
@@ -2347,6 +2450,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       || invalidCallbackInstantiationCallers.has(graphNode.id)
       || unknownExternalEvidence.has(graphNode.id)
       || unknownMutationAliasEvidence.has(graphNode.id)
+      || unknownUnresolvedCalls.has(graphNode.id)
       || unresolvedScopes.length > 0
       || (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator)
       ? "unknown" : fullyBoundIterator ? (own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified")
@@ -2646,7 +2750,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           for (const effect of inferred.get(targetId) ?? []) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
           if (!inferred.has(targetId) && primitive.length === 0 && !resolvedBuiltin && !external) markUnknown("unresolved-call", "a top-level call target has no analyzed effect summary or reviewed contract");
         } else if (!resolvedDynamicDependency && primitive.length === 0 && !resolvedBuiltin && !external) markUnknown("unresolved-call", "a top-level call target cannot be resolved by TypeChecker identity or a reviewed contract");
-        const callbackIndices = new Set(graphNodesById.get(targetId ?? "")?.effectParameters.map((parameter) => parameter.index) ?? []);
+        const callbackIndices = new Set<number>();
         const semanticCallbackEvents = projectBuiltinCallbacks(resolvedBuiltin, node, checker);
         const semanticCallbackIndices = semanticCallbackEvents.flatMap((event) => {
           if (event.target.status !== "resolved") return [];
@@ -2656,7 +2760,23 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         });
         const builtinCallbacks = semanticCallbackIndices;
         for (const builtinCallback of builtinCallbacks) callbackIndices.add(builtinCallback);
+        const targetParameters = target && ts.isFunctionLike(target)
+          ? target.parameters.filter((parameter) => !(ts.isIdentifier(parameter.name) && parameter.name.text === "this"))
+          : [];
+        const callableParameters = graphNodesById.get(targetId ?? "")?.effectParameters ?? [];
+        for (const parameter of callableParameters) {
+          const argument = node.arguments[parameter.index] ?? targetParameters[parameter.index]?.initializer;
+          const callback = argument && (parameter.path?.length
+            ? expressionAtExclusiveConstArgumentPath(checker, argument, parameter.path)
+              ?? constBindingProperty(checker, argument, parameter.path)
+            : argument);
+          if (!callback) { markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument"); continue; }
+          const callbackEffects = resolveStableFunctionEffects(callback);
+          if (!callbackEffects) { markUnknown("unresolved-callback", "a callback argument is mutable, dynamic, or lacks an analyzed function body"); continue; }
+          for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+        }
         for (const index of callbackIndices) {
+          if (callableParameters.some((parameter) => parameter.index === index)) continue;
           const callback = node.arguments[index];
           if (!callback) { markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument"); continue; }
           const callbackEffects = resolveStableFunctionEffects(callback);

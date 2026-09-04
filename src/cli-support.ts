@@ -2,7 +2,10 @@
 import { parseArgs, type ParseArgsConfig } from "node:util";
 
 /** Output sinks, so commands stay testable without spawning a process. */
-export interface CliStreams { out(text: string): void; err(text: string): void }
+export interface CliStreams {
+  readonly out: (text: string) => void;
+  readonly err: (text: string) => void;
+}
 
 /* uneffect:effect Console */
 function writeStdout(text: string): void { void process.stdout.write(text); }

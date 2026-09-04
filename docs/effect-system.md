@@ -379,7 +379,10 @@ export function consume(iterator: IteratorObject<unknown>) {
 ```
 
 `effect_parameter <name> extends <Effect union>` follows TypeScript constraint
-terminology but remains comment trivia. The Program analyzer checks resolved
+terminology but remains comment trivia. The name may be a consumed iterator
+parameter or a consumed callable parameter, including a reviewed readonly
+nested path such as `io.out`. Callable-parameter effects stay off the consumer
+body; they are not collapsed into the function's `effect` row. The Program analyzer checks resolved
 Generator factories and stored iterator identities at every call site. It also
 follows symbol-resolved parameter forwarding: a wrapper bound must be contained
 by every downstream bound, and a concrete Generator is checked against every

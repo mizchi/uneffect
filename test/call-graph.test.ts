@@ -1969,6 +1969,62 @@ describe("multi-file call graph and effect polymorphism", () => {
     }
   });
 
+  it("bounds callable parameter methods without charging them to the consumer body", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-callable-parameter-bound-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect:effect none */
+        /* uneffect:effect_parameter io extends Console */
+        export function talk(io: { readonly out: (message: string) => void }) { io.out("hi") }
+        export function speak() { talk({ out: (message) => console.log(message) }) }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const graph = buildProgramCallGraph(program);
+      expect(graph.nodes.find((node) => node.name === "talk")?.effectParameters)
+        .toContainEqual(expect.objectContaining({ index: 0, name: "io.out", path: ["out"], timing: "inline" }));
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.summaries.find((summary) => summary.functionName === "talk"))
+        .toMatchObject({ evidence: "verified", effects: [] });
+      expect(result.summaries.find((summary) => summary.functionName === "speak"))
+        .toMatchObject({ evidence: "inferred", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "talk", message: expect.stringContaining("is not a consumed iterator"),
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not drop unresolved interface method calls as proof-grade empty effects", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-unresolved-interface-call-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        interface Command { run(): number }
+        declare function loadCommand(): Command
+        export function dispatch(): number { return loadCommand().run() }
+        export function identity(value: string): string { return value.padEnd(1) }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.summaries.find((summary) => summary.functionName === "dispatch")).toMatchObject({
+        evidence: "unknown",
+        unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-call" })]),
+      });
+      expect(result.summaries.find((summary) => summary.functionName === "identity"))
+        .not.toMatchObject({ evidence: "unknown" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("infers iterator effect parameters through later-declared wrappers and mutual recursion", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-iterator-order-"));
     try {
@@ -2832,7 +2888,7 @@ describe("multi-file call graph and effect polymorphism", () => {
         .toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "nonIteratorConstraint", kind: "unknown",
-        message: expect.stringContaining("is not a consumed iterator parameter"),
+        message: expect.stringContaining("is not a consumed iterator or callable parameter"),
       }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeKnownIteratorParameter"))
         .not.toMatchObject({ evidence: "unknown" });

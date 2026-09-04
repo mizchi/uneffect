@@ -71,12 +71,12 @@ export function assessCheckAssurance(
   }
   for (const iterator of result.asyncIterators ?? []) coveredFiles.add(iterator.fileName);
   for (const resource of result.resourceProtocols ?? []) coveredFiles.add(resource.fileName);
-  const selectedFiles = [...(result.sources?.keys() ?? [])];
-  const uncoveredFiles = selectedFiles.filter((fileName) => !coveredFiles.has(fileName));
+  const selectedFileList = [...(result.sources?.keys() ?? [])];
+  const uncoveredFiles = selectedFileList.filter((fileName) => !coveredFiles.has(fileName));
   const coverage: AssuranceCoverage = {
     effectSummaries: result.summaries.length,
     contractArtifacts: result.artifacts.length,
-    checkedFiles: selectedFiles.length,
+    checkedFiles: selectedFileList.length,
     uncoveredFiles,
     assumptions: result.assumptions?.entries.length ?? 0,
     typedArrayObligations: result.typedArrays?.obligations.length ?? 0,
@@ -111,7 +111,11 @@ export function assessCheckAssurance(
     kind: "coverage", classification: "unknown", fileName, functionName: "<coverage>",
     message: `${fileName}: no proof-relevant evidence was emitted for this selected file`,
   });
+  const selectedFiles = new Set(selectedFileList);
+  const isSelected = (fileName: string | undefined): boolean =>
+    selectedFiles.size === 0 || Boolean(fileName && selectedFiles.has(fileName));
   for (const summary of result.summaries) {
+    if (!isSelected(summary.fileName)) continue;
     if (summary.evidence === "unknown") blockers.push({
       kind: "effect", classification: "unknown", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,
       message: `${summary.functionName}: effect summary is unknown${summary.unknownReasons?.length

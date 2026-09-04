@@ -90,6 +90,8 @@ async function resolveCommand(name: string | undefined): Promise<CliCommand | un
 }
 
 /** Dispatch one command line. Returns the process exit code instead of exiting, so tests can drive it. */
+/* uneffect:effect FsRead | Env<"UNEFFECT_DEBUG"> */
+/* uneffect:effect_parameter io extends Console */
 export async function runCli(args: readonly string[], io: CliStreams = processStreams): Promise<number> {
   const [first, ...rest] = args;
   if (first === undefined) {

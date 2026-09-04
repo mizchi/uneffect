@@ -110,4 +110,26 @@ describe("Corsa-native project check", () => {
     expect(createCorsaCheckJsonReport(await checkCorsaProject({ configFile, requireAnnotations: false })).schema)
       .toBe("uneffect-check/v1");
   }, 60_000);
+
+  it("does not treat unclassified calls as an empty inferred proof", async () => {
+    const checked = await checkCorsaProject({ configFile, requireAnnotations: false });
+    const load = checked.summaries.find((summary) => summary.functionName === "load");
+    const loadAliased = checked.summaries.find((summary) => summary.functionName === "loadAliased");
+    expect(load).toMatchObject({ evidence: "unknown" });
+    expect(load?.unknownReasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "unresolved-call" }),
+    ]));
+    expect(load?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind))
+      .toEqual(expect.arrayContaining(["Console", "Fetch"]));
+    expect(load?.effects.some((effect) => effect.kind === "capability" && effect.name === "FsRead")).toBe(false);
+    expect(loadAliased).toMatchObject({ evidence: "trusted" });
+    expect(loadAliased?.unknownReasons).toBeUndefined();
+
+    const io = capture();
+    expect(await runCli(["check", "--project", configFile, "--infer", "--json", "--assurance", "no-unknown"], io))
+      .toBe(exitCode.failed);
+    const report = JSON.parse(io.stdout) as { outcome: string; effects: Array<{ functionName: string; evidence: string }> };
+    expect(report.outcome).toBe("failed");
+    expect(report.effects.find((item) => item.functionName === "load")?.evidence).toBe("unknown");
+  }, 60_000);
 });

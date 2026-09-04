@@ -11,8 +11,10 @@ JavaScript.
 
 ## Install
 
-Uneffect requires Node.js 24 or newer and uses the consuming project's
-TypeScript 6 installation. TypeScript 7 is not yet a compatible compiler API.
+Uneffect requires Node.js 24 or newer. Default `uneffect check` uses Corsa plus
+Oxc and does not construct a JavaScript TypeScript 6 Program. Unclassified calls
+are `unknown`, not empty inferred proofs. Pass `--typescript-program` for the
+full TypeScript effect, contract, and annotation path.
 
 ```sh
 npm install --save-dev @mizchi/uneffect typescript
@@ -51,6 +53,7 @@ Check a file or the files selected by a TypeScript project:
 ```sh
 npx uneffect check src/example.ts
 npx uneffect check --project tsconfig.json --infer
+npx uneffect check --typescript-program --infer --assurance no-unknown src/example.ts
 ```
 
 An effect declaration is an upper bound. Missing transitive effects are errors;

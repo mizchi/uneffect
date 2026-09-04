@@ -14,6 +14,7 @@ export interface CorsaCheckJsonReport {
     effects: string[];
     evidence: CorsaCheckResult["summaries"][number]["evidence"];
     parameters?: string[];
+    unknownReasons?: CorsaCheckResult["summaries"][number]["unknownReasons"];
   }>;
   contracts: [];
   assumptions: CorsaCheckResult["assumptions"];
@@ -42,6 +43,7 @@ export function createCorsaCheckJsonReport(
       effects: summary.effects.map(formatEffect),
       evidence: summary.evidence,
       ...(summary.parameters === undefined ? {} : { parameters: summary.parameters }),
+      ...(summary.unknownReasons === undefined ? {} : { unknownReasons: summary.unknownReasons }),
     })),
     contracts: [],
     assumptions: result.assumptions,
