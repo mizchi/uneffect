@@ -966,6 +966,28 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("does not invent normal if exits after a guaranteed throwing condition", () => {
+    const result = analyzeAsyncSafety("throwing-if-condition.ts", `
+      declare function task(): Promise<number>
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      declare function maybeFail(): boolean
+      async function guaranteedCatch() {
+        const pending = task()
+        try { if (fail()) console.log("unreachable") }
+        catch { await pending }
+      }
+      async function possibleFallthrough() {
+        const pending = task()
+        try { if (maybeFail()) console.log("possible") }
+        catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "guaranteedCatch", status: "observed" },
+      { owner: "possibleFallthrough", status: "floating" },
+    ]);
+  });
+
   it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
     const result = analyzeAsyncSafety("throw-expression-promises.ts", `
       declare function task(): Promise<number>

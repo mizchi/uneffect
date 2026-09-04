@@ -2022,11 +2022,82 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         }
         if (ts.isBlock(statement)) return executeStatements(statement.statements, [state]);
         if (ts.isIfStatement(statement)) {
-          const before = { ...state };
-          if (consumes(statement.expression) && before.active) before.pending = false;
-          const thenStates = executeStatement(statement.thenStatement, { ...before });
-          const elseStates = statement.elseStatement ? executeStatement(statement.elseStatement, { ...before }) : [{ ...before }];
-          return [...thenStates, ...elseStates];
+          type IfValue = readonly PathState[];
+          const span = { start: statement.getStart(source), end: statement.getEnd() };
+          const prefix = `${owner}@if:${span.start}`;
+          const entryId = `${prefix}:entry`, thenId = `${prefix}:then`;
+          const elseId = `${prefix}:else`, exitId = `${prefix}:exit`;
+          const valueKey = (value: IfValue): string => [...value].map(stateKey).sort().join("|");
+          const result = solveBasicBlockFixedPoint<IfValue>({
+            entry: entryId,
+            initial: [state],
+            budget: { name: "promise-ownership-cfg-iterations", limit: PROMISE_OWNERSHIP_CFG_ITERATIONS },
+            lattice: {
+              bottom: () => [],
+              equivalent: (left, right) => valueKey(left) === valueKey(right),
+              join: (left, right) => ({ status: "joined", value: uniqueStates([...left, ...right]) }),
+            },
+            blocks: [
+              {
+                id: entryId,
+                edges: [
+                  { to: thenId, completion: "normal", role: "branch", sourceSpan: span },
+                  ...(statement.elseStatement
+                    ? [{ to: elseId, completion: "normal" as const, role: "branch" as const, sourceSpan: span }]
+                    : []),
+                  { to: exitId, completion: "normal", role: "branch", sourceSpan: span },
+                  { to: exitId, completion: "throw", role: "branch", sourceSpan: span },
+                ],
+                transfer: (input) => {
+                  const thenInputs: PathState[] = [], elseInputs: PathState[] = [], exits: PathState[] = [];
+                  for (const incoming of input) {
+                    const before = executeHeaderNode(statement.expression, { ...incoming });
+                    if (before.terminated) {
+                      exits.push(before);
+                      continue;
+                    }
+                    const value = staticPrimitive(statement.expression, new Map())?.value;
+                    if (value === undefined || Boolean(value)) thenInputs.push(before);
+                    if (value === undefined || !Boolean(value)) {
+                      if (statement.elseStatement) elseInputs.push(before);
+                      else exits.push(before);
+                    }
+                  }
+                  return [
+                    ...(thenInputs.length > 0 ? [{ to: thenId, value: uniqueStates(thenInputs) }] : []),
+                    ...(elseInputs.length > 0 ? [{ to: elseId, value: uniqueStates(elseInputs) }] : []),
+                    ...(exits.length > 0 ? [{ to: exitId, value: uniqueStates(exits) }] : []),
+                  ];
+                },
+              },
+              {
+                id: thenId,
+                edges: cfgCompletionEdges(exitId, "forward", span),
+                transfer: (input) => [{
+                  to: exitId,
+                  value: uniqueStates(input.flatMap((incoming) =>
+                    executeStatement(statement.thenStatement, incoming))),
+                }],
+              },
+              ...(statement.elseStatement ? [{
+                id: elseId,
+                edges: cfgCompletionEdges(exitId, "forward", span),
+                transfer: (input: IfValue) => [{
+                  to: exitId,
+                  value: uniqueStates(input.flatMap((incoming) =>
+                    executeStatement(statement.elseStatement!, incoming))),
+                }],
+              }] : []),
+              { id: exitId, edges: [], transfer: () => [] },
+            ],
+          });
+          if (result.status === "unknown") {
+            const relevant = state.active || activates(statement) || reassigns(statement) || consumes(statement);
+            return relevant
+              ? [{ ...state, active: true, pending: true, lost: true, terminated: true }]
+              : [{ ...state }];
+          }
+          return uniqueStates([...(result.states.get(exitId) ?? [])]);
         }
         if (ts.isSwitchStatement(statement)) {
           const clauses = statement.caseBlock.clauses;
