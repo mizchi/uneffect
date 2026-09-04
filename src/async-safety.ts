@@ -1760,18 +1760,6 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           ts.isCaseClause(clause) ? [checker.typeToString(checker.getTypeAtLocation(clause.expression))] : []));
         return possible.size > 0 && [...possible].every((item) => covered.has(item));
       };
-      const executeSwitchPath = (clauses: readonly ts.CaseOrDefaultClause[], start: number, state: PathState): PathState[] => {
-        type SwitchState = { state: PathState; broken: boolean };
-        let states: SwitchState[] = [{ state: { ...state }, broken: false }];
-        for (const clause of clauses.slice(start)) for (const statement of clause.statements) {
-          states = states.flatMap((current): SwitchState[] => {
-            if (current.broken || current.state.terminated) return [current];
-            if (ts.isBreakStatement(statement) && !statement.label) return [{ state: current.state, broken: true }];
-            return executeStatement(statement, current.state).map((next) => ({ state: next, broken: false }));
-          });
-        }
-        return states.map(({ state: next }) => next);
-      };
       const executeFinally = (block: ts.Block, state: PathState): PathState[] => {
         const wasTerminated = state.terminated;
         const previousCompletion = state.completion;
@@ -1875,6 +1863,12 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.completion ?? ""}:${state.abrupt ?? ""}:${state.label ?? ""}`;
       const uniqueStates = (states: PathState[]): PathState[] => [...new Map(states.map((state) => [stateKey(state), state])).values()];
+      const cfgCompletionEdges = (
+        to: string,
+        role: "forward" | "branch",
+        sourceSpan: { start: number; end: number },
+      ) => (["normal", "return", "throw", "break", "continue"] as const)
+        .map((completion) => ({ to, completion, role, sourceSpan }));
       const executeNodeEffects = (node: ts.Node, state: PathState): PathState => {
         const next = { ...state };
         const wasActive = next.active;
@@ -2035,12 +2029,88 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           return [...thenStates, ...elseStates];
         }
         if (ts.isSwitchStatement(statement)) {
-          const before = { ...state };
-          if (consumes(statement.expression) && before.active) before.pending = false;
           const clauses = statement.caseBlock.clauses;
-          const entries = clauses.flatMap((_, index) => executeSwitchPath(clauses, index, before));
-          if (!switchIsExhaustive(statement)) entries.push({ ...before });
-          return entries;
+          type SwitchValue = readonly PathState[];
+          const span = { start: statement.getStart(source), end: statement.getEnd() };
+          const prefix = `${owner}@switch:${span.start}`;
+          const entryId = `${prefix}:entry`, exitId = `${prefix}:exit`;
+          const clauseIds = clauses.map((clause) => `${prefix}:clause:${clause.getStart(source)}`);
+          const valueKey = (value: SwitchValue): string => [...value].map(stateKey).sort().join("|");
+          const result = solveBasicBlockFixedPoint<SwitchValue>({
+            entry: entryId,
+            initial: [state],
+            budget: { name: "promise-ownership-cfg-iterations", limit: PROMISE_OWNERSHIP_CFG_ITERATIONS },
+            lattice: {
+              bottom: () => [],
+              equivalent: (left, right) => valueKey(left) === valueKey(right),
+              join: (left, right) => ({ status: "joined", value: uniqueStates([...left, ...right]) }),
+            },
+            blocks: [
+              {
+                id: entryId,
+                edges: [
+                  ...clauseIds.map((to) => ({ to, completion: "normal" as const, role: "branch" as const, sourceSpan: span })),
+                  { to: exitId, completion: "normal", role: "branch", sourceSpan: span },
+                  { to: exitId, completion: "throw", role: "branch", sourceSpan: span },
+                ],
+                transfer: (input) => {
+                  const entries: PathState[] = [], exits: PathState[] = [];
+                  for (const incoming of input) {
+                    const before = executeNodeEffects(statement.expression, { ...incoming });
+                    if (isGuaranteedThrowExpression(statement.expression)) {
+                      exits.push({ ...before, terminated: true, completion: "throw" });
+                      continue;
+                    }
+                    entries.push(before);
+                    if (!switchIsExhaustive(statement)) exits.push({ ...before });
+                  }
+                  return [
+                    ...clauseIds.flatMap((to) => entries.length > 0
+                      ? [{ to, value: uniqueStates(entries) }]
+                      : []),
+                    ...(exits.length > 0 ? [{ to: exitId, value: uniqueStates(exits) }] : []),
+                  ];
+                },
+              },
+              ...clauses.map((clause, index) => {
+                const nextId = clauseIds[index + 1];
+                return {
+                  id: clauseIds[index]!,
+                  edges: [
+                    ...(nextId
+                      ? [{ to: nextId, completion: "normal" as const, role: "forward" as const, sourceSpan: span }]
+                      : []),
+                    ...cfgCompletionEdges(exitId, "branch", span),
+                  ],
+                  transfer: (input: SwitchValue) => {
+                    const fallthrough: PathState[] = [], exits: PathState[] = [];
+                    for (const incoming of input) {
+                      for (const next of executeStatements(clause.statements, [{ ...incoming }])) {
+                        if (next.abrupt === "break" && next.label === undefined) {
+                          exits.push({ ...next, abrupt: undefined, label: undefined });
+                        } else if (next.terminated || next.abrupt || !nextId) exits.push(next);
+                        else fallthrough.push(next);
+                      }
+                    }
+                    return [
+                      ...(fallthrough.length > 0 && nextId
+                        ? [{ to: nextId, value: uniqueStates(fallthrough) }]
+                        : []),
+                      ...(exits.length > 0 ? [{ to: exitId, value: uniqueStates(exits) }] : []),
+                    ];
+                  },
+                };
+              }),
+              { id: exitId, edges: [], transfer: () => [] },
+            ],
+          });
+          if (result.status === "unknown") {
+            const relevant = state.active || activates(statement) || reassigns(statement) || consumes(statement);
+            return relevant
+              ? [{ ...state, active: true, pending: true, lost: true, terminated: true }]
+              : [{ ...state }];
+          }
+          return uniqueStates([...(result.states.get(exitId) ?? [])]);
         }
         if (ts.isTryStatement(statement)) {
           type TryValue = readonly PathState[];
@@ -2049,9 +2119,6 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const entryId = `${prefix}:entry`, protectedId = `${prefix}:protected`;
           const catchId = `${prefix}:catch`, joinId = `${prefix}:join`;
           const finallyId = `${prefix}:finally`, exitId = `${prefix}:exit`;
-          const completionEdges = (to: string, role: "forward" | "branch") =>
-            (["normal", "return", "throw", "break", "continue"] as const)
-              .map((completion) => ({ to, completion, role, sourceSpan: span }));
           const valueKey = (value: TryValue): string => [...value].map(stateKey).sort().join("|");
           const result = solveBasicBlockFixedPoint<TryValue>({
             entry: entryId,
@@ -2071,7 +2138,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               {
                 id: protectedId,
                 edges: [
-                  ...completionEdges(joinId, "branch"),
+                  ...cfgCompletionEdges(joinId, "branch", span),
                   ...(statement.catchClause
                     ? [{ to: catchId, completion: "throw" as const, role: "branch" as const, sourceSpan: span }]
                     : []),
@@ -2105,7 +2172,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               },
               ...(statement.catchClause ? [{
                 id: catchId,
-                edges: completionEdges(joinId, "forward"),
+                edges: cfgCompletionEdges(joinId, "forward", span),
                 transfer: (input: TryValue) => [{
                   to: joinId,
                   value: uniqueStates(input.flatMap((incoming) =>
@@ -2114,7 +2181,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               }] : []),
               {
                 id: joinId,
-                edges: completionEdges(statement.finallyBlock ? finallyId : exitId, "forward"),
+                edges: cfgCompletionEdges(statement.finallyBlock ? finallyId : exitId, "forward", span),
                 transfer: (input) => [{
                   to: statement.finallyBlock ? finallyId : exitId,
                   value: input,
@@ -2122,7 +2189,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               },
               ...(statement.finallyBlock ? [{
                 id: finallyId,
-                edges: completionEdges(exitId, "forward"),
+                edges: cfgCompletionEdges(exitId, "forward", span),
                 transfer: (input: TryValue) => [{
                   to: exitId,
                   value: uniqueStates(input.flatMap((incoming) =>

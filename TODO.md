@@ -2543,6 +2543,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       source-keyed basic-block worklist and fail closed on invalid topology or
       budget exhaustion; let an at-least-once `do` body refine the conservative
       catch predecessor only when it must observe before any throw risk.
+    - [x] Lower Promise-ownership `switch` entry, clause fallthrough, and exit
+      joins through source-keyed clause blocks; consume nested unlabeled
+      `break` at the switch boundary while preserving loop `continue`, return,
+      throw, and labeled transfers for their lexical owners.
     - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [x] Treat a direct expression-statement call as a guaranteed catch edge only when TypeScript proves `never` return and the resolved declaration explicitly carries `Throw<E>`; keep unannotated `never` termination/divergence distinct.
     - [x] Preserve guaranteed `never` + `Throw<E>` completion through return, transparent wrappers, a single initializer, comma-tail evaluation, and all-throw ternary joins; keep partial ternaries and unresolved compounds conservative.

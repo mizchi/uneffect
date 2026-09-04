@@ -846,6 +846,36 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("keeps nested switch breaks distinct from enclosing loop transfers", () => {
+    const result = analyzeAsyncSafety("switch-loop-transfer.ts", `
+      declare function task(): Promise<number>
+      async function switchBreak(kind: "stop" | "pass") {
+        const pending = task()
+        do {
+          switch (kind) {
+            case "stop": { break }
+            case "pass": console.log("pass")
+          }
+          await pending
+        } while (false)
+      }
+      async function loopContinue(kind: "stop" | "pass") {
+        const pending = task()
+        do {
+          switch (kind) {
+            case "stop": { continue }
+            case "pass": console.log("pass")
+          }
+          await pending
+        } while (false)
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "switchBreak", status: "observed" },
+      { owner: "loopContinue", status: "floating" },
+    ]);
+  });
+
   it("runs finally on normal, caught, and early-return Promise ownership paths", () => {
     const result = analyzeAsyncSafety("finally-promises.ts", `
       declare function task(): Promise<number>
