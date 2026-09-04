@@ -28,6 +28,21 @@ describe("React Function Component semantics", () => {
     ]);
   });
 
+  it("opts in a component through the namespaced react.component plugin directive", () => {
+    const result = analyzeReactSemantics("namespaced-component.tsx", `
+      declare namespace JSX { interface IntrinsicElements { button: unknown } }
+      /* uneffect:react.component */
+      function Checked() {
+        console.log("render")
+        return <button />
+      }
+    `);
+    expect(result.components.map(({ name }) => name)).toEqual(["Checked"]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ component: "Checked", kind: "render-effect", phase: "render", effect: "Console" }),
+    ]);
+  });
+
   it("analyzes components wrapped directly in React memo and forwardRef", () => {
     const result = analyzeReactSemantics("wrapped-components.tsx", `
       import React, { forwardRef as legacyRef, memo as remember, useEffect } from "react"

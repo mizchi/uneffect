@@ -8,15 +8,18 @@ not transform the component or import React at runtime.
 ## Opting in
 
 Annotate a function declaration, function expression, or variable-bound arrow
-function explicitly. Custom Hooks use the parallel `react hook` role:
+function explicitly. Custom Hooks use the parallel `react.hook` role. The
+hyphenated dialect headers remain valid; namespaced plugin directives are the
+preferred form and use the same collision/provenance rules as third-party
+plugins.
 
 ```tsx
-/* uneffect:react-component */
+/* uneffect:react.component */
 export function Counter(props: { label: string }) {
   return <button>{props.label}</button>
 }
 
-/* uneffect:react-hook */
+/* uneffect:react.hook */
 export function useCounterTelemetry() {
   // Hook body and nested built-in Effects receive phase semantics.
 }
@@ -286,8 +289,12 @@ Imported/module bindings are assumed stable, custom stability conventions are
 not inferred, unnecessary but stable dependencies are not rejected, and
 mutations behind an otherwise stable object identity are outside this proof.
 
-Malformed React payloads are errors. The accepted forms are `uneffect:react-component`,
-`uneffect:react-hook`, `uneffect:react-resource acquire Capability`, `uneffect:react-resource release Capability`, and the
+Malformed React payloads are errors. The accepted forms are
+`uneffect:react.component`, `uneffect:react.hook`,
+`uneffect:react.acquire Capability`, `uneffect:react.release Capability`,
+the hyphenated dialect headers `uneffect:react-component`,
+`uneffect:react-hook`, `uneffect:react-resource acquire Capability`,
+`uneffect:react-resource release Capability`, and the
 identity-aware lifecycle forms described below. Misspellings and unsupported
 fields are not silently ignored.
 
