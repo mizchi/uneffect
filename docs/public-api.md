@@ -4,9 +4,10 @@ This document defines the intended package surface as of Uneffect 0.3.0. The
 project is still pre-1.0: pin the exact version in verification workflows and
 read emitted exclusions together with every result.
 
-The 0.3 runtime frontend supports the TypeScript 6 compiler API line. The npm
-peer range is capped at `<7`; TypeScript 7's native compiler API is a future
-Corsa/frontend migration target, not a compatible drop-in dependency.
+The default 0.3 check frontend uses the pinned TypeScript 7 native compiler
+through Corsa plus Oxc. The explicit `--typescript-program` compatibility path
+uses the separately pinned TypeScript 6 compiler API package for proof domains
+that have not moved to the native frontend yet.
 
 ## Package entrypoints
 
@@ -35,7 +36,7 @@ facades while those representations change:
 | Root API family | Public contract |
 | --- | --- |
 | Numeric and bounded-container helpers | Branded `Int`, `Nat`, `Float`, `U8`, `U32`, `I32`, `F32`, bounded buffer/view/Set/Map types, their parsers, schemas, constants, and explicit machine coercions. |
-| Effect tracking and primary checking | `analyzeEffects`, `analyzeEffectsInProgram`, `analyzeProgramEffects`, Effect-set parse/format/containment operations, `checkFiles`, `verifyUneffectProject`, `verifyContracts`, and typed-array verification facades. Effect tracking is a first-class public capability, not an experimental backend detail. |
+| Effect tracking and primary checking | `analyzeEffects`, `analyzeEffectsInProgram`, `analyzeProgramEffects`, Effect-set parse/format/containment operations, `checkFiles`, `verifyUneffectProject`, `verifyContracts`, typed-array verification facades, and the versioned inferred-effect baseline helpers. Effect tracking is a first-class public capability, not an experimental backend detail. |
 | Temporal checking | `generateTemporalModel`; its versioned result and explicit exclusions are the contract, not generated Quint text. |
 | Test generation | `checkUneffectProperty`, `generateUneffectPropertyTests`, and `generateUneffectPropertyTestsWithZ3` for the documented bounded fragment. |
 | Gradual extension | custom validators, effect-schema registration, module manifests, builtin registry configuration, and versioned contract-summary bundles. |

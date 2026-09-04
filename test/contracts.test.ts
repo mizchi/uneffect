@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { attachContractEffectBoundaries, reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "../src/contracts.js";
+import { attachContractEffectBoundaries, hasContractVerificationCandidates, reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "../src/contracts.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { collectAssumptionLedger } from "../src/assumptions.js";
 import { lowerInvariantProgram } from "../src/invariant-ir.js";
@@ -28,6 +28,20 @@ function programForFiles(files: Readonly<Record<string, string>>, overrides: ts.
 }
 
 describe("Hoare contract checker", () => {
+  it("skips solver lowering for refinement-only source", async () => {
+    const source = `
+      /* uneffect: state count: int */
+      /* uneffect: init count = 0 */
+      /* uneffect: action increment: count' = count + 1 */
+      function increment(runtime: { count: number }) { runtime.count++ }
+    `;
+    expect(hasContractVerificationCandidates(source)).toBe(false);
+    await expect(verifyContractObligations("refinement-only.ts", source)).resolves.toEqual({
+      diagnostics: [], artifacts: [],
+    });
+    expect(hasContractVerificationCandidates(`${source}\n/* uneffect:ensures result > 0 */`)).toBe(true);
+  });
+
   it("proves a valid postcondition", async () => {
     const source = `
       /* uneffect:requires x >= 0 */

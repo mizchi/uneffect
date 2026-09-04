@@ -3,16 +3,40 @@
 Uneffect is designed for gradual adoption. The useful unit is a reviewed
 boundary, not an all-or-nothing migration of a repository.
 
-## Pattern 1: establish an observation-only baseline
+## Pattern 1: ratchet inferred effects before writing specifications
 
-Begin with files that already contain effect declarations:
+Generate a reviewable baseline for every selected function, including functions
+without Uneffect annotations:
 
 ```sh
-npx uneffect check --infer src/entry.ts src/io.ts
+npx uneffect check --project tsconfig.json \
+  --write-effect-baseline .uneffect/effects.json
+git add .uneffect/effects.json
 ```
 
-`--infer` avoids treating every unannotated function as an attempted proof. Use
-the result to identify external I/O, mutation, thrown errors, floating promises,
+Then make capability expansion a CI failure:
+
+```sh
+npx uneffect check --project tsconfig.json \
+  --effect-baseline .uneffect/effects.json
+```
+
+The baseline flags newly inferred effects, effectful new functions, and new
+fail-closed reason codes. Both baseline flags imply `--infer`, so application
+code does not need annotations before this ratchet becomes useful. Source-line
+movement does not invalidate identities; duplicate same-named functions are
+distinguished by source occurrence. A different Uneffect version requires an
+explicit review and regeneration because inference semantics may have changed.
+
+An accepted baseline records existing authority and unknown analysis; it does
+not prove those entries safe or complete. Removing an effect is allowed, and a
+behavioral bug that stays within an already allowed effect set is outside this
+gate. Keep the baseline in review, and do not erase an unexpected expansion by
+regenerating it without understanding the code change.
+
+For an observation-only report without persistence, use `--infer`. It analyzes
+unannotated functions without treating them as declared-pure proofs. Use the
+result to identify external I/O, mutation, thrown errors, floating promises,
 and unknown call boundaries. Do not convert `unknown` into pure merely to make
 the first run green.
 

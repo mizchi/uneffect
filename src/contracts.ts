@@ -6,6 +6,7 @@ import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, t
 import { executeZ3, type Z3Execution, type Z3ExecutionOptions } from "./z3.js";
 import { formatEffect } from "./capabilities.js";
 import type { EffectSummary } from "./effects.js";
+import { extractLocatedAnnotations } from "./annotations.js";
 
 export interface VerificationArtifact {
   obligationId: string;
@@ -41,6 +42,16 @@ export interface ContractVerificationResult {
 
 export interface ContractVerificationOptions {
   externalContractBindings?: readonly ExternalContractBinding[];
+}
+
+/** Cheap syntactic gate before constructing TypeChecker facts and solver IR. */
+export function hasContractVerificationCandidates(
+  text: string,
+  options: ContractVerificationOptions = {},
+): boolean {
+  return (options.externalContractBindings?.length ?? 0) > 0
+    || extractLocatedAnnotations(text, "requires").length > 0
+    || extractLocatedAnnotations(text, "ensures").length > 0;
 }
 
 /** Bind a proved contract path to the Program effect summary covering that exact source return. */
@@ -182,6 +193,7 @@ export async function verifyContractObligations(
   program?: ts.Program,
   options: ContractVerificationOptions = {},
 ): Promise<ContractVerificationResult> {
+  if (!hasContractVerificationCandidates(text, options)) return { diagnostics: [], artifacts: [] };
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   let obligations: InvariantObligation[];
   try {

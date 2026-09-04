@@ -894,7 +894,7 @@ describe("Uneffect dogfood", () => {
   });
 
   it("retains the dynamic lexical owner of a continue leaving a catch", () => {
-    const fileName = "src/environment.ts";
+    const fileName = "src/package-manifest.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeAsyncSafety(fileName, source);
     expect(result.controlTransferOwners).toContainEqual(expect.objectContaining({

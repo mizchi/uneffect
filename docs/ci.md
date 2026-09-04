@@ -10,6 +10,14 @@ later proof. The runner retains bounded retry evidence only for classified
 infrastructure failures; a counterexample or ordinary assertion failure is not
 retried.
 
+`just release-check` requires the native Z3 executable and sets
+`UNEFFECT_TEST_ISOLATION=file`. Native solver invocations do not retain the
+bundled WASM heap in the Vitest process, so solver-dense suites run once per
+file instead of starting hundreds of duplicate Vitest processes. The full tier
+manifest still runs, including dogfood; the release recipe does not run that
+same dogfood suite a second time. CI leaves `UNEFFECT_TEST_ISOLATION` unset and
+therefore preserves per-test isolation for the WASM job.
+
 The CI test split is a capability partition, not a coverage reduction. The
 authoritative manifest is `ci/test-tiers.ts`; `test/ci-tiers.test.ts` fails when
 a `test/*.test.ts` file is missing from the manifest or appears in more than one
@@ -111,12 +119,12 @@ runner or child process is interrupted. A green rerun remains operational
 evidence and does not erase an earlier timeout or justify weakening a proof
 obligation.
 
-During the #56 full local gate, the unchanged same-realm cross-project
-refinement and Hoare-plus-Valibot acceptance cases exceeded Vitest's default
-15-second per-test budget at 15.136 and 16.247 seconds. The latter then passed
-unchanged in isolation at 14.78 seconds. Both multi-process cases now have an
-explicit finite 30-second test budget; assertions and solver obligations are
-unchanged, and the full gate must still pass without retry before delivery.
+Cross-project refinement acceptance cases create, build, verify, mutate, and
+reverify several temporary TypeScript solution graphs. They retain an explicit
+finite 120-second test budget after observed native-Z3 runtimes between 41 and
+86 seconds during the 0.3 release gate. Hoare-plus-Valibot acceptance retains
+its shorter dedicated budget. Assertions and solver obligations are unchanged,
+and ordinary Vitest timeouts are never retried.
 
 Checker-backed dogfood has a separate named finite policy. Local execution is
 bounded at 20 seconds; CI execution is bounded at 60 seconds, exactly matching

@@ -22,6 +22,9 @@ import {
   type CompletedModuleInitializationProject,
   type WorkspaceModuleInitializationComposition,
 } from "./workspace-module-initialization.js";
+import {
+  formatEffectBaselineAssessment, processEffectBaseline,
+} from "./effect-baseline.js";
 
 /** TypeScript 6 Program path: workspace composition, contracts, and `--corsa-parity`. */
 export async function runTypeScriptCheckCommand(args: readonly string[], io: CliStreams): Promise<number> {
@@ -42,9 +45,17 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
       "require-exact-build-artifacts": { type: "boolean" },
       "typescript-program": { type: "boolean" },
       json: { type: "boolean" },
+      "effect-baseline": { type: "string" },
+      "write-effect-baseline": { type: "string" },
     });
     if (values.help) { io.out(formatCommandHelp(checkCommand)); return exitCode.success; }
     if (positionals.length === 0 && values.project === undefined) throw new CliUsageError("check needs at least one file or --project");
+    if (values["effect-baseline"] !== undefined && values["write-effect-baseline"] !== undefined) {
+      throw new CliUsageError("--effect-baseline and --write-effect-baseline are mutually exclusive");
+    }
+    const baselineFile = values["effect-baseline"] === undefined ? undefined : resolve(String(values["effect-baseline"]));
+    const writeBaselineFile = values["write-effect-baseline"] === undefined ? undefined : resolve(String(values["write-effect-baseline"]));
+    const inferAll = Boolean(values.infer || baselineFile || writeBaselineFile);
     if ((values["corsa-parity"] || values["corsa-executable"] !== undefined) && values.project === undefined) {
       throw new CliUsageError("Corsa parity requires --project so compiler and source membership are explicit");
     }
@@ -130,7 +141,7 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
         const domainResult = await (async () => {
           try {
             return await checkFiles(domain.fileNames, {
-              mode: values.strict ? "strict" : "gradual", requireAnnotations: !values.infer, builtinRegistry, assumptionRegistry,
+              mode: values.strict ? "strict" : "gradual", requireAnnotations: !inferAll, builtinRegistry, assumptionRegistry,
               compilerOptions: domain.compilerOptions, project: domain.provenance,
               projectReferences: domain.projectReferences,
               program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts,
@@ -155,7 +166,7 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
         completedRefinements.push({ project: domain, summaries: refinementAnalysis.summaries, declarationOutputs });
         completedModuleInitialization.push({ project: domain, program, declarationOutputs });
       }
-      const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
+      const baseReport = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
         requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"] || values["require-exact-build-artifacts"]), outputIntegrity,
         additionalBlockers: [
           ...(transformValidation?.diagnostics.map((diagnostic) => ({
@@ -170,6 +181,21 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
         ],
         moduleInitializationComposition,
       }, composed, composedRefinements);
+      const summaries = reports.flatMap((item) => item.report.effects);
+      let baselineRun;
+      try {
+        baselineRun = await processEffectBaseline({
+          baselineFile, writeBaselineFile, summaries, cwd: process.cwd(), checkPassed: baseReport.outcome === "passed",
+        });
+      } catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+      const baselineAssessment = baselineRun.assessment;
+      if (baselineRun.written) io.err(`effect baseline: wrote ${baselineRun.written.entries} function(s) to ${baselineRun.written.fileName}\n`);
+      if (baselineRun.writeSkipped) io.err("effect baseline: not written because check failed\n");
+      const report = baselineAssessment === undefined ? baseReport : {
+        ...baseReport,
+        outcome: baselineAssessment.status === "failed" ? "failed" as const : baseReport.outcome,
+        effectBaseline: baselineAssessment,
+      };
       if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
       else {
         for (const item of reports) {
@@ -182,6 +208,7 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
         io.err(`build artifacts: ${report.buildArtifacts.status} (TypeScript SolutionBuilder dry run)\n`);
         io.err(`output integrity: ${report.outputIntegrity.status} (same-compiler declaration/runtime byte comparison)\n`);
         io.err(`workspace: ${report.outcome}; ${reports.length} checked compiler domain(s), ${report.blockers.length} blocker(s)\n`);
+        if (baselineAssessment) io.err(formatEffectBaselineAssessment(baselineAssessment));
       }
       return report.outcome === "passed" ? exitCode.success : exitCode.failed;
     }
@@ -198,7 +225,7 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
       try {
         return await checkFiles(fileNames, {
           mode: values.strict ? "strict" : "gradual",
-          requireAnnotations: !values.infer,
+          requireAnnotations: !inferAll,
           builtinRegistry,
           assumptionRegistry,
           contractSummaryBundles,
@@ -212,11 +239,29 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
       } finally { corsaFrontend?.close(); }
     })();
     const assessment = assurance === undefined ? undefined : assessCheckAssurance(result, assurance as AssuranceProfile);
-    if (values.json) io.out(`${JSON.stringify(createCheckJsonReport(result, assessment), null, 2)}\n`);
+    const baseReport = createCheckJsonReport(result, assessment);
+    let baselineRun;
+    try {
+      baselineRun = await processEffectBaseline({
+        baselineFile, writeBaselineFile, summaries: baseReport.effects, cwd: process.cwd(),
+        checkPassed: result.errors === 0 && (assessment?.passed ?? true),
+      });
+    } catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+    const baselineAssessment = baselineRun.assessment;
+    if (baselineRun.written) io.err(`effect baseline: wrote ${baselineRun.written.entries} function(s) to ${baselineRun.written.fileName}\n`);
+    if (baselineRun.writeSkipped) io.err("effect baseline: not written because check failed\n");
+    const report = baselineAssessment === undefined ? baseReport : {
+      ...baseReport,
+      outcome: baselineAssessment.status === "failed" ? "failed" as const : baseReport.outcome,
+      effectBaseline: baselineAssessment,
+    };
+    if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
     else {
       io.err(formatDiagnostics(result.diagnostics, { cwd: process.cwd(), sources: result.sources }));
       if (values.evidence) io.err(formatCheckEvidence(result));
       if (assessment) io.err(formatAssuranceAssessment(assessment));
+      if (baselineAssessment) io.err(formatEffectBaselineAssessment(baselineAssessment));
     }
-    return result.errors === 0 && (assessment?.passed ?? true) ? exitCode.success : exitCode.failed;
+    return result.errors === 0 && (assessment?.passed ?? true) && (baselineAssessment?.status !== "failed")
+      ? exitCode.success : exitCode.failed;
 }

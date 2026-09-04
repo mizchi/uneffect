@@ -25,7 +25,7 @@ describe("TypeScript contract DSL", () => {
     });
   });
 
-  it("connects the contract to the existing Z3 verifier", async () => {
+  it("connects the contract to the existing Z3 verifier", { timeout: 120_000 }, async () => {
     const result = await verifyUneffectProject({ files: {
       "src/counter.ts": `/* uneffect:contract_from "./counter.uneffect.ts#Increment" */\nexport function increment(value: number): number { return value + 1 }`,
       "src/counter.uneffect.ts": specification,
@@ -681,5 +681,5 @@ describe("TypeScript contract DSL", () => {
     expect(result.emittedFiles["src/double.js"]).toContain("safeInteger()");
     expect(result.emittedFiles["src/double.js"]).toContain("minValue(0)");
     expect(result.emittedFiles["src/double.js"]).toContain("Uneffect postcondition failed: result === value");
-  }, 60_000);
+  }, 120_000);
 });

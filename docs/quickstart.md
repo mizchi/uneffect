@@ -12,9 +12,9 @@ evidence, and keep runtime validation at untrusted inputs.
 
 Uneffect requires Node.js 24 or newer. Default `uneffect check` uses Corsa plus
 Oxc and fail-closes unclassified calls as `unknown`. `--typescript-program`
-loads a JavaScript TypeScript 6 Program for full effect and contract analysis;
-that path still treats TypeScript 6 (`<7`) as a peer dependency and compares the
-consumer package version with the analyzer module.
+loads the separately pinned JavaScript TypeScript 6 package for full effect and
+contract analysis. The default native path uses pinned TypeScript 7 platform
+binaries.
 
 ```sh
 npm install --save-dev @mizchi/uneffect typescript
@@ -76,6 +76,26 @@ selection:
 npx uneffect check --project tsconfig.json --infer src/entry.ts
 npx uneffect check --project tsconfig.json --infer
 ```
+
+To catch effect regressions before writing annotations throughout the project,
+create and commit a baseline:
+
+```sh
+npx uneffect check --project tsconfig.json \
+  --write-effect-baseline .uneffect/effects.json
+```
+
+Use the same selected project in CI:
+
+```sh
+npx uneffect check --project tsconfig.json \
+  --effect-baseline .uneffect/effects.json
+```
+
+This exits 1 when a function gains a capability, a new effectful function is
+introduced, analysis gains a new unknown-reason code, or the analyzer version
+changes. Review and regenerate the file only when that expansion is intended.
+It is a monotonic regression gate, not a proof of functional correctness.
 
 For CI integrations that must not parse human-readable prose, request the
 versioned decision report. It is emitted even when the command exits 1:

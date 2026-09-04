@@ -146,9 +146,18 @@ function typeDomain(checker: ts.TypeChecker, type: ts.Type): NumericDomain | und
 }
 function typeNodeDomain(checker: ts.TypeChecker, node: ts.TypeNode | undefined): NumericDomain | undefined {
   if (node && ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
-    let symbol = checker.getSymbolAtLocation(node.typeName);
-    if (symbol?.flags && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
-    if ((symbol?.name === "Nat" || symbol?.name === "Float") && symbol.declarations?.some((item) => /(?:^|\/)index\.(?:d\.)?ts$/.test(item.getSourceFile().fileName.replaceAll("\\", "/")))) {
+    const alias = checker.getSymbolAtLocation(node.typeName);
+    const importedFromPublicPackage = Boolean(alias?.declarations?.some((declaration) => {
+      if (!ts.isImportSpecifier(declaration)) return false;
+      const importDeclaration = declaration.parent.parent.parent;
+      return ts.isImportDeclaration(importDeclaration)
+        && ts.isStringLiteral(importDeclaration.moduleSpecifier)
+        && importDeclaration.moduleSpecifier.text === "@mizchi/uneffect";
+    }));
+    const symbol = alias && (alias.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(alias) : alias;
+    const fromNumericModule = symbol?.declarations?.some((item) =>
+      /(?:^|\/)numeric\.(?:d\.)?ts$/.test(item.getSourceFile().fileName.replaceAll("\\", "/")));
+    if (importedFromPublicPackage && fromNumericModule && (symbol?.name === "Nat" || symbol?.name === "Float")) {
       return symbol.name === "Nat" ? "nat" : "float";
     }
   }

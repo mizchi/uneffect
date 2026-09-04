@@ -2,7 +2,7 @@
 
 All notable changes to Uneffect are documented in this file.
 
-## 0.3.0 - 2026-09-03
+## 0.3.0 - 2026-09-04
 
 ### Added
 
@@ -22,12 +22,17 @@ All notable changes to Uneffect are documented in this file.
 - Added declarative builtin semantic catalogs covering common JavaScript, DOM,
   Web, and Node APIs, including filesystem authority inferred from open flags.
 - Added dogfood checks for Uneffect's leaf utilities and filesystem boundaries.
+- Added a versioned inferred-effect baseline for low-annotation adoption. CI can
+  now reject new capabilities, effectful new functions, and newly unknown calls
+  without requiring a source declaration to predict the regression.
+- Added an explicit release-please and npm OIDC Trusted Publishing path with a
+  tag/package-version guard.
 
 ### Changed
 
-- Capped the TypeScript peer range below 7 because TypeScript 7 changes the
-  compiler API package surface; unsupported compiler majors now fail at
-  installation instead of crashing during analyzer initialization.
+- Made Corsa plus Oxc on the pinned TypeScript 7 native compiler the default
+  check frontend. The separately pinned TypeScript 6 package remains the
+  compatibility path for proof domains that still require a JavaScript Program.
 - Narrowed the package-root API to durable numeric helpers and high-level
   checking, temporal, property-generation, extension, and runtime facades.
   Low-level solver, CFG, IR, optimizer, and backend-specific generators now
@@ -45,13 +50,24 @@ All notable changes to Uneffect are documented in this file.
 - Expanded fresh-result, hidden getter/coercion, mutation, and callback effects
   for Array, Object, Reflect, JSON, collection constructors, and non-mutating
   copy operations.
+- Isolated the in-memory verifier's package contract from consumer source paths,
+  preventing files such as `src/numeric.ts` from shadowing Uneffect's own
+  numeric domains. Contract-free sources also bypass solver fact construction,
+  substantially reducing project-check latency.
+- Corrected the adoption corpus contract for the transitive
+  `JSON.parse` `Throw<SyntaxError>` effect and now fail closed on unproved
+  external generator consumption.
+- Kept per-test process isolation for the CI WASM solver while making the local
+  native-Z3 release gate file-isolated and removing its duplicate dogfood run.
 
 ### Safety boundary
 
 Uneffect 0.3 remains an experimental, gradual checker. Package contracts may
 contain reviewed assumptions and do not prove third-party implementations.
 Resource and temporal checks cover only the emitted finite projections;
-dynamic dispatch, proxies and prototype mutation, arbitrary heap aliasing,
+resource ownership contracts do not imply that the contracted call is
+effect-free; without a separate effect contract such calls remain unknown.
+Dynamic dispatch, proxies and prototype mutation, arbitrary heap aliasing,
 complete Promise/event-loop timing, native/Wasm internals, and general
 floating-point correctness remain unsupported or unknown. A green check is not
 a whole-program JavaScript verification result.

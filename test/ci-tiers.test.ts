@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciExternalVerifierTestFiles, ciIntegrationShards, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciMeasuredNativeProjectTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { ciExternalVerifierTestFiles, ciIntegrationShards, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciMeasuredNativeProjectTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldIsolateTestCases, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 import { appendCiTimingEvent, classifyCiTimingFailure, readCiTimingEvents } from "../ci/timing-report.js";
 import { classifySolverRetryAttempts, createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
 import { boundedRepetitions } from "../ci/run-solver-stress.js";
@@ -202,6 +202,16 @@ describe("CI test tier manifest", () => {
     expect(didVitestRunExactlyOneTest("\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m1 passed\u001b[39m\u001b[22m \u001b[2m| \u001b[22m\u001b[33m45 skipped\u001b[39m")).toBe(true);
     expect(didVitestRunExactlyOneTest("Tests  46 skipped (46)")).toBe(false);
     expect(didVitestRunExactlyOneTest("Tests  2 passed | 44 skipped (46)")).toBe(false);
+  });
+
+  it("keeps per-test isolation for CI but permits a native local release gate to use file isolation", () => {
+    expect(parseCiTestIsolation(undefined)).toBe("test");
+    expect(parseCiTestIsolation("test")).toBe("test");
+    expect(parseCiTestIsolation("file")).toBe("file");
+    expect(() => parseCiTestIsolation("none")).toThrow(/test or file/);
+    expect(shouldIsolateTestCases("test/contracts.test.ts", "test")).toBe(true);
+    expect(shouldIsolateTestCases("test/contracts.test.ts", "file")).toBe(false);
+    expect(shouldIsolateTestCases("test/effects.test.ts", "test")).toBe(false);
   });
 
   it("retries only process-level external verifier timeouts", () => {

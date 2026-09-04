@@ -25,6 +25,7 @@
     "ownership": { "type": "array", "items": { "$ref": "#/$defs/ownershipDiagnostic" } },
     "asyncIterators": { "type": "array", "items": { "$ref": "#/$defs/asyncIterator" } },
     "resourceProtocols": { "type": "array", "items": { "$ref": "#/$defs/resourceProtocol" } },
+    "effectBaseline": { "$ref": "./uneffect-effect-baseline-v1.schema.json#/$defs/assessment" },
     "corsaEffectParity": { "$ref": "#/$defs/corsaEffectParity" },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] },
     "project": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/project" }] }

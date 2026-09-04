@@ -8,6 +8,9 @@ import { loadUneffectModules } from "./modules.js";
 import { checkCorsaProject } from "./corsa-check.js";
 import { createCorsaCheckJsonReport, formatCorsaCheckEvidence } from "./corsa-check-report.js";
 import { inspectProjectConfig, writeEphemeralCorsaProject } from "./corsa-project.js";
+import {
+  formatEffectBaselineAssessment, processEffectBaseline,
+} from "./effect-baseline.js";
 
 const checkArgOptions = {
   infer: { type: "boolean" }, strict: { type: "boolean" }, evidence: { type: "boolean" },
@@ -26,6 +29,8 @@ const checkArgOptions = {
   "require-exact-build-artifacts": { type: "boolean" },
   "typescript-program": { type: "boolean" },
   json: { type: "boolean" },
+  "effect-baseline": { type: "string" },
+  "write-effect-baseline": { type: "string" },
 } as const;
 
 function usesTypeScriptProgramPath(values: Record<string, unknown>): boolean {
@@ -47,9 +52,11 @@ function missingFileError(file: string): NodeJS.ErrnoException {
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--corsa-parity] [--corsa-executable <tsgo>] [--typescript-program] [--contract-summary <summary.json>] [--resource-contract <artifact.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--assumptions <registry.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--effect-baseline <file>] [--write-effect-baseline <file>] [--assurance <profile>] [--json]",
   details: [
-    "--infer      only check functions that already declare effects",
+    "--infer      infer every selected function, including unannotated functions",
+    "--effect-baseline  fail when inference adds effects or unknown reasons beyond a reviewed baseline",
+    "--write-effect-baseline  write the current inferred effects as a reviewable baseline",
     "--strict     report an unknown effect name as an error instead of a warning",
     "--evidence   also print the proved obligations and the inferred effect of every function",
     "--assurance  fail on non-proof evidence: no-unknown, declared, or verified",
@@ -77,6 +84,9 @@ export const checkCommand: CliCommand = {
     const { values, positionals } = parseCommandArgs(args, checkArgOptions);
     if (values.help) { io.out(formatCommandHelp(checkCommand)); return exitCode.success; }
     if (positionals.length === 0 && values.project === undefined) throw new CliUsageError("check needs at least one file or --project");
+    if (values["effect-baseline"] !== undefined && values["write-effect-baseline"] !== undefined) {
+      throw new CliUsageError("--effect-baseline and --write-effect-baseline are mutually exclusive");
+    }
     if (values["corsa-parity"] && values.project === undefined) {
       throw new CliUsageError("Corsa parity requires --project so compiler and source membership are explicit");
     }
@@ -129,7 +139,7 @@ export const checkCommand: CliCommand = {
     try {
       result = await checkCorsaProject({
         configFile,
-        requireAnnotations: !values.infer,
+        requireAnnotations: !values.infer && values["effect-baseline"] === undefined && values["write-effect-baseline"] === undefined,
         ...(files.length === 0 ? {} : { fileNames: files }),
         ...(values["corsa-executable"] === undefined ? {} : { corsaExecutable: String(values["corsa-executable"]) }),
         ...(builtinRegistry === undefined ? {} : { builtinRegistry }),
@@ -155,9 +165,27 @@ export const checkCommand: CliCommand = {
       resourceProtocols: result.resourceProtocols,
       project: result.project,
     }, assurance as AssuranceProfile);
-    if (values.json) io.out(`${JSON.stringify(createCorsaCheckJsonReport(result, assessment), null, 2)}\n`);
+    const baselineFile = values["effect-baseline"] === undefined ? undefined : resolve(String(values["effect-baseline"]));
+    const writeBaselineFile = values["write-effect-baseline"] === undefined ? undefined : resolve(String(values["write-effect-baseline"]));
+    const baseReport = createCorsaCheckJsonReport(result, assessment);
+    let baselineRun;
+    try {
+      baselineRun = await processEffectBaseline({
+        baselineFile, writeBaselineFile, summaries: baseReport.effects, cwd: process.cwd(),
+        checkPassed: result.errors === 0 && (assessment?.passed ?? true),
+      });
+    } catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+    const baselineAssessment = baselineRun.assessment;
+    if (baselineRun.written) io.err(`effect baseline: wrote ${baselineRun.written.entries} function(s) to ${baselineRun.written.fileName}\n`);
+    if (baselineRun.writeSkipped) io.err("effect baseline: not written because check failed\n");
+    const report = baselineAssessment === undefined ? baseReport : {
+      ...baseReport,
+      outcome: baselineAssessment.status === "failed" ? "failed" as const : baseReport.outcome,
+      effectBaseline: baselineAssessment,
+    };
+    if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
     else {
-      if (result.diagnostics.length === 0 && !values.evidence) io.err("no diagnostics\n");
+      if (result.diagnostics.length === 0 && !values.evidence && !baselineAssessment) io.err("no diagnostics\n");
       else {
         for (const diagnostic of result.diagnostics) {
           io.err(`error syntax ${diagnostic.fileName}\n  message: ${diagnostic.message}\n`);
@@ -165,7 +193,9 @@ export const checkCommand: CliCommand = {
       }
       if (values.evidence) io.err(formatCorsaCheckEvidence(result));
       if (assessment) io.err(formatAssuranceAssessment(assessment));
+      if (baselineAssessment) io.err(formatEffectBaselineAssessment(baselineAssessment));
     }
-    return result.errors === 0 && (assessment?.passed ?? true) ? exitCode.success : exitCode.failed;
+    return result.errors === 0 && (assessment?.passed ?? true) && (baselineAssessment?.status !== "failed")
+      ? exitCode.success : exitCode.failed;
   },
 };

@@ -18,7 +18,7 @@ const fixtures: Record<AdoptionFixtureName, AdoptionFixture> = {
     function endpointOf(value: { endpoint: string }) { return value.endpoint }
     function label(value: string) { return "endpoint=" + value }
     function output(value: string) { console.log(value) }
-    /* uneffect:effect FsRead<"$CWD/config/app.json"> | Console */
+    /* uneffect:effect FsRead<"$CWD/config/app.json"> | Console | Throw<SyntaxError> */
     export function main() { const raw = readFileSync("$CWD/config/app.json", "utf8"); output(label(endpointOf(parseSettings(raw)))) }
   ` } },
   "browser-app": { expectedDiagnostics: [], files: { "src/app.ts": `

@@ -43,6 +43,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Command line](./cli.md): the single `uneffect` binary, its subcommands, streams, and exit codes.
 - [Diagnostics and fixtures](./diagnostics.md): diagnostic format, the `fixtures/` corpus, and the message-quality rubric.
 - [Continuous integration](./ci.md): test-tier coverage, pinned tools, and solver/runtime isolation.
+- [Releasing](./releasing.md): release gate, release-please, GitHub App, and npm OIDC publishing setup.
 - [Effect TS comparison](./effect-ts-comparison.md): different goals and a repeatable comparison protocol.
 - [Resource protocol IR](./resource-protocols.md): common consume, transfer, split, escape, and invalidation semantics.
 

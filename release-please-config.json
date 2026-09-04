@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-v-in-tag": true,
+  "packages": {
+    ".": {
+      "package-name": "@mizchi/uneffect",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "crates/uneffect-core/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "generic",
+          "path": "src/evidence.ts"
+        },
+        {
+          "type": "generic",
+          "path": "src/effect-baseline.ts"
+        }
+      ]
+    }
+  }
+}

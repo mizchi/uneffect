@@ -1,59 +1,54 @@
-# Releasing Uneffect
+# Releasing
 
-This repository currently uses an explicit maintainer-driven release. There is
-no GitHub Actions publish workflow and no repository release secret. Do not
-assume that creating a GitHub Release publishes npm.
+The npm package is released from GitHub Actions through npm Trusted Publishing.
+No npm token is stored in this repository.
 
-The npm package and Rust crate share one version. A release changes all of:
+## One-time external setup
 
-- `package.json`
-- `crates/uneffect-core/Cargo.toml`
-- `Cargo.lock`
-- `src/evidence.ts` (`uneffectVersion`)
-- the release-boundary documentation and `CHANGELOG.md`
+- Install the `mizchi-release-please` GitHub App for this repository and store
+  its private key as `RELEASE_PLEASE_APP_PRIVATE_KEY`.
+- On npm, configure `@mizchi/uneffect` Trusted Publisher for owner `mizchi`,
+  repository `uneffect`, and workflow filename `publish.yml`.
+- Keep the npm account/package 2FA policy compatible with trusted publishing.
 
-`test/release-readiness.test.ts` enforces the important metadata and version
-links. Before publishing, work from a clean, up-to-date `main` checkout and run:
+## Release gate
 
 ```sh
-pnpm install --frozen-lockfile
-CI=1 just ci-fast
-just build
-just package-check
-npm pack --dry-run
+just release-check
 ```
 
-`just package-check` also installs the real tarball into an isolated temporary
-consumer and imports the root, `experimental`, and `spec` entrypoints against a
-freshly resolved compatible TypeScript peer.
+The checked-in npm, Rust, evidence, and effect-baseline versions must agree.
+The publish job additionally refuses a GitHub Release whose tag is not exactly
+`v<package.json version>`.
 
-Inspect the pack listing. It must contain `dist/src`, `README.md`, `LICENSE`,
-`CHANGELOG.md`, `docs`, and `schemas`, and must not contain source fixtures,
-tests, local evidence, credentials, or environment files. Smoke-test the packed
-CLI and public entrypoints when the package surface changed.
+## Normal release flow
 
-Confirm npm identity and the existing release before the irreversible publish
-step:
+After conventional `feat:`/`fix:` commits have landed on `main`, explicitly
+start the release workflow:
 
 ```sh
-npm whoami
-npm view @mizchi/uneffect version dist-tags --json
+gh workflow run release-please.yml --repo mizchi/uneffect
 ```
 
-Publishing and remote tagging are separate, explicit maintainer actions:
+Review and merge the generated release PR. That workflow creates the tag and
+GitHub Release; the published release event then runs `publish.yml`, verifies
+the package, and executes `npm publish` with OIDC provenance.
+
+Version synchronization is configured in `release-please-config.json` and
+`.release-please-manifest.json`. Do not hand-edit release versions after this
+bootstrap release.
+
+## 0.3.0 bootstrap
+
+Version 0.3.0 was prepared before release-please was installed. After the
+one-time npm Trusted Publisher setup, merge this release-ready state to `main`,
+wait for CI, and create exactly one GitHub Release:
 
 ```sh
-npm publish --access public
-git tag -a v0.3.0 -m "v0.3.0"
-git push origin main v0.3.0
-npm view @mizchi/uneffect@0.3.0 version dist.integrity dist.tarball --json
+gh release create v0.3.0 --repo mizchi/uneffect --target main \
+  --title v0.3.0 --notes "First operational TypeScript 7/Corsa release. See CHANGELOG.md for the full supported and unsupported boundary."
 ```
 
-Do not reuse a version after npm accepts it. If publication succeeds but a
-later validation fails, prefer a corrective patch or npm deprecation over
-silently moving the Git tag.
-
-OIDC Trusted Publishing and release-please are a future automation option, but
-must be introduced only after the npm package has an exact Trusted Publisher
-binding for this repository and workflow filename. A workflow committed before
-that external setup would provide a misleading release path.
+The release event starts `publish.yml`. Do not run a second local
+`npm publish`, reuse the version after npm accepts it, or move the tag after a
+failed post-publish validation. Publish a corrective patch instead.

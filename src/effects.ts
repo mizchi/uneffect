@@ -2150,7 +2150,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (edge.kind === "direct" && !edge.callee && edge.unresolvedName) {
         const source = nodes.get(edge.caller)?.getSourceFile();
         const call = source ? callsBySpan.get(`${source.fileName}:${edge.span.start}:${edge.span.end}`) : undefined;
-        if (call && unresolvedUserCall(checker, adapter, call, nodes.get(edge.caller)!)) {
+        if (call && !resolveExternalCall(call)
+          && unresolvedUserCall(checker, adapter, call, nodes.get(edge.caller)!)) {
           unknownUnresolvedCalls.add(edge.caller);
         }
       }

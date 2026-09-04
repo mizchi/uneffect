@@ -9,7 +9,7 @@ assumptions, blockers, and exclusions.
 ## Start here
 
 ```sh
-pnpm add --save-dev @mizchi/uneffect typescript@^6
+pnpm add --save-dev @mizchi/uneffect typescript@^7
 pnpm exec uneffect doctor
 pnpm exec uneffect check --project tsconfig.json --infer
 ```
@@ -19,6 +19,21 @@ Normal comments and JSDoc remain untouched. Use `.uneffect.ts` modules when a
 state machine or larger typed specification is clearer than inline comments.
 
 ## Effect tracking
+
+For an existing unannotated codebase, start by committing an inferred-effect
+baseline. Later checks fail when a function gains a capability or a new unknown
+analysis reason, so the first useful CI signal does not depend on predicting a
+bug in a comment:
+
+```sh
+pnpm exec uneffect check --project tsconfig.json \
+  --write-effect-baseline .uneffect/effects.json
+pnpm exec uneffect check --project tsconfig.json \
+  --effect-baseline .uneffect/effects.json
+```
+
+The baseline is a regression allowance, not proof that existing effects are
+safe or that behavior within an unchanged effect set is correct.
 
 An effect annotation is an upper bound. A missing transitive effect is an
 error; a declared but unused effect is a warning. Unannotated functions are not

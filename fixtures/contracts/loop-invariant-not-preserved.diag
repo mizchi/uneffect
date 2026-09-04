@@ -6,9 +6,9 @@ error contract/invariant fixtures/contracts/loop-invariant-not-preserved.ts:7 in
   7 |   while (i < n) {
     |   ^
   rule: an iteration that starts with the invariant and the loop guard true must end with the invariant true
-  counterexample: n@loop = 1, i@loop = 0
-  state: n = n@loop = 1, i = i@loop + 2 = 2
-  still holds: i@loop >= 0 && i@loop <= n@loop (0 >= 0 && 0 <= 1), i@loop < n@loop (0 < 1)
+  counterexample: n = 1, i@loop = 0
+  state: i = i@loop + 2 = 2
+  still holds: n >= 0 (1 >= 0), i@loop >= 0 && i@loop <= n (0 >= 0 && 0 <= 1), i@loop < n (0 < 1)
   fails: invariant i >= 0 && i <= n breaks at i <= n, which evaluates to 2 <= 1
   hint: establish the invariant before the loop and restore it in the body, or weaken it until both hold
 

@@ -127,6 +127,46 @@ describe("uneffect command line", () => {
     expect(misplacedBuildGate.stderr).toContain("requires --project without positional files");
   });
 
+  it("fails when inferred effects expand beyond a reviewed baseline", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-effect-baseline-"));
+    const fileName = join(directory, "main.ts"), baselineFile = join(directory, "effects.json");
+    try {
+      writeFileSync(fileName, `export function main(): number { return 1 }`);
+      const created = capture();
+      expect(await runCli(["check", "--write-effect-baseline", baselineFile, fileName], created), created.stderr)
+        .toBe(exitCode.success);
+      expect(JSON.parse(readFileSync(baselineFile, "utf8"))).toMatchObject({
+        schema: "uneffect-effect-baseline/v1",
+        entries: [expect.objectContaining({ functionName: "main", effects: [] })],
+      });
+
+      writeFileSync(fileName, `export function main(): number { console.log("debug"); return 1 }`);
+      const regressed = capture();
+      expect(await runCli(["check", "--effect-baseline", baselineFile, fileName], regressed))
+        .toBe(exitCode.failed);
+      expect(regressed.stderr).toContain("effect baseline: failed");
+      expect(regressed.stderr).toContain("main added Console");
+
+      const typescriptProgram = capture();
+      expect(await runCli(["check", "--typescript-program", "--effect-baseline", baselineFile, fileName], typescriptProgram))
+        .toBe(exitCode.failed);
+      expect(typescriptProgram.stderr).toContain("main added Console");
+
+      const json = capture();
+      expect(await runCli(["check", "--effect-baseline", baselineFile, "--json", fileName], json))
+        .toBe(exitCode.failed);
+      expect(JSON.parse(json.stdout)).toMatchObject({
+        outcome: "failed",
+        effectBaseline: {
+          status: "failed",
+          regressions: [expect.objectContaining({ kind: "effect-expansion", added: ["Console"] })],
+        },
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("loads an exact caller-owned registry and fails closed on runtime drift", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-registry-"));
     const fileName = join(directory, "main.ts"), config = join(directory, "registry.json");

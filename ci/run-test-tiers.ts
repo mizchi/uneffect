@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { createSolverRetryEvidenceSession } from "./solver-retry-evidence.js";
-import { ciExternalVerifierTestFiles, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, type CiTestTier } from "./test-tiers.js";
+import { ciExternalVerifierTestFiles, ciIsolatedProcessTimeoutMs, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiTierFiles, shouldIsolateTestCases, type CiTestTier } from "./test-tiers.js";
 import { appendCiTimingEvent, classifyCiTimingFailure, type CiTimingRetryReason } from "./timing-report.js";
 import { runBoundedVerifierAttempts } from "./verifier-retry.js";
 import { spawnSyncWithDeadline } from "./process-deadline.js";
@@ -13,14 +13,16 @@ const requested = process.argv[2] as CiTestTier | undefined;
 const requestedFile = process.argv[3];
 const requestedShard = process.env.UNEFFECT_CI_SHARD;
 const timingPath = process.env.UNEFFECT_CI_TIMING_PATH;
+const isolation = parseCiTestIsolation(process.env.UNEFFECT_TEST_ISOLATION);
 if (requested && !allTiers.includes(requested)) throw new Error(`unknown CI test tier: ${requested}`);
 if (requestedFile && !requested) throw new Error("a requested test file requires an explicit CI tier");
 const tiers: readonly CiTestTier[] = requested ? [requested] : allTiers;
 for (const tier of tiers) {
   const files = resolveCiTierFiles(tier, requestedFile, requestedShard);
   for (const file of files) {
+    const isolateTestCases = file ? shouldIsolateTestCases(file, isolation) : false;
     let testNames: readonly (string | undefined)[] = file && ciIsolatedTestNames[file] ? ciIsolatedTestNames[file] : [undefined];
-    if (file && ciIsolatedTestFiles.includes(file)) {
+    if (file && isolateTestCases) {
       const listed = spawnSync(pnpm, ["vitest", "list", file], {
         cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, encoding: "utf8",
       });
@@ -34,12 +36,12 @@ for (const tier of tiers) {
       if (testNames.length === 0) throw new Error(`no tests discovered for isolated file: ${file}`);
     }
     for (const testName of testNames) {
-      const testPattern = testName && file && ciIsolatedTestFiles.includes(file)
+      const testPattern = testName && file && isolateTestCases
         ? testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
         : testName;
       const args = [
         "vitest", "run", ...(file ? [file] : []), ...(testPattern ? ["-t", testPattern] : []),
-        ...(file && ciIsolatedTestFiles.includes(file) ? ["--testTimeout", String(ciIsolatedTestTimeoutMs)] : []),
+        ...(file && isolateTestCases ? ["--testTimeout", String(ciIsolatedTestTimeoutMs)] : []),
       ];
       const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => testName
         ? spawnSyncWithDeadline(pnpm, args, ciIsolatedProcessTimeoutMs, {
@@ -132,7 +134,7 @@ for (const tier of tiers) {
       }
       if (result.error) throw result.error;
       if (result.status !== 0) process.exit(result.status ?? 1);
-      if (testName && file && ciIsolatedTestFiles.includes(file) && !didVitestRunExactlyOneTest(result.stdout ?? "")) {
+      if (testName && file && isolateTestCases && !didVitestRunExactlyOneTest(result.stdout ?? "")) {
         throw new Error(`isolated selector did not execute exactly one test: ${file} -t ${testName}`);
       }
     }

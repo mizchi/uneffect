@@ -1466,6 +1466,14 @@ for a first useful release.
 
 ## Immediate execution queue
 
+The 0.3 operationalization slice adds a versioned inferred-effect baseline.
+Unlike annotation-conformance fixtures, its load-bearing negative control keeps
+the specification unchanged and mutates an unannotated implementation: adding
+`Console` must fail both the default Corsa/Oxc frontend and the TypeScript
+Program path. New unknown-reason codes and effectful new functions also fail;
+line-only movement does not. This is a regression detector over the analyzer's
+supported semantics, not a claim that unchanged effect sets imply correctness.
+
 Completed bounded child [#61](https://github.com/mizchi/uneffect/issues/61)
 resolves one direct named-imported unary property predicate to its canonical
 declaration. Generated Vitest executes that real predicate; barrels,

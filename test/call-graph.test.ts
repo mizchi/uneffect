@@ -174,7 +174,7 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        import type ts from "typescript"
+        import type ts from "@typescript/typescript6"
         export function statements(source: ts.SourceFile) { return [...source.statements] }
       `);
       const program = ts.createProgram([entry], {

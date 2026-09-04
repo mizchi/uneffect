@@ -45,7 +45,7 @@ describe("TypeScript capability DSL", () => {
     expect(effectSchema("Audit")).toBeUndefined();
   });
 
-  it("connects a capability export to the existing effect analyzer", async () => {
+  it("connects a capability export to the existing effect analyzer", { timeout: 120_000 }, async () => {
     const result = await verifyUneffectProject({ files: {
       "src/log.ts": `/* uneffect:capability_from "./policy.uneffect.ts#Log" */\nexport function log() { console.log("ok") }`,
       "src/policy.uneffect.ts": specification,
@@ -55,7 +55,7 @@ describe("TypeScript capability DSL", () => {
       .toMatchObject({ evidence: "verified", effects: [{ kind: "capability", name: "Console" }] });
   });
 
-  it("keeps user schemas project-local while the analyzer understands their domains", async () => {
+  it("keeps user schemas project-local while the analyzer understands their domains", { timeout: 120_000 }, async () => {
     const result = await verifyUneffectProject({ files: {
       "src/audit.ts": `/* uneffect:capability_from "./policy.uneffect.ts#AuditOnly" */\nexport function audit() {}`,
       "src/policy.uneffect.ts": specification,

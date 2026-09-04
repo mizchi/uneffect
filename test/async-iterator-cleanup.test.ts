@@ -639,7 +639,7 @@ describe("async iterator cleanup", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it("records a used trusted iterator boundary in the assumption ledger", async () => {
+  it("does not let a trusted iterator ownership boundary imply an effect proof", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-iterator-assumption-"));
     try {
       const fileName = join(directory, "entry.ts");
@@ -656,7 +656,13 @@ describe("async iterator cleanup", () => {
       expect(result.assumptions.entries).toContainEqual(expect.objectContaining({
         domain: "resource-callable", evidence: "trusted", scope: { fileName, functionName: "main", span: expect.any(Object) },
       }));
-      expect(assessCheckAssurance(result, "no-unknown")).toMatchObject({ status: "assumed", passed: true });
+      expect(assessCheckAssurance(result, "no-unknown")).toMatchObject({
+        status: "unknown", passed: false,
+        blockers: [expect.objectContaining({
+          kind: "effect", classification: "unknown", functionName: "main",
+          message: expect.stringContaining("unresolved-call"),
+        })],
+      });
       expect(assessCheckAssurance(result, "verified")).toMatchObject({ status: "unknown", passed: false });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
@@ -1301,7 +1307,7 @@ describe("async iterator cleanup", () => {
     });
   });
 
-  it("accounts for trusted iterator consumers in project assumption policy", async () => {
+  it("keeps trusted iterator ownership and unreviewed effects as separate assurance facts", async () => {
     const fileName = "/entry.ts";
     const files = { [fileName]: `
       /* uneffect: consume value */
@@ -1318,7 +1324,13 @@ describe("async iterator cleanup", () => {
     expect(trusted.assumptions.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ domain: "resource-callable", evidence: "trusted" }),
     ]));
-    expect(trusted.assurance).toMatchObject({ status: "assumed", passed: true, assumptions: 1 });
+    expect(trusted.assurance).toMatchObject({
+      status: "unknown", passed: false, assumptions: 1,
+      blockers: [expect.objectContaining({
+        domain: "effect", classification: "unknown", subject: "main",
+        message: expect.stringContaining("unresolved-call"),
+      })],
+    });
 
     const governed = await verifyUneffectProject({ files, assumptionPolicy: { requireExpiration: true } });
     expect(governed.assumptions.violations).toEqual(expect.arrayContaining([

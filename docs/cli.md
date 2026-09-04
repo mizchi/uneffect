@@ -38,7 +38,11 @@ npx quint run protocol.qnt
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 
-`check` takes `--infer` (only check functions that already declare effects),
+`check` takes `--infer` (infer every selected function, including unannotated functions),
+`--write-effect-baseline <file>` (write a versioned, reviewable snapshot of
+inferred effects and unknown-reason codes),
+`--effect-baseline <file>` (fail on newly inferred effects, effectful new
+functions, new unknown reasons, or an analyzer-version mismatch),
 `--strict` (unknown effect, typed-array, or ownership evidence is an error, not a warning),
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
 are listed, its `include`/`files` roots; report exact TypeScript package/version
@@ -61,7 +65,9 @@ and suppress the text report). JSON always contains normalized diagnostics,
 effect summaries, contract artifacts, typed-array obligations/window
 provenance, ownership diagnostics, async-iterator resource scenarios, the assumption ledger, and the optional assurance assessment;
 therefore it remains useful on exit 1 and does not require `--evidence`. Its
-schema is published as `schemas/uneffect-check-v1.schema.json`. Both `check` and `evidence` accept
+schema is published as `schemas/uneffect-check-v1.schema.json`. Baseline runs
+add `effectBaseline`; the baseline contract itself is published as
+`schemas/uneffect-effect-baseline-v1.schema.json`. Both `check` and `evidence` accept
 `--config <uneffect.registry.json>` for a versioned caller-owned semantic
 registry. `check` also accepts `--assumptions <assumptions.json>` for the
 versioned caller-owned review records referenced by source trust IDs.

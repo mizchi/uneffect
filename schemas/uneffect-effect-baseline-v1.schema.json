@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-effect-baseline-v1.schema.json",
+  "title": "Uneffect inferred-effect regression baseline v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "uneffectVersion", "entries"],
+  "properties": {
+    "schema": { "const": "uneffect-effect-baseline/v1" },
+    "uneffectVersion": { "type": "string", "minLength": 1 },
+    "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "functionName", "occurrence", "effects", "unknownReasons"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "functionName": { "type": "string", "minLength": 1 },
+        "occurrence": { "type": "integer", "minimum": 0 },
+        "effects": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "unknownReasons": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "status", "regressions"],
+      "properties": {
+        "schema": { "const": "uneffect-effect-baseline-assessment/v1" },
+        "status": { "enum": ["passed", "failed"] },
+        "baselineFile": { "type": "string" },
+        "regressions": { "type": "array", "items": { "$ref": "#/$defs/regression" } }
+      }
+    },
+    "regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "fileName", "functionName", "occurrence", "added", "message"],
+      "properties": {
+        "kind": { "enum": ["effect-expansion", "new-unknown", "new-effectful-function", "tool-version-mismatch"] },
+        "fileName": { "type": "string" },
+        "functionName": { "type": "string" },
+        "occurrence": { "type": "integer", "minimum": 0 },
+        "added": { "type": "array", "items": { "type": "string" } },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

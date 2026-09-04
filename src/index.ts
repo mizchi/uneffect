@@ -212,3 +212,11 @@ export { analyzeNumberSemanticsInProgram } from "./number-semantics.js";
 export type { NumberSemanticFact, NumberSemanticsAnalysis, NumberValueClass } from "./number-semantics.js";
 export { analyzeAbortableFetches, analyzeAbortableFetchesInProgram, generateAbortableFetchProductQuint } from "./abortable-fetch-product.js";
 export type { AbortableFetch, AbortableFetchAnalysis, AbortableFetchUnknown } from "./abortable-fetch-product.js";
+export {
+  compareEffectBaseline, createEffectBaseline, effectBaselineToolVersion,
+  formatEffectBaselineAssessment, loadEffectBaseline, parseEffectBaseline, processEffectBaseline, writeEffectBaseline,
+} from "./effect-baseline.js";
+export type {
+  EffectBaseline, EffectBaselineAssessment, EffectBaselineEntry, EffectBaselineRegression, EffectBaselineSummary,
+  ProcessEffectBaselineOptions, ProcessEffectBaselineResult,
+} from "./effect-baseline.js";

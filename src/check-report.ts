@@ -16,6 +16,7 @@ import type { AssumptionLedger } from "./assumptions.js";
 import type { TypedArrayObligation, TypedArraySafetyStatistics, TypedArrayWindowProvenance } from "./typed-array-safety.js";
 import type { OwnershipDiagnostic } from "./ownership.js";
 import type { IteratorCheckEvidence } from "./iterator-check.js";
+import type { EffectBaselineAssessment } from "./effect-baseline.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -58,6 +59,7 @@ export interface CheckJsonReport {
   corsaEffectParity?: CorsaEffectParityResult;
   assurance: AssuranceAssessment | null;
   project: TypeScriptProjectProvenance | null;
+  effectBaseline?: EffectBaselineAssessment;
 }
 
 export interface WorkspaceCheckBlocker {
@@ -111,6 +113,7 @@ export interface CheckWorkspaceJsonReport {
   moduleInitializationComposition?: WorkspaceModuleInitializationComposition;
   blockers: WorkspaceCheckBlocker[];
   assurance: WorkspaceCheckAssurance | null;
+  effectBaseline?: EffectBaselineAssessment;
 }
 
 export function createCheckJsonReport(result: CheckResult, assurance?: AssuranceAssessment): CheckJsonReport {

@@ -22,6 +22,7 @@ export const ciTestTiers = {
     "test/declaration-transforms.test.ts",
     "test/deno-permissions.test.ts",
     "test/diagnostics.test.ts",
+    "test/effect-baseline.test.ts",
     "test/effect-ts.test.ts",
     "test/effects.test.ts",
     "test/frontend-adapter.test.ts",
@@ -178,6 +179,18 @@ export const ciIsolatedTestFiles: readonly string[] = [
   "test/contracts.test.ts",
   "test/dogfood.test.ts",
 ];
+
+export type CiTestIsolation = "test" | "file";
+
+export function parseCiTestIsolation(value: string | undefined): CiTestIsolation {
+  if (value === undefined || value === "" || value === "test") return "test";
+  if (value === "file") return "file";
+  throw new Error(`UNEFFECT_TEST_ISOLATION must be test or file; received ${JSON.stringify(value)}`);
+}
+
+export function shouldIsolateTestCases(file: string, isolation: CiTestIsolation): boolean {
+  return isolation === "test" && ciIsolatedTestFiles.includes(file);
+}
 
 /** Files whose child Quint process failures must be captured at file granularity. */
 export const ciExternalVerifierTestFiles: readonly string[] = [

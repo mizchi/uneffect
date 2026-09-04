@@ -23,6 +23,15 @@ same property is proved for arbitrary TypeScript.
 
 ## Capability effects
 
+- The versioned inferred-effect baseline provides an annotation-free regression
+  ratchet. It records normalized effects and stable unknown-reason codes per
+  source/function occurrence, ignores source-offset-only movement, and rejects
+  new capabilities, effectful new functions, new unknown classifications, or a
+  tool-version change. The default Corsa/Oxc path and TypeScript Program path
+  share the same comparison contract. The repository dogfoods it on the leaf
+  utility boundary. Existing allowances and same-effect behavioral changes are
+  explicit non-claims.
+
 - The first shared region resolver follows non-escaping `const` alias chains
   and static property paths for direct call arguments. Static sibling paths
   have distinct canonical machine identities, while dot access and an

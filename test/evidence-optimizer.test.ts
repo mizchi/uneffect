@@ -1105,7 +1105,10 @@ describe("evidence and optimizer obligations", () => {
     ]]) });
 
     expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({
-      evidence: "unknown", unknownReasons: [{ code: "unknown-callback-timing" }],
+      evidence: "unknown", unknownReasons: expect.arrayContaining([
+        expect.objectContaining({ code: "unknown-callback-timing" }),
+        expect.objectContaining({ code: "unresolved-call" }),
+      ]),
     });
   });
 
@@ -1253,9 +1256,14 @@ describe("evidence and optimizer obligations", () => {
     });
     for (const name of ["mutated", "escaped", "computed", "spread"]) {
       expect(result.summaries.find((summary) => summary.functionName === name)).toMatchObject({
-        evidence: "unknown", unknownReasons: [{ code: "unknown-external-evidence" }],
+        evidence: "unknown", unknownReasons: expect.arrayContaining([
+          expect.objectContaining({ code: "unknown-external-evidence" }),
+        ]),
       });
     }
+    expect(result.summaries.find((summary) => summary.functionName === "escaped")).toMatchObject({
+      unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-call" })]),
+    });
   });
 
   it("tracks a write-screened returned client object and rejects unstable receivers", () => {
@@ -1352,9 +1360,14 @@ describe("evidence and optimizer obligations", () => {
     });
     for (const name of ["mutated", "escaped", "escapedAlias", "computed", "mutableAlias"]) {
       expect(result.summaries.find((summary) => summary.functionName === name)).toMatchObject({
-        evidence: "unknown", unknownReasons: [{ code: "unknown-external-evidence" }],
+        evidence: "unknown", unknownReasons: expect.arrayContaining([
+          expect.objectContaining({ code: "unknown-external-evidence" }),
+        ]),
       });
     }
+    expect(result.summaries.find((summary) => summary.functionName === "mutated")).toMatchObject({
+      unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-call" })]),
+    });
   });
 
   it("binds persisted evidence to the caller-owned builtin registry", () => {

@@ -18,6 +18,7 @@
     "effectComposition": { "$ref": "#/$defs/effectComposition" },
     "refinementComposition": { "$ref": "#/$defs/refinementComposition" },
     "moduleInitializationComposition": { "$ref": "./uneffect-workspace-module-order-v1.schema.json" },
+    "effectBaseline": { "$ref": "./uneffect-effect-baseline-v1.schema.json#/$defs/assessment" },
     "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] }
   },

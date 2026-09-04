@@ -152,7 +152,7 @@ describe("general resource lifecycle check", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it("keeps the lifecycle visible in project verification and assurance", async () => {
+  it("keeps lifecycle proof separate from an unreviewed ambient effect boundary", async () => {
     const fileName = "/entry.ts";
     const result = await verifyUneffectProject({ files: { [fileName]: `
       interface Handle {}
@@ -161,7 +161,13 @@ describe("general resource lifecycle check", () => {
       export function main() { const handle = acquireHandle(); releaseHandle(handle) }
     ` } });
     expect(result.resourceProtocols).toMatchObject([{ owner: "main", status: "satisfied", evidence: "trusted" }]);
-    expect(result.assurance).toMatchObject({ status: "assumed", blockers: [] });
+    expect(result.assurance).toMatchObject({
+      status: "unknown",
+      blockers: [expect.objectContaining({
+        domain: "effect", classification: "unknown", subject: "main",
+        message: expect.stringContaining("unresolved-call"),
+      })],
+    });
     expect(result.assumptions.entries).toMatchObject([{ domain: "resource-callable", owner: "source declaration" }]);
   });
 

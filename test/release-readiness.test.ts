@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { uneffectVersion } from "../src/evidence.js";
+import { effectBaselineToolVersion } from "../src/effect-baseline.js";
 
 describe("0.3.0 release metadata", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
@@ -17,6 +19,7 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.name).toBe("@mizchi/uneffect");
     expect(manifest.version).toBe("0.3.0");
     expect(uneffectVersion).toBe(manifest.version);
+    expect(effectBaselineToolVersion).toBe(manifest.version);
     expect(readFileSync("crates/uneffect-core/Cargo.toml", "utf8")).toContain(`version = "${manifest.version}"`);
   });
 
@@ -57,5 +60,35 @@ describe("0.3.0 release metadata", () => {
     expect(overview).toContain("## Async, resources, and temporal models");
     expect(overview).toContain("## Programmatic public API");
     expect(overview).toContain("Unsupported or unknown");
+  });
+
+  it("publishes 0.3 through a version-guarded OIDC workflow", () => {
+    const release = readFileSync(".github/workflows/release-please.yml", "utf8");
+    const publish = readFileSync(".github/workflows/publish.yml", "utf8");
+    const config = JSON.parse(readFileSync("release-please-config.json", "utf8")) as {
+      packages: Record<string, { "extra-files": Array<{ path: string }> }>;
+    };
+    const releaseState = JSON.parse(readFileSync(".release-please-manifest.json", "utf8")) as Record<string, string>;
+    expect(release).toContain("workflow_dispatch:");
+    expect(release).toContain("RELEASE_PLEASE_APP_PRIVATE_KEY");
+    expect(publish).toContain("release:\n    types: [published]");
+    expect(publish).toContain("id-token: write");
+    expect(publish).toContain("node ci/verify-release-tag.mjs");
+    expect(publish).toContain("npm publish");
+    expect(publish).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/u);
+    expect(config.packages["."]?.["extra-files"].map(({ path }) => path)).toEqual(expect.arrayContaining([
+      "crates/uneffect-core/Cargo.toml", "src/evidence.ts", "src/effect-baseline.ts",
+    ]));
+    expect(releaseState).toEqual({ ".": manifest.version });
+
+    const matched = spawnSync(process.execPath, ["ci/verify-release-tag.mjs"], {
+      cwd: process.cwd(), env: { ...process.env, GITHUB_REF_NAME: `v${manifest.version}` }, encoding: "utf8",
+    });
+    expect(matched.status, matched.stderr).toBe(0);
+    const mismatched = spawnSync(process.execPath, ["ci/verify-release-tag.mjs"], {
+      cwd: process.cwd(), env: { ...process.env, GITHUB_REF_NAME: "v9.9.9" }, encoding: "utf8",
+    });
+    expect(mismatched.status).toBe(1);
+    expect(mismatched.stderr).toContain("refusing to publish");
   });
 });

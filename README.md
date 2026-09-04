@@ -56,6 +56,23 @@ npx uneffect check --project tsconfig.json --infer
 npx uneffect check --typescript-program --infer --assurance no-unknown src/example.ts
 ```
 
+For a low-annotation CI rollout, commit an inferred-effect baseline and reject
+new effects or newly unknown calls on later changes:
+
+```sh
+npx uneffect check --project tsconfig.json \
+  --write-effect-baseline .uneffect/effects.json
+git add .uneffect/effects.json
+
+# CI
+npx uneffect check --project tsconfig.json \
+  --effect-baseline .uneffect/effects.json
+```
+
+This catches capability expansion without requiring a matching annotation in
+advance. It does not detect behavior changes that stay within the same inferred
+effect set.
+
 An effect declaration is an upper bound. Missing transitive effects are errors;
 declared but unused effects are warnings. Use
 `/* uneffect:effect none */` for an explicit checked empty bound. An

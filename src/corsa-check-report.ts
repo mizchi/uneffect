@@ -1,6 +1,7 @@
 import { formatEffect } from "./capabilities.js";
 import type { AssuranceAssessment } from "./assurance.js";
 import type { CorsaCheckResult } from "./corsa-check.js";
+import type { EffectBaselineAssessment } from "./effect-baseline.js";
 
 export interface CorsaCheckJsonReport {
   schema: "uneffect-check/v1";
@@ -24,6 +25,7 @@ export interface CorsaCheckJsonReport {
   resourceProtocols: [];
   assurance: AssuranceAssessment | null;
   project: CorsaCheckResult["project"];
+  effectBaseline?: EffectBaselineAssessment;
 }
 
 export function createCorsaCheckJsonReport(

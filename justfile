@@ -47,6 +47,16 @@ package-check:
     node ci/smoke-package.mjs
     cargo package --workspace --allow-dirty --no-verify
 
+# Full local gate before creating a release tag. Native Z3 permits solver-dense
+# suites to use one fresh process per file; CI keeps per-test WASM isolation.
+release-check:
+    UNEFFECT_Z3_BACKEND=native UNEFFECT_TEST_ISOLATION=file pnpm check
+    cargo fmt --all --check
+    cargo test --workspace
+    just build
+    just package-check
+    git diff --check
+
 spec-ir file:
     pnpm tsx src/cli.ts spec ir {{ file }}
 
@@ -124,5 +134,6 @@ dogfood:
 # function and module boundaries. Expand this list only after each file has a
 # load-bearing negative control in test/dogfood.test.ts.
 dogfood-leaf:
+    pnpm tsx src/cli.ts check --effect-baseline dogfood/effect-baseline.json src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts src/diagnostics.ts src/diagnostic-quality.ts src/cli-support.ts src/environment.ts src/fixtures.ts src/ownership-evidence-cache.ts src/model-replay.ts src/project-optimizer.ts
     pnpm tsx src/cli.ts check --typescript-program --infer --assurance no-unknown src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts src/diagnostics.ts src/diagnostic-quality.ts src/cli-support.ts src/environment.ts src/fixtures.ts src/ownership-evidence-cache.ts src/model-replay.ts src/project-optimizer.ts
     pnpm vitest run test/dogfood.test.ts -t "explicit pure boundary|pure construction|disposal traversal|pure diagnostic|pure CLI helpers|environment report|CLI help formatting|CLI dispatch|fixture discovery|ownership cache keys|model trace loading|persisted optimizer evidence"

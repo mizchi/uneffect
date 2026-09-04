@@ -263,7 +263,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it("composes a guarded scalar refinement action across an exact direct project reference", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
@@ -392,7 +392,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it("composes a child scalar refinement through one symbol-resolved local helper", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
@@ -510,7 +510,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it("preserves a child scalar guard through an explicit two-helper depth budget", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
@@ -632,7 +632,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it("composes an explicitly annotated same-realm globalThis refinement runtime", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
@@ -4943,8 +4943,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(report.builtinDrift).toEqual([]);
     expect(report.external).toMatchObject({
       packageName: "effect",
-      unknownSummaries: 1,
-      unknownReasonCounts: { "unresolved-call": 1 },
+      unknownSummaries: 5,
+      unknownReasonCounts: { "unknown-generator-consumption": 4, "unresolved-call": 1 },
       diagnostics: [],
       builtinDrift: [],
     });

@@ -218,7 +218,7 @@ function inMemoryProgram(
   const host = ts.createCompilerHost(compilerOptions);
   const originalGetSourceFile = host.getSourceFile.bind(host);
   const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-  const selfPackageEntry = [join(moduleDirectory, "index.ts"), join(moduleDirectory, "index.d.ts")]
+  const selfPackageEntry = [join(moduleDirectory, "verifier-package-contract.d.ts")]
     .find((candidate) => ts.sys.fileExists(candidate));
   const selfSpecEntry = [join(moduleDirectory, "spec.ts"), join(moduleDirectory, "spec.d.ts")]
     .find((candidate) => ts.sys.fileExists(candidate));
@@ -244,7 +244,14 @@ function inMemoryProgram(
       extension: selfSpecEntry.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts,
       isExternalLibraryImport: true,
     };
-    if ((moduleName.startsWith("./") || moduleName.startsWith("../")) && moduleName.endsWith(".js")) {
+    // Only virtual consumer modules may resolve relative imports back into the
+    // virtual file set. Without this boundary, a consumer file such as
+    // `src/numeric.ts` can shadow this package's own `src/numeric.ts` while
+    // resolving the self-package entrypoint.
+    const containingVirtualFile = Object.keys(files).some((candidate) => resolve(candidate) === resolve(containingFile));
+    if (containingVirtualFile
+      && (moduleName.startsWith("./") || moduleName.startsWith("../"))
+      && moduleName.endsWith(".js")) {
       const virtualTypeScript = join(dirname(containingFile), moduleName.slice(0, -3) + ".ts");
       const selected = Object.keys(files).find((fileName) => resolve(fileName) === resolve(virtualTypeScript));
       if (selected) return { resolvedFileName: selected, extension: ts.Extension.Ts };
@@ -424,7 +431,10 @@ async function verifyUneffectProjectFiles(
     diagnostics: analyzedEffects.diagnostics.filter((diagnostic) => !diagnostic.fileName.endsWith(".uneffect.ts")),
   };
   diagnostics.push(...effects.diagnostics);
-  const callableSummaries = analyzeCallableSummaries(program, effectProgram === program ? analyzedEffects : undefined, options.builtinRegistry).summaries;
+  // Specification modules are not runtime entrypoints. Reuse the already
+  // analyzed runtime-only Program instead of recursively re-analyzing the
+  // wider Program merely to build callable summaries.
+  const callableSummaries = analyzeCallableSummaries(effectProgram, analyzedEffects, options.builtinRegistry).summaries;
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   const asyncIterators: IteratorCheckEvidence[] = [];
   const resourceProtocols: ResourceLifecycleEvidence[] = [];
