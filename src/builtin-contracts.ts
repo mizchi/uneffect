@@ -1,5 +1,6 @@
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import ts from "typescript";
+import type ts from "typescript";
 import { builtinSemanticCatalog, materializeBuiltinSemanticDefinitions } from "./builtin-semantic-catalog.js";
 import type { BuiltinSemantics } from "./builtin-semantic-schema.js";
 
@@ -147,6 +148,11 @@ function packageName(moduleName: string): string {
   return moduleName.split("/").slice(0, 2).join("/");
 }
 
+const typescriptRequire = createRequire(import.meta.url);
+function typescript(): typeof import("typescript") {
+  return typescriptRequire("typescript") as typeof import("typescript");
+}
+
 const resolvedPackageVersions = new WeakMap<ts.Program, Map<string, string | null>>();
 
 function resolvedPackageVersion(program: ts.Program, containingFile: string, moduleName: string): string | undefined {
@@ -158,6 +164,7 @@ function resolvedPackageVersion(program: ts.Program, containingFile: string, mod
   const key = `${containingFile}\0${moduleName}`;
   const cached = cache.get(key);
   if (cached !== undefined) return cached === null ? undefined : cached;
+  const ts = typescript();
   const resolved = ts.resolveModuleName(moduleName, containingFile, program.getCompilerOptions(), ts.sys).resolvedModule;
   if (!resolved) { cache.set(key, null); return undefined; }
   const expectedName = packageName(moduleName);

@@ -1,11 +1,14 @@
 /* uneffect:module_effect none */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import ts from "typescript";
 import { executeZ3 } from "./z3.js";
+import { readPackageManifest, type PackageManifest } from "./package-manifest.js";
+
+export type { PackageManifest } from "./package-manifest.js";
+export { readPackageManifest } from "./package-manifest.js";
 
 export type EnvironmentStatus = "ok" | "warning" | "error";
 
@@ -20,28 +23,7 @@ export interface EnvironmentCheck {
   remedy?: string;
 }
 
-export interface PackageManifest {
-  name?: string;
-  version?: string;
-  engines?: { node?: string };
-  peerDependencies?: Record<string, string>;
-}
-
 const require_ = createRequire(import.meta.url);
-
-/** Read this package's own manifest, from either the source tree or the published `dist/src`. */
-/* uneffect:effect FsRead */
-export async function readPackageManifest(): Promise<PackageManifest> {
-  for (const candidate of ["../package.json", "../../package.json"]) {
-    try {
-      const manifest = JSON.parse(await readFile(join(import.meta.dirname, candidate), "utf8")) as PackageManifest;
-      if (manifest.name === "@mizchi/uneffect") return manifest;
-    } catch {
-      continue;
-    }
-  }
-  return {};
-}
 
 /** Shorten a resolved path to something a reader can place: relative inside the project, absolute outside. */
 function displayPath(path: string): string {

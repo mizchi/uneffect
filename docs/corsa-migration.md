@@ -4,12 +4,18 @@
 
 A staged migration to `@corsa-bind/napi` is realistic and worth continuing.
 A complete replacement of the TypeScript Compiler API is not realistic with
-the current Corsa 1.13.1 API. Corsa should remain an optional semantic sidecar
-until it reaches measured parity for each admitted slice.
+the current Corsa 1.13.1 API for Hoare, ownership, resource CFGs, or temporal
+extraction. The admitted Effect catalog slice no longer needs a JavaScript
+TypeScript 6 `Program`.
 
-This distinction is important: the migration can remove checker queries from
-the JavaScript TypeScript `Program` before it can remove TypeScript AST
-traversal. Uneffect must not make Corsa authoritative for a construct merely
+Default `uneffect check` — both `--project <tsconfig.json>` and
+file-specified `uneffect check file.ts` — uses Corsa for checker identity
+and Oxc for syntax. It does not construct a JS TypeScript 6 `Program` and
+does not load the `typescript` package for checker facts. File-specified
+checks write an ephemeral tsconfig so Corsa can open the files.
+`--typescript-program`, `--corsa-parity`, workspace project references,
+contract summaries, and build-artifact gates still load the TypeScript 6
+path. Uneffect must not make Corsa authoritative for a construct merely
 because both frontends happen to return the same type text in a fixture.
 
 ## Evidence from the current prototype
@@ -26,9 +32,12 @@ Upstream status checked on 2026-09-03:
 
 The Corsa worker is pinned to TypeScript 7 native platform binaries
 (`@typescript/typescript-<platform>-<arch>/lib/tsc`). The JavaScript TypeScript 6
-peer remains only for AST/CFG in the main analyzer. The destination is a
-TypeScript-7-only process: one native compiler, no JS `typescript` Program
-alongside it. Dual TS6+Corsa memory is a migration tax, not the target.
+peer remains for the TypeScript Program path (`--typescript-program`,
+workspace composition, contracts, `--corsa-parity`) and for analyzers that
+still walk TypeScript AST. Default check is TypeScript-7-only: one native
+Corsa compiler plus Oxc, no JS `typescript` Program alongside it.
+Dual TS6+Corsa memory is a migration tax on the remaining Program path, not
+the default.
 
 - `@corsa-bind/napi` opens a real project through a prebuilt `tsgo` worker and
   returns checker-owned symbol and type facts without constructing a JavaScript
@@ -94,16 +103,19 @@ does not replace call-site identity queries and is not used as Effect evidence.
 
 Consequently, full Effect propagation, Hoare/refinement analysis, Promise
 ownership, resource CFGs, and temporal extraction cannot be switched wholesale.
-The current main analyzer still needs TypeScript 6 when imported or run; only a
-`@mizchi/uneffect/corsa/api`-only installation avoids that runtime dependency.
+The current main analyzer still needs TypeScript 6 when imported through
+`checkFiles` or `--typescript-program`. Default `check`, file-specified
+`check`, and `checkCorsaProject` avoid that runtime dependency. A
+`@mizchi/uneffect/corsa/api`-only installation also avoids it.
 
 ## Roadmap
 
 ### Phase 0 — packaging and fail-closed probe (complete)
 
 - Ship Corsa N-API and a fixed native compiler as optional platform prebuilds.
-- Keep the JavaScript TypeScript peer optional at install time but required and
-  documented for the main CLI/API.
+- Keep the JavaScript TypeScript peer optional at install time. It is required
+  for `--typescript-program`, workspace composition, and `--corsa-parity`, not
+  for default `check` or file-specified `check`.
 - Verify Corsa-only and TypeScript-main package consumers independently.
 - Admit `Fetch` and `Console`; reject shadowed names and unsupported FS aliases.
 
@@ -112,12 +124,15 @@ The current main analyzer still needs TypeScript 6 when imported or run; only a
 - Collect call-expression positions during the existing TypeScript AST walk.
 - Batch semantic requests once per source file and attach Corsa facts to a
   compiler-neutral sidecar. (Implemented for the initial slice.)
-- When a sidecar is attached, admitted `Fetch`/`Console` catalog lookup uses
-  that batch in the main analyzer (`overlayCorsaBuiltinCatalog`), and lib.dom
-  methods such as `Document#createElement` use Corsa `getTypeAtPosition` /
-  `getSymbolOfType` / `getPropertyOfType` with declaration identity in
-  `lib.dom.d.ts`. Other builtins still go through `TypeScriptFrontendAdapter`.
-  The TypeScript adapter remains the parity oracle.
+- Default `check --project` classifies admitted `Fetch`/`Console`, lib.dom
+  methods such as `Document#createElement`, properties such as
+  `Document#cookie`, and DOM constructors such as `new WebSocket` through
+  Corsa identity collected from Oxc call/property/construct sites. Same-spelled
+  locals stay unclassified. Two-hop `node:fs/promises` aliases stay
+  fail-closed (not `FsRead`).
+- When a TypeScript Program sidecar is attached, admitted catalog lookup uses
+  `overlayCorsaBuiltinCatalog`. Other builtins still go through
+  `TypeScriptFrontendAdapter`. The TypeScript adapter remains the parity oracle.
 - Run TypeScript and Corsa resolution together for `Fetch` and `Console` in CI;
   expose mismatches from `check --corsa-parity` as assurance blockers.
 - Report parity mismatch as unknown; do not silently fall back in proof-grade

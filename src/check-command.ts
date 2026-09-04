@@ -1,31 +1,53 @@
+import { existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { checkFiles, createCheckProgram } from "./check.js";
 import { exitCode, parseCommandArgs, formatCommandHelp, type CliCommand, type CliStreams } from "./cli-support.js";
 import { CliUsageError } from "./cli-support.js";
-import { formatCheckEvidence, formatDiagnostics } from "./diagnostics.js";
 import { assessCheckAssurance, formatAssuranceAssessment, type AssuranceProfile } from "./assurance.js";
 import { loadBuiltinRegistryConfig } from "./registry-config.js";
 import { loadUneffectModules } from "./modules.js";
-import { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
-import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
-import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
-import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject, type WorkspaceRefinementComposition } from "./workspace-refinements.js";
-import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
-import { loadDeclarationTransformManifest, validateDeclarationTransformManifest } from "./declaration-transforms.js";
-import { loadAssumptionRegistry } from "./assumption-registry.js";
-import { loadContractSummaryBundle } from "./contract-summary.js";
-import { loadResourceCallableContractArtifact } from "./resource-callable-artifact.js";
-import { openCorsaApiFrontend } from "./corsa-api-frontend.js";
-import {
-  composeWorkspaceModuleInitialization,
-  type CompletedModuleInitializationProject,
-  type WorkspaceModuleInitializationComposition,
-} from "./workspace-module-initialization.js";
+import { checkCorsaProject } from "./corsa-check.js";
+import { createCorsaCheckJsonReport, formatCorsaCheckEvidence } from "./corsa-check-report.js";
+import { inspectProjectConfig, writeEphemeralCorsaProject } from "./corsa-project.js";
+
+const checkArgOptions = {
+  infer: { type: "boolean" }, strict: { type: "boolean" }, evidence: { type: "boolean" },
+  assurance: { type: "string" },
+  config: { type: "string" },
+  assumptions: { type: "string" },
+  "semantics-module": { type: "string", multiple: true },
+  "contract-summary": { type: "string", multiple: true },
+  "resource-contract": { type: "string", multiple: true },
+  "declaration-transforms": { type: "string" },
+  project: { type: "string" },
+  "corsa-parity": { type: "boolean" },
+  "corsa-executable": { type: "string" },
+  "module-entry": { type: "string" },
+  "require-build-artifacts": { type: "boolean" },
+  "require-exact-build-artifacts": { type: "boolean" },
+  "typescript-program": { type: "boolean" },
+  json: { type: "boolean" },
+} as const;
+
+function usesTypeScriptProgramPath(values: Record<string, unknown>): boolean {
+  if (values["typescript-program"] || values["corsa-parity"]) return true;
+  if (values["contract-summary"] !== undefined || values["resource-contract"] !== undefined) return true;
+  if (values["declaration-transforms"] !== undefined || values["module-entry"] !== undefined) return true;
+  if (values["require-build-artifacts"] || values["require-exact-build-artifacts"]) return true;
+  if (values.project === undefined) return false;
+  return inspectProjectConfig(String(values.project)).hasReferences;
+}
+
+function missingFileError(file: string): NodeJS.ErrnoException {
+  const error = new Error(`ENOENT: no such file or directory, open '${file}'`) as NodeJS.ErrnoException;
+  error.code = "ENOENT";
+  error.path = file;
+  return error;
+}
 
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--corsa-parity] [--corsa-executable <tsgo>] [--contract-summary <summary.json>] [--resource-contract <artifact.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--assumptions <registry.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--corsa-parity] [--corsa-executable <tsgo>] [--typescript-program] [--contract-summary <summary.json>] [--resource-contract <artifact.json>] [--module-entry <entry.ts>] [--semantics-module <module.json>] [--assumptions <registry.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
@@ -40,39 +62,26 @@ export const checkCommand: CliCommand = {
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
     "--corsa-parity  compare the admitted Corsa Effect slice with TypeScript; mismatches block assurance",
     "--corsa-executable  use this pinned Corsa-compatible compiler instead of Uneffect's prebuilt tsgo",
+    "--typescript-program  use a JavaScript TypeScript 6 Program instead of the default Corsa check",
     "--module-entry  compose the supported module-initialization order from this workspace entry",
     "--require-build-artifacts  fail unless SolutionBuilder reports composite outputs as current",
     "--require-exact-build-artifacts  also byte-compare TypeScript-emitted declarations and runtime JavaScript",
     "--json       emit a versioned decision report to stdout, including failures",
     "",
+    "Default check uses Corsa plus Oxc and does not construct a JS TypeScript 6 Program.",
+    "Workspace references, contracts, and `--corsa-parity` still load the TypeScript 6 path.",
     "This is the default command: `uneffect <file.ts>` runs it.",
     "Exits 1 when any error-severity diagnostic is reported.",
   ],
   async run(args, io: CliStreams) {
-    const { values, positionals } = parseCommandArgs(args, {
-      infer: { type: "boolean" }, strict: { type: "boolean" }, evidence: { type: "boolean" },
-      assurance: { type: "string" },
-      config: { type: "string" },
-      assumptions: { type: "string" },
-      "semantics-module": { type: "string", multiple: true },
-      "contract-summary": { type: "string", multiple: true },
-      "resource-contract": { type: "string", multiple: true },
-      "declaration-transforms": { type: "string" },
-      project: { type: "string" },
-      "corsa-parity": { type: "boolean" },
-      "corsa-executable": { type: "string" },
-      "module-entry": { type: "string" },
-      "require-build-artifacts": { type: "boolean" },
-      "require-exact-build-artifacts": { type: "boolean" },
-      json: { type: "boolean" },
-    });
+    const { values, positionals } = parseCommandArgs(args, checkArgOptions);
     if (values.help) { io.out(formatCommandHelp(checkCommand)); return exitCode.success; }
     if (positionals.length === 0 && values.project === undefined) throw new CliUsageError("check needs at least one file or --project");
-    if ((values["corsa-parity"] || values["corsa-executable"] !== undefined) && values.project === undefined) {
+    if (values["corsa-parity"] && values.project === undefined) {
       throw new CliUsageError("Corsa parity requires --project so compiler and source membership are explicit");
     }
-    if (values["corsa-executable"] !== undefined && !values["corsa-parity"]) {
-      throw new CliUsageError("--corsa-executable requires --corsa-parity");
+    if (values["corsa-executable"] !== undefined && values.project === undefined && positionals.length === 0) {
+      throw new CliUsageError("--corsa-executable requires --project or input files");
     }
     if ((values["require-build-artifacts"] || values["require-exact-build-artifacts"]) && (values.project === undefined || positionals.length > 0)) {
       throw new CliUsageError("build-artifact assurance requires --project without positional files");
@@ -87,6 +96,10 @@ export const checkCommand: CliCommand = {
     if (assurance !== undefined && assurance !== "no-unknown" && assurance !== "declared" && assurance !== "verified") {
       throw new CliUsageError(`unknown assurance profile ${String(assurance)}; expected no-unknown, declared, or verified`);
     }
+    if (usesTypeScriptProgramPath(values)) {
+      const { runTypeScriptCheckCommand } = await import("./check-command-typescript.js");
+      return runTypeScriptCheckCommand(args, io);
+    }
     let builtinRegistry;
     try {
       builtinRegistry = values.config === undefined ? undefined : await loadBuiltinRegistryConfig(String(values.config));
@@ -95,150 +108,62 @@ export const checkCommand: CliCommand = {
       }
     }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    let resourceCallableArtifacts;
-    try {
-      resourceCallableArtifacts = values["resource-contract"] === undefined ? undefined
-        : await Promise.all((values["resource-contract"] as string[]).map((fileName) => loadResourceCallableContractArtifact(String(fileName))));
+    const files = positionals.map((input) => resolve(input));
+    for (const file of files) {
+      if (!existsSync(file)) throw missingFileError(file);
     }
-    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    let assumptionRegistry;
-    try { assumptionRegistry = values.assumptions === undefined ? undefined : await loadAssumptionRegistry(String(values.assumptions)); }
-    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    let contractSummaryBundles;
-    try {
-      contractSummaryBundles = values["contract-summary"] === undefined ? undefined
-        : await Promise.all((values["contract-summary"] as string[]).map((fileName) => loadContractSummaryBundle(String(fileName))));
-    }
-    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    let declarationTransforms;
-    try { declarationTransforms = values["declaration-transforms"] === undefined
-      ? undefined : await loadDeclarationTransformManifest(String(values["declaration-transforms"])); }
-    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    const transformValidation = declarationTransforms === undefined
-      ? undefined : validateDeclarationTransformManifest(declarationTransforms);
-    let project, workspace;
-    try {
-      if (values.project !== undefined) {
-        if (positionals.length === 0) workspace = loadTypeScriptWorkspace(String(values.project));
-        else project = loadTypeScriptProject(String(values.project));
+    let configFile: string;
+    let ephemeralDirectory: string | undefined;
+    if (values.project !== undefined) {
+      const inspected = inspectProjectConfig(String(values.project));
+      if (inspected.parseError) {
+        throw new CliUsageError(`cannot read TypeScript project ${inspected.absolute}: ${inspected.parseError}`);
       }
+      configFile = inspected.absolute;
+    } else {
+      const ephemeral = writeEphemeralCorsaProject(files);
+      configFile = ephemeral.configFile;
+      ephemeralDirectory = ephemeral.directory;
     }
-    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"] || values["require-exact-build-artifacts"] || declarationTransforms || values["module-entry"] !== undefined)) {
-      const reports = [];
-      const completed: CompletedEffectProject[] = [];
-      const completedRefinements: CompletedRefinementProject[] = [];
-      const completedModuleInitialization: CompletedModuleInitializationProject[] = [];
-      let moduleInitializationComposition: WorkspaceModuleInitializationComposition | undefined;
-      const moduleEntry = values["module-entry"] === undefined ? undefined : resolve(String(values["module-entry"]));
-      const composed: WorkspaceEffectComposition = { contracts: new Map(), moduleContracts: new Map(), links: [], blockers: [] };
-      const composedRefinements: WorkspaceRefinementComposition = { contracts: new Map(), links: [], blockers: [] };
-      const outputIntegrity: BuildOutputIntegrity = { status: values["require-exact-build-artifacts"] ? "verified" : "not-checked", outputs: [] };
-      for (const domain of workspace.projects) {
-        if (domain.fileNames.length === 0) continue;
-        const program = createCheckProgram(domain.fileNames, {
-          compilerOptions: domain.compilerOptions, projectReferences: domain.projectReferences,
-        });
-        if (values["require-exact-build-artifacts"]) mergeBuildOutputIntegrity(outputIntegrity, inspectBuildOutputs(program, domain.projectFile));
-        const composition = composeWorkspaceEffects(program, domain, completed);
-        composed.links.push(...composition.links);
-        composed.blockers.push(...composition.blockers);
-        const refinementComposition = composeWorkspaceRefinements(program, domain, completedRefinements);
-        composedRefinements.links.push(...refinementComposition.links);
-        composedRefinements.blockers.push(...refinementComposition.blockers);
-        const corsaFrontend = values["corsa-parity"] ? await openCorsaApiFrontend({
-          configFile: domain.projectFile,
-          ...(values["corsa-executable"] === undefined ? {} : { corsaExecutable: String(values["corsa-executable"]) }),
-        }) : undefined;
-        const domainResult = await (async () => {
-          try {
-            return await checkFiles(domain.fileNames, {
-              mode: values.strict ? "strict" : "gradual", requireAnnotations: !values.infer, builtinRegistry, assumptionRegistry,
-              compilerOptions: domain.compilerOptions, project: domain.provenance,
-              projectReferences: domain.projectReferences,
-              program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts,
-              contractSummaryBundles,
-              resourceCallableArtifacts,
-              corsaFrontend,
-            });
-          } finally { corsaFrontend?.close(); }
-        })();
-        const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
-        reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
-        const declarationOutputs = inspectDeclarationOutputs(program, declarationTransforms && transformValidation
-          ? { manifest: declarationTransforms, validation: transformValidation } : undefined);
-        if (moduleEntry !== undefined && domain.fileNames.includes(moduleEntry)) {
-          moduleInitializationComposition = composeWorkspaceModuleInitialization(
-            program, domain, completedModuleInitialization, moduleEntry,
-          );
-        }
-        completed.push({ project: domain, summaries: domainResult.summaries, declarationOutputs });
-        const refinementAnalysis = analyzeProjectRefinements(program, domain, refinementComposition.contracts);
-        composedRefinements.blockers.push(...refinementAnalysis.blockers);
-        completedRefinements.push({ project: domain, summaries: refinementAnalysis.summaries, declarationOutputs });
-        completedModuleInitialization.push({ project: domain, program, declarationOutputs });
+    let result;
+    try {
+      result = await checkCorsaProject({
+        configFile,
+        requireAnnotations: !values.infer,
+        ...(files.length === 0 ? {} : { fileNames: files }),
+        ...(values["corsa-executable"] === undefined ? {} : { corsaExecutable: String(values["corsa-executable"]) }),
+        ...(builtinRegistry === undefined ? {} : { builtinRegistry }),
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (message.includes("does not select any source files") || message.includes("Corsa did not open a project")) {
+        throw new CliUsageError(`TypeScript project ${configFile} does not select any source files`);
       }
-      const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
-        requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"] || values["require-exact-build-artifacts"]), outputIntegrity,
-        additionalBlockers: [
-          ...(transformValidation?.diagnostics.map((diagnostic) => ({
-          kind: "declaration-transform", classification: "violation" as const,
-          projectFile: workspace.rootProjectFile, subject: diagnostic.generatedFile, message: diagnostic.message,
-          })) ?? []),
-          ...(moduleEntry !== undefined && moduleInitializationComposition === undefined ? [{
-            kind: "module-initialization", classification: "unknown" as const,
-            projectFile: workspace.rootProjectFile, subject: moduleEntry,
-            message: "module entry is not selected by any loaded TypeScript project",
-          }] : []),
-        ],
-        moduleInitializationComposition,
-      }, composed, composedRefinements);
-      if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
-      else {
-        for (const item of reports) {
-          io.err(`\nproject ${item.result.project!.projectFile}\n`);
-          io.err(formatDiagnostics(item.result.diagnostics, { cwd: process.cwd(), sources: item.result.sources }));
-          if (values.evidence) io.err(formatCheckEvidence(item.result));
-          if (item.assessment) io.err(formatAssuranceAssessment(item.assessment));
-        }
-        for (const blocker of report.blockers) io.err(`error workspace/${blocker.kind} ${blocker.projectFile}\n  message: ${blocker.message}\n`);
-        io.err(`build artifacts: ${report.buildArtifacts.status} (TypeScript SolutionBuilder dry run)\n`);
-        io.err(`output integrity: ${report.outputIntegrity.status} (same-compiler declaration/runtime byte comparison)\n`);
-        io.err(`workspace: ${report.outcome}; ${reports.length} checked compiler domain(s), ${report.blockers.length} blocker(s)\n`);
-      }
-      return report.outcome === "passed" ? exitCode.success : exitCode.failed;
+      if (message.includes("cannot read TypeScript project")) throw new CliUsageError(message);
+      throw new CliUsageError(values.project === undefined ? message : `cannot read TypeScript project ${configFile}: ${message}`);
+    } finally {
+      if (ephemeralDirectory !== undefined) rmSync(ephemeralDirectory, { recursive: true, force: true });
     }
-    if (workspace) project = workspace.projects[0];
-    const fileNames = positionals.length > 0 ? positionals.map((input) => resolve(input)) : project!.fileNames;
-    const program = createCheckProgram(fileNames, {
-      compilerOptions: project?.compilerOptions, projectReferences: project?.projectReferences,
-    });
-    const corsaFrontend = values["corsa-parity"] ? await openCorsaApiFrontend({
-      configFile: project!.projectFile,
-      ...(values["corsa-executable"] === undefined ? {} : { corsaExecutable: String(values["corsa-executable"]) }),
-    }) : undefined;
-    const result = await (async () => {
-      try {
-        return await checkFiles(fileNames, {
-          mode: values.strict ? "strict" : "gradual",
-          requireAnnotations: !values.infer,
-          builtinRegistry,
-          assumptionRegistry,
-          contractSummaryBundles,
-          resourceCallableArtifacts,
-          compilerOptions: project?.compilerOptions,
-          project: project?.provenance,
-          projectReferences: project?.projectReferences,
-          program,
-          corsaFrontend,
-        });
-      } finally { corsaFrontend?.close(); }
-    })();
-    const assessment = assurance === undefined ? undefined : assessCheckAssurance(result, assurance as AssuranceProfile);
-    if (values.json) io.out(`${JSON.stringify(createCheckJsonReport(result, assessment), null, 2)}\n`);
+    const assessment = assurance === undefined ? undefined : assessCheckAssurance({
+      artifacts: result.artifacts,
+      summaries: result.summaries,
+      sources: result.sources,
+      assumptions: result.assumptions,
+      typedArrays: result.typedArrays,
+      ownership: result.ownership,
+      asyncIterators: result.asyncIterators,
+      resourceProtocols: result.resourceProtocols,
+      project: result.project,
+    }, assurance as AssuranceProfile);
+    if (values.json) io.out(`${JSON.stringify(createCorsaCheckJsonReport(result, assessment), null, 2)}\n`);
     else {
-      io.err(formatDiagnostics(result.diagnostics, { cwd: process.cwd(), sources: result.sources }));
-      if (values.evidence) io.err(formatCheckEvidence(result));
+      if (result.diagnostics.length === 0 && !values.evidence) io.err("no diagnostics\n");
+      else {
+        for (const diagnostic of result.diagnostics) {
+          io.err(`error syntax ${diagnostic.fileName}\n  message: ${diagnostic.message}\n`);
+        }
+      }
+      if (values.evidence) io.err(formatCorsaCheckEvidence(result));
       if (assessment) io.err(formatAssuranceAssessment(assessment));
     }
     return result.errors === 0 && (assessment?.passed ?? true) ? exitCode.success : exitCode.failed;

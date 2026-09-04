@@ -102,6 +102,7 @@
   },
   "dependencies": {
     "effect": "^3.22.1",
+    "oxc-parser": "^0.148.0",
     "valibot": "^1.4.2",
     "z3-solver": "^4.15.4"
   },
