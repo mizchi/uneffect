@@ -90,8 +90,10 @@ export { materializeContractDslLinks, prepareContractDslLinks, parseContractDsl,
 export type { ContractClauseProvenance, PreparedContractDslLinks } from "./contract-dsl.js";
 export { instrumentContractPredicates, isContractRuntimeError } from "./contract-runtime.js";
 export type { ContractRuntimeError, ContractRuntimeFailureMetadata, InstrumentContractPredicateOptions } from "./contract-runtime.js";
-export { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow } from "./typescript-control-flow.js";
-export type { TypeScriptControlFlowAnalysis, TypeScriptFunctionControlFlow, TypeScriptFunctionEndpoint } from "./typescript-control-flow.js";
+export { collectSyntaxFacts, enclosingFunction, parseSyntaxFacts, syntaxFactsCoverageDomains, syntaxFactsSchema } from "./oxc-syntax.js";
+export type { SyntaxFactExclusion, SyntaxFactExclusionReason, SyntaxFacts, SyntaxFactsCoverageDomain, SyntaxFactsCoverageEntry, SyntaxFunction, SyntaxFunctionKind, SyntaxSite } from "./oxc-syntax.js";
+export { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow, parseTypeScriptControlFlowAnalysis, typescriptControlFlowSchema } from "./typescript-control-flow.js";
+export type { TypeScriptControlFlowAnalysis, TypeScriptControlFlowCoverage, TypeScriptControlFlowDiagnosticCode, TypeScriptControlFlowExclusion, TypeScriptControlFlowExclusionReason, TypeScriptControlFlowSource, TypeScriptFunctionControlFlow, TypeScriptFunctionEndpoint } from "./typescript-control-flow.js";
 export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";

@@ -31,3 +31,9 @@ export function connect(): WebSocket {
 export function shadowedSocket(WebSocket: { new (url: string): WebSocket }): WebSocket {
   return new WebSocket("wss://example.com");
 }
+
+export class Reporter {
+  report(message: string): void {
+    console.log(message);
+  }
+}

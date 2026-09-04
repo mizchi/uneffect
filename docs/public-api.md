@@ -184,8 +184,11 @@ optional consumer code.
 
 The experimental API `analyzeTypeScriptControlFlow(fileName, source)` exposes the versioned
 `uneffect-typescript-control-flow/v1` artifact used by runtime-contract exit
-analysis. It binds the TypeScript version, source digest, compiler options,
-function diagnostics, neutral-CFG comparison, and internal-hook observation.
+analysis. It binds the TypeScript version, aggregate and per-source digests,
+compiler options, source-qualified function diagnostics, endpoint coverage,
+explicit exclusions, neutral-CFG comparison, and internal-hook observation.
+Persisted artifacts can be checked with
+`parseTypeScriptControlFlowAnalysis` and the published JSON Schema.
 See [TypeScript control-flow bridge](./typescript-control-flow.md). An
 `unreachable` endpoint is endpoint evidence, not a Hoare proof.
 
@@ -197,6 +200,17 @@ are also `unknown`. Stable callable aliases compose through nested scopes,
 imports/re-exports, and direct properties of builtin-frozen static object
 literals. Runtime project lowering moves an alias contract to the resolved
 source callable rather than wrapping it.
+
+The experimental `collectSyntaxFacts` boundary emits
+`uneffect-syntax-facts/v1` with source/parser identity and coverage for function
+boundaries and call/construct/property sites. `parseSyntaxFacts` rejects
+malformed or internally inconsistent artifacts. Syntax exclusions are
+fail-closed errors in the Corsa project checker, not evidence of an empty
+effect set. Anonymous callback boundaries remain source-scoped; computed or
+otherwise non-static calls/constructions, tagged templates, and dynamic imports
+are explicit exclusions. The artifact schema is published, but the traversal
+API remains on the experimental subpath while Corsa syntax traversal is out of
+band.
 
 Builtin `Object.freeze` recognition is compatibility support for existing
 code, not an optimization or usage recommendation. Prefer the zero-runtime

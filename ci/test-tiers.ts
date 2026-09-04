@@ -50,10 +50,12 @@ export const ciTestTiers = {
     "test/resource-protocol.test.ts",
     "test/stable-callable.test.ts",
     "test/static-evaluation.test.ts",
+    "test/syntax-facts.test.ts",
     "test/temporal-expressions.test.ts",
     "test/test-timeouts.test.ts",
     "test/todo-consistency.test.ts",
     "test/trusted-types.test.ts",
+    "test/typescript-control-flow-contract.test.ts",
     "test/workspace-module-initialization.test.ts",
   ],
   z3: [

@@ -18,10 +18,20 @@ switch covering every member of a literal union even when no `default` clause
 exists. Widening that discriminant to `string` produces diagnostic 2366 and
 keeps the contract runtime fail-closed.
 
-Every analysis records the schema, exact TypeScript version, SHA-256 source
-digest, compiler options, function span and diagnostic codes, both endpoint
-results, and whether they agree or TypeScript refines the neutral result. An
-unrelated semantic error inside the function makes its endpoint `unknown`.
+Every analysis records the schema, exact TypeScript version, aggregate and
+per-source SHA-256 identities, compiler options, source-qualified function
+span and diagnostic codes, both endpoint results, and whether they agree or
+TypeScript refines the neutral result. `coverage` counts observed, supported,
+and unknown endpoints. Every unknown endpoint has a source-qualified
+`exclusions` entry such as `mutable-binding`, `typescript-diagnostic`, or
+`endpoint-not-established`. An unrelated semantic error inside the function
+makes its endpoint `unknown`.
+
+Stored artifacts can be checked with `parseTypeScriptControlFlowAnalysis` or
+`@mizchi/uneffect/schemas/uneffect-typescript-control-flow-v1.schema.json`.
+The runtime parser additionally checks aggregate source identity, span bounds,
+coverage counts, parity, compiler-compatibility and fallthrough evidence, and
+one exclusion for every unknown endpoint.
 
 `analyzeTypeScriptProgramControlFlow(program, sources?)` instead reuses an
 existing checked project snapshot. The correspondence is keyed by the actual
@@ -80,3 +90,24 @@ and
 [`allowUnreachableCode`](https://www.typescriptlang.org/tsconfig/allowUnreachableCode.html)
 options. TypeScript does not publish a supported API for retrieving its complete
 internal flow graph.
+
+## Oxc syntax observation
+
+The Corsa check path obtains traversal positions from the versioned
+`uneffect-syntax-facts/v1` artifact. It binds the file, SHA-256 digest, language,
+and installed Oxc parser version. Function boundaries and call, construction,
+and property sites each have explicit `complete`, `partial`, or `invalid`
+coverage. Computed or otherwise non-static call/construct targets, tagged
+templates, dynamic imports, and function boundaries that are not represented
+by the normalized contract are emitted as source spans with reason codes rather
+than silently disappearing. Anonymous declarations and inline callback
+boundaries are retained so their calls are not attributed to an enclosing
+named function.
+
+The normalized function fragment is differential-tested against this
+TypeScript bridge for declarations with bodies, static class methods/accessors,
+directly bound arrows, and function expressions. Corsa check treats a syntax
+coverage exclusion as an error because otherwise a hidden call could be
+misreported as an empty effect set. Class method calls now retain their class
+and method owner. Constructors, object-member functions, computed names, and
+non-static effect-bearing sites remain explicit exclusions.

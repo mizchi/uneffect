@@ -2,32 +2,31 @@ import ts from "@typescript/typescript6";
 import { createHash } from "node:crypto";
 import { functionMayFallThrough, type ContractControlFlowOptions } from "./contract-control-flow.js";
 import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
+import {
+  typescriptControlFlowSchema,
+  typescriptControlFlowExclusionReasons,
+  typescriptControlFlowSourceDigest,
+  type TypeScriptControlFlowAnalysis,
+  type TypeScriptControlFlowExclusion,
+  type TypeScriptControlFlowSource,
+  type TypeScriptFunctionControlFlow,
+  type TypeScriptFunctionEndpoint,
+} from "./typescript-control-flow-contract.js";
 
-export type TypeScriptFunctionEndpoint = "reachable" | "unreachable" | "unknown";
-
-export interface TypeScriptFunctionControlFlow {
-  name: string;
-  kind: "function" | "method" | "getter" | "setter" | "arrow" | "function-expression";
-  span: { start: number; end: number };
-  endpoint: TypeScriptFunctionEndpoint;
-  neutralEndpoint: "reachable" | "unreachable";
-  parity: "agree" | "typescript-refines" | "unknown";
-  evidence: "public-diagnostics";
-  diagnosticCodes: Array<number | "uneffect-mutable-binding" | "uneffect-incompatible-compiler-options" | "uneffect-dynamic-computed-name">;
-  internalFlowApi: "observed" | "unavailable";
-  internalFlowNodeCount: number;
-  aliases: string[];
-}
-
-export interface TypeScriptControlFlowAnalysis {
-  schema: "uneffect-typescript-control-flow/v1";
-  typescriptVersion: string;
-  sourceDigest: string;
-  compilerOptions: { strict: boolean; noImplicitReturns: boolean; allowUnreachableCode: boolean };
-  configurationCompatible: boolean;
-  programReused: boolean;
-  functions: TypeScriptFunctionControlFlow[];
-}
+export {
+  parseTypeScriptControlFlowAnalysis,
+  typescriptControlFlowSchema,
+} from "./typescript-control-flow-contract.js";
+export type {
+  TypeScriptControlFlowAnalysis,
+  TypeScriptControlFlowCoverage,
+  TypeScriptControlFlowDiagnosticCode,
+  TypeScriptControlFlowExclusion,
+  TypeScriptControlFlowExclusionReason,
+  TypeScriptControlFlowSource,
+  TypeScriptFunctionControlFlow,
+  TypeScriptFunctionEndpoint,
+} from "./typescript-control-flow-contract.js";
 
 export interface TypeScriptControlFlowBridge {
   analysis: TypeScriptControlFlowAnalysis;
@@ -69,7 +68,7 @@ function ownValueReturns(node: SupportedFunction): number {
   return count;
 }
 
-function internalFlowObservation(node: ts.FunctionDeclaration): { status: "observed" | "unavailable"; count: number } {
+function internalFlowObservation(node: SupportedFunction): { status: "observed" | "unavailable"; count: number } {
   let count = 0;
   const canHaveFlowNode = (ts as unknown as { canHaveFlowNode?: (node: ts.Node) => boolean }).canHaveFlowNode;
   if (!canHaveFlowNode) return { status: "unavailable", count };
@@ -148,32 +147,33 @@ function analyzeWithProgram(program: ts.Program, sources: readonly ts.SourceFile
   for (const source of sources) {
     const diagnostics = program.getSemanticDiagnostics(source);
     for (const candidate of supportedFunctions(source)) {
-    const { node } = candidate;
-    const contained = diagnostics.filter((diagnostic) => diagnostic.start !== undefined && diagnostic.start >= node.getFullStart() && diagnostic.start < node.end);
-    const diagnosticCodes: TypeScriptFunctionControlFlow["diagnosticCodes"] = [...new Set(contained.map((diagnostic) => diagnostic.code))].sort((left, right) => Number(left) - Number(right));
-    if (!candidate.immutable) diagnosticCodes.push("uneffect-mutable-binding");
-    if (!candidate.stableName) diagnosticCodes.push("uneffect-dynamic-computed-name");
-    if (!configurationCompatible) diagnosticCodes.push("uneffect-incompatible-compiler-options");
-    const endpoint: TypeScriptFunctionEndpoint = !configurationCompatible || !candidate.immutable || !candidate.stableName ? "unknown" : diagnosticCodes.some((code) => typeof code === "number" && fallthroughDiagnosticCodes.has(code))
-      ? "reachable"
-      : contained.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error)
-        ? "unknown"
-        : ts.isArrowFunction(node) && !ts.isBlock(node.body) || ownValueReturns(node) > 0 ? "unreachable" : "unknown";
-    const neutralEndpoint = ts.isArrowFunction(node) && !ts.isBlock(node.body) ? "unreachable" : functionMayFallThrough(node.body as ts.Block) ? "reachable" : "unreachable";
-    const internalFlow = internalFlowObservation(node as ts.FunctionDeclaration);
-    byNode.set(node, {
-      name: candidate.name,
-      kind: candidate.kind,
-      span: { start: node.getStart(source), end: node.end },
-      endpoint,
-      neutralEndpoint,
-      parity: endpoint === "unknown" ? "unknown" : endpoint === neutralEndpoint ? "agree" : "typescript-refines",
-      evidence: "public-diagnostics",
-      diagnosticCodes,
-      internalFlowApi: internalFlow.status,
-      internalFlowNodeCount: internalFlow.count,
-      aliases: [...((candidate as typeof candidate & { aliases?: string[] }).aliases ?? [])],
-    });
+      const { node } = candidate;
+      const contained = diagnostics.filter((diagnostic) => diagnostic.start !== undefined && diagnostic.start >= node.getFullStart() && diagnostic.start < node.end);
+      const diagnosticCodes: TypeScriptFunctionControlFlow["diagnosticCodes"] = [...new Set(contained.map((diagnostic) => diagnostic.code))].sort((left, right) => Number(left) - Number(right));
+      if (!candidate.immutable) diagnosticCodes.push("uneffect-mutable-binding");
+      if (!candidate.stableName) diagnosticCodes.push("uneffect-dynamic-computed-name");
+      if (!configurationCompatible) diagnosticCodes.push("uneffect-incompatible-compiler-options");
+      const endpoint: TypeScriptFunctionEndpoint = !configurationCompatible || !candidate.immutable || !candidate.stableName ? "unknown" : diagnosticCodes.some((code) => typeof code === "number" && fallthroughDiagnosticCodes.has(code))
+        ? "reachable"
+        : contained.some((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error)
+          ? "unknown"
+          : ts.isArrowFunction(node) && !ts.isBlock(node.body) || ownValueReturns(node) > 0 ? "unreachable" : "unknown";
+      const neutralEndpoint = ts.isArrowFunction(node) && !ts.isBlock(node.body) ? "unreachable" : functionMayFallThrough(node.body as ts.Block) ? "reachable" : "unreachable";
+      const internalFlow = internalFlowObservation(node);
+      byNode.set(node, {
+        fileName: source.fileName,
+        name: candidate.name,
+        kind: candidate.kind,
+        span: { start: node.getStart(source), end: node.end },
+        endpoint,
+        neutralEndpoint,
+        parity: endpoint === "unknown" ? "unknown" : endpoint === neutralEndpoint ? "agree" : "typescript-refines",
+        evidence: "public-diagnostics",
+        diagnosticCodes,
+        internalFlowApi: internalFlow.status,
+        internalFlowNodeCount: internalFlow.count,
+        aliases: [...((candidate as typeof candidate & { aliases?: string[] }).aliases ?? [])],
+      });
     }
   }
   for (const source of sources) {
@@ -187,11 +187,25 @@ function analyzeWithProgram(program: ts.Program, sources: readonly ts.SourceFile
     };
     visitAlias(source);
   }
-  const sourceText = sources.map((source) => `${source.fileName}\0${source.text}`).sort().join("\0");
+  const sourceEvidence: TypeScriptControlFlowSource[] = sources.map((source) => ({
+    fileName: source.fileName,
+    length: source.text.length,
+    digest: createHash("sha256").update(source.text).digest("hex"),
+  })).sort((left, right) => left.fileName.localeCompare(right.fileName));
+  const functions = [...byNode.values()].sort((left, right) => left.fileName.localeCompare(right.fileName)
+    || left.span.start - right.span.start || left.span.end - right.span.end || left.kind.localeCompare(right.kind));
+  const unknown = functions.filter((summary) => summary.endpoint === "unknown");
+  const exclusions: TypeScriptControlFlowExclusion[] = unknown.map((summary) => ({
+    fileName: summary.fileName,
+    functionName: summary.name,
+    span: summary.span,
+    reasons: typescriptControlFlowExclusionReasons(summary),
+  }));
   return { analysis: {
-      schema: "uneffect-typescript-control-flow/v1",
+      schema: typescriptControlFlowSchema,
       typescriptVersion: ts.version,
-      sourceDigest: createHash("sha256").update(sourceText).digest("hex"),
+      sourceDigest: typescriptControlFlowSourceDigest(sourceEvidence),
+      sources: sourceEvidence,
       compilerOptions: {
         strict: programOptions.strict === true,
         noImplicitReturns: programOptions.noImplicitReturns === true,
@@ -199,7 +213,15 @@ function analyzeWithProgram(program: ts.Program, sources: readonly ts.SourceFile
       },
       configurationCompatible,
       programReused,
-      functions: [...byNode.values()],
+      coverage: {
+        domain: "function-endpoints",
+        status: functions.length === 0 ? "not-applicable" : unknown.length === 0 ? "complete" : "partial",
+        observed: functions.length,
+        supported: functions.length - unknown.length,
+        unknown: unknown.length,
+      },
+      exclusions,
+      functions,
     }, byNode };
 }
 

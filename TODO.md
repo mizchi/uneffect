@@ -1478,8 +1478,13 @@ The same 0.3 boundary promotes two bounded integration contracts without
 stabilizing their low-level implementations: the Corsa semantic-query API binds
 its compiler/project capabilities and limitations in a versioned descriptor,
 and the high-level temporal facade publishes a strict coverage inventory for
-temporal, Promise, synchronization, and resource domains. Raw syntax/CFG facts,
-backend-specific generators, and generated Quint text remain experimental.
+temporal, Promise, synchronization, and resource domains. The subsequent syntax
+and CFG hardening slice adds strict versioned observational artifacts,
+source/parser/compiler identity, source-qualified function ownership, coverage,
+and fail-closed exclusions without stabilizing block/edge/worklist internals.
+It also retains anonymous callback boundaries and refuses to report complete
+call coverage for non-static targets, tagged templates, or dynamic imports.
+Backend-specific generators and generated Quint text remain experimental.
 
 Completed bounded child [#61](https://github.com/mizchi/uneffect/issues/61)
 resolves one direct named-imported unary property predicate to its canonical

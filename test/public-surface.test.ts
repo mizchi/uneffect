@@ -26,9 +26,13 @@ describe("0.3 public surface", () => {
     expect(publicApi).not.toHaveProperty("executeZ3");
     expect(publicApi).not.toHaveProperty("solveBasicBlockFixedPoint");
     expect(publicApi).not.toHaveProperty("generateResourceSafetyQuint");
+    expect(publicApi).not.toHaveProperty("parseSyntaxFacts");
+    expect(publicApi).not.toHaveProperty("parseTypeScriptControlFlowAnalysis");
     expect(experimental.logicToSmt).toBeTypeOf("function");
     expect(experimental.executeZ3).toBeTypeOf("function");
     expect(experimental.solveBasicBlockFixedPoint).toBeTypeOf("function");
     expect(experimental.generateResourceSafetyQuint).toBeTypeOf("function");
+    expect(experimental.parseSyntaxFacts).toBeTypeOf("function");
+    expect(experimental.parseTypeScriptControlFlowAnalysis).toBeTypeOf("function");
   });
 });

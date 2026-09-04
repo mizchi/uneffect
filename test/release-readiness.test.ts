@@ -53,6 +53,14 @@ describe("0.3.0 release metadata", () => {
       title: "Uneffect temporal model v1",
       properties: { schema: { const: "uneffect-temporal-model/v1" } },
     });
+    expect(JSON.parse(readFileSync("schemas/uneffect-syntax-facts-v1.schema.json", "utf8"))).toMatchObject({
+      title: "Uneffect syntax facts v1",
+      properties: { schema: { const: "uneffect-syntax-facts/v1" } },
+    });
+    expect(JSON.parse(readFileSync("schemas/uneffect-typescript-control-flow-v1.schema.json", "utf8"))).toMatchObject({
+      title: "Uneffect TypeScript control-flow analysis v1",
+      properties: { schema: { const: "uneffect-typescript-control-flow/v1" } },
+    });
   });
 
   it("documents the promoted bounded Corsa and temporal integration contracts", () => {

@@ -23,8 +23,9 @@ describe("Corsa effect parity sidecar", () => {
         ["Console", "agree"],
         ["Fetch", "agree"],
         ["Fetch", "agree"],
+        ["Console", "agree"],
       ]);
-      expect(result.summary).toEqual({ agree: 3, mismatch: 0 });
+      expect(result.summary).toEqual({ agree: 4, mismatch: 0 });
     } finally {
       frontend.close();
     }
@@ -39,7 +40,7 @@ describe("Corsa effect parity sidecar", () => {
       const checked = await checkFiles(project.fileNames, {
         program, project: project.provenance, requireAnnotations: false, corsaFrontend: frontend,
       });
-      expect(checked.corsaEffectParity?.summary).toEqual({ agree: 3, mismatch: 0 });
+      expect(checked.corsaEffectParity?.summary).toEqual({ agree: 4, mismatch: 0 });
       const names = Object.fromEntries(checked.summaries.map((summary) => [
         summary.functionName,
         summary.effects.filter((effect) => effect.kind === "capability").map((effect) => effect.name),
@@ -72,7 +73,7 @@ describe("Corsa effect parity sidecar", () => {
     ], io);
     expect(status).toBe(exitCode.failed);
     const report = JSON.parse(io.stdout) as { corsaEffectParity?: { summary: { agree: number; mismatch: number } }; assurance: { blockers: Array<{ message: string }> } };
-    expect(report.corsaEffectParity?.summary).toEqual({ agree: 3, mismatch: 0 });
+    expect(report.corsaEffectParity?.summary).toEqual({ agree: 4, mismatch: 0 });
     expect(report.assurance.blockers.some((blocker) => blocker.message.includes("Corsa effect parity mismatch"))).toBe(false);
   }, 60_000);
 });

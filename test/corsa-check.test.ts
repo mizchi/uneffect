@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkCorsaProject } from "../src/corsa-check.js";
 import { createCorsaCheckJsonReport } from "../src/corsa-check-report.js";
@@ -85,8 +86,34 @@ describe("Corsa-native project check", () => {
     expect(names.shadowedDocument ?? []).not.toEqual(expect.arrayContaining(["Dom"]));
     expect(names.connect).toEqual(expect.arrayContaining(["Net"]));
     expect(names.shadowedSocket ?? []).not.toEqual(expect.arrayContaining(["Net"]));
+    expect(names["Reporter.report"]).toEqual(["Console"]);
     const load = checked.summaries.find((summary) => summary.functionName === "load");
     expect(load?.effects.some((effect) => effect.kind === "capability" && effect.name === "FsRead")).toBe(false);
+  }, 60_000);
+
+  it("fails closed when computed syntax would hide an effect-bearing call", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-syntax-"));
+    try {
+      const sourceFile = join(directory, "index.ts");
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(sourceFile, `
+        export function main(registry: Record<string, () => void>, key: string): void {
+          registry[key]()
+        }
+      `);
+      writeFileSync(temporaryConfig, JSON.stringify({
+        compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" },
+        files: ["index.ts"],
+      }));
+      const checked = await checkCorsaProject({ configFile: temporaryConfig, requireAnnotations: false });
+      expect(checked.errors).toBeGreaterThan(0);
+      expect(checked.diagnostics).toContainEqual(expect.objectContaining({
+        domain: "syntax", severity: "error", functionName: "main",
+        message: expect.stringContaining("computed-call-target"),
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }, 60_000);
 
   it("exposes the same summaries through the default project-check CLI twice", async () => {

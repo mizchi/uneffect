@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-typescript-control-flow-v1.schema.json",
+  "title": "Uneffect TypeScript control-flow analysis v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "typescriptVersion", "sourceDigest", "sources", "compilerOptions",
+    "configurationCompatible", "programReused", "coverage", "exclusions", "functions"
+  ],
+  "properties": {
+    "schema": { "const": "uneffect-typescript-control-flow/v1" },
+    "typescriptVersion": { "type": "string", "minLength": 1 },
+    "sourceDigest": { "$ref": "#/$defs/sha256" },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "compilerOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strict", "noImplicitReturns", "allowUnreachableCode"],
+      "properties": {
+        "strict": { "type": "boolean" },
+        "noImplicitReturns": { "type": "boolean" },
+        "allowUnreachableCode": { "type": "boolean" }
+      }
+    },
+    "configurationCompatible": { "type": "boolean" },
+    "programReused": { "type": "boolean" },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "status", "observed", "supported", "unknown"],
+      "properties": {
+        "domain": { "const": "function-endpoints" },
+        "status": { "enum": ["complete", "partial", "not-applicable"] },
+        "observed": { "type": "integer", "minimum": 0 },
+        "supported": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "exclusions": { "type": "array", "items": { "$ref": "#/$defs/exclusion" } },
+    "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "length", "digest"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "length": { "type": "integer", "minimum": 0 },
+        "digest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "diagnosticCode": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "enum": ["uneffect-mutable-binding", "uneffect-incompatible-compiler-options", "uneffect-dynamic-computed-name"] }
+      ]
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileName", "name", "kind", "span", "endpoint", "neutralEndpoint", "parity", "evidence",
+        "diagnosticCodes", "internalFlowApi", "internalFlowNodeCount", "aliases"
+      ],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["function", "method", "getter", "setter", "arrow", "function-expression"] },
+        "span": { "$ref": "#/$defs/span" },
+        "endpoint": { "enum": ["reachable", "unreachable", "unknown"] },
+        "neutralEndpoint": { "enum": ["reachable", "unreachable"] },
+        "parity": { "enum": ["agree", "typescript-refines", "unknown"] },
+        "evidence": { "const": "public-diagnostics" },
+        "diagnosticCodes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/diagnosticCode" } },
+        "internalFlowApi": { "enum": ["observed", "unavailable"] },
+        "internalFlowNodeCount": { "type": "integer", "minimum": 0 },
+        "aliases": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "functionName", "span", "reasons"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "functionName": { "type": "string", "minLength": 1 },
+        "span": { "$ref": "#/$defs/span" },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "mutable-binding", "incompatible-compiler-options", "dynamic-computed-name",
+              "typescript-diagnostic", "endpoint-not-established"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

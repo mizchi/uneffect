@@ -34,6 +34,12 @@ try {
       if (name in root) throw new Error(\`experimental API leaked from package root: \${name}\`);
     for (const name of ["executeZ3", "logicToSmt", "solveBasicBlockFixedPoint"])
       if (typeof experimental[name] !== "function") throw new Error(\`missing experimental API: \${name}\`);
+    const syntaxFacts = experimental.collectSyntaxFacts("smoke.ts", "export function main() { console.log('ok') }");
+    if (experimental.parseSyntaxFacts(JSON.parse(JSON.stringify(syntaxFacts))).coverage.length !== 4)
+      throw new Error("syntax facts contract smoke failed");
+    const controlFlow = experimental.analyzeTypeScriptControlFlow("smoke.ts", "export function main(): number { return 1 }");
+    if (experimental.parseTypeScriptControlFlowAnalysis(JSON.parse(JSON.stringify(controlFlow))).coverage.supported !== 1)
+      throw new Error("TypeScript control-flow contract smoke failed");
     if (typeof spec.defineTemporal !== "function") throw new Error("missing specification API");
     const temporal = root.generateTemporalModel({ fileName: "smoke.ts", source: "export function main() {}", runtime: "web" });
     if (root.parseTemporalModelResult(JSON.parse(JSON.stringify(temporal))).coverage.length !== 9)

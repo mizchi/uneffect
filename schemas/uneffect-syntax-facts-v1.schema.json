@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-syntax-facts-v1.schema.json",
+  "title": "Uneffect syntax facts v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source", "parser", "coverage", "functions", "sites", "errors"],
+  "properties": {
+    "schema": { "const": "uneffect-syntax-facts/v1" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "language", "length", "digest"],
+      "properties": {
+        "fileName": { "type": "string", "minLength": 1 },
+        "language": { "enum": ["typescript", "tsx"] },
+        "length": { "type": "integer", "minimum": 0 },
+        "digest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "parser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "oxc-parser" },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/coverage" },
+      "allOf": [
+        { "contains": { "properties": { "domain": { "const": "function-boundaries" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "call-sites" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "construct-sites" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "property-sites" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 }
+      ]
+    },
+    "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } },
+    "sites": { "type": "array", "items": { "$ref": "#/$defs/site" } },
+    "errors": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "span"],
+      "properties": {
+        "reason": {
+          "enum": [
+            "computed-function-name", "constructor-boundary", "object-member-function",
+            "computed-call-target", "unsupported-call-target", "tagged-template", "dynamic-import",
+            "computed-construct-target", "unsupported-construct-target", "computed-property"
+          ]
+        },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "status", "exclusions"],
+      "properties": {
+        "domain": { "enum": ["function-boundaries", "call-sites", "construct-sites", "property-sites"] },
+        "status": { "enum": ["complete", "partial", "invalid"] },
+        "exclusions": { "type": "array", "items": { "$ref": "#/$defs/exclusion" } }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "start", "end", "parameters"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["function", "method", "getter", "setter", "arrow", "function-expression"] },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 },
+        "parameters": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "start", "end", "calleePosition", "name"],
+      "properties": {
+        "kind": { "enum": ["call", "construct", "property"] },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 1 },
+        "calleePosition": { "type": "integer", "minimum": 0 },
+        "receiverPosition": { "type": "integer", "minimum": 0 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

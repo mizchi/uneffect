@@ -30,6 +30,11 @@ All notable changes to Uneffect are documented in this file.
 - Promoted the high-level temporal/Promise/resource facade contract with a
   strict `uneffect-temporal-model/v1` parser, published schema, and per-domain
   modeled/not-applicable/excluded coverage.
+- Added strict versioned syntax-fact and TypeScript control-flow observation
+  artifacts with published schemas, source identity, coverage, and explicit
+  exclusions. Corsa checking now rejects syntax gaps, attributes class method
+  effects to their method owner, retains anonymous callback boundaries, and
+  fails closed on non-static calls, tagged templates, and dynamic imports.
 - Added an explicit release-please and npm OIDC Trusted Publishing path with a
   tag/package-version guard.
 

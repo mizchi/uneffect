@@ -172,6 +172,15 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           functionName: "<syntax>", message,
         });
       }
+      for (const entry of syntax.coverage) for (const exclusion of entry.exclusions) {
+        const owner = enclosingFunction(syntax.functions, exclusion.span.start);
+        const line = sourceText.slice(0, exclusion.span.start).split("\n").length;
+        diagnostics.push({
+          domain: "syntax", kind: "syntax", severity: "error", fileName, line,
+          functionName: owner?.name ?? "<syntax>",
+          message: `unsupported ${entry.domain} syntax (${exclusion.reason}); Corsa effect inference is incomplete for this source`,
+        });
+      }
       const callSites = syntax.sites.filter((site) => site.kind === "call");
       const classified = frontend.classifyBuiltinCalls(fileName, callSites.map((site) => ({
         calleePosition: site.calleePosition,
