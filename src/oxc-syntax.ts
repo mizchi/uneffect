@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { parseSync } from "oxc-parser";
+import oxcParserMetadata from "oxc-parser/package.json" with { type: "json" };
 import { syntaxFactsSchema } from "./syntax-facts-contract.js";
 import type {
   SyntaxFactExclusion,
@@ -33,8 +33,7 @@ interface EstreeNode {
   [key: string]: unknown;
 }
 
-const require = createRequire(import.meta.url);
-const oxcParserVersion = (require("oxc-parser/package.json") as { version: string }).version;
+const oxcParserVersion = oxcParserMetadata.version;
 
 function isNode(value: unknown): value is EstreeNode {
   return Boolean(value && typeof value === "object" && typeof (value as EstreeNode).type === "string");
