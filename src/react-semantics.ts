@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { resolvedSymbol, symbolIdentityKey } from "./binding-identity.js";
 import { extractAnnotations } from "./annotations.js";
 

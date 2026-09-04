@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { resolvedSymbol, symbolIdentityKey } from "./binding-identity.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { interpretBuiltinCallSemantics, projectedArrayElements } from "./builtin-semantic-interpreter.js";

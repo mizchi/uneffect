@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { solveBasicBlockFixedPoint } from "./refinement-flow.js";
 
 export type HandlerCompletionKind = "normal" | "return" | "throw" | "break" | "continue";

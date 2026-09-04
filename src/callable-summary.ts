@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import { effectPermits, formatEffect, parseEffectSet, type Effect } from "./capabilities.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EvidenceStatus } from "./effects.js";

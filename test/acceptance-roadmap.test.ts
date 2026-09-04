@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import * as uneffect from "../src/index.js";
 import * as experimental from "../src/experimental.js";
 import type { RefinementBindingManifest } from "../src/refinement-bindings.js";

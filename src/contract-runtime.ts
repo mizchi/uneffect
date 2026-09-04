@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractLocatedAnnotations } from "./annotations.js";
 import type { InstrumentDiagnostic, InstrumentResult } from "./instrument.js";
 import { functionMayFallThrough } from "./contract-control-flow.js";

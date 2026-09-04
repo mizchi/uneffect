@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
 import { builtinSemanticCatalog, compileBuiltinSemanticCatalog } from "../src/builtin-semantic-catalog.js";

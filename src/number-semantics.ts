@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 export type NumberValueClass = "finite" | "nan" | "positive-infinity" | "negative-infinity" | "negative-zero" | "unknown";
 

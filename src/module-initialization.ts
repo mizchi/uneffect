@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { classifyLexicalExecution } from "./lexical-execution.js";

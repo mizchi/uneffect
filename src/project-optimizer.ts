@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { builtinContractDigest } from "./evidence.js";
 import { evaluateStableReadReuse, type OptimizationEvent } from "./optimizer.js";
 

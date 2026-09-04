@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { posix } from "node:path";
 import { effectSchema, formatEffect, parseEffectExpression, type AtomDomain, type Effect, type EffectSchema } from "./capabilities.js";
 import { extractAnnotations } from "./annotations.js";

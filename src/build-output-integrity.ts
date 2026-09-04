@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 export interface BuildOutputFileIntegrity {
   kind: "declaration" | "runtime";

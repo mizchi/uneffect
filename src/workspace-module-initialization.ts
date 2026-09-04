@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import {
   analyzeModuleInitializationOrder,
   isRuntimeModuleDependency,

@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { createHash } from "node:crypto";
 import { functionMayFallThrough, type ContractControlFlowOptions } from "./contract-control-flow.js";
 import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import { builtinContractRegistry, findBuiltinContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { collectBuiltinCallRefinements } from "./frontend-adapter.js";

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseFixedArrayBuffer, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/index.js";
 import { reviewedAssumptions } from "./assumption-fixtures.js";

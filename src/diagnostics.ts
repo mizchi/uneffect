@@ -1,5 +1,5 @@
 /* uneffect:module_effect none */
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import type { AsyncSafetyDiagnostic } from "./async-safety.js";
 import { formatEffect } from "./capabilities.js";
 import type { CheckResult } from "./check.js";

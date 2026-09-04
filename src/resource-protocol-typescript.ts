@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import type { CallableSummary } from "./callable-summary.js";
 import { externalContractForCall, type ExternalFunctionEffectContract } from "./effects.js";
 import { resourceProtocolCfgSchema, type ResourceProtocolBlock, type ResourceProtocolCfg, type ResourceProtocolModel, type ResourceProtocolResource, type ResourceProtocolTransition } from "./resource-protocol.js";

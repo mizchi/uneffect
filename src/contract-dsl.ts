@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { posix } from "node:path";
 import { extractAnnotations } from "./annotations.js";
 import type { NumericDomain } from "./invariant-ir.js";

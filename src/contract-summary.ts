@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import type { VerificationArtifact } from "./contracts.js";
 import { formatEffect, parseEffectSet } from "./capabilities.js";

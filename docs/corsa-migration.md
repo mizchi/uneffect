@@ -32,10 +32,10 @@ Upstream status checked on 2026-09-03:
 
 The Corsa worker is pinned to TypeScript 7 native platform binaries
 (`@typescript/typescript-<platform>-<arch>/lib/tsc`). The JavaScript TypeScript 6
-peer remains for the TypeScript Program path (`--typescript-program`,
-workspace composition, contracts, `--corsa-parity`) and for analyzers that
-still walk TypeScript AST. Default check is TypeScript-7-only: one native
-Corsa compiler plus Oxc, no JS `typescript` Program alongside it.
+peer is TypeScript 7. The Program path (`--typescript-program`, workspace
+composition, contracts, `--corsa-parity`) loads the optional
+`@typescript/typescript6` Compiler API. Default check is TypeScript-7-only:
+one native Corsa compiler plus Oxc, no JS TypeScript 6 `Program` alongside it.
 Dual TS6+Corsa memory is a migration tax on the remaining Program path, not
 the default.
 

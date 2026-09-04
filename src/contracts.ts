@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { createHash } from "node:crypto";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";

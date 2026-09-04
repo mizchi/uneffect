@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { cliVersion, formatCliHelp, loadCliCommands, runCli } from "../src/cli-runner.js";
 import { exitCode, type CliStreams } from "../src/cli-support.js";
 import { builtinContractRegistry } from "../src/builtin-contracts.js";

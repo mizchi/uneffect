@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { analyzeEffects } from "../src/effects.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";

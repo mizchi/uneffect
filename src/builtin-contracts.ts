@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import type ts from "typescript";
+import type ts from "@typescript/typescript6";
 import { builtinSemanticCatalog, materializeBuiltinSemanticDefinitions } from "./builtin-semantic-catalog.js";
 import type { BuiltinSemantics } from "./builtin-semantic-schema.js";
 
@@ -149,8 +149,8 @@ function packageName(moduleName: string): string {
 }
 
 const typescriptRequire = createRequire(import.meta.url);
-function typescript(): typeof import("typescript") {
-  return typescriptRequire("typescript") as typeof import("typescript");
+function typescript(): typeof import("@typescript/typescript6") {
+  return typescriptRequire("@typescript/typescript6") as typeof import("@typescript/typescript6");
 }
 
 const resolvedPackageVersions = new WeakMap<ts.Program, Map<string, string | null>>();

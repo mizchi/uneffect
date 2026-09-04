@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import type { InvariantSpec } from "./spec-ir.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";

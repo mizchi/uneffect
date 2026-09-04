@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import type { RefinementBindingManifest } from "./refinement-bindings.js";
 import { parseRefinementRuntimeIdentity } from "./runtime-identities.js";

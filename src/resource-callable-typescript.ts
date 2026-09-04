@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractLocatedAnnotations } from "./annotations.js";
 import { resolveRegionIdentity } from "./region-alias.js";
 import {

@@ -1,4 +1,4 @@
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations, type SourceSpan } from "./annotations.js";
 import { parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { assertGuardedTemporalMapGets, formatTemporalValueType, parseTemporalExpression, parseTemporalValueType, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";

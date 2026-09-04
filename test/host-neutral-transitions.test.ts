@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import type { CallableSummary } from "../src/callable-summary.js";
 import type { ResourceDisposal } from "../src/async-safety.js";
 import type { PromiseChainModel } from "../src/promise-chains.js";

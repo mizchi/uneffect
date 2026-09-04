@@ -32,8 +32,10 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.publishConfig).toMatchObject({ access: "public", provenance: true });
     expect(manifest.bin).toEqual({ uneffect: "dist/src/cli.js" });
     expect(manifest.engines).toEqual({ node: ">=24" });
-    expect(manifest.peerDependencies?.typescript).toBe(">=6.0.0-dev.20260820 <7");
+    expect(manifest.peerDependencies?.typescript).toBe(">=7.0.0");
+    expect(manifest.peerDependencies?.["@typescript/typescript6"]).toBe(">=6.0.2");
     expect(manifest.peerDependenciesMeta?.typescript).toEqual({ optional: true });
+    expect(manifest.peerDependenciesMeta?.["@typescript/typescript6"]).toEqual({ optional: true });
     expect(manifest.optionalDependencies?.["@corsa-bind/napi"]).toBe("1.13.1");
     expect(manifest.optionalDependencies?.["@typescript/typescript-darwin-arm64"]).toBe("7.0.2");
     expect(manifest.optionalDependencies?.["@typescript/native-preview"]).toBeUndefined();

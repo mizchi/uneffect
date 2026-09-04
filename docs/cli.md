@@ -119,7 +119,7 @@ Z3 backend — and most of them fail late and confusingly if they are missing.
 ```
 $ uneffect doctor
 ok       node                    v24.4.0 (engines: >=24)
-ok       typescript              6.0.3 at node_modules/typescript (peer: >=6.0.0-dev.20260820)
+ok       typescript              7.0.2 native @typescript/typescript-darwin-arm64 at node_modules/@typescript/typescript-darwin-arm64
 ok       @types/node             24.13.3 at node_modules/@types/node
 ok       z3 backend              native Z3 version 4.16.0 - 64 bit, probe query answered in 14 ms
 warn     @informalsystems/quint  not installed

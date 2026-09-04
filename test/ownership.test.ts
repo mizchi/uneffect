@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { analyzeOwnership, checkOwnership, checkOwnershipWithResourceProtocol, generateOwnershipQuint, lowerOwnershipEventsToResourceProtocol, type OwnershipEvent } from "../src/ownership.js";
 import { invalidateTransferredTypedArrayEvidence } from "../src/project-verification.js";
