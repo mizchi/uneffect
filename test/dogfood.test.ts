@@ -2762,7 +2762,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "formatCliHelp", effect: "Console", kind: "unused",
     }));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("separates CLI dispatch stream callbacks from dispatcher body effects", () => {
     const fileName = "src/cli-runner.ts";
@@ -2789,7 +2789,7 @@ describe("Uneffect dogfood", () => {
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "runCli", effect: "Console", kind: "unused",
     }));
-  }, 60_000);
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("classifies fixture discovery and report persistence as filesystem capabilities", () => {
     const fileName = "src/fixtures.ts";
