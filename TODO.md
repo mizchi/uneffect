@@ -2522,6 +2522,11 @@ must not be read as a claim that arbitrary source rewriting is implemented.
         ownership resources while retaining the structured fixed point for
         branch/loop/switch/try replacements.
       - [ ] Compute general CFG and loop data fixed points for exception-heavy scalar ownership state; keep Promise/resource generation lowering in #9. ([#25](https://github.com/mizchi/uneffect/issues/25))
+        The shared foundation now separates declared basic-block topology from
+        lattice transfer, attaches completion/role/source-span metadata to
+        edges, validates the complete graph before scheduling, and rejects
+        runtime transfers outside the declared topology even when their target
+        block exists.
       - [ ] Track Promise/resource generations through escaping aliases and dynamically dispatched ownership transfers. ([#24](https://github.com/mizchi/uneffect/issues/24))
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.

@@ -4702,9 +4702,22 @@ function runHandlerBackedScalarRecurrenceFixedPoint(
       },
     },
     blocks: [
-      { id: "header", transfer: (input) => [{ to: "entry", value: input }] },
+      {
+        id: "header",
+        edges: [{ to: "entry", completion: "normal" }],
+        transfer: (input) => [{ to: "entry", value: input }],
+      },
       ...candidate.handler.blocks.map((block) => ({
         id: block.id,
+        edges: block.id === "exit"
+          ? [
+              { to: "header", completion: "normal" as const, role: "back-edge" as const },
+              { to: "loop-exit", completion: "normal" as const, role: "branch" as const },
+            ]
+          : block.edges.map((edge) => ({
+              to: edge.to,
+              completion: edge.completion ?? "normal",
+            })),
         transfer: (input: HandlerRecurrenceValueState) => {
           if (block.id === "try-completion") {
             const edges: Array<{ to: string; value: HandlerRecurrenceValueState }> = [];
@@ -4741,7 +4754,7 @@ function runHandlerBackedScalarRecurrenceFixedPoint(
           });
         },
       })),
-      { id: "loop-exit", transfer: () => [] },
+      { id: "loop-exit", edges: [], transfer: () => [] },
     ],
   });
   const catchState = result.states.get("catch") ?? value();
@@ -5167,8 +5180,15 @@ function runScalarRecurrenceFixedPoint(
       },
     },
     blocks: [
-      { id: header, transfer: (input) => [{ to: back, value: input }, { to: "loop-exit", value: input }] },
-      { id: back, transfer: (input) => {
+      {
+        id: header,
+        edges: [
+          { to: back, completion: "normal", role: "branch" },
+          { to: "loop-exit", completion: "normal", role: "branch" },
+        ],
+        transfer: (input) => [{ to: back, value: input }, { to: "loop-exit", value: input }],
+      },
+      { id: back, edges: [{ to: header, completion: "normal", role: "back-edge" }], transfer: (input) => {
         const output = new Map(input.recurrences);
         const memberLimit = trace?.affineDependencies ? 3 : 2;
         if (candidateRecurrence && members.length >= 1 && members.length <= memberLimit) {
@@ -5176,7 +5196,7 @@ function runScalarRecurrenceFixedPoint(
         }
         return [{ to: header, value: value(input.reachable, output) }];
       } },
-      { id: "loop-exit", transfer: () => [] },
+      { id: "loop-exit", edges: [], transfer: () => [] },
     ],
   });
   const retained = result.states.get("loop-exit")?.recurrences.get(recurrenceKey);
@@ -5421,6 +5441,10 @@ function runHandlerScalarEnvironmentFixedPoint(
     },
     blocks: candidate.blocks.map((block) => ({
       id: block.id,
+      edges: block.edges.map((edge) => ({
+        to: edge.to,
+        completion: edge.completion ?? "normal",
+      })),
       transfer: (input: Value) => {
         const tryMatch = /^try:(\d+)$/.exec(block.id);
         const joinMatch = /^nested-handler-join:(\d+)$/.exec(block.id);

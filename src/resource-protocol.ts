@@ -376,9 +376,10 @@ export function evaluateResourceProtocolCfg(cfg: ResourceProtocolCfg): ResourceP
     lattice,
     blocks: cfg.blocks.map((block) => ({
       id: block.id,
+      edges: [...new Set(block.successors)].map((to) => ({ to, completion: "normal" as const })),
       transfer: (input) => {
         const output = applyBlock(input, block);
-        return block.successors.map((to) => ({ to, value: output }));
+        return [...new Set(block.successors)].map((to) => ({ to, value: output }));
       },
     })),
   });

@@ -1314,7 +1314,12 @@ same property is proved for arbitrary TypeScript.
   diagnostic yields `unknown`. The worklist is now the reusable monotone
   `solveBasicBlockFixedPoint` engine: a caller-defined lattice carries the
   normalized throw payload plus normal/catch snapshot identities through the
-  loop back-edge. The shared completion lowering also supplies each direct
+  loop back-edge. Each basic block separately declares its topology with
+  completion kind, optional branch/back-edge role, and optional source span.
+  Before scheduling, the engine validates every block and edge—including
+  unreachable regions—and rejects missing targets, exact duplicate edges,
+  invalid spans, and runtime transfers outside the declared topology as
+  `invalid-cfg`. The shared completion lowering also supplies each direct
   predecessor's `TemporalExpression` updates; the worklist specializes them by
   the throw condition and its join block constructs a correlated phi
   environment before the back-edge and exit. It now also carries the accepted

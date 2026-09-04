@@ -56,20 +56,26 @@ describe("refinement flow joins", () => {
         },
       },
       blocks: [
-        { id: "header", transfer: (input) => [{ to: "try", value: input }] },
-        { id: "try", transfer: () => [
+        { id: "header", edges: [{ to: "try", completion: "normal" }], transfer: (input) => [{ to: "try", value: input }] },
+        { id: "try", edges: [
+          { to: "join", completion: "normal", role: "branch" },
+          { to: "catch", completion: "throw", role: "branch" },
+        ], transfer: () => [
           { to: "join", value: value(["delivered"]) },
           { to: "catch", value: value([], [["pending", "throw-entry"]]) },
         ] },
-        { id: "catch", transfer: (input) => [{
+        { id: "catch", edges: [{ to: "join", completion: "normal" }], transfer: (input) => [{
           to: "join",
           value: value([...input.throws].map(([, snapshot]) => `caught:${snapshot}`)),
         }] },
-        { id: "join", transfer: (input) => [
+        { id: "join", edges: [
+          { to: "header", completion: "normal", role: "back-edge" },
+          { to: "exit", completion: "normal", role: "branch" },
+        ], transfer: (input) => [
           { to: "header", value: input },
           { to: "exit", value: input },
         ] },
-        { id: "exit", transfer: () => [] },
+        { id: "exit", edges: [], transfer: () => [] },
       ],
     });
 
@@ -91,8 +97,8 @@ describe("refinement flow joins", () => {
         join: (left, right) => ({ status: "joined", value: Math.max(left, right) }),
       },
       blocks: [
-        { id: "a", transfer: (input) => [{ to: "b", value: input }] },
-        { id: "b", transfer: () => [] },
+        { id: "a", edges: [{ to: "b", completion: "normal" }], transfer: (input) => [{ to: "b", value: input }] },
+        { id: "b", edges: [], transfer: () => [] },
       ],
     });
     expect(budgeted).toMatchObject({ status: "unknown", reason: "proof-budget-exhausted", iterations: 1 });
@@ -109,10 +115,124 @@ describe("refinement flow joins", () => {
           : { status: "conflict", reason: `${left} != ${right}` },
       },
       blocks: [
-        { id: "a", transfer: () => [{ to: "b", value: "right" }] },
-        { id: "b", transfer: () => [] },
+        { id: "a", edges: [{ to: "b", completion: "normal" }], transfer: () => [{ to: "b", value: "right" }] },
+        { id: "b", edges: [], transfer: () => [] },
       ],
     });
     expect(conflict).toMatchObject({ status: "unknown", reason: "lattice-conflict", detail: "left != right" });
+  });
+
+  it("validates the whole declared CFG before scheduling reachable blocks", () => {
+    const lattice = {
+      bottom: () => 0,
+      equivalent: (left: number, right: number) => left === right,
+      join: (left: number, right: number) => ({ status: "joined" as const, value: Math.max(left, right) }),
+    };
+    const dangling = solveBasicBlockFixedPoint({
+      entry: "entry",
+      initial: 1,
+      budget: { name: "cfg-fixed-point-iterations", limit: 4 },
+      lattice,
+      blocks: [
+        { id: "entry", edges: [], transfer: () => [] },
+        {
+          id: "dead",
+          edges: [{ to: "missing", completion: "normal" }],
+          transfer: (input) => [{ to: "missing", value: input }],
+        },
+      ],
+    });
+    expect(dangling).toMatchObject({
+      status: "unknown",
+      reason: "invalid-cfg",
+      detail: "basic block dead declares missing successor missing",
+      iterations: 0,
+    });
+
+    const undeclared = solveBasicBlockFixedPoint({
+      entry: "entry",
+      initial: 1,
+      budget: { name: "cfg-fixed-point-iterations", limit: 4 },
+      lattice,
+      blocks: [
+        { id: "entry", edges: [], transfer: (input) => [{ to: "exit", value: input }] },
+        { id: "exit", edges: [], transfer: () => [] },
+      ],
+    });
+    expect(undeclared).toMatchObject({
+      status: "unknown",
+      reason: "invalid-cfg",
+      detail: "basic block entry transfers through undeclared successor exit",
+      iterations: 1,
+    });
+  });
+
+  it("rejects ambiguous topology metadata before evaluating transfers", () => {
+    const options = {
+      entry: "entry",
+      initial: 1,
+      budget: { name: "cfg-fixed-point-iterations", limit: 4 },
+      lattice: {
+        bottom: () => 0,
+        equivalent: (left: number, right: number) => left === right,
+        join: (left: number, right: number) => ({ status: "joined" as const, value: Math.max(left, right) }),
+      },
+    };
+    const duplicateEdge = solveBasicBlockFixedPoint({ ...options, blocks: [
+      {
+        id: "entry",
+        edges: [
+          { to: "exit", completion: "normal" },
+          { to: "exit", completion: "normal" },
+        ],
+        transfer: () => [],
+      },
+      { id: "exit", edges: [], transfer: () => [] },
+    ] });
+    expect(duplicateEdge).toMatchObject({
+      status: "unknown",
+      reason: "invalid-cfg",
+      detail: "basic block entry declares duplicate successor exit",
+      iterations: 0,
+    });
+
+    const distinctCompletions = solveBasicBlockFixedPoint({ ...options, blocks: [
+      {
+        id: "entry",
+        edges: [
+          { to: "exit", completion: "normal" },
+          { to: "exit", completion: "throw" },
+        ],
+        transfer: (input) => [{ to: "exit", value: input }],
+      },
+      { id: "exit", edges: [], transfer: () => [] },
+    ] });
+    expect(distinctCompletions).toMatchObject({ status: "converged" });
+
+    const invalidSpan = solveBasicBlockFixedPoint({ ...options, blocks: [
+      {
+        id: "entry",
+        edges: [{ to: "exit", completion: "normal", sourceSpan: { start: 8, end: 3 } }],
+        transfer: () => [],
+      },
+      { id: "exit", edges: [], transfer: () => [] },
+    ] });
+    expect(invalidSpan).toMatchObject({
+      status: "unknown",
+      reason: "invalid-cfg",
+      detail: "basic block entry declares invalid source span for successor exit",
+      iterations: 0,
+    });
+
+    const duplicateBlock = solveBasicBlockFixedPoint({ ...options, blocks: [
+      { id: "entry", edges: [], transfer: () => [] },
+      { id: "entry", edges: [], transfer: () => [] },
+    ] });
+    expect(duplicateBlock).toMatchObject({
+      status: "unknown",
+      reason: "invalid-cfg",
+      detail: "duplicate CFG basic block entry",
+      iterations: 0,
+    });
   });
 });

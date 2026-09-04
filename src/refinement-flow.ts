@@ -1,3 +1,5 @@
+import type { CompletionKind } from "./completion-flow.js";
+
 export interface FlowJoinOptions<Key, Value, Condition> {
   readonly keys: Iterable<Key>;
   readonly condition: Condition;
@@ -47,8 +49,16 @@ export interface BasicBlockTransfer<Value> {
   readonly value: Value;
 }
 
+export interface BasicBlockEdge {
+  readonly to: string;
+  readonly completion: CompletionKind;
+  readonly role?: "forward" | "branch" | "back-edge";
+  readonly sourceSpan?: { readonly start: number; readonly end: number };
+}
+
 export interface BasicBlock<Value> {
   readonly id: string;
+  readonly edges: readonly BasicBlockEdge[];
   readonly transfer: (input: Value) => readonly BasicBlockTransfer<Value>[];
 }
 
@@ -89,16 +99,55 @@ export function solveBasicBlockFixedPoint<Value>(
     throw new Error(`${budget.name} must be a positive safe integer; received ${String(budget.limit)}`);
   }
   const blocks = new Map<string, BasicBlock<Value>>();
+  let duplicateBlock: string | undefined;
   for (const block of options.blocks) {
-    if (blocks.has(block.id)) throw new Error(`duplicate CFG basic block ${block.id}`);
+    if (blocks.has(block.id)) {
+      duplicateBlock = block.id;
+      break;
+    }
     blocks.set(block.id, block);
   }
   const states = new Map<string, Value>([...blocks.keys()].map((id) => [id, lattice.bottom()]));
+  if (duplicateBlock) return {
+    status: "unknown", reason: "invalid-cfg", detail: `duplicate CFG basic block ${duplicateBlock}`,
+    iterations: 0, budget, states,
+  };
   const entry = blocks.get(options.entry);
   if (!entry) return {
     status: "unknown", reason: "invalid-cfg", detail: `missing entry block ${options.entry}`,
     iterations: 0, budget, states,
   };
+  for (const block of blocks.values()) {
+    const edgeKeys = new Set<string>();
+    for (const edge of block.edges) {
+      const edgeKey = JSON.stringify([
+        edge.to,
+        edge.completion,
+        edge.role ?? null,
+        edge.sourceSpan?.start ?? null,
+        edge.sourceSpan?.end ?? null,
+      ]);
+      if (edgeKeys.has(edgeKey)) return {
+        status: "unknown", reason: "invalid-cfg",
+        detail: `basic block ${block.id} declares duplicate successor ${edge.to}`,
+        iterations: 0, budget, states,
+      };
+      edgeKeys.add(edgeKey);
+      if (!blocks.has(edge.to)) return {
+        status: "unknown", reason: "invalid-cfg",
+        detail: `basic block ${block.id} declares missing successor ${edge.to}`,
+        iterations: 0, budget, states,
+      };
+      if (edge.sourceSpan && (!Number.isSafeInteger(edge.sourceSpan.start)
+        || !Number.isSafeInteger(edge.sourceSpan.end)
+        || edge.sourceSpan.start < 0
+        || edge.sourceSpan.end < edge.sourceSpan.start)) return {
+        status: "unknown", reason: "invalid-cfg",
+        detail: `basic block ${block.id} declares invalid source span for successor ${edge.to}`,
+        iterations: 0, budget, states,
+      };
+    }
+  }
   const initial = lattice.join(states.get(options.entry)!, options.initial);
   if (initial.status === "conflict") return {
     status: "unknown", reason: "lattice-conflict", detail: initial.reason,
@@ -119,9 +168,9 @@ export function solveBasicBlockFixedPoint<Value>(
     const block = blocks.get(id)!;
     iterations++;
     for (const transfer of block.transfer(states.get(id)!)) {
-      if (!blocks.has(transfer.to)) return {
+      if (!block.edges.some((edge) => edge.to === transfer.to)) return {
         status: "unknown", reason: "invalid-cfg",
-        detail: `basic block ${id} transfers to missing block ${transfer.to}`,
+        detail: `basic block ${id} transfers through undeclared successor ${transfer.to}`,
         iterations, budget, states,
       };
       const current = states.get(transfer.to)!;

@@ -456,6 +456,10 @@ export function runHandlerJoinFixedPoint(
     },
     blocks: candidate.blocks.map((block) => ({
       id: block.id,
+      edges: block.edges.map((edge) => ({
+        to: edge.to,
+        completion: edge.completion ?? "normal",
+      })),
       transfer: (input: Value) => {
         if (block.id === "try-completion") {
           const edges: Array<{ to: string; value: Value }> = [];
