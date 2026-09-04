@@ -46,6 +46,11 @@ renamed or namespace imports do not degrade the summary to unknown timing.
 The legacy `analyzeEffects(fileName, text)` convenience path remains a shallow
 single-source check; proof/adoption tooling uses `analyzeProgramEffects`.
 
+`oxc-parser@0.148.0` has a reviewed empty initialization contract plus a
+`parseSync` overlay: the parser loads a native binding and returns an ESTree AST
+without executing the parsed program. Other Oxc entry points and other package
+versions remain unknown until reviewed.
+
 `typescript`'s reviewed `Program#emit` overlay marks only argument 1, the
 `writeFile` callback, as synchronous/inline. Uneffect uses this contract when
 it re-emits declarations in memory for cross-project content-integrity checks.

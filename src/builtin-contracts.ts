@@ -229,7 +229,8 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     },
     ...([
       ["@oxlint/plugins", "1.80.0"], ["corsa-oxlint", "1.12.4"], ["effect", "3.22.1"],
-      ["typescript", "6.0.3"], ["valibot", "1.4.2"], ["z3-solver", "4.16.0"],
+      ["oxc-parser", "0.148.0"], ["typescript", "6.0.3"], ["@typescript/typescript6", "6.0.2"],
+      ["valibot", "1.4.2"], ["z3-solver", "4.16.0"],
     ] as const).map(([module, packageVersion]): ModuleInitializationContract => ({
       module, runtime: { kind: "package", version: packageVersion }, effects: [], evidence: "trusted",
       trustReason: "reviewed package module initialization boundary", trustOwner: "@mizchi/uneffect",
