@@ -19,6 +19,7 @@ export const ciTestTiers = {
     "test/corsa-builtin-catalog.test.ts",
     "test/clock-conformance.test.ts",
     "test/completion-flow.test.ts",
+    "test/contract-control-flow.test.ts",
     "test/declaration-transforms.test.ts",
     "test/deno-permissions.test.ts",
     "test/diagnostics.test.ts",

@@ -353,6 +353,21 @@ describe("TypeScript contract DSL", () => {
     expect(instrumentContractPredicates("void.ts", shadowed).diagnostics).toContainEqual(expect.objectContaining({ message: expect.stringContaining("fall through") }));
   });
 
+  it("uses resolved never calls through eagerly evaluated wrappers", () => {
+    const source = `
+      declare function stop(message: string): never;
+      /* uneffect:
+       * ensures result >= 0
+       */
+      function checked(): number {
+        void (stop("negative") as never);
+      }
+    `;
+    expect(instrumentContractPredicates("wrapped-never.ts", source).diagnostics).toEqual([]);
+    const returning = source.replace("declare function stop(message: string): never;", "function stop(message: string): void { console.log(message); }");
+    expect(instrumentContractPredicates("wrapped-void.ts", returning).diagnostics).toContainEqual(expect.objectContaining({ message: expect.stringContaining("fall through") }));
+  });
+
   it("uses TypeChecker literal booleans for semantic branch reachability", () => {
     const source = `
       const enabled: true = true;

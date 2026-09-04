@@ -1310,8 +1310,11 @@ introducing another domain-local control-flow or alias model.
       parity reporting only; do not use undocumented graph APIs as proof evidence.
     - [x] Instrument Generator and AsyncGenerator final return values without
       treating yielded values as contract results.
-    - [ ] Extend semantic reachability beyond direct expression-statement calls ([#64](https://github.com/mizchi/uneffect/issues/64))
-      and literal Boolean conditions.
+    - [x] Extend semantic reachability beyond direct expression-statement calls ([#64](https://github.com/mizchi/uneffect/issues/64))
+      through eagerly evaluated wrappers, initializers, operands, callees, and
+      arguments; compose literal-type Boolean conditions through syntax-level
+      negation, conjunction, disjunction, and equality. Keep optional-chain and
+      unresolved short-circuit operands conservatively reachable.
     - [x] Preserve the originating `.uneffect.ts` file, line, column, expression,
       and AST span across linked-contract materialization and runtime lowering.
     - [x] Reuse one compatible project TypeScript `Program` for runtime CFG
