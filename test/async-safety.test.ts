@@ -560,6 +560,34 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("retains a floating Promise witness on a continue/finally loop back-edge", () => {
+    const result = analyzeAsyncSafety("loop-finally-back-edge.ts", `
+      declare function task(): Promise<number>
+      async function unreachableObservation() {
+        const pending = task()
+        while (true) {
+          try { continue }
+          finally { console.log("tick") }
+          await pending
+        }
+      }
+      async function observedInFinally() {
+        const pending = task()
+        while (true) {
+          try { continue }
+          finally { await pending }
+        }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "unreachableObservation", status: "floating" },
+      { owner: "observedInFinally", status: "observed" },
+    ]);
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
+      expect.objectContaining({ functionName: "unreachableObservation" }),
+    ]);
+  });
+
   it("executes for initializers and incrementors in Promise ownership fixed points", () => {
     const result = analyzeAsyncSafety("for-flow-promises.ts", `
       declare const flag: boolean

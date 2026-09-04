@@ -5,6 +5,7 @@ import type { DiagnosticNote } from "./diagnostics.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { logicToSmt, parseLogicExpression, proveBooleanImplication, type LogicExpression } from "./invariant-ir.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
+import { solveBasicBlockFixedPoint } from "./refinement-flow.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
 import {
   breakTransferTarget,
@@ -19,6 +20,7 @@ import {
 } from "./completion-flow.js";
 
 export type PromiseObservationKind = "await" | "return" | "catch" | "then-rejection" | "ignored" | "floating";
+const PROMISE_OWNERSHIP_CFG_ITERATIONS = 128;
 export interface AsyncControlCondition {
   id: string;
   expected: boolean;
@@ -1905,39 +1907,108 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         };
       };
       const executeLoop = (statement: ts.IterationStatement, state: PathState, atLeastOnce: boolean, loopLabel?: string): PathState[] => {
-        const firstTest = atLeastOnce ? undefined : executeLoopTest(statement, state);
-        const first = firstTest?.state ?? state;
-        const exits: PathState[] = firstTest?.outcome === true || atLeastOnce ? [] : [{ ...first }];
-        let frontier: PathState[] = firstTest?.outcome === false || firstTest?.outcome === "throw" ? [] : [{ ...first }], visited = new Set<string>();
-        while (frontier.length) {
-          const nextFrontier: PathState[] = [];
-          for (const entry of frontier) {
-            const key = stateKey(entry); if (visited.has(key)) continue; visited.add(key);
-            for (const next of executeStatement(statement.statement, entry)) {
-              const matching = next.label === undefined || next.label === loopLabel;
-              if (next.abrupt === "break" && matching) { exits.push({ ...next, abrupt: undefined, label: undefined }); continue; }
-              if (next.abrupt === "continue" && matching) {
-                const resumed = { ...next, abrupt: undefined, label: undefined };
-                const advanced = ts.isForStatement(statement) && statement.incrementor
-                  ? executeHeaderNode(statement.incrementor, resumed)
-                  : resumed;
-                if (advanced.terminated) { exits.push(advanced); continue; }
-                const tested = executeLoopTest(statement, advanced);
-                if (tested.outcome !== true) exits.push(tested.state);
-                if (tested.outcome !== false && tested.outcome !== "throw") nextFrontier.push(tested.state);
-                continue;
-              }
-              if (next.abrupt || next.terminated) { exits.push(next); continue; }
-              const advanced = ts.isForStatement(statement) && statement.incrementor
-                ? executeHeaderNode(statement.incrementor, next)
-                : next;
-              if (advanced.terminated) { exits.push(advanced); continue; }
-              const tested = executeLoopTest(statement, advanced);
-              if (tested.outcome !== true) exits.push(tested.state);
-              if (tested.outcome !== false && tested.outcome !== "throw") nextFrontier.push(tested.state);
+        type LoopValue = readonly PathState[];
+        const span = { start: statement.getStart(source), end: statement.getEnd() };
+        const prefix = `${owner}@loop:${span.start}`;
+        const entryId = `${prefix}:entry`, bodyId = `${prefix}:body`;
+        const backEdgeId = `${prefix}:back-edge`, exitId = `${prefix}:exit`;
+        const valueKey = (value: LoopValue): string => [...value].map(stateKey).sort().join("|");
+        const routeTest = (input: PathState, body: PathState[], exits: PathState[]): void => {
+          const tested = executeLoopTest(statement, input);
+          if (tested.outcome !== true) exits.push(tested.state);
+          if (tested.outcome !== false && tested.outcome !== "throw") body.push(tested.state);
+        };
+        const executeIteration = (input: LoopValue): { back: PathState[]; exits: PathState[] } => {
+          const back: PathState[] = [], exits: PathState[] = [];
+          for (const entry of input) for (const next of executeStatement(statement.statement, entry)) {
+            const matching = next.label === undefined || next.label === loopLabel;
+            if (next.abrupt === "break" && matching) {
+              exits.push({ ...next, abrupt: undefined, label: undefined });
+              continue;
             }
+            if ((next.abrupt && !(next.abrupt === "continue" && matching)) || next.terminated) {
+              exits.push(next);
+              continue;
+            }
+            const resumed = next.abrupt === "continue"
+              ? { ...next, abrupt: undefined, label: undefined }
+              : next;
+            const advanced = ts.isForStatement(statement) && statement.incrementor
+              ? executeHeaderNode(statement.incrementor, resumed)
+              : resumed;
+            if (advanced.terminated) {
+              exits.push(advanced);
+              continue;
+            }
+            routeTest(advanced, back, exits);
           }
-          frontier = uniqueStates(nextFrontier);
+          return { back: uniqueStates(back), exits: uniqueStates(exits) };
+        };
+        const result = solveBasicBlockFixedPoint<LoopValue>({
+          entry: entryId,
+          initial: [state],
+          budget: { name: "promise-ownership-cfg-iterations", limit: PROMISE_OWNERSHIP_CFG_ITERATIONS },
+          lattice: {
+            bottom: () => [],
+            equivalent: (left, right) => valueKey(left) === valueKey(right),
+            join: (left, right) => ({ status: "joined", value: uniqueStates([...left, ...right]) }),
+          },
+          blocks: [
+            {
+              id: entryId,
+              edges: [
+                { to: bodyId, completion: "normal", role: "branch", sourceSpan: span },
+                { to: exitId, completion: "normal", role: "branch", sourceSpan: span },
+                { to: exitId, completion: "throw", role: "branch", sourceSpan: span },
+              ],
+              transfer: (input) => {
+                if (atLeastOnce) return [{ to: bodyId, value: input }];
+                const body: PathState[] = [], exits: PathState[] = [];
+                for (const initial of input) routeTest(initial, body, exits);
+                return [
+                  ...(body.length > 0 ? [{ to: bodyId, value: uniqueStates(body) }] : []),
+                  ...(exits.length > 0 ? [{ to: exitId, value: uniqueStates(exits) }] : []),
+                ];
+              },
+            },
+            {
+              id: bodyId,
+              edges: [
+                { to: backEdgeId, completion: "normal", role: "forward", sourceSpan: span },
+                { to: exitId, completion: "normal", role: "branch", sourceSpan: span },
+                { to: exitId, completion: "return", role: "branch", sourceSpan: span },
+                { to: exitId, completion: "throw", role: "branch", sourceSpan: span },
+                { to: exitId, completion: "break", role: "branch", sourceSpan: span },
+                { to: exitId, completion: "continue", role: "branch", sourceSpan: span },
+              ],
+              transfer: (input) => {
+                const iteration = executeIteration(input);
+                return [
+                  ...(iteration.back.length > 0 ? [{ to: backEdgeId, value: iteration.back }] : []),
+                  ...(iteration.exits.length > 0 ? [{ to: exitId, value: iteration.exits }] : []),
+                ];
+              },
+            },
+            {
+              id: backEdgeId,
+              edges: [{ to: bodyId, completion: "normal", role: "back-edge", sourceSpan: span }],
+              transfer: (input) => [{ to: bodyId, value: input }],
+            },
+            { id: exitId, edges: [], transfer: () => [] },
+          ],
+        });
+        if (result.status === "unknown") {
+          const relevant = state.active || activates(statement) || reassigns(statement) || consumes(statement);
+          return relevant
+            ? [{ ...state, active: true, pending: true, lost: true, terminated: true }]
+            : [{ ...state }];
+        }
+        const exits = [...(result.states.get(exitId) ?? [])];
+        if (exits.length === 0) {
+          const recurrent = result.states.get(backEdgeId) ?? [];
+          exits.push(...recurrent
+            .filter((candidate) => candidate.active && (candidate.pending || candidate.lost))
+            .map((candidate) => ({ ...candidate, terminated: true })));
         }
         return uniqueStates(exits);
       };

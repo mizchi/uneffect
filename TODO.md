@@ -2534,7 +2534,11 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Add restricted path-sensitive must-observe analysis for `if` branches, Promise reassignment, zero-iteration `while`/`for` paths, and at-least-once `do` loops.
   - [x] Cover finite exhaustive `switch` entry/fallthrough and conservative `try`/`catch` alternatives with mandatory `finally` execution.
   - [ ] Replace the restricted path walker with a general CFG fixed point covering arbitrary `switch`/`try`/`finally` joins and irreducible loops. ([#25](https://github.com/mizchi/uneffect/issues/25))
-    - [x] Compute a finite abstract-state loop closure and propagate unlabeled/labeled `break` and `continue` without executing skipped statements.
+    - [x] Compute the finite Promise-ownership loop closure through the shared
+      source-keyed basic-block worklist with an explicit 128-iteration budget;
+      propagate unlabeled/labeled `break` and `continue` without executing
+      skipped statements, and retain an unobserved no-exit back-edge as a
+      floating-Promise witness.
     - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [x] Treat a direct expression-statement call as a guaranteed catch edge only when TypeScript proves `never` return and the resolved declaration explicitly carries `Throw<E>`; keep unannotated `never` termination/divergence distinct.
     - [x] Preserve guaranteed `never` + `Throw<E>` completion through return, transparent wrappers, a single initializer, comma-tail evaluation, and all-throw ternary joins; keep partial ternaries and unresolved compounds conservative.

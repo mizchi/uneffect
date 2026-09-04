@@ -1758,12 +1758,18 @@ same property is proved for arbitrary TypeScript.
   transferring every mapped callback rejection to the aggregate Promise.
   Detached maps, intermediate aliases, user-defined collectors, and exotic
   proxy/accessor iteration remain unproved or diagnostic.
-- Promise ownership loop closure preserves a directly awaited generation across
-  a retry `try` with statically primitive local preparation, a direct expression
-  or variable-initializer `await`, non-reassigning post-await work, and a catch
-  that replaces the generation before continuing. A possible throw before the
-  `await`, or replacement followed by a possible throw, restores conservative
-  catch entry, so general exception-heavy loop joins remain unsupported.
+- Promise ownership loop closure runs on the shared source-keyed basic-block
+  worklist with declared entry/body/back-edge/exit topology, completion/role/span
+  edge metadata, and a 128-iteration proof budget. It preserves a directly
+  awaited generation across a retry `try` with statically primitive local
+  preparation, a direct expression or variable-initializer `await`,
+  non-reassigning post-await work, and a catch that replaces the generation
+  before continuing. A statically infinite loop with no exit retains a pending
+  back-edge as a floating-Promise witness, so an unreachable `await` after a
+  `continue` cannot discharge ownership; an `await` in mandatory `finally`
+  remains safe. A possible throw before the `await`, or replacement followed by
+  a possible throw, restores conservative catch entry, so general
+  exception-heavy loop joins remain unsupported.
 - The same catch-entry proof joins nested `if`/`else` paths when the condition
   is a primitive identifier (or supported static primitive expression) and
   both branches must reach the tracked `await`. A missing `else`, one
