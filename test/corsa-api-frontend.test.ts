@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { openCorsaApiFrontend, resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
+import { openCorsaApiFrontend, parseCorsaApiFrontendDescriptor, resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
 import { openTypeScriptSemanticQuery } from "../src/typescript-semantic-query.js";
 
 describe("Corsa API frontend", () => {
@@ -51,6 +51,40 @@ describe("Corsa API frontend", () => {
     }
   });
 
+  it("publishes a versioned descriptor for the supported semantic-query contract", async () => {
+    const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
+    const frontend = await openCorsaApiFrontend({ configFile });
+    try {
+      expect(frontend.descriptor).toEqual({
+        schema: "uneffect-corsa-api-frontend/v1",
+        contract: "semantic-query",
+        compiler: {
+          revision: expect.stringMatching(/^corsa-api@/),
+          executable: frontend.compilerExecutable,
+        },
+        project: {
+          id: frontend.projectId,
+          configFile,
+          rootFiles: frontend.rootFiles,
+        },
+        capabilities: [
+          "position-query", "batch-position-query", "alias-query", "module-exports-query",
+          "type-property-query", "type-symbol-query", "assignability-query", "bounded-builtin-classification",
+        ],
+        limitations: ["syntax-out-of-band", "builtin-classification-bounded"],
+      });
+      expect(parseCorsaApiFrontendDescriptor(JSON.parse(JSON.stringify(frontend.descriptor))))
+        .toEqual(frontend.descriptor);
+      expect(() => parseCorsaApiFrontendDescriptor({ ...frontend.descriptor, invented: true }))
+        .toThrow(/unknown key/);
+      expect(() => parseCorsaApiFrontendDescriptor({
+        ...frontend.descriptor, capabilities: [...frontend.descriptor.capabilities, "guess"],
+      })).toThrow(/capabilities/);
+    } finally {
+      frontend.close();
+    }
+  });
+
   it("classifies only checker-authenticated DOM globals in the first effect slice", async () => {
     const file = resolve("test/fixtures/corsa-api-project/index.ts");
     const source = readFileSync(file, "utf8");
@@ -94,6 +128,16 @@ describe("Corsa API frontend", () => {
     } finally {
       frontend.close();
     }
+  });
+
+  it("makes close idempotent and rejects queries after the snapshot is released", async () => {
+    const frontend = await openCorsaApiFrontend({
+      configFile: resolve("test/fixtures/corsa-api-project/tsconfig.json"),
+    });
+    frontend.close();
+    frontend.close();
+    expect(() => frontend.queryPosition(resolve("test/fixtures/corsa-api-project/index.ts"), 13))
+      .toThrow("Corsa API frontend is closed");
   });
 
   it("matches the reference TypeScript semantic-query contract", async () => {

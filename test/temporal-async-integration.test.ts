@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { analyzeAsyncSafety, generateTemporalModel, verifyUneffectProject } from "../src/index.js";
+import { analyzeAsyncSafety, generateTemporalModel, parseTemporalModelResult, verifyUneffectProject } from "../src/index.js";
 import { createResourceDisposalTemporalProduct, lowerResourceDisposalsToProtocol } from "../src/index.js";
 import * as stable from "../src/public.js";
 import * as experimental from "../src/experimental.js";
@@ -54,6 +54,28 @@ describe("unified async temporal model", () => {
     expect(result.quint).toMatch(/action drain_microtask_0/);
     expect(result.quint.slice(result.quint.indexOf("action drain_microtask_0")))
       .toContain("sends' = sends + 1");
+    expect(result.coverage).toContainEqual({
+      domain: "user-temporal", status: "modeled", modelKinds: [`${runtime}-event-loop`], exclusions: [],
+    });
+    expect(result.coverage).toContainEqual({
+      domain: "promise-ownership", status: "not-applicable", modelKinds: [], exclusions: [],
+    });
+    expect(parseTemporalModelResult(JSON.parse(JSON.stringify(result)))).toEqual(result);
+  });
+
+  it("rejects malformed temporal model artifacts instead of accepting schema-shaped guesses", () => {
+    const result = generateTemporalModel({ fileName: "empty.ts", source: "export function main() {}", runtime: "web" });
+    expect(() => parseTemporalModelResult({ ...result, backend: "unknown" })).toThrow(/backend/);
+    expect(() => parseTemporalModelResult({ ...result, invented: true })).toThrow(/unknown key/);
+    expect(() => parseTemporalModelResult({ ...result, coverage: result.coverage.slice(1) })).toThrow(/coverage/);
+    expect(() => parseTemporalModelResult({
+      ...result,
+      coverage: result.coverage.map((entry) => entry.domain === "user-temporal"
+        ? { ...entry, status: "modeled", modelKinds: ["promise-ownership"] }
+        : entry),
+    })).toThrow(/missing model/);
+    expect(() => parseTemporalModelResult({ ...result, quint: `${result.quint}\n// forged` }))
+      .toThrow(/concatenation/);
   });
 
   it.each(["web", "node"] as const)("publishes synchronous Promise callback divergence through the %s temporal facade", (runtime) => {
@@ -332,6 +354,10 @@ describe("unified async temporal model", () => {
     expect(result.includedDomains).toContain("async-ownership");
     expect(result.exclusions).toContain("promise-host-synchronization");
     expect(result.synchronizations).toEqual([]);
+    expect(result.coverage).toContainEqual({
+      domain: "promise-host-synchronization", status: "excluded", modelKinds: [],
+      exclusions: ["promise-host-synchronization"],
+    });
   });
 
   it("reports a floating Promise as a project temporal counterexample", async () => {
@@ -401,6 +427,20 @@ describe("unified async temporal model", () => {
       fairness: "none",
       resourceCallbackInterleavings: "excluded",
     });
+    expect(temporalFacade.coverage).toEqual(expect.arrayContaining([
+      {
+        domain: "resource-lifecycle", status: "modeled",
+        modelKinds: ["resource-lifecycle"], exclusions: [],
+      },
+      {
+        domain: "resource-host-lifecycle", status: "modeled",
+        modelKinds: ["resource-host-lifecycle"], exclusions: [],
+      },
+      {
+        domain: "resource-host-callback-interleavings", status: "excluded",
+        modelKinds: [], exclusions: ["resource-host-callback-interleavings"],
+      },
+    ]));
     expect(result.temporal?.properties).toContainEqual(expect.objectContaining({
       name: "main.resourceSafe",
       result: "verified",

@@ -276,6 +276,7 @@ import {
   analyzeProgramEffects,
   generateTemporalModel,
   parseEffectSet,
+  parseTemporalModelResult,
   verifyUneffectProject,
 } from "@mizchi/uneffect"
 ```
@@ -284,6 +285,9 @@ The root also contains numeric/runtime helpers, property generation, custom
 validators, effect schema/module registration, builtin registry integration,
 contract-summary bundles, and the bounded Trusted Types analyzer. These are API
 placement commitments; supported semantics still come from the feature matrix.
+The temporal facade publishes a strict nine-domain coverage inventory, and the
+direct Corsa semantic-query entrypoint publishes a versioned capability
+descriptor from `@mizchi/uneffect/corsa/api`.
 
 Solver calls, SMT/Quint lowering, CFG lattices, optimizer experiments, and
 direct async/resource generators are only in `@mizchi/uneffect/experimental`

@@ -55,9 +55,17 @@ Within that workflow, these bounded capabilities have a supported fragment:
 - native-Z3 preference with classified infrastructure fallback to bundled WASM;
 - the exact bounded contract, typed-array, Promise/resource, temporal, and
   cross-project fragments listed as tested in the feature matrix.
+- the versioned Corsa semantic-query API descriptor and its explicitly listed
+  position, alias, module-export, type, assignability, and bounded builtin
+  query capabilities;
+- the versioned temporal model coverage contract, which distinguishes modeled,
+  not-applicable, and excluded Promise/resource domains and rejects malformed
+  stored artifacts.
 
-These are still experimental pre-1.0 APIs. Pinning is required, and a future release may
-change syntax or report fields outside an explicitly versioned schema.
+These are supported but remain pre-1.0 APIs. Pinning is required, and a future
+minor release may change syntax or report fields outside an explicitly
+versioned schema. The `@mizchi/uneffect/experimental` subpath remains outside
+this compatibility boundary.
 
 ## Public API boundary
 
@@ -78,7 +86,8 @@ prototypes rather than generally safe language semantics:
 - general temporal-property and invariant synthesis ([#2](https://github.com/mizchi/uneffect/issues/2), [#5](https://github.com/mizchi/uneffect/issues/5));
 - complete Node/browser event-loop and Promise timing ([#10](https://github.com/mizchi/uneffect/issues/10), [#18](https://github.com/mizchi/uneffect/issues/18));
 - React function-component lifecycle and concurrent scheduling ([#16](https://github.com/mizchi/uneffect/issues/16));
-- Corsa/native frontend parity beyond the documented symbol families ([#8](https://github.com/mizchi/uneffect/issues/8));
+- Corsa/native frontend parity beyond the supported semantic-query API descriptor
+  and documented symbol families ([#8](https://github.com/mizchi/uneffect/issues/8));
 - arbitrary CFG fixed points, aliases, dynamic dispatch, and heap reasoning ([#25](https://github.com/mizchi/uneffect/issues/25), [#24](https://github.com/mizchi/uneffect/issues/24));
 - recursive, higher-order, inferred, or multi-argument property predicates ([#4](https://github.com/mizchi/uneffect/issues/4));
 - complete SHA-256, resizable/shared buffers, Atomics, and shared-memory proofs ([#6](https://github.com/mizchi/uneffect/issues/6));

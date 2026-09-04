@@ -25,6 +25,11 @@ All notable changes to Uneffect are documented in this file.
 - Added a versioned inferred-effect baseline for low-annotation adoption. CI can
   now reject new capabilities, effectful new functions, and newly unknown calls
   without requiring a source declaration to predict the regression.
+- Promoted the bounded Corsa semantic-query integration contract with an
+  immutable `uneffect-corsa-api-frontend/v1` capability descriptor and schema.
+- Promoted the high-level temporal/Promise/resource facade contract with a
+  strict `uneffect-temporal-model/v1` parser, published schema, and per-domain
+  modeled/not-applicable/excluded coverage.
 - Added an explicit release-please and npm OIDC Trusted Publishing path with a
   tag/package-version guard.
 

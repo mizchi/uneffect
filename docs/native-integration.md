@@ -160,7 +160,7 @@ exporter. A cloned, deserialized, or hand-written object carrying the same
 provenance strings is rejected as unauthenticated. Persisted checker facts do
 not yet have a signed evidence format and cannot satisfy this gate.
 
-### Direct Corsa API migration probe
+### Stable direct Corsa semantic-query API
 
 The same optional entry point exposes `openCorsaApiFrontend`. It loads the
 prebuilt `@corsa-bind/napi` binding and opens a pinned Corsa/tsgo worker, without
@@ -173,12 +173,21 @@ const frontend = await openCorsaApiFrontend({
   configFile: "/workspace/tsconfig.json",
 });
 try {
+  console.log(frontend.descriptor);
   const symbol = frontend.getSymbolAtPosition("/workspace/src/index.ts", 120);
   const type = frontend.getTypeAtPosition("/workspace/src/index.ts", 120);
 } finally {
   frontend.close();
 }
 ```
+
+The supported boundary is recorded by the immutable
+`uneffect-corsa-api-frontend/v1` descriptor. It binds compiler and project
+identity, root files, the exact query capability inventory, and current
+limitations. Persisted descriptors can be checked with
+`parseCorsaApiFrontendDescriptor` and the published JSON Schema. This
+stabilizes the semantic-query integration contract, not syntax/CFG parity or a
+complete builtin catalog.
 
 `corsaExecutable` is optional. By default it resolves Uneffect's optional
 TypeScript 7 native binary (`@typescript/typescript-<platform>-<arch>/lib/tsc`),
@@ -197,7 +206,7 @@ N-API methods, but the exercised two-hop re-export reaches the immediate
 bridge symbol and then Corsa's `unknown` symbol. This is covered by a
 negative test and is not reported as `FsRead`.
 
-This probe supports project-root membership checks, symbol identity, normalized
+This API supports project-root membership checks, symbol identity, normalized
 type text, batched symbol/type queries, and bounded alias traversal. Both the Corsa implementation and a
 TypeScript reference implementation satisfy the small `SemanticQueryFrontend`
 contract, and parity tests compare position queries without comparing
@@ -216,7 +225,7 @@ or the JavaScript TypeScript compiler package.
 On the 2026-09-03 local migration benchmark, opening the direct API frontend
 and querying one symbol and type took 75.98 ms mean (7 samples). The existing
 temporary-project Oxlint exporter took 757–1,031 ms for its one-sample fixtures,
-so the probe was roughly 10–14x faster. These figures measure different amounts
+so the API was roughly 10–14x faster. These figures measure different amounts
 of work and establish startup feasibility, not complete semantic parity.
 
 The result supports a staged architecture, not a complete frontend switch:

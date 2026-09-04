@@ -26,6 +26,103 @@ export interface CorsaApiTypeFact {
   value?: unknown;
 }
 
+export const corsaApiFrontendSchema = "uneffect-corsa-api-frontend/v1" as const;
+
+export type CorsaApiCapability =
+  | "position-query"
+  | "batch-position-query"
+  | "alias-query"
+  | "module-exports-query"
+  | "type-property-query"
+  | "type-symbol-query"
+  | "assignability-query"
+  | "bounded-builtin-classification";
+
+export type CorsaApiLimitation = "syntax-out-of-band" | "builtin-classification-bounded";
+
+export const corsaApiCapabilities = [
+  "position-query", "batch-position-query", "alias-query", "module-exports-query",
+  "type-property-query", "type-symbol-query", "assignability-query", "bounded-builtin-classification",
+] as const satisfies readonly CorsaApiCapability[];
+
+export const corsaApiLimitations = [
+  "syntax-out-of-band", "builtin-classification-bounded",
+] as const satisfies readonly CorsaApiLimitation[];
+
+export interface CorsaApiFrontendDescriptor {
+  readonly schema: typeof corsaApiFrontendSchema;
+  readonly contract: "semantic-query";
+  readonly compiler: {
+    readonly revision: string;
+    readonly executable: string;
+  };
+  readonly project: {
+    readonly id: string;
+    readonly configFile: string;
+    readonly rootFiles: readonly string[];
+  };
+  readonly capabilities: readonly CorsaApiCapability[];
+  readonly limitations: readonly CorsaApiLimitation[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) throw new Error(`${label} has unknown key ${unknown[0]}`);
+}
+
+function nonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) throw new Error(`${label} must be a non-empty string`);
+  return value;
+}
+
+function exactInventory<T extends string>(value: unknown, expected: readonly T[], label: string): T[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`${label} must be an array of strings`);
+  }
+  const items = value as string[];
+  if (items.length !== expected.length || new Set(items).size !== items.length
+    || items.some((item) => !expected.includes(item as T))) {
+    throw new Error(`${label} must contain the complete v1 inventory`);
+  }
+  return [...items] as T[];
+}
+
+/** Strict runtime boundary for persisted Corsa API capability descriptors. */
+export function parseCorsaApiFrontendDescriptor(input: unknown): CorsaApiFrontendDescriptor {
+  if (!isRecord(input)) throw new Error("Corsa API frontend descriptor must be an object");
+  exactKeys(input, ["schema", "contract", "compiler", "project", "capabilities", "limitations"], "Corsa API frontend descriptor");
+  if (input.schema !== corsaApiFrontendSchema) throw new Error("unsupported Corsa API frontend descriptor schema");
+  if (input.contract !== "semantic-query") throw new Error("Corsa API frontend descriptor contract must be semantic-query");
+  if (!isRecord(input.compiler)) throw new Error("Corsa API frontend descriptor compiler must be an object");
+  exactKeys(input.compiler, ["revision", "executable"], "Corsa API frontend descriptor compiler");
+  const revision = nonEmptyString(input.compiler.revision, "Corsa API frontend descriptor compiler revision");
+  if (!revision.startsWith("corsa-api@")) throw new Error("Corsa API frontend descriptor compiler revision must start with corsa-api@");
+  const executable = nonEmptyString(input.compiler.executable, "Corsa API frontend descriptor compiler executable");
+  if (!isRecord(input.project)) throw new Error("Corsa API frontend descriptor project must be an object");
+  exactKeys(input.project, ["id", "configFile", "rootFiles"], "Corsa API frontend descriptor project");
+  if (!Array.isArray(input.project.rootFiles) || input.project.rootFiles.length === 0
+    || input.project.rootFiles.some((item) => typeof item !== "string" || item.length === 0)
+    || new Set(input.project.rootFiles).size !== input.project.rootFiles.length) {
+    throw new Error("Corsa API frontend descriptor project rootFiles must be unique non-empty strings");
+  }
+  return Object.freeze({
+    schema: corsaApiFrontendSchema,
+    contract: "semantic-query",
+    compiler: Object.freeze({ revision, executable }),
+    project: Object.freeze({
+      id: nonEmptyString(input.project.id, "Corsa API frontend descriptor project id"),
+      configFile: nonEmptyString(input.project.configFile, "Corsa API frontend descriptor project configFile"),
+      rootFiles: Object.freeze([...(input.project.rootFiles as string[])]),
+    }),
+    capabilities: Object.freeze(exactInventory(input.capabilities, corsaApiCapabilities, "Corsa API frontend descriptor capabilities")),
+    limitations: Object.freeze(exactInventory(input.limitations, corsaApiLimitations, "Corsa API frontend descriptor limitations")),
+  });
+}
+
 export type CorsaBuiltinOperation = "Fetch" | "Console";
 
 export interface CorsaBuiltinCallQuery {
@@ -41,6 +138,7 @@ export interface CorsaBuiltinCallResolution {
 }
 
 export interface CorsaApiFrontend extends SemanticQueryFrontend {
+  readonly descriptor: CorsaApiFrontendDescriptor;
   readonly compilerRevision: string;
   readonly compilerExecutable: string;
   readonly projectId: string;
@@ -170,7 +268,20 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
       const type = normalizeType(client.getTypeAtPosition(snapshot!.snapshot, project.id, source, position) as CorsaApiTypeFact | null);
       return type ? normalizeSymbol(client.getSymbolOfType(snapshot!.snapshot, type.id, project.id)) : null;
     };
+    const descriptor: CorsaApiFrontendDescriptor = Object.freeze({
+      schema: corsaApiFrontendSchema,
+      contract: "semantic-query",
+      compiler: Object.freeze({ revision: `corsa-api@${version()}`, executable: compilerExecutable }),
+      project: Object.freeze({
+        id: project.id,
+        configFile,
+        rootFiles: Object.freeze([...project.rootFiles]),
+      }),
+      capabilities: Object.freeze([...corsaApiCapabilities]),
+      limitations: Object.freeze([...corsaApiLimitations]),
+    });
     return {
+      descriptor,
       compilerRevision: `corsa-api@${version()}`,
       compilerExecutable,
       projectId: project.id,

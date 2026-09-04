@@ -15,7 +15,7 @@ that have not moved to the native frontend yet.
 | --- | --- | --- |
 | `@mizchi/uneffect` | Public | Small, durable helper and high-level verification facades listed below. It intentionally excludes backend and lowering internals. |
 | `@mizchi/uneffect/corsa` | Public integration boundary | Versioned Corsa/tsgo fact export. Pin the package and frontend versions. |
-| `@mizchi/uneffect/corsa/api` | Public migration probe | Direct prebuilt Corsa project queries without constructing a JavaScript TypeScript `Program`. Syntax/CFG parity is not claimed. |
+| `@mizchi/uneffect/corsa/api` | Public integration boundary | Versioned direct Corsa semantic queries without constructing a JavaScript TypeScript `Program`. The `uneffect-corsa-api-frontend/v1` descriptor lists the active capabilities and limitations; syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |
 | `@mizchi/uneffect/spec` | Initial public authoring fragment | Type-checked, declarative `*.uneffect.ts` temporal, capability, and Hoare-contract specifications. Uneffect parses these modules but does not execute them. |
 | `@mizchi/uneffect/schemas/*` | Versioned data contract | Published JSON schemas. Compatibility follows the schema identifier, not an unversioned TypeScript implementation detail. |
@@ -105,6 +105,7 @@ const result = generateTemporalModel({
 | `includedDomains` | Analyses that contributed to this result. This is not a whole-program coverage claim. |
 | `exclusions` | Relevant semantics that the generated projections do not prove. Never discard this field. |
 | `synchronizations` | Exact cross-projection identity links proved by the frontend. An absent link must not be inferred from matching display names. |
+| `coverage` | One entry for every public temporal/Promise/resource domain, classified as `modeled`, `not-applicable`, or `excluded`, with contributing model kinds and exact exclusion codes. |
 | `scheduling` | Machine-readable scheduling boundary. The current facade records `fairness: "none"`; resource/callback interleavings are `excluded` or `not-applicable`. |
 | `models` | Authoritative list of independently checked Quint projections, including module, owner, properties, kind, and source text. |
 | `properties` | Display names for the host and owner-qualified projection properties. |
@@ -120,6 +121,9 @@ Current exclusions include `async-ownership`, `promise-host-synchronization`,
 `resource-lifecycle`, `resource-host-scheduling`, and
 `resource-host-callback-interleavings`. New exclusions may be added in a patch
 release because making an unproved boundary visible is a safety correction.
+`modeled` means that a projection was emitted under the documented fragment; it
+does not mean the backend verified its properties. Use project verification and
+inspect each property result for that claim.
 
 The CLI equivalent is:
 
@@ -129,6 +133,27 @@ npx uneffect spec temporal src/main.ts main --runtime web > main.qnt
 
 Project verification uses the same facade when `temporalRuntime` is `web` or
 `node`.
+
+Stored or transported results can be checked with
+`parseTemporalModelResult`. It rejects unknown fields, unsupported enum values,
+malformed projections, and incomplete or duplicate coverage inventories. The
+same contract is published as
+`@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json`.
+
+## Stable Corsa semantic-query boundary
+
+`openCorsaApiFrontend` from `@mizchi/uneffect/corsa/api` opens an explicitly
+selected project using Uneffect's pinned native TypeScript compiler unless an
+executable is supplied. Its immutable Corsa semantic-query API descriptor binds
+the Corsa revision, compiler executable, project/config identity, root files,
+supported query capabilities, and current limitations. The descriptor schema
+is published as
+`@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json`.
+
+The stable contract covers position/batch symbol and type queries, bounded alias
+resolution, module exports, type properties and symbols, assignability, and the
+documented bounded builtin classifier. Syntax traversal remains out of band and
+the builtin classifier is not a complete JavaScript or host-API catalog.
 
 ## Contract runtime failures
 
@@ -157,14 +182,14 @@ specification AST, carried through materialization as sidecar provenance.
 Instrumented code does not import Uneffect at runtime; the type guard is
 optional consumer code.
 
-`analyzeTypeScriptControlFlow(fileName, source)` exposes the versioned
+The experimental API `analyzeTypeScriptControlFlow(fileName, source)` exposes the versioned
 `uneffect-typescript-control-flow/v1` artifact used by runtime-contract exit
 analysis. It binds the TypeScript version, source digest, compiler options,
 function diagnostics, neutral-CFG comparison, and internal-hook observation.
 See [TypeScript control-flow bridge](./typescript-control-flow.md). An
 `unreachable` endpoint is endpoint evidence, not a Hoare proof.
 
-`analyzeTypeScriptProgramControlFlow(program, sources?)` reuses an existing
+`analyzeTypeScriptProgramControlFlow(program, sources?)`, also experimental, reuses an existing
 project snapshot and additionally covers static-named methods/accessors and
 directly `const`-bound functions. The Program must enable `noImplicitReturns`;
 otherwise its endpoints fail closed as `unknown`. Mutable function bindings

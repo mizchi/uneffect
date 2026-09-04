@@ -28,6 +28,7 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.types).toBe("./dist/src/public.d.ts");
     expect(manifest.exports).toHaveProperty(".");
     expect(manifest.exports).toHaveProperty("./corsa");
+    expect(manifest.exports).toHaveProperty("./corsa/api");
     expect(manifest.exports).toHaveProperty("./experimental");
     expect(manifest.exports).toHaveProperty("./spec");
     expect(manifest.exports).toHaveProperty("./schemas/*");
@@ -44,6 +45,24 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.optionalDependencies?.["@typescript/native-preview"]).toBeUndefined();
     expect(manifest.repository).toEqual({ type: "git", url: "git+https://github.com/mizchi/uneffect.git" });
     expect(manifest.scripts?.prepack).toBe("pnpm build");
+    expect(JSON.parse(readFileSync("schemas/uneffect-corsa-api-frontend-v1.schema.json", "utf8"))).toMatchObject({
+      title: "Uneffect Corsa API frontend descriptor v1",
+      properties: { schema: { const: "uneffect-corsa-api-frontend/v1" } },
+    });
+    expect(JSON.parse(readFileSync("schemas/uneffect-temporal-model-v1.schema.json", "utf8"))).toMatchObject({
+      title: "Uneffect temporal model v1",
+      properties: { schema: { const: "uneffect-temporal-model/v1" } },
+    });
+  });
+
+  it("documents the promoted bounded Corsa and temporal integration contracts", () => {
+    const api = readFileSync("docs/public-api.md", "utf8");
+    const stability = readFileSync("docs/stability.md", "utf8");
+    expect(api).toContain("`@mizchi/uneffect/corsa/api` | Public integration boundary");
+    expect(api).not.toContain("`@mizchi/uneffect/corsa/api` | Public migration probe");
+    expect(stability).toContain("Corsa semantic-query API descriptor");
+    expect(stability).toContain("temporal model coverage contract");
+    expect(stability).not.toContain("These are still experimental pre-1.0 APIs");
   });
 
   it("documents the experimental 0.3 release without claiming general verification", () => {

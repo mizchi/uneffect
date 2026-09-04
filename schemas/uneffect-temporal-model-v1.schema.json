@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-temporal-model-v1.schema.json",
+  "title": "Uneffect temporal model v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "sourceLanguage", "backend", "runtime", "includedDomains", "exclusions",
+    "coverage", "synchronizations", "scheduling", "models", "properties", "quint"
+  ],
+  "properties": {
+    "schema": { "const": "uneffect-temporal-model/v1" },
+    "sourceLanguage": { "const": "uneffect-ts" },
+    "backend": { "const": "quint" },
+    "runtime": { "enum": ["web", "node"] },
+    "includedDomains": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["user-temporal", "async-patterns", "promise-chains", "async-ownership", "abortable-fetch", "resource-lifecycle"]
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/exclusion" }
+    },
+    "coverage": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": { "$ref": "#/$defs/coverage" },
+      "allOf": [
+        { "contains": { "properties": { "domain": { "const": "user-temporal" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "async-patterns" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "promise-chains" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "promise-ownership" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "promise-host-synchronization" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "abortable-fetch" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "resource-lifecycle" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "resource-host-lifecycle" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "properties": { "domain": { "const": "resource-host-callback-interleavings" } }, "required": ["domain"] }, "minContains": 1, "maxContains": 1 }
+      ]
+    },
+    "synchronizations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/synchronization" }
+    },
+    "scheduling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fairness", "resourceCallbackInterleavings"],
+      "properties": {
+        "fairness": { "const": "none" },
+        "resourceCallbackInterleavings": { "enum": ["excluded", "not-applicable"] }
+      }
+    },
+    "models": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/model" } },
+    "properties": { "type": "array", "items": { "type": "string" } },
+    "quint": { "type": "string" }
+  },
+  "$defs": {
+    "projectionKind": {
+      "enum": [
+        "user-temporal", "web-event-loop", "node-event-loop", "promise-chains", "promise-ownership",
+        "abortable-fetch", "resource-lifecycle", "resource-host-lifecycle"
+      ]
+    },
+    "exclusion": {
+      "enum": [
+        "async-ownership", "promise-host-synchronization", "abortable-fetch-synchronization",
+        "resource-lifecycle", "resource-host-scheduling", "resource-host-callback-interleavings"
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "status", "modelKinds", "exclusions"],
+      "properties": {
+        "domain": {
+          "enum": [
+            "user-temporal", "async-patterns", "promise-chains", "promise-ownership",
+            "promise-host-synchronization", "abortable-fetch", "resource-lifecycle",
+            "resource-host-lifecycle", "resource-host-callback-interleavings"
+          ]
+        },
+        "status": { "enum": ["modeled", "not-applicable", "excluded"] },
+        "modelKinds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/projectionKind" } },
+        "exclusions": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/exclusion" } }
+      }
+    },
+    "synchronization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resource", "hostTransitionId", "relation", "evidence"],
+      "properties": {
+        "kind": { "const": "promise-ownership-host" },
+        "resource": { "type": "string" },
+        "hostTransitionId": { "type": "string" },
+        "relation": { "const": "same-promise" },
+        "evidence": { "const": "exact" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "module", "properties", "quint"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/projectionKind" },
+        "module": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "properties": { "type": "array", "items": { "type": "string" } },
+        "quint": { "type": "string" }
+      }
+    }
+  }
+}

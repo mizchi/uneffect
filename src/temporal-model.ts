@@ -11,8 +11,26 @@ import { lowerResourceDisposalsToProtocol } from "./resource-disposal-protocol.j
 import { createResourceDisposalTemporalProduct, generateResourceTemporalProductQuint } from "./resource-temporal-product.js";
 import { generateQuint } from "./spec-backends.js";
 import type { TemporalDslLink } from "./temporal-dsl.js";
+import type {
+  TemporalModelCoverageEntry,
+  TemporalModelExclusion,
+  TemporalModelProjection,
+  TemporalModelResult,
+  TemporalModelSynchronization,
+  TemporalRuntime,
+} from "./temporal-model-contract.js";
 
-export type TemporalRuntime = "web" | "node";
+export { parseTemporalModelResult, temporalModelCoverageDomains } from "./temporal-model-contract.js";
+export type {
+  TemporalModelCoverageDomain,
+  TemporalModelCoverageEntry,
+  TemporalModelExclusion,
+  TemporalModelProjection,
+  TemporalModelProjectionKind,
+  TemporalModelResult,
+  TemporalModelSynchronization,
+  TemporalRuntime,
+} from "./temporal-model-contract.js";
 
 export interface GenerateTemporalModelOptions {
   fileName: string;
@@ -21,39 +39,6 @@ export interface GenerateTemporalModelOptions {
   root?: string;
   nodeTopLevelMode?: "commonjs" | "esm";
   linkedTemporal?: TemporalDslLink;
-}
-
-export interface TemporalModelResult {
-  schema: "uneffect-temporal-model/v1";
-  sourceLanguage: "uneffect-ts";
-  backend: "quint";
-  runtime: TemporalRuntime;
-  includedDomains: Array<"user-temporal" | "async-patterns" | "promise-chains" | "async-ownership" | "abortable-fetch" | "resource-lifecycle">;
-  exclusions: Array<"async-ownership" | "promise-host-synchronization" | "abortable-fetch-synchronization" | "resource-lifecycle" | "resource-host-scheduling" | "resource-host-callback-interleavings">;
-  synchronizations: TemporalModelSynchronization[];
-  scheduling: {
-    fairness: "none";
-    resourceCallbackInterleavings: "excluded" | "not-applicable";
-  };
-  models: TemporalModelProjection[];
-  properties: string[];
-  quint: string;
-}
-
-export interface TemporalModelSynchronization {
-  kind: "promise-ownership-host";
-  resource: string;
-  hostTransitionId: string;
-  relation: "same-promise";
-  evidence: "exact";
-}
-
-export interface TemporalModelProjection {
-  kind: "user-temporal" | "web-event-loop" | "node-event-loop" | "promise-chains" | "promise-ownership" | "abortable-fetch" | "resource-lifecycle" | "resource-host-lifecycle";
-  module: string;
-  owner?: string;
-  properties: string[];
-  quint: string;
 }
 
 function moduleName(fileName: string): string {
@@ -187,6 +172,50 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
   }
   const hasAsyncResource = resources.some((resource) => resource.asynchronous);
   const hasResourceHostModel = models.some((model) => model.kind === "resource-host-lifecycle");
+  const exclusions: TemporalModelExclusion[] = [
+    ...(promiseBindings.length === 0 ? ["async-ownership" as const] : []),
+    ...(promiseOwnershipResourceCount > synchronizations.length ? ["promise-host-synchronization" as const] : []),
+    ...(abortableUnknown.length > 0 ? ["abortable-fetch-synchronization" as const] : []),
+    ...(resources.length === 0 ? ["resource-lifecycle" as const] : []),
+    ...(hasAsyncResource && !hasResourceHostModel ? ["resource-host-scheduling" as const] : []),
+    ...(hasAsyncResource && hasResourceHostModel ? ["resource-host-callback-interleavings" as const] : []),
+  ];
+  const hostKind = options.runtime === "web" ? "web-event-loop" as const : "node-event-loop" as const;
+  const coverageEntry = (
+    domain: TemporalModelCoverageEntry["domain"],
+    status: TemporalModelCoverageEntry["status"],
+    modelKinds: TemporalModelCoverageEntry["modelKinds"] = [],
+    domainExclusions: TemporalModelExclusion[] = [],
+  ): TemporalModelCoverageEntry => ({ domain, status, modelKinds, exclusions: domainExclusions });
+  const hasPromiseChains = models.some((model) => model.kind === "promise-chains");
+  const hasPromiseOwnership = models.some((model) => model.kind === "promise-ownership");
+  const hasAbortableFetchModel = models.some((model) => model.kind === "abortable-fetch");
+  const hasResourceModel = models.some((model) => model.kind === "resource-lifecycle");
+  const coverage: TemporalModelCoverageEntry[] = [
+    coverageEntry("user-temporal", temporal || options.linkedTemporal ? "modeled" : "not-applicable",
+      temporal ? [hostKind] : options.linkedTemporal ? ["user-temporal"] : []),
+    coverageEntry("async-patterns", "modeled", [hostKind]),
+    coverageEntry("promise-chains", hasPromiseChains ? "modeled" : "not-applicable",
+      hasPromiseChains ? ["promise-chains"] : []),
+    coverageEntry("promise-ownership", hasPromiseOwnership ? "modeled" : "not-applicable",
+      hasPromiseOwnership ? ["promise-ownership"] : []),
+    coverageEntry("promise-host-synchronization",
+      !hasPromiseOwnership ? "not-applicable" : exclusions.includes("promise-host-synchronization") ? "excluded" : "modeled",
+      [], exclusions.includes("promise-host-synchronization") ? ["promise-host-synchronization"] : []),
+    coverageEntry("abortable-fetch",
+      exclusions.includes("abortable-fetch-synchronization") ? "excluded" : hasAbortableFetchModel ? "modeled" : "not-applicable",
+      hasAbortableFetchModel ? ["abortable-fetch"] : [],
+      exclusions.includes("abortable-fetch-synchronization") ? ["abortable-fetch-synchronization"] : []),
+    coverageEntry("resource-lifecycle", hasResourceModel ? "modeled" : "not-applicable",
+      hasResourceModel ? ["resource-lifecycle"] : []),
+    coverageEntry("resource-host-lifecycle",
+      hasResourceHostModel ? "modeled" : exclusions.includes("resource-host-scheduling") ? "excluded" : "not-applicable",
+      hasResourceHostModel ? ["resource-host-lifecycle"] : [],
+      exclusions.includes("resource-host-scheduling") ? ["resource-host-scheduling"] : []),
+    coverageEntry("resource-host-callback-interleavings",
+      exclusions.includes("resource-host-callback-interleavings") ? "excluded" : "not-applicable",
+      [], exclusions.includes("resource-host-callback-interleavings") ? ["resource-host-callback-interleavings"] : []),
+  ];
   return {
     schema: "uneffect-temporal-model/v1",
     sourceLanguage: "uneffect-ts",
@@ -200,14 +229,8 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
       ...(abortableFetches.length > 0 ? ["abortable-fetch" as const] : []),
       ...(resources.length > 0 ? ["resource-lifecycle" as const] : []),
     ],
-    exclusions: [
-      ...(promiseBindings.length === 0 ? ["async-ownership" as const] : []),
-      ...(promiseOwnershipResourceCount > synchronizations.length ? ["promise-host-synchronization" as const] : []),
-      ...(abortableUnknown.length > 0 ? ["abortable-fetch-synchronization" as const] : []),
-      ...(resources.length === 0 ? ["resource-lifecycle" as const] : []),
-      ...(hasAsyncResource && !hasResourceHostModel ? ["resource-host-scheduling" as const] : []),
-      ...(hasAsyncResource && hasResourceHostModel ? ["resource-host-callback-interleavings" as const] : []),
-    ],
+    exclusions,
+    coverage,
     synchronizations,
     scheduling: {
       fairness: "none",

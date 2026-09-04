@@ -71,8 +71,18 @@ export type { AssumptionRecord, AssumptionRegistry } from "./assumption-registry
 export { generateQuint, generateSmtLib } from "./spec-backends.js";
 export { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
 export type { TemporalCall, TemporalComposition, TemporalFunctionSummary } from "./temporal-compose.js";
-export { generateTemporalModel } from "./temporal-model.js";
-export type { GenerateTemporalModelOptions, TemporalModelProjection, TemporalModelResult, TemporalModelSynchronization, TemporalRuntime } from "./temporal-model.js";
+export { generateTemporalModel, parseTemporalModelResult, temporalModelCoverageDomains } from "./temporal-model.js";
+export type {
+  GenerateTemporalModelOptions,
+  TemporalModelCoverageDomain,
+  TemporalModelCoverageEntry,
+  TemporalModelExclusion,
+  TemporalModelProjection,
+  TemporalModelProjectionKind,
+  TemporalModelResult,
+  TemporalModelSynchronization,
+  TemporalRuntime,
+} from "./temporal-model.js";
 export { parseTemporalDsl, resolveTemporalDslLink, validateTemporalDslHelperIdentities } from "./temporal-dsl.js";
 export type { TemporalDslLink } from "./temporal-dsl.js";
 export { materializeCapabilityDslLinks, parseCapabilityDsl, parseCapabilityDslWithSchemas, prepareCapabilityDslLinks, validateCapabilityDslHelperIdentities } from "./capability-dsl.js";

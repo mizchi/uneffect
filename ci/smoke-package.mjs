@@ -24,7 +24,7 @@ try {
     import * as spec from "@mizchi/uneffect/spec";
     import ts from "@typescript/typescript6";
 
-    const requiredRoot = ["analyzeEffects", "analyzeProgramEffects", "verifyUneffectProject", "generateTemporalModel"];
+    const requiredRoot = ["analyzeEffects", "analyzeProgramEffects", "verifyUneffectProject", "generateTemporalModel", "parseTemporalModelResult"];
     for (const name of requiredRoot) if (typeof root[name] !== "function") throw new Error(\`missing public root API: \${name}\`);
     const parsedEffects = root.parseEffectSet("Console");
     const effectDiagnostics = root.analyzeEffects("smoke.ts", "/* uneffect:effect Console */\\nexport function run() { console.log(1) }");
@@ -35,6 +35,9 @@ try {
     for (const name of ["executeZ3", "logicToSmt", "solveBasicBlockFixedPoint"])
       if (typeof experimental[name] !== "function") throw new Error(\`missing experimental API: \${name}\`);
     if (typeof spec.defineTemporal !== "function") throw new Error("missing specification API");
+    const temporal = root.generateTemporalModel({ fileName: "smoke.ts", source: "export function main() {}", runtime: "web" });
+    if (root.parseTemporalModelResult(JSON.parse(JSON.stringify(temporal))).coverage.length !== 9)
+      throw new Error("temporal model contract smoke failed");
     if (!ts.version.startsWith("6.")) throw new Error(\`package smoke resolved unsupported TypeScript \${ts.version}\`);
     console.log(JSON.stringify({ typescript: ts.version, rootExports: Object.keys(root).length }));
   `);
@@ -49,12 +52,14 @@ try {
   writeFileSync(join(corsaConsumer, "index.ts"), "export const answer = 42 as const;\n");
   const corsaSmoke = join(corsaConsumer, "corsa-smoke.mjs");
   writeFileSync(corsaSmoke, `
-    import { openCorsaApiFrontend } from "@mizchi/uneffect/corsa/api";
+    import { openCorsaApiFrontend, parseCorsaApiFrontendDescriptor } from "@mizchi/uneffect/corsa/api";
     const file = new URL("./index.ts", import.meta.url).pathname;
     const frontend = await openCorsaApiFrontend({ configFile: new URL("./tsconfig.json", import.meta.url).pathname });
     try {
       const fact = frontend.queryPosition(file, 13);
       if (fact.symbol?.name !== "answer" || fact.type?.texts[0] !== "42") throw new Error("Corsa-only package smoke failed");
+      const descriptor = parseCorsaApiFrontendDescriptor(JSON.parse(JSON.stringify(frontend.descriptor)));
+      if (descriptor.schema !== "uneffect-corsa-api-frontend/v1") throw new Error("Corsa descriptor contract smoke failed");
       console.log(JSON.stringify({ corsa: frontend.compilerRevision, compiler: frontend.compilerExecutable }));
     } finally {
       frontend.close();

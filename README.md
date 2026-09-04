@@ -186,7 +186,9 @@ workspace-project behavior, and solver backend selection.
 
 For in-process use, the package root exposes only numeric/runtime helpers and
 high-level checking facades such as `checkFiles`, `verifyUneffectProject`, and
-`generateTemporalModel`. Solver adapters, lowering IRs, direct Quint
+`generateTemporalModel`; stored temporal results can be validated with
+`parseTemporalModelResult`. The versioned direct Corsa semantic-query contract
+is available from `@mizchi/uneffect/corsa/api`. Solver adapters, lowering IRs, direct Quint
 generators, and optimizer experiments live under
 `@mizchi/uneffect/experimental` and have no compatibility guarantee. See
 [Public API and compatibility](./docs/public-api.md) for the exact boundary.
