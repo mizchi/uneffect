@@ -2551,6 +2551,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       every preceding case are finite static primitives, including immutable
       aliases and default fallback; retain all entries as reachable after the
       first unresolved case expression.
+    - [x] Evaluate dynamic switch case expressions in ordered source-keyed test
+      blocks before entering clauses; route a proven synchronous throw to the
+      switch exit and enclosing catch, preserve the no-match/default chain, and
+      skip later case effects after a statically proven earlier match.
     - [x] Lower Promise-ownership `if` condition, then/else, and exit joins
       through source-keyed blocks; prune finite static branches and route only
       TypeChecker-proven `never` + `Throw<E>` conditions as synchronous throw

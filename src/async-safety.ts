@@ -2128,9 +2128,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const entryId = `${prefix}:entry`, exitId = `${prefix}:exit`;
           const clauseIds = clauses.map((clause) => `${prefix}:clause:${clause.getStart(source)}`);
           const selection = staticSwitchSelection(statement);
-          const selectedClauseIds = selection.kind === "entry"
-            ? [clauseIds[selection.index]!]
-            : selection.kind === "unknown" ? clauseIds : [];
+          const caseTests = clauses.flatMap((clause, clauseIndex) => ts.isCaseClause(clause)
+            ? [{ clause, clauseIndex, id: `${prefix}:case-test:${clause.expression.getStart(source)}` }]
+            : []);
+          const defaultIndex = clauses.findIndex(ts.isDefaultClause);
+          const defaultId = defaultIndex >= 0 ? clauseIds[defaultIndex] : undefined;
           const valueKey = (value: SwitchValue): string => [...value].map(stateKey).sort().join("|");
           const result = solveBasicBlockFixedPoint<SwitchValue>({
             entry: entryId,
@@ -2146,6 +2148,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                 id: entryId,
                 edges: [
                   ...clauseIds.map((to) => ({ to, completion: "normal" as const, role: "branch" as const, sourceSpan: span })),
+                  ...caseTests.slice(0, 1).map(({ id: to }) => ({
+                    to, completion: "normal" as const, role: "forward" as const, sourceSpan: span,
+                  })),
                   { to: exitId, completion: "normal", role: "branch", sourceSpan: span },
                   { to: exitId, completion: "throw", role: "branch", sourceSpan: span },
                 ],
@@ -2157,18 +2162,59 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                       exits.push({ ...before, terminated: true, completion: "throw" });
                       continue;
                     }
-                    entries.push(before);
-                    if (selection.kind === "unmatched"
-                      || selection.kind === "unknown" && !switchIsExhaustive(statement)) exits.push({ ...before });
+                    if (selection.kind === "unmatched") exits.push(before);
+                    else entries.push(before);
                   }
+                  const target = selection.kind === "entry"
+                    ? clauseIds[selection.index]
+                    : selection.kind === "unknown"
+                      ? caseTests[0]?.id ?? defaultId ?? exitId
+                      : undefined;
                   return [
-                    ...selectedClauseIds.flatMap((to) => entries.length > 0
-                      ? [{ to, value: uniqueStates(entries) }]
-                      : []),
+                    ...(entries.length > 0 && target ? [{ to: target, value: uniqueStates(entries) }] : []),
                     ...(exits.length > 0 ? [{ to: exitId, value: uniqueStates(exits) }] : []),
                   ];
                 },
               },
+              ...caseTests.map((test, testIndex) => {
+                const nextTestId = caseTests[testIndex + 1]?.id;
+                const noMatchId = nextTestId ?? defaultId
+                  ?? (switchIsExhaustive(statement) ? undefined : exitId);
+                const testSpan = {
+                  start: test.clause.expression.getStart(source),
+                  end: test.clause.expression.getEnd(),
+                };
+                return {
+                  id: test.id,
+                  edges: [
+                    { to: clauseIds[test.clauseIndex]!, completion: "normal" as const, role: "branch" as const, sourceSpan: testSpan },
+                    ...(noMatchId
+                      ? [{ to: noMatchId, completion: "normal" as const, role: "branch" as const, sourceSpan: testSpan }]
+                      : []),
+                    { to: exitId, completion: "throw" as const, role: "branch" as const, sourceSpan: testSpan },
+                  ],
+                  transfer: (input: SwitchValue) => {
+                    const matched: PathState[] = [], unmatched: PathState[] = [], thrown: PathState[] = [];
+                    for (const incoming of input) {
+                      const tested = executeHeaderNode(test.clause.expression, { ...incoming });
+                      if (tested.terminated) thrown.push(tested);
+                      else {
+                        matched.push(tested);
+                        unmatched.push(tested);
+                      }
+                    }
+                    return [
+                      ...(unmatched.length > 0 && noMatchId
+                        ? [{ to: noMatchId, value: uniqueStates(unmatched) }]
+                        : []),
+                      ...(matched.length > 0
+                        ? [{ to: clauseIds[test.clauseIndex]!, value: uniqueStates(matched) }]
+                        : []),
+                      ...(thrown.length > 0 ? [{ to: exitId, value: uniqueStates(thrown) }] : []),
+                    ];
+                  },
+                };
+              }),
               ...clauses.map((clause, index) => {
                 const nextId = clauseIds[index + 1];
                 return {

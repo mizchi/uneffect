@@ -917,6 +917,41 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("executes reachable switch case expressions before selecting a clause", () => {
+    const result = analyzeAsyncSafety("switch-case-effects.ts", `
+      declare function task(): Promise<number>
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      async function caseThrows(kind: string) {
+        const pending = task()
+        switch (kind) {
+          case fail(): await pending; break
+          default: await pending
+        }
+      }
+      async function matchedBeforeThrow() {
+        const pending = task()
+        switch ("safe") {
+          case "safe": await pending; break
+          case fail(): console.log("unreachable")
+        }
+      }
+      async function caughtCaseThrow(kind: string) {
+        const pending = task()
+        try {
+          switch (kind) {
+            case fail(): break
+            default: break
+          }
+        } catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "caseThrows", status: "floating" },
+      { owner: "matchedBeforeThrow", status: "observed" },
+      { owner: "caughtCaseThrow", status: "observed" },
+    ]);
+  });
+
   it("runs finally on normal, caught, and early-return Promise ownership paths", () => {
     const result = analyzeAsyncSafety("finally-promises.ts", `
       declare function task(): Promise<number>
