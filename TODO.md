@@ -2547,6 +2547,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       joins through source-keyed clause blocks; consume nested unlabeled
       `break` at the switch boundary while preserving loop `continue`, return,
       throw, and labeled transfers for their lexical owners.
+    - [x] Select one Promise-ownership switch entry when the discriminant and
+      every preceding case are finite static primitives, including immutable
+      aliases and default fallback; retain all entries as reachable after the
+      first unresolved case expression.
     - [x] Lower Promise-ownership `if` condition, then/else, and exit joins
       through source-keyed blocks; prune finite static branches and route only
       TypeChecker-proven `never` + `Throw<E>` conditions as synchronous throw

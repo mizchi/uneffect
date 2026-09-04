@@ -876,6 +876,47 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("selects a statically known switch entry without weakening dynamic joins", () => {
+    const result = analyzeAsyncSafety("static-switch-entry.ts", `
+      declare function task(): Promise<number>
+      async function selectedObserve() {
+        const pending = task()
+        const kind = "observe"
+        switch (kind) {
+          case "observe": await pending; break
+          case "skip": break
+        }
+      }
+      async function selectedSkip() {
+        const pending = task()
+        switch ("skip") {
+          case "observe": await pending; break
+          case "skip": break
+        }
+      }
+      async function selectedDefault() {
+        const pending = task()
+        switch ("other") {
+          case "skip": break
+          default: await pending
+        }
+      }
+      async function dynamicEntry(kind: "observe" | "skip") {
+        const pending = task()
+        switch (kind) {
+          case "observe": await pending; break
+          case "skip": break
+        }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "selectedObserve", status: "observed" },
+      { owner: "selectedSkip", status: "floating" },
+      { owner: "selectedDefault", status: "observed" },
+      { owner: "dynamicEntry", status: "floating" },
+    ]);
+  });
+
   it("runs finally on normal, caught, and early-return Promise ownership paths", () => {
     const result = analyzeAsyncSafety("finally-promises.ts", `
       declare function task(): Promise<number>

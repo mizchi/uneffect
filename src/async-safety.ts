@@ -1760,6 +1760,27 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           ts.isCaseClause(clause) ? [checker.typeToString(checker.getTypeAtLocation(clause.expression))] : []));
         return possible.size > 0 && [...possible].every((item) => covered.has(item));
       };
+      type StaticSwitchSelection =
+        | { kind: "entry"; index: number }
+        | { kind: "unmatched" }
+        | { kind: "unknown" };
+      const staticSwitchSelection = (statement: ts.SwitchStatement): StaticSwitchSelection => {
+        const discriminant = staticPrimitive(statement.expression, new Map());
+        if (!discriminant) return { kind: "unknown" };
+        let defaultIndex: number | undefined;
+        for (const [index, clause] of statement.caseBlock.clauses.entries()) {
+          if (ts.isDefaultClause(clause)) {
+            defaultIndex = index;
+            continue;
+          }
+          const candidate = staticPrimitive(clause.expression, new Map());
+          if (!candidate) return { kind: "unknown" };
+          if (candidate.value === discriminant.value) return { kind: "entry", index };
+        }
+        return defaultIndex === undefined
+          ? { kind: "unmatched" }
+          : { kind: "entry", index: defaultIndex };
+      };
       const executeFinally = (block: ts.Block, state: PathState): PathState[] => {
         const wasTerminated = state.terminated;
         const previousCompletion = state.completion;
@@ -2106,6 +2127,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const prefix = `${owner}@switch:${span.start}`;
           const entryId = `${prefix}:entry`, exitId = `${prefix}:exit`;
           const clauseIds = clauses.map((clause) => `${prefix}:clause:${clause.getStart(source)}`);
+          const selection = staticSwitchSelection(statement);
+          const selectedClauseIds = selection.kind === "entry"
+            ? [clauseIds[selection.index]!]
+            : selection.kind === "unknown" ? clauseIds : [];
           const valueKey = (value: SwitchValue): string => [...value].map(stateKey).sort().join("|");
           const result = solveBasicBlockFixedPoint<SwitchValue>({
             entry: entryId,
@@ -2133,10 +2158,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                       continue;
                     }
                     entries.push(before);
-                    if (!switchIsExhaustive(statement)) exits.push({ ...before });
+                    if (selection.kind === "unmatched"
+                      || selection.kind === "unknown" && !switchIsExhaustive(statement)) exits.push({ ...before });
                   }
                   return [
-                    ...clauseIds.flatMap((to) => entries.length > 0
+                    ...selectedClauseIds.flatMap((to) => entries.length > 0
                       ? [{ to, value: uniqueStates(entries) }]
                       : []),
                     ...(exits.length > 0 ? [{ to: exitId, value: uniqueStates(exits) }] : []),
