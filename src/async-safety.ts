@@ -1826,6 +1826,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           if (statement.finallyBlock && reassigns(statement.finallyBlock)) return false;
           return true;
         }
+        if (ts.isDoStatement(statement)) {
+          // The body runs before the first test. A body that must observe the
+          // tracked generation therefore owns every later rejection edge,
+          // unless the test can replace that generation before throwing.
+          return statementGuaranteesObservationBeforeCatch(statement.statement)
+            && !reassigns(statement.expression);
+        }
         if (ts.isSwitchStatement(statement)) {
           if (!nonThrowingPrimitiveExpression(statement.expression) || !switchIsExhaustive(statement)
             || statement.caseBlock.clauses.some((clause) =>
@@ -2036,31 +2043,102 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           return entries;
         }
         if (ts.isTryStatement(statement)) {
-          const tryStates = executeStatement(statement.tryBlock, { ...state });
-          const thrown = tryStates.filter((completion) => completion.completion === "throw");
-          const normal = statement.catchClause
-            ? tryStates.filter((completion) => completion.completion !== "throw")
-            : tryStates;
-          // The initial state remains a conservative catch entry for calls and
-          // property access whose synchronous throw behavior is not yet explicit
-          // in this finite walker. Explicit throw completions retain their
-          // ownership facts and are routed exclusively through the catch.
-          const preciseAwaitEntries = statement.catchClause
-            ? preciseAwaitCatchEntries(statement.tryBlock, state)
-            : undefined;
-          const catchInputs = statement.catchClause
-            ? uniqueStates([
-              ...(preciseAwaitEntries ?? [{ ...state }]),
-              ...thrown.map((completion) => ({ ...completion, terminated: false, completion: undefined })),
-            ])
-            : [];
-          const catchStates = statement.catchClause
-            ? catchInputs.flatMap((entry) => executeStatement(statement.catchClause!.block, entry))
-            : [];
-          const completions = [...normal, ...catchStates];
-          return statement.finallyBlock
-            ? completions.flatMap((completion) => executeFinally(statement.finallyBlock!, completion))
-            : completions;
+          type TryValue = readonly PathState[];
+          const span = { start: statement.getStart(source), end: statement.getEnd() };
+          const prefix = `${owner}@try:${span.start}`;
+          const entryId = `${prefix}:entry`, protectedId = `${prefix}:protected`;
+          const catchId = `${prefix}:catch`, joinId = `${prefix}:join`;
+          const finallyId = `${prefix}:finally`, exitId = `${prefix}:exit`;
+          const completionEdges = (to: string, role: "forward" | "branch") =>
+            (["normal", "return", "throw", "break", "continue"] as const)
+              .map((completion) => ({ to, completion, role, sourceSpan: span }));
+          const valueKey = (value: TryValue): string => [...value].map(stateKey).sort().join("|");
+          const result = solveBasicBlockFixedPoint<TryValue>({
+            entry: entryId,
+            initial: [state],
+            budget: { name: "promise-ownership-cfg-iterations", limit: PROMISE_OWNERSHIP_CFG_ITERATIONS },
+            lattice: {
+              bottom: () => [],
+              equivalent: (left, right) => valueKey(left) === valueKey(right),
+              join: (left, right) => ({ status: "joined", value: uniqueStates([...left, ...right]) }),
+            },
+            blocks: [
+              {
+                id: entryId,
+                edges: [{ to: protectedId, completion: "normal", role: "forward", sourceSpan: span }],
+                transfer: (input) => [{ to: protectedId, value: input }],
+              },
+              {
+                id: protectedId,
+                edges: [
+                  ...completionEdges(joinId, "branch"),
+                  ...(statement.catchClause
+                    ? [{ to: catchId, completion: "throw" as const, role: "branch" as const, sourceSpan: span }]
+                    : []),
+                ],
+                transfer: (input) => {
+                  const retained: PathState[] = [], catchInputs: PathState[] = [];
+                  for (const incoming of input) {
+                    const tryStates = executeStatement(statement.tryBlock, { ...incoming });
+                    const thrown = tryStates.filter((completion) => completion.completion === "throw");
+                    if (statement.catchClause) {
+                      retained.push(...tryStates.filter((completion) => completion.completion !== "throw"));
+                      // Preserve a conservative catch predecessor until every
+                      // expression-level synchronous throw edge is explicit.
+                      // A restricted must-observe prefix can refine that entry.
+                      const precise = preciseAwaitCatchEntries(statement.tryBlock, incoming);
+                      catchInputs.push(
+                        ...(precise ?? [{ ...incoming }]),
+                        ...thrown.map((completion) => ({
+                          ...completion, terminated: false, completion: undefined,
+                        })),
+                      );
+                    } else retained.push(...tryStates);
+                  }
+                  return [
+                    ...(catchInputs.length > 0 ? [{ to: catchId, value: uniqueStates(catchInputs) }] : []),
+                    // Schedule catch before the common join so the worklist can
+                    // combine both predecessors before evaluating finally.
+                    ...(retained.length > 0 ? [{ to: joinId, value: uniqueStates(retained) }] : []),
+                  ];
+                },
+              },
+              ...(statement.catchClause ? [{
+                id: catchId,
+                edges: completionEdges(joinId, "forward"),
+                transfer: (input: TryValue) => [{
+                  to: joinId,
+                  value: uniqueStates(input.flatMap((incoming) =>
+                    executeStatement(statement.catchClause!.block, incoming))),
+                }],
+              }] : []),
+              {
+                id: joinId,
+                edges: completionEdges(statement.finallyBlock ? finallyId : exitId, "forward"),
+                transfer: (input) => [{
+                  to: statement.finallyBlock ? finallyId : exitId,
+                  value: input,
+                }],
+              },
+              ...(statement.finallyBlock ? [{
+                id: finallyId,
+                edges: completionEdges(exitId, "forward"),
+                transfer: (input: TryValue) => [{
+                  to: exitId,
+                  value: uniqueStates(input.flatMap((incoming) =>
+                    executeFinally(statement.finallyBlock!, incoming))),
+                }],
+              }] : []),
+              { id: exitId, edges: [], transfer: () => [] },
+            ],
+          });
+          if (result.status === "unknown") {
+            const relevant = state.active || activates(statement) || reassigns(statement) || consumes(statement);
+            return relevant
+              ? [{ ...state, active: true, pending: true, lost: true, terminated: true }]
+              : [{ ...state }];
+          }
+          return uniqueStates([...(result.states.get(exitId) ?? [])]);
         }
         if (ts.isForStatement(statement)) {
           const initialized = statement.initializer ? executeHeaderNode(statement.initializer, state) : state;

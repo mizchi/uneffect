@@ -588,6 +588,33 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("joins an at-least-once loop observation into catch and finally", () => {
+    const result = analyzeAsyncSafety("loop-try-join.ts", `
+      declare function task(): Promise<number>
+      declare function mayThrow(): void
+      async function observedBeforeCatch() {
+        const pending = task()
+        try {
+          do { await pending } while (false)
+          throw new Error("done")
+        } catch { console.log("caught") }
+        finally { console.log("cleanup") }
+      }
+      async function riskBeforeObservation() {
+        const pending = task()
+        try {
+          do { mayThrow(); await pending } while (false)
+          throw new Error("done")
+        } catch { console.log("caught") }
+        finally { console.log("cleanup") }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "observedBeforeCatch", status: "observed" },
+      { owner: "riskBeforeObservation", status: "floating" },
+    ]);
+  });
+
   it("executes for initializers and incrementors in Promise ownership fixed points", () => {
     const result = analyzeAsyncSafety("for-flow-promises.ts", `
       declare const flag: boolean
