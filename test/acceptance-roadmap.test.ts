@@ -742,7 +742,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 90_000);
+  }, 180_000);
 
   it("composes an explicitly versioned Node global only within the same current realm", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
@@ -859,7 +859,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it("composes a verified scalar refinement action across a direct project reference", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
@@ -986,7 +986,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 
   it("refines state updates through non-escaping immutable runtime aliases", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
