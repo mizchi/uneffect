@@ -366,11 +366,25 @@ introducing another domain-local control-flow or alias model.
          - [x] Traverse an imported callable when its concrete non-declaration
            `.ts` body is present in the same TypeScript Program and error-free;
            `.d.ts`-only and otherwise opaque dependencies remain fail-closed.
+         - [x] Keep collecting captured identifier writes when a helper also
+           mutates object regions. Union those names with identifier-rooted
+           Effect `Mutate`; do not treat an empty Effect Mutate list as a
+           closed write set if the leaf scan is unrecoverable (`new`, `delete`,
+           unresolved/recursive calls, unknown Effect evidence). Statement
+           calls whose closed Effect summary is `Mutate` without `Throw` havoc
+           the collected identifier writes and do not require a Hoare ensures.
        - [x] Treat a nested function declaration as non-executing declaration
          setup in the contract CFG; analyze its body only at a resolved call.
      - [ ] [#24](https://github.com/mizchi/uneffect/issues/24) Migrate general branch/loop snapshots, property regions,
        interprocedural summaries, and invalidation joins.
    - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Migrate React props/state/ref regions.
+     - [x] Diagnose Program-backed snapshot mutation through a same-file
+       TypeChecker-resolved monomorphic helper that writes a parameter.
+       Nested helpers, other-file helpers, and source-only analysis remain
+       fail-closed.
+     - [ ] [#16](https://github.com/mizchi/uneffect/issues/16) Extend helper
+       mutation through imported helpers, nested/escaping aliases, ref `.current`
+       regions, and general interprocedural ownership.
    - [x] Introduce `uneffect-resource-protocol/v1` with stable resource
      identities, required terminal states, and ordered acquire/use/consume/
      release/transfer/split/join/escape/invalidate transitions. Conditional

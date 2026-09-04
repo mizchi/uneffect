@@ -51,6 +51,13 @@ The direct Z3 verifier and SMT-LIB generator consume the same version-neutral `I
 
 Every solver result is recorded as a machine-readable artifact with an obligation ID, source span, and status. `sat` includes the raw model and parsed assignments. `unknown` and unsupported TypeScript constructs are explicit non-proofs. Calls without a verified function summary are unsupported rather than assumed pure.
 
+A Program-visible helper whose closed Effect summary is `Mutate` without `Throw`
+is admitted as a statement when the leaf write scanner can still collect
+identifier assignments. Object-region writes do not poison unrelated scalar
+frames; captured identifier writes havoc those names. Unresolved calls, `new`,
+`delete`, recursion, and unknown Effect evidence stay whole-frame fail-closed.
+Empty lookalike helpers stay unsupported.
+
 ## 3. Temporal logic and ownership protocols
 
 This category answers:

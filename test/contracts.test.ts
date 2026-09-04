@@ -2748,6 +2748,114 @@ describe("Hoare contract checker", () => {
       .toThrow(/unsupported invariant expression/);
   });
 
+  it("preserves scalar frames across a helper that only mutates an object region", () => {
+    const fileName = "/contract-loop-effect-mutate.ts";
+    const source = `
+      type Int = number
+      function bump(box: { n: Int }) { box.n++ }
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function run(limit: Int, box: { n: Int }): Int {
+        let index = 0
+        /* uneffect:loop_invariant index >= 0 */
+        while (index < limit) {
+          bump(box)
+          index++
+        }
+        return limit
+      }
+    `;
+    const obligations = lowerInvariantProgram(fileName, source, programFor(fileName, source));
+    const evidence = JSON.stringify(obligations);
+
+    expect(evidence).not.toContain("run_limit_loop_");
+    expect(evidence).toContain("run_index_loop_");
+  });
+
+  it("does not forget captured scalar writes beside object-region mutation", async () => {
+    const sequentialFile = "/contract-effect-mutate-captured-scalar.ts";
+    const sequentialSource = `
+      type Int = number
+      declare const box: { n: Int }
+      /* uneffect:ensures result === 0 */
+      function run(): Int {
+        let extra = 0
+        function bump() { box.n++; extra = 1 }
+        bump()
+        return extra
+      }
+    `;
+    const sequential = await verifyContractObligations(
+      sequentialFile, sequentialSource, undefined, programFor(sequentialFile, sequentialSource),
+    );
+    expect(sequential.artifacts[0]).not.toMatchObject({ status: "verified" });
+
+    const loopFile = "/contract-loop-effect-mutate-captured-scalar.ts";
+    const loopSource = `
+      type Int = number
+      declare const box: { n: Int }
+      /* uneffect:requires limit >= 0 */
+      /* uneffect:ensures result >= 0 */
+      function run(limit: Int): Int {
+        let extra = 0
+        let index = 0
+        function bump() { box.n++; extra = 1 }
+        /* uneffect:loop_invariant extra === 0 */
+        while (index < limit) {
+          bump()
+          index++
+        }
+        return extra
+      }
+    `;
+    const loop = lowerInvariantProgram(loopFile, loopSource, programFor(loopFile, loopSource));
+    const loopEvidence = JSON.stringify(loop);
+    expect(loopEvidence).toContain("run_extra_loop_");
+    expect(loopEvidence).not.toContain("run_limit_loop_");
+
+    const unknownFile = "/contract-effect-mutate-unknown.ts";
+    const unknownSource = `
+      type Int = number
+      declare function opaque(): void
+      declare const box: { n: Int }
+      function bump() { box.n++; opaque() }
+      /* uneffect:ensures result === 0 */
+      function run(): Int {
+        bump()
+        return 0
+      }
+    `;
+    expect(() => lowerInvariantProgram(unknownFile, unknownSource, programFor(unknownFile, unknownSource)))
+      .toThrow(/call requires a verified function summary: bump/);
+
+    const throwFile = "/contract-effect-mutate-throw.ts";
+    const throwSource = `
+      type Int = number
+      declare const box: { n: Int }
+      function bump(): void { box.n++; throw new Error("no") }
+      /* uneffect:ensures result === 0 */
+      function run(): Int {
+        bump()
+        return 0
+      }
+    `;
+    expect(() => lowerInvariantProgram(throwFile, throwSource, programFor(throwFile, throwSource)))
+      .toThrow(/call requires a verified function summary: bump/);
+
+    const emptyFile = "/contract-effect-empty-lookalike.ts";
+    const emptySource = `
+      type Int = number
+      function ok() {}
+      /* uneffect:ensures result === 0 */
+      function run(): Int {
+        ok()
+        return 0
+      }
+    `;
+    expect(() => lowerInvariantProgram(emptyFile, emptySource, programFor(emptyFile, emptySource)))
+      .toThrow(/call requires a verified function summary: ok/);
+  });
+
   it("keeps switch break local while continue targets the enclosing while through finally", async () => {
     const fileName = "/contract-loop-switch-finally.ts";
     const source = `

@@ -228,7 +228,10 @@ The tested fragment reports:
 - assignment, update, or deletion through an immutable render snapshot. The
   tested region sources are identifier or destructured props, the value
   position of directly imported `useState`/`useReducer`, directly imported
-  `useContext` results, and transitive local `const` aliases;
+  `useContext` results, and transitive local `const` aliases. Program analysis
+  also reports a same-file TypeChecker-resolved helper that writes such a
+  snapshot parameter; nested, imported, and source-only helper calls stay
+  fail-closed;
 - reads or writes of `.current` through a direct named-import `useRef` result
   or transitive local `const` alias during render. One exception recognizes a
   null-initialized ref under an exact `ref.current === null` (or reversed)
@@ -624,9 +627,10 @@ This is a tested initial fragment, not a complete React semantics:
   bounded Quint projections;
 - immutable snapshot tracking is local and syntactic. It covers destructured
   props, direct named-import state/context Hook results, and transitive `const`
-  aliases. Reassigned bindings, mutation through calls, properties stored in
-  containers, and interprocedural region flow need a flow-sensitive
-  ownership analysis;
+  aliases. Program analysis additionally diagnoses mutation through a same-file
+  TypeChecker-resolved monomorphic helper that writes a parameter. Nested
+  helpers, other-file helpers, reassigned bindings, properties stored in
+  containers, and general interprocedural region flow remain fail-closed;
 - callback-ref extraction covers inline JSX functions plus immutable
   component-local and write-screened module-local function/arrow callbacks and
   transitive `const` aliases. Program analysis additionally resolves

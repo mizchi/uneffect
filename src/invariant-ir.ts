@@ -4,6 +4,8 @@ import { extractAnnotations } from "./annotations.js";
 import type { InvariantSpec } from "./spec-ir.js";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import { resolveStableCallableSymbol, stableCallableDeclaration } from "./stable-callable.js";
+import { analyzeProgramEffects, type EffectSummary } from "./effects.js";
+import { formatEffect } from "./capabilities.js";
 
 export type LogicSort = "Int" | "Real" | "Bool";
 export type NumericDomain = "int" | "nat" | "float" | "bool";
@@ -962,6 +964,41 @@ function typeCheckerConstantIntegerRemainders(program: ts.Program | undefined, f
   return remainders;
 }
 
+const programEffectCache = new WeakMap<ts.Program, Map<string, EffectSummary>>();
+
+function programEffectSummaries(program: ts.Program): Map<string, EffectSummary> {
+  const cached = programEffectCache.get(program);
+  if (cached) return cached;
+  const byId = new Map<string, EffectSummary>();
+  for (const summary of analyzeProgramEffects(program, { requireAnnotations: false }).summaries) {
+    if (summary.id) byId.set(summary.id, summary);
+  }
+  programEffectCache.set(program, byId);
+  return byId;
+}
+
+function identifierMutateNames(summary: EffectSummary): string[] | undefined {
+  if (summary.evidence === "unknown") return undefined;
+  return summary.effects.flatMap((effect) =>
+    effect.kind === "mutate" && /^[A-Za-z_$][\w$]*$/u.test(effect.region) ? [effect.region] : []);
+}
+
+function throwEffectNames(summary: EffectSummary): string[] | undefined {
+  if (summary.evidence === "unknown") return undefined;
+  return summary.effects.filter((effect) => effect.kind === "throw").map((effect) => formatEffect(effect));
+}
+
+function effectSummaryForCall(
+  program: ts.Program,
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+): EffectSummary | undefined {
+  const symbol = resolveStableCallableSymbol(checker, call.expression);
+  const declaration = symbol && stableCallableDeclaration(symbol);
+  if (!declaration) return undefined;
+  return programEffectSummaries(program).get(`${declaration.getSourceFile().fileName}:${declaration.getStart()}`);
+}
+
 /**
  * Computes a closed write set for directly resolved, source-local leaf
  * callables. Missing entries are deliberately unknown: calls, dynamic member
@@ -1003,61 +1040,73 @@ function typeCheckerCallableScalarWrites(
     if (declarationErrors) { memo.set(declaration, null); return undefined; }
     const mathCalls = reviewedMathCalls(declarationSource);
     const writes = new Set<string>();
-    let closed = true;
+    let unrecoverable = false;
     const declarationStart = declaration.getStart(declarationSource);
     const declarationEnd = declaration.getEnd();
     const localToCallable = (target: ts.Symbol): boolean => (target.declarations ?? []).some((item) =>
       item.getSourceFile() === declarationSource && item.getStart(declarationSource) >= declarationStart && item.getEnd() <= declarationEnd);
+    const propertyOrElement = (node: ts.Node): boolean =>
+      ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node);
+    const recordIdentifierWrite = (name: ts.Identifier): void => {
+      const target = checker.getSymbolAtLocation(name);
+      if (!target) { unrecoverable = true; return; }
+      if (!localToCallable(target)) writes.add(name.text);
+    };
     const scan = (node: ts.Node): void => {
-      if (!closed) return;
+      if (unrecoverable) return;
       if (ts.isCallExpression(node)) {
         const span = `${node.getStart(declarationSource)}:${node.getEnd()}`;
         if (!mathCalls.has(span)) {
           const childSymbol = resolveStableCallableSymbol(checker, node.expression);
           const child = childSymbol && stableCallableDeclaration(childSymbol);
           const childWrites = summarize(child, nextStack);
-          if (!childWrites) { closed = false; return; }
+          if (!childWrites) { unrecoverable = true; return; }
           for (const name of childWrites) writes.add(name);
         }
-        // Arguments are evaluated at the call site. Inline callable bodies are
-        // conservatively scanned too; over-invalidation is safe here.
         for (const argument of node.arguments) scan(argument);
         return;
       }
-      if (ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node)
-        || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-        closed = false;
+      if (ts.isNewExpression(node) || ts.isTaggedTemplateExpression(node) || ts.isDeleteExpression(node)) {
+        unrecoverable = true;
         return;
       }
       if (ts.isBinaryExpression(node)
         && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
         && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) {
-        if (!ts.isIdentifier(node.left)) {
-          closed = false;
-          return;
-        }
-        const target = checker.getSymbolAtLocation(node.left);
-        if (!target) { closed = false; return; }
-        if (!localToCallable(target)) writes.add(node.left.text);
-      } else if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+        if (ts.isIdentifier(node.left)) {
+          recordIdentifierWrite(node.left);
+          scan(node.right);
+        } else if (propertyOrElement(node.left)) scan(node.right);
+        else unrecoverable = true;
+        return;
+      }
+      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
         && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
-        if (!ts.isIdentifier(node.operand)) {
-          closed = false;
-          return;
-        }
-        const target = checker.getSymbolAtLocation(node.operand);
-        if (!target) { closed = false; return; }
-        if (!localToCallable(target)) writes.add(node.operand.text);
-      } else if (ts.isDeleteExpression(node)) {
-        closed = false;
+        if (ts.isIdentifier(node.operand)) recordIdentifierWrite(node.operand);
+        else if (!propertyOrElement(node.operand)) unrecoverable = true;
+        return;
+      }
+      if (propertyOrElement(node)) {
+        unrecoverable = true;
         return;
       }
       ts.forEachChild(node, scan);
     };
     scan(body);
-    const result = closed ? [...writes].sort() : null;
+    if (unrecoverable) {
+      memo.set(declaration, null);
+      return undefined;
+    }
+    const summary = programEffectSummaries(program).get(`${declarationSource.fileName}:${declaration.getStart()}`);
+    if (summary?.evidence === "unknown") {
+      memo.set(declaration, null);
+      return undefined;
+    }
+    const extra = summary ? identifierMutateNames(summary) : [];
+    if (extra) for (const name of extra) writes.add(name);
+    const result = [...writes].sort();
     memo.set(declaration, result);
-    return result ?? undefined;
+    return result;
   };
   const visitCall = (call: ts.CallExpression): void => {
     const symbol = resolveStableCallableSymbol(checker, call.expression);
@@ -2017,6 +2066,27 @@ export function lowerInvariantProgram(
   const constantIntegerRemainders = typeCheckerConstantIntegerRemainders(program, fileName, text);
   const mathScalarCalls = typeCheckerMathScalarCalls(program, fileName, text);
   const callableScalarWrites = typeCheckerCallableScalarWrites(program, fileName, text);
+  const effectCallFacts = new Map<string, { throws: string[]; mutates: boolean }>();
+  if (program) {
+    const sourceFile = program.getSourceFile(fileName);
+    if (sourceFile && sourceFile.text === text) {
+      const checker = program.getTypeChecker();
+      const visitCalls = (node: ts.Node): void => {
+        if (ts.isCallExpression(node)) {
+          const summary = effectSummaryForCall(program, checker, node);
+          const throws = summary ? throwEffectNames(summary) : undefined;
+          if (throws) {
+            effectCallFacts.set(`${node.getStart(sourceFile)}:${node.getEnd()}`, {
+              throws,
+              mutates: summary!.effects.some((effect) => effect.kind === "mutate"),
+            });
+          }
+        }
+        ts.forEachChild(node, visitCalls);
+      };
+      visitCalls(sourceFile);
+    }
+  }
   const throwEffects = typeCheckerThrowEffects(program, fileName, text);
   const assertionCalls = typeCheckerAssertionCalls(program, fileName, text);
   const declaredThrowCalls = typeCheckerDeclaredThrowCalls(program, fileName, text);
@@ -3561,9 +3631,13 @@ export function lowerInvariantProgram(
           });
           return paths;
         }
-        const completion = callCompletions.get(`${call.getStart(source)}:${call.getEnd()}`);
-        const declared = declaredThrowCalls.get(`${call.getStart(source)}:${call.getEnd()}`);
-        const effects = completion?.synchronousThrows ?? declared?.effects;
+        const callSpan = `${call.getStart(source)}:${call.getEnd()}`;
+        const completion = callCompletions.get(callSpan);
+        const declared = declaredThrowCalls.get(callSpan);
+        const effectFact = effectCallFacts.get(callSpan);
+        const writes = callableScalarWrites.get(callSpan);
+        const effects = completion?.synchronousThrows ?? declared?.effects
+          ?? (effectFact && effectFact.throws.length === 0 && effectFact.mutates && writes ? effectFact.throws : undefined);
         if (!effects) throw new Error(`call requires a verified function summary: ${call.expression.getText(source)}`);
         const argumentPaths = evaluateCallArguments(call, paths).map(({ path }) => path);
         const normalArguments = argumentPaths.filter(({ completion }) => completion === "normal");
@@ -3574,6 +3648,21 @@ export function lowerInvariantProgram(
           thrown: { kind: "synchronous-throw", effect, originSpan, ...(completion ? { evidence: completion.evidence } : {}) },
         })));
         paths = [...(declared?.definitelyThrows || completion?.definitelyRejects ? [] : normalArguments), ...thrown, ...abruptArguments];
+        if (writes) {
+          const at = call.getStart(source);
+          paths = paths.map((path) => {
+            if (path.completion !== "normal") return path;
+            const env = new Map(path.env);
+            for (const name of writes) {
+              if (!env.has(name)) continue;
+              const fresh = `${fn}_${name}_call_${at}`;
+              displayNames[fresh] = `${name}@call`;
+              if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
+              env.set(name, variable(fresh));
+            }
+            return { ...path, env };
+          });
+        }
       } else if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
         // FunctionDeclaration instantiation creates the callable binding but
         // does not execute its body. Calls are handled through checker-backed

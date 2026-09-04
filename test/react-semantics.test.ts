@@ -1195,6 +1195,93 @@ describe("React Function Component semantics", () => {
     ]);
   });
 
+  it("does not invent helper-call snapshot mutation without a TypeChecker", () => {
+    const result = analyzeReactSemantics("source-only-helper.tsx", `
+      function stamp(profile: { name: string }) { profile.name = "render" }
+      /* uneffect:react.component */
+      function Editor({ profile }: { profile: { name: string } }) {
+        stamp(profile)
+        return null
+      }
+    `);
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.kind === "immutable-input-mutation")).toEqual([]);
+  });
+
+  it("diagnoses snapshot mutation through a same-file TypeChecker-resolved helper", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-snapshot-helper-"));
+    const appFile = join(directory, "app.tsx");
+    const otherFile = join(directory, "other.ts");
+    try {
+      writeFileSync(otherFile, `
+        export function foreignStamp(profile: { name: string }) { profile.name = "foreign" }
+      `);
+      writeFileSync(appFile, `
+        import { useState } from "react"
+        import { foreignStamp } from "./other.js"
+        function stamp(profile: { name: string }) { profile.name = "render" }
+        const mark = (model: { value: number }) => { model.value++ }
+        function read(profile: { name: string }) { return profile.name }
+        function nested(profile: { name: string }) {
+          const write = () => { profile.name = "nested" }
+          write()
+        }
+        /* uneffect:react.component */
+        export function Editor({ profile }: { profile: { name: string } }) {
+          const profileAlias = profile
+          stamp(profileAlias)
+          const [model] = useState({ value: 0 })
+          mark(model)
+          void read(profile)
+          nested(profile)
+          foreignStamp(profile)
+          return null
+        }
+        /* uneffect:react.hook */
+        export function useBroken(input: { value: number }) {
+          mark(input)
+        }
+      `);
+      const program = ts.createProgram([appFile, otherFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const app = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(app.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ component: "Editor", kind: "immutable-input-mutation", operation: "profileAlias" }),
+        expect.objectContaining({ component: "Editor", kind: "immutable-input-mutation", operation: "model" }),
+        expect.objectContaining({ component: "useBroken", kind: "immutable-input-mutation", operation: "input" }),
+      ]));
+      expect(app.diagnostics.filter((diagnostic) => diagnostic.kind === "immutable-input-mutation")).toHaveLength(3);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("maps helper arguments past a leading this parameter", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-snapshot-this-"));
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(appFile, `
+        function stamp(this: void, profile: { name: string }) { profile.name = "render" }
+        /* uneffect:react.component */
+        export function Editor({ profile }: { profile: { name: string } }) {
+          stamp(profile)
+          return null
+        }
+      `);
+      const program = ts.createProgram([appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const app = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(app.diagnostics).toEqual([
+        expect.objectContaining({ component: "Editor", kind: "immutable-input-mutation", operation: "profile" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("reports Hooks whose call order depends on control flow", () => {
     const result = analyzeReactSemantics("hooks.tsx", `
       import { useEffect } from "react"

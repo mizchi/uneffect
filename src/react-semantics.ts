@@ -1751,6 +1751,59 @@ function isImmutableSnapshotMutation(node: ts.Node, immutable: ReadonlySet<strin
   return root !== undefined && immutable.has(root);
 }
 
+function helperContainsNestedFunction(helper: AnnotatableFunction): boolean {
+  let nested = false;
+  const visit = (node: ts.Node): void => {
+    if (nested) return;
+    if (node !== helper.body && ts.isFunctionLike(node)) { nested = true; return; }
+    ts.forEachChild(node, visit);
+  };
+  if (helper.body) visit(helper.body);
+  return nested;
+}
+
+function helperWritesParameter(helper: AnnotatableFunction, parameterName: string): boolean {
+  if (!helper.body) return false;
+  let writes = false, shadowed = false;
+  const visit = (node: ts.Node): void => {
+    if (writes || shadowed) return;
+    if (node !== helper.body && ts.isFunctionLike(node)) return;
+    if (ts.isVariableDeclaration(node) && bindingNames(node.name).includes(parameterName)) { shadowed = true; return; }
+    const target = mutationTarget(node);
+    if (target && expressionRoot(target) === parameterName && !ts.isIdentifier(unwrapExpression(target))) writes = true;
+    ts.forEachChild(node, visit);
+  };
+  visit(helper.body);
+  return writes && !shadowed;
+}
+
+function snapshotHelperMutationArgument(
+  call: ts.CallExpression,
+  boundary: ComponentNode,
+  immutable: ReadonlySet<string>,
+): ts.Expression | undefined {
+  const checker = reactSourceCheckers.get(call.getSourceFile());
+  if (!checker || call.expression.kind === ts.SyntaxKind.ImportKeyword) return undefined;
+  const location = ts.isPropertyAccessExpression(call.expression) || ts.isElementAccessExpression(call.expression)
+    ? call.expression : ts.isIdentifier(call.expression) ? call.expression : undefined;
+  if (!location) return undefined;
+  const lookup = ts.isPropertyAccessExpression(location) ? location.name
+    : ts.isElementAccessExpression(location) ? location.argumentExpression : location;
+  const helper = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(lookup));
+  if (!helper?.body || helper === boundary || helper.getSourceFile() !== call.getSourceFile()
+    || helper.typeParameters?.length || helperContainsNestedFunction(helper)) return undefined;
+  const runtimeParameters = helper.parameters.filter((parameter) =>
+    !(ts.isIdentifier(parameter.name) && parameter.name.text === "this"));
+  for (const [index, argument] of call.arguments.entries()) {
+    const parameter = runtimeParameters[index];
+    if (!parameter || !ts.isIdentifier(parameter.name)) continue;
+    const root = expressionRoot(argument);
+    if (!root || !immutable.has(root) || !helperWritesParameter(helper, parameter.name.text)) continue;
+    return argument;
+  }
+  return undefined;
+}
+
 interface InternalReactAnalysis {
   result: ReactSemanticsResult;
   hookSummaries: Map<string, CustomHookSummary>;
@@ -2330,6 +2383,13 @@ function analyzeReactSource(
           kind: "render-effect", phase: "render", effect, message: `${effect} is observable during custom Hook render`,
         });
       }
+      if (ts.isCallExpression(node)) {
+        const mutated = snapshotHelperMutationArgument(node, hook, immutableSnapshots);
+        if (mutated) reportHook(node, {
+          kind: "immutable-input-mutation", phase: "render", operation: mutated.getText(source),
+          message: "React Hook inputs, state, and context are immutable render snapshots",
+        });
+      }
       if (isImmutableSnapshotMutation(node, immutableSnapshots)) reportHook(node, {
         kind: "immutable-input-mutation", phase: "render", operation: mutationTarget(node)!.getText(source),
         message: "React Hook inputs, state, and context are immutable render snapshots",
@@ -2880,6 +2940,13 @@ function analyzeReactSource(
           addPhase("render", [effect]);
           report(node, { kind: "render-effect", phase: "render", effect, message: `${effect} is observable during render` });
         }
+      }
+      if (ts.isCallExpression(node)) {
+        const mutated = snapshotHelperMutationArgument(node, component, immutableSnapshots);
+        if (mutated) report(node, {
+          kind: "immutable-input-mutation", phase: "render", operation: mutated.getText(source),
+          message: "React component inputs, state, and context are immutable render snapshots",
+        });
       }
       if (isImmutableSnapshotMutation(node, immutableSnapshots)) report(node, {
         kind: "immutable-input-mutation", phase: "render", operation: mutationTarget(node)!.getText(source),
