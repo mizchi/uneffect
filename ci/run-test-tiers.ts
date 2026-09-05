@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { createSolverRetryEvidenceSession } from "./solver-retry-evidence.js";
-import { ciExternalVerifierTestFiles, ciIsolatedProcessTimeoutMs, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiTierFiles, shouldIsolateTestCases, type CiTestTier } from "./test-tiers.js";
+import { assertCiDogfoodBudget, ciExternalVerifierTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiProcessTimeoutMs, resolveCiTierFiles, shouldIsolateTestCases, type CiTestTier } from "./test-tiers.js";
 import { appendCiTimingEvent, classifyCiTimingFailure, type CiTimingRetryReason } from "./timing-report.js";
 import { runBoundedVerifierAttempts } from "./verifier-retry.js";
 import { spawnSyncWithDeadline } from "./process-deadline.js";
@@ -43,8 +43,9 @@ for (const tier of tiers) {
         "vitest", "run", ...(file ? [file] : []), ...(testPattern ? ["-t", testPattern] : []),
         ...(file && isolateTestCases ? ["--testTimeout", String(ciIsolatedTestTimeoutMs)] : []),
       ];
-      const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => testName
-        ? spawnSyncWithDeadline(pnpm, args, ciIsolatedProcessTimeoutMs, {
+      const processTimeoutMs = resolveCiProcessTimeoutMs(file, testName, isolation);
+      const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => processTimeoutMs !== undefined
+        ? spawnSyncWithDeadline(pnpm, args, processTimeoutMs, {
           cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier, ...attemptEnvironment },
           maxBuffer: 20 * 1024 * 1024,
         })
@@ -79,6 +80,7 @@ for (const tier of tiers) {
         if (captured.stderr) process.stderr.write(captured.stderr);
       };
       let result;
+      let completedDurationMs: number | undefined;
       if (testName || (file && ciExternalVerifierTestFiles.includes(file))) {
         const evidence = createSolverRetryEvidenceSession(
           resolve(process.env.UNEFFECT_VERIFIER_RETRY_EVIDENCE_ROOT ?? process.env.UNEFFECT_SOLVER_RETRY_EVIDENCE_ROOT ?? ".uneffect/verifier-retry-evidence"),
@@ -123,17 +125,25 @@ for (const tier of tiers) {
           if (willRetry) process.stderr.write(`retrying isolated test after a recognized transient verifier-process ${retryReason} (attempt ${attempt + 1}/${maxVerifierAttempts}): ${file}${testName ? ` -t ${testName}` : ""}\n`);
         });
         result = execution.result.captured;
+        completedDurationMs = execution.result.durationMs;
         const evidenceManifest = evidence.finish();
         if (evidenceManifest) process.stderr.write(`retained verifier retry evidence: ${evidenceManifest}\n`);
       } else {
         const startedAt = startTiming(1);
-        result = spawnSync(pnpm, args, {
-          cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, stdio: "inherit",
-        });
+        result = processTimeoutMs === undefined
+          ? spawnSync(pnpm, args, {
+            cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, stdio: "inherit",
+          })
+          : runIsolated();
+        if (processTimeoutMs !== undefined) emit(result);
+        completedDurationMs = Date.now() - startedAt;
         completeTiming(1, startedAt, result);
       }
       if (result.error) throw result.error;
       if (result.status !== 0) process.exit(result.status ?? 1);
+      if (file === "test/dogfood.test.ts" && testName === undefined && isolation === "file") {
+        assertCiDogfoodBudget(completedDurationMs ?? Number.POSITIVE_INFINITY);
+      }
       if (testName && file && isolateTestCases && !didVitestRunExactlyOneTest(result.stdout ?? "")) {
         throw new Error(`isolated selector did not execute exactly one test: ${file} -t ${testName}`);
       }

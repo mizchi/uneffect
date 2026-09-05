@@ -2135,6 +2135,26 @@ portable performance claims: GitHub runner setup, CPU contention, native Z3,
 Quint, and Java startup can change wall time. Remote timing artifacts remain
 the authority for timeout calibration and future rebalancing.
 
+The 0.3.0 #67 Red artifact is remote run 33960486165. Its dogfood shard ran
+130 cases in 132 fresh Vitest processes/attempts over 1,348.109 seconds of
+recorded attempt time. Two self-analysis cases hit the 75-second hard process
+deadline and passed only after classified retry; the median attempt was 4.352
+seconds and the 95th percentile was 68.585 seconds. This demonstrates both the
+per-process construction tax and the lack of deterministic headroom even
+though the overall workflow was green.
+
+With native Z3 and file isolation, three fresh CI-shaped development-host runs
+of the same 130 cases completed without retry in 255.319, 256.307, and 287.293
+seconds. The slowest is 59.9% of the 480-second acceptance budget and 47.9% of
+the 600-second hard deadline. Representative phase ranges across those runs
+were 447–466 ms for whole-project TypeScript Program construction, 25.014–27.647
+seconds for the whole-source Effect analysis pass, 180–222 ms for the Corsa
+semantic query, 554–611 ms for temporal model generation, and 57–74 ms for one
+native-Z3 recurrence proof. The phase measurements explain selected
+boundaries, not an additive decomposition of the complete file. Recorded
+max-RSS is cumulative for the process and peaked at 2.934 GB. Remote cold-run
+artifacts remain the release authority.
+
 The P2.31 focused benchmark derives the eight-step finite self-affine retry
 summary. A selected run measured 0.1803 ms mean over 2,773 structural samples
 (5,545.98 operations per second, 0.48% RME). Independent Z3 validation under

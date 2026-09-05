@@ -67,8 +67,10 @@ All notable changes to Uneffect are documented in this file.
 - Corrected the adoption corpus contract for the transitive
   `JSON.parse` `Throw<SyntaxError>` effect and now fail closed on unproved
   external generator consumption.
-- Kept per-test process isolation for the CI WASM solver while making the local
-  native-Z3 release gate file-isolated and removing its duplicate dogfood run.
+- Kept per-test process isolation for the CI WASM solver while running native-Z3
+  dogfood as one bounded file process. The complete corpus now enforces 20%
+  headroom before its hard deadline and records v2 phase/resource timing
+  instead of paying one Vitest/TypeScript startup per case.
 - Project temporal verification now aggregates Promise/resource safety
   diagnostics into its public result and assurance decision. Release dogfood
   keeps specifications unchanged while injecting a floating browser fetch and

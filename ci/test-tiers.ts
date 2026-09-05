@@ -208,6 +208,26 @@ export const ciIsolatedTestTimeoutMs = 60_000;
 export const ciMeasuredNativeProjectTimeoutMs = 45_000;
 /** Parent-process deadline for synchronous WASM calls that can block Vitest's own timer. */
 export const ciIsolatedProcessTimeoutMs = ciIsolatedTestTimeoutMs + 15_000;
+/** One native-Z3 Vitest process for the complete dogfood corpus. */
+export const ciDogfoodProcessTimeoutMs = 10 * 60_000;
+/** A clean run must retain 20% headroom before the hard process deadline. */
+export const ciDogfoodBudgetMs = ciDogfoodProcessTimeoutMs * 0.8;
+
+export function resolveCiProcessTimeoutMs(
+  file: string | undefined,
+  testName: string | undefined,
+  isolation: CiTestIsolation,
+): number | undefined {
+  if (testName) return ciIsolatedProcessTimeoutMs;
+  if (file === "test/dogfood.test.ts" && isolation === "file") return ciDogfoodProcessTimeoutMs;
+  return undefined;
+}
+
+export function assertCiDogfoodBudget(durationMs: number): void {
+  if (durationMs > ciDogfoodBudgetMs) {
+    throw new Error(`dogfood CI budget exceeded: ${durationMs}ms > ${ciDogfoodBudgetMs}ms (80% of ${ciDogfoodProcessTimeoutMs}ms hard deadline)`);
+  }
+}
 
 export function isIsolatedSolverHardTimeout(error: { code?: unknown } | undefined): boolean {
   return error?.code === "ETIMEDOUT";

@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciExternalVerifierTestFiles, ciIntegrationShards, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciMeasuredNativeProjectTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldIsolateTestCases, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
-import { appendCiTimingEvent, classifyCiTimingFailure, readCiTimingEvents } from "../ci/timing-report.js";
+import { assertCiDogfoodBudget, ciDogfoodBudgetMs, ciDogfoodProcessTimeoutMs, ciExternalVerifierTestFiles, ciIntegrationShards, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciMeasuredNativeProjectTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiProcessTimeoutMs, resolveCiTestIncludes, resolveCiTierFiles, shouldIsolateTestCases, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { appendCiTimingEvent, classifyCiTimingFailure, measureCiTimingPhase, measureCiTimingPhaseAsync, readCiTimingEvents } from "../ci/timing-report.js";
 import { classifySolverRetryAttempts, createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
 import { boundedRepetitions } from "../ci/run-solver-stress.js";
 import { runBoundedVerifierAttempts } from "../ci/verifier-retry.js";
@@ -65,12 +65,47 @@ describe("CI test tier manifest", () => {
         status: 1, signal: null, failureKind: "semantic-or-test-timeout",
       });
       expect(readCiTimingEvents(report)).toEqual([
-        expect.objectContaining({ schema: "uneffect.ci-timing/v1", event: "start", attempt: 1 }),
-        expect.objectContaining({ schema: "uneffect.ci-timing/v1", event: "complete", durationMs: 31_000, status: 1 }),
+        expect.objectContaining({ schema: "uneffect.ci-timing/v2", event: "start", attempt: 1, process: expect.objectContaining({ rssBytes: expect.any(Number) }) }),
+        expect.objectContaining({ schema: "uneffect.ci-timing/v2", event: "complete", durationMs: 31_000, status: 1, process: expect.objectContaining({ maxRssBytes: expect.any(Number) }) }),
       ]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it("records attributed CI phases with before/after resource snapshots", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-ci-phases-"));
+    const report = join(directory, "integration-dogfood.jsonl");
+    const context = {
+      tier: "integration", shard: "dogfood", file: "test/dogfood.test.ts",
+      testName: "self dogfood", attempt: 1,
+    } as const;
+    try {
+      expect(measureCiTimingPhase(report, { ...context, phase: "project-compiler-construction" }, () => 42)).toBe(42);
+      await expect(measureCiTimingPhaseAsync(report, { ...context, phase: "semantic-query" }, async () => "ok"))
+        .resolves.toBe("ok");
+      expect(readCiTimingEvents(report)).toEqual([
+        expect.objectContaining({ schema: "uneffect.ci-timing/v2", event: "phase-start", phase: "project-compiler-construction" }),
+        expect.objectContaining({ schema: "uneffect.ci-timing/v2", event: "phase-complete", phase: "project-compiler-construction", status: 0, durationMs: expect.any(Number) }),
+        expect.objectContaining({ schema: "uneffect.ci-timing/v2", event: "phase-start", phase: "semantic-query" }),
+        expect.objectContaining({ schema: "uneffect.ci-timing/v2", event: "phase-complete", phase: "semantic-query", status: 0, durationMs: expect.any(Number) }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds native file-level dogfood with 20 percent deadline headroom", () => {
+    expect(ciDogfoodProcessTimeoutMs).toBe(10 * 60_000);
+    expect(ciDogfoodBudgetMs).toBe(ciDogfoodProcessTimeoutMs * 0.8);
+    expect(resolveCiProcessTimeoutMs("test/dogfood.test.ts", undefined, "file")).toBe(ciDogfoodProcessTimeoutMs);
+    expect(resolveCiProcessTimeoutMs("test/dogfood.test.ts", "one case", "test")).toBe(ciIsolatedProcessTimeoutMs);
+    expect(resolveCiProcessTimeoutMs("test/effects.test.ts", undefined, "file")).toBeUndefined();
+    expect(() => assertCiDogfoodBudget(ciDogfoodBudgetMs)).not.toThrow();
+    expect(() => assertCiDogfoodBudget(ciDogfoodBudgetMs + 1)).toThrow(/dogfood CI budget exceeded/);
+
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    expect(workflow).toMatch(/integration:[\s\S]*?UNEFFECT_TEST_ISOLATION: file/);
   });
 
   it("separates verifier runtime timing failures from semantic test failures", () => {
@@ -302,7 +337,8 @@ describe("CI test tier manifest", () => {
     expect(isIsolatedSolverHardTimeout({ code: "ENOMEM" })).toBe(false);
     expect(isIsolatedSolverHardTimeout(undefined)).toBe(false);
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
-    expect(runner).toContain("spawnSyncWithDeadline(pnpm, args, ciIsolatedProcessTimeoutMs");
+    expect(runner).toContain("spawnSyncWithDeadline(pnpm, args, processTimeoutMs");
+    expect(runner).toContain("resolveCiProcessTimeoutMs(file, testName, isolation)");
     expect(runner).toContain("isIsolatedSolverHardTimeout(captured.error)");
   });
 

@@ -110,8 +110,13 @@ a 45-second budget, 1.5 times the observed failing duration. The solution case
 first exceeded its literal 30-second limit in run 33245063564 while all six
 other jobs, including the repaired dogfood shard, passed. This is a timeout
 calibration, not an automatic retry: an ordinary Vitest timeout still fails immediately. Every
-shard writes `uneffect.ci-timing/v1` JSONL start/completion events with file,
-test selector, attempt, duration, exit status, signal, and a failure class.
+shard writes `uneffect.ci-timing/v2` JSONL start/completion events with file,
+test selector, attempt, duration, exit status, signal, failure class, and parent
+process RSS/heap/external/max-RSS/CPU snapshots. Checker-backed dogfood also
+records representative project/compiler construction, semantic-query,
+analysis-pass, model-generation, and external-verifier phase pairs. The
+max-RSS field is the process-wide cumulative maximum observed at that point,
+not memory attributed solely to that phase.
 Artifacts distinguish semantic/test failures, external-verifier timeouts,
 hard process deadlines, and recognized verifier runtime failures. Events are
 uploaded with `if: always()`, including a partially written start event when a
@@ -126,18 +131,28 @@ finite 120-second test budget after observed native-Z3 runtimes between 41 and
 its shorter dedicated budget. Assertions and solver obligations are unchanged,
 and ordinary Vitest timeouts are never retried.
 
-Checker-backed dogfood has a separate named finite policy. Local execution is
-bounded at 20 seconds; CI execution is bounded at 60 seconds, exactly matching
-the isolated-test allowance. This replaced a call-site literal that overrode
-the CI allowance and produced a false negative in run
+Checker-backed dogfood has a separate named finite policy. The historical
+per-test path retains its 20-second local/60-second CI test allowance, but the
+native-Z3 integration job now runs the complete 130-case file in one fresh
+Vitest process. That process has a 10-minute hard deadline and an 8-minute
+acceptance budget, so a clean result must retain at least 20% deadline
+headroom. The file-level path is not retried: a test failure, budget overrun,
+or hard timeout fails the shard directly. This avoids rebuilding Vitest and
+the TypeScript project for every case without sharing native-Z3 state across
+files or weakening any assertion.
+
+The earlier named allowance replaced a call-site literal that overrode the CI
+allowance and produced a false negative in run
 [`33227180964`](https://github.com/mizchi/uneffect/actions/runs/33227180964).
 The unchanged failed-job rerun passed, so the incident is runner-timing evidence
 rather than a semantic failure. The policy and its dogfood call site are both
 unit tested. Run
 [`33228295670`](https://github.com/mizchi/uneffect/actions/runs/33228295670)
 then passed all seven jobs on its first attempt; the dogfood shard completed in
-7 minutes 15 seconds. The 60-second value bounds each isolated test, not the
-whole shard, and is not proof that all future checker inputs fit that budget.
+7 minutes 15 seconds. The 60-second value bounds an explicitly isolated test
+only; the 10-minute process deadline and 8-minute clean-run budget bound the
+current complete dogfood shard. Neither is evidence that arbitrary future
+checker inputs fit the same budget.
 
 Quint-bearing files use a separate file-granularity boundary. If a live Vitest
 process reports that its child `pnpm exec quint` process failed with

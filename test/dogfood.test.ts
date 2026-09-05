@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
+import { measureCiTimingPhase, measureCiTimingPhaseAsync, type CiTimingPhase } from "../ci/timing-report.js";
 import { analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { formatEffect } from "../src/capabilities.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
@@ -32,6 +33,21 @@ const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.
 function telemetryRoutingFixture() {
   const source = readFileSync(telemetryRoutingFileName, "utf8");
   return { fileName: telemetryRoutingFileName, source, temporal: parseSpec(telemetryRoutingFileName, source).temporal };
+}
+
+const dogfoodTimingFile = "test/dogfood.test.ts";
+function measureDogfoodPhase<T>(phase: CiTimingPhase, testName: string, operation: () => T): T {
+  return measureCiTimingPhase(process.env.UNEFFECT_CI_TIMING_PATH, {
+    tier: "integration", shard: process.env.UNEFFECT_CI_SHARD ?? null,
+    file: dogfoodTimingFile, testName, attempt: 1, phase,
+  }, operation);
+}
+
+function measureDogfoodPhaseAsync<T>(phase: CiTimingPhase, testName: string, operation: () => Promise<T>): Promise<T> {
+  return measureCiTimingPhaseAsync(process.env.UNEFFECT_CI_TIMING_PATH, {
+    tier: "integration", shard: process.env.UNEFFECT_CI_SHARD ?? null,
+    file: dogfoodTimingFile, testName, attempt: 1, phase,
+  }, operation);
 }
 
 describe("Uneffect dogfood", () => {
@@ -94,8 +110,9 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/cfg-entry-read-batch-flush.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
-    const analysis = await analyzeRefinementActionBodiesWithZ3(
-      fileName, source, "cfgEntryReadBatchFlush", temporal,
+    const analysis = await measureDogfoodPhaseAsync(
+      "external-verifier", "entry-read recurrence Z3 proof",
+      () => analyzeRefinementActionBodiesWithZ3(fileName, source, "cfgEntryReadBatchFlush", temporal),
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
@@ -479,7 +496,10 @@ describe("Uneffect dogfood", () => {
   it("exports a real checker-inferred Console effect and ordered calls from dogfood", async () => {
     const fileName = "examples/dogfood/corsa-inferred-effect.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };
-    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() });
+    const facts = await measureDogfoodPhaseAsync(
+      "semantic-query", "Corsa checker fact export",
+      () => exportCorsaCheckerFacts({ files, corsaExecutable: resolveCorsaExecutable() }),
+    );
     const emit = facts.symbols.find((symbol) => symbol.name === "emit")!;
     const lookalike = facts.symbols.find((symbol) => symbol.name === "sameSpelledLookalike")!;
     expect(emit.inferredEffects).toEqual([
@@ -2605,15 +2625,21 @@ describe("Uneffect dogfood", () => {
   });
 
   it("classifies every unknown summary while analyzing its own implementation", () => {
-    const program = ts.createProgram(globSync("src/*.ts"), {
-      target: ts.ScriptTarget.ES2024,
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
-      types: ["node"],
-      noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const program = measureDogfoodPhase(
+      "project-compiler-construction", "whole src TypeScript Program",
+      () => ts.createProgram(globSync("src/*.ts"), {
+        target: ts.ScriptTarget.ES2024,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+        types: ["node"],
+        noEmit: true,
+      }),
+    );
+    const result = measureDogfoodPhase(
+      "analysis-pass", "whole src effect analysis",
+      () => analyzeProgramEffects(program, { requireAnnotations: false }),
+    );
     expect(result.summaries.length).toBeGreaterThan(200);
     expect(result.diagnostics).toEqual([]);
     const unknown = result.summaries.filter((summary) => summary.evidence === "unknown");
@@ -3420,9 +3446,12 @@ describe("Uneffect dogfood", () => {
     const directives = (input: string) => input.split("\n").filter((line) => line.includes("uneffect:")).join("\n");
     expect(directives(mutant)).toBe(directives(source));
 
-    const firstModel = publicApi.generateTemporalModel({
-      fileName, source: mutant, runtime: "web", root: "fetchDashboard",
-    });
+    const firstModel = measureDogfoodPhase(
+      "model-generation", "floating fetch temporal model",
+      () => publicApi.generateTemporalModel({
+        fileName, source: mutant, runtime: "web", root: "fetchDashboard",
+      }),
+    );
     const secondModel = publicApi.generateTemporalModel({
       fileName, source: mutant, runtime: "web", root: "fetchDashboard",
     });
