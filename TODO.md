@@ -1,6 +1,6 @@
 # Uneffect implementation ledger
 
-Last reconciled with GitHub Issues: 2026-09-01.
+Last reconciled with GitHub Issues: 2026-09-05.
 
 This file is the historical implementation ledger. Completed work is summarized
 in `docs/implementation-status.md` and classified by confidence in
@@ -25,7 +25,89 @@ Remaining volume and estimate assumptions are maintained in
 - `priority:P0` means a proof-boundary or reliability dependency, not that all
   P0 Issues should be developed concurrently.
 
-## Current implementation snapshot
+## 0.3.0 release qualification
+
+The next release is a qualification cycle, not another open-ended semantic
+expansion cycle. GitHub milestone
+[`0.3.0 — Release qualification`](https://github.com/mizchi/uneffect/milestone/5)
+is the source of truth for the release queue. Exactly one bounded child Issue
+is active; this file summarizes that queue without duplicating its acceptance
+criteria.
+
+### Product decision
+
+0.3.0 promotes two bounded integration contracts while Uneffect as a whole
+remains experimental before 1.0:
+
+- `@mizchi/uneffect/corsa/api` and its versioned semantic-query descriptor;
+- `generateTemporalModel`, `parseTemporalModelResult`, and the versioned
+  temporal coverage contract spanning the documented Promise/resource domains.
+
+This does **not** stabilize low-level CFG/value lattices, syntax traversal,
+Promise/resource lowering, solver adapters, backend-specific generators, or
+generated Quint text. Those remain behind `@mizchi/uneffect/experimental` or
+internal package boundaries.
+
+### Current problem statement
+
+The repository has broad positive and adjacent negative coverage, but release
+evidence is still incomplete in three operationally important ways:
+
+1. Most fixtures prove a deliberately authored supported fragment. The release
+   still needs two realistic cases where the specification stays unchanged and
+   an implementation-only defect is detected.
+2. Checker-backed self-dogfood has reached the hard CI deadline. A passing
+   retry does not provide a deterministic release budget.
+3. Static export/schema checks and package smoke exist, but the actual tarball
+   still needs a fresh-consumer contract test that proves the stable and
+   experimental entrypoint boundary.
+
+### Execution queue
+
+| Status | Issue | Outcome required for 0.3.0 |
+| --- | --- | --- |
+| Active | [#66](https://github.com/mizchi/uneffect/issues/66) | Detect implementation-only Promise/resource defects in two realistic applications without changing their specifications. |
+| Next | [#67](https://github.com/mizchi/uneffect/issues/67) | Keep the slowest of three cold CI-shaped self-dogfood runs at or below 80% of the hard deadline, without retry or weaker assertions. |
+| Next | [#68](https://github.com/mizchi/uneffect/issues/68) | Install the actual tarball into a fresh Node 24 consumer and lock public imports, schemas, exclusions, and optional-dependency failure behavior. |
+| Blocked umbrella | [#62](https://github.com/mizchi/uneffect/issues/62) | Reconcile the final supported-fragment contract and run the release gates after #66–#68 close. |
+
+### Release exit criteria
+
+- [ ] Two realistic application boundaries retain byte-identical specs between
+  green and implementation-mutant runs, and every retained mutant is detected.
+- [ ] Unsupported neighboring shapes produce `unknown`, `excluded`, or a
+  blocker rather than successful verification.
+- [ ] Diagnostics, coverage classification, and normalized witnesses are
+  deterministic across repeated runs.
+- [ ] Self-dogfood has measured CI headroom and passes without timeout retry.
+- [ ] An installed tarball passes root/Corsa/spec/schema consumer probes and
+  does not expose low-level experimental generators from the package root.
+- [ ] `just package-check`, `just release-check`, and current-HEAD remote CI are
+  green; no unclassified timeout is waived by a later green retry.
+- [ ] README, stability policy, public API inventory, feature matrix, and
+  changelog describe the same supported boundary and explicit exclusions.
+- [ ] Tagging and publishing remain a separate explicit maintainer action.
+
+### Deferred beyond 0.3.0
+
+The remaining open epics are intentionally not release blockers. Activate one
+only after application evidence supplies a bounded Red case, and create a
+separately estimated child rather than activating an XL parent directly.
+
+| Area | Owning Issues | Current decision |
+| --- | --- | --- |
+| General CFG, aliases, and dynamic dispatch | [#25](https://github.com/mizchi/uneffect/issues/25), [#24](https://github.com/mizchi/uneffect/issues/24) | Drive the next slice from a #66 counterexample; do not pursue arbitrary CFG completeness for 0.3.0. |
+| Full native frontend parity | [#8](https://github.com/mizchi/uneffect/issues/8) | Keep parity bounded to the advertised Corsa API capabilities. |
+| General temporal, collection, and host semantics | [#2](https://github.com/mizchi/uneffect/issues/2), [#5](https://github.com/mizchi/uneffect/issues/5), [#10](https://github.com/mizchi/uneffect/issues/10), [#18](https://github.com/mizchi/uneffect/issues/18) | Keep unmodeled scheduling and values explicit in coverage/exclusions. |
+| Property, numeric, React, and evidence breadth | [#4](https://github.com/mizchi/uneffect/issues/4), [#6](https://github.com/mizchi/uneffect/issues/6), [#7](https://github.com/mizchi/uneffect/issues/7), [#16](https://github.com/mizchi/uneffect/issues/16) | Resume only from product-backed bounded children after 0.3.0. |
+| Mature DSL and proof consumers | [#64](https://github.com/mizchi/uneffect/issues/64), [#13](https://github.com/mizchi/uneffect/issues/13) | Post-0.3 architecture and transformation work; not part of release qualification. |
+
+## Historical implementation record
+
+The remainder of this file is append-only implementation history. Its old
+queues and unchecked entries are preserved for issue traceability and are not
+the current execution order. Use the release board above and open GitHub Issues
+for current work.
 
 ## Unified user-surface tasklist
 
@@ -1467,7 +1549,11 @@ specialization and its fail-closed indirect-import controls.
 The 48–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
-## Immediate execution queue
+## Historical 2026-09-01 execution snapshot (superseded)
+
+This snapshot explains the handoff that preceded the 0.3.0 qualification
+board. It is retained as implementation history; its candidate table is no
+longer the active queue.
 
 The 0.3 operationalization slice adds a versioned inferred-effect baseline.
 Unlike annotation-conformance fixtures, its load-bearing negative control keeps
@@ -1551,7 +1637,11 @@ below. Do not promote a queued Issue merely because a historical checkbox is
 nearby in this file. A promotion must update the Issue status label, its next
 executable Red/Green slice, and this queue in the same change.
 
-## Active issue index
+## Historical 2026-09-01 issue index (superseded)
+
+The labels and ordering recorded below describe the earlier phase plan. The
+current release milestone and execution queue are summarized at the top of
+this file and maintained in GitHub Issues.
 
 GitHub Issues and their priority labels are the active queue. The table is
 ordered by execution phase and then dependency order, not by issue number.

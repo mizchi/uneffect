@@ -2,12 +2,38 @@
 
 Completed implementation details live in `implementation-status.md` and the
 historical `TODO.md` ledger. `feature-matrix.md` is the compact boundary view.
-GitHub Issues and their matching Phase milestones are the source of truth for
-future work. The ordering below reflects dependency and soundness risk, not a
-release date commitment. See `remaining-work-estimate.md` for issue-level effort
-ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 51–110 engineer-weeks; this is implementation volume, not a calendar
-commitment.
+GitHub Issues and their matching milestones are the source of truth for future
+work. The 0.3.0 qualification milestone temporarily precedes the research
+phases below. Their ordering reflects dependency and soundness risk, not a
+release date commitment. See `remaining-work-estimate.md` for issue-level
+effort ranges, uncertainty, and recommended delivery checkpoints. The current
+additive estimate is 51–110 engineer-weeks; this is implementation volume, not
+a calendar commitment.
+
+## 0.3.0 — Qualify bounded public contracts
+
+The 0.3.0 release does not wait for whole-language semantics. It promotes the
+versioned Corsa semantic-query descriptor and high-level temporal coverage
+facade while keeping their CFG, lowering, solver, and direct generator
+implementations experimental.
+
+The bounded release queue is:
+
+1. [#66](https://github.com/mizchi/uneffect/issues/66) detects
+   implementation-only Promise/resource defects in two realistic applications
+   without changing their specifications.
+2. [#67](https://github.com/mizchi/uneffect/issues/67) restores deterministic
+   self-dogfood headroom below the finite CI deadline without weaker checks or
+   unbounded retries.
+3. [#68](https://github.com/mizchi/uneffect/issues/68) validates the actual
+   tarball from a fresh Node 24 consumer and locks stable versus experimental
+   package entrypoints.
+4. [#62](https://github.com/mizchi/uneffect/issues/62) is the blocked release
+   umbrella that reconciles documentation and runs the final gates after those
+   children close.
+
+General CFG, alias, Corsa parity, host scheduling, and DSL breadth remain in the
+phase roadmap and are not 0.3.0 release blockers.
 
 ## Phase 1 — Make proof boundaries dependable
 
@@ -242,9 +268,9 @@ explicit conservative boundaries rather than untracked support.
 5. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
    extends the tested symbol-resolved lifecycle fragment through dynamic
     component/Hook flow, server boundaries, and broader concurrent scheduling.
-6. [Supported-fragment stability contract](https://github.com/mizchi/uneffect/issues/62)
-   defines compatibility, deprecation, schema evolution, and release criteria
-   before any tested alpha fragment is presented as a stable public surface.
+6. The initial [supported-fragment stability contract](https://github.com/mizchi/uneffect/issues/62)
+   has moved to the 0.3.0 qualification milestone above. Broader production
+   trust work in this phase does not block that bounded release.
 The completed bounded child
 [#50](https://github.com/mizchi/uneffect/issues/50) extends #8 with the
 Workhub-observed named `node:fs/promises` read/write and global `fetch` corpus.
