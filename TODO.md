@@ -73,20 +73,20 @@ evidence is still incomplete in three operationally important ways:
 
 ### Release exit criteria
 
-- [ ] Two realistic application boundaries retain byte-identical specs between
+- [ ] [#66](https://github.com/mizchi/uneffect/issues/66) Two realistic application boundaries retain byte-identical specs between
   green and implementation-mutant runs, and every retained mutant is detected.
-- [ ] Unsupported neighboring shapes produce `unknown`, `excluded`, or a
+- [ ] [#66](https://github.com/mizchi/uneffect/issues/66) Unsupported neighboring shapes produce `unknown`, `excluded`, or a
   blocker rather than successful verification.
-- [ ] Diagnostics, coverage classification, and normalized witnesses are
+- [ ] [#66](https://github.com/mizchi/uneffect/issues/66) Diagnostics, coverage classification, and normalized witnesses are
   deterministic across repeated runs.
-- [ ] Self-dogfood has measured CI headroom and passes without timeout retry.
-- [ ] An installed tarball passes root/Corsa/spec/schema consumer probes and
+- [ ] [#67](https://github.com/mizchi/uneffect/issues/67) Self-dogfood has measured CI headroom and passes without timeout retry.
+- [ ] [#68](https://github.com/mizchi/uneffect/issues/68) An installed tarball passes root/Corsa/spec/schema consumer probes and
   does not expose low-level experimental generators from the package root.
-- [ ] `just package-check`, `just release-check`, and current-HEAD remote CI are
+- [ ] [#62](https://github.com/mizchi/uneffect/issues/62) `just package-check`, `just release-check`, and current-HEAD remote CI are
   green; no unclassified timeout is waived by a later green retry.
-- [ ] README, stability policy, public API inventory, feature matrix, and
+- [ ] [#62](https://github.com/mizchi/uneffect/issues/62) README, stability policy, public API inventory, feature matrix, and
   changelog describe the same supported boundary and explicit exclusions.
-- [ ] Tagging and publishing remain a separate explicit maintainer action.
+- [ ] [#62](https://github.com/mizchi/uneffect/issues/62) Tagging and publishing remain a separate explicit maintainer action.
 
 ### Deferred beyond 0.3.0
 

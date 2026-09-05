@@ -67,6 +67,37 @@ minor release may change syntax or report fields outside an explicitly
 versioned schema. The `@mizchi/uneffect/experimental` subpath remains outside
 this compatibility boundary.
 
+## 0.3.0 application-mutation evidence
+
+Release qualification retains two realistic implementation-only mutations in
+`test/dogfood.test.ts`. In both cases, the public specification boundary stays
+unchanged between the passing source and mutant:
+
+| Application boundary | Implementation-only defect | Public decision | Explicit non-claim |
+| --- | --- | --- | --- |
+| Browser dashboard fetch with timeout and composed shutdown signals | Replace the returned `fetch` with a floating call while retaining the Effect directive | `verifyUneffectProject` reports `floating-promise` and a violated ownership assurance blocker | Synchronization through the externally supplied/composed abort signals remains `abortable-fetch-synchronization` excluded |
+| Node upload loop with `await using` session disposal | Remove the mandatory alias clear so the disposed session is used after its lexical scope | `verifyUneffectProject` reports `disposed-resource-use` and a violated resource assurance blocker | Resource/callback interleavings remain excluded; the declared external session factory also keeps its separate Effect evidence unknown |
+
+The resource projections may still verify their disposal-order invariants in
+the broken alias case. That does not erase the independent use-after-disposal
+diagnostic: project assurance aggregates both results and fails. Conversely,
+an explicit exclusion is not presented as a counterexample. The focused test
+records diagnostic code, source owner, coverage classification, and normalized
+message stability across repeated analysis.
+
+Run the retained evidence with:
+
+```sh
+pnpm exec vitest run test/dogfood.test.ts \
+  -t 'blocks a stale disposed upload-session alias|blocks a floating fetch mutation'
+```
+
+On the 2026-09-05 development host, that focused command completed in 11.26
+seconds wall time (9.79 seconds in the two test bodies, including the repeated
+diagnostic check). The full 130-case isolated dogfood gate completed in about 7
+minutes 23 seconds. These are local observations, not portable budgets; remote
+timing artifacts and #67 own the release-time headroom decision.
+
 ## Public API boundary
 
 The supported import paths and compatibility policy are defined in [Public API

@@ -67,6 +67,7 @@ describe("0.3.0 release metadata", () => {
     const api = readFileSync("docs/public-api.md", "utf8");
     const stability = readFileSync("docs/stability.md", "utf8");
     expect(api).toContain("`@mizchi/uneffect/corsa/api` | Public integration boundary");
+    expect(api).toContain("`AsyncSafetyDiagnostic` results");
     expect(api).not.toContain("`@mizchi/uneffect/corsa/api` | Public migration probe");
     expect(stability).toContain("Corsa semantic-query API descriptor");
     expect(stability).toContain("temporal model coverage contract");

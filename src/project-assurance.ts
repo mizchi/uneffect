@@ -1,6 +1,7 @@
 import type { VerifyUneffectProjectResult } from "./project-verification.js";
 import { formatEffect, unresolvedCapabilityReasons } from "./capabilities.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
+import type { AsyncSafetyDiagnostic } from "./async-safety.js";
 
 export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "iterator" | "resource" | "instrument" | "assumption" | "temporal" | "module-initialization" | "coverage";
 
@@ -42,6 +43,24 @@ export const PROJECT_ASSURANCE_SINGLE_DOMAIN_EXCLUSION = "this result covers one
 
 type AssessmentInput = Omit<VerifyUneffectProjectResult, "assurance">;
 
+const asyncSafetyDiagnosticKinds = new Set<AsyncSafetyDiagnostic["kind"]>([
+  "floating-promise",
+  "floating-callback-promise",
+  "invalid-disposable",
+  "invalid-ownership-contract",
+  "invalid-resource-contract",
+  "disposed-resource-use",
+  "disposed-resource-escape",
+  "unsupported-control-transfer",
+]);
+
+const resourceAsyncSafetyDiagnosticKinds = new Set<AsyncSafetyDiagnostic["kind"]>([
+  "invalid-disposable",
+  "invalid-resource-contract",
+  "disposed-resource-use",
+  "disposed-resource-escape",
+]);
+
 /**
  * Collapse every project verifier into one conservative acceptance decision.
  * This is evidence aggregation, not a whole-program proof.
@@ -68,6 +87,17 @@ export function assessProjectVerification(
     }
     if ("effect" in diagnostic && "severity" in diagnostic) {
       if (diagnostic.severity === "error") add("effect", "violation", diagnostic.fileName, diagnostic.functionName, diagnostic.message);
+      continue;
+    }
+    if ("kind" in diagnostic && asyncSafetyDiagnosticKinds.has(diagnostic.kind as AsyncSafetyDiagnostic["kind"])) {
+      const safety = diagnostic as AsyncSafetyDiagnostic;
+      add(
+        resourceAsyncSafetyDiagnosticKinds.has(safety.kind) ? "resource" : "ownership",
+        safety.kind === "unsupported-control-transfer" ? "unknown" : "violation",
+        safety.fileName,
+        safety.functionName,
+        safety.message,
+      );
       continue;
     }
     if ("kind" in diagnostic && diagnostic.kind === "ownership") {

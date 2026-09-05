@@ -69,6 +69,11 @@ All notable changes to Uneffect are documented in this file.
   external generator consumption.
 - Kept per-test process isolation for the CI WASM solver while making the local
   native-Z3 release gate file-isolated and removing its duplicate dogfood run.
+- Project temporal verification now aggregates Promise/resource safety
+  diagnostics into its public result and assurance decision. Release dogfood
+  keeps specifications unchanged while injecting a floating browser fetch and
+  a stale asynchronously disposed upload-session alias; both defects block the
+  result while adjacent host-synchronization exclusions remain explicit.
 
 ### Safety boundary
 

@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 62, 64];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 62, 64, 66, 67, 68];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -76,11 +76,17 @@ describe("TODO hierarchy consistency", () => {
 
   it("lists every open issue under its owning roadmap phase", () => {
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
+    const release = roadmap
+      .split("## 0.3.0 — Qualify bounded public contracts", 2)[1]
+      ?.split(/^## /m, 1)[0] ?? "";
     const phase = (number: number) =>
       roadmap
         .split(new RegExp(`## Phase ${number} [^\\n]*\\n`), 2)[1]
         ?.split(/^## /m, 1)[0] ?? "";
 
+    for (const issue of [62, 66, 67, 68]) {
+      expect(release, `0.3.0 release queue is missing issue #${issue}`).toContain(`issues/${issue}`);
+    }
     expect(phase(1)).toContain("issues/9");
     expect(phase(1)).toContain("issues/20");
     expect(phase(1)).toContain("issues/18");
@@ -94,45 +100,37 @@ describe("TODO hierarchy consistency", () => {
     expect(phase(4)).toContain("issues/13");
   });
 
-  it("keeps the active issue index in roadmap execution order", () => {
+  it("keeps the 0.3.0 release board in execution order", () => {
     const todo = readFileSync("TODO.md", "utf8");
-    const activeIndex = todo.split("Closed issue history", 1)[0] ?? todo;
-    const rows = [...activeIndex.matchAll(/^\| (Active|Next|Blocked|Queued) \| (\d) \| \[#(\d+)\]/gm)].map(
-      ([, status, phase, issue]) => [status, Number(phase), Number(issue)],
+    const releaseBoard = todo
+      .split("### Execution queue", 2)[1]
+      ?.split("### Release exit criteria", 1)[0] ?? "";
+    const rows = [...releaseBoard.matchAll(/^\| (Active|Next|Blocked umbrella) \| \[#(\d+)\]/gm)].map(
+      ([, status, issue]) => [status, Number(issue)],
     );
 
     expect(rows).toEqual([
-      ["Queued", 1, 18],
-      ["Queued", 2, 25],
-      ["Queued", 2, 2],
-      ["Queued", 2, 5],
-      ["Queued", 2, 4],
-      ["Queued", 2, 6],
-      ["Queued", 2, 64],
-      ["Queued", 3, 24],
-      ["Queued", 3, 8],
-      ["Queued", 3, 10],
-      ["Queued", 3, 7],
-      ["Queued", 3, 16],
-      ["Queued", 3, 62],
-      ["Queued", 4, 13],
+      ["Active", 66],
+      ["Next", 67],
+      ["Next", 68],
+      ["Blocked umbrella", 62],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toEqual([]);
+    expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
   });
 
-  it("keeps one ordered immediate queue with explicit handoff conditions", () => {
+  it("keeps one ordered release queue with explicit outcomes", () => {
     const todo = readFileSync("TODO.md", "utf8");
-    const immediateQueue = todo
-      .split("## Immediate execution queue", 2)[1]
-      ?.split("## Active issue index", 1)[0];
+    const releaseQueue = todo
+      .split("### Execution queue", 2)[1]
+      ?.split("### Release exit criteria", 1)[0];
 
-    expect(immediateQueue).toBeDefined();
-    const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
-      ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
+    expect(releaseQueue).toBeDefined();
+    const rows = [...(releaseQueue ?? "").matchAll(/^\| (?:Active|Next|Blocked umbrella) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
+      ([, issue, outcome]) => [Number(issue), outcome.trim()],
     );
-    expect(rows).toEqual([]);
-    for (const [, , exitCondition] of rows) {
-      expect(exitCondition).not.toBe("");
+    expect(rows.map(([issue]) => issue)).toEqual([66, 67, 68, 62]);
+    for (const [, outcome] of rows) {
+      expect(outcome).not.toBe("");
     }
   });
 

@@ -132,7 +132,14 @@ npx uneffect spec temporal src/main.ts main --runtime web > main.qnt
 ```
 
 Project verification uses the same facade when `temporalRuntime` is `web` or
-`node`.
+`node`. In that mode, `verifyUneffectProject` also aggregates the shared
+`AsyncSafetyDiagnostic` results into its public `diagnostics` list and assurance
+decision. A floating Promise is an ownership violation; invalid or stale
+resource use is a resource violation; an unsupported control transfer is an
+unknown rather than a successful temporal result. `generateTemporalModel`
+remains a model artifact API, so callers that need an acceptance decision
+should use project verification instead of inferring success from the presence
+of generated models.
 
 Stored or transported results can be checked with
 `parseTemporalModelResult`. It rejects unknown fields, unsupported enum values,

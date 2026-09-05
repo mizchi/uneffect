@@ -91,6 +91,7 @@ export {
 
 export type {
   AnalyzeUneffectProjectOptions,
+  AsyncSafetyDiagnostic,
   BoundedArrayBuffer,
   BoundedDataView,
   BoundedMap,

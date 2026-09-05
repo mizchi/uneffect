@@ -23,6 +23,8 @@ import { compareUneffectFrontends } from "../src/frontend-parity.js";
 import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { resolveRefinementDslFileLink, resolveRefinementDslLink } from "../src/refinement-dsl.js";
+import * as publicApi from "../src/public.js";
+import type { AsyncSafetyDiagnostic } from "../src/public.js";
 import { reviewedAssumptions } from "./assumption-fixtures.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
@@ -1495,6 +1497,54 @@ describe("Uneffect dogfood", () => {
       functionName: "uploadConfiguredParts", kind: "disposed-resource-use",
     }));
   });
+
+  it("blocks a stale disposed upload-session alias through the public temporal verifier", async () => {
+    const fileName = "examples/dogfood/upload-session-finally.ts";
+    const source = readFileSync(fileName, "utf8");
+    const mutant = source.replace(
+      "      activeSession = undefined;",
+      "      // mutant: keep the disposed session alias",
+    );
+    expect(mutant).not.toBe(source);
+    expect(mutant.slice(0, mutant.indexOf("export async function uploadConfiguredParts")))
+      .toBe(source.slice(0, source.indexOf("export async function uploadConfiguredParts")));
+    expect(mutant.match(/export async function uploadConfiguredParts\([\s\S]*?\): Promise<void>/u)?.[0])
+      .toBe(source.match(/export async function uploadConfiguredParts\([\s\S]*?\): Promise<void>/u)?.[0]);
+
+    const model = publicApi.generateTemporalModel({
+      fileName, source: mutant, runtime: "node", root: "uploadConfiguredParts",
+    });
+    expect(publicApi.parseTemporalModelResult(JSON.parse(JSON.stringify(model)))).toEqual(model);
+    expect(model.coverage).toEqual(expect.arrayContaining([
+      { domain: "resource-lifecycle", status: "modeled", modelKinds: ["resource-lifecycle"], exclusions: [] },
+      { domain: "resource-host-lifecycle", status: "modeled", modelKinds: ["resource-host-lifecycle"], exclusions: [] },
+      {
+        domain: "resource-host-callback-interleavings", status: "excluded", modelKinds: [],
+        exclusions: ["resource-host-callback-interleavings"],
+      },
+    ]));
+
+    const verified = await publicApi.verifyUneffectProject({
+      files: { [fileName]: source }, temporalRuntime: "node", temporalRoot: "uploadConfiguredParts",
+    });
+    expect(verified.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "uploadConfiguredParts", kind: "disposed-resource-use",
+    }));
+    expect(verified.temporal?.properties).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "uploadConfiguredParts.resourceSafe", result: "verified" }),
+      expect.objectContaining({ name: "uploadConfiguredParts.resourceHostSafe", result: "verified" }),
+    ]));
+
+    const rejected = await publicApi.verifyUneffectProject({
+      files: { [fileName]: mutant }, temporalRuntime: "node", temporalRoot: "uploadConfiguredParts",
+    });
+    expect(rejected.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "uploadConfiguredParts", kind: "disposed-resource-use", severity: "error",
+    }));
+    expect(rejected.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "resource", classification: "violation", subject: "uploadConfiguredParts",
+    }));
+  }, 30_000);
 
   it("refines a finite telemetry batch across early return and per-sink finalization", async () => {
     const fileName = "examples/dogfood/finite-telemetry-batch.ts";
@@ -3358,6 +3408,65 @@ describe("Uneffect dogfood", () => {
       functionName: "fetchDashboard", kind: "missing", effect: "Timer",
     }));
   });
+
+  it("blocks a floating fetch mutation without changing the browser effect specification", async () => {
+    const fileName = "examples/dogfood/fetch-timeout.ts";
+    const source = readFileSync(fileName, "utf8");
+    const mutant = source.replace(
+      '  return fetch("https://api.example.com/dashboard", { signal });',
+      '  fetch("https://api.example.com/dashboard", { signal });\n  return new Response();',
+    );
+    expect(mutant).not.toBe(source);
+    const directives = (input: string) => input.split("\n").filter((line) => line.includes("uneffect:")).join("\n");
+    expect(directives(mutant)).toBe(directives(source));
+
+    const firstModel = publicApi.generateTemporalModel({
+      fileName, source: mutant, runtime: "web", root: "fetchDashboard",
+    });
+    const secondModel = publicApi.generateTemporalModel({
+      fileName, source: mutant, runtime: "web", root: "fetchDashboard",
+    });
+    expect(firstModel.coverage).toEqual(secondModel.coverage);
+    expect(firstModel.properties).toEqual(secondModel.properties);
+    expect(firstModel.coverage).toContainEqual({
+      domain: "abortable-fetch", status: "excluded", modelKinds: [],
+      exclusions: ["abortable-fetch-synchronization"],
+    });
+
+    const verified = await publicApi.verifyUneffectProject({
+      files: { [fileName]: source }, temporalRuntime: "web", temporalRoot: "fetchDashboard",
+    });
+    expect(verified.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "fetchDashboard", kind: "floating-promise",
+    }));
+    expect(verified.assurance.passed).toBe(true);
+
+    const rejected = await publicApi.verifyUneffectProject({
+      files: { [fileName]: mutant }, temporalRuntime: "web", temporalRoot: "fetchDashboard",
+    });
+    expect(rejected.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "fetchDashboard", kind: "floating-promise", severity: "error",
+    }));
+    expect(rejected.assurance).toMatchObject({ status: "violated", passed: false });
+    expect(rejected.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "ownership", classification: "violation", subject: "fetchDashboard",
+    }));
+
+    const repeated = await publicApi.verifyUneffectProject({
+      files: { [fileName]: mutant }, temporalRuntime: "web", temporalRoot: "fetchDashboard",
+    });
+    const normalize = (result: typeof rejected) => result.diagnostics
+      .filter((diagnostic): diagnostic is AsyncSafetyDiagnostic =>
+        "kind" in diagnostic && diagnostic.kind === "floating-promise")
+      .map((diagnostic) => ({
+        kind: diagnostic.kind,
+        fileName: diagnostic.fileName,
+        functionName: "functionName" in diagnostic ? diagnostic.functionName : undefined,
+        line: "line" in diagnostic ? diagnostic.line : undefined,
+        message: diagnostic.message,
+      }));
+    expect(normalize(repeated)).toEqual(normalize(rejected));
+  }, 30_000);
 
   it("checks a prioritized dashboard scheduler boundary", () => {
     const fileName = "examples/dogfood/scheduler-priority.ts";

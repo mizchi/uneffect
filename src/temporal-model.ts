@@ -53,6 +53,17 @@ function moduleName(fileName: string): string {
  * exclusions instead of being implied by the generated projections.
  */
 export function generateTemporalModel(options: GenerateTemporalModelOptions): TemporalModelResult {
+  return generateTemporalModelFromAsyncSafety(
+    options,
+    analyzeAsyncSafety(options.fileName, options.source),
+  );
+}
+
+/** @internal Reuses the exact async/resource analysis aggregated by project verification. */
+export function generateTemporalModelFromAsyncSafety(
+  options: GenerateTemporalModelOptions,
+  asyncSafety: AsyncSafetyResult,
+): TemporalModelResult {
   const asyncPatterns = analyzeAsyncPatterns(options.fileName, options.source);
   const promiseChains = analyzePromiseChains(options.fileName, options.source);
   const hasUserTemporalState = extractAnnotations(options.source, "state").length > 0;
@@ -93,7 +104,6 @@ export function generateTemporalModel(options: GenerateTemporalModelOptions): Te
     });
   }
   const resourceOwner = options.root ?? "main";
-  const asyncSafety = analyzeAsyncSafety(options.fileName, options.source);
   const promiseBindings = asyncSafety.promiseBindings.filter((binding) => binding.owner === resourceOwner);
   const synchronizations: TemporalModelSynchronization[] = [];
   let promiseOwnershipResourceCount = 0;

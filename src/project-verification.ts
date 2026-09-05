@@ -13,7 +13,8 @@ import { analyzeCallableSummaries } from "./callable-summary.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 import { resolveRegionIdentity } from "./region-alias.js";
 import { collectAssumptionLedger, mergeAssumptionLedger, type AssumptionEntry, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
-import { generateTemporalModel } from "./temporal-model.js";
+import { generateTemporalModelFromAsyncSafety } from "./temporal-model.js";
+import { analyzeAsyncSafety, type AsyncSafetyDiagnostic } from "./async-safety.js";
 import { resolveTemporalDslLink } from "./temporal-dsl.js";
 import { prepareCapabilityDslLinks } from "./capability-dsl.js";
 import { prepareContractDslLinks } from "./contract-dsl.js";
@@ -96,7 +97,7 @@ export interface ProjectVerificationObligation extends VerificationArtifact {
 
 export interface VerifyUneffectProjectResult {
   obligations: ProjectVerificationObligation[];
-  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic>;
+  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AsyncSafetyDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic>;
   emittedFiles: Record<string, string>;
   typedArrays: TypedArrayProgramSafetyResult;
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
@@ -335,7 +336,7 @@ async function verifyUneffectProjectFiles(
 ): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
   const pendingContractObligations: ProjectVerificationObligation[] = [];
-  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic> = [];
+  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AsyncSafetyDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
@@ -523,15 +524,17 @@ async function verifyUneffectProjectFiles(
       compilerOptions: { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.ESNext },
     }).outputText;
     if (options.temporalRuntime === "web" || options.temporalRuntime === "node") {
+      const asyncSafety = analyzeAsyncSafety(fileName, source);
+      diagnostics.push(...asyncSafety.diagnostics);
       const linkedTemporal = resolveTemporalDslLink(fileName, source, options.files, program);
-      const model = generateTemporalModel({
+      const model = generateTemporalModelFromAsyncSafety({
         fileName,
         source,
         runtime: options.temporalRuntime,
         root: options.temporalRoot ?? "main",
         nodeTopLevelMode: options.nodeTopLevelMode ?? "commonjs",
         ...(linkedTemporal ? { linkedTemporal } : {}),
-      });
+      }, asyncSafety);
       for (const projection of model.models) {
         temporalModels.push({ fileName, kind: projection.kind, module: projection.module, owner: projection.owner, quint: projection.quint });
         for (const property of projection.properties) {
