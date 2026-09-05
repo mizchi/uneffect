@@ -28,9 +28,10 @@ The bounded release queue is:
 3. [#68](https://github.com/mizchi/uneffect/issues/68) is complete: the actual
    tarball passes fresh Node 24 stable/experimental entrypoint, schema, and
    optional-dependency probes.
-4. **Active:** [#62](https://github.com/mizchi/uneffect/issues/62) reconciles the
-   final supported boundary and runs the release gates after all three children
-   have closed.
+4. [#62](https://github.com/mizchi/uneffect/issues/62) is complete: the supported
+   boundary is reconciled, exact-tree local and remote gates are Green, and
+   0.3.0 is release-ready. Tagging and publishing remain a separate explicit
+   maintainer action.
 
 General CFG, alias, Corsa parity, host scheduling, and DSL breadth remain in the
 phase roadmap and are not 0.3.0 release blockers.

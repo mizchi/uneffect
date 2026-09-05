@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 62, 64];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 64];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -113,9 +113,9 @@ describe("TODO hierarchy consistency", () => {
       ["Done", 66],
       ["Done", 67],
       ["Done", 68],
-      ["Active", 62],
+      ["Done", 62],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
+    expect(rows.filter(([status]) => status === "Active")).toHaveLength(0);
   });
 
   it("keeps one ordered release queue with explicit outcomes", () => {
