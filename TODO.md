@@ -51,13 +51,12 @@ internal package boundaries.
 ### Current problem statement
 
 The repository has broad positive and adjacent negative coverage. The first
-qualification gap is now closed: #66 retains two implementation-only mutants
-with unchanged specifications and rejects both through the public verifier.
-Release evidence remains incomplete in two operationally important ways:
+two qualification gaps are now closed: #66 retains two implementation-only
+mutants with unchanged specifications, and #67 runs the complete dogfood
+corpus once under a measured finite budget. Release evidence remains incomplete
+in one operationally important way:
 
-1. Checker-backed self-dogfood has reached the hard CI deadline. A passing
-   retry does not provide a deterministic release budget.
-2. Static export/schema checks and package smoke exist, but the actual tarball
+1. Static export/schema checks and package smoke exist, but the actual tarball
    still needs a fresh-consumer contract test that proves the stable and
    experimental entrypoint boundary.
 
@@ -66,8 +65,8 @@ Release evidence remains incomplete in two operationally important ways:
 | Status | Issue | Outcome required for 0.3.0 |
 | --- | --- | --- |
 | Done | [#66](https://github.com/mizchi/uneffect/issues/66) | Detect implementation-only Promise/resource defects in two realistic applications without changing their specifications. |
-| Active | [#67](https://github.com/mizchi/uneffect/issues/67) | Keep the slowest of three cold CI-shaped self-dogfood runs at or below 80% of the hard deadline, without retry or weaker assertions. |
-| Next | [#68](https://github.com/mizchi/uneffect/issues/68) | Install the actual tarball into a fresh Node 24 consumer and lock public imports, schemas, exclusions, and optional-dependency failure behavior. |
+| Done | [#67](https://github.com/mizchi/uneffect/issues/67) | Keep the slowest of three cold CI-shaped self-dogfood runs at or below 80% of the hard deadline, without retry or weaker assertions. |
+| Active | [#68](https://github.com/mizchi/uneffect/issues/68) | Install the actual tarball into a fresh Node 24 consumer and lock public imports, schemas, exclusions, and optional-dependency failure behavior. |
 | Blocked umbrella | [#62](https://github.com/mizchi/uneffect/issues/62) | Reconcile the final supported-fragment contract and run the release gates after #66–#68 close. |
 
 ### Release exit criteria
@@ -78,7 +77,7 @@ Release evidence remains incomplete in two operationally important ways:
   blocker rather than successful verification.
 - [x] [#66](https://github.com/mizchi/uneffect/issues/66) Diagnostics, coverage classification, and normalized witnesses are
   deterministic across repeated runs.
-- [ ] [#67](https://github.com/mizchi/uneffect/issues/67) Self-dogfood has measured CI headroom and passes without timeout retry.
+- [x] [#67](https://github.com/mizchi/uneffect/issues/67) Self-dogfood has measured CI headroom and passes without timeout retry.
 - [ ] [#68](https://github.com/mizchi/uneffect/issues/68) An installed tarball passes root/Corsa/spec/schema consumer probes and
   does not expose low-level experimental generators from the package root.
 - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) `just package-check`, `just release-check`, and current-HEAD remote CI are

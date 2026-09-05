@@ -22,10 +22,10 @@ The bounded release queue is:
 1. [#66](https://github.com/mizchi/uneffect/issues/66) is complete: it detects
    implementation-only Promise/resource defects in two realistic applications
    without changing their specifications.
-2. **Active:** [#67](https://github.com/mizchi/uneffect/issues/67) restores deterministic
+2. [#67](https://github.com/mizchi/uneffect/issues/67) is complete: it restores deterministic
    self-dogfood headroom below the finite CI deadline without weaker checks or
    unbounded retries.
-3. [#68](https://github.com/mizchi/uneffect/issues/68) validates the actual
+3. **Active:** [#68](https://github.com/mizchi/uneffect/issues/68) validates the actual
    tarball from a fresh Node 24 consumer and locks stable versus experimental
    package entrypoints.
 4. [#62](https://github.com/mizchi/uneffect/issues/62) is the blocked release

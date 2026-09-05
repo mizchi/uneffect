@@ -2155,6 +2155,16 @@ boundaries, not an additive decomposition of the complete file. Recorded
 max-RSS is cumulative for the process and peaked at 2.934 GB. Remote cold-run
 artifacts remain the release authority.
 
+The first remote Green artifact is run 33963048514. The bounded child process
+completed once, without retry, in 434.283 seconds: 72.4% of the 600-second hard
+deadline and below the enforced 480-second acceptance budget. The complete
+dogfood job, including runner setup and artifact upload, fell from 23 minutes
+3 seconds in the Red run to 7 minutes 48 seconds. Its representative phases
+were 770 ms for compiler construction, 43.165 seconds for the Effect analysis,
+262 ms for the Corsa query, 1.131 seconds for model generation, and 105 ms for
+the native-Z3 proof. Cumulative max-RSS peaked at 2.984 GB. No dogfood retry
+artifact was produced.
+
 The P2.31 focused benchmark derives the eight-step finite self-affine retry
 summary. A selected run measured 0.1803 ms mean over 2,773 structural samples
 (5,545.98 operations per second, 0.48% RME). Independent Z3 validation under

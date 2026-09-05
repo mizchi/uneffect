@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 62, 64, 67, 68];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 62, 64, 68];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -84,7 +84,7 @@ describe("TODO hierarchy consistency", () => {
         .split(new RegExp(`## Phase ${number} [^\\n]*\\n`), 2)[1]
         ?.split(/^## /m, 1)[0] ?? "";
 
-    for (const issue of [62, 67, 68]) {
+    for (const issue of [62, 68]) {
       expect(release, `0.3.0 release queue is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
     expect(phase(1)).toContain("issues/9");
@@ -111,8 +111,8 @@ describe("TODO hierarchy consistency", () => {
 
     expect(rows).toEqual([
       ["Done", 66],
-      ["Active", 67],
-      ["Next", 68],
+      ["Done", 67],
+      ["Active", 68],
       ["Blocked umbrella", 62],
     ]);
     expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
