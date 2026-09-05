@@ -1124,6 +1124,30 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("respects guaranteed throw prefixes in expression and return statements", () => {
+    const result = analyzeAsyncSafety("throw-statement-prefix.ts", `
+      declare function task(): Promise<number>
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      async function expressionThrowsFirst() {
+        const pending = task()
+        fail() && await pending
+      }
+      async function expressionObservesFirst() {
+        const pending = task()
+        ;(await pending, fail())
+      }
+      async function returnThrowsFirst() {
+        const pending = task()
+        return fail() && await pending
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "expressionThrowsFirst", status: "floating" },
+      { owner: "expressionObservesFirst", status: "observed" },
+      { owner: "returnThrowsFirst", status: "floating" },
+    ]);
+  });
+
   it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
     const result = analyzeAsyncSafety("throw-expression-promises.ts", `
       declare function task(): Promise<number>

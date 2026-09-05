@@ -2443,8 +2443,20 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (ts.isWhileStatement(statement)) return executeLoop(statement, state, false, loopLabel);
         if (ts.isDoStatement(statement)) return executeLoop(statement, state, true, loopLabel);
         if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) return [{ ...state, abrupt: ts.isBreakStatement(statement) ? "break" : "continue", label: statement.label?.text }];
-        const next = executeNodeEffects(statement, state);
         const guaranteedThrow = isGuaranteedThrowStatement(statement);
+        const throwExpression = guaranteedThrow
+          ? ts.isExpressionStatement(statement) ? statement.expression
+            : ts.isReturnStatement(statement) ? statement.expression
+              : ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1
+                ? statement.declarationList.declarations[0]!.initializer
+                : undefined
+          : undefined;
+        const throwPrefixes = throwExpression
+          ? executeGuaranteedThrowPrefix(throwExpression, state)
+          : undefined;
+        const next = throwPrefixes && throwPrefixes.length > 0
+          ? joinThrowStates(throwPrefixes)
+          : executeNodeEffects(statement, state);
         if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement) || guaranteedThrow) {
           next.terminated = true;
           next.completion = ts.isReturnStatement(statement) && !guaranteedThrow ? "return" : "throw";

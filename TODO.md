@@ -2566,6 +2566,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       Promise-ownership if conditions, loop tests, and switch discriminants;
       exclude awaits after the throw from ownership evidence, preserve awaits
       before it, and join dynamic all-throw ternary branches conservatively.
+    - [x] Apply the same guaranteed-throw prefix semantics to Promise-ownership
+      expression statements, return expressions, and supported single
+      initializers so unreachable trailing awaits cannot discharge ownership.
     - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [x] Treat a direct expression-statement call as a guaranteed catch edge only when TypeScript proves `never` return and the resolved declaration explicitly carries `Throw<E>`; keep unannotated `never` termination/divergence distinct.
     - [x] Preserve guaranteed `never` + `Throw<E>` completion through return, transparent wrappers, a single initializer, comma-tail evaluation, and all-throw ternary joins; keep partial ternaries and unresolved compounds conservative.
