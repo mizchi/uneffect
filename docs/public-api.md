@@ -24,6 +24,14 @@ that have not moved to the native frontend yet.
 Do not import unpublished paths such as `dist/src/async-patterns.js`. Package
 exports intentionally block those implementation paths.
 
+The release package probe runs the real `prepack` lifecycle, installs the
+resulting tarball into a fresh Node 24 project, type-checks the public root,
+Corsa, Corsa API, spec, and versioned-schema imports with TypeScript 6, and
+executes their supported runtime slices. It also confirms that low-level CFG,
+Promise/resource lowering, solver, and direct Quint helpers are present only on
+the experimental subpath. The exact tarball contents and SHA-256 digest are
+retained as `uneffect.package-evidence/v1` CI evidence.
+
 ## Why the root API is deliberately small
 
 The roadmap replaces several current internal representations: the
@@ -161,6 +169,16 @@ The stable contract covers position/batch symbol and type queries, bounded alias
 resolution, module exports, type properties and symbols, assignability, and the
 documented bounded builtin classifier. Syntax traversal remains out of band and
 the builtin classifier is not a complete JavaScript or host-API catalog.
+
+`@corsa-bind/napi` and the platform compiler are optional dependencies. When
+the binding is absent, opening the frontend rejects with an explicit
+installation diagnostic; when the compiler cannot be resolved, the resolver
+reports that no Corsa compiler was supplied. Importing `/corsa/api` alone does
+not crash or silently succeed in either case. Other binding initialization or
+ABI failures retain their original error instead of being mislabeled as a
+missing package. The broader `/corsa` exporter additionally requires the
+compatible `corsa-oxlint`, `oxlint`, and `@oxlint/plugins` peers declared by the
+package.
 
 ## Contract runtime failures
 

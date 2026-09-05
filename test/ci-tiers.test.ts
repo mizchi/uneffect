@@ -178,7 +178,7 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain("if: always()");
     expect(workflow).toContain(".uneffect/verifier-retry-evidence");
     expect(workflow).toContain("if-no-files-found: ignore");
-    expect(workflow.match(/include-hidden-files: true/gu)).toHaveLength(5);
+    expect(workflow.match(/include-hidden-files: true/gu)).toHaveLength(6);
   });
 
   it("uploads retained external-verifier retry evidence from every verifier tier", () => {

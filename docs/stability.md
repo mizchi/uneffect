@@ -67,6 +67,19 @@ minor release may change syntax or report fields outside an explicitly
 versioned schema. The `@mizchi/uneffect/experimental` subpath remains outside
 this compatibility boundary.
 
+## Installed-package evidence
+
+`just package-check` runs the package lifecycle and tests the produced tarball,
+not the source-tree imports. A fresh Node 24 consumer must type-check and execute
+the documented root, Corsa, direct Corsa API, spec, and JSON-schema entrypoints.
+The same probe rejects unknown fields and schema versions for the temporal and
+Corsa descriptors, verifies the stable/experimental export split, and installs
+a second consumer with optional dependencies omitted to require explicit Corsa
+compiler and binding diagnostics. CI retains the exact file inventory, npm
+integrity values, SHA-256 digest, and per-probe completion state as
+`uneffect.package-evidence/v1`. A pending probe state or failed CI job is not
+release evidence.
+
 ## 0.3.0 application-mutation evidence
 
 Release qualification retains two realistic implementation-only mutations in

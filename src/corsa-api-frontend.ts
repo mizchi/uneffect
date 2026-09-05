@@ -160,6 +160,21 @@ export interface CorsaApiFrontend extends SemanticQueryFrontend {
 
 const packageRequire = createRequire(import.meta.url);
 
+async function loadCorsaApiBinding(): Promise<typeof import("@corsa-bind/napi")> {
+  try {
+    return await import("@corsa-bind/napi");
+  } catch (cause) {
+    const missingBinding = typeof cause === "object" && cause !== null
+      && "code" in cause && cause.code === "ERR_MODULE_NOT_FOUND"
+      && "message" in cause && String(cause.message).includes("'@corsa-bind/napi'");
+    if (!missingBinding) throw cause;
+    throw new Error(
+      "Corsa API binding @corsa-bind/napi is unavailable; install the optional dependency for this platform",
+      { cause },
+    );
+  }
+}
+
 function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null): symbol is CorsaApiSymbolFact {
   return symbol !== null && (symbol.declarations ?? []).some((item) => /(?:^|[/\\])lib\.dom\.d\.ts$/.test(item));
 }
@@ -218,7 +233,7 @@ interface CorsaSnapshotResponse {
  * frontend. Syntax traversal deliberately remains outside this adapter.
  */
 export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Promise<CorsaApiFrontend> {
-  const { CorsaApiClient, version } = await import("@corsa-bind/napi");
+  const { CorsaApiClient, version } = await loadCorsaApiBinding();
   const configFile = resolve(options.configFile);
   const cwd = resolve(options.cwd ?? process.cwd());
   const compilerExecutable = resolveCorsaExecutable(options);

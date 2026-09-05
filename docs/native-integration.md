@@ -220,7 +220,10 @@ move behind this adapter. The N-API package and compiler are exact optional
 dependencies with platform prebuilds; the default compiler executable does not
 load or mutate the consuming application's TypeScript installation.
 The isolated `/corsa/api` subpath does not statically load the Oxlint exporter
-or the JavaScript TypeScript compiler package.
+or the JavaScript TypeScript compiler package. If its optional N-API binding is
+absent, `openCorsaApiFrontend` rejects with an installation diagnostic instead
+of failing during module import; unrelated initialization and ABI failures are
+not rewritten as dependency absence.
 
 On the 2026-09-03 local migration benchmark, opening the direct API frontend
 and querying one symbol and type took 75.98 ms mean (7 samples). The existing
@@ -262,7 +265,7 @@ Function-typed parameters are effect parameters. Direct invocation is inline; kn
 
 ## Published surfaces
 
-The contract layers — CLI surface, evidence schema, builtin registry, Corsa JSON schema, optimizer obligations, and Rust crate — are versioned at `0.3.0`, which is what an evidence artifact records as `uneffectVersion`. The npm package and Rust crate use the same release version. `just package-check` executes npm and Cargo package dry-runs. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
+The contract layers — CLI surface, evidence schema, builtin registry, Corsa JSON schema, optimizer obligations, and Rust crate — are versioned at `0.3.0`, which is what an evidence artifact records as `uneffectVersion`. The npm package and Rust crate use the same release version. `just package-check` executes the real npm lifecycle, installs and probes its tarball from fresh consumers, retains an exact contents/checksum manifest, and runs the Cargo package check. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
 
 ## CI tiers
 

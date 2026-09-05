@@ -45,6 +45,15 @@ jobs:
       - run: just ci-fast
       - run: just build
       - run: just package-check
+      - name: Upload package contract evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: package-contract-evidence-${{ github.run_id }}
+          path: .uneffect/package-evidence
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
 
   z3:
     runs-on: ubuntu-latest

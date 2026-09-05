@@ -119,4 +119,34 @@ describe("0.3.0 release metadata", () => {
     expect(mismatched.status).toBe(1);
     expect(mismatched.stderr).toContain("refusing to publish");
   });
+
+  it("tests the lifecycle-built tarball as a fresh typed consumer and retains evidence", () => {
+    const smoke = readFileSync("ci/smoke-package.mjs", "utf8");
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    const justfile = readFileSync("justfile", "utf8");
+
+    expect(smoke).toContain('execFileSync("npm", ["pack", "--json"');
+    expect(smoke).not.toContain('["pack", "--ignore-scripts"');
+    for (const entrypoint of [
+      '"@mizchi/uneffect"',
+      '"@mizchi/uneffect/corsa"',
+      '"@mizchi/uneffect/corsa/api"',
+      '"@mizchi/uneffect/spec"',
+    ]) expect(smoke).toContain(entrypoint);
+    expect(smoke).toContain('"@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json"');
+    expect(smoke).toContain('"@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json"');
+    expect(smoke).toContain('execFileSync(typescriptCompiler, ["-p", typecheckConfig]');
+    expect(smoke).toContain("unknownField");
+    expect(smoke).toContain('"--omit=optional"');
+    expect(smoke).toContain("No Corsa compiler was supplied");
+    expect(smoke).toContain("Corsa API binding @corsa-bind/napi is unavailable");
+    expect(smoke).toContain("uneffect.package-evidence/v1");
+    expect(smoke).toContain("sha256");
+    expect(workflow).toContain("package-contract-evidence-${{ github.run_id }}");
+    expect(workflow).toContain(".uneffect/package-evidence");
+    expect(justfile).toContain("node ci/smoke-package.mjs");
+    expect(readFileSync("docs/stability.md", "utf8")).toContain("uneffect.package-evidence/v1");
+    expect(readFileSync("docs/public-api.md", "utf8")).toContain("Other binding initialization or");
+    expect(readFileSync("docs/releasing.md", "utf8")).toContain("all three verification fields to be `passed`");
+  });
 });

@@ -37,6 +37,9 @@ All notable changes to Uneffect are documented in this file.
   fails closed on non-static calls, tagged templates, and dynamic imports.
 - Added an explicit release-please and npm OIDC Trusted Publishing path with a
   tag/package-version guard.
+- Added a lifecycle-built tarball qualification probe that type-checks and runs
+  the public entrypoints from fresh Node 24 consumers, exercises missing Corsa
+  optional dependencies, and retains exact contents/checksum evidence in CI.
 
 ### Changed
 
@@ -76,6 +79,8 @@ All notable changes to Uneffect are documented in this file.
   keeps specifications unchanged while injecting a floating browser fetch and
   a stale asynchronously disposed upload-session alias; both defects block the
   result while adjacent host-synchronization exclusions remain explicit.
+- Missing `@corsa-bind/napi` now produces an explicit `/corsa/api` installation
+  diagnostic without masking unrelated binding initialization failures.
 
 ### Safety boundary
 

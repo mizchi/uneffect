@@ -21,6 +21,12 @@ The checked-in npm, Rust, evidence, and effect-baseline versions must agree.
 The publish job additionally refuses a GitHub Release whose tag is not exactly
 `v<package.json version>`.
 
+`just package-check` is part of this gate. It runs the npm lifecycle, installs
+the actual tarball into fresh Node 24 consumers, and records
+`.uneffect/package-evidence/npm-pack.json`. Before approving a release, require
+all three verification fields to be `passed` and retain the CI artifact named
+`package-contract-evidence-<run id>` with its exact file inventory and SHA-256.
+
 ## Normal release flow
 
 After conventional `feat:`/`fix:` commits have landed on `main`, explicitly
