@@ -63,7 +63,7 @@ export type {
   TemporalClock,
   LocatedEffect,
 } from "./spec-ir.js";
-export type { AnnotationDiagnostic, LocatedAnnotation, SourceSpan } from "./annotations.js";
+export type { AnnotationDiagnostic, LocatedAnnotation, SourceSpan, UneffectDialect } from "./annotations.js";
 export { extractLocatedAnnotations, registerUneffectPlugin, uneffectDialects, UneffectPluginError, uneffectPluginDirectives, validateUneffectAnnotations } from "./annotations.js";
 export type { UneffectPluginDirective, UneffectPluginDirectiveKind } from "./annotations.js";
 export { assumptionRegistrySchema, AssumptionRegistryError, loadAssumptionRegistry, parseAssumptionRegistry, resolveAssumptionRecord } from "./assumption-registry.js";

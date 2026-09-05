@@ -27,6 +27,12 @@ the actual tarball into fresh Node 24 consumers, and records
 all three verification fields to be `passed` and retain the CI artifact named
 `package-contract-evidence-<run id>` with its exact file inventory and SHA-256.
 
+The same gate compares runtime exports and resolved declaration signatures for
+the durable entrypoints with `api/public-api-v0.3.json`. Do not update that
+baseline to hide a removal or incompatible signature change. Run
+`node ci/check-public-api.mjs --update` only after reviewing an intentional
+compatible addition; experimental entrypoints are deliberately excluded.
+
 ## Normal release flow
 
 After conventional `feat:`/`fix:` commits have landed on `main`, explicitly

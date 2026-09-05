@@ -60,7 +60,7 @@ export interface CallGraphEdge {
   arguments: string[];
   /** Addressable receiver used to instantiate a callee `this` mutation region. */
   receiver?: string;
-  /** The receiver is a locally constructed, non-subclassed instance with no alternate-object return. */
+  /** The receiver is a locally constructed, non-subclassed instance whose nested mutable state is owned. */
   freshReceiver?: boolean;
   /** Callback arguments proven to remain rooted at a fresh value owned by this call. */
   freshArgumentIndices?: number[];
@@ -75,6 +75,8 @@ export interface CallGraphEdge {
   iteratorEffectInstantiation?: IteratorEffectInstantiation;
   /** Identifies a checked callback upper bound supplied by an external callable contract. */
   callbackEffectInstantiation?: CallbackEffectInstantiation;
+  /** Conservative authority declared by a reviewed runtime-selected callable property. */
+  opaqueEffects?: readonly Effect[];
   /** Callback parameter positions supplied by the runtime rather than a source expression. */
   unresolvedMutationArgumentIndices?: number[];
 }
@@ -271,6 +273,33 @@ function externalCallableContractForCall(
     const source = declaration.getSourceFile();
     const contract = contracts.get(`${source.fileName}:${declaration.getStart(source)}`);
     if (contract) return contract;
+  }
+  return undefined;
+}
+
+export function reviewedOpaqueCallablePropertyEffects(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+): readonly Effect[] | undefined {
+  const expression = call.expression;
+  if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) return undefined;
+  const property = ts.isPropertyAccessExpression(expression)
+    ? checker.getSymbolAtLocation(expression.name)
+    : expression.argumentExpression && (ts.isStringLiteralLike(expression.argumentExpression)
+      || ts.isNumericLiteral(expression.argumentExpression))
+      ? checker.getPropertyOfType(checker.getTypeAtLocation(expression.expression), expression.argumentExpression.text)
+      : undefined;
+  const symbol = property && (property.flags & ts.SymbolFlags.Alias) !== 0
+    ? checker.getAliasedSymbol(property) : property;
+  for (const declaration of symbol?.declarations ?? []) {
+    if (!ts.isPropertySignature(declaration)
+      || !declaration.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ReadonlyKeyword)) continue;
+    const source = declaration.getSourceFile();
+    const leading = source.text.slice(declaration.getFullStart(), declaration.getStart(source));
+    const annotations = extractAnnotations(leading, "effect");
+    if (annotations.length === 1 && annotations[0]!.trim() === "InvokeUserCode") {
+      return [{ kind: "capability", name: "InvokeUserCode", arguments: [] }];
+    }
   }
   return undefined;
 }
@@ -887,6 +916,56 @@ export function buildProgramCallGraph(
         ? { text: region.region, unresolvedAlias: false }
         : { text: argument.getText(), unresolvedAlias: true };
     };
+    const typeMayContainReference = (type: ts.Type): boolean => {
+      if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Object
+        | ts.TypeFlags.TypeParameter | ts.TypeFlags.NonPrimitive)) !== 0) return true;
+      return type.isUnionOrIntersection() && type.types.some(typeMayContainReference);
+    };
+    const obviouslyDeepFreshState = (raw: ts.Expression): boolean => {
+      const expression = unwrapLiteralContainerExpression(raw);
+      if (!typeMayContainReference(checker.getTypeAtLocation(expression))) return true;
+      if (ts.isArrayLiteralExpression(expression)) return expression.elements.every((element) =>
+        !ts.isSpreadElement(element) && !ts.isOmittedExpression(element) && obviouslyDeepFreshState(element));
+      if (ts.isObjectLiteralExpression(expression)) return expression.properties.every((property) => {
+        if (ts.isPropertyAssignment(property)) return obviouslyDeepFreshState(property.initializer);
+        if (ts.isShorthandPropertyAssignment(property)) return obviouslyDeepFreshState(property.name);
+        return false;
+      });
+      if (ts.isNewExpression(expression)
+        && adapter.resolveConstruct(expression)?.result?.kind === "fresh") return true;
+      return false;
+    };
+    const thisMemberAssignment = (node: ts.BinaryExpression): boolean => {
+      let target: ts.Expression = node.left;
+      while (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) target = target.expression;
+      return target.kind === ts.SyntaxKind.ThisKeyword;
+    };
+    const ownsConstructedState = (classDeclaration: ts.ClassDeclaration | ts.ClassExpression): boolean => {
+      for (const property of classDeclaration.members.filter(ts.isPropertyDeclaration)) {
+        if (property.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)) continue;
+        if (property.initializer && !obviouslyDeepFreshState(property.initializer)) return false;
+      }
+      const constructor = classDeclaration.members.find(ts.isConstructorDeclaration);
+      if (!constructor) return true;
+      for (const parameter of constructor.parameters) {
+        const parameterProperty = parameter.modifiers?.some((modifier) =>
+          modifier.kind === ts.SyntaxKind.PublicKeyword || modifier.kind === ts.SyntaxKind.PrivateKeyword
+          || modifier.kind === ts.SyntaxKind.ProtectedKeyword || modifier.kind === ts.SyntaxKind.ReadonlyKeyword);
+        if (parameterProperty && typeMayContainReference(checker.getTypeAtLocation(parameter))) return false;
+      }
+      let importsReference = false;
+      const scan = (node: ts.Node): void => {
+        if (importsReference || node !== constructor.body && ts.isFunctionLike(node)) return;
+        if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+          && thisMemberAssignment(node) && !obviouslyDeepFreshState(node.right)) {
+          importsReference = true;
+          return;
+        }
+        ts.forEachChild(node, scan);
+      };
+      if (constructor.body) scan(constructor.body);
+      return !importsReference;
+    };
     const provablyFreshConstruction = (expression: ts.Expression): boolean => {
       expression = unwrapLiteralContainerExpression(expression);
       if (!ts.isNewExpression(expression)) return false;
@@ -895,6 +974,7 @@ export function buildProgramCallGraph(
       const classDeclaration = symbol?.declarations?.find((item): item is ts.ClassDeclaration | ts.ClassExpression =>
         ts.isClassDeclaration(item) || ts.isClassExpression(item));
       if (!classDeclaration || classDeclaration.heritageClauses?.some((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)) return false;
+      if (!ownsConstructedState(classDeclaration)) return false;
       const constructor = classDeclaration.members.find(ts.isConstructorDeclaration);
       if (!constructor?.body) return true;
       let returnsAlternateObject = false;
@@ -1701,6 +1781,7 @@ export function buildProgramCallGraph(
           if (byId.has(stableId(candidate))) signatureTarget = candidate;
         }
         const targetDeclaration = symbol ? symbolNodes.get(symbol) ?? signatureTarget : signatureTarget;
+        const opaqueEffects = targetDeclaration ? undefined : reviewedOpaqueCallablePropertyEffects(checker, node);
         const overloadIndex = symbol && signatureDeclaration ? symbol.declarations?.filter((item) => (ts.isFunctionDeclaration(item) || ts.isMethodDeclaration(item)) && !item.body).indexOf(signatureDeclaration) : -1;
         const invokedProjection = iteratorParameterProjection(node.expression, iteratorParameterIndices);
         const invokedCallbackParameter = invokedProjection && byId.get(caller)!.effectParameters.find((parameter) =>
@@ -1756,7 +1837,7 @@ export function buildProgramCallGraph(
           && (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))
           ? node.expression.expression : undefined;
         const instantiatedReceiver = receiverExpression ? canonicalAddressableReceiver(receiverExpression) : undefined;
-        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: instantiatedArguments.map(({ text }) => text), ...(instantiatedReceiver && !instantiatedReceiver.unresolvedAlias ? { receiver: instantiatedReceiver.text } : {}), ...(instantiatedReceiver?.fresh ? { freshReceiver: true } : {}), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters, ...((refinementActionOwner && instantiatedArguments.some(({ unresolvedAlias }) => unresolvedAlias)) || instantiatedReceiver?.unresolvedAlias || (targetDeclaration && ts.isMethodDeclaration(targetDeclaration) && !instantiatedReceiver) ? { unresolvedMutationAlias: true } : {}) });
+        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined || opaqueEffects ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: instantiatedArguments.map(({ text }) => text), ...(instantiatedReceiver && !instantiatedReceiver.unresolvedAlias ? { receiver: instantiatedReceiver.text } : {}), ...(instantiatedReceiver?.fresh ? { freshReceiver: true } : {}), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters, ...(opaqueEffects ? { opaqueEffects } : {}), ...((refinementActionOwner && instantiatedArguments.some(({ unresolvedAlias }) => unresolvedAlias)) || instantiatedReceiver?.unresolvedAlias || (targetDeclaration && ts.isMethodDeclaration(targetDeclaration) && !instantiatedReceiver) ? { unresolvedMutationAlias: true } : {}) });
         const iteratorProtocolMethod = (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression))
           && ["next", "return", "throw"].includes(propertyKey(node.expression) ?? "")
           && checker.getPropertyOfType(checker.getTypeAtLocation(node.expression.expression), "next") !== undefined;
@@ -1775,12 +1856,12 @@ export function buildProgramCallGraph(
             && JSON.stringify(parameter.path ?? []) === JSON.stringify(capturedProjection.path)) ?? false);
         if (invokedProjection && invokedProjection.path.length > 0 && !invokedCallbackParameter
           && !targetDeclaration && !iteratorProtocolMethod && !isStandardLibraryCall(node)
-          && !resolvedBuiltin?.semantics && unresolvedFunctionProperty) {
+          && !resolvedBuiltin?.semantics && !opaqueEffects && unresolvedFunctionProperty) {
           edges.push({ caller, kind: "callback-argument", unresolvedName: node.expression.getText(), timing: "unknown",
             span: { start: node.expression.getStart(), end: node.expression.getEnd() }, arguments: [] });
         } else if (!invokedProjection && capturedProjection && !capturedInvocationRepresented
           && !targetDeclaration && !iteratorProtocolMethod && !isStandardLibraryCall(node)
-          && !resolvedBuiltin?.semantics && unresolvedFunctionProperty) {
+          && !resolvedBuiltin?.semantics && !opaqueEffects && unresolvedFunctionProperty) {
           edges.push({ caller, kind: "callback-argument", unresolvedName: node.expression.getText(), timing: "unknown",
             span: { start: node.expression.getStart(), end: node.expression.getEnd() }, arguments: [] });
         }

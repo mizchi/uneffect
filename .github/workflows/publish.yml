@@ -25,6 +25,7 @@ jobs:
       - run: pnpm vitest run test/release-readiness.test.ts test/effect-baseline.test.ts
       - run: pnpm build
       - run: npm pack --dry-run
+      - run: node ci/check-public-api.mjs
       - run: node ci/smoke-package.mjs
       - name: Verify release tag matches package version
         run: node ci/verify-release-tag.mjs

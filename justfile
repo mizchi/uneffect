@@ -17,6 +17,8 @@ check:
 
 ci-fast:
     pnpm exec tsc -p tsconfig.json --noEmit
+    just examples-check
+    just skills-check
     UNEFFECT_CI_TIER=fast pnpm vitest run
     cargo fmt --all --check
     cargo test --workspace
@@ -44,6 +46,7 @@ formal-exhaustive:
 
 package-check:
     npm pack --dry-run
+    node ci/check-public-api.mjs
     node ci/smoke-package.mjs
     cargo package --workspace --allow-dirty --no-verify
 
@@ -51,6 +54,8 @@ package-check:
 # suites to use one fresh process per file; CI keeps per-test WASM isolation.
 release-check:
     UNEFFECT_Z3_BACKEND=native UNEFFECT_TEST_ISOLATION=file pnpm check
+    just examples-check
+    just skills-check
     cargo fmt --all --check
     cargo test --workspace
     just build
@@ -72,15 +77,9 @@ spec-quint file:
 spec-compose file function:
     pnpm tsx src/cli.ts spec compose {{ file }} {{ function }}
 
-# Canonical host-aware model. The specialized recipes below are experimental compatibility projections.
+# Canonical host-aware async model.
 spec-temporal file runtime="web" root="main":
     pnpm tsx src/cli.ts spec temporal {{ file }} {{ root }} --runtime {{ runtime }}
-
-spec-async-quint file:
-    pnpm tsx src/cli.ts spec async-quint {{ file }}
-
-spec-promise-quint file:
-    pnpm tsx src/cli.ts spec promise-quint {{ file }}
 
 spec-resource-quint file:
     pnpm tsx src/cli.ts resource-model {{ file }}
@@ -88,17 +87,14 @@ spec-resource-quint file:
 spec-unified-async file function:
     pnpm tsx src/cli.ts async-model {{ file }} {{ function }}
 
-spec-web-event-loop file:
-    pnpm tsx src/cli.ts spec web-loop-quint {{ file }}
-
-spec-node-event-loop file:
-    pnpm tsx src/cli.ts spec node-loop-quint {{ file }}
-
-spec-node-esm-event-loop file:
-    pnpm tsx src/cli.ts spec node-loop-quint {{ file }} --node-top-level=esm
-
 build:
     pnpm build
+
+examples-check:
+    node ci/check-examples.mjs
+
+skills-check:
+    node ci/check-skills.mjs
 
 fixtures:
     pnpm tsx ci/fixtures.ts check
@@ -134,6 +130,6 @@ dogfood:
 # function and module boundaries. Expand this list only after each file has a
 # load-bearing negative control in test/dogfood.test.ts.
 dogfood-leaf:
-    pnpm tsx src/cli.ts check --effect-baseline dogfood/effect-baseline.json src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts src/diagnostics.ts src/diagnostic-quality.ts src/cli-support.ts src/environment.ts src/fixtures.ts src/ownership-evidence-cache.ts src/model-replay.ts src/project-optimizer.ts
-    pnpm tsx src/cli.ts check --typescript-program --infer --assurance no-unknown src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts src/diagnostics.ts src/diagnostic-quality.ts src/cli-support.ts src/environment.ts src/fixtures.ts src/ownership-evidence-cache.ts src/model-replay.ts src/project-optimizer.ts
-    pnpm vitest run test/dogfood.test.ts -t "explicit pure boundary|pure construction|disposal traversal|pure diagnostic|pure CLI helpers|environment report|CLI help formatting|CLI dispatch|fixture discovery|ownership cache keys|model trace loading|persisted optimizer evidence"
+    pnpm tsx src/cli.ts check --infer --effect-baseline dogfood/effect-baseline.json src/static-evaluation.ts src/ownership-evidence-cache.ts
+    pnpm tsx src/cli.ts check --typescript-program --infer --assurance no-unknown src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts src/diagnostics.ts src/diagnostic-quality.ts src/cli-support.ts src/cli-runner.ts src/environment.ts src/doctor-command.ts src/todo-consistency.ts src/fixtures.ts src/ownership-evidence-cache.ts src/model-replay.ts src/project-optimizer.ts src/refinement-flow.ts
+    pnpm vitest run test/dogfood.test.ts -t "classifies every unknown summary|explicit pure boundary|pure construction|disposal traversal|pure diagnostic|pure CLI helpers|environment report|CLI help formatting|CLI dispatch|doctor environment inspection|TODO hierarchy|fixture discovery|ownership cache keys|model trace loading|persisted optimizer evidence|fixed-point engine"

@@ -7,7 +7,7 @@ work. The 0.3.0 qualification milestone temporarily precedes the research
 phases below. Their ordering reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level
 effort ranges, uncertainty, and recommended delivery checkpoints. The current
-additive estimate is 51–110 engineer-weeks; this is implementation volume, not
+additive estimate is 48–104 engineer-weeks; this is implementation volume, not
 a calendar commitment.
 
 ## 0.3.0 — Qualify bounded public contracts

@@ -6,7 +6,7 @@ import { TypeScriptFrontendAdapter, standardLibraryOperation, type FrontendSymbo
 import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
 import { overlayCorsaBuiltinCatalog } from "./corsa-builtin-catalog.js";
 import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry } from "./builtin-contracts.js";
-import { buildProgramCallGraph, expressionAtExclusiveConstArgumentPath, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
+import { buildProgramCallGraph, expressionAtExclusiveConstArgumentPath, reviewedOpaqueCallablePropertyEffects, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
@@ -400,7 +400,8 @@ function unresolvedUserCall(
   const declarations = checker.getSymbolAtLocation(lookup)?.declarations ?? [];
   return declarations.some((declaration) => {
     if (declaration.getSourceFile().isDeclarationFile) return false;
-    if (ts.isMethodSignature(declaration) || ts.isCallSignatureDeclaration(declaration)) return true;
+    if (ts.isMethodSignature(declaration) || ts.isPropertySignature(declaration)
+      || ts.isCallSignatureDeclaration(declaration)) return true;
     if (ts.isFunctionDeclaration(declaration) && !declaration.body) return true;
     return false;
   });
@@ -1884,7 +1885,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (externalCallContracts.has(call)) return externalCallContracts.get(call);
     const source = call.getSourceFile();
     const callSiteKey = `${source.fileName}:${call.getStart(source)}:${call.getEnd()}`;
+    const opaqueEffects = reviewedOpaqueCallablePropertyEffects(checker, call);
     const contract = externalContractForCall(checker, call, options.externalFunctionEffects)
+      ?? (opaqueEffects ? {
+        effects: opaqueEffects, evidence: "verified", contractEvidence: "trusted",
+        functionName: call.expression.getText(),
+      } satisfies ExternalFunctionEffectContract : undefined)
       ?? authorizedExternalCalls.get(callSiteKey);
     externalCallContracts.set(call, contract);
     return contract;

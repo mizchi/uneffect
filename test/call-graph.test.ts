@@ -19,7 +19,13 @@ describe("multi-file call graph and effect polymorphism", () => {
           /* uneffect:effect Mutate<typeof this.entries> */
           register(value: string) { this.entries.push(value); return this }
         }
+        class MapRegistry {
+          private entries = new Map<string, number>()
+          /* uneffect:effect Mutate<typeof this.entries> */
+          register(value: string) { this.entries.set(value, this.entries.size); return this }
+        }
         export function createRegistry() { return new Registry().register("clock") }
+        export function createMapRegistry() { return new MapRegistry().register("clock") }
       `);
       const program = ts.createProgram([entry], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
@@ -30,6 +36,59 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.diagnostics).toEqual([]);
       expect(result.summaries.find(({ functionName }) => functionName === "createRegistry"))
         .toMatchObject({ evidence: "inferred", effects: [] });
+      expect(result.summaries.find(({ functionName }) => functionName === "createMapRegistry"))
+        .toMatchObject({ evidence: "inferred", effects: [] });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not treat constructor-aliased mutable state as deeply fresh", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-shallow-fresh-receiver-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        class Registry {
+          constructor(private entries: string[]) {}
+          /* uneffect:effect Mutate<typeof this.entries> */
+          register(value: string) { this.entries.push(value) }
+        }
+        class AssignedRegistry {
+          private entries: string[]
+          constructor(entries: string[]) { this.entries = entries }
+          /* uneffect:effect Mutate<typeof this.entries> */
+          register(value: string) { this.entries.push(value) }
+        }
+        const sharedEntries: string[] = []
+        class FieldRegistry {
+          private entries = sharedEntries
+          /* uneffect:effect Mutate<typeof this.entries> */
+          register(value: string) { this.entries.push(value) }
+        }
+        /* uneffect:effect none */
+        export function registerInto(entries: string[]) {
+          new Registry(entries).register("clock")
+        }
+        /* uneffect:effect none */
+        export function registerIntoAssigned(entries: string[]) {
+          new AssignedRegistry(entries).register("clock")
+        }
+        /* uneffect:effect none */
+        export function registerIntoSharedField() {
+          new FieldRegistry().register("clock")
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      for (const functionName of ["registerInto", "registerIntoAssigned", "registerIntoSharedField"]) {
+        expect(result.diagnostics).toContainEqual(expect.objectContaining({
+          functionName, kind: "unknown", effect: "Mutate<unknown-alias>",
+        }));
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -2020,6 +2079,64 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       expect(result.summaries.find((summary) => summary.functionName === "identity"))
         .not.toMatchObject({ evidence: "unknown" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("represents an annotated readonly callable property as an opaque user-code boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-opaque-callable-property-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        interface ReviewedCommand {
+          /* uneffect:effect InvokeUserCode */
+          readonly run: () => number
+        }
+        interface UnreviewedCommand { readonly run: () => number }
+        interface NarrowCommand {
+          /* uneffect:effect FsRead */
+          readonly run: () => number
+        }
+        interface MutableCommand {
+          /* uneffect:effect InvokeUserCode */
+          run: () => number
+        }
+        declare const reviewed: ReviewedCommand
+        declare const unreviewed: UnreviewedCommand
+        declare const narrow: NarrowCommand
+        declare const mutable: MutableCommand
+        function selectReviewed(): ReviewedCommand { return reviewed }
+        function selectUnreviewed(): UnreviewedCommand { return unreviewed }
+        function selectNarrow(): NarrowCommand { return narrow }
+        function selectMutable(): MutableCommand { return mutable }
+        /* uneffect:effect InvokeUserCode */
+        export function dispatchReviewed(): number { const command = selectReviewed(); return command.run() }
+        export function dispatchUnreviewed(): number { const command = selectUnreviewed(); return command.run() }
+        export function dispatchNarrow(): number { const command = selectNarrow(); return command.run() }
+        export function dispatchMutable(): number { const command = selectMutable(); return command.run() }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const graph = buildProgramCallGraph(program);
+      const reviewedNode = graph.nodes.find((node) => node.name === "dispatchReviewed");
+      expect(graph.edges.find((edge) => edge.caller === reviewedNode?.id && edge.opaqueEffects?.length)).toMatchObject({
+        unresolvedName: undefined,
+        opaqueEffects: [expect.objectContaining({ kind: "capability", name: "InvokeUserCode" })],
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.summaries.find((summary) => summary.functionName === "dispatchReviewed")).toMatchObject({
+        evidence: "verified",
+        effects: [expect.objectContaining({ kind: "capability", name: "InvokeUserCode" })],
+      });
+      for (const name of ["dispatchUnreviewed", "dispatchNarrow", "dispatchMutable"]) {
+        expect(result.summaries.find((summary) => summary.functionName === name)).toMatchObject({
+          evidence: "unknown",
+          unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-call" })]),
+        });
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

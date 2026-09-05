@@ -38,6 +38,7 @@ export const ciTestTiers = {
     "test/public-surface.test.ts",
     "test/quicksort.test.ts",
     "test/react-semantics.test.ts",
+    "test/repository-artifacts.test.ts",
     "test/release-readiness.test.ts",
     "test/refinement-bindings.test.ts",
     "test/refinement-dsl.test.ts",

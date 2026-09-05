@@ -32,7 +32,9 @@ export interface CliCommand {
   arguments: string;
   /** Option and behaviour lines shown under `uneffect <name> --help`. */
   details: readonly string[];
-  run(args: readonly string[], io: CliStreams): Promise<number>;
+  /** Runtime-selected command code is intentionally represented as one coarse authority boundary. */
+  /* uneffect:effect InvokeUserCode */
+  readonly run: (args: readonly string[], io: CliStreams) => Promise<number>;
 }
 
 type OptionConfig = NonNullable<ParseArgsConfig["options"]>;

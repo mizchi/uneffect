@@ -1,6 +1,6 @@
 # Uneffect implementation ledger
 
-Last reconciled with GitHub Issues: 2026-09-05.
+Last reconciled with GitHub Issues: 2026-09-06.
 
 This file is the historical implementation ledger. Completed work is summarized
 in `docs/implementation-status.md` and classified by confidence in
@@ -1163,6 +1163,10 @@ introducing another domain-local control-flow or alias model.
        construction while preserving constructor iterable Effects.
        - [x] Resolve the global constructor contract through acyclic immutable
          aliases; reject mutable aliases and retain their observable Mutation.
+       - [x] Distinguish shallow instance identity from deeply owned state for
+         source-local classes; constructor parameter properties and
+         `this.field = externalReference` no longer suppress later field
+         Mutation as construction-local.
      - [x] Treat standard Array `concat` as fresh while composing explicit
        object-literal indexed/`Symbol.isConcatSpreadable` getters and conservatively
        reporting authenticated Proxy or unresolved operands as `InvokeUserCode`.
@@ -1438,14 +1442,14 @@ introducing another domain-local control-flow or alias model.
     coverage/exclusions, bounded resource limits, package-level composition,
     editor tooling hooks, and dogfood on at least two realistic applications.
 
-There are 14 open implementation Issues after completing #63 and bounded children #60 and #61 and
+There are 13 open implementation Issues after completing #62, #63, and bounded children #60 and #61 and
 bounded children #58
 and #59 and children #56 and #57,
 after closing #23, #26, #27, #28, and
 #29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47:
-14 parent/epic Issues remain queued: one proof-boundary parent in Phase 1,
+13 parent/epic Issues remain queued: one proof-boundary parent in Phase 1,
 six specification-expressiveness parents in
-Phase 2, six production-integration Issues in Phase 3, and one proof-consumer
+Phase 2, five production-integration Issues in Phase 3, and one proof-consumer
 Issue in Phase 4. Completed child
 [#45](https://github.com/mizchi/uneffect/issues/45) belongs to #5 and follows
 completed bounded children
@@ -1455,7 +1459,7 @@ completed bounded children
 follow-up [#46](https://github.com/mizchi/uneffect/issues/46) owns the landed
 solver-heavy CI timing and sharding handoff. Completed child #47 remains inside
 parent #25's estimate. The 13 non-overlapping epic estimates, including #64 DSL
-work, total 51–110 engineer-weeks, while the remaining Phase 1 breadth is 1–3
+work, total 48–104 engineer-weeks, while the remaining Phase 1 breadth is 1–3
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
@@ -1621,7 +1625,7 @@ backlog:
 | Proof-boundary MVP | #20 plus the bounded #18 seeds through #57 | Completed; broader #18 is 1–3 weeks if justified by new evidence | Local evidence survives one supported project boundary, one exact async module dependency, and one exact top-level Promise launch/handler attachment. |
 | General analysis foundation | Completed #23/#26/#27/#28/#29/#30/#31/#32/#33/#34/#35/#36/#37/#38/#39/#40/#41/#50/#51/#52/#53/#54/#55/#56 | 12–28 weeks for the remaining parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 5–15 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 14 Issues / 13 non-overlapping epics | 51–110 engineer-weeks | Completed #63 establishes the bounded async/temporal integration; #64 owns the mature neutral DSL; completed children #60/#61 narrow #4; #62 owns public-surface stabilization; completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45/#58/#59 narrow parent #5. |
+| Entire open research backlog | 13 Issues / 13 non-overlapping epics | 48–104 engineer-weeks | Completed #62/#63 establish the public compatibility and bounded async/temporal integration contracts; #64 owns the mature neutral DSL; completed children #60/#61 narrow #4; completed child #57 is reflected in #18; completed children #50/#51/#52/#53/#54/#55/#56 are reflected in #8; completed children #47/#48 are included within parent #25; completed children #42/#43/#44/#45/#58/#59 narrow parent #5. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they

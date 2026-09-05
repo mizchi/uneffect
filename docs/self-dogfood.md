@@ -41,16 +41,20 @@ Run the gate with:
 just dogfood-leaf
 ```
 
-The gate uses `--typescript-program --infer` deliberately. Default `uneffect check`
-is Corsa plus Oxc and fail-closes unclassified calls as `unresolved-call`; it
-does not enforce Node builtin annotations. The leaf gate therefore loads a
-TypeScript Program so those annotations stay load-bearing. Runtime imports load
+The constraint-bearing gate uses `--typescript-program --infer` deliberately.
+Default `uneffect check` is Corsa plus Oxc and fail-closes unsupported syntax;
+it does not enforce Node builtin annotations. A separate Corsa baseline remains
+on the currently supported self-hosted subset, `static-evaluation.ts` and
+`ownership-evidence-cache.ts`. Object-member functions and computed properties
+keep the other leaf files outside that Corsa baseline instead of being silently
+accepted. The annotation gate loads a TypeScript Program so its Node and
+callable-parameter annotations stay load-bearing. Runtime imports load
 a wider internal Program whose unannotated dependencies are still adoption
 candidates. Inference mode continues to enforce every annotation in the selected
 files while not requiring unrelated dependencies to be annotated in the same
-change. `src/cli-runner.ts` stays in the dogfood tests; it is not in the
-`--assurance no-unknown` file list while `runCli` still has `unresolved-call`
-from `command.run`. The `no-unknown` profile still rejects unknown summaries in
+change. `src/cli-runner.ts` is now in the `--assurance no-unknown` file list;
+runtime-selected command and loader calls use an explicit opaque callable
+contract. The `no-unknown` profile still rejects unknown summaries elsewhere in
 the analyzed Program.
 
 ## Second boundary: byte coordinates
@@ -110,13 +114,21 @@ selection have not yet received a complete explicit contract.
 ## Seventh boundary: CLI entry values
 
 `src/cli-runner.ts` verifies help construction as `none` and version lookup as
-`FsRead`. `runCli` declares `FsRead | Env<"UNEFFECT_DEBUG">` with
+`FsRead`. `runCli` declares `FsRead | Env<"UNEFFECT_DEBUG"> | InvokeUserCode` with
 `effect_parameter io extends Console`. `CliStreams` uses readonly function
 properties so `io.out` / `io.err` are reviewed nested callable parameters
-rather than `Console` on the dispatcher itself. `command.run` remains an
-unresolved local interface method: the dispatcher summary is `unknown` with
-`unresolved-call` rather than a proof, and it is not collapsed into `Console`.
-A negative control that adds `Console` to `runCli` is unused.
+rather than `Console` on the dispatcher itself. `CliCommand.run` and command
+loader `load` are readonly function properties with an exact
+`effect InvokeUserCode` contract. The dispatcher is therefore verified against
+one coarse runtime-code boundary without unioning every command implementation
+into its body row. Removing the property contract returns `runCli` to
+`unresolved-call`; adding `Console` to `runCli` remains unused.
+
+Making property signatures fail closed exposed a previously hidden dynamic
+call in `scoreDiagnostic`. The exported criterion callbacks remain compatible,
+but internal scoring now dispatches over the closed criterion-id union through
+static callback identities. Its existing pure dogfood contract is verified
+again instead of relying on the old property-signature omission.
 
 ## Eighth boundary: fixture filesystem access
 
@@ -162,12 +174,65 @@ modeled as a destructive mutation of its receiver. Propagating an inline
 comparator's own effects through an enclosing function is not claimed by this
 dogfood case and remains part of the general callback-composition work.
 
+## Twelfth boundary: doctor command
+
+`src/doctor-command.ts` now declares the composite environment boundary used by
+its `run` method: manifest reads, solver environment reads, retained solver
+evidence writes, Java probing, the native-driver cache mutation, and reviewed
+external calls below those checks. Its `io` parameter separately allows
+`Console`, so terminal output is not collapsed into the command body's effect
+row. Removing `FsRead` produces a missing-effect diagnostic in the focused
+Program regression.
+
+## Thirteenth boundary: TODO hierarchy consistency
+
+`src/todo-consistency.ts` declares both Markdown task parsing and stale-parent
+detection as `effect none`. They only construct local task trees and return
+values; sorting the fresh result does not mutate caller-owned state. A negative
+control replaces the parser's empty bound with `Console` and requires the
+unused-effect diagnostic.
+
+## Fourteenth boundary: refinement fixed point
+
+`src/refinement-flow.ts` constrains `solveBasicBlockFixedPoint` to
+`InvokeUserCode | Throw<Error>`. The caller-defined lattice and transfer
+functions are deliberately opaque `InvokeUserCode` boundaries; that does not
+authorize host effects in the engine itself. A negative control inserts
+`console.log` into the engine and requires a missing `Console` diagnostic, so
+the contract is narrower than an arbitrary-effect escape hatch.
+
+Adoption exposed a runtime topology-validation bug. A transfer callback could
+mutate the array that originally supplied a block's readonly `edges` property,
+then return the newly inserted successor after validation. The engine now
+snapshots each declared successor set before invoking caller code. A regression
+test preserves the counterexample and requires `invalid-cfg` after one
+iteration. TypeScript `readonly` remains a compile-time API promise; the
+verifier no longer relies on it as runtime immutability.
+
+## Deep-core counterexample: construction freshness
+
+Reviewing the remaining `src/call-graph.ts` unknowns did not justify replacing
+them with an opaque annotation: an injected `FrontendSymbolAdapter` is an
+actual extension boundary, and the default adapter may perform package
+resolution. That unknown remains explicit instead of understating it as pure
+or as generic `InvokeUserCode`.
+
+The same review found a separate false negative in fresh-receiver handling.
+`new Registry(entries)` was treated as deeply fresh even when a constructor
+parameter property retained the caller's mutable array, so a later mutation of
+`this.entries` disappeared. Freshness now requires owned nested state for
+source-local classes. Both parameter-property and explicit-assignment
+counterexamples fail closed as `Mutate<unknown-alias>`, while literal-owned
+builder state keeps the existing construction-phase optimization.
+
 ## Next adoption order
 
-1. `CliCommand.run` as a callable on the resolved command object, without
-   unioning every command implementation into `runCli`.
-2. `doctor-command.ts`: compose environment inspection with CLI rendering while
-   preserving the distinction between `FsRead`, `Run`, and `Console`.
+Choose the next boundary from an observed, currently classified unknown in a
+real command or application path. Treat a false positive or false negative
+found during adoption as a product bug, and preserve its smallest
+counterexample before expanding the allow-list. Do not widen opaque callable
+contracts beyond `InvokeUserCode`; a more precise row requires
+implementation-linked evidence.
 
 Only add a file to `dogfood-leaf` after its positive evidence and a deliberately
 broken variant are both tested. Later tiers should group effects by boundary:

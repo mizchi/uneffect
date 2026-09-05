@@ -70,8 +70,7 @@ priority or cancellation source.
 
 Top-level calls are represented with owner `<module>`. The default
 `commonjs` mode drains initial `process.nextTick` jobs before initial V8 jobs.
-Use `just spec-node-esm-event-loop <file>`, CLI option
-`--node-top-level=esm`, generator option `topLevelMode: "esm"`, or project
+Use CLI option `--node-top-level=esm`, generator option `topLevelMode: "esm"`, or project
 option `nodeTopLevelMode: "esm"` when the entry module is ESM. In that mode,
 Promise reactions and `queueMicrotask` jobs queued by module evaluation precede
 the initial top-level next-tick queue. Jobs created later inside callbacks keep

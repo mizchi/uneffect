@@ -61,6 +61,7 @@ try {
     "dist/src/public.d.ts",
     "dist/src/corsa-public.js",
     "dist/src/corsa-api-frontend.js",
+    "dist/src/corsa-experimental.js",
     "dist/src/spec.js",
     "schemas/uneffect-temporal-model-v1.schema.json",
     "schemas/uneffect-corsa-api-frontend-v1.schema.json",
@@ -91,6 +92,7 @@ try {
     import * as root from "@mizchi/uneffect";
     import { checkCorsaProject } from "@mizchi/uneffect/corsa";
     import { corsaApiCapabilities, corsaApiLimitations, parseCorsaApiFrontendDescriptor } from "@mizchi/uneffect/corsa/api";
+    import { corsaCheckerExporterPlugin } from "@mizchi/uneffect/experimental/corsa";
     import { defineTemporal } from "@mizchi/uneffect/spec";
     import temporalSchema from "@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json" with { type: "json" };
     import corsaSchema from "@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json" with { type: "json" };
@@ -101,6 +103,7 @@ try {
     void parseCorsaApiFrontendDescriptor;
     void corsaApiCapabilities;
     void corsaApiLimitations;
+    void corsaCheckerExporterPlugin;
     void defineTemporal;
     void temporalSchema;
     void corsaSchema;
@@ -116,6 +119,7 @@ try {
     import * as root from "@mizchi/uneffect";
     import * as experimental from "@mizchi/uneffect/experimental";
     import { checkCorsaProject } from "@mizchi/uneffect/corsa";
+    import { corsaCheckerExporterPlugin } from "@mizchi/uneffect/experimental/corsa";
     import {
       corsaApiCapabilities, corsaApiLimitations, openCorsaApiFrontend,
       parseCorsaApiFrontendDescriptor,
@@ -127,6 +131,8 @@ try {
 
     const requiredRoot = ["analyzeEffects", "analyzeProgramEffects", "verifyUneffectProject", "generateTemporalModel", "parseTemporalModelResult"];
     for (const name of requiredRoot) if (typeof root[name] !== "function") throw new Error(\`missing public root API: \${name}\`);
+    if (!Array.isArray(root.uneffectDialects) || !root.uneffectDialects.includes("unified"))
+      throw new Error("missing public annotation dialect inventory");
     const lowLevel = [
       "collectSyntaxFacts", "analyzeTypeScriptControlFlow", "analyzeAsyncPatterns",
       "analyzePromiseChains", "generatePromiseChainsQuint", "generateResourceSafetyQuint",
@@ -135,7 +141,9 @@ try {
     for (const name of lowLevel) if (name in root) throw new Error(\`experimental API leaked from package root: \${name}\`);
     for (const name of lowLevel) if (typeof experimental[name] !== "function") throw new Error(\`missing experimental API: \${name}\`);
     if (typeof checkCorsaProject !== "function") throw new Error("missing Corsa check facade");
+    if (typeof corsaCheckerExporterPlugin !== "object") throw new Error("missing experimental Corsa exporter plugin");
     if (typeof spec.defineTemporal !== "function") throw new Error("missing specification API");
+    if (spec.uneffectSpecVersion !== "uneffect-spec/v1") throw new Error("specification v1 identity drifted");
     if (temporalSchema.properties.schema.const !== "uneffect-temporal-model/v1") throw new Error("temporal schema import failed");
     if (corsaSchema.properties.schema.const !== "uneffect-corsa-api-frontend/v1") throw new Error("Corsa schema import failed");
 

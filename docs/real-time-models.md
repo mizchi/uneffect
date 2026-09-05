@@ -88,7 +88,7 @@ control flow for every statement after `await scheduler.yield()` remain
 unmodeled. See [MDN `yield`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield).
 
 ```sh
-just spec-web-event-loop examples/async-patterns.ts
+just spec-temporal examples/async-patterns.ts web main
 ```
 
 The generated `eventLoopSafe` invariant rejects a callback that executes in

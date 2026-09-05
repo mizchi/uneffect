@@ -6,6 +6,7 @@ export interface TodoTask {
   children: TodoTask[];
 }
 
+/* uneffect:effect none */
 export function parseTodoTasks(source: string): TodoTask[] {
   const roots: TodoTask[] = [];
   const stack: TodoTask[] = [];
@@ -27,6 +28,7 @@ export function parseTodoTasks(source: string): TodoTask[] {
   return roots;
 }
 
+/* uneffect:effect none */
 export function findStaleUncheckedParents(source: string): TodoTask[] {
   const stale: TodoTask[] = [];
   const visit = (task: TodoTask): boolean => {

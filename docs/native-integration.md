@@ -48,14 +48,14 @@ user properties do not become protocols.
 
 ### Checker-backed exporter prototype
 
-The optional `@mizchi/uneffect/corsa` entry point now runs an Oxlint JS plugin
+The optional `@mizchi/uneffect/experimental/corsa` entry point runs an Oxlint JS plugin
 through `corsa-oxlint`. The visitor refuses parser services without full type
 information, reads Corsa symbol identity and type text, emits schema-v8 facts
 with `producer: corsa-checker`, and compares them through the Rust consumer:
 
 ```ts
 import { compareUneffectFrontends } from "@mizchi/uneffect";
-import { exportCorsaCheckerFacts } from "@mizchi/uneffect/corsa";
+import { exportCorsaCheckerFacts } from "@mizchi/uneffect/experimental/corsa";
 
 const files = { "example.ts": "export function run(): number { return 1 }" };
 const corsaFacts = await exportCorsaCheckerFacts({

@@ -3,6 +3,14 @@
 Maintainer release preparation and the current explicit npm publish procedure
 are documented in [Releasing Uneffect](./releasing.md).
 
+The verifier-free `fast` gate runs `just examples-check` and `just
+skills-check` before Vitest. The examples check strict-typechecks every
+top-level example, executes the documented public CLI paths, and rejects an
+example or dogfood source that is not reachable from a test or an explicit
+smoke command. The skill check validates `SKILL.md` metadata, OpenAI agent
+metadata, local reference links, and removed CLI command names. The
+solver-heavy dogfood behavior remains in its dedicated integration shard.
+
 Solver-heavy files that can retain a large WASM heap are listed in
 `ciIsolatedTestFiles`. Their individual Vitest cases run in fresh processes so
 a successful earlier proof cannot exhaust the fixed two-GiB Z3/WASM heap for a

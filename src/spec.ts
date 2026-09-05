@@ -1,3 +1,6 @@
+/** Permanent compatibility identifier for the 0.3 authoring subset. */
+export const uneffectSpecVersion = "uneffect-spec/v1" as const;
+
 export { bool, defineTemporal, int, text } from "./temporal-dsl.js";
 export type { TemporalDefinition, TemporalType } from "./temporal-dsl.js";
 export { Builtin, Console, Custom, Fetch, FsRead, FsWrite, Throw, defineCapability, defineEffectSchema } from "./capability-dsl.js";

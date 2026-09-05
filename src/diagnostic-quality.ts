@@ -7,16 +7,27 @@ import { reportDiagnostic, type CheckerDiagnostic, type ReportedDiagnostic } fro
  * so the fixture corpus doubles as an evaluation loop for message quality.
  */
 export interface QualityCriterion {
-  id: string;
+  id: QualityCriterionId;
   question: string;
   /** Required criteria may never regress; the rest move the score and steer the next improvement. */
   required: boolean;
   satisfied: (diagnostic: ReportedDiagnostic, source: string) => boolean;
 }
 
+export type QualityCriterionId = "location" | "subject" | "cause" | "evidence" | "action" | "plain-language";
+
 const causeLabels = new Set(["because", "rule", "fails"]);
 const valueLabels = new Set(["counterexample", "state", "fails", "declared", "inferred", "binding", "construct"]);
 const jargon = /\b(unsat|sat)\b|define-fun|smt-lib|\(assert|Z3 returned/iu;
+
+const criterionChecks: Record<QualityCriterionId, QualityCriterion["satisfied"]> = {
+  location: (diagnostic, source) => (source.split(/\r?\n/u)[diagnostic.line - 1] ?? "").trim().length > 0,
+  subject: (diagnostic) => diagnostic.message.includes(diagnostic.functionName) || diagnostic.message.includes("`"),
+  cause: (diagnostic) => diagnostic.notes.some((note) => causeLabels.has(note.label) && note.detail.length > 0),
+  evidence: (diagnostic, source) => diagnostic.notes.some((note) => valueLabels.has(note.label) || quotesSource(note.detail, source)),
+  action: (diagnostic) => diagnostic.notes.some((note) => note.label === "hint" && note.detail.length > 0),
+  "plain-language": (diagnostic) => !jargon.test(diagnostic.message),
+};
 
 /** True when a note quotes program text, so the reader sees the construct instead of a paraphrase. */
 /* uneffect:effect none */
@@ -28,37 +39,49 @@ function quotesSource(detail: string, source: string): boolean {
 export const qualityCriteria: readonly QualityCriterion[] = [
   {
     id: "location", question: "does the reported line point at a real, non-empty source line?", required: true,
-    satisfied: (diagnostic, source) => (source.split(/\r?\n/u)[diagnostic.line - 1] ?? "").trim().length > 0,
+    satisfied: criterionChecks.location,
   },
   {
     id: "subject", question: "does the message name the function or quote the clause under check?", required: false,
-    satisfied: (diagnostic) => diagnostic.message.includes(diagnostic.functionName) || diagnostic.message.includes("`"),
+    satisfied: criterionChecks.subject,
   },
   {
     id: "cause", question: "is there a note explaining why the checker believes this?", required: true,
-    satisfied: (diagnostic) => diagnostic.notes.some((note) => causeLabels.has(note.label) && note.detail.length > 0),
+    satisfied: criterionChecks.cause,
   },
   {
     id: "evidence", question: "does a note carry concrete evidence: counterexample values, the analyzed declaration, or quoted code?", required: false,
-    satisfied: (diagnostic, source) => diagnostic.notes.some((note) => valueLabels.has(note.label) || quotesSource(note.detail, source)),
+    satisfied: criterionChecks.evidence,
   },
   {
     id: "action", question: "does a hint say what to change next?", required: true,
-    satisfied: (diagnostic) => diagnostic.notes.some((note) => note.label === "hint" && note.detail.length > 0),
+    satisfied: criterionChecks.action,
   },
   {
     id: "plain-language", question: "is the message free of raw solver verdicts and SMT jargon?", required: true,
-    satisfied: (diagnostic) => !jargon.test(diagnostic.message),
+    satisfied: criterionChecks["plain-language"],
   },
 ];
+
+/* uneffect:effect none */
+function criterionSatisfied(criterion: QualityCriterion, diagnostic: ReportedDiagnostic, source: string): boolean {
+  switch (criterion.id) {
+    case "location": return criterionChecks.location(diagnostic, source);
+    case "subject": return criterionChecks.subject(diagnostic, source);
+    case "cause": return criterionChecks.cause(diagnostic, source);
+    case "evidence": return criterionChecks.evidence(diagnostic, source);
+    case "action": return criterionChecks.action(diagnostic, source);
+    case "plain-language": return criterionChecks["plain-language"](diagnostic, source);
+  }
+}
 
 export interface DiagnosticScore {
   fileName: string;
   code: string;
   line: number;
   message: string;
-  satisfied: string[];
-  missing: string[];
+  satisfied: QualityCriterionId[];
+  missing: QualityCriterionId[];
 }
 
 export interface QualityReport {
@@ -68,7 +91,7 @@ export interface QualityReport {
   satisfied: number;
   total: number;
   /** Required criteria that some diagnostic fails; these are hard regressions. */
-  regressions: Array<{ fileName: string; code: string; line: number; criterion: string }>;
+  regressions: Array<{ fileName: string; code: string; line: number; criterion: QualityCriterionId }>;
 }
 
 /**
@@ -81,8 +104,11 @@ export const qualityThreshold = 1;
 /* uneffect:effect none */
 export function scoreDiagnostic(diagnostic: CheckerDiagnostic, source: string): DiagnosticScore {
   const reported = reportDiagnostic(diagnostic);
-  const satisfied: string[] = [], missing: string[] = [];
-  for (const criterion of qualityCriteria) (criterion.satisfied(reported, source) ? satisfied : missing).push(criterion.id);
+  const satisfied: QualityCriterionId[] = [], missing: QualityCriterionId[] = [];
+  for (const criterion of qualityCriteria) {
+    if (criterionSatisfied(criterion, reported, source)) satisfied.push(criterion.id);
+    else missing.push(criterion.id);
+  }
   return { fileName: reported.fileName, code: reported.code, line: reported.line, message: reported.message, satisfied, missing };
 }
 

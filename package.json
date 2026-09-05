@@ -44,6 +44,10 @@
       "types": "./dist/src/experimental.d.ts",
       "import": "./dist/src/experimental.js"
     },
+    "./experimental/corsa": {
+      "types": "./dist/src/corsa-experimental.d.ts",
+      "import": "./dist/src/corsa-experimental.js"
+    },
     "./spec": {
       "types": "./dist/src/spec.d.ts",
       "import": "./dist/src/spec.js"
@@ -60,6 +64,8 @@
     "CHANGELOG.md",
     "LICENSE",
     "docs",
+    "examples/*.ts",
+    "skills",
     "schemas"
   ],
   "publishConfig": {
@@ -77,12 +83,12 @@
     "node": ">=24"
   },
   "peerDependencies": {
-    "@informalsystems/quint": ">=0.32.0",
-    "@oxlint/plugins": ">=1.80.0",
-    "corsa-oxlint": ">=1.12.4",
-    "oxlint": ">=1.80.0",
-    "typescript": ">=7.0.0",
-    "@typescript/typescript6": ">=6.0.2"
+    "@informalsystems/quint": ">=0.32.0 <0.33.0",
+    "@oxlint/plugins": ">=1.80.0 <2.0.0",
+    "corsa-oxlint": ">=1.12.4 <2.0.0",
+    "oxlint": ">=1.80.0 <2.0.0",
+    "typescript": ">=7.0.0 <8.0.0",
+    "@typescript/typescript6": ">=6.0.2 <7.0.0"
   },
   "peerDependenciesMeta": {
     "typescript": {

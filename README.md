@@ -195,7 +195,9 @@ high-level checking facades such as `checkFiles`, `verifyUneffectProject`, and
 `parseTemporalModelResult`. The versioned direct Corsa semantic-query contract
 is available from `@mizchi/uneffect/corsa/api`. Solver adapters, lowering IRs, direct Quint
 generators, and optimizer experiments live under
-`@mizchi/uneffect/experimental` and have no compatibility guarantee. See
+`@mizchi/uneffect/experimental` and have no compatibility guarantee. Raw
+Corsa/Oxlint checker-fact and parity integrations live under
+`@mizchi/uneffect/experimental/corsa`. See
 [Public API and compatibility](./docs/public-api.md) for the exact boundary.
 
 ## Development

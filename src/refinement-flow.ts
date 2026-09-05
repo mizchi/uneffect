@@ -39,8 +39,11 @@ export type LatticeJoin<Value> =
   | { readonly status: "conflict"; readonly reason: string };
 
 export interface FixedPointLattice<Value> {
+  /* uneffect:effect InvokeUserCode */
   readonly bottom: () => Value;
+  /* uneffect:effect InvokeUserCode */
   readonly equivalent: (left: Value, right: Value) => boolean;
+  /* uneffect:effect InvokeUserCode */
   readonly join: (left: Value, right: Value) => LatticeJoin<Value>;
 }
 
@@ -59,6 +62,7 @@ export interface BasicBlockEdge {
 export interface BasicBlock<Value> {
   readonly id: string;
   readonly edges: readonly BasicBlockEdge[];
+  /* uneffect:effect InvokeUserCode */
   readonly transfer: (input: Value) => readonly BasicBlockTransfer<Value>[];
 }
 
@@ -91,6 +95,7 @@ export type BasicBlockFixedPointResult<Value> =
  * The lattice owns semantic joins and conflicts; this engine owns block
  * scheduling, convergence, and the explicit proof budget.
  */
+/* uneffect:effect InvokeUserCode | Throw<Error> */
 export function solveBasicBlockFixedPoint<Value>(
   options: BasicBlockFixedPointOptions<Value>,
 ): BasicBlockFixedPointResult<Value> {
@@ -107,7 +112,7 @@ export function solveBasicBlockFixedPoint<Value>(
     }
     blocks.set(block.id, block);
   }
-  const states = new Map<string, Value>([...blocks.keys()].map((id) => [id, lattice.bottom()]));
+  const states = new Map<string, Value>();
   if (duplicateBlock) return {
     status: "unknown", reason: "invalid-cfg", detail: `duplicate CFG basic block ${duplicateBlock}`,
     iterations: 0, budget, states,
@@ -117,8 +122,10 @@ export function solveBasicBlockFixedPoint<Value>(
     status: "unknown", reason: "invalid-cfg", detail: `missing entry block ${options.entry}`,
     iterations: 0, budget, states,
   };
+  const declaredSuccessors = new Map<string, ReadonlySet<string>>();
   for (const block of blocks.values()) {
     const edgeKeys = new Set<string>();
+    const successors = new Set<string>();
     for (const edge of block.edges) {
       const edgeKey = JSON.stringify([
         edge.to,
@@ -146,8 +153,11 @@ export function solveBasicBlockFixedPoint<Value>(
         detail: `basic block ${block.id} declares invalid source span for successor ${edge.to}`,
         iterations: 0, budget, states,
       };
+      successors.add(edge.to);
     }
+    declaredSuccessors.set(block.id, successors);
   }
+  for (const id of blocks.keys()) states.set(id, lattice.bottom());
   const initial = lattice.join(states.get(options.entry)!, options.initial);
   if (initial.status === "conflict") return {
     status: "unknown", reason: "lattice-conflict", detail: initial.reason,
@@ -168,7 +178,7 @@ export function solveBasicBlockFixedPoint<Value>(
     const block = blocks.get(id)!;
     iterations++;
     for (const transfer of block.transfer(states.get(id)!)) {
-      if (!block.edges.some((edge) => edge.to === transfer.to)) return {
+      if (!declaredSuccessors.get(id)!.has(transfer.to)) return {
         status: "unknown", reason: "invalid-cfg",
         detail: `basic block ${id} transfers through undeclared successor ${transfer.to}`,
         iterations, budget, states,

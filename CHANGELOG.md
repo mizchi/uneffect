@@ -2,7 +2,7 @@
 
 All notable changes to Uneffect are documented in this file.
 
-## 0.3.0 - 2026-09-04
+## 0.3.0 - 2026-09-06
 
 ### Added
 
@@ -50,6 +50,13 @@ All notable changes to Uneffect are documented in this file.
   checking, temporal, property-generation, extension, and runtime facades.
   Low-level solver, CFG, IR, optimizer, and backend-specific generators now
   require `@mizchi/uneffect/experimental` and carry no compatibility promise.
+- Narrowed `@mizchi/uneffect/corsa` to the high-level project-check/report
+  facade. The 0.2 raw checker exporter and parity internals now require
+  `@mizchi/uneffect/experimental/corsa`; the versioned semantic-query contract
+  remains at `@mizchi/uneffect/corsa/api`.
+- Locked the exact 0.3 runtime and declaration API inventory. The current
+  `@mizchi/uneffect/spec` grammar is a permanent v1 compatibility subset, and
+  strict v1 schema fields and enums may only expand under a new schema ID.
 - Unified public comment directives under the ordinary `uneffect:` surface;
   internal capability, contract, async, resource, and refinement proof engines
   are no longer selected as separate user-facing modes.

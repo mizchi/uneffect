@@ -112,6 +112,13 @@ inline edges. A getter read, setter assignment, or local
 and receiver-rooted Mutation, while a surrounding synchronous catch discharges
 its `Throw<E>`. Opaque, external, or proxy-mediated conversion remains the
 coarser `InvokeUserCode` boundary; it is not reported as a verified hidden body.
+A source-local interface may make the same conservative choice for runtime
+dispatch by declaring an exact `/* uneffect:effect InvokeUserCode */` on a
+`readonly` function property. The call graph then records the opaque user-code
+authority instead of inventing a body edge. An unannotated or mutable function
+property remains `unresolved-call`; narrower effect rows are not accepted as
+opaque contracts because a structural TypeScript interface does not prove its
+implementations.
 A same-Program standard `Symbol.hasInstance` override receives the same treatment
 for `instanceof`. Direct TypeChecker-authenticated Proxy values and immutable
 aliases retain `InvokeUserCode` for property access, `in`, and `delete`.
@@ -241,6 +248,14 @@ exact string-pattern fragment.
 That refinement affects only aliasing: iterable consumption and optional
 `Array.from` mapper effects still compose normally, so freshness never implies
 that construction is pure.
+For a source-local class, suppressing mutation below a newly constructed
+receiver additionally requires owned nested state. Array/object literal field
+initializers are accepted recursively, as are catalog-backed fresh constructors
+such as an empty `Map` or `Set`. Reference-valued constructor parameter
+properties and assignments such as `this.items = items` are not deeply fresh:
+a later `this.items` mutation remains unknown rather than being hidden as
+construction-local. This is intentionally more conservative than JavaScript's
+shallow object-identity freshness.
 For `concat`, explicit object-literal indexed or `Symbol.isConcatSpreadable`
 getters compose through the call graph, and an authenticated Proxy or an
 unresolved operand adds `InvokeUserCode`. This does not prove immunity from

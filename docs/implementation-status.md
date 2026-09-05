@@ -1319,7 +1319,11 @@ same property is proved for arbitrary TypeScript.
   Before scheduling, the engine validates every block and edge—including
   unreachable regions—and rejects missing targets, exact duplicate edges,
   invalid spans, and runtime transfers outside the declared topology as
-  `invalid-cfg`. The shared completion lowering also supplies each direct
+  `invalid-cfg`. Declared successor sets are snapshotted before any caller
+  callback runs, so mutation of an input edge array cannot authorize a new
+  transfer after validation. The engine's explicit effect boundary permits
+  caller-defined lattice/transfer code and budget errors, but rejects direct
+  host effects such as `Console`. The shared completion lowering also supplies each direct
   predecessor's `TemporalExpression` updates; the worklist specializes them by
   the throw condition and its join block constructs a correlated phi
   environment before the back-edge and exit. It now also carries the accepted

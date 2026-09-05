@@ -1,6 +1,6 @@
 # Remaining work estimate
 
-Last reconciled with the local implementation and open GitHub Issues: 2026-09-01.
+Last reconciled with the local implementation and open GitHub Issues: 2026-09-06.
 
 This document estimates remaining implementation volume. GitHub Issues own the
 executable acceptance criteria; `TODO.md` remains the historical ledger. The
@@ -31,9 +31,9 @@ totals are calculated from them, not by mechanically adding label bounds.
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 after completed child #57 | 1–3 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #25, #2, #5, #4, #6, #64 | 18–41 engineer-weeks | Low–medium |
-| 3 — Production integration | #24, #8, #10, #7, #16, #62 | 26–54 engineer-weeks | Low |
+| 3 — Production integration | #24, #8, #10, #7, #16 | 23–48 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 14 open Issues / 13 non-overlapping epics | **51–110 engineer-weeks** | Low |
+| **Total additive effort** | 13 open Issues / 13 non-overlapping epics | **48–104 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -162,7 +162,7 @@ There are three useful planning numbers:
   prioritizes #2 and #5 (5–10 weeks), consuming the completed #23 CFG. Numeric/SHA-256
   prioritizes #26 and #4/#6 (7–15 weeks). These alternatives
   should not be added together unless both products are required.
-- **All currently requested work: 51–110 engineer-weeks.** This includes
+- **All currently requested work: 48–104 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -177,12 +177,12 @@ commitment to implement every row:
 | B — reusable analyzer core | Completed #23; first 1–2 week bounded slices #26 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 2–4 additional weeks for the first slices; 10–19 weeks for parent #24 and #8 epics | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
 | C1 — temporal/Node Lease product | #2 and #5, consuming completed #23 where needed | Property generators and complete SHA-256 | 5–10 weeks | A realistic lease model checks, decodes, and replays a counterexample across supported backends, then one production binding exposes any remaining abstraction gap. |
 | C2 — generated-test/numeric product | #4 and #6 plus #26, consuming completed #23 where needed | General temporal collections and broad React/event-loop work | 7–15 weeks | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
-| D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 and the #62 stability contract | Optimizer transformations | 21–41 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence and stabilize only the public fragments intended for adoption. |
+| D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 23–48 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence and stabilize only the public fragments intended for adoption. |
 | E — proof consumer | #13 | Any rewrite not authorized by replayable evidence | 6–12 weeks | Ship or reject one fail-closed stable-read transformation before considering general compression/mangling. |
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-51–110 week total remains additive and intentionally ignores speculative
+48–104 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -332,8 +332,7 @@ be added to the owning Issue and reflected here before implementation begins.
 | 9 | #10 event-loop ownership | XL | 6–12 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
 | 10 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
 | 11 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
-| 12 | #62 supported-fragment stability | L | 3–6 weeks | Split API inventory, schema compatibility, and release-policy enforcement into bounded children | Compatibility policy and the minimum promotable public surface |
-| 13 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
+| 12 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
 
 ## Recommended delivery checkpoints
 
@@ -447,7 +446,7 @@ closed bounded epic.
 - **Deferred breadth:** #18's broader semantics and #7, #10, #16, and #13
   remain queued until application evidence
   or dependencies justify another bounded slice.
-- **Entire open backlog:** 14 Issues / 13 non-overlapping epics and 51–110
+- **Entire open backlog:** 13 Issues / 13 non-overlapping epics and 48–104
   engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 

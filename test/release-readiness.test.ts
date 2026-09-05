@@ -30,14 +30,21 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.exports).toHaveProperty("./corsa");
     expect(manifest.exports).toHaveProperty("./corsa/api");
     expect(manifest.exports).toHaveProperty("./experimental");
+    expect(manifest.exports).toHaveProperty("./experimental/corsa");
     expect(manifest.exports).toHaveProperty("./spec");
     expect(manifest.exports).toHaveProperty("./schemas/*");
     expect(manifest.files).toEqual(expect.arrayContaining(["dist/src", "README.md", "CHANGELOG.md", "LICENSE", "docs", "schemas"]));
     expect(manifest.publishConfig).toMatchObject({ access: "public", provenance: true });
     expect(manifest.bin).toEqual({ uneffect: "dist/src/cli.js" });
     expect(manifest.engines).toEqual({ node: ">=24" });
-    expect(manifest.peerDependencies?.typescript).toBe(">=7.0.0");
-    expect(manifest.peerDependencies?.["@typescript/typescript6"]).toBe(">=6.0.2");
+    expect(manifest.peerDependencies).toMatchObject({
+      "@informalsystems/quint": ">=0.32.0 <0.33.0",
+      "@oxlint/plugins": ">=1.80.0 <2.0.0",
+      "corsa-oxlint": ">=1.12.4 <2.0.0",
+      "oxlint": ">=1.80.0 <2.0.0",
+      "typescript": ">=7.0.0 <8.0.0",
+      "@typescript/typescript6": ">=6.0.2 <7.0.0",
+    });
     expect(manifest.peerDependenciesMeta?.typescript).toEqual({ optional: true });
     expect(manifest.peerDependenciesMeta?.["@typescript/typescript6"]).toEqual({ optional: true });
     expect(manifest.optionalDependencies?.["@corsa-bind/napi"]).toBe("1.13.1");
@@ -63,6 +70,31 @@ describe("0.3.0 release metadata", () => {
     });
   });
 
+  it("locks exact runtime exports and declaration signatures for every durable entrypoint", () => {
+    const baseline = JSON.parse(readFileSync("api/public-api-v0.3.json", "utf8")) as {
+      schema: string;
+      entrypoints: Record<string, { runtime: string[]; declarations: Array<{ name: string }> }>;
+    };
+    expect(baseline.schema).toBe("uneffect-public-api-snapshot/v1");
+    expect(Object.keys(baseline.entrypoints).sort()).toEqual([".", "./corsa", "./corsa/api", "./spec"]);
+    expect(baseline.entrypoints["."]?.runtime).toContain("generateTemporalModel");
+    expect(baseline.entrypoints["."]?.runtime).toContain("uneffectDialects");
+    expect(baseline.entrypoints["./corsa/api"]?.runtime).toContain("openCorsaApiFrontend");
+    expect(baseline.entrypoints["./spec"]?.runtime).toContain("uneffectSpecVersion");
+
+    const corsa = readFileSync("src/corsa-public.ts", "utf8");
+    expect(corsa).not.toContain("export *");
+    expect(corsa).toContain("checkCorsaProject");
+    const experimentalCorsa = readFileSync("src/corsa-experimental.ts", "utf8");
+    expect(experimentalCorsa).toContain('export * from "./corsa-checker-exporter.js"');
+    expect(experimentalCorsa).toContain('export * from "./corsa-effect-parity.js"');
+
+    const apiCheck = readFileSync("ci/check-public-api.mjs", "utf8");
+    expect(apiCheck).toContain("uneffect-public-api-snapshot/v1");
+    expect(apiCheck).toContain("public API snapshot drift");
+    expect(readFileSync("justfile", "utf8")).toContain("node ci/check-public-api.mjs");
+  });
+
   it("documents the promoted bounded Corsa and temporal integration contracts", () => {
     const api = readFileSync("docs/public-api.md", "utf8");
     const stability = readFileSync("docs/stability.md", "utf8");
@@ -70,11 +102,15 @@ describe("0.3.0 release metadata", () => {
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const changelog = readFileSync("CHANGELOG.md", "utf8");
     expect(api).toContain("`@mizchi/uneffect/corsa/api` | Public integration boundary");
+    expect(api).toContain("The v1 field and enum inventories are immutable");
+    expect(api).toContain("permanent v1 compatibility subset");
     expect(api).toContain("`generateTemporalModel` and `parseTemporalModelResult`");
     expect(api).toContain("`AsyncSafetyDiagnostic` results");
     expect(api).not.toContain("`@mizchi/uneffect/corsa/api` | Public migration probe");
     expect(stability).toContain("Corsa semantic-query API descriptor");
     expect(stability).toContain("temporal model coverage contract");
+    expect(stability).toContain("snapshot, v1 authoring subset");
+    expect(stability).not.toContain("Public JavaScript APIs, CLI options");
     expect(stability).not.toContain("These are still experimental pre-1.0 APIs");
     expect(readme).toContain("two bounded public integration contracts are supported");
     expect(matrix).toContain("| Corsa semantic-query API contract | Tested fragment |");
@@ -139,6 +175,7 @@ describe("0.3.0 release metadata", () => {
       '"@mizchi/uneffect"',
       '"@mizchi/uneffect/corsa"',
       '"@mizchi/uneffect/corsa/api"',
+      '"@mizchi/uneffect/experimental/corsa"',
       '"@mizchi/uneffect/spec"',
     ]) expect(smoke).toContain(entrypoint);
     expect(smoke).toContain('"@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json"');
@@ -155,6 +192,9 @@ describe("0.3.0 release metadata", () => {
     expect(justfile).toContain("node ci/smoke-package.mjs");
     expect(readFileSync("docs/stability.md", "utf8")).toContain("uneffect.package-evidence/v1");
     expect(readFileSync("docs/public-api.md", "utf8")).toContain("Other binding initialization or");
-    expect(readFileSync("docs/releasing.md", "utf8")).toContain("all three verification fields to be `passed`");
+    const releasing = readFileSync("docs/releasing.md", "utf8");
+    expect(releasing).toContain("all three verification fields to be `passed`");
+    expect(releasing).toContain("api/public-api-v0.3.json");
+    expect(releasing).toContain("baseline to hide a removal");
   });
 });

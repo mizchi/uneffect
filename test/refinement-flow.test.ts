@@ -235,4 +235,64 @@ describe("refinement flow joins", () => {
       iterations: 0,
     });
   });
+
+  it("does not let a transfer callback authorize a successor after CFG validation", () => {
+    const entryEdges: Array<{ to: string; completion: "normal" }> = [];
+    const result = solveBasicBlockFixedPoint({
+      entry: "entry",
+      initial: 1,
+      budget: { name: "cfg-fixed-point-iterations", limit: 4 },
+      lattice: {
+        bottom: () => 0,
+        equivalent: (left, right) => left === right,
+        join: (left, right) => ({ status: "joined", value: Math.max(left, right) }),
+      },
+      blocks: [
+        {
+          id: "entry",
+          edges: entryEdges,
+          transfer: (input) => {
+            entryEdges.push({ to: "exit", completion: "normal" });
+            return [{ to: "exit", value: input }];
+          },
+        },
+        { id: "exit", edges: [], transfer: () => [] },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "unknown",
+      reason: "invalid-cfg",
+      detail: "basic block entry transfers through undeclared successor exit",
+      iterations: 1,
+    });
+  });
+
+  it("snapshots CFG successors before invoking lattice callbacks", () => {
+    const entryEdges: Array<{ to: string; completion: "normal" }> = [];
+    const result = solveBasicBlockFixedPoint({
+      entry: "entry",
+      initial: 1,
+      budget: { name: "cfg-fixed-point-iterations", limit: 4 },
+      lattice: {
+        bottom: () => {
+          if (entryEdges.length === 0) entryEdges.push({ to: "exit", completion: "normal" });
+          return 0;
+        },
+        equivalent: (left, right) => left === right,
+        join: (left, right) => ({ status: "joined", value: Math.max(left, right) }),
+      },
+      blocks: [
+        { id: "entry", edges: entryEdges, transfer: (input) => [{ to: "exit", value: input }] },
+        { id: "exit", edges: [], transfer: () => [] },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: "unknown",
+      reason: "invalid-cfg",
+      detail: "basic block entry transfers through undeclared successor exit",
+      iterations: 1,
+    });
+  });
 });

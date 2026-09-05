@@ -4,7 +4,15 @@ import { checkCommand } from "./check-command.js";
 import { CliUsageError, exitCode, formatCommandHelp, processStreams, type CliCommand, type CliStreams } from "./cli-support.js";
 import { readPackageManifest } from "./package-manifest.js";
 
-const commandLoaders: ReadonlyArray<{ name: string; summary: string; load: () => Promise<CliCommand> }> = [
+interface CliCommandLoader {
+  readonly name: string;
+  readonly summary: string;
+  /** Loading a command may evaluate a runtime-selected module. */
+  /* uneffect:effect InvokeUserCode */
+  readonly load: () => Promise<CliCommand>;
+}
+
+const commandLoaders: readonly CliCommandLoader[] = [
   { name: "check", summary: checkCommand.summary, load: async () => checkCommand },
   {
     name: "doctor",
@@ -48,8 +56,11 @@ const commandLoaders: ReadonlyArray<{ name: string; summary: string; load: () =>
   },
 ];
 
+/* uneffect:effect InvokeUserCode */
 export async function loadCliCommands(): Promise<readonly CliCommand[]> {
-  return Promise.all(commandLoaders.map((item) => item.load()));
+  const commands: CliCommand[] = [];
+  for (const item of commandLoaders) commands.push(await item.load());
+  return commands;
 }
 
 /** Command objects. Prefer `loadCliCommands` when the TypeScript 6 path must stay unloaded. */
@@ -83,6 +94,7 @@ export function formatCliHelp(): string {
 
 const sourceFile = /\.[cm]?tsx?$/u;
 
+/* uneffect:effect InvokeUserCode */
 async function resolveCommand(name: string | undefined): Promise<CliCommand | undefined> {
   if (name === undefined) return undefined;
   const loader = commandLoaders.find((item) => item.name === name);
@@ -90,7 +102,7 @@ async function resolveCommand(name: string | undefined): Promise<CliCommand | un
 }
 
 /** Dispatch one command line. Returns the process exit code instead of exiting, so tests can drive it. */
-/* uneffect:effect FsRead | Env<"UNEFFECT_DEBUG"> */
+/* uneffect:effect FsRead | Env<"UNEFFECT_DEBUG"> | InvokeUserCode */
 /* uneffect:effect_parameter io extends Console */
 export async function runCli(args: readonly string[], io: CliStreams = processStreams): Promise<number> {
   const [first, ...rest] = args;

@@ -14,10 +14,11 @@ that have not moved to the native frontend yet.
 | Import path | Status | Intended use |
 | --- | --- | --- |
 | `@mizchi/uneffect` | Public | Small, durable helper and high-level verification facades listed below. It intentionally excludes backend and lowering internals. |
-| `@mizchi/uneffect/corsa` | Public integration boundary | Versioned Corsa/tsgo fact export. Pin the package and frontend versions. |
+| `@mizchi/uneffect/corsa` | Public compatibility facade | High-level Corsa project checking and JSON report formatting. Raw checker facts and parity internals are excluded. |
 | `@mizchi/uneffect/corsa/api` | Public integration boundary | Versioned direct Corsa semantic queries without constructing a JavaScript TypeScript `Program`. The `uneffect-corsa-api-frontend/v1` descriptor lists the active capabilities and limitations; syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |
-| `@mizchi/uneffect/spec` | Initial public authoring fragment | Type-checked, declarative `*.uneffect.ts` temporal, capability, and Hoare-contract specifications. Uneffect parses these modules but does not execute them. |
+| `@mizchi/uneffect/experimental/corsa` | Experimental | Raw Corsa/Oxlint checker-fact export and frontend-parity internals. |
+| `@mizchi/uneffect/spec` | Public v1 authoring subset | Type-checked, declarative `*.uneffect.ts` temporal, capability, Hoare-contract, and refinement specifications. Uneffect parses these modules but does not execute them. |
 | `@mizchi/uneffect/schemas/*` | Versioned data contract | Published JSON schemas. Compatibility follows the schema identifier, not an unversioned TypeScript implementation detail. |
 | `@mizchi/uneffect/package.json` | Public metadata | Exact package version and package metadata. |
 
@@ -26,7 +27,7 @@ exports intentionally block those implementation paths.
 
 The release package probe runs the real `prepack` lifecycle, installs the
 resulting tarball into a fresh Node 24 project, type-checks the public root,
-Corsa, Corsa API, spec, and versioned-schema imports with TypeScript 6, and
+Corsa facade, Corsa API, spec, experimental Corsa, and versioned-schema imports with TypeScript 6, and
 executes their supported runtime slices. It also confirms that low-level CFG,
 Promise/resource lowering, solver, and direct Quint helpers are present only on
 the experimental subpath. The exact tarball contents and SHA-256 digest are
@@ -77,6 +78,10 @@ in an attached `.uneffect.ts` module.
 
 See [TypeScript temporal specification modules](./temporal-dsl.md) for the
 initial `@mizchi/uneffect/spec` syntax and its explicit unsupported boundary.
+The 0.3 grammar and helper signatures are a permanent v1 compatibility subset:
+future DSL work may extend them additively or use a new versioned entrypoint,
+but must keep existing v1 modules readable and type-checkable. The exported
+`uneffectSpecVersion` constant identifies this subset as `uneffect-spec/v1`.
 
 ## Stable temporal facade
 
@@ -127,8 +132,9 @@ Promise bindings; otherwise it remains an explicit not-projected exclusion.
 Current exclusions include `async-ownership`, `promise-host-synchronization`,
 `abortable-fetch-synchronization`,
 `resource-lifecycle`, `resource-host-scheduling`, and
-`resource-host-callback-interleavings`. New exclusions may be added in a patch
-release because making an unproved boundary visible is a safety correction.
+`resource-host-callback-interleavings`. A patch may emit more instances of
+these existing exclusions because making an unproved boundary visible is a
+safety correction. A new exclusion code requires a new schema version.
 `modeled` means that a projection was emitted under the documented fragment; it
 does not mean the backend verified its properties. Use project verification and
 inspect each property result for that claim.
@@ -176,9 +182,10 @@ installation diagnostic; when the compiler cannot be resolved, the resolver
 reports that no Corsa compiler was supplied. Importing `/corsa/api` alone does
 not crash or silently succeed in either case. Other binding initialization or
 ABI failures retain their original error instead of being mislabeled as a
-missing package. The broader `/corsa` exporter additionally requires the
-compatible `corsa-oxlint`, `oxlint`, and `@oxlint/plugins` peers declared by the
-package.
+missing package. The `/corsa` compatibility facade excludes raw checker facts
+and parity internals. Existing 0.2 exporter consumers must migrate to
+`@mizchi/uneffect/experimental/corsa`, which requires the compatible
+`corsa-oxlint`, `oxlint`, and `@oxlint/plugins` peers declared by the package.
 
 ## Contract runtime failures
 
@@ -264,11 +271,16 @@ inspect the versioned result metadata.
 
 ## Compatibility policy before 1.0
 
-- Patch releases preserve the documented high-level entrypoints and option
-  meanings. They may add diagnostics, exclusions, result fields, or reject an
-  unsound previously accepted shape.
-- Minor releases may change unversioned TypeScript APIs or annotation syntax,
-  with migration notes in the changelog.
+- Patch releases preserve the documented entrypoints, signatures, option
+  meanings, and v1 authoring subset. They may emit additional diagnostics or
+  existing exclusion codes, and may reject an unsound previously accepted
+  shape.
+- The v1 field and enum inventories are immutable. New result fields, enum
+  members, or schema structures require a new schema identifier and parser;
+  the v1 parser remains available.
+- Minor releases may add APIs, syntax, and schema versions, but preserve the
+  0.3 public API snapshot and permanent v1 compatibility subset. Intentional
+  removal waits for a major release and requires a migration path.
 - The `experimental` subpath has no source or semantic compatibility promise.
 - Versioned JSON schemas and evidence records retain their declared schema
   compatibility independently of TypeScript APIs.

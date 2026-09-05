@@ -2732,6 +2732,47 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("keeps the fixed-point engine free of host effects outside caller callbacks", () => {
+    const fileName = "src/refinement-flow.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeSourceTreeEffects();
+    expect(result.diagnostics).toEqual([]);
+    expect(result.summaries.find((summary) => summary.fileName === fileName
+      && summary.functionName === "solveBasicBlockFixedPoint")).toMatchObject({
+      evidence: "verified",
+      effects: expect.arrayContaining([
+        expect.objectContaining({ kind: "capability", name: "InvokeUserCode" }),
+        expect.objectContaining({ kind: "throw", errorType: "Error" }),
+      ]),
+    });
+
+    const compilerOptions: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+      types: ["node"],
+      noEmit: true,
+    };
+    const host = ts.createCompilerHost(compilerOptions);
+    const original = host.getSourceFile.bind(host);
+    const mutant = source.replace(
+      "  const { budget, lattice } = options;",
+      "  const { budget, lattice } = options;\n  console.log(\"fixed-point start\");",
+    );
+    expect(mutant).not.toBe(source);
+    host.getSourceFile = (name, languageVersion, onError, fresh) => {
+      const normalized = name.replaceAll("\\", "/");
+      return normalized === fileName || normalized.endsWith(`/${fileName}`)
+        ? ts.createSourceFile(name, mutant, languageVersion, true, ts.ScriptKind.TS)
+        : original(name, languageVersion, onError, fresh);
+    };
+    const broken = analyzeProgramEffects(ts.createProgram([fileName], compilerOptions, host), { requireAnnotations: false });
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "solveBasicBlockFixedPoint", kind: "missing", effect: "Console",
+    }));
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
+
   it("enforces pure diagnostic normalization, formatting, and quality scoring", () => {
     const fileNames = ["src/diagnostics.ts", "src/diagnostic-quality.ts"];
     const result = analyzeSourceTreeEffects();
@@ -2813,6 +2854,12 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "verified", effects: [] });
     expect(selected.find((summary) => summary.functionName === "cliVersion"))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
+    for (const name of ["loadCliCommands", "resolveCommand"]) {
+      expect(selected.find((summary) => summary.functionName === name)).toMatchObject({
+        evidence: "verified",
+        effects: [expect.objectContaining({ kind: "capability", name: "InvokeUserCode" })],
+      });
+    }
 
     expect(analyzeEffects(fileName, source.replace(
       "/* uneffect:effect none */\nexport function formatCliHelp",
@@ -2828,20 +2875,99 @@ describe("Uneffect dogfood", () => {
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const runCli = result.summaries.find((summary) => summary.fileName === fileName && summary.functionName === "runCli");
-    expect(runCli).toMatchObject({
-      evidence: "unknown",
-      unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-call" })]),
-    });
+    expect(runCli).toMatchObject({ evidence: "verified" });
     expect(runCli?.effects.map((effect) => formatEffect(effect)).sort()).toEqual([
-      "Env<\"UNEFFECT_DEBUG\">", "FsRead",
+      "Env<\"UNEFFECT_DEBUG\">", "FsRead", "InvokeUserCode",
     ]);
     expect(runCli?.effects).not.toContainEqual(expect.objectContaining({ kind: "capability", name: "Console" }));
 
+    const compilerOptions: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+      types: ["node"],
+      noEmit: true,
+    };
+    const host = ts.createCompilerHost(compilerOptions);
+    const original = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => name.replaceAll("\\", "/").endsWith("/src/cli-support.ts")
+      ? ts.createSourceFile(name, readFileSync(name, "utf8").replace(
+        "  /* uneffect:effect InvokeUserCode */\n  readonly run:",
+        "  readonly run:",
+      ), languageVersion, true, ts.ScriptKind.TS)
+      : original(name, languageVersion, onError, shouldCreateNewSourceFile);
+    const brokenProgram = ts.createProgram([fileName], compilerOptions, host);
+    const broken = analyzeProgramEffects(brokenProgram, { requireAnnotations: false });
+    expect(broken.summaries.find((summary) => summary.fileName === fileName && summary.functionName === "runCli"))
+      .toMatchObject({
+        evidence: "unknown",
+        unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-call" })]),
+      });
+
     expect(analyzeEffects(fileName, source.replace(
-      "/* uneffect:effect FsRead | Env<\"UNEFFECT_DEBUG\"> */",
-      "/* uneffect:effect Console | FsRead | Env<\"UNEFFECT_DEBUG\"> */",
+      "/* uneffect:effect FsRead | Env<\"UNEFFECT_DEBUG\"> | InvokeUserCode */",
+      "/* uneffect:effect Console | FsRead | Env<\"UNEFFECT_DEBUG\"> | InvokeUserCode */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
       functionName: "runCli", effect: "Console", kind: "unused",
+    }));
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
+
+  it("composes doctor environment inspection without collapsing its output callback", () => {
+    const fileName = "src/doctor-command.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeSourceTreeEffects();
+    expect(result.diagnostics).toEqual([]);
+    const run = result.summaries.find((summary) => summary.fileName === fileName && summary.functionName === "run");
+    expect(run).toMatchObject({ evidence: "verified" });
+    expect(run?.effects.map((effect) => formatEffect(effect))).toEqual([
+      "FsRead",
+      'Env<"UNEFFECT_Z3_BACKEND">',
+      'Env<"UNEFFECT_Z3_PATH">',
+      'Env<"UNEFFECT_SOLVER_EVIDENCE_DIR">',
+      "FsWrite",
+      "InvokeUserCode",
+      "Mutate<typeof nativeDrivers>",
+      'Run<"java">',
+    ]);
+    expect(run?.effects).not.toContainEqual(expect.objectContaining({ kind: "capability", name: "Console" }));
+
+    const compilerOptions: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      types: ["node"],
+      noEmit: true,
+      skipLibCheck: true,
+    };
+    const host = ts.createCompilerHost(compilerOptions);
+    const original = host.getSourceFile.bind(host);
+    const brokenSource = source.replace("FsRead | FsWrite", "FsWrite");
+    host.getSourceFile = (name, languageVersion, onError, fresh) => name === fileName
+      ? ts.createSourceFile(fileName, brokenSource, languageVersion, true, ts.ScriptKind.TS)
+      : original(name, languageVersion, onError, fresh);
+    const broken = analyzeProgramEffects(ts.createProgram([fileName], compilerOptions, host), { requireAnnotations: false });
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      kind: "missing", functionName: "run", effect: "FsRead",
+    }));
+  }, Math.max(120_000, externalCheckerTestTimeoutMs()));
+
+  it("verifies TODO hierarchy parsing and stale-parent detection as pure", () => {
+    const fileName = "src/todo-consistency.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeSourceTreeEffects();
+    expect(result.diagnostics).toEqual([]);
+    const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    for (const name of ["parseTodoTasks", "findStaleUncheckedParents"]) {
+      expect(selected.find((summary) => summary.functionName === name))
+        .toMatchObject({ evidence: "verified", effects: [] });
+    }
+
+    expect(analyzeEffects(fileName, source.replace(
+      "/* uneffect:effect none */",
+      "/* uneffect:effect Console */",
+    ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
+      kind: "unused", functionName: "parseTodoTasks", effect: "Console",
     }));
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 

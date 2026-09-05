@@ -1,8 +1,10 @@
 # Stability and safe adoption
 
-Uneffect 0.3.0 is an experimental release. Public JavaScript APIs, CLI options,
-comment grammar, and semantic behavior may change before 1.0. Versioned artifact
-schemas retain their own compatibility boundary. This page distinguishes a
+Uneffect 0.3.0 is an experimental release. The documented 0.3 public API
+snapshot, v1 authoring subset, and versioned artifact schemas retain their
+compatibility boundaries; experimental entrypoints and semantics outside the
+supported fragment may change before 1.0. A supported semantic claim may still
+narrow when accepting it is found to be unsound. This page distinguishes a
 tested fragment that can be used conservatively today from experimental models
 and unsupported work. "Supported" below means covered by executable positive
 and negative tests for the exact documented shape; it does not mean complete
@@ -62,10 +64,12 @@ Within that workflow, these bounded capabilities have a supported fragment:
   not-applicable, and excluded Promise/resource domains and rejects malformed
   stored artifacts.
 
-These are supported but remain pre-1.0 APIs. Pinning is required, and a future
-minor release may change syntax or report fields outside an explicitly
-versioned schema. The `@mizchi/uneffect/experimental` subpath remains outside
-this compatibility boundary.
+These are supported but remain pre-1.0 APIs. Pinning is required. Future minor
+releases preserve the 0.3 public API snapshot and v1 authoring subset while
+adding new entrypoints or schema versions; published v1 schema inventories do
+not change in place. The `@mizchi/uneffect/experimental` and
+`@mizchi/uneffect/experimental/corsa` subpaths remain outside this compatibility
+boundary.
 
 ## Installed-package evidence
 
@@ -142,8 +146,7 @@ prototypes rather than generally safe language semantics:
 - recursive, higher-order, inferred, or multi-argument property predicates ([#4](https://github.com/mizchi/uneffect/issues/4));
 - complete SHA-256, resizable/shared buffers, Atomics, and shared-memory proofs ([#6](https://github.com/mizchi/uneffect/issues/6));
 - proof-guided compression, mangling, reordering, or dead-code elimination ([#13](https://github.com/mizchi/uneffect/issues/13));
-- independently checkable proof certificates for every solver result ([#7](https://github.com/mizchi/uneffect/issues/7));
-- compatibility guarantees for the pre-1.0 public surface ([#62](https://github.com/mizchi/uneffect/issues/62)).
+- independently checkable proof certificates for every solver result ([#7](https://github.com/mizchi/uneffect/issues/7)).
 
 Z3, Quint, and TLC artifacts are useful reproducible evidence. They are not by
 themselves certificates checked independently of Uneffect's translation.

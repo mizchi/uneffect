@@ -1,0 +1,1386 @@
+{
+  "schema": "uneffect-public-api-snapshot/v1",
+  "entrypoints": {
+    ".": {
+      "runtime": [
+        "F32_BITS",
+        "FloatSchema",
+        "I32_MAX",
+        "I32_MIN",
+        "IntSchema",
+        "NatSchema",
+        "U32Schema",
+        "U32_BITS",
+        "U32_MAX",
+        "U8Schema",
+        "U8_BITS",
+        "U8_MAX",
+        "analyzeEffects",
+        "analyzeEffectsInProgram",
+        "analyzeProgramEffects",
+        "analyzeTrustedScriptSinks",
+        "analyzeUneffectProject",
+        "bindContractSummaryBundleToProgram",
+        "boundedUint32ArraySchema",
+        "boundedUint8ArraySchema",
+        "builtinContractRegistry",
+        "capabilityPermits",
+        "checkCorsaProject",
+        "checkFiles",
+        "checkUneffectProperty",
+        "compareEffectBaseline",
+        "compareUneffectFrontends",
+        "createCheckHost",
+        "createCheckProgram",
+        "createContractSummaryBundle",
+        "createEffectBaseline",
+        "defineUneffectValidator",
+        "effectBaselineToolVersion",
+        "extendBuiltinContractRegistry",
+        "f32",
+        "formatEffect",
+        "generateTemporalModel",
+        "generateUneffectPropertyTests",
+        "generateUneffectPropertyTestsWithZ3",
+        "i32",
+        "installUneffectModules",
+        "instrumentContractPredicates",
+        "isContractRuntimeError",
+        "loadBuiltinRegistryConfig",
+        "loadContractSummaryBundle",
+        "loadEffectBaseline",
+        "loadUneffectModules",
+        "parseBoundedArrayBuffer",
+        "parseBoundedDataView",
+        "parseBoundedMap",
+        "parseBoundedSet",
+        "parseBoundedUint32Array",
+        "parseBoundedUint8Array",
+        "parseBuiltinRegistryConfig",
+        "parseEffectBaseline",
+        "parseEffectExpression",
+        "parseEffectSet",
+        "parseFixedArrayBuffer",
+        "parseFloat",
+        "parseInt",
+        "parseNat",
+        "parseTemporalModelResult",
+        "parseU32",
+        "parseU8",
+        "parseUneffectModuleManifest",
+        "registerEffectSchema",
+        "temporalModelCoverageDomains",
+        "toU32",
+        "u32",
+        "u32Table",
+        "u8",
+        "u8Table",
+        "uneffectDialects",
+        "validateContractSummaryBundle",
+        "validateUneffectAnnotations",
+        "validateUneffectProject",
+        "verifyContracts",
+        "verifyTypedArraySafety",
+        "verifyTypedArraySafetyInProgram",
+        "verifyTypedArraySafetyInTypeScriptProgram",
+        "verifyUneffectProject",
+        "writeEffectBaseline"
+      ],
+      "declarations": [
+        {
+          "name": "analyzeEffects",
+          "declarations": [
+            "export declare function analyzeEffects(fileName: string, text: string, options?: EffectAnalysisOptions): EffectDiagnostic[];"
+          ]
+        },
+        {
+          "name": "analyzeEffectsInProgram",
+          "declarations": [
+            "export declare function analyzeEffectsInProgram(program: ts.Program, source: ts.SourceFile, options?: EffectAnalysisOptions): EffectDiagnostic[];"
+          ]
+        },
+        {
+          "name": "analyzeProgramEffects",
+          "declarations": [
+            "export declare function analyzeProgramEffects(program: ts.Program, options?: EffectAnalysisOptions): EffectAnalysisResult;"
+          ]
+        },
+        {
+          "name": "analyzeTrustedScriptSinks",
+          "declarations": [
+            "export declare function analyzeTrustedScriptSinks(program: ts.Program, source: ts.SourceFile): TrustedTypesDiagnostic[];"
+          ]
+        },
+        {
+          "name": "analyzeUneffectProject",
+          "declarations": [
+            "export declare function analyzeUneffectProject(options: AnalyzeUneffectProjectOptions): UneffectProjectAnalysis;"
+          ]
+        },
+        {
+          "name": "AnalyzeUneffectProjectOptions",
+          "declarations": [
+            "export interface AnalyzeUneffectProjectOptions {\n    files: Record<string, string>;\n    validators?: readonly UneffectValidator[];\n    mode?: \"gradual\" | \"strict\";\n    entrypoint?: string;\n}"
+          ]
+        },
+        {
+          "name": "AsyncSafetyDiagnostic",
+          "declarations": [
+            "export interface AsyncSafetyDiagnostic {\n    fileName: string;\n    functionName: string;\n    line: number;\n    kind: \"floating-promise\" | \"floating-callback-promise\" | \"invalid-disposable\" | \"invalid-ownership-contract\" | \"invalid-resource-contract\" | \"disposed-resource-use\" | \"disposed-resource-escape\" | \"unsupported-control-transfer\";\n    severity: \"error\";\n    message: string;\n    notes?: DiagnosticNote[];\n}"
+          ]
+        },
+        {
+          "name": "bindContractSummaryBundleToProgram",
+          "declarations": [
+            "export declare function bindContractSummaryBundleToProgram(bundle: ContractSummaryBundleV1, program: ts.Program, builtinRegistry?: BuiltinContractRegistry): BoundContractSummaryBundleV1;"
+          ]
+        },
+        {
+          "name": "BoundedArrayBuffer",
+          "declarations": [
+            "export type BoundedArrayBuffer<MaxBytes extends number> = ArrayBuffer & {\n    readonly [boundedArrayBufferBrand]: MaxBytes;\n};"
+          ]
+        },
+        {
+          "name": "BoundedDataView",
+          "declarations": [
+            "export type BoundedDataView<MaxBytes extends number> = DataView & {\n    readonly [boundedDataViewBrand]: MaxBytes;\n};"
+          ]
+        },
+        {
+          "name": "BoundedMap",
+          "declarations": [
+            "export type BoundedMap<Key, Value, MaxSize extends number> = Map<Key, Value> & {\n    readonly [boundedMapBrand]: MaxSize;\n};"
+          ]
+        },
+        {
+          "name": "BoundedSet",
+          "declarations": [
+            "export type BoundedSet<Element, MaxSize extends number> = Set<Element> & {\n    readonly [boundedSetBrand]: MaxSize;\n};"
+          ]
+        },
+        {
+          "name": "BoundedUint32Array",
+          "declarations": [
+            "export type BoundedUint32Array<MaxLength extends number> = Uint32Array & {\n    readonly [boundedUint32ArrayBrand]: MaxLength;\n};"
+          ]
+        },
+        {
+          "name": "boundedUint32ArraySchema",
+          "declarations": [
+            "export declare function boundedUint32ArraySchema<MaxLength extends number>(maximum: MaxLength): v.SchemaWithPipe<readonly [v.InstanceSchema<Uint32ArrayConstructor, undefined>, v.MaxLengthAction<Uint32Array<ArrayBuffer>, MaxLength, `Uint32Array length must be at most ${MaxLength}`>]>;"
+          ]
+        },
+        {
+          "name": "BoundedUint8Array",
+          "declarations": [
+            "export type BoundedUint8Array<MaxLength extends number> = Uint8Array & {\n    readonly [boundedUint8ArrayBrand]: MaxLength;\n};"
+          ]
+        },
+        {
+          "name": "boundedUint8ArraySchema",
+          "declarations": [
+            "export declare function boundedUint8ArraySchema<MaxLength extends number>(maximum: MaxLength): v.SchemaWithPipe<readonly [v.InstanceSchema<Uint8ArrayConstructor, undefined>, v.MaxLengthAction<Uint8Array<ArrayBuffer>, MaxLength, `Uint8Array length must be at most ${MaxLength}`>]>;"
+          ]
+        },
+        {
+          "name": "builtinContractRegistry",
+          "declarations": [
+            "builtinContractRegistry: BuiltinContractRegistry"
+          ]
+        },
+        {
+          "name": "capabilityPermits",
+          "declarations": [
+            "export declare function capabilityPermits(allowed: CapabilityEffect, actual: CapabilityEffect, options?: CapabilityComparisonOptions): boolean;"
+          ]
+        },
+        {
+          "name": "checkCorsaProject",
+          "declarations": [
+            "export declare function checkCorsaProject(options: CorsaCheckOptions): Promise<CorsaCheckResult>;"
+          ]
+        },
+        {
+          "name": "checkFiles",
+          "declarations": [
+            "export declare function checkFiles(fileNames: readonly string[], options?: CheckOptions): Promise<CheckResult>;"
+          ]
+        },
+        {
+          "name": "CheckOptions",
+          "declarations": [
+            "export interface CheckOptions {\n    /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */\n    mode?: \"gradual\" | \"strict\";\n    /** `false` only reports functions that already carry an effect declaration. */\n    requireAnnotations?: boolean;\n    /** Reusable host; `createCheckHost()` shares parsed library files across many one-file programs. */\n    host?: ts.CompilerHost;\n    /** Caller-owned, versioned semantic contracts. Defaults to Uneffect's registry. */\n    builtinRegistry?: BuiltinContractRegistry;\n    /** Caller-owned review records referenced by source-level trust IDs. */\n    assumptionRegistry?: AssumptionRegistry;\n    /** Consumer compiler semantics, normally loaded from its tsconfig.json. */\n    compilerOptions?: ts.CompilerOptions;\n    /** Exact project/compiler identity used to qualify TypeChecker-derived assurance. */\n    project?: TypeScriptProjectProvenance;\n    /** Native TypeScript project-reference edges for this compiler domain. */\n    projectReferences?: readonly ts.ProjectReference[];\n    /** Reuse the exact Program used to resolve cross-project declaration identities. */\n    program?: ts.Program;\n    /** Verified child-program function contracts keyed by resolved declaration id. */\n    externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;\n    /** Verified child-program module-evaluation contracts keyed by declaration file. */\n    externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;\n    /** Producer-verified package contracts bound to installed declarations. */\n    contractSummaryBundles?: readonly ContractSummaryBundleV1[];\n    /** Reviewed resource lifecycle contracts bound to installed declarations. */\n    resourceCallableArtifacts?: readonly ResourceCallableContractArtifact[];\n    /** UTC review date used for deterministic resource-artifact expiry checks. */\n    resourceArtifactAsOf?: string;\n    /** Optional dual-frontend evidence; Corsa mismatches remain assurance unknowns. */\n    corsaFrontend?: CorsaApiFrontend;\n}"
+          ]
+        },
+        {
+          "name": "CheckResult",
+          "declarations": [
+            "export interface CheckResult {\n    diagnostics: CheckerDiagnostic[];\n    /** Source text per absolute file name, so a report can quote the offending line. */\n    sources: Map<string, string>;\n    /** Evidence for what was checked, including the obligations that were proved. */\n    artifacts: VerificationArtifact[];\n    summaries: EffectSummary[];\n    /** Every trusted semantic input used by this exact check boundary. */\n    assumptions: AssumptionLedger;\n    typedArrays: TypedArrayProgramSafetyResult;\n    ownership: Array<OwnershipDiagnostic & {\n        fileName: string;\n    }>;\n    asyncIterators: IteratorCheckEvidence[];\n    resourceProtocols: ResourceLifecycleEvidence[];\n    corsaEffectParity?: CorsaEffectParityResult;\n    errors: number;\n    warnings: number;\n    project?: TypeScriptProjectProvenance;\n}"
+          ]
+        },
+        {
+          "name": "checkUneffectProperty",
+          "declarations": [
+            "export declare function checkUneffectProperty(options: CheckUneffectPropertyOptions): Promise<CheckUneffectPropertyResult>;"
+          ]
+        },
+        {
+          "name": "CheckUneffectPropertyOptions",
+          "declarations": [
+            "export interface CheckUneffectPropertyOptions {\n    functionName: string;\n    domains: readonly PropertyTestDomain[];\n    property: (...values: any[]) => boolean | Promise<boolean>;\n    precondition?: (...values: any[]) => boolean;\n    cases?: number;\n    seed?: number;\n    shrinking?: boolean;\n    counterexamplePath?: string;\n    arrayLengthCap?: number;\n    refinementValues?: readonly (readonly PropertyLiteral[])[];\n    refinementTuples?: readonly (readonly PropertyValue[])[];\n}"
+          ]
+        },
+        {
+          "name": "CheckUneffectPropertyResult",
+          "declarations": [
+            "export interface CheckUneffectPropertyResult {\n    status: \"passed\" | \"counterexample\";\n    counterexample?: PropertyCounterexample;\n    replayed: boolean;\n    tested: number;\n}"
+          ]
+        },
+        {
+          "name": "compareEffectBaseline",
+          "declarations": [
+            "export declare function compareEffectBaseline(baseline: EffectBaseline, summaries: readonly EffectBaselineSummary[], options?: BaselineOptions & {\n    baselineFile?: string;\n}): EffectBaselineAssessment;"
+          ]
+        },
+        {
+          "name": "compareUneffectFrontends",
+          "declarations": [
+            "export declare function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult>;"
+          ]
+        },
+        {
+          "name": "ContractRuntimeError",
+          "declarations": [
+            "export type ContractRuntimeError = RangeError & {\n    uneffect: ContractRuntimeFailureMetadata;\n};"
+          ]
+        },
+        {
+          "name": "ContractRuntimeFailureMetadata",
+          "declarations": [
+            "export interface ContractRuntimeFailureMetadata {\n    kind: \"precondition\" | \"postcondition\";\n    fileName: string;\n    line: number;\n    expression: string;\n    column: number;\n    span: {\n        start: number;\n        end: number;\n    };\n}"
+          ]
+        },
+        {
+          "name": "ContractSummaryBundleV1",
+          "declarations": [
+            "export interface ContractSummaryBundleV1 {\n    schema: \"uneffect-contract-summary/v1\";\n    package: {\n        name: string;\n        version: string;\n    };\n    compiler: {\n        typescriptVersion: string;\n        compilerOptionsDigest: string;\n    };\n    producer: {\n        fileName: string;\n        sourceDigest: string;\n    };\n    /** Exact trusted semantics inputs used while producing this summary. */\n    modules?: readonly SemanticModuleLedgerEntry[];\n    /** Package-relative runtime files whose exact bytes were reviewed with this summary. */\n    runtimeArtifacts?: readonly {\n        packagePath: string;\n        digest: string;\n    }[];\n    /** Exact same-compiler outputs re-emitted from the producer Program. */\n    typescriptEmit?: {\n        outputs: readonly {\n            kind: \"declaration\" | \"runtime\";\n            packagePath: string;\n            digest: string;\n        }[];\n    };\n    exports: ContractSummaryExportV1[];\n    contentDigest: string;\n}"
+          ]
+        },
+        {
+          "name": "ContractSummaryExportV1",
+          "declarations": [
+            "export interface ContractSummaryExportV1 {\n    symbol: {\n        module: string;\n        export: string;\n        path?: string[];\n    };\n    functionName: string;\n    evidence: \"verified\";\n    declarationSpan: {\n        start: number;\n        end: number;\n    };\n    declarationDigest: string;\n    signature: string;\n    signatureDigest: string;\n    /** Number of type parameters on the primary public signature. */\n    genericArity?: number;\n    /** Ordered public overloads; the implementation signature is not exported. */\n    overloads?: Array<{\n        signature: string;\n        digest: string;\n        genericArity?: number;\n    }>;\n    parameters: string[];\n    requires: string[];\n    ensures: string[];\n    artifactIds: string[];\n    /** Present when the public entry re-exports a callable implemented in another Program source. */\n    implementation?: {\n        fileName: string;\n        sourceDigest: string;\n    };\n    effect?: {\n        effects: string[];\n        parameters: string[];\n        rejects?: string[];\n        returnCallable?: ContractReturnedCallableV1;\n        returnMembers?: ContractReturnedMemberV1[];\n        callbacks?: ContractCallbackSummaryV1[];\n    };\n    /** Reviewed lifecycle declaration; linkage is authenticated but implementation semantics remain trusted. */\n    resource?: {\n        evidence: \"trusted\";\n        operations: ResourceCallableOperation[];\n        returnMembers?: Array<{\n            key: string;\n            operations: ResourceCallableOperation[];\n        }>;\n    };\n}"
+          ]
+        },
+        {
+          "name": "ContractVerificationOptions",
+          "declarations": [
+            "export interface ContractVerificationOptions {\n    externalContractBindings?: readonly ExternalContractBinding[];\n}"
+          ]
+        },
+        {
+          "name": "ContractVerificationResult",
+          "declarations": [
+            "export interface ContractVerificationResult {\n    diagnostics: ContractDiagnostic[];\n    artifacts: VerificationArtifact[];\n}"
+          ]
+        },
+        {
+          "name": "createCheckHost",
+          "declarations": [
+            "export declare function createCheckHost(options?: ts.CompilerOptions): ts.CompilerHost;"
+          ]
+        },
+        {
+          "name": "createCheckProgram",
+          "declarations": [
+            "export declare function createCheckProgram(fileNames: readonly string[], options?: CheckOptions): ts.Program;"
+          ]
+        },
+        {
+          "name": "createContractSummaryBundle",
+          "declarations": [
+            "export declare function createContractSummaryBundle(options: CreateContractSummaryBundleOptions): ContractSummaryBundleV1;"
+          ]
+        },
+        {
+          "name": "createEffectBaseline",
+          "declarations": [
+            "export declare function createEffectBaseline(summaries: readonly EffectBaselineSummary[], options?: BaselineOptions): EffectBaseline;"
+          ]
+        },
+        {
+          "name": "defineUneffectValidator",
+          "declarations": [
+            "export declare function defineUneffectValidator(definition: UneffectValidatorDefinition): UneffectValidator;"
+          ]
+        },
+        {
+          "name": "Effect",
+          "declarations": [
+            "export type Effect = CapabilityEffect | MutateEffect | ThrowEffect;"
+          ]
+        },
+        {
+          "name": "EffectAnalysisOptions",
+          "declarations": [
+            "export interface EffectAnalysisOptions {\n    mode?: \"gradual\" | \"strict\";\n    requireAnnotations?: boolean;\n    /** Versioned builtin and external-module contracts owned by the caller. */\n    builtinRegistry?: BuiltinContractRegistry;\n    /** Effects proved in another TypeScript Program, keyed by the target declaration id. */\n    externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;\n    /** Module-evaluation effects proved in another Program, keyed by resolved declaration file. */\n    externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;\n    /** Specification-local schemas. They never mutate the process-global registry. */\n    effectSchemas?: ReadonlyMap<string, EffectSchema>;\n    /** Optional Corsa sidecar for the admitted Fetch/Console catalog. */\n    corsaFrontend?: CorsaApiFrontend;\n}"
+          ]
+        },
+        {
+          "name": "EffectAnalysisResult",
+          "declarations": [
+            "export interface EffectAnalysisResult {\n    diagnostics: EffectDiagnostic[];\n    summaries: EffectSummary[];\n}"
+          ]
+        },
+        {
+          "name": "EffectBaseline",
+          "declarations": [
+            "export interface EffectBaseline {\n    schema: \"uneffect-effect-baseline/v1\";\n    uneffectVersion: string;\n    entries: EffectBaselineEntry[];\n}"
+          ]
+        },
+        {
+          "name": "EffectBaselineAssessment",
+          "declarations": [
+            "export interface EffectBaselineAssessment {\n    schema: \"uneffect-effect-baseline-assessment/v1\";\n    status: \"passed\" | \"failed\";\n    baselineFile?: string;\n    regressions: EffectBaselineRegression[];\n}"
+          ]
+        },
+        {
+          "name": "EffectBaselineEntry",
+          "declarations": [
+            "export interface EffectBaselineEntry {\n    fileName: string;\n    functionName: string;\n    occurrence: number;\n    effects: string[];\n    unknownReasons: string[];\n}"
+          ]
+        },
+        {
+          "name": "EffectBaselineRegression",
+          "declarations": [
+            "export interface EffectBaselineRegression {\n    kind: \"effect-expansion\" | \"new-unknown\" | \"new-effectful-function\" | \"tool-version-mismatch\";\n    fileName: string;\n    functionName: string;\n    occurrence: number;\n    added: string[];\n    message: string;\n}"
+          ]
+        },
+        {
+          "name": "EffectBaselineSummary",
+          "declarations": [
+            "export interface EffectBaselineSummary {\n    fileName?: string;\n    span?: {\n        start: number;\n        end: number;\n    };\n    functionName: string;\n    effects: readonly string[];\n    evidence: \"verified\" | \"trusted\" | \"inferred\" | \"unknown\";\n    unknownReasons?: ReadonlyArray<{\n        code: string;\n        message: string;\n    }>;\n}"
+          ]
+        },
+        {
+          "name": "effectBaselineToolVersion",
+          "declarations": [
+            "effectBaselineToolVersion = \"0.3.0\""
+          ]
+        },
+        {
+          "name": "EffectDiagnostic",
+          "declarations": [
+            "export interface EffectDiagnostic {\n    fileName: string;\n    functionName: string;\n    effect: string;\n    kind: \"missing\" | \"unused\" | \"unknown\" | \"invalid\";\n    severity: \"error\" | \"warning\";\n    line: number;\n    message: string;\n    notes?: DiagnosticNote[];\n}"
+          ]
+        },
+        {
+          "name": "EffectSchema",
+          "declarations": [
+            "export interface EffectSchema {\n    name: string;\n    version: number;\n    arguments: readonly AtomDomain[];\n}"
+          ]
+        },
+        {
+          "name": "EffectSummary",
+          "declarations": [
+            "export interface EffectSummary {\n    functionName: string;\n    effects: Effect[];\n    evidence: EvidenceStatus;\n    /** Non-empty whenever `evidence` is `unknown`; stable codes explain the unsupported boundary. */\n    unknownReasons?: EffectUnknownReason[];\n    /** Present on summaries produced from a Program; omitted by low-level manual summary helpers. */\n    id?: string;\n    fileName?: string;\n    span?: {\n        start: number;\n        end: number;\n    };\n    /** Declaration-order parameter names. Present on Program-produced function summaries. */\n    parameters?: string[];\n    /** Iterator parameters whose lazy body effects are supplied and instantiated by each call site. */\n    iteratorEffectParameters?: IteratorEffectParameter[];\n    /** Explicit upper bounds for polymorphic iterator effects, indexed by the TypeScript parameter. */\n    iteratorEffectBounds?: Array<{\n        index: number;\n        name: string;\n        effects: Effect[];\n    }>;\n    /** Transport provenance kept separately from the shared Net authority set. */\n    networkBoundaries?: NetworkBoundaryEvidence[];\n}"
+          ]
+        },
+        {
+          "name": "extendBuiltinContractRegistry",
+          "declarations": [
+            "export declare function extendBuiltinContractRegistry(base: BuiltinContractRegistry, extension: BuiltinContractRegistryExtension): BuiltinContractRegistry;"
+          ]
+        },
+        {
+          "name": "f32",
+          "declarations": [
+            "f32: (value: number) => F32"
+          ]
+        },
+        {
+          "name": "F32",
+          "declarations": [
+            "export type F32 = number & {\n    readonly [f32Brand]: \"F32\";\n};"
+          ]
+        },
+        {
+          "name": "F32_BITS",
+          "declarations": [
+            "F32_BITS: 32"
+          ]
+        },
+        {
+          "name": "FixedArrayBuffer",
+          "declarations": [
+            "export type FixedArrayBuffer<Bytes extends number> = ArrayBuffer & {\n    readonly [fixedArrayBufferBrand]: Bytes;\n};"
+          ]
+        },
+        {
+          "name": "Float",
+          "declarations": [
+            "export type Float = v.InferOutput<typeof FloatSchema>;"
+          ]
+        },
+        {
+          "name": "FloatSchema",
+          "declarations": [
+            "FloatSchema: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.BrandAction<number, \"Float\">]>"
+          ]
+        },
+        {
+          "name": "formatEffect",
+          "declarations": [
+            "export declare function formatEffect(effect: Effect): string;"
+          ]
+        },
+        {
+          "name": "generateTemporalModel",
+          "declarations": [
+            "export declare function generateTemporalModel(options: GenerateTemporalModelOptions): TemporalModelResult;"
+          ]
+        },
+        {
+          "name": "GenerateTemporalModelOptions",
+          "declarations": [
+            "export interface GenerateTemporalModelOptions {\n    fileName: string;\n    source: string;\n    runtime: TemporalRuntime;\n    root?: string;\n    nodeTopLevelMode?: \"commonjs\" | \"esm\";\n    linkedTemporal?: TemporalDslLink;\n}"
+          ]
+        },
+        {
+          "name": "generateUneffectPropertyTests",
+          "declarations": [
+            "export declare function generateUneffectPropertyTests(options: GenerateUneffectPropertyTestsOptions): GenerateUneffectPropertyTestsResult;"
+          ]
+        },
+        {
+          "name": "GenerateUneffectPropertyTestsOptions",
+          "declarations": [
+            "export interface GenerateUneffectPropertyTestsOptions {\n    files: Record<string, string>;\n    backend?: \"quickcheck\";\n    shrinking?: boolean;\n    cases?: number;\n    seed?: number;\n    arrayLengthCap?: number;\n    /** Persists minimized failures and replays them before generated candidates. */\n    counterexampleDirectory?: string;\n    refinementTuples?: Record<string, readonly (readonly PropertyValue[])[]>;\n    /** Finite, reviewable candidate universes for exact source-local unary predicates. */\n    predicateSpecializations?: Record<string, PropertyPredicateSpecialization>;\n}"
+          ]
+        },
+        {
+          "name": "GenerateUneffectPropertyTestsResult",
+          "declarations": [
+            "export interface GenerateUneffectPropertyTestsResult {\n    generatedFiles: Record<string, string>;\n    boundaries: PropertyTestBoundary[];\n    diagnostics: Array<{\n        fileName: string;\n        functionName: string;\n        message: string;\n    }>;\n}"
+          ]
+        },
+        {
+          "name": "generateUneffectPropertyTestsWithZ3",
+          "declarations": [
+            "export declare function generateUneffectPropertyTestsWithZ3(options: GenerateUneffectPropertyTestsWithZ3Options): Promise<GenerateUneffectPropertyTestsWithZ3Result>;"
+          ]
+        },
+        {
+          "name": "GenerateUneffectPropertyTestsWithZ3Options",
+          "declarations": [
+            "export interface GenerateUneffectPropertyTestsWithZ3Options extends GenerateUneffectPropertyTestsOptions {\n    solverCases?: number;\n    z3?: Z3ExecutionOptions;\n}"
+          ]
+        },
+        {
+          "name": "GenerateUneffectPropertyTestsWithZ3Result",
+          "declarations": [
+            "export interface GenerateUneffectPropertyTestsWithZ3Result extends GenerateUneffectPropertyTestsResult {\n    solverDiagnostics: PropertySolverDiagnostic[];\n}"
+          ]
+        },
+        {
+          "name": "i32",
+          "declarations": [
+            "i32: (value: number) => I32"
+          ]
+        },
+        {
+          "name": "I32",
+          "declarations": [
+            "export type I32 = number & {\n    readonly [i32Brand]: \"I32\";\n};"
+          ]
+        },
+        {
+          "name": "I32_MAX",
+          "declarations": [
+            "I32_MAX: 2147483647"
+          ]
+        },
+        {
+          "name": "I32_MIN",
+          "declarations": [
+            "I32_MIN: -2147483648"
+          ]
+        },
+        {
+          "name": "installUneffectModules",
+          "declarations": [
+            "export declare function installUneffectModules(values: readonly unknown[], base?: BuiltinContractRegistry): {\n    registry: BuiltinContractRegistry;\n    ledger: UneffectModuleLedgerEntry[];\n};"
+          ]
+        },
+        {
+          "name": "InstrumentContractPredicateOptions",
+          "declarations": [
+            "export interface InstrumentContractPredicateOptions {\n    /** Reuse a Program whose SourceFile text exactly matches `text`. */\n    program?: ts.Program;\n    /** Original specification spans for materialized linked contracts. */\n    clauseProvenance?: readonly ContractClauseProvenance[];\n}"
+          ]
+        },
+        {
+          "name": "instrumentContractPredicates",
+          "declarations": [
+            "export declare function instrumentContractPredicates(fileName: string, text: string, options?: InstrumentContractPredicateOptions): InstrumentResult;"
+          ]
+        },
+        {
+          "name": "Int",
+          "declarations": [
+            "export type Int = v.InferOutput<typeof IntSchema>;"
+          ]
+        },
+        {
+          "name": "IntSchema",
+          "declarations": [
+            "IntSchema: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.SafeIntegerAction<number, undefined>, v.BrandAction<number, \"Int\">]>"
+          ]
+        },
+        {
+          "name": "isContractRuntimeError",
+          "declarations": [
+            "export declare function isContractRuntimeError(value: unknown): value is ContractRuntimeError;"
+          ]
+        },
+        {
+          "name": "loadBuiltinRegistryConfig",
+          "declarations": [
+            "export declare function loadBuiltinRegistryConfig(fileName: string, base?: BuiltinContractRegistry): Promise<BuiltinContractRegistry>;"
+          ]
+        },
+        {
+          "name": "loadContractSummaryBundle",
+          "declarations": [
+            "export declare function loadContractSummaryBundle(fileName: string): Promise<ContractSummaryBundleV1>;"
+          ]
+        },
+        {
+          "name": "loadEffectBaseline",
+          "declarations": [
+            "export declare function loadEffectBaseline(fileName: string): Promise<EffectBaseline>;"
+          ]
+        },
+        {
+          "name": "loadUneffectModules",
+          "declarations": [
+            "export declare function loadUneffectModules(fileNames: readonly string[], base?: BuiltinContractRegistry): Promise<{\n    registry: BuiltinContractRegistry;\n    ledger: UneffectModuleLedgerEntry[];\n}>;"
+          ]
+        },
+        {
+          "name": "Nat",
+          "declarations": [
+            "export type Nat = v.InferOutput<typeof NatSchema>;"
+          ]
+        },
+        {
+          "name": "NatSchema",
+          "declarations": [
+            "NatSchema: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.SafeIntegerAction<number, undefined>, v.MinValueAction<number, 0, undefined>, v.BrandAction<number, \"Int\">, v.BrandAction<number & v.Brand<\"Int\">, \"Nat\">]>"
+          ]
+        },
+        {
+          "name": "parseBoundedArrayBuffer",
+          "declarations": [
+            "export declare function parseBoundedArrayBuffer<MaxBytes extends number>(input: unknown, maximum: MaxBytes): BoundedArrayBuffer<MaxBytes>;"
+          ]
+        },
+        {
+          "name": "parseBoundedDataView",
+          "declarations": [
+            "export declare function parseBoundedDataView<MaxBytes extends number>(input: unknown, maximum: MaxBytes): BoundedDataView<MaxBytes>;"
+          ]
+        },
+        {
+          "name": "parseBoundedMap",
+          "declarations": [
+            "export declare function parseBoundedMap<Key, Value, MaxSize extends number>(input: unknown, maximum: MaxSize, parseKey: (input: unknown) => Key, parseValue: (input: unknown) => Value): BoundedMap<Key, Value, MaxSize>;"
+          ]
+        },
+        {
+          "name": "parseBoundedSet",
+          "declarations": [
+            "export declare function parseBoundedSet<Element, MaxSize extends number>(input: unknown, maximum: MaxSize, parseElement: (input: unknown) => Element): BoundedSet<Element, MaxSize>;"
+          ]
+        },
+        {
+          "name": "parseBoundedUint32Array",
+          "declarations": [
+            "parseBoundedUint32Array: <MaxLength extends number>(input: unknown, maximum: MaxLength) => BoundedUint32Array<MaxLength>"
+          ]
+        },
+        {
+          "name": "parseBoundedUint8Array",
+          "declarations": [
+            "parseBoundedUint8Array: <MaxLength extends number>(input: unknown, maximum: MaxLength) => BoundedUint8Array<MaxLength>"
+          ]
+        },
+        {
+          "name": "parseBuiltinRegistryConfig",
+          "declarations": [
+            "export declare function parseBuiltinRegistryConfig(value: unknown, base?: BuiltinContractRegistry): BuiltinContractRegistry;"
+          ]
+        },
+        {
+          "name": "parseEffectBaseline",
+          "declarations": [
+            "export declare function parseEffectBaseline(input: unknown): EffectBaseline;"
+          ]
+        },
+        {
+          "name": "parseEffectExpression",
+          "declarations": [
+            "export declare function parseEffectExpression(input: string, localSchemas?: ReadonlyMap<string, EffectSchema>): Effect;"
+          ]
+        },
+        {
+          "name": "parseEffectSet",
+          "declarations": [
+            "export declare function parseEffectSet(input: string, localSchemas?: ReadonlyMap<string, EffectSchema>): Effect[];"
+          ]
+        },
+        {
+          "name": "parseFixedArrayBuffer",
+          "declarations": [
+            "export declare function parseFixedArrayBuffer<Bytes extends number>(input: unknown, bytes: Bytes): FixedArrayBuffer<Bytes>;"
+          ]
+        },
+        {
+          "name": "parseFloat",
+          "declarations": [
+            "parseFloat: (input: unknown) => Float"
+          ]
+        },
+        {
+          "name": "parseInt",
+          "declarations": [
+            "parseInt: (input: unknown) => Int"
+          ]
+        },
+        {
+          "name": "parseNat",
+          "declarations": [
+            "parseNat: (input: unknown) => Nat"
+          ]
+        },
+        {
+          "name": "parseTemporalModelResult",
+          "declarations": [
+            "export declare function parseTemporalModelResult(input: unknown): TemporalModelResult;"
+          ]
+        },
+        {
+          "name": "parseU32",
+          "declarations": [
+            "parseU32: (input: unknown) => U32"
+          ]
+        },
+        {
+          "name": "parseU8",
+          "declarations": [
+            "parseU8: (input: unknown) => U8"
+          ]
+        },
+        {
+          "name": "parseUneffectModuleManifest",
+          "declarations": [
+            "export declare function parseUneffectModuleManifest(value: unknown): UneffectModuleManifest;"
+          ]
+        },
+        {
+          "name": "Path",
+          "declarations": [
+            "export type Path<Pattern extends string = string> = string & {\n    readonly [pathPatternBrand]: Pattern;\n};"
+          ]
+        },
+        {
+          "name": "ProjectValidatorDiagnostic",
+          "declarations": [
+            "export interface ProjectValidatorDiagnostic {\n    code: \"validator-cardinality-exceeded\" | \"validator-cardinality-unknown\";\n    fileName: string;\n    functionName: string;\n    validator: string;\n    inferredMaximum: CallCardinality;\n}"
+          ]
+        },
+        {
+          "name": "PropertyCounterexample",
+          "declarations": [
+            "export type PropertyCounterexample = {\n    version: \"uneffect-counterexample/v1\";\n    functionName: string;\n    arguments: number[];\n    seed: number;\n} | {\n    version: \"uneffect-counterexample/v2\";\n    functionName: string;\n    arguments: PropertyValue[];\n    seed: number;\n};"
+          ]
+        },
+        {
+          "name": "PropertyTestBoundary",
+          "declarations": [
+            "export interface PropertyTestBoundary {\n    fileName: string;\n    functionName: string;\n    generators: PropertyTestDomain[];\n    shrinkers: PropertyTestDomain[];\n    generatorHints: PropertyLiteral[][];\n    generatorTuples: PropertyValue[][];\n    requires: string[];\n    ensures: string[];\n}"
+          ]
+        },
+        {
+          "name": "PropertyTestDomain",
+          "declarations": [
+            "export type PropertyTestDomain = PropertyBoundaryKind | {\n    kind: \"bounded-array\";\n    element: \"U8\" | \"U32\";\n    maximum: number;\n} | {\n    kind: \"bounded-set\";\n    element: PropertyBoundaryKind;\n    maximum: number;\n} | {\n    kind: \"bounded-map\";\n    key: PropertyBoundaryKind;\n    value: PropertyBoundaryKind;\n    maximum: number;\n} | {\n    kind: \"record\";\n    fields: Record<string, PropertyTestDomain>;\n    optional?: string[];\n} | {\n    kind: \"specialized\";\n    predicate: string;\n    values: PropertyLiteral[];\n} | {\n    kind: \"union\";\n    members: Array<PropertyBoundaryKind | {\n        kind: \"literal\";\n        value: PropertyLiteral;\n    }>;\n};"
+          ]
+        },
+        {
+          "name": "registerEffectSchema",
+          "declarations": [
+            "export declare function registerEffectSchema(schema: EffectSchema): void;"
+          ]
+        },
+        {
+          "name": "TemporalModelCoverageDomain",
+          "declarations": [
+            "export type TemporalModelCoverageDomain = \"user-temporal\" | \"async-patterns\" | \"promise-chains\" | \"promise-ownership\" | \"promise-host-synchronization\" | \"abortable-fetch\" | \"resource-lifecycle\" | \"resource-host-lifecycle\" | \"resource-host-callback-interleavings\";"
+          ]
+        },
+        {
+          "name": "temporalModelCoverageDomains",
+          "declarations": [
+            "temporalModelCoverageDomains: readonly [\"user-temporal\", \"async-patterns\", \"promise-chains\", \"promise-ownership\", \"promise-host-synchronization\", \"abortable-fetch\", \"resource-lifecycle\", \"resource-host-lifecycle\", \"resource-host-callback-interleavings\"]"
+          ]
+        },
+        {
+          "name": "TemporalModelCoverageEntry",
+          "declarations": [
+            "export interface TemporalModelCoverageEntry {\n    domain: TemporalModelCoverageDomain;\n    status: \"modeled\" | \"not-applicable\" | \"excluded\";\n    modelKinds: TemporalModelProjectionKind[];\n    exclusions: TemporalModelExclusion[];\n}"
+          ]
+        },
+        {
+          "name": "TemporalModelExclusion",
+          "declarations": [
+            "export type TemporalModelExclusion = \"async-ownership\" | \"promise-host-synchronization\" | \"abortable-fetch-synchronization\" | \"resource-lifecycle\" | \"resource-host-scheduling\" | \"resource-host-callback-interleavings\";"
+          ]
+        },
+        {
+          "name": "TemporalModelProjectionKind",
+          "declarations": [
+            "export type TemporalModelProjectionKind = \"user-temporal\" | \"web-event-loop\" | \"node-event-loop\" | \"promise-chains\" | \"promise-ownership\" | \"abortable-fetch\" | \"resource-lifecycle\" | \"resource-host-lifecycle\";"
+          ]
+        },
+        {
+          "name": "TemporalModelResult",
+          "declarations": [
+            "export interface TemporalModelResult {\n    schema: \"uneffect-temporal-model/v1\";\n    sourceLanguage: \"uneffect-ts\";\n    backend: \"quint\";\n    runtime: TemporalRuntime;\n    includedDomains: Array<\"user-temporal\" | \"async-patterns\" | \"promise-chains\" | \"async-ownership\" | \"abortable-fetch\" | \"resource-lifecycle\">;\n    exclusions: TemporalModelExclusion[];\n    coverage: TemporalModelCoverageEntry[];\n    synchronizations: TemporalModelSynchronization[];\n    scheduling: {\n        fairness: \"none\";\n        resourceCallbackInterleavings: \"excluded\" | \"not-applicable\";\n    };\n    models: TemporalModelProjection[];\n    properties: string[];\n    quint: string;\n}"
+          ]
+        },
+        {
+          "name": "TemporalRuntime",
+          "declarations": [
+            "export type TemporalRuntime = \"web\" | \"node\";"
+          ]
+        },
+        {
+          "name": "toU32",
+          "declarations": [
+            "toU32: typeof u32"
+          ]
+        },
+        {
+          "name": "TypedArrayDiagnostic",
+          "declarations": [
+            "export interface TypedArrayDiagnostic {\n    fileName: string;\n    functionName: string;\n    kind: TypedArrayObligation[\"kind\"];\n    message: string;\n    span: {\n        start: number;\n        end: number;\n    };\n}"
+          ]
+        },
+        {
+          "name": "TypedArraySafetyResult",
+          "declarations": [
+            "export interface TypedArraySafetyResult {\n    obligations: TypedArrayObligation[];\n    diagnostics: TypedArrayDiagnostic[];\n    windows: TypedArrayWindowProvenance[];\n    statistics: TypedArraySafetyStatistics;\n}"
+          ]
+        },
+        {
+          "name": "u32",
+          "declarations": [
+            "u32: (value: number) => U32"
+          ]
+        },
+        {
+          "name": "U32",
+          "declarations": [
+            "export type U32 = v.InferOutput<typeof U32Schema>;"
+          ]
+        },
+        {
+          "name": "U32_BITS",
+          "declarations": [
+            "U32_BITS: 32"
+          ]
+        },
+        {
+          "name": "U32_MAX",
+          "declarations": [
+            "U32_MAX: 4294967295"
+          ]
+        },
+        {
+          "name": "U32Schema",
+          "declarations": [
+            "U32Schema: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.SafeIntegerAction<number, undefined>, v.MinValueAction<number, 0, undefined>, v.MaxValueAction<number, 4294967295, undefined>, v.BrandAction<number, \"U32\">]>"
+          ]
+        },
+        {
+          "name": "u32Table",
+          "declarations": [
+            "u32Table: <const Values extends readonly number[]>(values: Values) => U32Table<Values>"
+          ]
+        },
+        {
+          "name": "u8",
+          "declarations": [
+            "u8: (value: number) => U8"
+          ]
+        },
+        {
+          "name": "U8",
+          "declarations": [
+            "export type U8 = v.InferOutput<typeof U8Schema>;"
+          ]
+        },
+        {
+          "name": "U8_BITS",
+          "declarations": [
+            "U8_BITS: 8"
+          ]
+        },
+        {
+          "name": "U8_MAX",
+          "declarations": [
+            "U8_MAX: 255"
+          ]
+        },
+        {
+          "name": "U8Schema",
+          "declarations": [
+            "U8Schema: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.SafeIntegerAction<number, undefined>, v.MinValueAction<number, 0, undefined>, v.MaxValueAction<number, 255, undefined>, v.BrandAction<number, \"U8\">]>"
+          ]
+        },
+        {
+          "name": "u8Table",
+          "declarations": [
+            "u8Table: <const Values extends readonly number[]>(values: Values) => U8Table<Values>"
+          ]
+        },
+        {
+          "name": "UneffectDialect",
+          "declarations": [
+            "export type UneffectDialect = (typeof uneffectDialects)[number];"
+          ]
+        },
+        {
+          "name": "uneffectDialects",
+          "declarations": [
+            "uneffectDialects: readonly [\"unified\", \"trust\", \"react-component\", \"react-hook\", \"react-resource\"]"
+          ]
+        },
+        {
+          "name": "UneffectModuleLedgerEntry",
+          "declarations": [
+            "export type UneffectModuleLedgerEntry = SemanticModuleLedgerEntry;"
+          ]
+        },
+        {
+          "name": "UneffectModuleManifest",
+          "declarations": [
+            "export interface UneffectModuleManifest {\n    schema: typeof uneffectModuleSchema;\n    name: string;\n    version: string;\n    namespace: string;\n    evidence: \"trusted\";\n    trustOwner: string;\n    trustReason: string;\n    effectSchemas: EffectSchema[];\n    registry: Record<string, unknown>;\n}"
+          ]
+        },
+        {
+          "name": "UneffectProjectAnalysis",
+          "declarations": [
+            "export interface UneffectProjectAnalysis {\n    diagnostics: Array<ProjectValidatorDiagnostic | ProjectSafetyDiagnostic>;\n    summaries: UneffectProjectSummary[];\n    entrypoint?: {\n        functionName: string;\n        sinkMaximum: number | \"many\" | \"unknown\";\n        generatorConsumption: \"none\" | \"once\" | \"many\";\n    };\n    orderedEvents: ProjectOrderedEvent[];\n    emittedFiles: Record<string, string>;\n    coverage: {\n        functions: number;\n        annotatedFunctions: number;\n        annotationDensity: number;\n    };\n}"
+          ]
+        },
+        {
+          "name": "UneffectValidator",
+          "declarations": [
+            "export interface UneffectValidator extends Readonly<Required<UneffectValidatorDefinition>> {\n    readonly schema: \"uneffect-validator/v1\";\n}"
+          ]
+        },
+        {
+          "name": "UneffectValidatorDefinition",
+          "declarations": [
+            "export interface UneffectValidatorDefinition {\n    name: string;\n    version?: string;\n    rule: \"at-most-once\";\n    sink: {\n        module: string;\n        export: string;\n    };\n    specialization: {\n        kind: \"call-cardinality\";\n        maximum: 1;\n    };\n}"
+          ]
+        },
+        {
+          "name": "validateContractSummaryBundle",
+          "declarations": [
+            "export declare function validateContractSummaryBundle(bundle: ContractSummaryBundleV1, options: ValidateContractSummaryBundleOptions): {\n    valid: boolean;\n    errors: string[];\n};"
+          ]
+        },
+        {
+          "name": "validateUneffectAnnotations",
+          "declarations": [
+            "export declare function validateUneffectAnnotations(text: string, baseOffset?: number, additionalDirectives?: Iterable<string>): AnnotationDiagnostic[];"
+          ]
+        },
+        {
+          "name": "validateUneffectProject",
+          "declarations": [
+            "export declare function validateUneffectProject(options: ValidateUneffectProjectOptions): UneffectProjectAnalysis;"
+          ]
+        },
+        {
+          "name": "ValidateUneffectProjectOptions",
+          "declarations": [
+            "export interface ValidateUneffectProjectOptions {\n    files: Record<string, string>;\n    validator: UneffectValidator;\n    entrypoint?: string;\n}"
+          ]
+        },
+        {
+          "name": "verifyContracts",
+          "declarations": [
+            "export declare function verifyContracts(fileName: string, text: string): Promise<ContractDiagnostic[]>;"
+          ]
+        },
+        {
+          "name": "verifyTypedArraySafety",
+          "declarations": [
+            "export declare function verifyTypedArraySafety(fileName: string, text: string, z3?: Z3ExecutionOptions, assumptionRegistry?: AssumptionRegistry): Promise<TypedArraySafetyResult>;"
+          ]
+        },
+        {
+          "name": "verifyTypedArraySafetyInProgram",
+          "declarations": [
+            "export declare function verifyTypedArraySafetyInProgram(files: Record<string, string>, z3?: Z3ExecutionOptions, assumptionRegistry?: AssumptionRegistry): Promise<TypedArrayProgramSafetyResult>;"
+          ]
+        },
+        {
+          "name": "verifyTypedArraySafetyInTypeScriptProgram",
+          "declarations": [
+            "export declare function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Program, source: ts.SourceFile, z3?: Z3ExecutionOptions, assumptionRegistry?: AssumptionRegistry): Promise<TypedArraySafetyResult>;"
+          ]
+        },
+        {
+          "name": "verifyUneffectProject",
+          "declarations": [
+            "export declare function verifyUneffectProject(options: VerifyUneffectProjectOptions): Promise<VerifyUneffectProjectResult>;",
+            "export declare function verifyUneffectProject(options: VerifyUneffectWorkspaceOptions): Promise<VerifyUneffectWorkspaceResult>;"
+          ]
+        },
+        {
+          "name": "VerifyUneffectProjectOptions",
+          "declarations": [
+            "export interface VerifyUneffectProjectOptions extends VerifyUneffectProjectBaseOptions {\n    files: Record<string, string>;\n    projectFile?: never;\n}"
+          ]
+        },
+        {
+          "name": "VerifyUneffectProjectResult",
+          "declarations": [
+            "export interface VerifyUneffectProjectResult {\n    obligations: ProjectVerificationObligation[];\n    diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AsyncSafetyDiagnostic | AsyncIteratorCheckerDiagnostic | ResourceCheckerDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic>;\n    emittedFiles: Record<string, string>;\n    typedArrays: TypedArrayProgramSafetyResult;\n    ownership: {\n        diagnostics: ProjectOwnershipDiagnostic[];\n    };\n    asyncIterators: IteratorCheckEvidence[];\n    resourceProtocols: ResourceLifecycleEvidence[];\n    assumptions: AssumptionLedger;\n    effects: EffectAnalysisResult;\n    refinements: ProjectRefinementVerification;\n    assurance: ProjectAssuranceAssessment;\n    temporal?: ProjectTemporalVerification;\n    moduleInitialization?: ModuleInitializationOrder;\n}"
+          ]
+        },
+        {
+          "name": "writeEffectBaseline",
+          "declarations": [
+            "export declare function writeEffectBaseline(fileName: string, baseline: EffectBaseline): Promise<void>;"
+          ]
+        }
+      ]
+    },
+    "./corsa": {
+      "runtime": [
+        "checkCorsaProject",
+        "createCorsaCheckJsonReport",
+        "formatCorsaCheckEvidence"
+      ],
+      "declarations": [
+        {
+          "name": "checkCorsaProject",
+          "declarations": [
+            "export declare function checkCorsaProject(options: CorsaCheckOptions): Promise<CorsaCheckResult>;"
+          ]
+        },
+        {
+          "name": "CorsaCheckDiagnostic",
+          "declarations": [
+            "export interface CorsaCheckDiagnostic {\n    domain: \"syntax\";\n    kind: \"syntax\";\n    severity: \"error\" | \"warning\";\n    fileName: string;\n    line: number;\n    functionName: string;\n    message: string;\n}"
+          ]
+        },
+        {
+          "name": "CorsaCheckJsonReport",
+          "declarations": [
+            "export interface CorsaCheckJsonReport {\n    schema: \"uneffect-check/v1\";\n    outcome: \"passed\" | \"failed\";\n    counts: {\n        errors: number;\n        warnings: number;\n    };\n    diagnostics: CorsaCheckResult[\"diagnostics\"];\n    effects: Array<{\n        fileName?: string;\n        span?: {\n            start: number;\n            end: number;\n        };\n        functionName: string;\n        effects: string[];\n        evidence: CorsaCheckResult[\"summaries\"][number][\"evidence\"];\n        parameters?: string[];\n        unknownReasons?: CorsaCheckResult[\"summaries\"][number][\"unknownReasons\"];\n    }>;\n    contracts: [];\n    assumptions: CorsaCheckResult[\"assumptions\"];\n    typedArrays: {\n        obligations: [];\n        windows: [];\n        statistics: {\n            solverQueries: number;\n        };\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    assurance: AssuranceAssessment | null;\n    project: CorsaCheckResult[\"project\"];\n    effectBaseline?: EffectBaselineAssessment;\n}"
+          ]
+        },
+        {
+          "name": "CorsaCheckOptions",
+          "declarations": [
+            "export interface CorsaCheckOptions {\n    configFile: string;\n    corsaExecutable?: string;\n    cwd?: string;\n    requireAnnotations?: boolean;\n    builtinRegistry?: BuiltinContractRegistry;\n    fileNames?: readonly string[];\n}"
+          ]
+        },
+        {
+          "name": "CorsaCheckResult",
+          "declarations": [
+            "export interface CorsaCheckResult {\n    diagnostics: CorsaCheckDiagnostic[];\n    sources: Map<string, string>;\n    artifacts: [];\n    summaries: EffectSummary[];\n    assumptions: {\n        schema: \"uneffect-assumptions/v1\";\n        entries: [];\n        violations: [];\n    };\n    typedArrays: {\n        obligations: [];\n        diagnostics: [];\n        windows: [];\n        statistics: {\n            solverQueries: 0;\n        };\n        files: Record<string, never>;\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    errors: number;\n    warnings: number;\n    project: CorsaProjectProvenance;\n}"
+          ]
+        },
+        {
+          "name": "CorsaProjectProvenance",
+          "declarations": [
+            "export interface CorsaProjectProvenance {\n    projectFile: string;\n    compiler: {\n        analyzerVersion: string;\n        analyzerPackageFile: string;\n        consumerVersion: string | null;\n        consumerPackageFile: string | null;\n        consumerModuleFile: string | null;\n        parity: \"exact\" | \"mismatch\" | \"unknown\";\n        reason?: string;\n    };\n}"
+          ]
+        },
+        {
+          "name": "createCorsaCheckJsonReport",
+          "declarations": [
+            "export declare function createCorsaCheckJsonReport(result: CorsaCheckResult, assurance?: AssuranceAssessment): CorsaCheckJsonReport;"
+          ]
+        },
+        {
+          "name": "formatCorsaCheckEvidence",
+          "declarations": [
+            "export declare function formatCorsaCheckEvidence(result: CorsaCheckResult): string;"
+          ]
+        }
+      ]
+    },
+    "./corsa/api": {
+      "runtime": [
+        "corsaApiCapabilities",
+        "corsaApiFrontendSchema",
+        "corsaApiLimitations",
+        "openCorsaApiFrontend",
+        "parseCorsaApiFrontendDescriptor",
+        "resolveCorsaExecutable"
+      ],
+      "declarations": [
+        {
+          "name": "corsaApiCapabilities",
+          "declarations": [
+            "corsaApiCapabilities: readonly [\"position-query\", \"batch-position-query\", \"alias-query\", \"module-exports-query\", \"type-property-query\", \"type-symbol-query\", \"assignability-query\", \"bounded-builtin-classification\"]"
+          ]
+        },
+        {
+          "name": "CorsaApiCapability",
+          "declarations": [
+            "export type CorsaApiCapability = \"position-query\" | \"batch-position-query\" | \"alias-query\" | \"module-exports-query\" | \"type-property-query\" | \"type-symbol-query\" | \"assignability-query\" | \"bounded-builtin-classification\";"
+          ]
+        },
+        {
+          "name": "CorsaApiFrontend",
+          "declarations": [
+            "export interface CorsaApiFrontend extends SemanticQueryFrontend {\n    readonly descriptor: CorsaApiFrontendDescriptor;\n    readonly compilerRevision: string;\n    readonly compilerExecutable: string;\n    readonly projectId: string;\n    readonly rootFiles: readonly string[];\n    getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;\n    getSymbolsAtPositions(file: string, positions: readonly number[]): Array<CorsaApiSymbolFact | null>;\n    getAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;\n    getImmediateAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;\n    getExportsOfModule(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact[];\n    getTypeAtPosition(file: string, position: number): CorsaApiTypeFact | null;\n    getTypesAtPositions(file: string, positions: readonly number[]): Array<CorsaApiTypeFact | null>;\n    getPropertyOfType(type: CorsaApiTypeFact, name: string): CorsaApiSymbolFact | null;\n    getSymbolOfType(type: CorsaApiTypeFact): CorsaApiSymbolFact | null;\n    isTypeAssignableTo(source: CorsaApiTypeFact, target: CorsaApiTypeFact): boolean | null;\n    /** Narrow checker-backed builtin slice currently admitted by migration tests. */\n    classifyBuiltinCall(file: string, query: CorsaBuiltinCallQuery): CorsaBuiltinCallResolution | null;\n    classifyBuiltinCalls(file: string, queries: readonly CorsaBuiltinCallQuery[]): Array<CorsaBuiltinCallResolution | null>;\n}"
+          ]
+        },
+        {
+          "name": "CorsaApiFrontendDescriptor",
+          "declarations": [
+            "export interface CorsaApiFrontendDescriptor {\n    readonly schema: typeof corsaApiFrontendSchema;\n    readonly contract: \"semantic-query\";\n    readonly compiler: {\n        readonly revision: string;\n        readonly executable: string;\n    };\n    readonly project: {\n        readonly id: string;\n        readonly configFile: string;\n        readonly rootFiles: readonly string[];\n    };\n    readonly capabilities: readonly CorsaApiCapability[];\n    readonly limitations: readonly CorsaApiLimitation[];\n}"
+          ]
+        },
+        {
+          "name": "CorsaApiFrontendOptions",
+          "declarations": [
+            "export interface CorsaApiFrontendOptions {\n    configFile: string;\n    /** Explicit Corsa-compatible compiler. Defaults to Uneffect's prebuilt tsgo. */\n    corsaExecutable?: string;\n    cwd?: string;\n}"
+          ]
+        },
+        {
+          "name": "corsaApiFrontendSchema",
+          "declarations": [
+            "corsaApiFrontendSchema: \"uneffect-corsa-api-frontend/v1\""
+          ]
+        },
+        {
+          "name": "CorsaApiLimitation",
+          "declarations": [
+            "export type CorsaApiLimitation = \"syntax-out-of-band\" | \"builtin-classification-bounded\";"
+          ]
+        },
+        {
+          "name": "corsaApiLimitations",
+          "declarations": [
+            "corsaApiLimitations: readonly [\"syntax-out-of-band\", \"builtin-classification-bounded\"]"
+          ]
+        },
+        {
+          "name": "CorsaApiSymbolFact",
+          "declarations": [
+            "export interface CorsaApiSymbolFact {\n    id: string;\n    name: string;\n    flags?: number;\n    declarations?: string[];\n    valueDeclaration?: string;\n}"
+          ]
+        },
+        {
+          "name": "CorsaApiTypeFact",
+          "declarations": [
+            "export interface CorsaApiTypeFact {\n    id: string;\n    texts: string[];\n    symbol?: string;\n    value?: unknown;\n}"
+          ]
+        },
+        {
+          "name": "CorsaBuiltinCallQuery",
+          "declarations": [
+            "export interface CorsaBuiltinCallQuery {\n    readonly calleePosition: number;\n    readonly receiverPosition?: number;\n}"
+          ]
+        },
+        {
+          "name": "CorsaBuiltinCallResolution",
+          "declarations": [
+            "export interface CorsaBuiltinCallResolution {\n    readonly operation: CorsaBuiltinOperation;\n    readonly compilerRevision: string;\n    readonly symbol: CorsaApiSymbolFact;\n    readonly receiver?: CorsaApiSymbolFact;\n}"
+          ]
+        },
+        {
+          "name": "CorsaBuiltinOperation",
+          "declarations": [
+            "export type CorsaBuiltinOperation = \"Fetch\" | \"Console\";"
+          ]
+        },
+        {
+          "name": "openCorsaApiFrontend",
+          "declarations": [
+            "export declare function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Promise<CorsaApiFrontend>;"
+          ]
+        },
+        {
+          "name": "parseCorsaApiFrontendDescriptor",
+          "declarations": [
+            "export declare function parseCorsaApiFrontendDescriptor(input: unknown): CorsaApiFrontendDescriptor;"
+          ]
+        },
+        {
+          "name": "resolveCorsaExecutable",
+          "declarations": [
+            "export declare function resolveCorsaExecutable(options?: Pick<CorsaApiFrontendOptions, \"corsaExecutable\" | \"cwd\">): string;"
+          ]
+        },
+        {
+          "name": "SemanticPositionFact",
+          "declarations": [
+            "export interface SemanticPositionFact {\n    readonly symbol: SemanticSymbolFact | null;\n    readonly type: SemanticTypeFact | null;\n}"
+          ]
+        },
+        {
+          "name": "SemanticQueryFrontend",
+          "declarations": [
+            "export interface SemanticQueryFrontend {\n    readonly compilerRevision: string;\n    readonly rootFiles: readonly string[];\n    queryPosition(file: string, position: number): SemanticPositionFact;\n    close(): void;\n}"
+          ]
+        }
+      ]
+    },
+    "./spec": {
+      "runtime": [
+        "Builtin",
+        "Console",
+        "Custom",
+        "Fetch",
+        "FsRead",
+        "FsWrite",
+        "Throw",
+        "bool",
+        "defineCapability",
+        "defineContract",
+        "defineEffectSchema",
+        "defineRefinement",
+        "defineTemporal",
+        "float",
+        "globalRuntime",
+        "identityProjection",
+        "int",
+        "mapFromEntriesProjection",
+        "nat",
+        "nodeGlobalRuntime",
+        "setFromArrayProjection",
+        "text",
+        "uneffectSpecVersion"
+      ],
+      "declarations": [
+        {
+          "name": "bool",
+          "declarations": [
+            "bool: () => TemporalType<boolean>"
+          ]
+        },
+        {
+          "name": "Builtin",
+          "declarations": [
+            "Builtin: (_name: BuiltinEffectName, _scope?: {\n    readonly arguments: readonly (readonly string[] | \"All\")[];\n}) => CapabilityDescriptor"
+          ]
+        },
+        {
+          "name": "BuiltinEffectName",
+          "declarations": [
+            "export type BuiltinEffectName = \"Console\" | \"Storage\" | \"Random\" | \"Timer\" | \"InvokeUserCode\" | \"CookieRead\" | \"CookieWrite\" | \"LocalStorageRead\" | \"LocalStorageWrite\" | \"GlobalVarsRead\" | \"GlobalVarsWrite\" | \"ScriptLoad\" | \"ExecuteExternalCode\" | \"Fetch\" | \"Dom\" | \"Clone\" | \"Transfer\" | \"SharedMemory\" | \"FsRead\" | \"FsWrite\" | \"Ffi\" | \"Net\" | \"Env\" | \"Run\" | \"Sys\" | \"Import\";"
+          ]
+        },
+        {
+          "name": "CapabilityDefinition",
+          "declarations": [
+            "export interface CapabilityDefinition {\n    readonly effects: readonly CapabilityDescriptor[];\n}"
+          ]
+        },
+        {
+          "name": "CapabilityDescriptor",
+          "declarations": [
+            "export interface CapabilityDescriptor {\n    readonly [capabilityDescriptor]: true;\n}"
+          ]
+        },
+        {
+          "name": "Console",
+          "declarations": [
+            "Console: () => CapabilityDescriptor"
+          ]
+        },
+        {
+          "name": "ContractDefinition",
+          "declarations": [
+            "export interface ContractDefinition<Parameters extends ParameterShape, Result extends TemporalType<unknown>> {\n    readonly parameters: Parameters;\n    readonly returns: Result;\n    readonly requires?: ContractPredicate<ParametersOf<Parameters>> | readonly ContractPredicate<ParametersOf<Parameters>>[];\n    readonly ensures: ContractPredicate<ParametersOf<Parameters> & {\n        readonly result: ValueOf<Result>;\n    }> | readonly ContractPredicate<ParametersOf<Parameters> & {\n        readonly result: ValueOf<Result>;\n    }>[];\n}"
+          ]
+        },
+        {
+          "name": "Custom",
+          "declarations": [
+            "Custom: (_schema: LocalEffectSchema, _scope?: {\n    readonly arguments: readonly (readonly string[] | \"All\")[];\n}) => CapabilityDescriptor"
+          ]
+        },
+        {
+          "name": "defineCapability",
+          "declarations": [
+            "defineCapability: <const Definition extends CapabilityDefinition>(definition: Definition) => Definition"
+          ]
+        },
+        {
+          "name": "defineContract",
+          "declarations": [
+            "defineContract: <const Parameters extends ParameterShape, const Result extends TemporalType<unknown>>(definition: ContractDefinition<Parameters, Result>) => ContractDefinition<Parameters, Result>"
+          ]
+        },
+        {
+          "name": "defineEffectSchema",
+          "declarations": [
+            "defineEffectSchema: <const Name extends string, const Domains extends readonly AtomDomain[]>(schema: {\n    readonly name: Name;\n    readonly version?: 1;\n    readonly arguments: Domains;\n}) => LocalEffectSchema<Name>"
+          ]
+        },
+        {
+          "name": "defineRefinement",
+          "declarations": [
+            "export declare function defineRefinement<const Create extends (initial: any) => any, const Definition extends RefinementDefinition<ReturnType<Create>> & {\n    readonly create: Create;\n}>(definition: Definition): Definition;"
+          ]
+        },
+        {
+          "name": "defineTemporal",
+          "declarations": [
+            "defineTemporal: <const Shape extends StateShape, const Actions extends Readonly<Record<string, Update<StateOf<Shape>>>>>(definition: TemporalDefinition<Shape, Actions>) => TemporalDefinition<Shape, Actions>"
+          ]
+        },
+        {
+          "name": "Fetch",
+          "declarations": [
+            "Fetch: (_scope: {\n    readonly methods: readonly (\"GET\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\" | \"HEAD\" | \"OPTIONS\")[];\n    readonly urls: readonly string[];\n}) => CapabilityDescriptor"
+          ]
+        },
+        {
+          "name": "float",
+          "declarations": [
+            "float: () => TemporalType<number>"
+          ]
+        },
+        {
+          "name": "FsRead",
+          "declarations": [
+            "FsRead: (_scope: {\n    readonly paths: readonly string[];\n}) => CapabilityDescriptor"
+          ]
+        },
+        {
+          "name": "FsWrite",
+          "declarations": [
+            "FsWrite: (_scope: {\n    readonly paths: readonly string[];\n}) => CapabilityDescriptor"
+          ]
+        },
+        {
+          "name": "globalRuntime",
+          "declarations": [
+            "export declare function globalRuntime(realm?: \"main\"): RefinementRuntimeDescriptor;"
+          ]
+        },
+        {
+          "name": "identityProjection",
+          "declarations": [
+            "export declare function identityProjection(path: string): RefinementProjection;"
+          ]
+        },
+        {
+          "name": "int",
+          "declarations": [
+            "int: () => TemporalType<number>"
+          ]
+        },
+        {
+          "name": "LocalEffectSchema",
+          "declarations": [
+            "export interface LocalEffectSchema<Name extends string = string> {\n    readonly name: Name;\n    readonly version: 1;\n    readonly arguments: readonly AtomDomain[];\n}"
+          ]
+        },
+        {
+          "name": "mapFromEntriesProjection",
+          "declarations": [
+            "export declare function mapFromEntriesProjection(path: string): RefinementProjection;"
+          ]
+        },
+        {
+          "name": "nat",
+          "declarations": [
+            "nat: () => TemporalType<number>"
+          ]
+        },
+        {
+          "name": "nodeGlobalRuntime",
+          "declarations": [
+            "export declare function nodeGlobalRuntime(major: number, realm: string): RefinementRuntimeDescriptor;"
+          ]
+        },
+        {
+          "name": "RefinementCallable",
+          "declarations": [
+            "export type RefinementCallable<Runtime, Result = unknown> = (runtime: Runtime, ...arguments_: never[]) => Result;"
+          ]
+        },
+        {
+          "name": "RefinementDefinition",
+          "declarations": [
+            "export interface RefinementDefinition<Runtime> {\n    readonly name: string;\n    readonly version: string;\n    readonly runtime?: RefinementRuntimeDescriptor;\n    readonly create: (initial: Runtime) => Runtime;\n    readonly observe: (runtime: Runtime) => unknown;\n    readonly abstractions: Readonly<Record<string, RefinementProjection>>;\n    readonly actions: Readonly<Record<string, RefinementCallable<Runtime>>>;\n    readonly invariants: Readonly<Record<string, RefinementCallable<Runtime, boolean>>>;\n}"
+          ]
+        },
+        {
+          "name": "RefinementProjection",
+          "declarations": [
+            "export type RefinementProjection = {\n    readonly kind: \"identity\";\n    readonly path: string;\n} | {\n    readonly kind: \"set-from-array\";\n    readonly path: string;\n} | {\n    readonly kind: \"map-from-entries\";\n    readonly path: string;\n};"
+          ]
+        },
+        {
+          "name": "RefinementRuntimeDescriptor",
+          "declarations": [
+            "export type RefinementRuntimeDescriptor = {\n    readonly kind: \"global\";\n    readonly identity: \"globalThis\";\n    readonly realm: \"main\";\n} | {\n    readonly kind: \"node-global\";\n    readonly identity: `node:global@${number}#${string}`;\n    readonly major: number;\n    readonly realm: string;\n};"
+          ]
+        },
+        {
+          "name": "setFromArrayProjection",
+          "declarations": [
+            "export declare function setFromArrayProjection(path: string): RefinementProjection;"
+          ]
+        },
+        {
+          "name": "TemporalDefinition",
+          "declarations": [
+            "export interface TemporalDefinition<Shape extends StateShape, Actions extends Readonly<Record<string, Update<StateOf<Shape>>>>> {\n    readonly state: Shape;\n    readonly init: StateOf<Shape>;\n    readonly actions: Actions;\n    readonly guards?: Partial<{\n        readonly [Name in keyof Actions]: Predicate<StateOf<Shape>>;\n    }>;\n    readonly fairness?: Partial<{\n        readonly [Name in keyof Actions]: \"weak\" | \"strong\";\n    }>;\n    readonly invariants?: Readonly<Record<string, Predicate<StateOf<Shape>>>>;\n    readonly eventually?: Readonly<Record<string, Predicate<StateOf<Shape>>>>;\n    readonly repeatedly?: Readonly<Record<string, Predicate<StateOf<Shape>>>>;\n    readonly stabilizes?: Readonly<Record<string, Predicate<StateOf<Shape>>>>;\n    readonly responses?: Readonly<Record<string, {\n        readonly trigger: Predicate<StateOf<Shape>>;\n        readonly response: Predicate<StateOf<Shape>>;\n    }>>;\n}"
+          ]
+        },
+        {
+          "name": "TemporalType",
+          "declarations": [
+            "export interface TemporalType<Value> {\n    readonly [temporalDescriptor]: Value;\n    readonly kind: \"int\" | \"nat\" | \"float\" | \"bool\" | \"string\";\n}"
+          ]
+        },
+        {
+          "name": "text",
+          "declarations": [
+            "text: () => TemporalType<string>"
+          ]
+        },
+        {
+          "name": "Throw",
+          "declarations": [
+            "Throw: (_error: ErrorConstructor) => CapabilityDescriptor"
+          ]
+        },
+        {
+          "name": "uneffectSpecVersion",
+          "declarations": [
+            "uneffectSpecVersion: \"uneffect-spec/v1\""
+          ]
+        }
+      ]
+    }
+  }
+}

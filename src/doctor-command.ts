@@ -12,6 +12,8 @@ export const doctorCommand: CliCommand = {
     "An unmet requirement exits 1. A missing optional tool is a warning and exits 0,",
     "with the commands that need it named in the report.",
   ],
+  /* uneffect:effect FsRead | FsWrite | Env<"UNEFFECT_Z3_BACKEND"> | Env<"UNEFFECT_Z3_PATH"> | Env<"UNEFFECT_SOLVER_EVIDENCE_DIR"> | InvokeUserCode | Mutate<typeof nativeDrivers> | Run<"java"> */
+  /* uneffect:effect_parameter io extends Console */
   async run(args, io) {
     const { values, positionals } = parseCommandArgs(args, { json: { type: "boolean" }, "skip-solver-probe": { type: "boolean" } });
     if (values.help) { io.out(formatCommandHelp(doctorCommand)); return exitCode.success; }
