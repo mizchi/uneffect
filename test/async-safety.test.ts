@@ -1221,6 +1221,31 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("evaluates constructor targets and arguments before Promise observations", () => {
+    const result = analyzeAsyncSafety("throw-constructor-order.ts", `
+      declare function task(): Promise<number>
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      declare class Box { constructor(...values: unknown[]) }
+      async function constructorThrowsFirst() {
+        const pending = task()
+        new Box(fail(), await pending)
+      }
+      async function constructorObservesFirst() {
+        const pending = task()
+        new Box(await pending, fail())
+      }
+      async function constructorTargetThrowsFirst() {
+        const pending = task()
+        new (fail(), Box)(await pending)
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "constructorThrowsFirst", status: "floating" },
+      { owner: "constructorObservesFirst", status: "observed" },
+      { owner: "constructorTargetThrowsFirst", status: "floating" },
+    ]);
+  });
+
   it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
     const result = analyzeAsyncSafety("throw-expression-promises.ts", `
       declare function task(): Promise<number>

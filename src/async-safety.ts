@@ -1717,6 +1717,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0
             && declaresSynchronousThrow(signature.declaration);
         }
+        if (ts.isNewExpression(expression)) {
+          return isGuaranteedThrowExpression(expression.expression)
+            || Boolean(expression.arguments?.some(isGuaranteedThrowExpression));
+        }
         if (ts.isPropertyAccessExpression(expression)) {
           return isGuaranteedThrowExpression(expression.expression);
         }
@@ -1931,6 +1935,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           if (calleeThrow) return calleeThrow;
           let current = executeNodeEffects(expression.expression, state);
           for (const argument of expression.arguments) {
+            const thrown = executeGuaranteedThrowPrefix(argument, current);
+            if (thrown) return thrown;
+            current = executeNodeEffects(argument, current);
+          }
+          return [executeNodeEffects(expression, current)];
+        }
+        if (ts.isNewExpression(expression)) {
+          const targetThrow = executeGuaranteedThrowPrefix(expression.expression, state);
+          if (targetThrow) return targetThrow;
+          let current = executeNodeEffects(expression.expression, state);
+          for (const argument of expression.arguments ?? []) {
             const thrown = executeGuaranteedThrowPrefix(argument, current);
             if (thrown) return thrown;
             current = executeNodeEffects(argument, current);

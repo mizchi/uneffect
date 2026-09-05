@@ -2580,6 +2580,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       receivers and computed keys in receiver-then-key order before call
       arguments; keep unknown getter behavior conservative rather than claiming
       a general property-access throw proof.
+    - [x] Evaluate Promise-ownership constructor targets before arguments and
+      arguments from left to right, sharing the call-prefix rule so guaranteed
+      throws cannot observe unreachable later constructor arguments.
     - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [x] Treat a direct expression-statement call as a guaranteed catch edge only when TypeScript proves `never` return and the resolved declaration explicitly carries `Throw<E>`; keep unannotated `never` termination/divergence distinct.
     - [x] Preserve guaranteed `never` + `Throw<E>` completion through return, transparent wrappers, a single initializer, comma-tail evaluation, and all-throw ternary joins; keep partial ternaries and unresolved compounds conservative.
