@@ -1,12 +1,18 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
+import { externalCheckerTestTimeoutMs, workspaceCliAcceptanceTimeoutMs } from "../ci/test-timeouts.js";
 import { ciIsolatedTestTimeoutMs } from "../ci/test-tiers.js";
 
 describe("external checker test timeout policy", () => {
   it("keeps local and CI limits finite while allowing shared-runner headroom", () => {
     expect(externalCheckerTestTimeoutMs({ ci: false })).toBe(20_000);
     expect(externalCheckerTestTimeoutMs({ ci: true })).toBe(ciIsolatedTestTimeoutMs);
+    expect(workspaceCliAcceptanceTimeoutMs).toBe(120_000);
+  });
+
+  it("keeps the multi-scenario workspace CLI acceptance on its measured finite policy", () => {
+    const cli = readFileSync("test/cli.test.ts", "utf8");
+    expect(cli).toMatch(/it\("checks solution references as separate compiler domains and fails closed on broken graphs",[\s\S]*?\}, workspaceCliAcceptanceTimeoutMs\);/u);
   });
 
   it("keeps the observed checker dogfood on the named policy", () => {

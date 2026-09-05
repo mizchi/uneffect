@@ -12,6 +12,7 @@ import type { CheckWorkspaceJsonReport } from "../src/check-report.js";
 import { createContractSummaryBundle } from "../src/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts.js";
 import { createResourceCallableContractArtifact } from "../src/resource-callable-artifact.js";
+import { workspaceCliAcceptanceTimeoutMs } from "../ci/test-timeouts.js";
 
 function capture(): CliStreams & { stdout: string; stderr: string } {
   const io = {
@@ -1096,7 +1097,7 @@ describe("uneffect command line", () => {
         outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "reference-cycle", classification: "unknown" })]),
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 60_000);
+  }, workspaceCliAcceptanceTimeoutMs);
 
   it("reports cross-project scalar refinement composition in workspace JSON", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-refinement-workspace-"));

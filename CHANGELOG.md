@@ -76,6 +76,9 @@ All notable changes to Uneffect are documented in this file.
   deadline, and records v2 phase/resource timing. Self-analysis cases reuse an
   immutable whole-source snapshot within their process, while mutant cases keep
   independent programs and assertions.
+- Replaced the multi-scenario workspace CLI acceptance's observed 60-second
+  native-Z3 cliff with a tested, named two-minute finite budget; all valid,
+  artifact-drift, composition, and broken-graph assertions remain unchanged.
 - Project temporal verification now aggregates Promise/resource safety
   diagnostics into its public result and assurance decision. Release dogfood
   keeps specifications unchanged while injecting a floating browser fetch and

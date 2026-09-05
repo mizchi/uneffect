@@ -131,6 +131,12 @@ finite 120-second test budget after observed native-Z3 runtimes between 41 and
 its shorter dedicated budget. Assertions and solver obligations are unchanged,
 and ordinary Vitest timeouts are never retried.
 
+The multi-scenario workspace CLI acceptance likewise builds and checks the same
+two-project graph through valid, stale-artifact, exact-output, composition, and
+broken-graph states. Its previous 60-second literal failed at 60.561 seconds in
+a native-Z3 release gate. A named 120-second budget retains almost 50% headroom
+without retrying or weakening any of those scenarios.
+
 Checker-backed dogfood has a separate named finite policy. The historical
 per-test path retains its 20-second local/60-second CI test allowance, but the
 native-Z3 integration job now runs every one of the 130 cases exactly once in

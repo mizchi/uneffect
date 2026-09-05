@@ -2185,9 +2185,23 @@ still selected exactly once and each partition's executed count is checked. A
 final development-host run completed the 66/12/8/13/31 cases in 17.018, 6.364,
 14.340, 36.715, and 57.414 seconds: 131.851 seconds total, 27.5% of the
 480-second acceptance budget. The slowest partition used 19.1% of its
-300-second hard deadline, and maximum phase-observed RSS was 1.483 GB. Remote
-current-HEAD evidence is still required; this local result is the Green
-candidate, not the release decision.
+300-second hard deadline, and maximum phase-observed RSS was 1.483 GB.
+
+Current-HEAD run 33968358071 passed all seven jobs without a dogfood retry. Its
+five attempt-1 partitions took 63.339, 13.534, 39.114, 89.250, and 140.988
+seconds: 346.225 seconds total, 72.1% of the 480-second acceptance budget. The
+slowest partition used 47.0% of its 300-second hard deadline. Whole-source
+analysis ran once in each self-analysis-bearing process, at 71.668 and 71.499
+seconds, and the maximum phase-observed RSS was 2.860 GB. The retained timing
+artifact therefore supplies remote Green evidence while preserving the two
+earlier timeout runs as negative operational controls.
+
+The subsequent local release gate exposed a separate finite-budget boundary:
+the CLI workspace acceptance, which repeatedly checks one two-project solution
+through valid and deliberately broken states, reached its literal 60-second
+Vitest limit at 60.561 seconds. That Red is retained as calibration evidence.
+The test now uses a named 120-second allowance; it is not retried and its
+semantic, artifact-integrity, and graph-failure assertions are unchanged.
 
 The P2.31 focused benchmark derives the eight-step finite self-affine retry
 summary. A selected run measured 0.1803 ms mean over 2,773 structural samples
