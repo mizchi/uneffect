@@ -71,11 +71,11 @@ All notable changes to Uneffect are documented in this file.
   `JSON.parse` `Throw<SyntaxError>` effect and now fail closed on unproved
   external generator consumption.
 - Kept per-test process isolation for the CI WASM solver while running native-Z3
-  dogfood as six cost-balanced, count-checked partitions. The complete corpus
+  dogfood as five cost-balanced, count-checked partitions. The complete corpus
   still runs every case once, enforces 20% headroom before its overall hard
-  deadline, and records v2 phase/resource timing without paying one
-  Vitest/TypeScript startup per case or retaining a 3 GiB-class heap across the
-  full file.
+  deadline, and records v2 phase/resource timing. Self-analysis cases reuse an
+  immutable whole-source snapshot within their process, while mutant cases keep
+  independent programs and assertions.
 - Project temporal verification now aggregates Promise/resource safety
   diagnostics into its public result and assurance decision. Release dogfood
   keeps specifications unchanged while injecting a floating browser fetch and

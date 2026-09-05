@@ -97,7 +97,7 @@ describe("CI test tier manifest", () => {
 
   it("partitions native dogfood while retaining 20 percent overall deadline headroom", () => {
     expect(ciDogfoodProcessTimeoutMs).toBe(10 * 60_000);
-    expect(ciDogfoodPartitionCount).toBe(6);
+    expect(ciDogfoodPartitionCount).toBe(5);
     expect(ciDogfoodPartitionStarts).toHaveLength(ciDogfoodPartitionCount);
     expect(ciDogfoodPartitionTimeoutMs).toBe(5 * 60_000);
     expect(ciDogfoodBudgetMs).toBe(ciDogfoodProcessTimeoutMs * 0.8);
@@ -120,7 +120,10 @@ describe("CI test tier manifest", () => {
     const dogfoodNames = [...dogfoodSource.matchAll(/^  it\("([^"]+)"/gm)].map((match) => match[1]!);
     const dogfoodPartitions = partitionVitestTestNames(dogfoodNames, ciDogfoodPartitionStarts);
     expect(dogfoodPartitions.flat()).toEqual(dogfoodNames);
-    expect(dogfoodPartitions.map(({ length }) => length)).toEqual([66, 12, 8, 6, 7, 31]);
+    expect(dogfoodPartitions.map(({ length }) => length)).toEqual([66, 12, 8, 13, 31]);
+    expect(dogfoodSource).toContain("let sourceTreeEffectAnalysis");
+    expect(dogfoodSource).toContain("function analyzeSourceTreeEffects");
+    expect(dogfoodSource.match(/const result = analyzeSourceTreeEffects\(\);/g)).toHaveLength(13);
 
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
     expect(workflow).toMatch(/integration:[\s\S]*?UNEFFECT_TEST_ISOLATION: file/);

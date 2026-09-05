@@ -2173,15 +2173,21 @@ was killed with `ETIMEDOUT`; all six other jobs, including the installed-package
 contract, passed. This showed that a 434-second Green still left insufficient
 heap/runtime variance margin for a 3 GiB-class process.
 
-The follow-up keeps all tests and assertions but partitions the source-ordered
-corpus at six named cost boundaries. Each test is selected exactly once and
-each partition's executed count is checked. A final development-host run
-completed the 66/12/8/6/7/31 cases in 15.420, 5.592, 14.860, 66.476, 135.138,
-and 52.665 seconds: 290.151 seconds total, 60.4% of the 480-second acceptance
-budget. The slowest partition used 45.0% of its 300-second hard deadline, and
-the maximum phase-observed RSS fell to 1.644 GB. Remote current-HEAD evidence
-is still required; this local result is the Green candidate, not the release
-decision.
+Run 33967334574 is a second retained negative control. Its first four
+partitions passed in 55.521, 13.418, 39.344, and 146.390 seconds, but the fifth
+partition reached its 300.096-second hard deadline. Splitting the corpus had
+reset heap growth, but the self-analysis tests in that partition were still
+reconstructing and analyzing the same TypeScript Program independently.
+
+The follow-up keeps all tests and mutant assertions while sharing one immutable
+whole-source analysis snapshot inside the self-analysis process. Each test is
+still selected exactly once and each partition's executed count is checked. A
+final development-host run completed the 66/12/8/13/31 cases in 17.018, 6.364,
+14.340, 36.715, and 57.414 seconds: 131.851 seconds total, 27.5% of the
+480-second acceptance budget. The slowest partition used 19.1% of its
+300-second hard deadline, and maximum phase-observed RSS was 1.483 GB. Remote
+current-HEAD evidence is still required; this local result is the Green
+candidate, not the release decision.
 
 The P2.31 focused benchmark derives the eight-step finite self-affine retry
 summary. A selected run measured 0.1803 ms mean over 2,773 structural samples

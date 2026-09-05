@@ -134,9 +134,11 @@ and ordinary Vitest timeouts are never retried.
 Checker-backed dogfood has a separate named finite policy. The historical
 per-test path retains its 20-second local/60-second CI test allowance, but the
 native-Z3 integration job now runs every one of the 130 cases exactly once in
-six source-ordered, cost-balanced Vitest processes. The named partition starts
-separate the whole-source/self-analysis cluster and reset its 3 GiB-class heap
-without returning to one process per test. Each partition has a five-minute
+five source-ordered, cost-balanced Vitest processes. The named partition starts
+reset the checker heap without returning to one process per test. The
+self-analysis cluster reuses one immutable whole-source analysis snapshot
+within its process; independent mutant analyses still construct and verify
+their own programs. Each partition has a five-minute
 hard deadline; together they retain the original 10-minute overall hard
 deadline and 8-minute acceptance budget, so a clean result must retain at least
 20% overall headroom. Test enumeration and each partition's executed count are

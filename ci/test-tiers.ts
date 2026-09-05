@@ -216,7 +216,6 @@ export const ciDogfoodPartitionStarts = [
   "refines Node Lease authority Set/Map mutations",
   "proves telemetry routing conservation and rejects an unbalanced action",
   "classifies every unknown summary while analyzing its own implementation",
-  "separates pure CLI helpers from terminal output and usage throws",
   "tracks persisted optimizer evidence reads independently from regeneration writes",
 ] as const;
 export const ciDogfoodPartitionCount = ciDogfoodPartitionStarts.length;

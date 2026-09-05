@@ -1,6 +1,6 @@
 import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
@@ -48,6 +48,34 @@ function measureDogfoodPhaseAsync<T>(phase: CiTimingPhase, testName: string, ope
     tier: "integration", shard: process.env.UNEFFECT_CI_SHARD ?? null,
     file: dogfoodTimingFile, testName, attempt: 1, phase,
   }, operation);
+}
+
+let sourceTreeEffectAnalysis: ReturnType<typeof analyzeProgramEffects> | undefined;
+function analyzeSourceTreeEffects(): ReturnType<typeof analyzeProgramEffects> {
+  if (sourceTreeEffectAnalysis) return sourceTreeEffectAnalysis;
+  const program = measureDogfoodPhase(
+    "project-compiler-construction", "whole src TypeScript Program",
+    () => ts.createProgram(globSync("src/*.ts"), {
+      target: ts.ScriptTarget.ES2024,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+      types: ["node"],
+      noEmit: true,
+    }),
+  );
+  const analyzed = measureDogfoodPhase(
+    "analysis-pass", "whole src effect analysis",
+    () => analyzeProgramEffects(program, { requireAnnotations: false }),
+  );
+  sourceTreeEffectAnalysis = {
+    ...analyzed,
+    summaries: analyzed.summaries.map((summary) => summary.fileName ? {
+      ...summary,
+      fileName: relative(process.cwd(), resolve(summary.fileName)).replaceAll("\\", "/"),
+    } : summary),
+  };
+  return sourceTreeEffectAnalysis;
 }
 
 describe("Uneffect dogfood", () => {
@@ -2625,21 +2653,7 @@ describe("Uneffect dogfood", () => {
   });
 
   it("classifies every unknown summary while analyzing its own implementation", () => {
-    const program = measureDogfoodPhase(
-      "project-compiler-construction", "whole src TypeScript Program",
-      () => ts.createProgram(globSync("src/*.ts"), {
-        target: ts.ScriptTarget.ES2024,
-        module: ts.ModuleKind.NodeNext,
-        moduleResolution: ts.ModuleResolutionKind.NodeNext,
-        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
-        types: ["node"],
-        noEmit: true,
-      }),
-    );
-    const result = measureDogfoodPhase(
-      "analysis-pass", "whole src effect analysis",
-      () => analyzeProgramEffects(program, { requireAnnotations: false }),
-    );
+    const result = analyzeSourceTreeEffects();
     expect(result.summaries.length).toBeGreaterThan(200);
     expect(result.diagnostics).toEqual([]);
     const unknown = result.summaries.filter((summary) => summary.evidence === "unknown");
@@ -2655,15 +2669,7 @@ describe("Uneffect dogfood", () => {
   it("enforces an explicit pure boundary on the leaf static evaluator", () => {
     const fileName = "src/static-evaluation.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024,
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
-      types: ["node"],
-      noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     expect(result.summaries.filter((summary) => summary.fileName === fileName)
       .filter((summary) => ["evaluateStaticPrimitive", "evaluateStaticBoolean", "<module>"].includes(summary.functionName))
@@ -2688,11 +2694,7 @@ describe("Uneffect dogfood", () => {
   it("enforces pure construction while retaining throws on coordinate lookup methods", () => {
     const fileName = "src/project-coordinates.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "createProjectByteCoordinates"))
@@ -2714,11 +2716,7 @@ describe("Uneffect dogfood", () => {
   it("keeps disposal traversal mutation internal to its fresh default Set", () => {
     const fileName = "src/disposal-symbols.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "standardProtocolExpression"))
@@ -2736,11 +2734,7 @@ describe("Uneffect dogfood", () => {
 
   it("enforces pure diagnostic normalization, formatting, and quality scoring", () => {
     const fileNames = ["src/diagnostics.ts", "src/diagnostic-quality.ts"];
-    const program = ts.createProgram(fileNames, {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selectedNames = new Set([
       "fromTypeScriptDiagnostic", "reportDiagnostic", "formatDiagnostic", "formatDiagnostics", "formatCheckEvidence",
@@ -2765,11 +2759,7 @@ describe("Uneffect dogfood", () => {
   it("separates pure CLI helpers from terminal output and usage throws", () => {
     const fileName = "src/cli-support.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "formatCommandHelp"))
@@ -2791,11 +2781,7 @@ describe("Uneffect dogfood", () => {
     const fileName = "src/environment.ts";
     const source = readFileSync(fileName, "utf8");
     const files = [fileName, "src/package-manifest.ts"];
-    const program = ts.createProgram(files, {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) =>
       files.some((file) => (summary.fileName ?? "").endsWith(file)));
@@ -2820,11 +2806,7 @@ describe("Uneffect dogfood", () => {
   it("separates CLI help formatting from version manifest access", () => {
     const fileName = "src/cli-runner.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "formatCliHelp"))
@@ -2843,11 +2825,7 @@ describe("Uneffect dogfood", () => {
   it("separates CLI dispatch stream callbacks from dispatcher body effects", () => {
     const fileName = "src/cli-runner.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const runCli = result.summaries.find((summary) => summary.fileName === fileName && summary.functionName === "runCli");
     expect(runCli).toMatchObject({
@@ -2870,11 +2848,7 @@ describe("Uneffect dogfood", () => {
   it("classifies fixture discovery and report persistence as filesystem capabilities", () => {
     const fileName = "src/fixtures.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "summaryOf"))
@@ -2897,11 +2871,7 @@ describe("Uneffect dogfood", () => {
   it("separates ownership cache keys, reads, and atomic writes", () => {
     const fileName = "src/ownership-evidence-cache.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "ownershipEvidenceKey"))
@@ -2922,11 +2892,7 @@ describe("Uneffect dogfood", () => {
   it("classifies model trace loading and randomized atomic persistence", () => {
     const fileName = "src/model-replay.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "readModelCounterexample"))
@@ -2955,11 +2921,7 @@ describe("Uneffect dogfood", () => {
   it("tracks persisted optimizer evidence reads independently from regeneration writes", () => {
     const fileName = "src/project-optimizer.ts";
     const source = readFileSync(fileName, "utf8");
-    const program = ts.createProgram([fileName], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
-    });
-    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
     expect(selected.find((summary) => summary.functionName === "parseEvidence"))

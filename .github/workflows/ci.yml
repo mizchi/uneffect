@@ -131,7 +131,7 @@ jobs:
       UNEFFECT_Z3_BACKEND: native
       UNEFFECT_CI_SHARD: ${{ matrix.integration-shard }}
       UNEFFECT_CI_TIMING_PATH: .uneffect/ci-timing/integration-${{ matrix.integration-shard }}.jsonl
-      # Native Z3 dogfood uses six cost-balanced corpus partitions; this resets
+      # Native Z3 dogfood uses five cost-balanced corpus partitions; this resets
       # the 3 GiB-class heap without rebuilding Vitest for every one of 130 cases.
       UNEFFECT_TEST_ISOLATION: file
     steps:
