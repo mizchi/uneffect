@@ -50,15 +50,14 @@ internal package boundaries.
 
 ### Current problem statement
 
-The repository has broad positive and adjacent negative coverage, but release
-evidence is still incomplete in three operationally important ways:
+The repository has broad positive and adjacent negative coverage. The first
+qualification gap is now closed: #66 retains two implementation-only mutants
+with unchanged specifications and rejects both through the public verifier.
+Release evidence remains incomplete in two operationally important ways:
 
-1. Most fixtures prove a deliberately authored supported fragment. The release
-   still needs two realistic cases where the specification stays unchanged and
-   an implementation-only defect is detected.
-2. Checker-backed self-dogfood has reached the hard CI deadline. A passing
+1. Checker-backed self-dogfood has reached the hard CI deadline. A passing
    retry does not provide a deterministic release budget.
-3. Static export/schema checks and package smoke exist, but the actual tarball
+2. Static export/schema checks and package smoke exist, but the actual tarball
    still needs a fresh-consumer contract test that proves the stable and
    experimental entrypoint boundary.
 
@@ -66,18 +65,18 @@ evidence is still incomplete in three operationally important ways:
 
 | Status | Issue | Outcome required for 0.3.0 |
 | --- | --- | --- |
-| Active | [#66](https://github.com/mizchi/uneffect/issues/66) | Detect implementation-only Promise/resource defects in two realistic applications without changing their specifications. |
-| Next | [#67](https://github.com/mizchi/uneffect/issues/67) | Keep the slowest of three cold CI-shaped self-dogfood runs at or below 80% of the hard deadline, without retry or weaker assertions. |
+| Done | [#66](https://github.com/mizchi/uneffect/issues/66) | Detect implementation-only Promise/resource defects in two realistic applications without changing their specifications. |
+| Active | [#67](https://github.com/mizchi/uneffect/issues/67) | Keep the slowest of three cold CI-shaped self-dogfood runs at or below 80% of the hard deadline, without retry or weaker assertions. |
 | Next | [#68](https://github.com/mizchi/uneffect/issues/68) | Install the actual tarball into a fresh Node 24 consumer and lock public imports, schemas, exclusions, and optional-dependency failure behavior. |
 | Blocked umbrella | [#62](https://github.com/mizchi/uneffect/issues/62) | Reconcile the final supported-fragment contract and run the release gates after #66–#68 close. |
 
 ### Release exit criteria
 
-- [ ] [#66](https://github.com/mizchi/uneffect/issues/66) Two realistic application boundaries retain byte-identical specs between
+- [x] [#66](https://github.com/mizchi/uneffect/issues/66) Two realistic application boundaries retain byte-identical specs between
   green and implementation-mutant runs, and every retained mutant is detected.
-- [ ] [#66](https://github.com/mizchi/uneffect/issues/66) Unsupported neighboring shapes produce `unknown`, `excluded`, or a
+- [x] [#66](https://github.com/mizchi/uneffect/issues/66) Unsupported neighboring shapes produce `unknown`, `excluded`, or a
   blocker rather than successful verification.
-- [ ] [#66](https://github.com/mizchi/uneffect/issues/66) Diagnostics, coverage classification, and normalized witnesses are
+- [x] [#66](https://github.com/mizchi/uneffect/issues/66) Diagnostics, coverage classification, and normalized witnesses are
   deterministic across repeated runs.
 - [ ] [#67](https://github.com/mizchi/uneffect/issues/67) Self-dogfood has measured CI headroom and passes without timeout retry.
 - [ ] [#68](https://github.com/mizchi/uneffect/issues/68) An installed tarball passes root/Corsa/spec/schema consumer probes and
@@ -96,7 +95,7 @@ separately estimated child rather than activating an XL parent directly.
 
 | Area | Owning Issues | Current decision |
 | --- | --- | --- |
-| General CFG, aliases, and dynamic dispatch | [#25](https://github.com/mizchi/uneffect/issues/25), [#24](https://github.com/mizchi/uneffect/issues/24) | Drive the next slice from a #66 counterexample; do not pursue arbitrary CFG completeness for 0.3.0. |
+| General CFG, aliases, and dynamic dispatch | [#25](https://github.com/mizchi/uneffect/issues/25), [#24](https://github.com/mizchi/uneffect/issues/24) | Keep #66's retained mutations inside the bounded supported fragment; do not pursue arbitrary CFG completeness for 0.3.0. |
 | Full native frontend parity | [#8](https://github.com/mizchi/uneffect/issues/8) | Keep parity bounded to the advertised Corsa API capabilities. |
 | General temporal, collection, and host semantics | [#2](https://github.com/mizchi/uneffect/issues/2), [#5](https://github.com/mizchi/uneffect/issues/5), [#10](https://github.com/mizchi/uneffect/issues/10), [#18](https://github.com/mizchi/uneffect/issues/18) | Keep unmodeled scheduling and values explicit in coverage/exclusions. |
 | Property, numeric, React, and evidence breadth | [#4](https://github.com/mizchi/uneffect/issues/4), [#6](https://github.com/mizchi/uneffect/issues/6), [#7](https://github.com/mizchi/uneffect/issues/7), [#16](https://github.com/mizchi/uneffect/issues/16) | Resume only from product-backed bounded children after 0.3.0. |

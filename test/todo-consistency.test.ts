@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 62, 64, 66, 67, 68];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 62, 64, 67, 68];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -84,7 +84,7 @@ describe("TODO hierarchy consistency", () => {
         .split(new RegExp(`## Phase ${number} [^\\n]*\\n`), 2)[1]
         ?.split(/^## /m, 1)[0] ?? "";
 
-    for (const issue of [62, 66, 67, 68]) {
+    for (const issue of [62, 67, 68]) {
       expect(release, `0.3.0 release queue is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
     expect(phase(1)).toContain("issues/9");
@@ -105,13 +105,13 @@ describe("TODO hierarchy consistency", () => {
     const releaseBoard = todo
       .split("### Execution queue", 2)[1]
       ?.split("### Release exit criteria", 1)[0] ?? "";
-    const rows = [...releaseBoard.matchAll(/^\| (Active|Next|Blocked umbrella) \| \[#(\d+)\]/gm)].map(
+    const rows = [...releaseBoard.matchAll(/^\| (Done|Active|Next|Blocked umbrella) \| \[#(\d+)\]/gm)].map(
       ([, status, issue]) => [status, Number(issue)],
     );
 
     expect(rows).toEqual([
-      ["Active", 66],
-      ["Next", 67],
+      ["Done", 66],
+      ["Active", 67],
       ["Next", 68],
       ["Blocked umbrella", 62],
     ]);
@@ -125,7 +125,7 @@ describe("TODO hierarchy consistency", () => {
       ?.split("### Release exit criteria", 1)[0];
 
     expect(releaseQueue).toBeDefined();
-    const rows = [...(releaseQueue ?? "").matchAll(/^\| (?:Active|Next|Blocked umbrella) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
+    const rows = [...(releaseQueue ?? "").matchAll(/^\| (?:Done|Active|Next|Blocked umbrella) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, issue, outcome]) => [Number(issue), outcome.trim()],
     );
     expect(rows.map(([issue]) => issue)).toEqual([66, 67, 68, 62]);

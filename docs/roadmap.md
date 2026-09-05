@@ -19,10 +19,10 @@ implementations experimental.
 
 The bounded release queue is:
 
-1. [#66](https://github.com/mizchi/uneffect/issues/66) detects
+1. [#66](https://github.com/mizchi/uneffect/issues/66) is complete: it detects
    implementation-only Promise/resource defects in two realistic applications
    without changing their specifications.
-2. [#67](https://github.com/mizchi/uneffect/issues/67) restores deterministic
+2. **Active:** [#67](https://github.com/mizchi/uneffect/issues/67) restores deterministic
    self-dogfood headroom below the finite CI deadline without weaker checks or
    unbounded retries.
 3. [#68](https://github.com/mizchi/uneffect/issues/68) validates the actual
