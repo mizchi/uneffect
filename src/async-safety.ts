@@ -1903,6 +1903,76 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (consumes(node) && next.active) next.pending = false;
         return next;
       };
+      const joinThrowStates = (states: readonly PathState[]): PathState => ({
+        active: states.some((candidate) => candidate.active),
+        pending: states.some((candidate) => candidate.pending),
+        lost: states.some((candidate) => candidate.lost),
+        terminated: true,
+        completion: "throw",
+      });
+      const executeGuaranteedThrowPrefix = (
+        original: ts.Expression,
+        state: PathState,
+      ): PathState[] | undefined => {
+        if (!isGuaranteedThrowExpression(original)) return undefined;
+        let expression = original;
+        while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+          || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+          || ts.isNonNullExpression(expression) || ts.isAwaitExpression(expression)
+          || ts.isVoidExpression(expression)) expression = expression.expression;
+        if (ts.isCallExpression(expression)) {
+          let current = executeNodeEffects(expression.expression, state);
+          for (const argument of expression.arguments) {
+            const thrown = executeGuaranteedThrowPrefix(argument, current);
+            if (thrown) return thrown;
+            current = executeNodeEffects(argument, current);
+          }
+          return [executeNodeEffects(expression, current)];
+        }
+        if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+          const leftThrow = executeGuaranteedThrowPrefix(expression.left, state);
+          return leftThrow ?? executeGuaranteedThrowPrefix(
+            expression.right,
+            executeNodeEffects(expression.left, state),
+          );
+        }
+        if (ts.isBinaryExpression(expression)
+          && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+            || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+          const leftThrow = executeGuaranteedThrowPrefix(expression.left, state);
+          if (leftThrow) return leftThrow;
+          const left = staticPrimitive(expression.left, new Map())?.value;
+          if (left === undefined) return undefined;
+          return executeGuaranteedThrowPrefix(
+            expression.right,
+            executeNodeEffects(expression.left, state),
+          );
+        }
+        if (ts.isBinaryExpression(expression)
+          && expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+          const leftThrow = executeGuaranteedThrowPrefix(expression.left, state);
+          if (leftThrow) return leftThrow;
+          return executeGuaranteedThrowPrefix(
+            expression.right,
+            executeNodeEffects(expression.left, state),
+          );
+        }
+        if (ts.isConditionalExpression(expression)) {
+          const conditionThrow = executeGuaranteedThrowPrefix(expression.condition, state);
+          if (conditionThrow) return conditionThrow;
+          const conditioned = executeNodeEffects(expression.condition, state);
+          const condition = staticPrimitive(expression.condition, new Map())?.value;
+          if (condition !== undefined) return executeGuaranteedThrowPrefix(
+            Boolean(condition) ? expression.whenTrue : expression.whenFalse,
+            conditioned,
+          );
+          return [
+            ...(executeGuaranteedThrowPrefix(expression.whenTrue, { ...conditioned }) ?? []),
+            ...(executeGuaranteedThrowPrefix(expression.whenFalse, { ...conditioned }) ?? []),
+          ];
+        }
+        return [executeNodeEffects(expression, state)];
+      };
       const headerNodeGuaranteedThrow = (node: ts.Node): boolean => {
         if (ts.isExpression(node)) return isGuaranteedThrowExpression(node);
         if (ts.isVariableDeclarationList(node)) return node.declarations.some((declaration) =>
@@ -1910,6 +1980,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         return false;
       };
       const executeHeaderNode = (node: ts.Node, state: PathState): PathState => {
+        if (ts.isExpression(node)) {
+          const thrown = executeGuaranteedThrowPrefix(node, state);
+          if (thrown && thrown.length > 0) return joinThrowStates(thrown);
+          return executeNodeEffects(node, state);
+        }
         const next = executeNodeEffects(node, state);
         return headerNodeGuaranteedThrow(node)
           ? { ...next, terminated: true, completion: "throw" }
@@ -1922,9 +1997,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             ? statement.condition
             : undefined;
         if (!expression) return { state, outcome: ts.isForStatement(statement) ? true : undefined };
-        const next = executeNodeEffects(expression, state);
-        if (isGuaranteedThrowExpression(expression)) return {
-          state: { ...next, terminated: true, completion: "throw" },
+        const next = executeHeaderNode(expression, state);
+        if (next.terminated && next.completion === "throw") return {
+          state: next,
           outcome: "throw",
         };
         const value = staticPrimitive(expression, new Map())?.value;
@@ -2162,9 +2237,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                 transfer: (input) => {
                   const entries: PathState[] = [], exits: PathState[] = [];
                   for (const incoming of input) {
-                    const before = executeNodeEffects(statement.expression, { ...incoming });
-                    if (isGuaranteedThrowExpression(statement.expression)) {
-                      exits.push({ ...before, terminated: true, completion: "throw" });
+                    const before = executeHeaderNode(statement.expression, { ...incoming });
+                    if (before.terminated && before.completion === "throw") {
+                      exits.push(before);
                       continue;
                     }
                     if (selection.kind === "unmatched") exits.push(before);

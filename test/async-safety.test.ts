@@ -1090,6 +1090,40 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("does not observe Promise effects after an earlier guaranteed throw", () => {
+    const result = analyzeAsyncSafety("throw-prefix-order.ts", `
+      declare function task(): Promise<number>
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      async function unreachableAwait() {
+        const pending = task()
+        if (fail() && await pending) console.log("unreachable")
+      }
+      async function observedBeforeThrow() {
+        const pending = task()
+        if ((await pending, fail())) console.log("unreachable")
+      }
+      async function oneBranchMisses(flag: boolean) {
+        const pending = task()
+        if (flag ? fail() : (await pending, fail())) console.log("unreachable")
+      }
+      async function loopTestThrowsFirst() {
+        const pending = task()
+        while (fail() && await pending) console.log("unreachable")
+      }
+      async function switchDiscriminantThrowsFirst() {
+        const pending = task()
+        switch (fail() && await pending) { default: console.log("unreachable") }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "unreachableAwait", status: "floating" },
+      { owner: "observedBeforeThrow", status: "observed" },
+      { owner: "oneBranchMisses", status: "floating" },
+      { owner: "loopTestThrowsFirst", status: "floating" },
+      { owner: "switchDiscriminantThrowsFirst", status: "floating" },
+    ]);
+  });
+
   it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
     const result = analyzeAsyncSafety("throw-expression-promises.ts", `
       declare function task(): Promise<number>
