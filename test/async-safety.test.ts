@@ -1148,6 +1148,30 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("evaluates Promise ownership initializers in declaration order", () => {
+    const result = analyzeAsyncSafety("throw-initializer-order.ts", `
+      declare function task(): Promise<number>
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      async function forInitializerThrowsFirst() {
+        const pending = task()
+        for (let stopped = fail(), observed = await pending; ; ) {}
+      }
+      async function forInitializerObservesFirst() {
+        const pending = task()
+        for (let observed = await pending, stopped = fail(); ; ) {}
+      }
+      async function statementInitializerThrowsFirst() {
+        const pending = task()
+        const stopped = fail(), observed = await pending
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "forInitializerThrowsFirst", status: "floating" },
+      { owner: "forInitializerObservesFirst", status: "observed" },
+      { owner: "statementInitializerThrowsFirst", status: "floating" },
+    ]);
+  });
+
   it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
     const result = analyzeAsyncSafety("throw-expression-promises.ts", `
       declare function task(): Promise<number>

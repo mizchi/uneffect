@@ -1745,10 +1745,6 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       const isGuaranteedThrowStatement = (statement: ts.Statement): boolean => {
         if (ts.isExpressionStatement(statement)) return isGuaranteedThrowExpression(statement.expression);
         if (ts.isReturnStatement(statement) && statement.expression) return isGuaranteedThrowExpression(statement.expression);
-        if (ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1) {
-          const initializer = statement.declarationList.declarations[0]!.initializer;
-          return initializer !== undefined && isGuaranteedThrowExpression(initializer);
-        }
         return false;
       };
       const switchIsExhaustive = (statement: ts.SwitchStatement): boolean => {
@@ -1973,11 +1969,22 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         }
         return [executeNodeEffects(expression, state)];
       };
-      const headerNodeGuaranteedThrow = (node: ts.Node): boolean => {
-        if (ts.isExpression(node)) return isGuaranteedThrowExpression(node);
-        if (ts.isVariableDeclarationList(node)) return node.declarations.some((declaration) =>
-          declaration.initializer !== undefined && isGuaranteedThrowExpression(declaration.initializer));
-        return false;
+      const executeDeclarationList = (
+        declarationList: ts.VariableDeclarationList,
+        state: PathState,
+      ): { state: PathState; threw: boolean } => {
+        let current = state;
+        for (const declaration of declarationList.declarations) {
+          if (declaration.initializer) {
+            const thrown = executeGuaranteedThrowPrefix(declaration.initializer, current);
+            if (thrown && thrown.length > 0) return {
+              state: joinThrowStates(thrown),
+              threw: true,
+            };
+          }
+          current = executeNodeEffects(declaration, current);
+        }
+        return { state: current, threw: false };
       };
       const executeHeaderNode = (node: ts.Node, state: PathState): PathState => {
         if (ts.isExpression(node)) {
@@ -1985,10 +1992,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           if (thrown && thrown.length > 0) return joinThrowStates(thrown);
           return executeNodeEffects(node, state);
         }
-        const next = executeNodeEffects(node, state);
-        return headerNodeGuaranteedThrow(node)
-          ? { ...next, terminated: true, completion: "throw" }
-          : next;
+        if (ts.isVariableDeclarationList(node)) return executeDeclarationList(node, state).state;
+        return executeNodeEffects(node, state);
       };
       const executeLoopTest = (statement: ts.IterationStatement, state: PathState): { state: PathState; outcome?: boolean | "throw" } => {
         const expression = ts.isWhileStatement(statement) || ts.isDoStatement(statement)
@@ -2443,13 +2448,12 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (ts.isWhileStatement(statement)) return executeLoop(statement, state, false, loopLabel);
         if (ts.isDoStatement(statement)) return executeLoop(statement, state, true, loopLabel);
         if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) return [{ ...state, abrupt: ts.isBreakStatement(statement) ? "break" : "continue", label: statement.label?.text }];
+        if (ts.isVariableStatement(statement)) return [executeDeclarationList(statement.declarationList, state).state];
         const guaranteedThrow = isGuaranteedThrowStatement(statement);
         const throwExpression = guaranteedThrow
           ? ts.isExpressionStatement(statement) ? statement.expression
             : ts.isReturnStatement(statement) ? statement.expression
-              : ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1
-                ? statement.declarationList.declarations[0]!.initializer
-                : undefined
+              : undefined
           : undefined;
         const throwPrefixes = throwExpression
           ? executeGuaranteedThrowPrefix(throwExpression, state)
