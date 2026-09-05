@@ -1197,6 +1197,30 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("evaluates call receivers and computed keys before arguments", () => {
+    const result = analyzeAsyncSafety("throw-call-target-order.ts", `
+      declare function task(): Promise<number>
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      async function receiverThrowsFirst() {
+        const pending = task()
+        ;(fail() as any).consume(await pending)
+      }
+      async function keyThrowsFirst(target: any) {
+        const pending = task()
+        target[fail()](await pending)
+      }
+      async function keyObservesFirst(target: any) {
+        const pending = task()
+        target[await pending](fail())
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "receiverThrowsFirst", status: "floating" },
+      { owner: "keyThrowsFirst", status: "floating" },
+      { owner: "keyObservesFirst", status: "observed" },
+    ]);
+  });
+
   it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
     const result = analyzeAsyncSafety("throw-expression-promises.ts", `
       declare function task(): Promise<number>

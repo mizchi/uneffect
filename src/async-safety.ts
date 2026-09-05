@@ -1717,6 +1717,14 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0
             && declaresSynchronousThrow(signature.declaration);
         }
+        if (ts.isPropertyAccessExpression(expression)) {
+          return isGuaranteedThrowExpression(expression.expression);
+        }
+        if (ts.isElementAccessExpression(expression)) {
+          return isGuaranteedThrowExpression(expression.expression)
+            || expression.argumentExpression !== undefined
+              && isGuaranteedThrowExpression(expression.argumentExpression);
+        }
         if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
           return isGuaranteedThrowExpression(expression.left) || isGuaranteedThrowExpression(expression.right);
         }
@@ -1928,6 +1936,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             current = executeNodeEffects(argument, current);
           }
           return [executeNodeEffects(expression, current)];
+        }
+        if (ts.isPropertyAccessExpression(expression)) {
+          return executeGuaranteedThrowPrefix(expression.expression, state);
+        }
+        if (ts.isElementAccessExpression(expression)) {
+          const receiverThrow = executeGuaranteedThrowPrefix(expression.expression, state);
+          if (receiverThrow) return receiverThrow;
+          const received = executeNodeEffects(expression.expression, state);
+          return expression.argumentExpression
+            ? executeGuaranteedThrowPrefix(expression.argumentExpression, received)
+            : undefined;
         }
         if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
           const leftThrow = executeGuaranteedThrowPrefix(expression.left, state);
