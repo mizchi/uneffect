@@ -50,17 +50,16 @@ Version synchronization is configured in `release-please-config.json` and
 `.release-please-manifest.json`. Do not hand-edit release versions after this
 bootstrap release.
 
-## 0.3.0 bootstrap
+## 0.3.0 bootstrap record
 
-Version 0.3.0 was prepared before release-please was installed. After the
-one-time npm Trusted Publisher setup, merge this release-ready state to `main`,
-wait for CI, and create exactly one GitHub Release:
+Version 0.3.0 was prepared before release-please was installed and was published
+to npm on 2026-09-06. At reconciliation time npm marked it as `latest`, but no
+matching `v0.3.0` Git tag or GitHub Release existed. Do not create a backfilled
+GitHub Release while the `release` event still invokes `publish.yml`: that would
+attempt to publish the already-used npm version. Any provenance repair must
+first make that workflow path non-publishing and must not move a tag after it is
+shared.
 
-```sh
-gh release create v0.3.0 --repo mizchi/uneffect --target main \
-  --title v0.3.0 --notes "First operational TypeScript 7/Corsa release. See CHANGELOG.md for the full supported and unsupported boundary."
-```
-
-The release event starts `publish.yml`. Do not run a second local
-`npm publish`, reuse the version after npm accepts it, or move the tag after a
-failed post-publish validation. Publish a corrective patch instead.
+Future releases use the normal release-please flow above. Never reuse 0.3.0,
+run a second local publish for it, or move a shared tag. Publish a corrective
+patch when package contents need correction.

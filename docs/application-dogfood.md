@@ -320,6 +320,22 @@ This does not prove that `main` completes, that its later effects occur, that
 the handler runs, or when either job is selected by the host event loop. Bare
 launches and unsupported catch targets remain explicit unknowns.
 
+## Runtime-real conditional top-level await
+
+Bounded child #69 adds `examples/dogfood/module-conditional-tla.ts`: a Node
+entry boundary reads `process.argv` once into an immutable Boolean and
+conditionally warms a cache through top-level await. The experimental v2
+artifact retains both normal paths and terminal rejection. Its load-bearing
+mutant changes the selector from `const` to `let`; the result must become
+`unknown`. Separate controls retain ambient declarations, hidden writes,
+nested conditional expressions, multiple awaits, and await-then-throw as
+non-proofs.
+
+This is stronger than the earlier ambient workspace fixture because the
+selector exists at runtime. It is still only abstract CFG reachability, not a
+proof that both command-line values occur in a particular deployment, and it
+does not widen the published workspace v1 contract.
+
 ## Budgeted refinement CFG seed
 
 The application-shaped `examples/dogfood/telemetry-fixed-point-drain.ts` models

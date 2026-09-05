@@ -133,6 +133,8 @@ export type {
 } from "./declaration-transforms.js";
 export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "./module-initialization.js";
 export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationCycleComponent, ModuleInitializationCycleRequest, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationSourceEvidence, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
+export { analyzeModuleInitializationOrderV2, DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET } from "./module-initialization-v2.js";
+export type { ModuleInitializationCompletionPath, ModuleInitializationConstraintV2, ModuleInitializationControlFlow, ModuleInitializationControlFlowEdge, ModuleInitializationControlFlowEdgeRole, ModuleInitializationControlFlowProof, ModuleInitializationEventKindV2, ModuleInitializationEventV2, ModuleInitializationModuleV2, ModuleInitializationOrderV2, ModuleInitializationUnknownV2, ModuleInitializationV2Options } from "./module-initialization-v2.js";
 export { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
 export type { TypeScriptBuildArtifactEvidence, TypeScriptBuildArtifactObservation, TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance, TypeScriptProjectReference, TypeScriptWorkspace, TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 export { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";

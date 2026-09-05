@@ -115,6 +115,35 @@ schema is `schemas/uneffect-workspace-module-order-v1.schema.json`. This is a
 source-semantics claim; exact runtime emit bytes are checked only when the
 caller separately requests `buildArtifacts: "require-exact"`.
 
+## Experimental conditional join (v2)
+
+The experimental entrypoint exports `analyzeModuleInitializationOrderV2`. Its
+separate `uneffect-module-order/v2` artifact preserves v1 while admitting one
+additional shape: a top-level `if (selector)` with no `else`, where `selector`
+resolves by TypeChecker identity to a runtime-present, source-local Boolean
+`const`, and the branch contains exactly one lexically unconditional `await`.
+
+The v2 `controlFlow` projection records `branch-true`, `branch-false`,
+`await-resume`, `await-reject`, and normal sequence edges. A shared finite
+fixed-point verifier must show that `complete` is represented by the false or
+resume path; rejection remains terminal. Every edge retains its source span
+and source digest. `proofBudget.moduleControlFlowIterations` can lower the
+default named budget of 32 iterations, and exhaustion makes the artifact
+`unknown`.
+
+`reachableBy` is abstract CFG reachability, not a solver claim that both
+Boolean values are feasible for a particular initializer. The result still
+describes only normal-completion ordering: arbitrary selector evaluation can
+throw. Ambient `declare const` bindings are deliberately rejected because the
+declaration is erased at runtime. Imported, mutable, aliased, property,
+nested-expression, multiple-await, await-then-throw, mixed Promise-launch,
+looping, and `else` shapes also remain `unknown`.
+
+The strict experimental schema is
+`schemas/uneffect-module-order-v2.schema.json`. This first v2 slice does not
+widen `uneffect-workspace-module-order/v1`; the existing cross-project ambient
+fixture remains a negative control.
+
 Still unimplemented:
 
 - synchronous cycles beyond side-effect-import simple rings and every

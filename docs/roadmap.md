@@ -3,14 +3,15 @@
 Completed implementation details live in `implementation-status.md` and the
 historical `TODO.md` ledger. `feature-matrix.md` is the compact boundary view.
 GitHub Issues and their matching milestones are the source of truth for future
-work. The 0.3.0 qualification milestone temporarily precedes the research
-phases below. Their ordering reflects dependency and soundness risk, not a
+work. Version 0.3.0 was published to npm on 2026-09-06; its qualification
+milestone is complete and the phase roadmap is active again. The ordering below
+reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level
 effort ranges, uncertainty, and recommended delivery checkpoints. The current
 additive estimate is 48–104 engineer-weeks; this is implementation volume, not
 a calendar commitment.
 
-## 0.3.0 — Qualify bounded public contracts
+## 0.3.0 — Published bounded public contracts
 
 The 0.3.0 release does not wait for whole-language semantics. It promotes the
 versioned Corsa semantic-query descriptor and high-level temporal coverage
@@ -30,11 +31,24 @@ The bounded release queue is:
    optional-dependency probes.
 4. [#62](https://github.com/mizchi/uneffect/issues/62) is complete: the supported
    boundary is reconciled, exact-tree local and remote gates are Green, and
-   0.3.0 is release-ready. Tagging and publishing remain a separate explicit
-   maintainer action.
+   npm records `@mizchi/uneffect@0.3.0` as `latest`.
 
 General CFG, alias, Corsa parity, host scheduling, and DSL breadth remain in the
 phase roadmap and are not 0.3.0 release blockers.
+
+## Current execution
+
+[#69](https://github.com/mizchi/uneffect/issues/69) is the completed first
+post-0.3 bounded child of #18. It adds a separate experimental
+`uneffect-module-order/v2` artifact for
+one runtime-present, source-local immutable-Boolean conditional top-level-await
+join while preserving the
+published v1 schema and API unchanged. It reuses the shared fixed-point engine,
+requires both the false and await-resume completion paths, and keeps rejection
+terminal before importer execution. Conditional throws, multiple/nested awaits,
+mutable selectors, cycles, dynamic imports, and mixed Promise launches remain
+explicit non-proofs. Ambient declarations are also non-proofs: an erased
+`declare const` cannot supply runtime branch evidence.
 
 ## Phase 1 — Make proof boundaries dependable
 
@@ -108,9 +122,11 @@ phase roadmap and are not 0.3.0 release blockers.
    now has one exact synchronous, side-effect-only simple-ring family with
    source/compiler-bound DFS ordering evidence and one exact direct
    cross-project straight-line top-level-await family with declaration-bound
-   completion evidence. Runtime-binding and general-shape cycles, conditional
-   async joins, external packages, and dynamic initialization remain explicit
-   non-proofs. The available application graphs contained no real TLA candidate,
+   completion evidence. Bounded child
+   [#69](https://github.com/mizchi/uneffect/issues/69) adds one separately
+   versioned source-local conditional async join. Runtime-binding and
+   general-shape cycles, broader conditional joins, external packages, and
+   dynamic initialization remain explicit non-proofs. Earlier application graphs contained no real TLA candidate,
    but Workhub did provide a top-level `main().catch(handler)` Promise-launch
    boundary. Completed bounded child [#57](https://github.com/mizchi/uneffect/issues/57)
    proves that exact launch-before-handler-attachment ordering; later

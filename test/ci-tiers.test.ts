@@ -120,7 +120,7 @@ describe("CI test tier manifest", () => {
     const dogfoodNames = [...dogfoodSource.matchAll(/^  it\("([^"]+)"/gm)].map((match) => match[1]!);
     const dogfoodPartitions = partitionVitestTestNames(dogfoodNames, ciDogfoodPartitionStarts);
     expect(dogfoodPartitions.flat()).toEqual(dogfoodNames);
-    expect(dogfoodPartitions.map(({ length }) => length)).toEqual([66, 12, 8, 16, 31]);
+    expect(dogfoodPartitions.map(({ length }) => length)).toEqual([67, 12, 8, 16, 31]);
     expect(dogfoodSource).toContain("let sourceTreeEffectAnalysis");
     expect(dogfoodSource).toContain("function analyzeSourceTreeEffects");
     expect(dogfoodSource.match(/const result = analyzeSourceTreeEffects\(\);/g)).toHaveLength(16);

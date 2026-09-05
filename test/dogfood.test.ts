@@ -22,6 +22,7 @@ import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
 import { resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
+import { analyzeModuleInitializationOrderV2 } from "../src/module-initialization-v2.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { resolveRefinementDslFileLink, resolveRefinementDslLink } from "../src/refinement-dsl.js";
 import * as publicApi from "../src/public.js";
@@ -132,6 +133,44 @@ describe("Uneffect dogfood", () => {
       "start", "promise-launch", "rejection-handler-attach", "complete",
     ]);
     expect(result.exclusions).toContain("Promise execution after a top-level launch is not modeled");
+  });
+
+  it("proves the conditional TLA dogfood only while its runtime selector stays immutable", () => {
+    const fileName = "examples/dogfood/module-conditional-tla.ts";
+    const compilerOptions: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      types: ["node"],
+      noEmit: true,
+    };
+    const result = analyzeModuleInitializationOrderV2(ts.createProgram([fileName], compilerOptions), fileName);
+    expect(result).toMatchObject({
+      schema: "uneffect-module-order/v2", evidence: "verified", unknowns: [],
+      modules: [expect.objectContaining({
+        controlFlow: expect.objectContaining({
+          proof: expect.objectContaining({
+            status: "converged",
+            reachableBy: expect.objectContaining({
+              [`${fileName}#complete`]: ["branch-false", "await-resume"],
+              [`${fileName}#reject:0`]: ["await-reject"],
+            }),
+          }),
+        }),
+      })],
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-conditional-tla-dogfood-mutant-"));
+    try {
+      const mutantFile = join(directory, "module-conditional-tla.mts");
+      const source = readFileSync(fileName, "utf8");
+      const mutant = source.replace("const warmCache", "let warmCache");
+      expect(mutant).not.toBe(source);
+      writeFileSync(mutantFile, mutant);
+      const broken = analyzeModuleInitializationOrderV2(ts.createProgram([mutantFile], compilerOptions), mutantFile);
+      expect(broken.evidence).toBe("unknown");
+      expect(broken.unknowns).toContainEqual(expect.objectContaining({ kind: "conditional-top-level-await" }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
   it("proves an entry-read batch accounting recurrence", async () => {

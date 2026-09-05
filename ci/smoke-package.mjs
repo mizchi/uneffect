@@ -65,6 +65,7 @@ try {
     "dist/src/spec.js",
     "schemas/uneffect-temporal-model-v1.schema.json",
     "schemas/uneffect-corsa-api-frontend-v1.schema.json",
+    "schemas/uneffect-module-order-v2.schema.json",
   ]) if (!packedPaths.has(path)) throw new Error(`packed artifact is missing ${path}`);
 
   const consumer = join(temporary, "consumer");
@@ -96,6 +97,7 @@ try {
     import { defineTemporal } from "@mizchi/uneffect/spec";
     import temporalSchema from "@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json" with { type: "json" };
     import corsaSchema from "@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json" with { type: "json" };
+    import moduleOrderV2Schema from "@mizchi/uneffect/schemas/uneffect-module-order-v2.schema.json" with { type: "json" };
 
     const model = root.generateTemporalModel({ fileName: "typed.ts", source: "export function main() {}", runtime: "web" });
     root.parseTemporalModelResult(model);
@@ -107,6 +109,7 @@ try {
     void defineTemporal;
     void temporalSchema;
     void corsaSchema;
+    void moduleOrderV2Schema;
   `);
   writeFileSync(join(consumer, "query.ts"), "export const answer = 42 as const;\n");
   const typescriptCompiler = join(consumer, "node_modules", ".bin", process.platform === "win32" ? "tsc6.cmd" : "tsc6");
@@ -127,6 +130,7 @@ try {
     import * as spec from "@mizchi/uneffect/spec";
     import temporalSchema from "@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json" with { type: "json" };
     import corsaSchema from "@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json" with { type: "json" };
+    import moduleOrderV2Schema from "@mizchi/uneffect/schemas/uneffect-module-order-v2.schema.json" with { type: "json" };
     import ts from "@typescript/typescript6";
 
     const requiredRoot = ["analyzeEffects", "analyzeProgramEffects", "verifyUneffectProject", "generateTemporalModel", "parseTemporalModelResult"];
@@ -137,6 +141,7 @@ try {
       "collectSyntaxFacts", "analyzeTypeScriptControlFlow", "analyzeAsyncPatterns",
       "analyzePromiseChains", "generatePromiseChainsQuint", "generateResourceSafetyQuint",
       "executeZ3", "logicToSmt", "solveBasicBlockFixedPoint",
+      "analyzeModuleInitializationOrderV2",
     ];
     for (const name of lowLevel) if (name in root) throw new Error(\`experimental API leaked from package root: \${name}\`);
     for (const name of lowLevel) if (typeof experimental[name] !== "function") throw new Error(\`missing experimental API: \${name}\`);
@@ -146,6 +151,7 @@ try {
     if (spec.uneffectSpecVersion !== "uneffect-spec/v1") throw new Error("specification v1 identity drifted");
     if (temporalSchema.properties.schema.const !== "uneffect-temporal-model/v1") throw new Error("temporal schema import failed");
     if (corsaSchema.properties.schema.const !== "uneffect-corsa-api-frontend/v1") throw new Error("Corsa schema import failed");
+    if (moduleOrderV2Schema.properties.schema.const !== "uneffect-module-order/v2") throw new Error("module-order v2 schema import failed");
 
     const parsedEffects = root.parseEffectSet("Console");
     const effectDiagnostics = root.analyzeEffects("smoke.ts", "/* uneffect:effect Console */\\nexport function run() { console.log(1) }");

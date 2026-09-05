@@ -466,6 +466,14 @@ completion precedes one synchronous importer start. Conditional/looping await,
 await-then-throw, multiple/transitive child dependencies, transformed
 declarations, and asynchronous or multi-module importers remain `unknown`.
 
+The separate experimental `uneffect-module-order/v2` seed adds only one
+runtime-present source-local Boolean `const` conditional TLA. Its budgeted CFG
+requires exactly the false and await-resume paths at normal completion and
+keeps await rejection terminal. Ambient/imported/mutable/written selectors,
+nested control, multiple awaits, and await-then-throw remain `unknown`.
+Abstract CFG reachability does not prove that both Boolean values are feasible,
+and the workspace v1 contract is not widened.
+
 The Hoare row includes direct numeric or Boolean nullish coalescing for a
 TypeChecker-validated nullable parameter or immutable identifier alias. Return,
 initialized-binding, and plain-assignment forms split the Boolean presence

@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 64];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 64, 69];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -77,7 +77,7 @@ describe("TODO hierarchy consistency", () => {
   it("lists every open issue under its owning roadmap phase", () => {
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
     const release = roadmap
-      .split("## 0.3.0 — Qualify bounded public contracts", 2)[1]
+      .split(/^## 0\.3\.0 — [^\n]+\n/m, 2)[1]
       ?.split(/^## /m, 1)[0] ?? "";
     const phase = (number: number) =>
       roadmap
@@ -91,6 +91,7 @@ describe("TODO hierarchy consistency", () => {
     expect(phase(1)).toContain("issues/20");
     expect(phase(1)).toContain("issues/18");
     expect(phase(1)).toContain("issues/63");
+    expect(phase(1)).toContain("issues/69");
     for (const issue of [25, 37, 38, 39, 40, 41, 47, 48, 2, 5, 42, 43, 4, 6, 64]) {
       expect(phase(2), `Phase 2 is missing issue #${issue}`).toContain(`issues/${issue}`);
     }

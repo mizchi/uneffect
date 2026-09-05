@@ -25,14 +25,13 @@ Remaining volume and estimate assumptions are maintained in
 - `priority:P0` means a proof-boundary or reliability dependency, not that all
   P0 Issues should be developed concurrently.
 
-## 0.3.0 release qualification
+## 0.3.0 release record
 
-The next release is a qualification cycle, not another open-ended semantic
+The release used a qualification cycle rather than an open-ended semantic
 expansion cycle. GitHub milestone
 [`0.3.0 — Release qualification`](https://github.com/mizchi/uneffect/milestone/5)
-is the source of truth for the release queue. No release implementation Issue
-remains active; this file records the qualified release candidate without
-authorizing the separate tag/publish action.
+is complete. No release implementation Issue remains active; npm records
+`@mizchi/uneffect@0.3.0` as `latest` from 2026-09-06.
 
 ### Product decision
 
@@ -55,8 +54,10 @@ mutants with unchanged specifications, #67 runs the complete dogfood corpus
 once under a measured finite budget, and #68 installs the actual tarball into
 fresh Node 24 consumers to prove its stable/experimental boundary and optional
 dependency diagnostics. The reconciled documentation, exact-tree local release
-gate, and current-HEAD remote CI are Green. Version 0.3.0 is release-ready but
-has not been tagged or published.
+gate, and current-HEAD remote CI are Green. Version 0.3.0 has been published to
+npm. A matching Git tag and GitHub Release were not present when this ledger was
+reconciled; creating a Release without first preventing the publish workflow
+from retrying the already-used npm version would be an invalid recovery.
 
 ### Execution queue
 
@@ -83,6 +84,15 @@ has not been tagged or published.
 - [x] [#62](https://github.com/mizchi/uneffect/issues/62) README, stability policy, public API inventory, feature matrix, and
   changelog describe the same supported boundary and explicit exclusions.
 - [x] [#62](https://github.com/mizchi/uneffect/issues/62) Tagging and publishing remain a separate explicit maintainer action.
+
+### Post-release execution
+
+- [x] [#69](https://github.com/mizchi/uneffect/issues/69) Preserved the published
+  module-order v1 contract and added a versioned v2 artifact for one
+  runtime-present, source-local immutable-Boolean conditional top-level-await
+  join, with false/resume/reject paths, a finite fixed-point budget, and
+  load-bearing broken controls. Ambient `declare const` selectors remain a
+  negative control because they are erased before runtime.
 
 ### Deferred beyond 0.3.0
 
