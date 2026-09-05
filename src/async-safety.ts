@@ -1710,6 +1710,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           || ts.isNonNullExpression(expression) || ts.isAwaitExpression(expression)
           || ts.isVoidExpression(expression)) expression = expression.expression;
         if (ts.isCallExpression(expression)) {
+          if (isGuaranteedThrowExpression(expression.expression)
+            || expression.arguments.some(isGuaranteedThrowExpression)) return true;
           const signature = checker.getResolvedSignature(expression);
           return signature !== undefined
             && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0
@@ -1917,6 +1919,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           || ts.isNonNullExpression(expression) || ts.isAwaitExpression(expression)
           || ts.isVoidExpression(expression)) expression = expression.expression;
         if (ts.isCallExpression(expression)) {
+          const calleeThrow = executeGuaranteedThrowPrefix(expression.expression, state);
+          if (calleeThrow) return calleeThrow;
           let current = executeNodeEffects(expression.expression, state);
           for (const argument of expression.arguments) {
             const thrown = executeGuaranteedThrowPrefix(argument, current);

@@ -1172,6 +1172,31 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("evaluates call targets and arguments before unreachable Promise observations", () => {
+    const result = analyzeAsyncSafety("throw-call-order.ts", `
+      declare function task(): Promise<number>
+      declare function consume(...values: unknown[]): void
+      /* uneffect:effect Throw<Error> */ declare function fail(): never
+      async function argumentThrowsFirst() {
+        const pending = task()
+        consume(fail(), await pending)
+      }
+      async function argumentObservesFirst() {
+        const pending = task()
+        consume(await pending, fail())
+      }
+      async function calleeThrowsFirst() {
+        const pending = task()
+        ;(fail(), consume)(await pending)
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "argumentThrowsFirst", status: "floating" },
+      { owner: "argumentObservesFirst", status: "observed" },
+      { owner: "calleeThrowsFirst", status: "floating" },
+    ]);
+  });
+
   it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
     const result = analyzeAsyncSafety("throw-expression-promises.ts", `
       declare function task(): Promise<number>
