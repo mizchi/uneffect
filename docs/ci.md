@@ -133,13 +133,16 @@ and ordinary Vitest timeouts are never retried.
 
 Checker-backed dogfood has a separate named finite policy. The historical
 per-test path retains its 20-second local/60-second CI test allowance, but the
-native-Z3 integration job now runs the complete 130-case file in one fresh
-Vitest process. That process has a 10-minute hard deadline and an 8-minute
-acceptance budget, so a clean result must retain at least 20% deadline
-headroom. The file-level path is not retried: a test failure, budget overrun,
-or hard timeout fails the shard directly. This avoids rebuilding Vitest and
-the TypeScript project for every case without sharing native-Z3 state across
-files or weakening any assertion.
+native-Z3 integration job now runs every one of the 130 cases exactly once in
+six source-ordered, cost-balanced Vitest processes. The named partition starts
+separate the whole-source/self-analysis cluster and reset its 3 GiB-class heap
+without returning to one process per test. Each partition has a five-minute
+hard deadline; together they retain the original 10-minute overall hard
+deadline and 8-minute acceptance budget, so a clean result must retain at least
+20% overall headroom. Test enumeration and each partition's executed count are
+checked before acceptance. This path is not retried: a test failure, count
+mismatch, budget overrun, or hard timeout fails the shard directly without
+weakening any assertion.
 
 The earlier named allowance replaced a call-site literal that overrode the CI
 allowance and produced a false negative in run
@@ -150,8 +153,8 @@ unit tested. Run
 [`33228295670`](https://github.com/mizchi/uneffect/actions/runs/33228295670)
 then passed all seven jobs on its first attempt; the dogfood shard completed in
 7 minutes 15 seconds. The 60-second value bounds an explicitly isolated test
-only; the 10-minute process deadline and 8-minute clean-run budget bound the
-current complete dogfood shard. Neither is evidence that arbitrary future
+only; the 10-minute overall deadline, per-partition five-minute deadline, and
+8-minute clean-run budget bound the current complete dogfood shard. None is evidence that arbitrary future
 checker inputs fit the same budget.
 
 Quint-bearing files use a separate file-granularity boundary. If a live Vitest

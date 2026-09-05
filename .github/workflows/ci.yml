@@ -131,8 +131,8 @@ jobs:
       UNEFFECT_Z3_BACKEND: native
       UNEFFECT_CI_SHARD: ${{ matrix.integration-shard }}
       UNEFFECT_CI_TIMING_PATH: .uneffect/ci-timing/integration-${{ matrix.integration-shard }}.jsonl
-      # Native Z3 is process-isolated at the file boundary; this avoids rebuilding
-      # the TypeScript/Vitest project for every one of the 130 dogfood cases.
+      # Native Z3 dogfood uses six cost-balanced corpus partitions; this resets
+      # the 3 GiB-class heap without rebuilding Vitest for every one of 130 cases.
       UNEFFECT_TEST_ISOLATION: file
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

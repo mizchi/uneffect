@@ -2072,10 +2072,13 @@ same property is proved for arbitrary TypeScript.
   as a CI artifact, while one empirically slow native-project test has a
   documented 45-second budget. Sharding and calibration do not add a retry path
   for semantic failures and do not remove any test from the manifest.
-  Checker-backed dogfood additionally runs as one native-Z3 file process in CI,
-  with a 10-minute hard deadline, an enforced 8-minute clean-run budget, no
-  retry path, and versioned phase/resource timing. The historical per-test path
-  retains its named 20-second local/60-second CI timeout policy.
+  Checker-backed dogfood additionally runs as six source-ordered,
+  count-checked native-Z3 partitions in CI. Heap state is reset between the
+  measured cost boundaries while the complete corpus retains a 10-minute
+  overall hard deadline, an enforced 8-minute clean-run budget, five minutes
+  per partition, no retry path, and versioned phase/resource timing. The
+  historical per-test path retains its named 20-second local/60-second CI
+  timeout policy.
 - Hoare-contract, ownership-evidence, and temporal SMT-LIB share an
   `auto | native | wasm` execution boundary. Auto mode prefers an available
   native process, falls back only after classified infrastructure failure, and

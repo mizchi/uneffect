@@ -2165,6 +2165,24 @@ were 770 ms for compiler construction, 43.165 seconds for the Effect analysis,
 the native-Z3 proof. Cumulative max-RSS peaked at 2.984 GB. No dogfood retry
 artifact was produced.
 
+The next exact-SHA run, 33964649217, is retained as a negative operational
+control rather than erased by a rerun. Its single dogfood process reached the
+600.108-second hard deadline after completing the whole-source Effect analysis
+(73.750 seconds) but before the later floating-fetch model phase. The process
+was killed with `ETIMEDOUT`; all six other jobs, including the installed-package
+contract, passed. This showed that a 434-second Green still left insufficient
+heap/runtime variance margin for a 3 GiB-class process.
+
+The follow-up keeps all tests and assertions but partitions the source-ordered
+corpus at six named cost boundaries. Each test is selected exactly once and
+each partition's executed count is checked. A final development-host run
+completed the 66/12/8/6/7/31 cases in 15.420, 5.592, 14.860, 66.476, 135.138,
+and 52.665 seconds: 290.151 seconds total, 60.4% of the 480-second acceptance
+budget. The slowest partition used 45.0% of its 300-second hard deadline, and
+the maximum phase-observed RSS fell to 1.644 GB. Remote current-HEAD evidence
+is still required; this local result is the Green candidate, not the release
+decision.
+
 The P2.31 focused benchmark derives the eight-step finite self-affine retry
 summary. A selected run measured 0.1803 ms mean over 2,773 structural samples
 (5,545.98 operations per second, 0.48% RME). Independent Z3 validation under

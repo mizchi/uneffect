@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { createSolverRetryEvidenceSession } from "./solver-retry-evidence.js";
-import { assertCiDogfoodBudget, ciExternalVerifierTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiProcessTimeoutMs, resolveCiTierFiles, shouldIsolateTestCases, type CiTestTier } from "./test-tiers.js";
+import { assertCiDogfoodBudget, ciDogfoodPartitionStarts, ciDogfoodPartitionTimeoutMs, ciDogfoodProcessTimeoutMs, ciExternalVerifierTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExpectedTestCount, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, partitionVitestTestNames, resolveCiProcessTimeoutMs, resolveCiTierFiles, shouldIsolateTestCases, type CiTestTier } from "./test-tiers.js";
 import { appendCiTimingEvent, classifyCiTimingFailure, type CiTimingRetryReason } from "./timing-report.js";
 import { runBoundedVerifierAttempts } from "./verifier-retry.js";
 import { spawnSyncWithDeadline } from "./process-deadline.js";
@@ -14,6 +14,17 @@ const requestedFile = process.argv[3];
 const requestedShard = process.env.UNEFFECT_CI_SHARD;
 const timingPath = process.env.UNEFFECT_CI_TIMING_PATH;
 const isolation = parseCiTestIsolation(process.env.UNEFFECT_TEST_ISOLATION);
+interface TestSelection {
+  readonly name?: string;
+  readonly pattern?: string;
+  readonly expectedCount?: number;
+  readonly timeoutMs?: number;
+}
+
+function escapeTestPattern(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 if (requested && !allTiers.includes(requested)) throw new Error(`unknown CI test tier: ${requested}`);
 if (requestedFile && !requested) throw new Error("a requested test file requires an explicit CI tier");
 const tiers: readonly CiTestTier[] = requested ? [requested] : allTiers;
@@ -21,8 +32,12 @@ for (const tier of tiers) {
   const files = resolveCiTierFiles(tier, requestedFile, requestedShard);
   for (const file of files) {
     const isolateTestCases = file ? shouldIsolateTestCases(file, isolation) : false;
-    let testNames: readonly (string | undefined)[] = file && ciIsolatedTestNames[file] ? ciIsolatedTestNames[file] : [undefined];
-    if (file && isolateTestCases) {
+    const partitionDogfood = file === "test/dogfood.test.ts" && isolation === "file";
+    const dogfoodStartedAt = partitionDogfood ? Date.now() : undefined;
+    let selections: readonly TestSelection[] = file && ciIsolatedTestNames[file]
+      ? ciIsolatedTestNames[file].map((name) => ({ name }))
+      : [{}];
+    if (file && (isolateTestCases || partitionDogfood)) {
       const listed = spawnSync(pnpm, ["vitest", "list", file], {
         cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, encoding: "utf8",
       });
@@ -32,18 +47,36 @@ for (const tier of tiers) {
         if (listed.stderr) process.stderr.write(listed.stderr);
         process.exit(listed.status ?? 1);
       }
-      testNames = parseVitestListNames(file, listed.stdout);
-      if (testNames.length === 0) throw new Error(`no tests discovered for isolated file: ${file}`);
+      const listedNames = parseVitestListNames(file, listed.stdout);
+      if (partitionDogfood) {
+        selections = partitionVitestTestNames(listedNames, ciDogfoodPartitionStarts).map((names, index, groups) => ({
+          name: `partition-${index + 1}-of-${groups.length}`,
+          pattern: `(?:${names.map(escapeTestPattern).join("|")})$`,
+          expectedCount: names.length,
+          timeoutMs: ciDogfoodPartitionTimeoutMs,
+        }));
+      } else {
+        selections = listedNames.map((name) => ({ name, pattern: escapeTestPattern(name), expectedCount: 1 }));
+      }
     }
-    for (const testName of testNames) {
-      const testPattern = testName && file && isolateTestCases
-        ? testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        : testName;
+    let dogfoodDurationMs = 0;
+    for (const selection of selections) {
+      const testName = selection.name;
+      const testPattern = selection.pattern ?? testName;
       const args = [
         "vitest", "run", ...(file ? [file] : []), ...(testPattern ? ["-t", testPattern] : []),
         ...(file && isolateTestCases ? ["--testTimeout", String(ciIsolatedTestTimeoutMs)] : []),
       ];
-      const processTimeoutMs = resolveCiProcessTimeoutMs(file, testName, isolation);
+      const configuredTimeoutMs = selection.timeoutMs ?? resolveCiProcessTimeoutMs(file, testName, isolation);
+      const remainingDogfoodMs = dogfoodStartedAt === undefined
+        ? undefined
+        : ciDogfoodProcessTimeoutMs - (Date.now() - dogfoodStartedAt);
+      if (remainingDogfoodMs !== undefined && remainingDogfoodMs <= 0) {
+        throw new Error(`dogfood CI hard deadline exceeded before ${testName}`);
+      }
+      const processTimeoutMs = configuredTimeoutMs === undefined ? remainingDogfoodMs
+        : remainingDogfoodMs === undefined ? configuredTimeoutMs
+        : Math.min(configuredTimeoutMs, remainingDogfoodMs);
       const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => processTimeoutMs !== undefined
         ? spawnSyncWithDeadline(pnpm, args, processTimeoutMs, {
           cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier, ...attemptEnvironment },
@@ -81,16 +114,17 @@ for (const tier of tiers) {
       };
       let result;
       let completedDurationMs: number | undefined;
-      if (testName || (file && ciExternalVerifierTestFiles.includes(file))) {
+      if (!partitionDogfood && (testName || (file && ciExternalVerifierTestFiles.includes(file)))) {
+        const verifierMaxAttempts = maxVerifierAttempts;
         const evidence = createSolverRetryEvidenceSession(
           resolve(process.env.UNEFFECT_VERIFIER_RETRY_EVIDENCE_ROOT ?? process.env.UNEFFECT_SOLVER_RETRY_EVIDENCE_ROOT ?? ".uneffect/verifier-retry-evidence"),
           tier,
           file!,
           testName ?? "<file>",
-          maxVerifierAttempts,
+          verifierMaxAttempts,
           [pnpm, ...args],
         );
-        const execution = runBoundedVerifierAttempts(maxVerifierAttempts, (attempt) => {
+        const execution = runBoundedVerifierAttempts(verifierMaxAttempts, (attempt) => {
           const startedAt = startTiming(attempt);
           const captured = runIsolated(evidence.environmentForAttempt(attempt));
           const output = `${captured.stdout ?? ""}\n${captured.stderr ?? ""}`;
@@ -141,12 +175,17 @@ for (const tier of tiers) {
       }
       if (result.error) throw result.error;
       if (result.status !== 0) process.exit(result.status ?? 1);
-      if (file === "test/dogfood.test.ts" && testName === undefined && isolation === "file") {
-        assertCiDogfoodBudget(completedDurationMs ?? Number.POSITIVE_INFINITY);
+      if (partitionDogfood) {
+        dogfoodDurationMs += completedDurationMs ?? Number.POSITIVE_INFINITY;
       }
       if (testName && file && isolateTestCases && !didVitestRunExactlyOneTest(result.stdout ?? "")) {
         throw new Error(`isolated selector did not execute exactly one test: ${file} -t ${testName}`);
       }
+      if (selection.expectedCount !== undefined
+        && !didVitestRunExpectedTestCount(result.stdout ?? "", selection.expectedCount)) {
+        throw new Error(`selector executed the wrong number of tests: ${file} ${testName}; expected ${selection.expectedCount}`);
+      }
     }
+    if (partitionDogfood) assertCiDogfoodBudget(dogfoodDurationMs);
   }
 }

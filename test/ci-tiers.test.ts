@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertCiDogfoodBudget, ciDogfoodBudgetMs, ciDogfoodProcessTimeoutMs, ciExternalVerifierTestFiles, ciIntegrationShards, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciMeasuredNativeProjectTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, resolveCiProcessTimeoutMs, resolveCiTestIncludes, resolveCiTierFiles, shouldIsolateTestCases, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { assertCiDogfoodBudget, ciDogfoodBudgetMs, ciDogfoodPartitionCount, ciDogfoodPartitionStarts, ciDogfoodPartitionTimeoutMs, ciDogfoodProcessTimeoutMs, ciExternalVerifierTestFiles, ciIntegrationShards, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciMeasuredNativeProjectTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExpectedTestCount, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseCiTestIsolation, parseVitestListNames, partitionVitestTestNames, resolveCiProcessTimeoutMs, resolveCiTestIncludes, resolveCiTierFiles, shouldIsolateTestCases, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 import { appendCiTimingEvent, classifyCiTimingFailure, measureCiTimingPhase, measureCiTimingPhaseAsync, readCiTimingEvents } from "../ci/timing-report.js";
 import { classifySolverRetryAttempts, createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
 import { boundedRepetitions } from "../ci/run-solver-stress.js";
@@ -95,14 +95,32 @@ describe("CI test tier manifest", () => {
     }
   });
 
-  it("bounds native file-level dogfood with 20 percent deadline headroom", () => {
+  it("partitions native dogfood while retaining 20 percent overall deadline headroom", () => {
     expect(ciDogfoodProcessTimeoutMs).toBe(10 * 60_000);
+    expect(ciDogfoodPartitionCount).toBe(6);
+    expect(ciDogfoodPartitionStarts).toHaveLength(ciDogfoodPartitionCount);
+    expect(ciDogfoodPartitionTimeoutMs).toBe(5 * 60_000);
     expect(ciDogfoodBudgetMs).toBe(ciDogfoodProcessTimeoutMs * 0.8);
     expect(resolveCiProcessTimeoutMs("test/dogfood.test.ts", undefined, "file")).toBe(ciDogfoodProcessTimeoutMs);
     expect(resolveCiProcessTimeoutMs("test/dogfood.test.ts", "one case", "test")).toBe(ciIsolatedProcessTimeoutMs);
     expect(resolveCiProcessTimeoutMs("test/effects.test.ts", undefined, "file")).toBeUndefined();
     expect(() => assertCiDogfoodBudget(ciDogfoodBudgetMs)).not.toThrow();
     expect(() => assertCiDogfoodBudget(ciDogfoodBudgetMs + 1)).toThrow(/dogfood CI budget exceeded/);
+    expect(partitionVitestTestNames(["a", "b", "c", "d", "e"], ["a", "c", "e"])).toEqual([
+      ["a", "b"], ["c", "d"], ["e"],
+    ]);
+    expect(() => partitionVitestTestNames([], ["a"])).toThrow(/at least one test/);
+    expect(() => partitionVitestTestNames(["a"], [])).toThrow(/first listed test/);
+    expect(() => partitionVitestTestNames(["a", "b"], ["a", "missing"])).toThrow(/not a listed test/);
+    expect(() => partitionVitestTestNames(["a", "b"], ["a", "b", "a"])).toThrow(/source ordered/);
+    expect(didVitestRunExpectedTestCount("Tests  44 passed | 86 skipped (130)", 44)).toBe(true);
+    expect(didVitestRunExpectedTestCount("Tests  43 passed | 87 skipped (130)", 44)).toBe(false);
+
+    const dogfoodSource = readFileSync(join(process.cwd(), "test/dogfood.test.ts"), "utf8");
+    const dogfoodNames = [...dogfoodSource.matchAll(/^  it\("([^"]+)"/gm)].map((match) => match[1]!);
+    const dogfoodPartitions = partitionVitestTestNames(dogfoodNames, ciDogfoodPartitionStarts);
+    expect(dogfoodPartitions.flat()).toEqual(dogfoodNames);
+    expect(dogfoodPartitions.map(({ length }) => length)).toEqual([66, 12, 8, 6, 7, 31]);
 
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
     expect(workflow).toMatch(/integration:[\s\S]*?UNEFFECT_TEST_ISOLATION: file/);

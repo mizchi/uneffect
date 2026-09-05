@@ -208,8 +208,19 @@ export const ciIsolatedTestTimeoutMs = 60_000;
 export const ciMeasuredNativeProjectTimeoutMs = 45_000;
 /** Parent-process deadline for synchronous WASM calls that can block Vitest's own timer. */
 export const ciIsolatedProcessTimeoutMs = ciIsolatedTestTimeoutMs + 15_000;
-/** One native-Z3 Vitest process for the complete dogfood corpus. */
+/** Overall deadline shared by the bounded native-Z3 dogfood partitions. */
 export const ciDogfoodProcessTimeoutMs = 10 * 60_000;
+/** Reset the large TypeScript/solver heap at measured, deterministic corpus boundaries. */
+export const ciDogfoodPartitionStarts = [
+  "checks the fixed URL and SRI boundary of a static CDN script loader",
+  "refines Node Lease authority Set/Map mutations",
+  "proves telemetry routing conservation and rejects an unbalanced action",
+  "classifies every unknown summary while analyzing its own implementation",
+  "separates pure CLI helpers from terminal output and usage throws",
+  "tracks persisted optimizer evidence reads independently from regeneration writes",
+] as const;
+export const ciDogfoodPartitionCount = ciDogfoodPartitionStarts.length;
+export const ciDogfoodPartitionTimeoutMs = 5 * 60_000;
 /** A clean run must retain 20% headroom before the hard process deadline. */
 export const ciDogfoodBudgetMs = ciDogfoodProcessTimeoutMs * 0.8;
 
@@ -243,9 +254,25 @@ export function parseVitestListNames(file: string, output: string): readonly str
   return names;
 }
 
-export function didVitestRunExactlyOneTest(output: string): boolean {
+export function partitionVitestTestNames(names: readonly string[], starts: readonly string[]): readonly (readonly string[])[] {
+  if (names.length === 0) throw new Error("dogfood partitioning requires at least one test");
+  if (starts.length === 0 || starts[0] !== names[0]) throw new Error("dogfood partitions must start with the first listed test");
+  const indexes = starts.map((start) => names.indexOf(start));
+  if (indexes.some((index) => index < 0)) throw new Error("dogfood partition start is not a listed test");
+  if (indexes.some((index, position) => position > 0 && index <= indexes[position - 1]!)) {
+    throw new Error("dogfood partition starts must be unique and source ordered");
+  }
+  return indexes.map((start, index) => names.slice(start, indexes[index + 1] ?? names.length));
+}
+
+export function didVitestRunExpectedTestCount(output: string, expected: number): boolean {
   const plain = output.replaceAll(/\u001b\[[0-9;]*m/g, "");
-  return /Tests\s+1 passed(?:\s+\|\s+\d+ skipped)?/.test(plain);
+  const match = /Tests\s+(\d+) passed/.exec(plain);
+  return match !== null && Number(match[1]) === expected;
+}
+
+export function didVitestRunExactlyOneTest(output: string): boolean {
+  return didVitestRunExpectedTestCount(output, 1);
 }
 
 export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readonly string[]): readonly string[] | undefined {

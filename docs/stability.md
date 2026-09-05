@@ -107,9 +107,11 @@ pnpm exec vitest run test/dogfood.test.ts \
 
 On the 2026-09-05 development host, that focused command completed in 11.26
 seconds wall time (9.79 seconds in the two test bodies, including the repeated
-diagnostic check). The full 130-case isolated dogfood gate completed in about 7
-minutes 23 seconds. These are local observations, not portable budgets; remote
-timing artifacts and #67 own the release-time headroom decision.
+diagnostic check). After a later remote whole-file heap overrun, the final
+source-ordered six-partition local gate executed all 130 cases once in 290.151
+seconds of child time; its slowest partition took 135.138 seconds. These are
+local observations, not portable budgets; current-HEAD remote timing artifacts
+and #67's finite policy own the release-time headroom decision.
 
 ## Public API boundary
 
