@@ -25,12 +25,12 @@ The bounded release queue is:
 2. [#67](https://github.com/mizchi/uneffect/issues/67) is complete: it restores deterministic
    self-dogfood headroom below the finite CI deadline without weaker checks or
    unbounded retries.
-3. **Active:** [#68](https://github.com/mizchi/uneffect/issues/68) validates the actual
-   tarball from a fresh Node 24 consumer and locks stable versus experimental
-   package entrypoints.
-4. [#62](https://github.com/mizchi/uneffect/issues/62) is the blocked release
-   umbrella that reconciles documentation and runs the final gates after those
-   children close.
+3. [#68](https://github.com/mizchi/uneffect/issues/68) is complete: the actual
+   tarball passes fresh Node 24 stable/experimental entrypoint, schema, and
+   optional-dependency probes.
+4. **Active:** [#62](https://github.com/mizchi/uneffect/issues/62) reconciles the
+   final supported boundary and runs the release gates after all three children
+   have closed.
 
 General CFG, alias, Corsa parity, host scheduling, and DSL breadth remain in the
 phase roadmap and are not 0.3.0 release blockers.

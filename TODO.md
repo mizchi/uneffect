@@ -30,8 +30,8 @@ Remaining volume and estimate assumptions are maintained in
 The next release is a qualification cycle, not another open-ended semantic
 expansion cycle. GitHub milestone
 [`0.3.0 — Release qualification`](https://github.com/mizchi/uneffect/milestone/5)
-is the source of truth for the release queue. Exactly one bounded child Issue
-is active; this file summarizes that queue without duplicating its acceptance
+is the source of truth for the release queue. Exactly one release Issue is
+active; this file summarizes that queue without duplicating its acceptance
 criteria.
 
 ### Product decision
@@ -50,15 +50,13 @@ internal package boundaries.
 
 ### Current problem statement
 
-The repository has broad positive and adjacent negative coverage. The first
-two qualification gaps are now closed: #66 retains two implementation-only
-mutants with unchanged specifications, and #67 runs the complete dogfood
-corpus once under a measured finite budget. Release evidence remains incomplete
-in one operationally important way:
-
-1. Static export/schema checks and package smoke exist, but the actual tarball
-   still needs a fresh-consumer contract test that proves the stable and
-   experimental entrypoint boundary.
+All three bounded child gaps are closed. #66 retains two implementation-only
+mutants with unchanged specifications, #67 runs the complete dogfood corpus
+once under a measured finite budget, and #68 installs the actual tarball into
+fresh Node 24 consumers to prove its stable/experimental boundary and optional
+dependency diagnostics. The remaining work is the #62 release reconciliation:
+one final documentation contract, local release gate, and current-HEAD remote
+CI decision, without tagging or publishing.
 
 ### Execution queue
 
@@ -66,8 +64,8 @@ in one operationally important way:
 | --- | --- | --- |
 | Done | [#66](https://github.com/mizchi/uneffect/issues/66) | Detect implementation-only Promise/resource defects in two realistic applications without changing their specifications. |
 | Done | [#67](https://github.com/mizchi/uneffect/issues/67) | Keep the slowest of three cold CI-shaped self-dogfood runs at or below 80% of the hard deadline, without retry or weaker assertions. |
-| Active | [#68](https://github.com/mizchi/uneffect/issues/68) | Install the actual tarball into a fresh Node 24 consumer and lock public imports, schemas, exclusions, and optional-dependency failure behavior. |
-| Blocked umbrella | [#62](https://github.com/mizchi/uneffect/issues/62) | Reconcile the final supported-fragment contract and run the release gates after #66–#68 close. |
+| Done | [#68](https://github.com/mizchi/uneffect/issues/68) | Install the actual tarball into a fresh Node 24 consumer and lock public imports, schemas, exclusions, and optional-dependency failure behavior. |
+| Active | [#62](https://github.com/mizchi/uneffect/issues/62) | Reconcile the final supported-fragment contract and run the release gates after #66–#68 close. |
 
 ### Release exit criteria
 
@@ -78,7 +76,7 @@ in one operationally important way:
 - [x] [#66](https://github.com/mizchi/uneffect/issues/66) Diagnostics, coverage classification, and normalized witnesses are
   deterministic across repeated runs.
 - [x] [#67](https://github.com/mizchi/uneffect/issues/67) Self-dogfood has measured CI headroom and passes without timeout retry.
-- [ ] [#68](https://github.com/mizchi/uneffect/issues/68) An installed tarball passes root/Corsa/spec/schema consumer probes and
+- [x] [#68](https://github.com/mizchi/uneffect/issues/68) An installed tarball passes root/Corsa/spec/schema consumer probes and
   does not expose low-level experimental generators from the package root.
 - [ ] [#62](https://github.com/mizchi/uneffect/issues/62) `just package-check`, `just release-check`, and current-HEAD remote CI are
   green; no unclassified timeout is waived by a later green retry.

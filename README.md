@@ -129,6 +129,11 @@ fail-closed review and CI layer on explicitly selected TypeScript boundaries. A
 `verified` artifact applies only to its exact claim, source snapshot,
 configuration, supported syntax fragment, and recorded backend.
 
+Within that pre-1.0 boundary, two bounded public integration contracts are supported:
+the versioned Corsa semantic-query API and the high-level temporal model/result
+facade covering its classified Promise/resource fragments. Low-level CFG,
+lowering, solver, and direct generator APIs remain experimental.
+
 Uneffect is not a verifier for all of JavaScript. Do not use it as the sole
 security boundary, a replacement for runtime validation, a whole-program
 correctness claim, or proof of arbitrary third-party/native behavior. Exit code

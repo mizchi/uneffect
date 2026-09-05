@@ -45,7 +45,7 @@ facades while those representations change:
 | --- | --- |
 | Numeric and bounded-container helpers | Branded `Int`, `Nat`, `Float`, `U8`, `U32`, `I32`, `F32`, bounded buffer/view/Set/Map types, their parsers, schemas, constants, and explicit machine coercions. |
 | Effect tracking and primary checking | `analyzeEffects`, `analyzeEffectsInProgram`, `analyzeProgramEffects`, Effect-set parse/format/containment operations, `checkFiles`, `verifyUneffectProject`, `verifyContracts`, typed-array verification facades, and the versioned inferred-effect baseline helpers. Effect tracking is a first-class public capability, not an experimental backend detail. |
-| Temporal checking | `generateTemporalModel`; its versioned result and explicit exclusions are the contract, not generated Quint text. |
+| Temporal checking | `generateTemporalModel` and `parseTemporalModelResult`; the versioned result and its explicit exclusions are the contract, not generated Quint text. |
 | Test generation | `checkUneffectProperty`, `generateUneffectPropertyTests`, and `generateUneffectPropertyTestsWithZ3` for the documented bounded fragment. |
 | Gradual extension | custom validators, effect-schema registration, module manifests, builtin registry configuration, and versioned contract-summary bundles. |
 | Runtime boundary | contract predicate instrumentation and `isContractRuntimeError`. Runtime instrumentation remains opt-in. |

@@ -66,12 +66,20 @@ describe("0.3.0 release metadata", () => {
   it("documents the promoted bounded Corsa and temporal integration contracts", () => {
     const api = readFileSync("docs/public-api.md", "utf8");
     const stability = readFileSync("docs/stability.md", "utf8");
+    const readme = readFileSync("README.md", "utf8");
+    const matrix = readFileSync("docs/feature-matrix.md", "utf8");
+    const changelog = readFileSync("CHANGELOG.md", "utf8");
     expect(api).toContain("`@mizchi/uneffect/corsa/api` | Public integration boundary");
+    expect(api).toContain("`generateTemporalModel` and `parseTemporalModelResult`");
     expect(api).toContain("`AsyncSafetyDiagnostic` results");
     expect(api).not.toContain("`@mizchi/uneffect/corsa/api` | Public migration probe");
     expect(stability).toContain("Corsa semantic-query API descriptor");
     expect(stability).toContain("temporal model coverage contract");
     expect(stability).not.toContain("These are still experimental pre-1.0 APIs");
+    expect(readme).toContain("two bounded public integration contracts are supported");
+    expect(matrix).toContain("| Corsa semantic-query API contract | Tested fragment |");
+    expect(matrix).toContain("| Temporal model facade contract | Tested fragment |");
+    expect(changelog).toContain("Promoted the high-level temporal/Promise/resource facade contract");
   });
 
   it("documents the experimental 0.3 release without claiming general verification", () => {

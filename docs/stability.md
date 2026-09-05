@@ -110,9 +110,12 @@ seconds wall time (9.79 seconds in the two test bodies, including the repeated
 diagnostic check). After two later remote partitioning controls exposed repeated
 whole-source analysis as the remaining bottleneck, the five-partition local
 candidate executed all 130 cases once in 131.851 seconds of child time; its
-slowest partition took 57.414 seconds. These are
-local observations, not portable budgets; current-HEAD remote timing artifacts
-and #67's finite policy own the release-time headroom decision.
+slowest partition took 57.414 seconds. Current-HEAD run 33968358071 then passed
+all seven jobs. Its five dogfood partitions completed on attempt 1 in 63.339,
+13.534, 39.114, 89.250, and 140.988 seconds: 346.225 seconds total, or 72.1% of
+the 480-second acceptance budget. The slowest partition used 47.0% of its
+300-second hard deadline. These observations are not portable promises; the
+versioned timing artifact and #67's finite policy own the release-time decision.
 
 ## Public API boundary
 
