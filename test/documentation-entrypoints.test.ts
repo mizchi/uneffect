@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { verifyContracts } from "../src/contracts.js";
-import { analyzeEffects } from "../src/effects.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { generateQuint } from "../src/spec-backends.js";
+import { verifyContracts } from "../src/contracts/contracts.js";
+import { analyzeEffects } from "../src/effects/effects.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { generateQuint } from "../src/spec/spec-backends.js";
 
 const documentationEntrypoints = [
   "README.md",

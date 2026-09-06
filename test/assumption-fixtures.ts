@@ -1,4 +1,4 @@
-import { parseAssumptionRegistry } from "../src/assumption-registry.js";
+import { parseAssumptionRegistry } from "../src/evidence/assumption-registry.js";
 
 const digest = (character: string): string => character.repeat(64);
 

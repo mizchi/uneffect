@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { bench, describe } from "vitest";
-import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
-import { openCorsaApiFrontend, resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
-import { compareUneffectFrontends } from "../src/frontend-parity.js";
+import { exportCorsaCheckerFacts } from "../src/frontends/corsa/corsa-checker-exporter.js";
+import { openCorsaApiFrontend, resolveCorsaExecutable } from "../src/frontends/corsa/corsa-api-frontend.js";
+import { compareUneffectFrontends } from "../src/frontends/frontend-parity.js";
 
 const fileName = "examples/dogfood/corsa-inferred-effect.ts";
 const files = { [fileName]: readFileSync(fileName, "utf8") };

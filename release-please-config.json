@@ -8,11 +8,11 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "src/evidence.ts"
+          "path": "src/evidence/evidence.ts"
         },
         {
           "type": "generic",
-          "path": "src/effect-baseline.ts"
+          "path": "src/effects/effect-baseline.ts"
         }
       ]
     }

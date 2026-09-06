@@ -6,7 +6,7 @@ import {
   generateRuntimeAssertionStatement,
   parseTemporalExpression,
   typeCheckTemporalExpression,
-} from "../src/temporal-expressions.js";
+} from "../src/spec/temporal-expressions.js";
 
 describe("restricted TypeScript temporal expressions", () => {
   it("types string literals and string-keyed finite collections without numeric coercion", () => {

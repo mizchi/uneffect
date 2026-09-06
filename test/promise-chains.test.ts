@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "../src/promise-chains.js";
+import { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "../src/async/promise-chains.js";
 
 const source = `
   function cleanup() {}

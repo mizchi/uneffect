@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseFixedArrayBuffer, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/index.js";
+import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseFixedArrayBuffer, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/api/all.js";
 import { reviewedAssumptions } from "./assumption-fixtures.js";
-import type { BoundedArrayBuffer, BoundedDataView, BoundedUint32Array, BoundedUint8Array, FixedArrayBuffer, U32, U8 } from "../src/index.js";
+import type { BoundedArrayBuffer, BoundedDataView, BoundedUint32Array, BoundedUint8Array, FixedArrayBuffer, U32, U8 } from "../src/api/all.js";
 
 async function verifyProgramSource(name: string, text: string) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-typed-array-program-"));

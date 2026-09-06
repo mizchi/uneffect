@@ -1,8 +1,8 @@
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { overlayCorsaBuiltinCatalog } from "../src/corsa-builtin-catalog.js";
-import type { CorsaApiFrontend, CorsaBuiltinCallResolution } from "../src/corsa-api-frontend.js";
-import type { FrontendSymbolAdapter } from "../src/frontend-adapter.js";
+import { overlayCorsaBuiltinCatalog } from "../src/frontends/corsa/corsa-builtin-catalog.js";
+import type { CorsaApiFrontend, CorsaBuiltinCallResolution } from "../src/frontends/corsa/corsa-api-frontend.js";
+import type { FrontendSymbolAdapter } from "../src/frontends/frontend-adapter.js";
 
 const fileName = "/workspace/index.ts";
 const sourceText = [

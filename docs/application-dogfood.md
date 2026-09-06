@@ -692,7 +692,7 @@ The completed checker-builtin slice adds
 `089c385082644d30f4fceef88e41236b624a6b29`. The observed source families are
 named `node:fs/promises` imports in `packages/core/src/config.ts` and
 `packages/core/src/state.ts`, plus global GET/PUT `fetch` calls in
-`packages/oss-portfolio/src/index.ts`. The checked-in corpus emits one
+`packages/oss-portfolio/src/api/all.ts`. The checked-in corpus emits one
 `FsRead`, two ordered `Fetch`, and one `FsWrite` atom through the real checker.
 Same-spelled local declarations and local-module imports are negative controls,
 and builtin-key tampering fails checker metadata parity.

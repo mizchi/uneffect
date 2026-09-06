@@ -3,14 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createZ3Context } from "../src/z3.js";
-import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import { parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
-import { extractAnnotations } from "../src/annotations.js";
-import { createDefaultTemporalDomainRegistry, createPhysicalClockDomain, TemporalDomainRegistry } from "../src/temporal-domains.js";
-import { generateRuntimeAssertionExpression } from "../src/temporal-expressions.js";
+import { createZ3Context } from "../src/backends/z3.js";
+import { generateQuint, generateSmtLib } from "../src/spec/spec-backends.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec/spec-lint.js";
+import { parseTlcCounterexample, replayModelCounterexample } from "../src/evidence/model-replay.js";
+import { extractAnnotations } from "../src/support/annotations.js";
+import { createDefaultTemporalDomainRegistry, createPhysicalClockDomain, TemporalDomainRegistry } from "../src/spec/temporal-domains.js";
+import { generateRuntimeAssertionExpression } from "../src/spec/temporal-expressions.js";
 
 const hasJava = spawnSync("java", ["-version"], { encoding: "utf8" }).status === 0;
 
@@ -768,12 +768,12 @@ describe("spec IR and generated verifier programs", () => {
   });
 
   it("exposes the affine coefficient bound through the CLI", () => {
-    const expanded = spawnSync("pnpm", ["tsx", "src/cli.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
+    const expanded = spawnSync("pnpm", ["tsx", "src/cli/index.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
       "--synthesize-relational-strengthening", "--relational-max-coefficient=3"], {
       encoding: "utf8", timeout: 30_000,
     });
     expect(expanded.stdout).toContain("<synth:3 * accepted === byteBudget>");
-    const invalid = spawnSync("pnpm", ["tsx", "src/cli.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
+    const invalid = spawnSync("pnpm", ["tsx", "src/cli/index.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
       "--synthesize-relational-strengthening", "--relational-max-coefficient=9"], {
       encoding: "utf8", timeout: 30_000,
     });

@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { analyzeAsyncSafety, generateTemporalModel, parseTemporalModelResult, verifyUneffectProject } from "../src/index.js";
-import { createResourceDisposalTemporalProduct, lowerResourceDisposalsToProtocol } from "../src/index.js";
-import * as stable from "../src/public.js";
-import * as experimental from "../src/experimental.js";
+import { analyzeAsyncSafety, generateTemporalModel, parseTemporalModelResult, verifyUneffectProject } from "../src/api/all.js";
+import { createResourceDisposalTemporalProduct, lowerResourceDisposalsToProtocol } from "../src/api/all.js";
+import * as stable from "../src/api/public.js";
+import * as experimental from "../src/api/experimental.js";
 
 const source = `
 /* uneffect: state sends: int */

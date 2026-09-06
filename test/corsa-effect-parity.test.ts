@@ -1,14 +1,14 @@
 import { resolve } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { analyzeCorsaEffectParity } from "../src/corsa-effect-parity.js";
-import { openCorsaApiFrontend } from "../src/corsa-api-frontend.js";
-import { loadTypeScriptProject } from "../src/typescript-project.js";
-import { assessCheckAssurance } from "../src/assurance.js";
-import { checkFiles } from "../src/check.js";
-import { createCheckJsonReport } from "../src/check-report.js";
-import { runCli } from "../src/cli-runner.js";
-import { exitCode, type CliStreams } from "../src/cli-support.js";
+import { analyzeCorsaEffectParity } from "../src/frontends/corsa/corsa-effect-parity.js";
+import { openCorsaApiFrontend } from "../src/frontends/corsa/corsa-api-frontend.js";
+import { loadTypeScriptProject } from "../src/frontends/typescript/typescript-project.js";
+import { assessCheckAssurance } from "../src/evidence/assurance.js";
+import { checkFiles } from "../src/project/check.js";
+import { createCheckJsonReport } from "../src/cli/check-report.js";
+import { runCli } from "../src/cli/cli-runner.js";
+import { exitCode, type CliStreams } from "../src/cli/cli-support.js";
 
 describe("Corsa effect parity sidecar", () => {
   it("agrees for authenticated globals including a const fetch alias", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { analyzeRefinementActionBodies, createRefinementAdapterFromManifest, validateRefinementActionBodiesWithManifest, validateRefinementInvariantBodiesWithManifest, validateRefinementStateProjectionWithManifest } from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
+import { analyzeRefinementActionBodies, createRefinementAdapterFromManifest, validateRefinementActionBodiesWithManifest, validateRefinementInvariantBodiesWithManifest, validateRefinementStateProjectionWithManifest } from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import {
   defineRefinement,
   globalRuntime,
@@ -12,7 +12,7 @@ import {
   resolveRefinementDslFileLink,
   setFromArrayProjection,
   validateRefinementDslIdentities,
-} from "../src/refinement-dsl.js";
+} from "../src/refinement/refinement-dsl.js";
 
 describe("TypeScript refinement DSL", () => {
   it("defines callable bindings and explicit projection descriptors", () => {

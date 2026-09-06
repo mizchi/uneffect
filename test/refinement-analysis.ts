@@ -4,8 +4,8 @@ import {
   type RefinementActionAnalysis,
   type RefinementActionAnalysisOptions,
   type RefinementActionAnalysisWithZ3Options,
-} from "../src/refinement-bindings.js";
-import type { TemporalSpec } from "../src/spec-ir.js";
+} from "../src/refinement/refinement-bindings.js";
+import type { TemporalSpec } from "../src/spec/spec-ir.js";
 import { refinementManifest } from "./refinement-manifest.js";
 
 function singleAction(spec: TemporalSpec): string {

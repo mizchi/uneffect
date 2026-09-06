@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { cliVersion, formatCliHelp, loadCliCommands, runCli } from "../src/cli-runner.js";
-import { exitCode, type CliStreams } from "../src/cli-support.js";
-import { builtinContractRegistry } from "../src/builtin-contracts.js";
-import { builtinContractDigest } from "../src/evidence.js";
-import type { CheckWorkspaceJsonReport } from "../src/check-report.js";
-import { createContractSummaryBundle } from "../src/contract-summary.js";
-import { verifyContractObligations } from "../src/contracts.js";
-import { createResourceCallableContractArtifact } from "../src/resource-callable-artifact.js";
+import { cliVersion, formatCliHelp, loadCliCommands, runCli } from "../src/cli/cli-runner.js";
+import { exitCode, type CliStreams } from "../src/cli/cli-support.js";
+import { builtinContractRegistry } from "../src/effects/builtin-contracts.js";
+import { builtinContractDigest } from "../src/evidence/evidence.js";
+import type { CheckWorkspaceJsonReport } from "../src/cli/check-report.js";
+import { createContractSummaryBundle } from "../src/contracts/contract-summary.js";
+import { verifyContractObligations } from "../src/contracts/contracts.js";
+import { createResourceCallableContractArtifact } from "../src/resources/resource-callable-artifact.js";
 import { workspaceCliAcceptanceTimeoutMs } from "../ci/test-timeouts.js";
 
 function capture(): CliStreams & { stdout: string; stderr: string } {
@@ -26,7 +26,7 @@ function capture(): CliStreams & { stdout: string; stderr: string } {
 describe("uneffect command line", () => {
   it("publishes exactly one binary that points at the built entry", () => {
     const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { bin: Record<string, string> };
-    expect(manifest.bin).toEqual({ uneffect:"dist/src/cli.js" });
+    expect(manifest.bin).toEqual({ uneffect:"dist/src/cli/index.js" });
   });
 
   it("reports the installed package version", async () => {
@@ -1391,7 +1391,7 @@ describe("uneffect command line", () => {
 
   it("refuses file arguments the doctor cannot act on", async () => {
     const io = capture();
-    expect(await runCli(["doctor", "src/cli.ts"], io)).toBe(exitCode.usage);
+    expect(await runCli(["doctor", "src/cli/index.ts"], io)).toBe(exitCode.usage);
     expect(io.stderr).toContain("doctor takes no file arguments");
   });
 });

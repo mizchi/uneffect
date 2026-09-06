@@ -4,7 +4,7 @@ import {
   parseEffectExpression,
   parseEffectSet,
   type CapabilityEffect,
-} from "../src/capabilities.js";
+} from "../src/effects/capabilities.js";
 
 describe("structured capability effects", () => {
   it("reserves none for the empty effect set", () => {

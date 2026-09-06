@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { analyzeNumberSemanticsInProgram } from "../src/number-semantics.js";
+import { analyzeNumberSemanticsInProgram } from "../src/analysis/number-semantics.js";
 
 describe("bounded IEEE-754 facts", () => {
   it("distinguishes exact NaN, infinities, negative zero, and fround results", () => {

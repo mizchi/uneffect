@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { bench, describe } from "vitest";
-import { generateQuint } from "../src/spec-backends.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
+import { generateQuint } from "../src/spec/spec-backends.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { findTemporalCounterexampleWithZ3 } from "../src/spec/spec-lint.js";
 
 const fileName = "examples/dogfood/node-lease-total-map-lookup.ts";
 const source = readFileSync(fileName, "utf8");

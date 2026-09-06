@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   verifyRefinementRecurrenceCertificateWithZ3,
-} from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
+} from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state sampled: bool */ /* uneffect: state mode: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init sampled = false */ /* uneffect: init mode = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? (sampled ? 2 * pending : pending) : (mode === 1 ? (sampled ? 3 * pending : 2 * pending) : (sampled ? 4 * pending : 3 * pending))) : 0) */
@@ -62,7 +62,7 @@ describe("ordered mixed recurrence joins", () => {
       finiteJoin: expect.anything(),
     }));
     for (const fileName of [
-      "src/refinement-bindings.ts",
+      "src/refinement/refinement-bindings.ts",
       "schemas/uneffect-refinement-action-analysis-v2.schema.json",
     ]) {
       const contract = readFileSync(fileName, "utf8");

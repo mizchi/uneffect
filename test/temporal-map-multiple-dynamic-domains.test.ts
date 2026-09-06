@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
-import { parseSpec } from "../src/spec-ir.js";
+import { findTemporalCounterexampleWithZ3 } from "../src/spec/spec-lint.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 
 const fixture = `/* uneffect: state nodes: Set<int> */ /* uneffect: state primary: int */ /* uneffect: state backup: int */ /* uneffect: state leases: Map<int, int> */ /* uneffect: init nodes = Set(1, 2) */ /* uneffect: init primary = 1 */ /* uneffect: init backup = 1 */ /* uneffect: init leases = Map([[1, 7]]) */ /* uneffect: action selectBackup: backup' = 2 */ /* uneffect: action retain: primary' = primary, backup' = backup */ /* uneffect:always primaryIsNode: nodes.contains(primary) */ /* uneffect:always backupIsNode: nodes.contains(backup) */ /* uneffect:always selectedLeasesExist: leases.getOrElse(primary, 0) > 0 && leases.getOrElse(backup, 0) > 0 */`;
 

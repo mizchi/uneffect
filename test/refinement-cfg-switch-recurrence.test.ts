@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   verifyRefinementRecurrenceCertificateWithZ3,
-} from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
+} from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state mode: int */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init mode = 0 */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (mode === 0 ? pending : (mode === 1 ? 2 * pending : 3 * pending)) : 0) */

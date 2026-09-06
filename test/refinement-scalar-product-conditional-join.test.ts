@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeRefinementActionBodies,
   analyzeRefinementActionBodiesWithZ3,
-} from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
+} from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = (thenPrefix = "", beforeCommon = "") => `

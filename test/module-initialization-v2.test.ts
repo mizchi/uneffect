@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
-import { analyzeModuleInitializationOrderV2 } from "../src/module-initialization-v2.js";
+import { analyzeModuleInitializationOrder } from "../src/modules/module-initialization.js";
+import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
 
 function program(files: Readonly<Record<string, string>>): ts.Program {
   for (const [fileName, source] of Object.entries(files)) writeFileSync(fileName, source);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import * as publicApi from "../src/public.js";
-import * as experimental from "../src/experimental.js";
+import * as publicApi from "../src/api/public.js";
+import * as experimental from "../src/api/experimental.js";
 
 describe("0.3 public surface", () => {
   it("keeps durable high-level facades on the package root", () => {

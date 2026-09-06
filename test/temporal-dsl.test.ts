@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { generateQuint } from "../src/spec-backends.js";
-import { bool, defineTemporal, int, parseTemporalDsl, resolveTemporalDslLink, validateTemporalDslHelperIdentities } from "../src/temporal-dsl.js";
-import { generateTemporalModel } from "../src/temporal-model.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
+import { generateQuint } from "../src/spec/spec-backends.js";
+import { bool, defineTemporal, int, parseTemporalDsl, resolveTemporalDslLink, validateTemporalDslHelperIdentities } from "../src/spec/temporal-dsl.js";
+import { generateTemporalModel } from "../src/spec/temporal-model.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
 
 defineTemporal({
   state: { count: int(), ready: bool() },

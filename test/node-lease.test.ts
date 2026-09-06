@@ -4,10 +4,10 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { generateQuint } from "../src/spec-backends.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample, type ModelState, type ModelValue } from "../src/model-replay.js";
-import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
+import { generateQuint } from "../src/spec/spec-backends.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample, type ModelState, type ModelValue } from "../src/evidence/model-replay.js";
+import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec/spec-lint.js";
 
 function leaseModel(skewGrace: number): string {
   return `

@@ -4,7 +4,7 @@ import {
   createBrowserClockObserver,
   createDenoClockObserver,
   createNodeClockObserver,
-} from "../src/clock-conformance.js";
+} from "../src/support/clock-conformance.js";
 
 describe("physical-clock host conformance", () => {
   it("accepts variable rates and a bounded backward wall-clock jump", () => {

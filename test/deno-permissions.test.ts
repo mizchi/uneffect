@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { capabilityPermits, parseEffectExpression, type CapabilityEffect, type Effect } from "../src/capabilities.js";
-import { projectDenoPermissions, resolveTargetTemp } from "../src/deno-permissions.js";
+import { capabilityPermits, parseEffectExpression, type CapabilityEffect, type Effect } from "../src/effects/capabilities.js";
+import { projectDenoPermissions, resolveTargetTemp } from "../src/effects/deno-permissions.js";
 
 const effects = (source: string): Effect[] => source.split(" + ").map((value) => parseEffectExpression(value));
 

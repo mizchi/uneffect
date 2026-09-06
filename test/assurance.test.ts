@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assessCheckAssurance, formatAssuranceAssessment } from "../src/assurance.js";
-import { parseEffectExpression } from "../src/capabilities.js";
+import { assessCheckAssurance, formatAssuranceAssessment } from "../src/evidence/assurance.js";
+import { parseEffectExpression } from "../src/effects/capabilities.js";
 
 describe("assurance claim boundaries", () => {
   it("returns machine-readable claims and exclusions for a passing profile", () => {

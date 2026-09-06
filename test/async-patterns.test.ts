@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
-import { analyzeEffects } from "../src/effects.js";
-import { analyzePromiseChains } from "../src/promise-chains.js";
-import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async/async-patterns.js";
+import { analyzeEffects } from "../src/effects/effects.js";
+import { analyzePromiseChains } from "../src/async/promise-chains.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
 
 const source = `
   function poll() { setTimeout(poll, 5) }

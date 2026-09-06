@@ -1,6 +1,6 @@
 import ts from "@typescript/typescript6";
 import { bench, describe } from "vitest";
-import { analyzeModuleInitializationOrderV2 } from "../src/module-initialization-v2.js";
+import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
 
 const fileName = "examples/dogfood/module-conditional-tla.ts";
 const program = ts.createProgram([fileName], {

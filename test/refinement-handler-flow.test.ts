@@ -1,6 +1,6 @@
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { findHandlerJoinCandidates, runHandlerJoinFixedPoint } from "../src/refinement-handler-flow.js";
+import { findHandlerJoinCandidates, runHandlerJoinFixedPoint } from "../src/refinement/refinement-handler-flow.js";
 
 function bodyOf(source: string): ts.Block {
   const file = ts.createSourceFile("handler.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

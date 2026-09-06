@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { normalizeCorsaFacts } from "../src/corsa-fact-consumer.js";
+import { normalizeCorsaFacts } from "../src/frontends/corsa/corsa-fact-consumer.js";
 
 const symbol = (id: number, name: string) => ({ id, name, kind: "function", typeRepr: "() => void", overloads: [], effectParameters: [], span: { start: 0, end: 10 } });
 function fixture() {

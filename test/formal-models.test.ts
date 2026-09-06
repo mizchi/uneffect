@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, test } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuint, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseFallbackQuint, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuint } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuint, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseFallbackQuint, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuint } from "../src/analysis/react-semantics.js";
 
 const commonArgs = [
   "exec",

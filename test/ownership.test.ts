@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { analyzeOwnership, checkOwnership, checkOwnershipWithResourceProtocol, generateOwnershipQuint, lowerOwnershipEventsToResourceProtocol, type OwnershipEvent } from "../src/ownership.js";
-import { invalidateTransferredTypedArrayEvidence } from "../src/project-verification.js";
-import { verifyTypedArraySafety, type TypedArrayProgramSafetyResult } from "../src/typed-array-safety.js";
-import { analyzeCallableSummaries } from "../src/callable-summary.js";
+import { analyzeOwnership, checkOwnership, checkOwnershipWithResourceProtocol, generateOwnershipQuint, lowerOwnershipEventsToResourceProtocol, type OwnershipEvent } from "../src/analysis/ownership.js";
+import { invalidateTransferredTypedArrayEvidence } from "../src/project/project-verification.js";
+import { verifyTypedArraySafety, type TypedArrayProgramSafetyResult } from "../src/analysis/typed-array-safety.js";
+import { analyzeCallableSummaries } from "../src/effects/callable-summary.js";
 
 const span = { start: 0, end: 1 };
 function run(events: OwnershipEvent[]) {

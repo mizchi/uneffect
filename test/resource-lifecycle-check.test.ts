@@ -2,10 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkFiles } from "../src/check.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { createContractSummaryBundle } from "../src/contract-summary.js";
-import { createResourceCallableContractArtifact } from "../src/resource-callable-artifact.js";
+import { checkFiles } from "../src/project/check.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { createContractSummaryBundle } from "../src/contracts/contract-summary.js";
+import { createResourceCallableContractArtifact } from "../src/resources/resource-callable-artifact.js";
 import ts from "@typescript/typescript6";
 
 function programFor(fileName: string, source: string): ts.Program {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analyzeEffects } from "../src/effects.js";
-import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { analyzeEffects } from "../src/effects/effects.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
 
 describe("effect checker", () => {
   it("tracks Node strict assertion failure as a typed synchronous throw", () => {

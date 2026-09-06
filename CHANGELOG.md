@@ -6,6 +6,12 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Organized `src/` by responsibility and made public facades re-export their
+  owning modules directly. Existing package entrypoints and declarations remain
+  compatible. Added the independent `@mizchi/uneffect/cfg` entrypoint with
+  explicit graph contracts, caller-defined edge labels, fixed-point scheduling,
+  branch joins, and completion algebra.
+
 - Removed the local Rust crate and Cargo build/release requirements. Corsa v8
   facts are validated and normalized in TypeScript; the external
   `@corsa-bind/napi` binding is unchanged. Frontend comparisons retain provenance
@@ -95,7 +101,7 @@ All notable changes to Uneffect are documented in this file.
   for Array, Object, Reflect, JSON, collection constructors, and non-mutating
   copy operations.
 - Isolated the in-memory verifier's package contract from consumer source paths,
-  preventing files such as `src/numeric.ts` from shadowing Uneffect's own
+  preventing files such as `src/runtime/numeric.ts` from shadowing Uneffect's own
   numeric domains. Contract-free sources also bypass solver fact construction,
   substantially reducing project-check latency.
 - Corrected the adoption corpus contract for the transitive

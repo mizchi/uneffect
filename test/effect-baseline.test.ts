@@ -4,7 +4,7 @@ import {
   createEffectBaseline,
   parseEffectBaseline,
   type EffectBaselineSummary,
-} from "../src/effect-baseline.js";
+} from "../src/effects/effect-baseline.js";
 
 const summary = (overrides: Partial<EffectBaselineSummary> = {}): EffectBaselineSummary => ({
   fileName: "/repo/src/main.ts",

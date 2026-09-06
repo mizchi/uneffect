@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { buildProgramCallGraph } from "../src/call-graph.js";
-import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
+import { buildProgramCallGraph } from "../src/effects/call-graph.js";
+import { analyzeModuleInitializationOrder } from "../src/modules/module-initialization.js";
 
 const fileName = "compiler-traversal.ts";
 const sourceText = `

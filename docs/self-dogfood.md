@@ -18,7 +18,7 @@ become proof.
 
 ## First boundary: static evaluation
 
-`src/static-evaluation.ts` declares both exported evaluators as `effect none`
+`src/frontends/typescript/static-evaluation.ts` declares both exported evaluators as `effect none`
 and its own initialization as `module_effect none`. The regression test checks
 that both functions are `verified` with an empty may-effect set. Replacing one
 declaration with `Console` produces an unused-effect diagnostic, demonstrating
@@ -52,14 +52,14 @@ callable-parameter annotations stay load-bearing. Runtime imports load
 a wider internal Program whose unannotated dependencies are still adoption
 candidates. Inference mode continues to enforce every annotation in the selected
 files while not requiring unrelated dependencies to be annotated in the same
-change. `src/cli-runner.ts` is now in the `--assurance no-unknown` file list;
+change. `src/cli/cli-runner.ts` is now in the `--assurance no-unknown` file list;
 runtime-selected command and loader calls use an explicit opaque callable
 contract. The `no-unknown` profile still rejects unknown summaries elsewhere in
 the analyzed Program.
 
 ## Second boundary: byte coordinates
 
-`src/project-coordinates.ts` now declares pure construction and display-name
+`src/frontends/typescript/project-coordinates.ts` now declares pure construction and display-name
 formatting. Its returned `base` and `offset` methods separately declare
 `Throw<Error>` for unknown files. The initial run exposed
 `Mutate<typeof Object.keys(files)>`: mutation of the freshly returned keys array
@@ -69,7 +69,7 @@ keeps the pure factory annotation load-bearing.
 
 ## Third boundary: disposal symbol traversal
 
-`src/disposal-symbols.ts` keeps `Mutate<typeof seen>` on its recursive helper,
+`src/resources/disposal-symbols.ts` keeps `Mutate<typeof seen>` on its recursive helper,
 but the exported resolver is verified with `effect none`: its omitted `seen`
 argument is the helper's fresh standard-library `new Set()` default. Call
 composition recognizes array/object literals and TypeChecker-resolved standard
@@ -79,7 +79,7 @@ load-bearing negative control.
 
 ## Fourth boundary: diagnostic values
 
-`src/diagnostics.ts` and `src/diagnostic-quality.ts` explicitly constrain
+`src/support/diagnostics.ts` and `src/support/diagnostic-quality.ts` explicitly constrain
 TypeScript diagnostic normalization, hints, text formatting, evidence
 formatting, scoring, and report rendering to `effect none`. These functions
 return strings and records; they do not write them to a terminal. Replacing the
@@ -88,7 +88,7 @@ diagnostic.
 
 ## Fifth boundary: CLI support
 
-`src/cli-support.ts` now separates pure help formatting from terminal sinks and
+`src/cli/cli-support.ts` now separates pure help formatting from terminal sinks and
 usage failure. `writeStdout` and `writeStderr` declare `Console`;
 `parseCommandArgs` and `singleFileArgument` declare `Throw<CliUsageError>`;
 `formatCommandHelp` declares `none`. Dogfooding exposed that standard
@@ -98,7 +98,7 @@ properties, with a negative boundary test.
 
 ## Sixth boundary: environment inspection
 
-`src/environment.ts` separates pure version parsing, status aggregation, and
+`src/support/environment.ts` separates pure version parsing, status aggregation, and
 report formatting from host access. Package manifest reads and package
 resolution declare `FsRead`; subprocess version probes declare `Run`. The
 negative control keeps the pure version parser honest.
@@ -113,7 +113,7 @@ selection have not yet received a complete explicit contract.
 
 ## Seventh boundary: CLI entry values
 
-`src/cli-runner.ts` verifies help construction as `none` and version lookup as
+`src/cli/cli-runner.ts` verifies help construction as `none` and version lookup as
 `FsRead`. `runCli` declares `FsRead | Env<"UNEFFECT_DEBUG"> | InvokeUserCode` with
 `effect_parameter io extends Console`. `CliStreams` uses readonly function
 properties so `io.out` / `io.err` are reviewed nested callable parameters
@@ -132,7 +132,7 @@ again instead of relying on the old property-signature omission.
 
 ## Eighth boundary: fixture filesystem access
 
-`src/fixtures.ts` verifies recursive fixture discovery and report reads as
+`src/support/fixtures.ts` verifies recursive fixture discovery and report reads as
 `FsRead`, report persistence as `FsWrite`, and first-line summary extraction as
 `none`. `listFixtures` uses an explicit sequential loop: its previous local
 `Promise.all` callback conservatively introduced `InvokeUserCode`, obscuring the
@@ -141,7 +141,7 @@ arbitrary `Promise.all` callbacks are pure.
 
 ## Ninth boundary: ownership evidence cache
 
-`src/ownership-evidence-cache.ts` verifies cache-key construction as `none`,
+`src/optimizer/ownership-evidence-cache.ts` verifies cache-key construction as `none`,
 cache loading as `FsRead`, and its temporary-file plus atomic-rename persistence
 path as `FsWrite`. The write contract intentionally does not include `FsRead`:
 directory creation, file creation, and rename mutate filesystem state but do not
@@ -149,7 +149,7 @@ consume file contents through the modeled Node APIs.
 
 ## Tenth boundary: model replay persistence
 
-`src/model-replay.ts` verifies counterexample loading as `FsRead` plus its
+`src/evidence/model-replay.ts` verifies counterexample loading as `FsRead` plus its
 validation/clone effects. Atomic persistence is `FsWrite | Random` because its
 exclusive temporary filename contains `randomUUID()`, and also retains the
 validation and rethrow effects. `Throw<unknown>` and `Throw<Error>` are both
@@ -159,7 +159,7 @@ upper bound.
 
 ## Eleventh boundary: project optimization evidence
 
-`src/project-optimizer.ts` verifies persisted-proof parsing as `FsRead` and the
+`src/optimizer/project-optimizer.ts` verifies persisted-proof parsing as `FsRead` and the
 full regeneration boundary as `FsRead | FsWrite | InvokeUserCode`. The latter
 retains `InvokeUserCode` because it traverses values supplied by the external
 TypeScript compiler API; this is not presented as a filesystem effect.
@@ -176,7 +176,7 @@ dogfood case and remains part of the general callback-composition work.
 
 ## Twelfth boundary: doctor command
 
-`src/doctor-command.ts` now declares the composite environment boundary used by
+`src/cli/doctor-command.ts` now declares the composite environment boundary used by
 its `run` method: manifest reads, solver environment reads, retained solver
 evidence writes, Java probing, the native-driver cache mutation, and reviewed
 external calls below those checks. Its `io` parameter separately allows
@@ -186,7 +186,7 @@ Program regression.
 
 ## Thirteenth boundary: TODO hierarchy consistency
 
-`src/todo-consistency.ts` declares both Markdown task parsing and stale-parent
+`src/support/todo-consistency.ts` declares both Markdown task parsing and stale-parent
 detection as `effect none`. They only construct local task trees and return
 values; sorting the fresh result does not mutate caller-owned state. A negative
 control replaces the parser's empty bound with `Console` and requires the
@@ -194,7 +194,7 @@ unused-effect diagnostic.
 
 ## Fourteenth boundary: refinement fixed point
 
-`src/refinement-flow.ts` constrains `solveBasicBlockFixedPoint` to
+`src/cfg/fixed-point.ts` constrains `solveBasicBlockFixedPoint` to
 `InvokeUserCode | Throw<Error>`. The caller-defined lattice and transfer
 functions are deliberately opaque `InvokeUserCode` boundaries; that does not
 authorize host effects in the engine itself. A negative control inserts
@@ -211,7 +211,7 @@ verifier no longer relies on it as runtime immutability.
 
 ## Deep-core counterexample: construction freshness
 
-Reviewing the remaining `src/call-graph.ts` unknowns did not justify replacing
+Reviewing the remaining `src/effects/call-graph.ts` unknowns did not justify replacing
 them with an opaque annotation: an injected `FrontendSymbolAdapter` is an
 actual extension boundary, and the default adapter may perform package
 resolution. That unknown remains explicit instead of understating it as pure

@@ -7,10 +7,11 @@ const snapshotSchema = "uneffect-public-api-snapshot/v1";
 const snapshotFile = resolve("api/public-api-v0.3.json");
 const update = process.argv.includes("--update");
 const entrypoints = [
-  { name: ".", runtime: "dist/src/public.js", declarations: "dist/src/public.d.ts" },
-  { name: "./corsa", runtime: "dist/src/corsa-public.js", declarations: "dist/src/corsa-public.d.ts" },
-  { name: "./corsa/api", runtime: "dist/src/corsa-api-frontend.js", declarations: "dist/src/corsa-api-frontend.d.ts" },
-  { name: "./spec", runtime: "dist/src/spec.js", declarations: "dist/src/spec.d.ts" },
+  { name: "./cfg", runtime: "dist/src/cfg/index.js", declarations: "dist/src/cfg/index.d.ts" },
+  { name: ".", runtime: "dist/src/api/public.js", declarations: "dist/src/api/public.d.ts" },
+  { name: "./corsa", runtime: "dist/src/api/corsa-public.js", declarations: "dist/src/api/corsa-public.d.ts" },
+  { name: "./corsa/api", runtime: "dist/src/frontends/corsa/corsa-api-frontend.js", declarations: "dist/src/frontends/corsa/corsa-api-frontend.d.ts" },
+  { name: "./spec", runtime: "dist/src/spec/index.js", declarations: "dist/src/spec/index.d.ts" },
 ];
 
 const declarationFiles = entrypoints.map(({ declarations }) => resolve(declarations));

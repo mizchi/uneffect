@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analyzeRefinementActionBodiesWithZ3 } from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
+import { analyzeRefinementActionBodiesWithZ3 } from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state reject: bool */ /* uneffect: init pending = 0 */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init reject = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0) */

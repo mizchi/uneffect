@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateResourceProtocol, evaluateResourceProtocolCfg, instantiateResourceCallableSummary, type ResourceCallableSummary, type ResourceProtocolCfg, type ResourceProtocolModel } from "../src/resource-protocol.js";
+import { evaluateResourceProtocol, evaluateResourceProtocolCfg, instantiateResourceCallableSummary, type ResourceCallableSummary, type ResourceProtocolCfg, type ResourceProtocolModel } from "../src/resources/resource-protocol.js";
 
 describe("resource protocol IR", () => {
   it("instantiates parameter and return resource boundary summaries", () => {

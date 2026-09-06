@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
-import { builtinSemanticCatalog, compileBuiltinSemanticCatalog } from "../src/builtin-semantic-catalog.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
+import { builtinSemanticCatalog, compileBuiltinSemanticCatalog } from "../src/effects/builtin-semantic-catalog.js";
 
 describe("builtin semantic overlays", () => {
   it("compiles versioned JavaScript, Node, DOM, and package semantic definitions", () => {
@@ -229,7 +229,7 @@ describe("builtin semantic overlays", () => {
   });
 
   it("classifies every initial DOM operation kind", () => {
-    const members = (primitives: readonly import("../src/builtin-semantic-schema.js").SemanticPrimitive[]): string[] => primitives.flatMap((primitive) =>
+    const members = (primitives: readonly import("../src/effects/builtin-semantic-schema.js").SemanticPrimitive[]): string[] => primitives.flatMap((primitive) =>
       primitive.kind === "effect" && primitive.capability === "Dom" && primitive.scope?.kind === "region" ? [primitive.scope.member]
       : primitive.kind === "property" ? [...members(primitive.read), ...members(primitive.write)] : []);
     const kinds = builtinContractRegistry.contracts.flatMap((contract) => members(contract.semantics?.primitives ?? []));

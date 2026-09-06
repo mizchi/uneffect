@@ -46,6 +46,7 @@ export const ciTestTiers = {
     "test/refinement-bindings.test.ts",
     "test/refinement-dsl.test.ts",
     "test/refinement-flow.test.ts",
+    "test/cfg-public.test.ts",
     "test/refinement-handler-flow.test.ts",
     "test/region-alias.test.ts",
     "test/registry-config.test.ts",

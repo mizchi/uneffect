@@ -3,12 +3,12 @@ import { afterAll, beforeAll, bench, describe } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadTypeScriptWorkspace, type TypeScriptProject } from "../src/typescript-project.js";
-import { inspectDeclarationOutputs } from "../src/workspace-effects.js";
+import { loadTypeScriptWorkspace, type TypeScriptProject } from "../src/frontends/typescript/typescript-project.js";
+import { inspectDeclarationOutputs } from "../src/project/workspace-effects.js";
 import {
   composeWorkspaceModuleInitialization,
   type CompletedModuleInitializationProject,
-} from "../src/workspace-module-initialization.js";
+} from "../src/project/workspace-module-initialization.js";
 
 let directory = "";
 let entryFile = "";

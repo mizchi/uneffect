@@ -3,7 +3,7 @@
   "uneffectVersion": "0.3.0",
   "entries": [
     {
-      "fileName": "src/cli-support.ts",
+      "fileName": "src/cli/cli-support.ts",
       "functionName": "writeStdout",
       "occurrence": 0,
       "effects": [],
@@ -12,7 +12,7 @@
       ]
     },
     {
-      "fileName": "src/cli-support.ts",
+      "fileName": "src/cli/cli-support.ts",
       "functionName": "writeStderr",
       "occurrence": 0,
       "effects": [],
@@ -21,7 +21,7 @@
       ]
     },
     {
-      "fileName": "src/cli-support.ts",
+      "fileName": "src/cli/cli-support.ts",
       "functionName": "parseCommandArgs",
       "occurrence": 0,
       "effects": [],
@@ -30,14 +30,14 @@
       ]
     },
     {
-      "fileName": "src/cli-support.ts",
+      "fileName": "src/cli/cli-support.ts",
       "functionName": "formatCommandHelp",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/cli-support.ts",
+      "fileName": "src/cli/cli-support.ts",
       "functionName": "singleFileArgument",
       "occurrence": 0,
       "effects": [],
@@ -46,14 +46,14 @@
       ]
     },
     {
-      "fileName": "src/diagnostic-quality.ts",
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "quotesSource",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/diagnostic-quality.ts",
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "scoreDiagnostic",
       "occurrence": 0,
       "effects": [],
@@ -62,7 +62,7 @@
       ]
     },
     {
-      "fileName": "src/diagnostic-quality.ts",
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "evaluateQuality",
       "occurrence": 0,
       "effects": [],
@@ -71,14 +71,14 @@
       ]
     },
     {
-      "fileName": "src/diagnostic-quality.ts",
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "round",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/diagnostic-quality.ts",
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "formatQualityReport",
       "occurrence": 0,
       "effects": [],
@@ -87,7 +87,7 @@
       ]
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "fromTypeScriptDiagnostic",
       "occurrence": 0,
       "effects": [],
@@ -96,28 +96,28 @@
       ]
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "diagnosticHint",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "severityOf",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "codeOf",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "reportDiagnostic",
       "occurrence": 0,
       "effects": [],
@@ -126,21 +126,21 @@
       ]
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "relative",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "frame",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "formatDiagnostic",
       "occurrence": 0,
       "effects": [],
@@ -149,7 +149,7 @@
       ]
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "formatDiagnostics",
       "occurrence": 0,
       "effects": [],
@@ -158,14 +158,14 @@
       ]
     },
     {
-      "fileName": "src/diagnostics.ts",
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "formatCheckEvidence",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/disposal-symbols.ts",
+      "fileName": "src/resources/disposal-symbols.ts",
       "functionName": "targetSymbol",
       "occurrence": 0,
       "effects": [],
@@ -174,7 +174,7 @@
       ]
     },
     {
-      "fileName": "src/disposal-symbols.ts",
+      "fileName": "src/resources/disposal-symbols.ts",
       "functionName": "standardProtocolExpression",
       "occurrence": 0,
       "effects": [],
@@ -183,7 +183,7 @@
       ]
     },
     {
-      "fileName": "src/disposal-symbols.ts",
+      "fileName": "src/resources/disposal-symbols.ts",
       "functionName": "standardProtocolKind",
       "occurrence": 0,
       "effects": [],
@@ -192,7 +192,7 @@
       ]
     },
     {
-      "fileName": "src/disposal-symbols.ts",
+      "fileName": "src/resources/disposal-symbols.ts",
       "functionName": "resolveDisposalProtocol",
       "occurrence": 0,
       "effects": [],
@@ -201,7 +201,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "displayPath",
       "occurrence": 0,
       "effects": [],
@@ -210,7 +210,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "resolvePackage",
       "occurrence": 0,
       "effects": [],
@@ -219,7 +219,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "commandVersion",
       "occurrence": 0,
       "effects": [],
@@ -228,14 +228,14 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "minimumMajor",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "nodeCheck",
       "occurrence": 0,
       "effects": [],
@@ -244,14 +244,14 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "typescript7NativePackage",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "typescriptCheck",
       "occurrence": 0,
       "effects": [],
@@ -260,7 +260,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "nodeTypesCheck",
       "occurrence": 0,
       "effects": [],
@@ -269,7 +269,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "solverCheck",
       "occurrence": 0,
       "effects": [],
@@ -278,7 +278,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "quintCheck",
       "occurrence": 0,
       "effects": [],
@@ -287,7 +287,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "javaCheck",
       "occurrence": 0,
       "effects": [],
@@ -296,7 +296,7 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "runEnvironmentChecks",
       "occurrence": 0,
       "effects": [],
@@ -305,14 +305,14 @@
       ]
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "environmentSummary",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/environment.ts",
+      "fileName": "src/support/environment.ts",
       "functionName": "formatEnvironmentReport",
       "occurrence": 0,
       "effects": [],
@@ -321,7 +321,7 @@
       ]
     },
     {
-      "fileName": "src/fixtures.ts",
+      "fileName": "src/support/fixtures.ts",
       "functionName": "sourceFiles",
       "occurrence": 0,
       "effects": [],
@@ -330,14 +330,14 @@
       ]
     },
     {
-      "fileName": "src/fixtures.ts",
+      "fileName": "src/support/fixtures.ts",
       "functionName": "summaryOf",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/fixtures.ts",
+      "fileName": "src/support/fixtures.ts",
       "functionName": "listFixtures",
       "occurrence": 0,
       "effects": [],
@@ -346,7 +346,7 @@
       ]
     },
     {
-      "fileName": "src/fixtures.ts",
+      "fileName": "src/support/fixtures.ts",
       "functionName": "runFixture",
       "occurrence": 0,
       "effects": [],
@@ -355,7 +355,7 @@
       ]
     },
     {
-      "fileName": "src/fixtures.ts",
+      "fileName": "src/support/fixtures.ts",
       "functionName": "runFixtures",
       "occurrence": 0,
       "effects": [],
@@ -364,7 +364,7 @@
       ]
     },
     {
-      "fileName": "src/fixtures.ts",
+      "fileName": "src/support/fixtures.ts",
       "functionName": "readFixtureReport",
       "occurrence": 0,
       "effects": [],
@@ -373,7 +373,7 @@
       ]
     },
     {
-      "fileName": "src/fixtures.ts",
+      "fileName": "src/support/fixtures.ts",
       "functionName": "writeFixtureReport",
       "occurrence": 0,
       "effects": [],
@@ -382,14 +382,14 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "orderedObject",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "stable",
       "occurrence": 0,
       "effects": [],
@@ -398,7 +398,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "digest",
       "occurrence": 0,
       "effects": [],
@@ -407,7 +407,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "clone",
       "occurrence": 0,
       "effects": [],
@@ -416,7 +416,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "same",
       "occurrence": 0,
       "effects": [],
@@ -425,7 +425,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "assertModelValue",
       "occurrence": 0,
       "effects": [],
@@ -434,7 +434,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "createModelCounterexample",
       "occurrence": 0,
       "effects": [],
@@ -443,7 +443,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "writeModelCounterexample",
       "occurrence": 0,
       "effects": [],
@@ -452,7 +452,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "readModelCounterexample",
       "occurrence": 0,
       "effects": [],
@@ -461,7 +461,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "normalizeItfValue",
       "occurrence": 0,
       "effects": [],
@@ -470,7 +470,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "parseQuintItfCounterexample",
       "occurrence": 0,
       "effects": [],
@@ -479,7 +479,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "evaluateTemporalExpression",
       "occurrence": 0,
       "effects": [],
@@ -488,21 +488,21 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "parseTlcScalar",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "splitTlcItems",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "parseTlcValue",
       "occurrence": 0,
       "effects": [],
@@ -511,7 +511,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "parseTlcAssignments",
       "occurrence": 0,
       "effects": [],
@@ -520,21 +520,21 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "flush",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "complete",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "recoverTemporalAction",
       "occurrence": 0,
       "effects": [],
@@ -543,7 +543,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "parseTlcCounterexample",
       "occurrence": 0,
       "effects": [],
@@ -552,7 +552,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "replayModelCounterexample",
       "occurrence": 0,
       "effects": [],
@@ -561,7 +561,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "observe",
       "occurrence": 0,
       "effects": [],
@@ -570,7 +570,7 @@
       ]
     },
     {
-      "fileName": "src/model-replay.ts",
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "checkInvariants",
       "occurrence": 0,
       "effects": [],
@@ -579,14 +579,14 @@
       ]
     },
     {
-      "fileName": "src/ownership-evidence-cache.ts",
+      "fileName": "src/optimizer/ownership-evidence-cache.ts",
       "functionName": "ownershipEvidenceKey",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/ownership-evidence-cache.ts",
+      "fileName": "src/optimizer/ownership-evidence-cache.ts",
       "functionName": "readOwnershipEvidenceCache",
       "occurrence": 0,
       "effects": [],
@@ -595,7 +595,7 @@
       ]
     },
     {
-      "fileName": "src/ownership-evidence-cache.ts",
+      "fileName": "src/optimizer/ownership-evidence-cache.ts",
       "functionName": "writeOwnershipEvidenceCache",
       "occurrence": 0,
       "effects": [],
@@ -604,7 +604,7 @@
       ]
     },
     {
-      "fileName": "src/project-coordinates.ts",
+      "fileName": "src/frontends/typescript/project-coordinates.ts",
       "functionName": "createProjectByteCoordinates",
       "occurrence": 0,
       "effects": [],
@@ -613,14 +613,14 @@
       ]
     },
     {
-      "fileName": "src/project-coordinates.ts",
+      "fileName": "src/frontends/typescript/project-coordinates.ts",
       "functionName": "projectFunctionDisplayName",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "digest",
       "occurrence": 0,
       "effects": [],
@@ -629,7 +629,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "dependenciesOf",
       "occurrence": 0,
       "effects": [],
@@ -638,7 +638,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "stableReadProofs",
       "occurrence": 0,
       "effects": [],
@@ -647,7 +647,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "ownerOf",
       "occurrence": 0,
       "effects": [],
@@ -656,7 +656,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "recordBinding",
       "occurrence": 0,
       "effects": [],
@@ -665,7 +665,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "visit",
       "occurrence": 0,
       "effects": [],
@@ -674,7 +674,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "isLocalPlainDataRoot",
       "occurrence": 0,
       "effects": [],
@@ -683,7 +683,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "scan",
       "occurrence": 0,
       "effects": [],
@@ -692,7 +692,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "parseEvidence",
       "occurrence": 0,
       "effects": [],
@@ -701,7 +701,7 @@
       ]
     },
     {
-      "fileName": "src/project-optimizer.ts",
+      "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "optimizeUneffectProject",
       "occurrence": 0,
       "effects": [],
@@ -710,7 +710,7 @@
       ]
     },
     {
-      "fileName": "src/static-evaluation.ts",
+      "fileName": "src/frontends/typescript/static-evaluation.ts",
       "functionName": "evaluateStaticPrimitive",
       "occurrence": 0,
       "effects": [],
@@ -719,7 +719,7 @@
       ]
     },
     {
-      "fileName": "src/static-evaluation.ts",
+      "fileName": "src/frontends/typescript/static-evaluation.ts",
       "functionName": "evaluateStaticBoolean",
       "occurrence": 0,
       "effects": [],

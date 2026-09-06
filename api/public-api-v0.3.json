@@ -1,6 +1,225 @@
 {
   "schema": "uneffect-public-api-snapshot/v1",
   "entrypoints": {
+    "./cfg": {
+      "runtime": [
+        "breakTransferTarget",
+        "catchCompletions",
+        "completionSet",
+        "consumeLoopCompletions",
+        "continueTransferTarget",
+        "finallyCompletions",
+        "formatTargetedCompletion",
+        "isLoopTransfer",
+        "isTransferOwnedByLoop",
+        "joinFlowValues",
+        "loopTransferTarget",
+        "routeCatchPaths",
+        "routeFinallyPaths",
+        "sequenceCompletions",
+        "solveBasicBlockFixedPoint"
+      ],
+      "declarations": [
+        {
+          "name": "AbruptCompletion",
+          "declarations": [
+            "export type AbruptCompletion = \"return\" | \"throw\" | LoopTransferKind;"
+          ]
+        },
+        {
+          "name": "BasicBlock",
+          "declarations": [
+            "export interface BasicBlock<Value, Completion extends string = CompletionKind> {\n    readonly id: string;\n    readonly edges: readonly BasicBlockEdge<Completion>[];\n    readonly transfer: (input: Value) => readonly BasicBlockTransfer<Value>[];\n}"
+          ]
+        },
+        {
+          "name": "BasicBlockEdge",
+          "declarations": [
+            "export interface BasicBlockEdge<Completion extends string = CompletionKind> {\n    readonly to: string;\n    readonly completion: Completion;\n    readonly role?: \"forward\" | \"branch\" | \"back-edge\";\n    readonly sourceSpan?: {\n        readonly start: number;\n        readonly end: number;\n    };\n}"
+          ]
+        },
+        {
+          "name": "BasicBlockFixedPointOptions",
+          "declarations": [
+            "export interface BasicBlockFixedPointOptions<Value, Completion extends string = CompletionKind> {\n    readonly entry: string;\n    readonly initial: Value;\n    readonly budget: FixedPointBudget;\n    readonly lattice: FixedPointLattice<Value>;\n    readonly blocks: readonly BasicBlock<Value, Completion>[];\n}"
+          ]
+        },
+        {
+          "name": "BasicBlockFixedPointResult",
+          "declarations": [
+            "export type BasicBlockFixedPointResult<Value> = {\n    readonly status: \"converged\";\n    readonly iterations: number;\n    readonly budget: FixedPointBudget;\n    readonly states: ReadonlyMap<string, Value>;\n} | {\n    readonly status: \"unknown\";\n    readonly reason: \"proof-budget-exhausted\" | \"lattice-conflict\" | \"invalid-cfg\";\n    readonly detail: string;\n    readonly iterations: number;\n    readonly budget: FixedPointBudget;\n    readonly states: ReadonlyMap<string, Value>;\n};"
+          ]
+        },
+        {
+          "name": "BasicBlockTransfer",
+          "declarations": [
+            "export interface BasicBlockTransfer<Value> {\n    readonly to: string;\n    readonly value: Value;\n}"
+          ]
+        },
+        {
+          "name": "breakTransferTarget",
+          "declarations": [
+            "export declare function breakTransferTarget(label?: string): CompletionTarget;"
+          ]
+        },
+        {
+          "name": "catchCompletions",
+          "declarations": [
+            "export declare function catchCompletions(incoming: CompletionSet, handler: () => CompletionSet): CompletionSet;"
+          ]
+        },
+        {
+          "name": "CompletionKind",
+          "declarations": [
+            "export type CompletionKind = \"normal\" | AbruptCompletion;"
+          ]
+        },
+        {
+          "name": "CompletionPath",
+          "declarations": [
+            "export interface CompletionPath<Condition> extends TargetedCompletion {\n    readonly controlConditions: readonly Condition[];\n}"
+          ]
+        },
+        {
+          "name": "completionSet",
+          "declarations": [
+            "export declare function completionSet(...values: readonly TargetedCompletion[]): CompletionSet;"
+          ]
+        },
+        {
+          "name": "CompletionSet",
+          "declarations": [
+            "export type CompletionSet = readonly TargetedCompletion[];"
+          ]
+        },
+        {
+          "name": "CompletionSummary",
+          "declarations": [
+            "export type CompletionSummary<Predicate, Value, Snapshot> = CompletionKind | PredicateCompletionSummary<Predicate, Value, Snapshot>;"
+          ]
+        },
+        {
+          "name": "CompletionTarget",
+          "declarations": [
+            "export type CompletionTarget = {\n    readonly kind: \"nearest-loop\";\n} | {\n    readonly kind: \"nearest-breakable\";\n} | {\n    readonly kind: \"label\";\n    readonly label: string;\n};"
+          ]
+        },
+        {
+          "name": "consumeLoopCompletions",
+          "declarations": [
+            "export declare function consumeLoopCompletions(incoming: CompletionSet, ownerLabel?: string): CompletionSet;"
+          ]
+        },
+        {
+          "name": "continueTransferTarget",
+          "declarations": [
+            "export declare function continueTransferTarget(label?: string): CompletionTarget;"
+          ]
+        },
+        {
+          "name": "finallyCompletions",
+          "declarations": [
+            "export declare function finallyCompletions(incoming: CompletionSet, finalizer: CompletionSet): CompletionSet;"
+          ]
+        },
+        {
+          "name": "FixedPointBudget",
+          "declarations": [
+            "export interface FixedPointBudget {\n    readonly name: string;\n    readonly limit: number;\n}"
+          ]
+        },
+        {
+          "name": "FixedPointLattice",
+          "declarations": [
+            "export interface FixedPointLattice<Value> {\n    readonly bottom: () => Value;\n    readonly equivalent: (left: Value, right: Value) => boolean;\n    readonly join: (left: Value, right: Value) => LatticeJoin<Value>;\n}"
+          ]
+        },
+        {
+          "name": "FlowJoinOptions",
+          "declarations": [
+            "export interface FlowJoinOptions<Key, Value, Condition> {\n    readonly keys: Iterable<Key>;\n    readonly condition: Condition;\n    readonly original: (key: Key) => Value;\n    readonly whenTrue: (key: Key) => Value | undefined;\n    readonly whenFalse: (key: Key) => Value | undefined;\n    readonly equivalent: (left: Value, right: Value) => boolean;\n    readonly phi: (condition: Condition, whenTrue: Value, whenFalse: Value) => Value;\n}"
+          ]
+        },
+        {
+          "name": "formatTargetedCompletion",
+          "declarations": [
+            "export declare function formatTargetedCompletion(completion: TargetedCompletion): string;"
+          ]
+        },
+        {
+          "name": "isLoopTransfer",
+          "declarations": [
+            "export declare function isLoopTransfer(completion: CompletionKind): completion is LoopTransferKind;"
+          ]
+        },
+        {
+          "name": "isTransferOwnedByLoop",
+          "declarations": [
+            "export declare function isTransferOwnedByLoop(completion: TargetedCompletion, ownerLabel?: string): boolean;"
+          ]
+        },
+        {
+          "name": "joinFlowValues",
+          "declarations": [
+            "export declare function joinFlowValues<Key, Value, Condition>(options: FlowJoinOptions<Key, Value, Condition>): ReadonlyMap<Key, Value>;"
+          ]
+        },
+        {
+          "name": "LatticeJoin",
+          "declarations": [
+            "export type LatticeJoin<Value> = {\n    readonly status: \"joined\";\n    readonly value: Value;\n} | {\n    readonly status: \"conflict\";\n    readonly reason: string;\n};"
+          ]
+        },
+        {
+          "name": "LoopTransferKind",
+          "declarations": [
+            "export type LoopTransferKind = \"break\" | \"continue\";"
+          ]
+        },
+        {
+          "name": "loopTransferTarget",
+          "declarations": [
+            "export declare function loopTransferTarget(label?: string): CompletionTarget;"
+          ]
+        },
+        {
+          "name": "PredicateCompletionSummary",
+          "declarations": [
+            "export interface PredicateCompletionSummary<Predicate, Value, Snapshot> {\n    readonly kind: \"mixed\";\n    readonly returnWhen?: Predicate;\n    readonly throwWhen?: Predicate;\n    readonly breakWhen?: Predicate;\n    readonly continueWhen?: Predicate;\n    readonly breakLabels?: ReadonlyMap<string, Predicate>;\n    readonly continueLabels?: ReadonlyMap<string, Predicate>;\n    readonly throwValue?: Value;\n    readonly throwLocals?: Snapshot;\n    readonly returnLocals?: Snapshot;\n    readonly breakLocals?: Snapshot;\n    readonly continueLocals?: Snapshot;\n}"
+          ]
+        },
+        {
+          "name": "routeCatchPaths",
+          "declarations": [
+            "export declare function routeCatchPaths<Path>(incoming: readonly Path[], completionOf: (path: Path) => CompletionKind, handler: () => readonly Path[]): Path[];"
+          ]
+        },
+        {
+          "name": "routeFinallyPaths",
+          "declarations": [
+            "export declare function routeFinallyPaths<Path>(incoming: readonly Path[], finalizer: readonly Path[], completionOf: (path: Path) => CompletionKind): Path[];"
+          ]
+        },
+        {
+          "name": "sequenceCompletions",
+          "declarations": [
+            "export declare function sequenceCompletions(incoming: CompletionSet, successor: () => CompletionSet): CompletionSet;"
+          ]
+        },
+        {
+          "name": "solveBasicBlockFixedPoint",
+          "declarations": [
+            "export declare function solveBasicBlockFixedPoint<Value, Completion extends string = CompletionKind>(options: BasicBlockFixedPointOptions<Value, Completion>): BasicBlockFixedPointResult<Value>;"
+          ]
+        },
+        {
+          "name": "TargetedCompletion",
+          "declarations": [
+            "export interface TargetedCompletion {\n    readonly completion: CompletionKind;\n    readonly target?: CompletionTarget;\n}"
+          ]
+        }
+      ]
+    },
     ".": {
       "runtime": [
         "F32_BITS",

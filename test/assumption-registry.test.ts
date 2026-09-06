@@ -7,8 +7,8 @@ import {
   loadAssumptionRegistry,
   parseAssumptionRegistry,
   resolveAssumptionRecord,
-} from "../src/assumption-registry.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
+} from "../src/evidence/assumption-registry.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
 
 const digest = "a".repeat(64);
 

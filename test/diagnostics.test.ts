@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   describeObligation, evaluateLogic, explainCounterexample, failingConjunct, formatEvaluated, formatLogic,
   formatValue, obligationRule, parseModel, parseModelValue,
-} from "../src/contract-explanations.js";
-import { evaluateQuality, qualityCriteria, scoreDiagnostic } from "../src/diagnostic-quality.js";
-import { diagnosticHint, formatDiagnostics, reportDiagnostic, type CheckerDiagnostic } from "../src/diagnostics.js";
-import { lowerInvariantProgram, parseLogicExpression, InvariantLoweringError } from "../src/invariant-ir.js";
+} from "../src/contracts/contract-explanations.js";
+import { evaluateQuality, qualityCriteria, scoreDiagnostic } from "../src/support/diagnostic-quality.js";
+import { diagnosticHint, formatDiagnostics, reportDiagnostic, type CheckerDiagnostic } from "../src/support/diagnostics.js";
+import { lowerInvariantProgram, parseLogicExpression, InvariantLoweringError } from "../src/contracts/invariant-ir.js";
 
 const offByOne = `/* uneffect:requires x >= 0 */
 /* uneffect:ensures result > x */

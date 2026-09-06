@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseSpec } from "../src/spec-ir.js";
-import { validateRefinementActionBodiesWithZ3, validateRefinementInvariantBodiesWithZ3 } from "../src/refinement-bindings.js";
-import { checkTemporalExpressionEquivalenceWithZ3 } from "../src/spec-lint.js";
-import { parseTemporalExpression } from "../src/temporal-expressions.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { validateRefinementActionBodiesWithZ3, validateRefinementInvariantBodiesWithZ3 } from "../src/refinement/refinement-bindings.js";
+import { checkTemporalExpressionEquivalenceWithZ3 } from "../src/spec/spec-lint.js";
+import { parseTemporalExpression } from "../src/spec/temporal-expressions.js";
 import { refinementManifest } from "./refinement-manifest.js";
 
 const prelude = `/* uneffect: state value: int */ /* uneffect: state armed: bool */ /* uneffect: init value = 0 */ /* uneffect: init armed = false */ /* uneffect: action increment: value' = value + 1 */ /* uneffect: action_when increment: armed && value > 0 */ /* uneffect:always guarded: !armed || value > 0 */

@@ -19,11 +19,11 @@ import {
   validateRefinementStateProjectionWithManifest,
   verifyRefinementRecurrenceCertificateWithZ3,
   type RefinementBindingManifest,
-} from "../src/refinement-bindings.js";
-import { replayModelCounterexample } from "../src/model-replay.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
-import { resolveRefinementDslLink } from "../src/refinement-dsl.js";
+} from "../src/refinement/refinement-bindings.js";
+import { replayModelCounterexample } from "../src/evidence/model-replay.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { findTemporalCounterexampleWithZ3 } from "../src/spec/spec-lint.js";
+import { resolveRefinementDslLink } from "../src/refinement/refinement-dsl.js";
 import { generatedRefinementManifest, refinementManifest } from "./refinement-manifest.js";
 
 const fixtureAbstractions: Readonly<Record<string, Readonly<Record<string, string>>>> = {

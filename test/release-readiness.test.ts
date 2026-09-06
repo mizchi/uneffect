@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { uneffectVersion } from "../src/evidence.js";
-import { effectBaselineToolVersion } from "../src/effect-baseline.js";
+import { uneffectVersion } from "../src/evidence/evidence.js";
+import { effectBaselineToolVersion } from "../src/effects/effect-baseline.js";
 
 describe("0.3.0 release metadata", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
@@ -23,8 +23,8 @@ describe("0.3.0 release metadata", () => {
   });
 
   it("publishes explicit runtime, type, schema, and license surfaces", () => {
-    expect(manifest.main).toBe("./dist/src/public.js");
-    expect(manifest.types).toBe("./dist/src/public.d.ts");
+    expect(manifest.main).toBe("./dist/src/api/public.js");
+    expect(manifest.types).toBe("./dist/src/api/public.d.ts");
     expect(manifest.exports).toHaveProperty(".");
     expect(manifest.exports).toHaveProperty("./corsa");
     expect(manifest.exports).toHaveProperty("./corsa/api");
@@ -34,7 +34,7 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.exports).toHaveProperty("./schemas/*");
     expect(manifest.files).toEqual(expect.arrayContaining(["dist/src", "README.md", "CHANGELOG.md", "LICENSE", "docs", "schemas"]));
     expect(manifest.publishConfig).toMatchObject({ access: "public", provenance: true });
-    expect(manifest.bin).toEqual({ uneffect: "dist/src/cli.js" });
+    expect(manifest.bin).toEqual({ uneffect: "dist/src/cli/index.js" });
     expect(manifest.engines).toEqual({ node: ">=24" });
     expect(manifest.peerDependencies).toMatchObject({
       "@informalsystems/quint": ">=0.32.0 <0.33.0",
@@ -75,18 +75,18 @@ describe("0.3.0 release metadata", () => {
       entrypoints: Record<string, { runtime: string[]; declarations: Array<{ name: string }> }>;
     };
     expect(baseline.schema).toBe("uneffect-public-api-snapshot/v1");
-    expect(Object.keys(baseline.entrypoints).sort()).toEqual([".", "./corsa", "./corsa/api", "./spec"]);
+    expect(Object.keys(baseline.entrypoints).sort()).toEqual([".", "./cfg", "./corsa", "./corsa/api", "./spec"]);
     expect(baseline.entrypoints["."]?.runtime).toContain("generateTemporalModel");
     expect(baseline.entrypoints["."]?.runtime).toContain("uneffectDialects");
     expect(baseline.entrypoints["./corsa/api"]?.runtime).toContain("openCorsaApiFrontend");
     expect(baseline.entrypoints["./spec"]?.runtime).toContain("uneffectSpecVersion");
 
-    const corsa = readFileSync("src/corsa-public.ts", "utf8");
+    const corsa = readFileSync("src/api/corsa-public.ts", "utf8");
     expect(corsa).not.toContain("export *");
     expect(corsa).toContain("checkCorsaProject");
-    const experimentalCorsa = readFileSync("src/corsa-experimental.ts", "utf8");
-    expect(experimentalCorsa).toContain('export * from "./corsa-checker-exporter.js"');
-    expect(experimentalCorsa).toContain('export * from "./corsa-effect-parity.js"');
+    const experimentalCorsa = readFileSync("src/api/corsa-experimental.ts", "utf8");
+    expect(experimentalCorsa).toContain('export * from "../frontends/corsa/corsa-checker-exporter.js"');
+    expect(experimentalCorsa).toContain('export * from "../frontends/corsa/corsa-effect-parity.js"');
 
     const apiCheck = readFileSync("ci/check-public-api.mjs", "utf8");
     expect(apiCheck).toContain("uneffect-public-api-snapshot/v1");
@@ -148,7 +148,7 @@ describe("0.3.0 release metadata", () => {
     expect(publish).toContain("npm publish");
     expect(publish).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/u);
     expect(config.packages["."]?.["extra-files"].map(({ path }) => path)).toEqual(expect.arrayContaining([
-      "src/evidence.ts", "src/effect-baseline.ts",
+      "src/evidence/evidence.ts", "src/effects/effect-baseline.ts",
     ]));
     expect(releaseState).toEqual({ ".": manifest.version });
 

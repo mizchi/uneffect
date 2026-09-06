@@ -57,12 +57,14 @@ try {
   const packedPaths = new Set(packageEvidence.files.map(({ path }) => path));
   for (const path of [
     "package.json",
-    "dist/src/public.js",
-    "dist/src/public.d.ts",
-    "dist/src/corsa-public.js",
-    "dist/src/corsa-api-frontend.js",
-    "dist/src/corsa-experimental.js",
-    "dist/src/spec.js",
+    "dist/src/api/public.js",
+    "dist/src/cfg/index.js",
+    "dist/src/cfg/index.d.ts",
+    "dist/src/api/public.d.ts",
+    "dist/src/api/corsa-public.js",
+    "dist/src/frontends/corsa/corsa-api-frontend.js",
+    "dist/src/api/corsa-experimental.js",
+    "dist/src/spec/index.js",
     "schemas/uneffect-temporal-model-v1.schema.json",
     "schemas/uneffect-corsa-api-frontend-v1.schema.json",
     "schemas/uneffect-module-order-v2.schema.json",
@@ -91,6 +93,7 @@ try {
     files: ["index.ts", "query.ts"],
   }));
   writeFileSync(join(consumer, "index.ts"), `
+    import { solveBasicBlockFixedPoint, type BasicBlockFixedPointOptions } from "@mizchi/uneffect/cfg";
     import * as root from "@mizchi/uneffect";
     import { checkCorsaProject } from "@mizchi/uneffect/corsa";
     import { corsaApiCapabilities, corsaApiLimitations, parseCorsaApiFrontendDescriptor } from "@mizchi/uneffect/corsa/api";
@@ -100,6 +103,12 @@ try {
     import corsaSchema from "@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json" with { type: "json" };
     import moduleOrderV2Schema from "@mizchi/uneffect/schemas/uneffect-module-order-v2.schema.json" with { type: "json" };
 
+    const cfg: BasicBlockFixedPointOptions<number, "ready"> = {
+      entry: "entry", initial: 1, budget: { name: "consumer", limit: 2 },
+      lattice: { bottom: () => 0, equivalent: (a, b) => a === b, join: (a, b) => ({ status: "joined", value: Math.max(a, b) }) },
+      blocks: [{ id: "entry", edges: [], transfer: () => [] }],
+    };
+    solveBasicBlockFixedPoint(cfg);
     const model = root.generateTemporalModel({ fileName: "typed.ts", source: "export function main() {}", runtime: "web" });
     root.parseTemporalModelResult(model);
     void checkCorsaProject;
@@ -262,6 +271,34 @@ try {
     if (!bindingDiagnostic) throw new Error("missing optional Corsa binding did not produce the documented diagnostic");
   `);
   execFileSync(process.execPath, [absentSmoke], { cwd: absentConsumer, stdio: "inherit" });
+  // Prove the CFG entry can load and execute with compiler peers absent and
+  // every dependency outside its installed directory rejected by the loader.
+  const cfgSmoke = join(absentConsumer, "cfg-smoke.mjs");
+  writeFileSync(cfgSmoke, `
+    import { registerHooks } from "node:module";
+    const entry = import.meta.resolve("@mizchi/uneffect/cfg");
+    const directory = new URL("./", entry).href;
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      const result = nextResolve(specifier, context);
+      if (!result.url.startsWith(directory)) throw new Error("CFG imported an external dependency: " + result.url);
+      return result;
+    } });
+    const { solveBasicBlockFixedPoint } = await import(entry);
+    const options = {
+      entry: "start", initial: 1, budget: { name: "installed-cfg", limit: 8 },
+      lattice: { bottom: () => 0, equivalent: (a, b) => a === b, join: (a, b) => ({ status: "joined", value: Math.max(a, b) }) },
+      blocks: [
+        { id: "start", edges: [{ to: "end", completion: "ready" }], transfer: (value) => [{ to: "end", value }] },
+        { id: "end", edges: [], transfer: () => [] },
+      ],
+    };
+    const result = solveBasicBlockFixedPoint(options);
+    if (result.status !== "converged" || result.states.get("end") !== 1) throw new Error("installed CFG did not converge");
+    const exhausted = solveBasicBlockFixedPoint({ ...options, budget: { name: "short", limit: 1 } });
+    if (exhausted.status !== "unknown" || exhausted.reason !== "proof-budget-exhausted") throw new Error("CFG lost budget failure");
+  `);
+  execFileSync(process.execPath, [cfgSmoke], { cwd: absentConsumer, stdio: "inherit" });
+
   packageEvidence.verification.optionalAbsence = "passed";
   writeEvidence();
 

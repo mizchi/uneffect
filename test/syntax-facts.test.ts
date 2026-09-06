@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { analyzeTypeScriptControlFlow } from "../src/typescript-control-flow.js";
+import { analyzeTypeScriptControlFlow } from "../src/frontends/typescript/typescript-control-flow.js";
 import {
   collectSyntaxFacts,
   enclosingFunction,
   parseSyntaxFacts,
   syntaxFactsCoverageDomains,
   syntaxFactsSchema,
-} from "../src/oxc-syntax.js";
+} from "../src/frontends/oxc-syntax.js";
 
 describe("versioned syntax facts", () => {
   it("normalizes supported function boundaries with the TypeScript bridge", () => {

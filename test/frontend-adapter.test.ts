@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements, standardLibraryOperation } from "../src/frontend-adapter.js";
-import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
-import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
-import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
-import { analyzeUneffectProject } from "../src/custom-validators.js";
+import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements, standardLibraryOperation } from "../src/frontends/frontend-adapter.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
+import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects/effects.js";
+import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/analysis/typed-array-safety.js";
+import { analyzeUneffectProject } from "../src/project/custom-validators.js";
 
 describe("TypeChecker symbol adapter", () => {
   it("authenticates standard operations through immutable aliases but rejects mutable aliases", () => {

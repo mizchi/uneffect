@@ -178,8 +178,8 @@ const frontend = await openCorsaApiFrontend({
 });
 try {
   console.log(frontend.descriptor);
-  const symbol = frontend.getSymbolAtPosition("/workspace/src/index.ts", 120);
-  const type = frontend.getTypeAtPosition("/workspace/src/index.ts", 120);
+  const symbol = frontend.getSymbolAtPosition("/workspace/src/api/all.ts", 120);
+  const type = frontend.getTypeAtPosition("/workspace/src/api/all.ts", 120);
 } finally {
   frontend.close();
 }

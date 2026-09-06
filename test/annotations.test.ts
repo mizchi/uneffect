@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { extractAnnotations, extractLocatedAnnotations, registerUneffectPlugin, uneffectDialects, UneffectPluginError, validateUneffectAnnotations } from "../src/annotations.js";
-import { analyzeEffects } from "../src/effects.js";
-import { parseSpec } from "../src/spec-ir.js";
+import { extractAnnotations, extractLocatedAnnotations, registerUneffectPlugin, uneffectDialects, UneffectPluginError, validateUneffectAnnotations } from "../src/support/annotations.js";
+import { analyzeEffects } from "../src/effects/effects.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 
 describe("Uneffect annotation marker", () => {
   it("locks the public dialect inventory without legacy compatibility aliases", () => {

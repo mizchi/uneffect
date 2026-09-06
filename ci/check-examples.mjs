@@ -38,7 +38,7 @@ const smokeCommands = [
   ["check", "examples/dogfood/worker-app.ts"],
 ];
 for (const args of smokeCommands) {
-  run("pnpm", ["tsx", "src/cli.ts", ...args], `example command: uneffect ${args.join(" ")}`);
+  run("pnpm", ["tsx", "src/cli/index.ts", ...args], `example command: uneffect ${args.join(" ")}`);
 }
 
 function resolveExample(reference, base = ".") {

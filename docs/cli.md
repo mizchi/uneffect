@@ -80,7 +80,7 @@ version, compiler, and signature drift fail closed.
 ```sh
 npx uneffect contract-summary \
   --project tsconfig.build.json \
-  --entry src/index.ts \
+  --entry src/api/all.ts \
   --package-name @example/library \
   --package-version 1.2.3 \
   --module-specifier @example/library/node \

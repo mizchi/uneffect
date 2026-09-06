@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { evaluateResourceProtocolCfg, type ResourceProtocolModel } from "../src/resource-protocol.js";
-import { analyzeCallableSummaries } from "../src/callable-summary.js";
-import { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "../src/resource-callable-typescript.js";
-import { collectBuiltinResourceTransitionSites, collectCallableExceptionalTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "../src/resource-protocol-typescript.js";
-import type { ExternalFunctionEffectContract } from "../src/effects.js";
+import { evaluateResourceProtocolCfg, type ResourceProtocolModel } from "../src/resources/resource-protocol.js";
+import { analyzeCallableSummaries } from "../src/effects/callable-summary.js";
+import { analyzeResourceCallableSummaries, collectResourceCallableTransitionSites } from "../src/resources/resource-callable-typescript.js";
+import { collectBuiltinResourceTransitionSites, collectCallableExceptionalTransitionSites, lowerResourceProtocolCfgInFunction, type ResourceTransitionSite } from "../src/resources/resource-protocol-typescript.js";
+import type { ExternalFunctionEffectContract } from "../src/effects/effects.js";
 
 function fixture(text: string): { source: ts.SourceFile; fn: ts.FunctionDeclaration; sites: ResourceTransitionSite[] } {
   const source = ts.createSourceFile("/entry.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

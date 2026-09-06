@@ -6,7 +6,7 @@
     "strict": true,
     "noEmit": true,
     "paths": {
-      "@mizchi/uneffect": ["./../src/public.ts"]
+      "@mizchi/uneffect": ["./../src/api/public.ts"]
     },
     "types": ["node"],
     "skipLibCheck": true

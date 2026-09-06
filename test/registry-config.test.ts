@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { builtinContractRegistry, findBuiltinContract, findModuleInitializationContract } from "../src/builtin-contracts.js";
-import { loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "../src/registry-config.js";
+import { builtinContractRegistry, findBuiltinContract, findModuleInitializationContract } from "../src/effects/builtin-contracts.js";
+import { loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "../src/effects/registry-config.js";
 
 describe("versioned caller-owned registry configuration", () => {
   it("publishes a JSON Schema matching the runtime schema discriminator", () => {

@@ -26,8 +26,8 @@ describe("repository examples and skill", () => {
     expect(justfile).toContain("skills-check:");
     expect(justfile).toMatch(/ci-fast:[\s\S]*just examples-check[\s\S]*just skills-check/);
     expect(justfile).toMatch(/release-check:[\s\S]*just examples-check[\s\S]*just skills-check/);
-    expect(justfile.match(/check --typescript-program --infer[^\n]+src\/doctor-command\.ts/gu)).toHaveLength(1);
-    expect(justfile).toContain("check --infer --effect-baseline dogfood/effect-baseline.json src/static-evaluation.ts src/ownership-evidence-cache.ts");
+    expect(justfile.match(/check --typescript-program --infer[^\n]+src\/cli\/doctor-command\.ts/gu)).toHaveLength(1);
+    expect(justfile).toContain("check --infer --effect-baseline dogfood/effect-baseline.json src/frontends/typescript/static-evaluation.ts src/optimizer/ownership-evidence-cache.ts");
     expect(workflow).toContain("run: just ci-fast");
     expect(workflow).toContain("integration-shard: [core, applications, dogfood]");
     const packageFiles = JSON.parse(readFileSync("package.json", "utf8")).files as string[];

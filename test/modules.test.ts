@@ -2,15 +2,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { builtinContractRegistry, findBuiltinContract } from "../src/builtin-contracts.js";
-import { effectSchema, formatEffect, parseEffectExpression } from "../src/capabilities.js";
-import { installUneffectModules, parseUneffectModuleManifest } from "../src/modules.js";
-import { createEvidenceArtifact, validateEvidenceArtifact } from "../src/evidence.js";
-import { checkFiles, createCheckProgram } from "../src/check.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
-import { analyzeCallableSummaries } from "../src/callable-summary.js";
-import { analyzeProgramEffects } from "../src/effects.js";
+import { builtinContractRegistry, findBuiltinContract } from "../src/effects/builtin-contracts.js";
+import { effectSchema, formatEffect, parseEffectExpression } from "../src/effects/capabilities.js";
+import { installUneffectModules, parseUneffectModuleManifest } from "../src/modules/modules.js";
+import { createEvidenceArtifact, validateEvidenceArtifact } from "../src/evidence/evidence.js";
+import { checkFiles, createCheckProgram } from "../src/project/check.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { analyzeHostNeutralTransitions } from "../src/async/host-neutral-transitions.js";
+import { analyzeCallableSummaries } from "../src/effects/callable-summary.js";
+import { analyzeProgramEffects } from "../src/effects/effects.js";
 import ts from "@typescript/typescript6";
 
 const auditModule = {

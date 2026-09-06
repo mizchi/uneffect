@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { analyzeAsyncSafety } from "../src/async-safety.js";
-import { lowerResourceDisposalsToProtocol } from "../src/resource-disposal-protocol.js";
-import { createResourceDisposalTemporalProduct, evaluateResourceTemporalProduct } from "../src/resource-temporal-product.js";
-import { generateResourceTemporalProductQuint } from "../src/resource-temporal-product.js";
+import { analyzeAsyncSafety } from "../src/async/async-safety.js";
+import { lowerResourceDisposalsToProtocol } from "../src/resources/resource-disposal-protocol.js";
+import { createResourceDisposalTemporalProduct, evaluateResourceTemporalProduct } from "../src/resources/resource-temporal-product.js";
+import { generateResourceTemporalProductQuint } from "../src/resources/resource-temporal-product.js";
 
 describe("resource temporal product IR", () => {
   it("links sync and awaited disposal to their neutral completion lanes", () => {

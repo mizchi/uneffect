@@ -155,7 +155,7 @@ describe("CI test tier manifest", () => {
   });
 
   it("keeps native Z3 optional, tests WASM explicitly, and reserves native Z3 for solver-heavy integration", () => {
-    const backend = readFileSync(join(process.cwd(), "src/z3.ts"), "utf8");
+    const backend = readFileSync(join(process.cwd(), "src/backends/z3.ts"), "utf8");
     expect(backend).toContain('process.env.UNEFFECT_Z3_BACKEND');
     expect(backend).toContain('process.env.UNEFFECT_Z3_PATH');
     expect(backend).toContain('wasmDriver');

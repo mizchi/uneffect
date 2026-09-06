@@ -2257,7 +2257,7 @@ same property is proved for arbitrary TypeScript.
   Conditional/looping await, await-then-throw, multiple/transitive children,
   transformed declarations, and asynchronous or multi-module importers remain
   explicit unknowns.
-  Dogfood includes the executable `src/cli.ts` entrypoint.
+  Dogfood includes the executable `src/cli/index.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize
   the lazy body effects. TypeChecker-identified standard strings, arrays,

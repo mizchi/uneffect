@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/analysis/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   function ItemView${index}(props: { label: string; active: boolean; ref: unknown }) {

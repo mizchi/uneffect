@@ -1,6 +1,6 @@
 import { bench, describe } from "vitest";
 import ts from "typescript";
-import { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow } from "../src/typescript-control-flow.js";
+import { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow } from "../src/frontends/typescript/typescript-control-flow.js";
 
 const source = `
   type Kind = "left" | "right";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { parseCapabilityDsl } from "../src/capability-dsl.js";
-import { effectSchema } from "../src/capabilities.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { parseCapabilityDsl } from "../src/effects/capability-dsl.js";
+import { effectSchema } from "../src/effects/capabilities.js";
 
 const specification = `
   import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability, defineEffectSchema } from "@mizchi/uneffect/spec";

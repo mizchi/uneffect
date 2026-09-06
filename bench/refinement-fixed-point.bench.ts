@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, type RefinementBindingManifest } from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, type RefinementBindingManifest } from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 
 const source = `/* uneffect: state pending: int */ /* uneffect: state delivered: int */ /* uneffect: state failed: int */ /* uneffect: state audited: int */ /* uneffect: state reject: bool */ /* uneffect: init pending = 0 */ /* uneffect: init delivered = 0 */ /* uneffect: init failed = 0 */ /* uneffect: init audited = 0 */ /* uneffect: init reject = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, delivered' = delivered + (pending > 0 ? (reject ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (reject ? pending * (pending + 1) / 2 : 0) : 0), audited' = audited + (pending > 0 ? pending : 0) */
   interface Runtime { pending: number; delivered: number; failed: number; audited: number; reject: boolean }

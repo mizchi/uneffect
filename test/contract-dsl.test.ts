@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { parseContractDsl, prepareContractDslLinks } from "../src/contract-dsl.js";
-import { instrumentContractPredicates, isContractRuntimeError } from "../src/contract-runtime.js";
-import { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow } from "../src/typescript-control-flow.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
+import { parseContractDsl, prepareContractDslLinks } from "../src/contracts/contract-dsl.js";
+import { instrumentContractPredicates, isContractRuntimeError } from "../src/contracts/contract-runtime.js";
+import { analyzeTypeScriptControlFlow, analyzeTypeScriptProgramControlFlow } from "../src/frontends/typescript/typescript-control-flow.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
 
 const specification = `
   import { defineContract, int } from "@mizchi/uneffect/spec";

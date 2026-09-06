@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { createZ3Context } from "../src/z3.js";
+import { createZ3Context } from "../src/backends/z3.js";
 
 /** The generated SMT is checked with the same WASM solver the toolchain ships; no native Z3 is required. */
 async function solve(program: string): Promise<string> {
@@ -13,10 +13,10 @@ async function solve(program: string): Promise<string> {
   solver.fromString(program);
   return String(await solver.check());
 }
-import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async-safety.js";
-import { lowerResourceDisposalsToProtocol } from "../src/resource-disposal-protocol.js";
-import { evaluateResourceProtocol } from "../src/resource-protocol.js";
-import { lowerPromiseOwnershipToResourceProtocol } from "../src/promise-ownership-protocol.js";
+import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async/async-safety.js";
+import { lowerResourceDisposalsToProtocol } from "../src/resources/resource-disposal-protocol.js";
+import { evaluateResourceProtocol } from "../src/resources/resource-protocol.js";
+import { lowerPromiseOwnershipToResourceProtocol } from "../src/async/promise-ownership-protocol.js";
 
 function run(program: string, maxSteps = 12) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-"));

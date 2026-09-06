@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
-import { resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
-import { compareUneffectFrontends } from "../src/frontend-parity.js";
+import { exportCorsaCheckerFacts } from "../src/frontends/corsa/corsa-checker-exporter.js";
+import { resolveCorsaExecutable } from "../src/frontends/corsa/corsa-api-frontend.js";
+import { compareUneffectFrontends } from "../src/frontends/frontend-parity.js";
 
 describe("corsa-bind checker fact exporter", () => {
   it("exports Workhub-shaped FsRead, Fetch/Net, and FsWrite facts in source order", async () => {

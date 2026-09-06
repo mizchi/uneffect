@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { findStaleUncheckedParents, parseTodoTasks } from "../src/todo-consistency.js";
+import { findStaleUncheckedParents, parseTodoTasks } from "../src/support/todo-consistency.js";
 
 describe("TODO hierarchy consistency", () => {
   it("finds only unchecked parents whose complete descendants are stale", () => {

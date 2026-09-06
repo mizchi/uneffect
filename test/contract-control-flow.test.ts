@@ -1,6 +1,6 @@
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { functionMayFallThrough, type ContractControlFlowOptions } from "../src/contract-control-flow.js";
+import { functionMayFallThrough, type ContractControlFlowOptions } from "../src/contracts/contract-control-flow.js";
 
 function functionBody(statement: string): ts.Block {
   const source = ts.createSourceFile(

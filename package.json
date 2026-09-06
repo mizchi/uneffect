@@ -25,38 +25,42 @@
   "license": "MIT",
   "author": "mizchi",
   "type": "module",
-  "main": "./dist/src/public.js",
-  "types": "./dist/src/public.d.ts",
+  "main": "./dist/src/api/public.js",
+  "types": "./dist/src/api/public.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/public.d.ts",
-      "import": "./dist/src/public.js"
+      "types": "./dist/src/api/public.d.ts",
+      "import": "./dist/src/api/public.js"
     },
     "./corsa": {
-      "types": "./dist/src/corsa-public.d.ts",
-      "import": "./dist/src/corsa-public.js"
+      "types": "./dist/src/api/corsa-public.d.ts",
+      "import": "./dist/src/api/corsa-public.js"
     },
     "./corsa/api": {
-      "types": "./dist/src/corsa-api-frontend.d.ts",
-      "import": "./dist/src/corsa-api-frontend.js"
+      "types": "./dist/src/frontends/corsa/corsa-api-frontend.d.ts",
+      "import": "./dist/src/frontends/corsa/corsa-api-frontend.js"
     },
     "./experimental": {
-      "types": "./dist/src/experimental.d.ts",
-      "import": "./dist/src/experimental.js"
+      "types": "./dist/src/api/experimental.d.ts",
+      "import": "./dist/src/api/experimental.js"
     },
     "./experimental/corsa": {
-      "types": "./dist/src/corsa-experimental.d.ts",
-      "import": "./dist/src/corsa-experimental.js"
+      "types": "./dist/src/api/corsa-experimental.d.ts",
+      "import": "./dist/src/api/corsa-experimental.js"
     },
     "./spec": {
-      "types": "./dist/src/spec.d.ts",
-      "import": "./dist/src/spec.js"
+      "types": "./dist/src/spec/index.d.ts",
+      "import": "./dist/src/spec/index.js"
     },
     "./schemas/*": "./schemas/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./cfg": {
+      "types": "./dist/src/cfg/index.d.ts",
+      "import": "./dist/src/cfg/index.js"
+    }
   },
   "bin": {
-    "uneffect": "dist/src/cli.js"
+    "uneffect": "dist/src/cli/index.js"
   },
   "files": [
     "dist/src",

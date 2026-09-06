@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { evaluateStaticBoolean, evaluateStaticPrimitive } from "../src/static-evaluation.js";
+import { evaluateStaticBoolean, evaluateStaticPrimitive } from "../src/frontends/typescript/static-evaluation.js";
 
 function expression(text: string): ts.Expression {
   const source = ts.createSourceFile("static.ts", `const result = ${text}`, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS);

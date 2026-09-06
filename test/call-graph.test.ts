@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { buildProgramCallGraph, instantiateCallbackEffects } from "../src/call-graph.js";
-import { analyzeProgramEffects } from "../src/effects.js";
-import { formatEffect, parseEffectExpression } from "../src/capabilities.js";
-import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { buildProgramCallGraph, instantiateCallbackEffects } from "../src/effects/call-graph.js";
+import { analyzeProgramEffects } from "../src/effects/effects.js";
+import { formatEffect, parseEffectExpression } from "../src/effects/capabilities.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
 
 describe("multi-file call graph and effect polymorphism", () => {
   it("does not expose receiver mutation performed on a proven fresh local instance", () => {

@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { checkFiles } from "../src/check.js";
-import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
+import { checkFiles } from "../src/project/check.js";
+import { reportDiagnostic } from "../src/support/diagnostics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/analysis/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {

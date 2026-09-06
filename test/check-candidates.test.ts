@@ -1,6 +1,6 @@
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { sourceNeedsOwnershipAnalysis } from "../src/check.js";
+import { sourceNeedsOwnershipAnalysis } from "../src/project/check.js";
 
 function candidate(sourceText: string): boolean {
   const fileName = "/fixture.ts";

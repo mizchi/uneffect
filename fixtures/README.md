@@ -13,7 +13,7 @@ anything.
 | `async/` | floating Promises and `using` disposal errors |
 
 `quality.md` is the generated score of every diagnostic in this corpus against
-the rubric in `src/diagnostic-quality.ts`.
+the rubric in `src/support/diagnostic-quality.ts`.
 
 Reports are generated, not hand-edited:
 

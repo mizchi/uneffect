@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { runCli } from "../src/cli-runner.js";
-import { exitCode, type CliStreams } from "../src/cli-support.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { runCli } from "../src/cli/cli-runner.js";
+import { exitCode, type CliStreams } from "../src/cli/cli-support.js";
 
 function writeJson(fileName: string, value: unknown): void {
   writeFileSync(fileName, `${JSON.stringify(value, null, 2)}\n`);

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { optimizeUneffectProject } from "../src/project-optimizer.js";
+import { optimizeUneffectProject } from "../src/optimizer/project-optimizer.js";
 
 describe("project optimization evidence", () => {
   it("does not invent stable-read proof for an open parameter or intervening call", async () => {

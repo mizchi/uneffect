@@ -6,6 +6,10 @@ install:
 test:
     pnpm test
 
+cfg-check:
+    pnpm exec tsc -p tsconfig.cfg.json
+    pnpm vitest run test/cfg-public.test.ts test/refinement-flow.test.ts test/completion-flow.test.ts
+
 bench:
     pnpm bench
 
@@ -14,6 +18,7 @@ check:
 
 ci-fast:
     pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm exec tsc -p tsconfig.cfg.json
     just examples-check
     just skills-check
     UNEFFECT_CI_TIER=fast pnpm vitest run
@@ -55,29 +60,29 @@ release-check:
     git diff --check
 
 spec-ir file:
-    pnpm tsx src/cli.ts spec ir {{ file }}
+    pnpm tsx src/cli/index.ts spec ir {{ file }}
 
 spec-lint file:
-    pnpm tsx src/cli.ts spec lint {{ file }}
+    pnpm tsx src/cli/index.ts spec lint {{ file }}
 
 spec-z3 file function="":
-    pnpm tsx src/cli.ts spec z3 {{ file }} {{ function }}
+    pnpm tsx src/cli/index.ts spec z3 {{ file }} {{ function }}
 
 spec-quint file:
-    pnpm tsx src/cli.ts spec quint {{ file }}
+    pnpm tsx src/cli/index.ts spec quint {{ file }}
 
 spec-compose file function:
-    pnpm tsx src/cli.ts spec compose {{ file }} {{ function }}
+    pnpm tsx src/cli/index.ts spec compose {{ file }} {{ function }}
 
 # Canonical host-aware async model.
 spec-temporal file runtime="web" root="main":
-    pnpm tsx src/cli.ts spec temporal {{ file }} {{ root }} --runtime {{ runtime }}
+    pnpm tsx src/cli/index.ts spec temporal {{ file }} {{ root }} --runtime {{ runtime }}
 
 spec-resource-quint file:
-    pnpm tsx src/cli.ts resource-model {{ file }}
+    pnpm tsx src/cli/index.ts resource-model {{ file }}
 
 spec-unified-async file function:
-    pnpm tsx src/cli.ts async-model {{ file }} {{ function }}
+    pnpm tsx src/cli/index.ts async-model {{ file }} {{ function }}
 
 build:
     pnpm build
@@ -95,25 +100,25 @@ fixtures-update:
     pnpm tsx ci/fixtures.ts update
 
 doctor:
-    pnpm tsx src/cli.ts doctor
+    pnpm tsx src/cli/index.ts doctor
 
 demo:
-    pnpm tsx src/cli.ts check examples/demo.ts
+    pnpm tsx src/cli/index.ts check examples/demo.ts
 
 effect-demo:
     pnpm tsx -e 'import { runEffectExample } from "./examples/effect-ts.ts"; runEffectExample(1).then(console.log)'
 
 instrument-demo:
-    pnpm tsx src/cli.ts instrument examples/gradual.ts
+    pnpm tsx src/cli/index.ts instrument examples/gradual.ts
 
 instrument-ownership file:
-    pnpm tsx src/cli.ts instrument --ownership {{ file }}
+    pnpm tsx src/cli/index.ts instrument --ownership {{ file }}
 
 verified-ownership file:
-    pnpm tsx src/cli.ts instrument --verify-ownership --ownership-evidence .uneffect/ownership-evidence.json {{ file }}
+    pnpm tsx src/cli/index.ts instrument --verify-ownership --ownership-evidence .uneffect/ownership-evidence.json {{ file }}
 
 evidence file:
-    pnpm tsx src/cli.ts evidence {{ file }}
+    pnpm tsx src/cli/index.ts evidence {{ file }}
 
 dogfood:
     pnpm tsx ci/run-test-tiers.ts integration test/dogfood.test.ts
@@ -122,6 +127,6 @@ dogfood:
 # function and module boundaries. Expand this list only after each file has a
 # load-bearing negative control in test/dogfood.test.ts.
 dogfood-leaf:
-    pnpm tsx src/cli.ts check --infer --effect-baseline dogfood/effect-baseline.json src/static-evaluation.ts src/ownership-evidence-cache.ts
-    pnpm tsx src/cli.ts check --typescript-program --infer --assurance no-unknown src/static-evaluation.ts src/project-coordinates.ts src/disposal-symbols.ts src/diagnostics.ts src/diagnostic-quality.ts src/cli-support.ts src/cli-runner.ts src/environment.ts src/doctor-command.ts src/todo-consistency.ts src/fixtures.ts src/ownership-evidence-cache.ts src/model-replay.ts src/project-optimizer.ts src/refinement-flow.ts src/module-initialization-v2.ts
+    pnpm tsx src/cli/index.ts check --infer --effect-baseline dogfood/effect-baseline.json src/frontends/typescript/static-evaluation.ts src/optimizer/ownership-evidence-cache.ts
+    pnpm tsx src/cli/index.ts check --typescript-program --infer --assurance no-unknown src/frontends/typescript/static-evaluation.ts src/frontends/typescript/project-coordinates.ts src/resources/disposal-symbols.ts src/support/diagnostics.ts src/support/diagnostic-quality.ts src/cli/cli-support.ts src/cli/cli-runner.ts src/support/environment.ts src/cli/doctor-command.ts src/support/todo-consistency.ts src/support/fixtures.ts src/optimizer/ownership-evidence-cache.ts src/evidence/model-replay.ts src/optimizer/project-optimizer.ts src/cfg/fixed-point.ts src/modules/module-initialization-v2.ts
     pnpm vitest run test/dogfood.test.ts -t "classifies every unknown summary|explicit pure boundary|pure construction|disposal traversal|pure diagnostic|pure CLI helpers|environment report|CLI help formatting|CLI dispatch|doctor environment inspection|TODO hierarchy|fixture discovery|ownership cache keys|model trace loading|persisted optimizer evidence|fixed-point engine|conditional TLA dogfood"

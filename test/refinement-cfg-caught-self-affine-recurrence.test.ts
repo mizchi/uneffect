@@ -4,9 +4,9 @@ import {
   analyzeRefinementActionBodies,
   analyzeRefinementActionBodiesWithZ3,
   verifyRefinementRecurrenceCertificateWithZ3,
-} from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { resolveRefinementDslFileLink } from "../src/refinement-dsl.js";
+} from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { resolveRefinementDslFileLink } from "../src/refinement/refinement-dsl.js";
 
 const fileName = "examples/dogfood/cfg-caught-retry-backoff.ts";
 const fixture = readFileSync(fileName, "utf8");

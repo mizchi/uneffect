@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { evaluateQuality, formatQualityReport, qualityThreshold } from "../src/diagnostic-quality.js";
-import { qualityReportPath, readFixtureReport, runFixtures, type FixtureRun } from "../src/fixtures.js";
+import { evaluateQuality, formatQualityReport, qualityThreshold } from "../src/support/diagnostic-quality.js";
+import { qualityReportPath, readFixtureReport, runFixtures, type FixtureRun } from "../src/support/fixtures.js";
 
 const root = process.cwd();
 let runs: FixtureRun[] = [];

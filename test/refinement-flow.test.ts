@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinFlowValues, solveBasicBlockFixedPoint } from "../src/refinement-flow.js";
+import { joinFlowValues, solveBasicBlockFixedPoint } from "../src/cfg/index.js";
 
 describe("refinement flow joins", () => {
   it("joins only visible bindings and avoids redundant phi values", () => {

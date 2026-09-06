@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { attachContractEffectBoundaries, hasContractVerificationCandidates, reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "../src/contracts.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { collectAssumptionLedger } from "../src/assumptions.js";
-import { lowerInvariantProgram } from "../src/invariant-ir.js";
+import { attachContractEffectBoundaries, hasContractVerificationCandidates, reconcileContractArtifacts, verifyContractObligations, verifyContracts } from "../src/contracts/contracts.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { collectAssumptionLedger } from "../src/evidence/assumptions.js";
+import { lowerInvariantProgram } from "../src/contracts/invariant-ir.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022 };

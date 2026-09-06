@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BasicBlockFixedPointOptions } from "../src/refinement-flow.js";
-import { analyzeModuleInitializationOrderV2 } from "../src/module-initialization-v2.js";
+import type { BasicBlockFixedPointOptions } from "../src/cfg/index.js";
+import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
 
 const fault = vi.hoisted(() => ({ mode: "none", solverStatus: "" }));
-vi.mock("../src/refinement-flow.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../src/refinement-flow.js")>();
+vi.mock("../src/cfg/index.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/cfg/index.js")>();
   return {
     ...original,
     solveBasicBlockFixedPoint<Value>(options: BasicBlockFixedPointOptions<Value>) {

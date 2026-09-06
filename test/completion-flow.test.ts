@@ -7,7 +7,7 @@ import {
   routeCatchPaths,
   routeFinallyPaths,
   sequenceCompletions,
-} from "../src/completion-flow.js";
+} from "../src/cfg/completion.js";
 
 const kinds = (values: ReturnType<typeof completionSet>): string[] => [...values]
   .map((value) => value.completion === "break" || value.completion === "continue"

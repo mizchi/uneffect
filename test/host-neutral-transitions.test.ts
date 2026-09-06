@@ -4,10 +4,10 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
-import type { CallableSummary } from "../src/callable-summary.js";
-import type { ResourceDisposal } from "../src/async-safety.js";
-import type { PromiseChainModel } from "../src/promise-chains.js";
-import { analyzeAsyncPatternsInProgram, generateWebEventLoopQuint } from "../src/async-patterns.js";
+import type { CallableSummary } from "../src/effects/callable-summary.js";
+import type { ResourceDisposal } from "../src/async/async-safety.js";
+import type { PromiseChainModel } from "../src/async/promise-chains.js";
+import { analyzeAsyncPatternsInProgram, generateWebEventLoopQuint } from "../src/async/async-patterns.js";
 import {
   composeHostNeutralTransitions,
   analyzeHostNeutralTransitions,
@@ -17,7 +17,7 @@ import {
   lowerResourceDisposalTransitions,
   lowerHostNeutralTransitions,
   generateHostTransitionModel,
-} from "../src/host-neutral-transitions.js";
+} from "../src/async/host-neutral-transitions.js";
 
 describe("host-neutral async transitions", () => {
   it("lowers callback timing without choosing a Web or Node queue", () => {

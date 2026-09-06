@@ -1,7 +1,7 @@
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics, projectedExpression } from "../src/builtin-semantic-interpreter.js";
-import type { BuiltinSemantics } from "../src/builtin-semantic-schema.js";
+import { interpretBuiltinCallSemantics, interpretBuiltinPropertySemantics, projectedExpression } from "../src/effects/builtin-semantic-interpreter.js";
+import type { BuiltinSemantics } from "../src/effects/builtin-semantic-schema.js";
 
 function callOf(text: string): ts.CallExpression {
   const source = ts.createSourceFile("fixture.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

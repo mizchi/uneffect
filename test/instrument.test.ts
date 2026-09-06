@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "../src/instrument.js";
-import { verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
+import { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "../src/optimizer/instrument.js";
+import { verifyOwnershipObligationWithZ3 } from "../src/evidence/evidence.js";
 
 describe("runtime assertion instrumenter", () => {
   it("injects a named numeric assertion into a function", () => {

@@ -1,22 +1,22 @@
 import { bench, describe } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import ts from "typescript";
-import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { generateQuint } from "../src/spec-backends.js";
-import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
-import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
-import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
-import { generateRefinementAdapterModuleFromManifest, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithManifest, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection, type RefinementBindingManifest } from "../src/refinement-bindings.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async-patterns.js";
-import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
-import { analyzePromiseChains } from "../src/promise-chains.js";
-import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
-import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject } from "../src/workspace-refinements.js";
-import type { TypeScriptProject } from "../src/typescript-project.js";
-import { nodeCurrentRealmGlobalIdentity, SAME_REALM_GLOBAL_THIS_IDENTITY } from "../src/runtime-identities.js";
+import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/analysis/typed-array-safety.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { generateQuint } from "../src/spec/spec-backends.js";
+import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec/spec-lint.js";
+import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/contracts/property-tests.js";
+import { analyzeUneffectProject, defineUneffectValidator } from "../src/project/custom-validators.js";
+import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/evidence/model-replay.js";
+import { generateRefinementAdapterModuleFromManifest, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithManifest, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection, type RefinementBindingManifest } from "../src/refinement/refinement-bindings.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async/async-patterns.js";
+import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async/async-safety.js";
+import { analyzePromiseChains } from "../src/async/promise-chains.js";
+import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects/effects.js";
+import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject } from "../src/project/workspace-refinements.js";
+import type { TypeScriptProject } from "../src/frontends/typescript/typescript-project.js";
+import { nodeCurrentRealmGlobalIdentity, SAME_REALM_GLOBAL_THIS_IDENTITY } from "../src/evidence/runtime-identities.js";
 
 function validateGeneratedRefinementActionBodies(
   fileName: string,

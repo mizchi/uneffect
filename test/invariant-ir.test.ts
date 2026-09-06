@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateObligationSmt, lowerInvariantProgram, proveBooleanImplication } from "../src/invariant-ir.js";
+import { generateObligationSmt, lowerInvariantProgram, proveBooleanImplication } from "../src/contracts/invariant-ir.js";
 
 describe("shared invariant obligation IR", () => {
   it("preserves each early-return path as versioned control-flow evidence", () => {

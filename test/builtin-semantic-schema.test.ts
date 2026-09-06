@@ -3,7 +3,7 @@ import {
   stableSerializeBuiltinSemantics,
   validateBuiltinSemantics,
   type BuiltinSemantics,
-} from "../src/builtin-semantic-schema.js";
+} from "../src/effects/builtin-semantic-schema.js";
 
 describe("generic builtin semantic schema", () => {
   const semantics: BuiltinSemantics = {

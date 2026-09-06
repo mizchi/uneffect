@@ -3,12 +3,12 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
-import type { OwnershipGuardObligation } from "../src/async-safety.js";
-import { analyzeEffectSummariesInProgram, analyzeProgramEffects } from "../src/effects.js";
-import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { builtinContractRegistry, extendBuiltinContractRegistry, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence/evidence.js";
+import type { OwnershipGuardObligation } from "../src/async/async-safety.js";
+import { analyzeEffectSummariesInProgram, analyzeProgramEffects } from "../src/effects/effects.js";
+import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer/optimizer.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry, type BuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
 import { ciMeasuredNativeProjectTimeoutMs } from "../ci/test-tiers.js";
 import { reviewedAssumptions } from "./assumption-fixtures.js";
 

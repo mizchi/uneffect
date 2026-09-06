@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { quicksort } from "../examples/quicksort.js";
-import { analyzeEffects } from "../src/effects.js";
+import { analyzeEffects } from "../src/effects/effects.js";
 
 describe("quicksort dogfood", () => {
   it.each([

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSpec } from "../src/spec-ir.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state processed: int */ /* uneffect: state sampled: bool */ /* uneffect: init pending = 0 */ /* uneffect: init processed = 0 */ /* uneffect: init sampled = false */ /* uneffect: action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? (sampled ? pending : 0) : 0) */

@@ -3,10 +3,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkCorsaProject } from "../src/corsa-check.js";
-import { createCorsaCheckJsonReport } from "../src/corsa-check-report.js";
-import { runCli } from "../src/cli-runner.js";
-import { exitCode, type CliStreams } from "../src/cli-support.js";
+import { checkCorsaProject } from "../src/frontends/corsa/corsa-check.js";
+import { createCorsaCheckJsonReport } from "../src/frontends/corsa/corsa-check-report.js";
+import { runCli } from "../src/cli/cli-runner.js";
+import { exitCode, type CliStreams } from "../src/cli/cli-support.js";
 
 const configFile = resolve("test/fixtures/corsa-api-project/tsconfig.json");
 
@@ -28,8 +28,8 @@ function capabilityNames(result: Awaited<ReturnType<typeof checkCorsaProject>>):
 
 describe("Corsa-native project check", () => {
   it("does not import a JavaScript TypeScript 6 Program on the shipped check driver", () => {
-    const driver = readFileSync("src/check-command.ts", "utf8");
-    const corsaCheck = readFileSync("src/corsa-check.ts", "utf8");
+    const driver = readFileSync("src/cli/check-command.ts", "utf8");
+    const corsaCheck = readFileSync("src/frontends/corsa/corsa-check.ts", "utf8");
     expect(driver).not.toMatch(/from ["']\.\/check\.js["']/);
     expect(driver).not.toMatch(/from ["']typescript["']/);
     expect(driver).not.toMatch(/createCheckProgram|createProgram/);
@@ -42,7 +42,7 @@ describe("Corsa-native project check", () => {
     return spawnSync(process.execPath, [
       "--import", hook,
       "--import", "tsx",
-      resolve("src/cli.ts"),
+      resolve("src/cli/index.ts"),
       ...args,
     ], { encoding: "utf8", cwd: process.cwd() });
   }

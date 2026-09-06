@@ -4,10 +4,10 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
-import * as uneffect from "../src/index.js";
-import * as experimental from "../src/experimental.js";
-import type { RefinementBindingManifest } from "../src/refinement-bindings.js";
-import type { TemporalSpec } from "../src/spec-ir.js";
+import * as uneffect from "../src/api/all.js";
+import * as experimental from "../src/api/experimental.js";
+import type { RefinementBindingManifest } from "../src/refinement/refinement-bindings.js";
+import type { TemporalSpec } from "../src/spec/spec-ir.js";
 
 type FutureApi = (...args: unknown[]) => unknown;
 
@@ -3515,7 +3515,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("verifies Hoare contracts with Z3 and emits explicit Valibot assertions in the same optional runtime build", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const result = await verifyProject({ files: files({
-      "src/numeric.ts": `
+      "src/runtime/numeric.ts": `
         import type { Nat } from "@mizchi/uneffect"
         /* uneffect:requires value >= 0 */
         /* uneffect:ensures result > value */
@@ -3524,14 +3524,14 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       `,
     }), runtimeAssertions: "fallback" }) as { obligations: Array<{ backend: string; result: string }>; emittedFiles: Record<string, string> };
     expect(result.obligations).toContainEqual(expect.objectContaining({ backend: "z3", result: "verified" }));
-    expect(result.emittedFiles["src/numeric.js"]).toContain("valibot");
+    expect(result.emittedFiles["src/runtime/numeric.js"]).toContain("valibot");
   }, 30_000);
 
   it("binds imported finite numeric aliases to TypeChecker-backed contract evidence", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const result = await verifyProject({ files: files({
-      "src/digits.ts": `export type Digit = 0 | 1 | 2`,
-      "src/numeric.ts": `
+      "src/runtime/digits.ts": `export type Digit = 0 | 1 | 2`,
+      "src/runtime/numeric.ts": `
         import type { Digit } from "./digits.js"
         /* uneffect:ensures result >= 0 && result <= 2 */
         export function preserveDigit(value: Digit): number { return value }

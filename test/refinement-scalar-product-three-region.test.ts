@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSpec } from "../src/spec-ir.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import { analyzeSingleActionRefinementBodies as analyzeRefinementActionBodies, analyzeSingleActionRefinementBodiesWithZ3 as analyzeRefinementActionBodiesWithZ3 } from "./refinement-analysis.js";
 
 const fixture = (between = "", fourth = "") => `

@@ -3,13 +3,13 @@ import ts from "@typescript/typescript6";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, boundContractSummaryResourceContracts, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contract-summary.js";
-import { verifyContractObligations } from "../src/contracts.js";
-import { analyzeHostNeutralTransitions } from "../src/host-neutral-transitions.js";
-import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
-import { analyzeResourceLifecyclesInSource } from "../src/resource-callable-typescript.js";
-import { analyzeProgramEffects } from "../src/effects.js";
-import { formatEffect } from "../src/capabilities.js";
+import { bindContractSummaryBundleToProgram, boundContractSummaryEffectContracts, boundContractSummaryResourceContracts, createContractSummaryBundle, loadContractSummaryBundle, validateContractSummaryBundle } from "../src/contracts/contract-summary.js";
+import { verifyContractObligations } from "../src/contracts/contracts.js";
+import { analyzeHostNeutralTransitions } from "../src/async/host-neutral-transitions.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
+import { analyzeResourceLifecyclesInSource } from "../src/resources/resource-callable-typescript.js";
+import { analyzeProgramEffects } from "../src/effects/effects.js";
+import { formatEffect } from "../src/effects/capabilities.js";
 
 function programFor(fileName: string, source: string): ts.Program {
   const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };

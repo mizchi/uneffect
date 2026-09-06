@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { openCorsaApiFrontend, parseCorsaApiFrontendDescriptor, resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
-import { openTypeScriptSemanticQuery } from "../src/typescript-semantic-query.js";
+import { openCorsaApiFrontend, parseCorsaApiFrontendDescriptor, resolveCorsaExecutable } from "../src/frontends/corsa/corsa-api-frontend.js";
+import { openTypeScriptSemanticQuery } from "../src/frontends/typescript/typescript-semantic-query.js";
 
 describe("Corsa API frontend", () => {
   it("resolves the package-owned TypeScript 7 native compiler without a consumer TypeScript 6 install", () => {
@@ -193,7 +193,7 @@ describe("Corsa API frontend", () => {
   });
 
   it("does not reach named checker relations through untyped callJson strings", () => {
-    const source = readFileSync("src/corsa-api-frontend.ts", "utf8");
+    const source = readFileSync("src/frontends/corsa/corsa-api-frontend.ts", "utf8");
     for (const method of [
       "getSymbolsAtPositions", "getAliasedSymbol", "getImmediateAliasedSymbol", "getExportsOfModule",
       "getTypesAtPositions", "getPropertyOfType", "isTypeAssignableTo",

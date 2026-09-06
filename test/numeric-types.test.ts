@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { BoundedMap, BoundedSet, F32, Float, I32, Int, Nat, U8, U32 } from "../src/index.js";
-import { F32_BITS, I32_MAX, I32_MIN, U8_BITS, U8_MAX, U32_BITS, U32_MAX, FloatSchema, IntSchema, NatSchema, f32, i32, parseBoundedMap, parseBoundedSet, parseFloat, parseInt, parseNat, parseU8, u8, u32 } from "../src/index.js";
+import type { BoundedMap, BoundedSet, F32, Float, I32, Int, Nat, U8, U32 } from "../src/api/all.js";
+import { F32_BITS, I32_MAX, I32_MIN, U8_BITS, U8_MAX, U32_BITS, U32_MAX, FloatSchema, IntSchema, NatSchema, f32, i32, parseBoundedMap, parseBoundedSet, parseFloat, parseInt, parseNat, parseU8, u8, u32 } from "../src/api/all.js";
 
 describe("numeric helper types", () => {
   it("parses branded numeric values with Valibot", () => {

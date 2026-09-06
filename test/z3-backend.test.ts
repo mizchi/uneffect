@@ -9,11 +9,11 @@ import {
   parseZ3BackendPreference,
   type Z3BackendDriver,
   type Z3ExecutionResult,
-} from "../src/z3.js";
-import { parseTemporalExpression } from "../src/temporal-expressions.js";
-import { checkTemporalExpressionEquivalenceWithZ3, findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import type { TemporalSpec } from "../src/spec-ir.js";
-import { generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
+} from "../src/backends/z3.js";
+import { parseTemporalExpression } from "../src/spec/temporal-expressions.js";
+import { checkTemporalExpressionEquivalenceWithZ3, findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec/spec-lint.js";
+import type { TemporalSpec } from "../src/spec/spec-ir.js";
+import { generateUneffectPropertyTestsWithZ3 } from "../src/contracts/property-tests.js";
 
 const result = (
   backend: "native" | "wasm",

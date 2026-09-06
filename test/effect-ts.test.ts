@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { Effect } from "effect";
 import { incrementAndReport } from "../examples/effect-ts.js";
-import { analyzeEffectRecovery } from "../src/adoption.js";
+import { analyzeEffectRecovery } from "../src/support/adoption.js";
 
 describe("Effect TS comparison", () => {
   it("type-checks and executes an Effect program", async () => {

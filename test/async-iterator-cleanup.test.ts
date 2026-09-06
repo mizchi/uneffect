@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { analyzeAsyncIteratorCleanup, analyzeAsyncIteratorCleanupInProgram, analyzeIteratorCleanupInProgram } from "../src/async-iterator-cleanup.js";
-import { checkFiles } from "../src/check.js";
-import { assessCheckAssurance } from "../src/assurance.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { evaluateResourceProtocol } from "../src/resource-protocol.js";
+import { analyzeAsyncIteratorCleanup, analyzeAsyncIteratorCleanupInProgram, analyzeIteratorCleanupInProgram } from "../src/async/async-iterator-cleanup.js";
+import { checkFiles } from "../src/project/check.js";
+import { assessCheckAssurance } from "../src/evidence/assurance.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { evaluateResourceProtocol } from "../src/resources/resource-protocol.js";
 
 function analyze(text: string) {
   return analyzeAsyncIteratorCleanup(ts.createSourceFile("entry.ts", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));

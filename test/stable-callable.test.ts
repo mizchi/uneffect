@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
-import { resolveStableCallableSymbol } from "../src/stable-callable.js";
+import { resolveStableCallableSymbol } from "../src/frontends/typescript/stable-callable.js";
 
 describe("stable callable identity", () => {
   it("resolves const aliases and authenticated frozen properties to the source symbol", () => {

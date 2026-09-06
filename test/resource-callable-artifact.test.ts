@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { authenticateResourceCallableContractArtifact, createResourceCallableContractArtifact, resourceCallableArtifactAssumption } from "../src/resource-callable-artifact.js";
-import { collectResourceCallableTransitionSites } from "../src/resource-callable-typescript.js";
+import { authenticateResourceCallableContractArtifact, createResourceCallableContractArtifact, resourceCallableArtifactAssumption } from "../src/resources/resource-callable-artifact.js";
+import { collectResourceCallableTransitionSites } from "../src/resources/resource-callable-typescript.js";
 
 const declarationText = "export declare function consume(body: object): void";
 const base = () => createResourceCallableContractArtifact({

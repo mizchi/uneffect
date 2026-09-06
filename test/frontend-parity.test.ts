@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareUneffectFrontends } from "../src/frontend-parity.js";
+import { compareUneffectFrontends } from "../src/frontends/frontend-parity.js";
 
 describe("TypeScript/Corsa neutral projection parity", () => {
   it("preserves explicit empty effect declarations across the reference and Corsa fact projections", async () => {

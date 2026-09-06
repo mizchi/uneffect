@@ -3,8 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeAsyncPatterns, generateWebEventLoopQuint } from "../src/async-patterns.js";
-import { generateComposedQuint, parseTemporalComposition } from "../src/temporal-compose.js";
+import { analyzeAsyncPatterns, generateWebEventLoopQuint } from "../src/async/async-patterns.js";
+import { generateComposedQuint, parseTemporalComposition } from "../src/spec/temporal-compose.js";
 
 const source = `
 /* uneffect: state phase: int */ /* uneffect: init phase = 0 */ /* uneffect:always completedInOrder: pc !== 2 || phase === 2 */

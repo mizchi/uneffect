@@ -73,7 +73,7 @@ const binding = bindContractSummaryBundleToProgram(installed, consumerProgram)
 The equivalent package-facing CLI is:
 
 ```sh
-npx uneffect contract-summary --project tsconfig.build.json --entry src/index.ts \
+npx uneffect contract-summary --project tsconfig.build.json --entry src/api/all.ts \
   --package-name @example/math --package-version 1.2.3 \
   --module-specifier @example/math/scalar \
   --typescript-emit-root . --out uneffect-contract.json

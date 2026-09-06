@@ -200,6 +200,9 @@ Corsa/Oxlint checker-fact and parity integrations live under
 `@mizchi/uneffect/experimental/corsa`. See
 [Public API and compatibility](./docs/public-api.md) for the exact boundary.
 
+The compiler-independent CFG core is available from `@mizchi/uneffect/cfg`.
+See [CFG API](./docs/cfg.md) and [source layout](./docs/source-layout.md).
+
 ## Development
 
 The repository uses pnpm, Node.js 24+, and `just`.

@@ -3,7 +3,7 @@ import {
   analyzeTypeScriptControlFlow,
   parseTypeScriptControlFlowAnalysis,
   typescriptControlFlowSchema,
-} from "../src/typescript-control-flow.js";
+} from "../src/frontends/typescript/typescript-control-flow.js";
 
 describe("TypeScript control-flow artifact contract", () => {
   const source = `

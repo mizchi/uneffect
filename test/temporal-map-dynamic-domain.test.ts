@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
-import { parseSpec } from "../src/spec-ir.js";
+import { findTemporalCounterexampleWithZ3 } from "../src/spec/spec-lint.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 
 const fixture = `/* uneffect: state nodes: Set<int> */ /* uneffect: state selected: int */ /* uneffect: state leases: Map<int, int> */ /* uneffect: init nodes = Set(1, 2) */ /* uneffect: init selected = 1 */ /* uneffect: init leases = Map([[1, 7]]) */ /* uneffect: action selectMissing: selected' = 2 */ /* uneffect: action observe: selected' = selected */ /* uneffect:always selectedIsNode: nodes.contains(selected) */ /* uneffect:always selectedHasLease: leases.getOrElse(selected, 0) > 0 */`;
 

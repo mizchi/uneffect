@@ -3,11 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseTlcCounterexample } from "../src/model-replay.js";
-import { generateQuint } from "../src/spec-backends.js";
-import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { generateRuntimeAssertionExpression } from "../src/temporal-expressions.js";
+import { parseTlcCounterexample } from "../src/evidence/model-replay.js";
+import { generateQuint } from "../src/spec/spec-backends.js";
+import { findTemporalCounterexampleWithZ3 } from "../src/spec/spec-lint.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { generateRuntimeAssertionExpression } from "../src/spec/temporal-expressions.js";
 
 const fixture = `/* uneffect: state epochs: Map<int, int> */ /* uneffect: state observed: int */ /* uneffect: init epochs = Map([[1, 7]]) */ /* uneffect: init observed = -1 */ /* uneffect: action observeMissing: observed' = epochs.getOrElse(2, 0) */ /* uneffect:always missingUsesDefault: epochs.getOrElse(2, 0) === 0 */ /* uneffect:always presentUsesValue: epochs.getOrElse(1, 0) === 7 */`;
 

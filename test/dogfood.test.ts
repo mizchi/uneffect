@@ -5,28 +5,28 @@ import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 import { externalCheckerTestTimeoutMs } from "../ci/test-timeouts.js";
 import { measureCiTimingPhase, measureCiTimingPhaseAsync, type CiTimingPhase } from "../ci/timing-report.js";
-import { analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
-import { formatEffect } from "../src/capabilities.js";
-import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
-import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
-import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
-import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
-import { verifyUneffectProject } from "../src/project-verification.js";
-import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
-import { parseSpec } from "../src/spec-ir.js";
-import { generateQuint } from "../src/spec-backends.js";
-import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
-import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementBindingCoverageWithManifest, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram, validateRefinementStateProjectionWithManifest } from "../src/refinement-bindings.js";
-import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
-import { resolveCorsaExecutable } from "../src/corsa-api-frontend.js";
-import { compareUneffectFrontends } from "../src/frontend-parity.js";
-import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
-import { analyzeModuleInitializationOrderV2 } from "../src/module-initialization-v2.js";
-import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
-import { resolveRefinementDslFileLink, resolveRefinementDslLink } from "../src/refinement-dsl.js";
-import * as publicApi from "../src/public.js";
-import type { AsyncSafetyDiagnostic } from "../src/public.js";
+import { analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects/effects.js";
+import { formatEffect } from "../src/effects/capabilities.js";
+import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async/async-safety.js";
+import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/async/promise-chains.js";
+import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async/async-patterns.js";
+import { auditBuiltinDeclarationDrift } from "../src/frontends/frontend-adapter.js";
+import { verifyUneffectProject } from "../src/project/project-verification.js";
+import { verifyTypedArraySafety } from "../src/analysis/typed-array-safety.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
+import { generateQuint } from "../src/spec/spec-backends.js";
+import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec/spec-lint.js";
+import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/contracts/property-tests.js";
+import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementBindingCoverageWithManifest, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram, validateRefinementStateProjectionWithManifest } from "../src/refinement/refinement-bindings.js";
+import { exportCorsaCheckerFacts } from "../src/frontends/corsa/corsa-checker-exporter.js";
+import { resolveCorsaExecutable } from "../src/frontends/corsa/corsa-api-frontend.js";
+import { compareUneffectFrontends } from "../src/frontends/frontend-parity.js";
+import { analyzeModuleInitializationOrder } from "../src/modules/module-initialization.js";
+import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
+import { analyzeUneffectProject, defineUneffectValidator } from "../src/project/custom-validators.js";
+import { resolveRefinementDslFileLink, resolveRefinementDslLink } from "../src/refinement/refinement-dsl.js";
+import * as publicApi from "../src/api/public.js";
+import type { AsyncSafetyDiagnostic } from "../src/api/public.js";
 import { reviewedAssumptions } from "./assumption-fixtures.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
@@ -56,7 +56,7 @@ function analyzeSourceTreeEffects(): ReturnType<typeof analyzeProgramEffects> {
   if (sourceTreeEffectAnalysis) return sourceTreeEffectAnalysis;
   const program = measureDogfoodPhase(
     "project-compiler-construction", "whole src TypeScript Program",
-    () => ts.createProgram(globSync("src/*.ts"), {
+    () => ts.createProgram(globSync("src/**/*.ts"), {
       target: ts.ScriptTarget.ES2024,
       module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -983,7 +983,7 @@ describe("Uneffect dogfood", () => {
   });
 
   it("retains the dynamic lexical owner of a continue leaving a catch", () => {
-    const fileName = "src/package-manifest.ts";
+    const fileName = "src/support/package-manifest.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeAsyncSafety(fileName, source);
     expect(result.controlTransferOwners).toContainEqual(expect.objectContaining({
@@ -2701,12 +2701,24 @@ describe("Uneffect dogfood", () => {
     const codes = [...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))].sort();
     expect(codes).toEqual([
       "unknown-callback-timing",
+      "unknown-dependency",
       "unresolved-call",
     ]);
+    // The schema constructor's unknown module effects were already present
+    // before directory extraction (2928529). Retain their exact propagation
+    // boundary rather than classifying these imports as pure.
+    const dependentUnknowns = unknown.filter((summary) => summary.unknownReasons?.some((reason) => reason.code === "unknown-dependency"));
+    expect(dependentUnknowns.every((summary) => summary.functionName === "<module>")).toBe(true);
+    expect(dependentUnknowns.map((summary) => summary.fileName).sort()).toEqual([
+      "src/api/all.ts", "src/api/experimental.ts", "src/api/public.ts",
+      "src/frontends/corsa/corsa-fact-consumer.ts", "src/frontends/frontend-parity.ts",
+    ]);
+    expect(result.summaries.find((summary) => summary.fileName === "src/frontends/corsa/corsa-fact-schema.ts"
+      && summary.functionName === "<module>")?.evidence).toBe("unknown");
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("enforces an explicit pure boundary on the leaf static evaluator", () => {
-    const fileName = "src/static-evaluation.ts";
+    const fileName = "src/frontends/typescript/static-evaluation.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2731,7 +2743,7 @@ describe("Uneffect dogfood", () => {
   });
 
   it("enforces pure construction while retaining throws on coordinate lookup methods", () => {
-    const fileName = "src/project-coordinates.ts";
+    const fileName = "src/frontends/typescript/project-coordinates.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2753,7 +2765,7 @@ describe("Uneffect dogfood", () => {
   });
 
   it("keeps disposal traversal mutation internal to its fresh default Set", () => {
-    const fileName = "src/disposal-symbols.ts";
+    const fileName = "src/resources/disposal-symbols.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2772,7 +2784,7 @@ describe("Uneffect dogfood", () => {
   });
 
   it("keeps the fixed-point engine free of host effects outside caller callbacks", () => {
-    const fileName = "src/refinement-flow.ts";
+    const fileName = "src/cfg/fixed-point.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2813,7 +2825,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("enforces pure diagnostic normalization, formatting, and quality scoring", () => {
-    const fileNames = ["src/diagnostics.ts", "src/diagnostic-quality.ts"];
+    const fileNames = ["src/support/diagnostics.ts", "src/support/diagnostic-quality.ts"];
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selectedNames = new Set([
@@ -2827,8 +2839,8 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("rejects an unused Console allowance on diagnostic quality scoring", () => {
-    const source = readFileSync("src/diagnostic-quality.ts", "utf8");
-    expect(analyzeEffects("src/diagnostic-quality.ts", source.replace(
+    const source = readFileSync("src/support/diagnostic-quality.ts", "utf8");
+    expect(analyzeEffects("src/support/diagnostic-quality.ts", source.replace(
       "/* uneffect:effect none */",
       "/* uneffect:effect Console */",
     ), { requireAnnotations: false })).toContainEqual(expect.objectContaining({
@@ -2837,7 +2849,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("separates pure CLI helpers from terminal output and usage throws", () => {
-    const fileName = "src/cli-support.ts";
+    const fileName = "src/cli/cli-support.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2858,9 +2870,9 @@ describe("Uneffect dogfood", () => {
   });
 
   it("separates environment report values from manifest reads and subprocess probes", () => {
-    const fileName = "src/environment.ts";
+    const fileName = "src/support/environment.ts";
     const source = readFileSync(fileName, "utf8");
-    const files = [fileName, "src/package-manifest.ts"];
+    const files = [fileName, "src/support/package-manifest.ts"];
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) =>
@@ -2884,7 +2896,7 @@ describe("Uneffect dogfood", () => {
   });
 
   it("separates CLI help formatting from version manifest access", () => {
-    const fileName = "src/cli-runner.ts";
+    const fileName = "src/cli/cli-runner.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2909,7 +2921,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("separates CLI dispatch stream callbacks from dispatcher body effects", () => {
-    const fileName = "src/cli-runner.ts";
+    const fileName = "src/cli/cli-runner.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2930,7 +2942,7 @@ describe("Uneffect dogfood", () => {
     };
     const host = ts.createCompilerHost(compilerOptions);
     const original = host.getSourceFile.bind(host);
-    host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => name.replaceAll("\\", "/").endsWith("/src/cli-support.ts")
+    host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => name.replaceAll("\\", "/").endsWith("/src/cli/cli-support.ts")
       ? ts.createSourceFile(name, readFileSync(name, "utf8").replace(
         "  /* uneffect:effect InvokeUserCode */\n  readonly run:",
         "  readonly run:",
@@ -2953,7 +2965,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("composes doctor environment inspection without collapsing its output callback", () => {
-    const fileName = "src/doctor-command.ts";
+    const fileName = "src/cli/doctor-command.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -2992,7 +3004,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("verifies TODO hierarchy parsing and stale-parent detection as pure", () => {
-    const fileName = "src/todo-consistency.ts";
+    const fileName = "src/support/todo-consistency.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -3011,7 +3023,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("classifies fixture discovery and report persistence as filesystem capabilities", () => {
-    const fileName = "src/fixtures.ts";
+    const fileName = "src/support/fixtures.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -3034,7 +3046,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("separates ownership cache keys, reads, and atomic writes", () => {
-    const fileName = "src/ownership-evidence-cache.ts";
+    const fileName = "src/optimizer/ownership-evidence-cache.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -3055,7 +3067,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("classifies model trace loading and randomized atomic persistence", () => {
-    const fileName = "src/model-replay.ts";
+    const fileName = "src/evidence/model-replay.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
@@ -3084,7 +3096,7 @@ describe("Uneffect dogfood", () => {
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("tracks persisted optimizer evidence reads independently from regeneration writes", () => {
-    const fileName = "src/project-optimizer.ts";
+    const fileName = "src/optimizer/project-optimizer.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);

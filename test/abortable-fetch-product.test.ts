@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { analyzeAbortableFetchesInProgram, generateAbortableFetchProductQuint } from "../src/abortable-fetch-product.js";
+import { analyzeAbortableFetchesInProgram, generateAbortableFetchProductQuint } from "../src/async/abortable-fetch-product.js";
 
 describe("abortable fetch product", () => {
   it("connects fetch completion, rejection, and a conditional controller abort", () => {

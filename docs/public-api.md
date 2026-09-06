@@ -14,6 +14,7 @@ that have not moved to the native frontend yet.
 | Import path | Status | Intended use |
 | --- | --- | --- |
 | `@mizchi/uneffect` | Public | Small, durable helper and high-level verification facades listed below. It intentionally excludes backend and lowering internals. |
+| `@mizchi/uneffect/cfg` | Public reusable core | Compiler-independent fixed-point contracts, branch joins, and completion primitives. No compiler, host, or Uneffect domain imports; see [CFG API](./cfg.md). |
 | `@mizchi/uneffect/corsa` | Public compatibility facade | High-level Corsa project checking and JSON report formatting. Raw checker facts and parity internals are excluded. |
 | `@mizchi/uneffect/corsa/api` | Public integration boundary | Versioned direct Corsa semantic queries without constructing a JavaScript TypeScript `Program`. The `uneffect-corsa-api-frontend/v1` descriptor lists the active capabilities and limitations; syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |
@@ -22,12 +23,12 @@ that have not moved to the native frontend yet.
 | `@mizchi/uneffect/schemas/*` | Versioned data contract | Published JSON schemas. Compatibility follows the schema identifier, not an unversioned TypeScript implementation detail. |
 | `@mizchi/uneffect/package.json` | Public metadata | Exact package version and package metadata. |
 
-Do not import unpublished paths such as `dist/src/async-patterns.js`. Package
+Do not import unpublished paths such as `dist/src/async/async-patterns.js`. Package
 exports intentionally block those implementation paths.
 
 The release package probe runs the real `prepack` lifecycle, installs the
 resulting tarball into a fresh Node 24 project, type-checks the public root,
-Corsa facade, Corsa API, spec, experimental Corsa, and versioned-schema imports with TypeScript 6, and
+CFG core, Corsa facade, Corsa API, spec, experimental Corsa, and versioned-schema imports with TypeScript 6, and
 executes their supported runtime slices. It also confirms that low-level CFG,
 Promise/resource lowering, solver, and direct Quint helpers are present only on
 the experimental subpath. The exact tarball contents and SHA-256 digest are

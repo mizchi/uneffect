@@ -3,8 +3,8 @@ import {
   analyzeRefinementActionBodies,
   analyzeRefinementActionBodiesWithZ3,
   verifyRefinementRecurrenceCertificateWithZ3,
-} from "../src/refinement-bindings.js";
-import { parseSpec } from "../src/spec-ir.js";
+} from "../src/refinement/refinement-bindings.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 import { refinementManifest } from "./refinement-manifest.js";
 
 const fixture = `/* uneffect: state pending: int */ /* uneffect: state urgent: bool */ /* uneffect: state sent: int */ /* uneffect: init pending = 0 */ /* uneffect: init urgent = false */ /* uneffect: init sent = 0 */ /* uneffect: action flush: pending' = pending > 0 ? 0 : pending, urgent' = urgent, sent' = sent + (pending > 0 ? urgent ? 2 * pending : pending : 0) */

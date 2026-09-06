@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { parseEffectSet } from "../src/capabilities.js";
-import { analyzeCallableSummaries, callbackArgumentKey, instantiateCallableSummary } from "../src/callable-summary.js";
+import { parseEffectSet } from "../src/effects/capabilities.js";
+import { analyzeCallableSummaries, callbackArgumentKey, instantiateCallableSummary } from "../src/effects/callable-summary.js";
 
 describe("backend-neutral callable summaries", () => {
   it("summarizes callback cardinality, effect bounds, and completion conversion", () => {

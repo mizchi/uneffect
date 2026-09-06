@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, readModelCounterexample, replayModelCounterexample, writeModelCounterexample } from "../src/model-replay.js";
-import { parseSpec } from "../src/spec-ir.js";
+import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, readModelCounterexample, replayModelCounterexample, writeModelCounterexample } from "../src/evidence/model-replay.js";
+import { parseSpec } from "../src/spec/spec-ir.js";
 
 interface LeaseState {
   realNow: number;

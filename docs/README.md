@@ -47,6 +47,9 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Effect TS comparison](./effect-ts-comparison.md): different goals and a repeatable comparison protocol.
 - [Resource protocol IR](./resource-protocols.md): common consume, transfer, split, escape, and invalidation semantics.
 
+- [Source layout](./source-layout.md): responsibility directories and public API boundaries.
+- [Reusable CFG API](./cfg.md): compiler-independent fixed-point and completion primitives.
+
 ## Current design decisions
 
 1. `/* uneffect: ... */` is the only annotation marker.

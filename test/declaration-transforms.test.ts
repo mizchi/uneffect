@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import * as uneffect from "../src/index.js";
+import * as uneffect from "../src/api/all.js";
 
 type FutureApi = (...args: unknown[]) => unknown;
 

@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { analyzeAbortableFetchesInProgram } from "../src/abortable-fetch-product.js";
-import { analyzeOwnership } from "../src/ownership.js";
-import { analyzeReactSemanticsInProgram } from "../src/react-semantics.js";
-import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
+import { analyzeAbortableFetchesInProgram } from "../src/async/abortable-fetch-product.js";
+import { analyzeOwnership } from "../src/analysis/ownership.js";
+import { analyzeReactSemanticsInProgram } from "../src/analysis/react-semantics.js";
+import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/analysis/typed-array-safety.js";
 
 function programFor(directory: string, name: string, text: string, jsx = false): { program: ts.Program; source: ts.SourceFile } {
   const fileName = join(directory, `${name}.${jsx ? "tsx" : "ts"}`);

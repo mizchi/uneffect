@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, bench, describe } from "vitest";
-import { openCorsaApiFrontend, resolveCorsaExecutable, type CorsaBuiltinCallQuery } from "../src/corsa-api-frontend.js";
+import { openCorsaApiFrontend, resolveCorsaExecutable, type CorsaBuiltinCallQuery } from "../src/frontends/corsa/corsa-api-frontend.js";
 
 const fixture = resolve("test/fixtures/corsa-api-project/index.ts");
 const source = readFileSync(fixture, "utf8");

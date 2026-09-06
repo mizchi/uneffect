@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { evaluateQuality, formatQualityReport, qualityThreshold } from "../src/diagnostic-quality.js";
-import { qualityReportPath, readFixtureReport, runFixtures, writeFixtureReport } from "../src/fixtures.js";
+import { evaluateQuality, formatQualityReport, qualityThreshold } from "../src/support/diagnostic-quality.js";
+import { qualityReportPath, readFixtureReport, runFixtures, writeFixtureReport } from "../src/support/fixtures.js";
 
 const mode = process.argv[2] ?? "check";
 if (mode !== "check" && mode !== "update") {

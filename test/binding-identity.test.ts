@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { resolvedSymbol, symbolIdentityKey } from "../src/binding-identity.js";
+import { resolvedSymbol, symbolIdentityKey } from "../src/frontends/typescript/binding-identity.js";
 
 describe("binding identity", () => {
   it("separates shadowed bindings without depending on their spelling", () => {
