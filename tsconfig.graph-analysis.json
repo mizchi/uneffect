@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.cfg.json",
+  "include": ["src/graph-analysis/**/*.ts"]
+}

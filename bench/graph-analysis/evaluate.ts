@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { analyzeImpact } from "./impact.js";
-import { verifyWorkflow } from "./workflow.js";
+import { analyzeImpact } from "../../src/graph-analysis/impact-api.js";
+import { verifyWorkflow } from "../../src/graph-analysis/workflow-api.js";
 import { extractImportGraph } from "./import-graph.js";
 import { generatedDependencies, generatedWorkflow, referenceImpact, referenceWorkflow } from "./oracles.js";
 import { buildGraph, workflowScenarios, parallelWorkflowScenarios } from "./scenarios.js";
 import { generatedParallelSchedule, referenceParallelSchedules } from "./parallel-oracle.js";
-import type { DependencyNode } from "./contracts.js";
+import type { DependencyNode } from "../../src/graph-analysis/contracts.js";
 
 function measure<T>(run: () => T) {
   const start = performance.now();
@@ -87,7 +87,7 @@ const scaleGraph: DependencyNode[] = Array.from({ length: 2_000 }, (_, index) =>
 const { causes: _, ...scale } = impactComparison(scaleGraph, ["task-0", "task-1000"]);
 
 console.log(JSON.stringify({
-  scope: "prototypes; graph-relative impact, workflow preconditions and explicit parallel barriers",
+  scope: "supported graph models; graph-relative impact, workflow preconditions and explicit parallel barriers",
   generatedModels: { impact: 128, workflow: 128, concreteConfigurations, parallelWorkflow: 128, parallelSchedules, mismatches: 0 },
   workflows,
   parallelWorkflows,

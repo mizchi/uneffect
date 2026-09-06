@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { verifyWorkflow } from "../prototypes/cfg/workflow.js";
-import type { Workflow } from "../prototypes/cfg/contracts.js";
-import { generatedParallelSchedule, referenceParallelSchedules } from "../prototypes/cfg/parallel-oracle.js";
-import { advanceConfiguration } from "../prototypes/cfg/parallel-transitions.js";
-import type { WorkflowConfiguration } from "../prototypes/cfg/parallel-model.js";
-import { parallelWorkflowScenarios } from "../prototypes/cfg/scenarios.js";
+import { verifyWorkflow } from "../src/graph-analysis/workflow-api.js";
+import type { Workflow } from "../src/graph-analysis/contracts.js";
+import { generatedParallelSchedule, referenceParallelSchedules } from "../bench/graph-analysis/parallel-oracle.js";
+import { advanceConfiguration } from "../src/graph-analysis/parallel-transitions.js";
+import type { WorkflowConfiguration } from "../src/graph-analysis/parallel-model.js";
+import { parallelWorkflowScenarios } from "../bench/graph-analysis/scenarios.js";
 
 function release(): Workflow {
   return { entry: "start", steps: [

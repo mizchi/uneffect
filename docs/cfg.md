@@ -1,7 +1,7 @@
 # Reusable CFG primitives
 
-For runnable consumers and measured applicability, see
-[workflow and dependency-impact prototypes](./cfg-prototype-evaluation.md).
+For supported consumers, strict input contracts and measured applicability, see
+[workflow and dependency-impact APIs](./graph-analysis.md).
 
 Import the compiler-independent core from `@mizchi/uneffect/cfg`:
 

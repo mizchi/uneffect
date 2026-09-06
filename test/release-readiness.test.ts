@@ -75,7 +75,9 @@ describe("0.3.0 release metadata", () => {
       entrypoints: Record<string, { runtime: string[]; declarations: Array<{ name: string }> }>;
     };
     expect(baseline.schema).toBe("uneffect-public-api-snapshot/v1");
-    expect(Object.keys(baseline.entrypoints).sort()).toEqual([".", "./cfg", "./corsa", "./corsa/api", "./spec"]);
+    expect(Object.keys(baseline.entrypoints).sort()).toEqual([".", "./cfg", "./corsa", "./corsa/api", "./impact", "./spec", "./workflow"]);
+    expect(baseline.entrypoints["./workflow"]?.runtime).toEqual(["parseWorkflow", "verifyWorkflow"]);
+    expect(baseline.entrypoints["./impact"]?.runtime).toEqual(["analyzeImpact", "parseDependencyGraph"]);
     expect(baseline.entrypoints["."]?.runtime).toContain("generateTemporalModel");
     expect(baseline.entrypoints["."]?.runtime).toContain("uneffectDialects");
     expect(baseline.entrypoints["./corsa/api"]?.runtime).toContain("openCorsaApiFrontend");

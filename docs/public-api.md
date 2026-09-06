@@ -15,6 +15,8 @@ that have not moved to the native frontend yet.
 | --- | --- | --- |
 | `@mizchi/uneffect` | Public | Small, durable helper and high-level verification facades listed below. It intentionally excludes backend and lowering internals. |
 | `@mizchi/uneffect/cfg` | Public reusable core | Compiler-independent fixed-point contracts, branch joins, and completion primitives. No compiler, host, or Uneffect domain imports; see [CFG API](./cfg.md). |
+| `@mizchi/uneffect/workflow` | Public supported model | Strict workflow input parsing, prerequisite checks, explicit fork/join barriers and bounded interleaving analysis. See [graph analysis](./graph-analysis.md). |
+| `@mizchi/uneffect/impact` | Public supported model | Strict dependency input parsing and potential impact with change origins. Input extraction is caller-owned. |
 | `@mizchi/uneffect/corsa` | Public compatibility facade | High-level Corsa project checking and JSON report formatting. Raw checker facts and parity internals are excluded. |
 | `@mizchi/uneffect/corsa/api` | Public integration boundary | Versioned direct Corsa semantic queries without constructing a JavaScript TypeScript `Program`. The `uneffect-corsa-api-frontend/v1` descriptor lists the active capabilities and limitations; syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |

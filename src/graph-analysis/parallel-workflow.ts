@@ -1,4 +1,4 @@
-import { solveBasicBlockFixedPoint, type BasicBlock } from "../../src/cfg/index.js";
+import { solveBasicBlockFixedPoint, type BasicBlock } from "../cfg/index.js";
 import type { AnalysisUnknown, Workflow, WorkflowAnalysisOptions, WorkflowDiagnostic, WorkflowResult } from "./contracts.js";
 import { canonicalConfiguration, type WorkflowConfiguration } from "./parallel-model.js";
 import { advanceConfiguration, validateParallelWorkflow } from "./parallel-transitions.js";
@@ -14,6 +14,7 @@ interface ConfigurationNode {
 export function verifyParallelWorkflow(workflow: Workflow, options: WorkflowAnalysisOptions): WorkflowResult {
   const budget = options.budget ?? 100_000;
   const maxConfigurations = options.maxConfigurations ?? 10_000;
+  const maxTransitions = options.maxTransitions ?? 100_000;
   for (const [name, value] of [["budget", budget], ["maxConfigurations", maxConfigurations]] as const) {
     if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive safe integer`);
   }
@@ -25,14 +26,16 @@ export function verifyParallelWorkflow(workflow: Workflow, options: WorkflowAnal
   const nodes: ConfigurationNode[] = [{ state: initial, successors: new Set(), executed: new Set() }];
   const indexes = new Map([[JSON.stringify(initial), 0]]);
   let explored = 0;
+  let transitions = 0;
   const exhausted = (reason: AnalysisUnknown["reason"], detail: string): AnalysisUnknown =>
     ({ status: "unknown", reason, detail, iterations: explored });
   while (explored < nodes.length) {
     if (explored >= budget) return exhausted("proof-budget-exhausted", "workflow configuration exploration exhausted its work budget");
     const node = nodes[explored++];
-    const expansion = advanceConfiguration(node.state, steps);
+    const expansion = advanceConfiguration(node.state, steps, maxTransitions - transitions);
     if (expansion.status === "unknown") return { ...expansion, iterations: explored };
     for (const execution of expansion.executions) {
+      transitions++;
       node.executed.add(execution.step);
       const key = JSON.stringify(execution.after);
       let index = indexes.get(key);
@@ -97,7 +100,7 @@ export function verifyParallelWorkflow(workflow: Workflow, options: WorkflowAnal
     if (!facts) { unreachable.push(id); continue; }
     guaranteed.set(id, [...facts].sort());
     const missing = [...new Set(steps.get(id)!.requires)].filter(fact => !facts.has(fact)).sort();
-    if (missing.length) diagnostics.push({ step: id, missing });
+    if (missing.length) diagnostics.push({ kind: "missing-prerequisite", step: id, missing });
   }
   diagnostics.push(...[...blocked.values()].sort((a, b) => a.step < b.step ? -1 : a.step > b.step ? 1 : 0));
   return { status: diagnostics.length ? "invalid" : "valid", iterations: explored + solved.iterations,

@@ -25,6 +25,13 @@ syntax fragment, backend, claim, and exclusions.
 
 ## Supported adoption line
 
+The independent `/cfg`, `/workflow`, and `/impact` entrypoints are supported
+public contracts for their documented graph models. `/workflow` and `/impact`
+have graduated from the source prototypes: strict input validation, public API
+snapshots, independent differential controls and installed-package probes define
+their qualification. See [graph analysis](./graph-analysis.md). This promotion
+does not claim full language semantics or stabilize the separate research APIs.
+
 The following workflow is the current safe line:
 
 1. Pin Uneffect, Node.js, TypeScript, and solver/tool versions.

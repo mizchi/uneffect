@@ -1,5 +1,5 @@
 /** Independent evaluation baselines. These do not import CFG or the analyzers. */
-import type { DependencyNode, Workflow } from "./contracts.js";
+import type { DependencyNode, Workflow } from "../../src/graph-analysis/contracts.js";
 
 /** One ordinary graph traversal per changed input; no joins or fixed-point API. */
 export function referenceImpact(nodes: readonly DependencyNode[], changed: readonly string[]) {
@@ -48,7 +48,7 @@ export function referenceWorkflow(workflow: Workflow) {
     for (const fact of step.provides ?? []) output.add(fact);
     for (const to of step.next) pending.push({ id: to, facts: output });
   }
-  const diagnostics: { step: string; missing: string[] }[] = [];
+  const diagnostics: { kind: "missing-prerequisite"; step: string; missing: string[] }[] = [];
   const guaranteed = new Map<string, readonly string[]>();
   const unreachable: string[] = [];
   for (const id of [...steps.keys()].sort()) {
@@ -57,7 +57,7 @@ export function referenceWorkflow(workflow: Workflow) {
     guaranteed.set(id, [...inputs[0]].filter(fact => inputs.every(input => input.has(fact))).sort());
     const missing = [...new Set(steps.get(id)!.requires)]
       .filter(fact => inputs.some(input => !input.has(fact))).sort();
-    if (missing.length) diagnostics.push({ step: id, missing });
+    if (missing.length) diagnostics.push({ kind: "missing-prerequisite", step: id, missing });
   }
   return { status: diagnostics.length ? "invalid" : "valid", diagnostics, guaranteed, unreachable,
     configurations: seen.size };

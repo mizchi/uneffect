@@ -57,6 +57,14 @@
     "./cfg": {
       "types": "./dist/src/cfg/index.d.ts",
       "import": "./dist/src/cfg/index.js"
+    },
+    "./workflow": {
+      "types": "./dist/src/graph-analysis/workflow-api.d.ts",
+      "import": "./dist/src/graph-analysis/workflow-api.js"
+    },
+    "./impact": {
+      "types": "./dist/src/graph-analysis/impact-api.d.ts",
+      "import": "./dist/src/graph-analysis/impact-api.js"
     }
   },
   "bin": {

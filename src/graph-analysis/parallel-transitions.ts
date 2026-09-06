@@ -27,7 +27,7 @@ export function validateParallelWorkflow(workflow: Workflow): AnalysisUnknown | 
 
 /** Pure atomic transitions. Facts are shared; every enabled task ordering is explored. */
 export function advanceConfiguration(
-  state: WorkflowConfiguration, steps: ReadonlyMap<string, WorkflowStep>,
+  state: WorkflowConfiguration, steps: ReadonlyMap<string, WorkflowStep>, limit = Number.MAX_SAFE_INTEGER,
 ): { readonly status: "expanded"; readonly executions: readonly WorkflowExecution[] } | AnalysisUnknown {
   const executions: WorkflowExecution[] = [];
   const scheduledJoins = new Set<string>();
@@ -55,6 +55,7 @@ export function advanceConfiguration(
       if (activations.some(active => active.fork === step.id)) {
         return invalidInput(`fork ${step.id} is reentered before its previous activation joined`);
       }
+      if (executions.length >= limit) return { status: "unknown", reason: "state-space-exhausted", detail: "parallel transition limit exceeded", iterations: 0 };
       executions.push({ step: step.id, after: canonicalConfiguration({ facts: [...facts],
         activations: [...activations, { fork: step.id, parent: owner }],
         tokens: [...remaining, ...step.next.map(to => ({ step: to, owner: { fork: step.id, branch: to } }))],
@@ -62,11 +63,14 @@ export function advanceConfiguration(
     } else {
       // Ending a branch removes its runnable token but retains the activation:
       // it must not turn a missing arrival into successful workflow completion.
-      for (const to of step.next.length ? step.next : [null]) executions.push({ step: step.id,
+      for (const to of step.next.length ? step.next : [null]) {
+        if (executions.length >= limit) return { status: "unknown", reason: "state-space-exhausted", detail: "parallel transition limit exceeded", iterations: 0 };
+        executions.push({ step: step.id,
         after: canonicalConfiguration({ facts: [...facts], activations,
           tokens: to === null ? remaining : [...remaining, { step: to, owner }],
         }),
-      });
+        });
+      }
     }
   }
   return { status: "expanded", executions };

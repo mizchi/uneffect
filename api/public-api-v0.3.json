@@ -1,6 +1,130 @@
 {
   "schema": "uneffect-public-api-snapshot/v1",
   "entrypoints": {
+    "./workflow": {
+      "runtime": [
+        "parseWorkflow",
+        "verifyWorkflow"
+      ],
+      "declarations": [
+        {
+          "name": "AnalysisUnknown",
+          "declarations": [
+            "export interface AnalysisUnknown {\n    readonly status: \"unknown\";\n    readonly reason: \"invalid-input\" | \"invalid-cfg\" | \"lattice-conflict\" | \"proof-budget-exhausted\" | \"state-space-exhausted\";\n    readonly detail: string;\n    readonly iterations: number;\n}"
+          ]
+        },
+        {
+          "name": "parseWorkflow",
+          "declarations": [
+            "export declare function parseWorkflow(input: unknown): Workflow;"
+          ]
+        },
+        {
+          "name": "verifyWorkflow",
+          "declarations": [
+            "export declare function verifyWorkflow(workflow: Workflow, options?: WorkflowAnalysisOptions): WorkflowResult;"
+          ]
+        },
+        {
+          "name": "Workflow",
+          "declarations": [
+            "export interface Workflow {\n    readonly entry: string;\n    readonly initial?: readonly string[];\n    readonly steps: readonly WorkflowStep[];\n}"
+          ]
+        },
+        {
+          "name": "WorkflowActionStep",
+          "declarations": [
+            "export interface WorkflowActionStep extends WorkflowStepBase {\n    readonly kind?: \"action\";\n}"
+          ]
+        },
+        {
+          "name": "WorkflowAnalysisOptions",
+          "declarations": [
+            "export interface WorkflowAnalysisOptions extends AnalysisOptions {\n    /** Parallel state exploration limit. Defaults to 10,000 configurations. */\n    readonly maxConfigurations?: number;\n    /** Parallel transition exploration limit. Defaults to 100,000 transitions. */\n    readonly maxTransitions?: number;\n}"
+          ]
+        },
+        {
+          "name": "WorkflowDiagnostic",
+          "declarations": [
+            "export type WorkflowDiagnostic = {\n    readonly kind: \"missing-prerequisite\";\n    readonly step: string;\n    readonly missing: readonly string[];\n} | {\n    readonly kind: \"blocked-join\";\n    readonly step: string;\n    readonly fork: string;\n    /** Branch entry IDs absent at the reported reachable waiting configuration. */\n    readonly waitingFor: readonly string[];\n};"
+          ]
+        },
+        {
+          "name": "WorkflowForkStep",
+          "declarations": [
+            "export interface WorkflowForkStep extends WorkflowStepBase {\n    readonly kind: \"fork\";\n    readonly join: string;\n}"
+          ]
+        },
+        {
+          "name": "WorkflowJoinStep",
+          "declarations": [
+            "export interface WorkflowJoinStep extends WorkflowStepBase {\n    readonly kind: \"join\";\n    readonly fork: string;\n}"
+          ]
+        },
+        {
+          "name": "WorkflowResult",
+          "declarations": [
+            "export type WorkflowResult = AnalysisUnknown | {\n    /** Valid means requirements hold; active parallel barriers remain reachable.\n     * This does not establish termination or eventual scheduling of a join. */\n    readonly status: \"valid\" | \"invalid\";\n    readonly iterations: number;\n    readonly diagnostics: readonly WorkflowDiagnostic[];\n    /** Facts guaranteed at enabled step entry. A waiting join is observed only when\n     * all branches have arrived. Unreachable/unenabled steps are absent. */\n    readonly guaranteed: ReadonlyMap<string, readonly string[]>;\n    readonly unreachable: readonly string[];\n};"
+          ]
+        },
+        {
+          "name": "WorkflowStep",
+          "declarations": [
+            "export type WorkflowStep = WorkflowActionStep | WorkflowForkStep | WorkflowJoinStep;"
+          ]
+        },
+        {
+          "name": "WorkflowStepBase",
+          "declarations": [
+            "export interface WorkflowStepBase {\n    readonly id: string;\n    /** Checked at step entry, before revokes/provides. */\n    readonly requires?: readonly string[];\n    readonly provides?: readonly string[];\n    readonly revokes?: readonly string[];\n    /** Alternatives for actions/joins; all branches are started by a fork. */\n    readonly next: readonly string[];\n}"
+          ]
+        }
+      ]
+    },
+    "./impact": {
+      "runtime": [
+        "analyzeImpact",
+        "parseDependencyGraph"
+      ],
+      "declarations": [
+        {
+          "name": "AnalysisOptions",
+          "declarations": [
+            "export interface AnalysisOptions {\n    /** Maximum processed blocks, including revisits. Defaults to 100,000. */\n    readonly budget?: number;\n}"
+          ]
+        },
+        {
+          "name": "AnalysisUnknown",
+          "declarations": [
+            "export interface AnalysisUnknown {\n    readonly status: \"unknown\";\n    readonly reason: \"invalid-input\" | \"invalid-cfg\" | \"lattice-conflict\" | \"proof-budget-exhausted\" | \"state-space-exhausted\";\n    readonly detail: string;\n    readonly iterations: number;\n}"
+          ]
+        },
+        {
+          "name": "analyzeImpact",
+          "declarations": [
+            "export declare function analyzeImpact(nodes: readonly DependencyNode[], changed: readonly string[], options?: AnalysisOptions): ImpactResult;"
+          ]
+        },
+        {
+          "name": "DependencyNode",
+          "declarations": [
+            "export interface DependencyNode {\n    readonly id: string;\n    /** Dependencies point from consumer to input; impact travels in reverse. */\n    readonly dependencies: readonly string[];\n}"
+          ]
+        },
+        {
+          "name": "ImpactResult",
+          "declarations": [
+            "export type ImpactResult = AnalysisUnknown | {\n    readonly status: \"analyzed\";\n    readonly iterations: number;\n    /** Includes changed nodes themselves. Sorted by node and then by cause. */\n    readonly affected: readonly {\n        readonly node: string;\n        readonly causes: readonly string[];\n    }[];\n    readonly unaffected: readonly string[];\n};"
+          ]
+        },
+        {
+          "name": "parseDependencyGraph",
+          "declarations": [
+            "export declare function parseDependencyGraph(input: unknown): readonly DependencyNode[];"
+          ]
+        }
+      ]
+    },
     "./cfg": {
       "runtime": [
         "breakTransferTarget",

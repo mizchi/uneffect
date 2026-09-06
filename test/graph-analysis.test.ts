@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { analyzeImpact } from "../prototypes/cfg/impact.js";
-import { verifyWorkflow } from "../prototypes/cfg/workflow.js";
-import type { DependencyNode, Workflow } from "../prototypes/cfg/contracts.js";
-import { generatedDependencies, generatedWorkflow, referenceImpact, referenceWorkflow } from "../prototypes/cfg/oracles.js";
-import { extractImportGraph } from "../prototypes/cfg/import-graph.js";
-import { workflowScenarios } from "../prototypes/cfg/scenarios.js";
+import { analyzeImpact } from "../src/graph-analysis/impact-api.js";
+import { verifyWorkflow } from "../src/graph-analysis/workflow-api.js";
+import type { DependencyNode, Workflow } from "../src/graph-analysis/contracts.js";
+import { generatedDependencies, generatedWorkflow, referenceImpact, referenceWorkflow } from "../bench/graph-analysis/oracles.js";
+import { extractImportGraph } from "../bench/graph-analysis/import-graph.js";
+import { workflowScenarios } from "../bench/graph-analysis/scenarios.js";
 
-describe("CFG dependency impact prototype", () => {
+describe("dependency impact analysis", () => {
   const nodes: DependencyNode[] = [
     { id: "schema", dependencies: [] },
     { id: "theme", dependencies: [] },
@@ -65,7 +65,7 @@ describe("CFG dependency impact prototype", () => {
   });
 });
 
-describe("CFG workflow preflight prototype", () => {
+describe("workflow preflight analysis", () => {
   it.each(workflowScenarios)("evaluates the runnable $name scenario", ({ workflow, expected }) => {
     expect(verifyWorkflow(workflow).status).toBe(expected);
   });

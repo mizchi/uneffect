@@ -1,11 +1,15 @@
-import { solveBasicBlockFixedPoint, type BasicBlock } from "../../src/cfg/index.js";
+import { solveBasicBlockFixedPoint, type BasicBlock } from "../cfg/index.js";
 import type { AnalysisOptions, DependencyNode, ImpactResult } from "./contracts.js";
 import { equalSets, incomplete, invalidInput } from "./shared.js";
+import { parseDependencyGraph, stringList, validateOptions } from "./input.js";
 
 /** May analysis: union the change origins that can reach each consumer. */
 export function analyzeImpact(
   nodes: readonly DependencyNode[], changed: readonly string[], options: AnalysisOptions = {},
 ): ImpactResult {
+  validateOptions(options, false);
+  try { nodes = parseDependencyGraph(nodes); changed = stringList(changed, "changed"); }
+  catch (error) { if (error instanceof TypeError) return invalidInput(error.message); throw error; }
   const consumers = new Map<string, Set<string>>();
   for (const node of nodes) {
     if (!node.id || consumers.has(node.id)) return invalidInput(`empty or duplicate node: ${node.id}`);

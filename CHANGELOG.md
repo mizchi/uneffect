@@ -6,6 +6,13 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Promoted the workflow and dependency-impact consumers to supported `/workflow`
+  and `/impact` entrypoints. Added strict input parsers, discriminated diagnostics,
+  consistent option validation, and a separate parallel transition limit. Moved
+  reusable implementations into `src/graph-analysis` and evaluation tooling into
+  `bench/graph-analysis`; `just graph-check` and `just graph-evaluate` replace the
+  prototype tasks. Existing public API declarations remain compatible.
+
 - Organized `src/` by responsibility and made public facades re-export their
   owning modules directly. Existing package entrypoints and declarations remain
   compatible. Added the independent `@mizchi/uneffect/cfg` entrypoint with
@@ -20,6 +27,8 @@ All notable changes to Uneffect are documented in this file.
   normalization no longer starts a subprocess.
 
 ### Fixed
+
+- Reject duplicate empty CFG block IDs before invoking lattice callbacks.
 
 - Hardened the conditional module-order v2 domain against a consistent lowering
   fault that bypasses await resumption. Normal completion now requires the

@@ -26,6 +26,18 @@ function availability(): BasicBlockFixedPointOptions<ReadonlySet<string>> {
 }
 
 describe("standalone CFG API", () => {
+  it("rejects duplicate empty block IDs before invoking domain callbacks", () => {
+    const result = solveBasicBlockFixedPoint({
+      entry: "", initial: 0, budget: { name: "duplicate-empty-id", limit: 4 },
+      lattice: {
+        bottom: () => { throw new Error("invalid topology must not invoke callbacks"); },
+        equivalent: (a: number, b: number) => a === b,
+        join: (a: number, b: number) => ({ status: "joined" as const, value: Math.max(a, b) }),
+      },
+      blocks: [{ id: "", edges: [], transfer: () => [] }, { id: "", edges: [], transfer: () => [] }],
+    });
+    expect(result).toMatchObject({ status: "unknown", reason: "invalid-cfg", iterations: 0 });
+  });
   it("solves a consumer-defined domain with a cycle", () => {
     const result = solveBasicBlockFixedPoint(availability());
     expect(result.status).toBe("converged");

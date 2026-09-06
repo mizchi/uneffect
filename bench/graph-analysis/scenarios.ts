@@ -1,4 +1,4 @@
-import type { DependencyNode, Workflow } from "./contracts.js";
+import type { DependencyNode, Workflow } from "../../src/graph-analysis/contracts.js";
 
 export const buildGraph: readonly DependencyNode[] = [
   { id: "api-schema", dependencies: [] },

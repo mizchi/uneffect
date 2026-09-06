@@ -1,7 +1,7 @@
 /** Optional repository adapter. Only this layer needs a TypeScript parser/Node. */
 import { posix } from "node:path";
 import ts from "@typescript/typescript6";
-import type { DependencyNode } from "./contracts.js";
+import type { DependencyNode } from "../../src/graph-analysis/contracts.js";
 
 /** Snapshot of literal ESM import dependencies, including type-only dependencies.
  * Keys must be normalized repository-relative POSIX paths. This is not a build resolver:

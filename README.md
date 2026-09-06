@@ -202,6 +202,9 @@ Corsa/Oxlint checker-fact and parity integrations live under
 
 The compiler-independent CFG core is available from `@mizchi/uneffect/cfg`.
 See [CFG API](./docs/cfg.md) and [source layout](./docs/source-layout.md).
+Workflow preflight with parallel barriers and dependency-impact analysis are
+supported through `@mizchi/uneffect/workflow` and `@mizchi/uneffect/impact`.
+See [graph analysis](./docs/graph-analysis.md) for their input contracts and limits.
 
 ## Development
 

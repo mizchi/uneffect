@@ -1,18 +1,25 @@
-# CFG consumer prototypes: workflow preflight and dependency impact
+# CFG evaluation history: workflow preflight and dependency impact
 
 The shared concept is to check a process's prerequisites and the potential impact
-of a change before running it. Two experimental consumers live in
-[`prototypes/cfg`](../prototypes/cfg). They use only the explicit CFG facade
+of a change before running it. The consumers now live in
+[`src/graph-analysis`](../src/graph-analysis). They use only the explicit CFG facade
 (`src/cfg/index.ts`, the source of `@mizchi/uneffect/cfg`) and their own domain
 contracts. No changes to the public CFG API were needed.
+
+The initial measurements below were recorded on 2026-09-06. On 2026-09-07 the
+consumers graduated to supported `/workflow` and `/impact` APIs, with strict
+parsers, discriminated diagnostics and a separate transition limit. The current
+contract and qualification criteria are in [graph analysis](./graph-analysis.md);
+this page retains the initial applicability evidence. Evaluation adapters and
+reference algorithms now live under `bench/graph-analysis`.
 
 ## Run and inspect
 
 From the repository root with Node 24+ and dependencies installed:
 
 ```sh
-just cfg-prototype-check
-just cfg-prototype > /tmp/uneffect-cfg-evaluation.json
+just graph-check
+just graph-evaluate > /tmp/uneffect-cfg-evaluation.json
 ```
 
 The evaluation prints JSON containing workflow diagnostics, affected nodes and
@@ -20,7 +27,7 @@ their change origins, reference comparisons, coverage boundaries, and local
 timings. Any reference mismatch or unexpected scenario verdict exits nonzero.
 Timings are observations, not pass thresholds or a reproducible performance benchmark.
 
-- `contracts.ts`: experimental input/result contracts, outside the package API.
+- `contracts.ts`: supported input/result contracts exported through the public facades.
 - `impact.ts`: `analyzeImpact(nodes, changed, options?)`.
 - `workflow.ts`: `verifyWorkflow(workflow, options?)`.
 - `parallel-model.ts`, `parallel-transitions.ts`, `parallel-workflow.ts`: parallel
@@ -34,8 +41,8 @@ Timings are observations, not pass thresholds or a reproducible performance benc
 
 The two analyzers typecheck against ECMAScript alone, with no Node, DOM, compiler,
 or solver ambient types. Only the repository adapter and evaluation runner need
-Node/the existing TypeScript parser. These prototypes are repository experiments;
-they are not new package exports or commands in the Uneffect CLI.
+Node/the existing TypeScript parser. The supported package entrypoints are `/workflow` and `/impact`; the evaluation
+runner remains repository tooling and adds no Uneffect CLI command.
 
 ## Dependency impact: possible change origins
 

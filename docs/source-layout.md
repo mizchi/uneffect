@@ -8,6 +8,7 @@ not the API umbrellas.
 | Directory | Responsibility |
 | --- | --- |
 | `cfg/` | Compiler-independent graph contracts, fixed-point scheduling, branch joins, and completion algebra. |
+| `graph-analysis/` | Supported workflow and dependency-impact consumers, strict input contracts and parallel state exploration. The `/workflow` and `/impact` facades own their public inventories. |
 | `api/` | Curated public and compatibility facades; `all.ts` supports the legacy experimental inventory. |
 | `cli/` | Command routing, streams, argument handling, and command-specific presentation. |
 | `frontends/` | Shared syntax/semantic-query contracts and frontend comparison. |

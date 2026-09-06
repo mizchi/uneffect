@@ -60,6 +60,10 @@ try {
     "dist/src/api/public.js",
     "dist/src/cfg/index.js",
     "dist/src/cfg/index.d.ts",
+    "dist/src/graph-analysis/workflow-api.js",
+    "dist/src/graph-analysis/workflow-api.d.ts",
+    "dist/src/graph-analysis/impact-api.js",
+    "dist/src/graph-analysis/impact-api.d.ts",
     "dist/src/api/public.d.ts",
     "dist/src/api/corsa-public.js",
     "dist/src/frontends/corsa/corsa-api-frontend.js",
@@ -94,6 +98,8 @@ try {
   }));
   writeFileSync(join(consumer, "index.ts"), `
     import { solveBasicBlockFixedPoint, type BasicBlockFixedPointOptions } from "@mizchi/uneffect/cfg";
+    import { verifyWorkflow, parseWorkflow, type Workflow } from "@mizchi/uneffect/workflow";
+    import { analyzeImpact, parseDependencyGraph } from "@mizchi/uneffect/impact";
     import * as root from "@mizchi/uneffect";
     import { checkCorsaProject } from "@mizchi/uneffect/corsa";
     import { corsaApiCapabilities, corsaApiLimitations, parseCorsaApiFrontendDescriptor } from "@mizchi/uneffect/corsa/api";
@@ -109,6 +115,16 @@ try {
       blocks: [{ id: "entry", edges: [], transfer: () => [] }],
     };
     solveBasicBlockFixedPoint(cfg);
+    const workflow: Workflow = { entry: "step", steps: [{ id: "step", next: [] }] };
+    const workflowResult = verifyWorkflow(parseWorkflow(workflow));
+    if (workflowResult.status !== "unknown") for (const diagnostic of workflowResult.diagnostics) {
+      if (diagnostic.kind === "missing-prerequisite") void diagnostic.missing;
+      else void diagnostic.waitingFor;
+    }
+    analyzeImpact(parseDependencyGraph([{ id: "input", dependencies: [] }]), ["input"]);
+    // @ts-expect-error unknown task kinds must not enter the typed contract
+    const invalidStep: Workflow["steps"][number] = { id: "bad", kind: "frok", next: [] };
+    void invalidStep;
     const model = root.generateTemporalModel({ fileName: "typed.ts", source: "export function main() {}", runtime: "web" });
     root.parseTemporalModelResult(model);
     void checkCorsaProject;
@@ -298,6 +314,43 @@ try {
     if (exhausted.status !== "unknown" || exhausted.reason !== "proof-budget-exhausted") throw new Error("CFG lost budget failure");
   `);
   execFileSync(process.execPath, [cfgSmoke], { cwd: absentConsumer, stdio: "inherit" });
+
+  const graphSmoke = join(absentConsumer, "graph-smoke.mjs");
+  writeFileSync(graphSmoke, `
+    import { registerHooks } from "node:module";
+    const workflowEntry = import.meta.resolve("@mizchi/uneffect/workflow");
+    const impactEntry = import.meta.resolve("@mizchi/uneffect/impact");
+    const allowed = [new URL("./", workflowEntry).href, new URL("../cfg/", workflowEntry).href];
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      const result = nextResolve(specifier, context);
+      if (!allowed.some(directory => result.url.startsWith(directory))) throw new Error("graph API imported external code: " + result.url);
+      return result;
+    } });
+    const { verifyWorkflow, parseWorkflow } = await import(workflowEntry);
+    const { analyzeImpact, parseDependencyGraph } = await import(impactEntry);
+    const model = parseWorkflow({ entry: "fork", steps: [
+      { id: "fork", kind: "fork", join: "join", next: ["build", "review"] },
+      { id: "build", provides: ["artifact"], next: ["join"] },
+      { id: "review", provides: ["approved"], next: ["join"] },
+      { id: "join", kind: "join", fork: "fork", requires: ["artifact", "approved"], next: [] },
+    ] });
+    if (verifyWorkflow(model).status !== "valid") throw new Error("installed parallel workflow failed");
+    const broken = { ...model, steps: model.steps.map(step => step.id === "review" ? { ...step, next: [] } : step) };
+    const blocked = verifyWorkflow(broken);
+    if (blocked.status !== "invalid" || !blocked.diagnostics.some(d => d.kind === "blocked-join" && d.waitingFor.includes("review")))
+      throw new Error("installed workflow lost missing arrival");
+    const typo = verifyWorkflow({ entry: "a", steps: [{ id: "a", require: ["approved"], next: [] }] });
+    if (typo.status !== "unknown" || "diagnostics" in typo) throw new Error("unknown workflow fields were accepted");
+    for (const options of [{ maxConfigurations: 1 }, { maxTransitions: 1 }, { budget: 1 }]) {
+      const result = verifyWorkflow(model, options);
+      if (result.status !== "unknown" || "guaranteed" in result) throw new Error("partial workflow verdict leaked");
+    }
+    const graph = parseDependencyGraph([{ id: "input", dependencies: [] }, { id: "output", dependencies: ["input"] }]);
+    const impact = analyzeImpact(graph, ["input"]);
+    if (impact.status !== "analyzed" || impact.affected.length !== 2 || impact.affected[1].causes[0] !== "input")
+      throw new Error("installed impact analysis failed");
+  `);
+  execFileSync(process.execPath, [graphSmoke], { cwd: absentConsumer, stdio: "inherit" });
 
   packageEvidence.verification.optionalAbsence = "passed";
   writeEvidence();

@@ -24,7 +24,7 @@ export function solveBasicBlockFixedPoint<Value, Completion extends string = Com
     blocks.set(block.id, block);
   }
   const states = new Map<string, Value>();
-  if (duplicateBlock) return {
+  if (duplicateBlock !== undefined) return {
     status: "unknown", reason: "invalid-cfg", detail: `duplicate CFG basic block ${duplicateBlock}`,
     iterations: 0, budget, states,
   };

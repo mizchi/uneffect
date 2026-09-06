@@ -1,7 +1,7 @@
 /** Independent reference: enumerate lane-preserving permutations, without tokens,
  * activations, CFG construction, barrier reachability or production transitions.
  */
-import type { Workflow, WorkflowActionStep, WorkflowStep } from "./contracts.js";
+import type { Workflow, WorkflowActionStep, WorkflowStep } from "../../src/graph-analysis/contracts.js";
 import { randomForSeed } from "./oracles.js";
 
 export interface ParallelScheduleCase {
@@ -52,13 +52,13 @@ export function referenceParallelSchedules({ workflow, lanes }: ParallelSchedule
     }
   }
   enumerate(lanes.map(() => 0), execute(steps.get("fork")!, new Set(workflow.initial)));
-  const diagnostics: { step: string; missing: string[] }[] = [];
+  const diagnostics: { kind: "missing-prerequisite"; step: string; missing: string[] }[] = [];
   const guaranteed = new Map<string, readonly string[]>();
   for (const id of [...steps.keys()].sort()) {
     const values = observed.get(id)!;
     guaranteed.set(id, [...values[0]].filter(fact => values.every(value => value.has(fact))).sort());
     const missing = [...new Set(steps.get(id)!.requires)].filter(fact => values.some(value => !value.has(fact))).sort();
-    if (missing.length) diagnostics.push({ step: id, missing });
+    if (missing.length) diagnostics.push({ kind: "missing-prerequisite", step: id, missing });
   }
   return { status: diagnostics.length ? "invalid" : "valid", diagnostics, guaranteed, unreachable: [], schedules };
 }

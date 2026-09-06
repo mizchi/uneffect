@@ -1,4 +1,4 @@
-/** Experimental consumers of the public CFG facade, not published package APIs. */
+/** Supported graph analysis contracts. Domain implementations are private. */
 export interface AnalysisOptions {
   /** Maximum processed blocks, including revisits. Defaults to 100,000. */
   readonly budget?: number;
@@ -25,7 +25,7 @@ export type ImpactResult = AnalysisUnknown | {
   readonly unaffected: readonly string[];
 };
 
-interface WorkflowStepBase {
+export interface WorkflowStepBase {
   readonly id: string;
   /** Checked at step entry, before revokes/provides. */
   readonly requires?: readonly string[];
@@ -49,10 +49,12 @@ export type WorkflowStep = WorkflowActionStep | WorkflowForkStep | WorkflowJoinS
 export interface WorkflowAnalysisOptions extends AnalysisOptions {
   /** Parallel state exploration limit. Defaults to 10,000 configurations. */
   readonly maxConfigurations?: number;
+  /** Parallel transition exploration limit. Defaults to 100,000 transitions. */
+  readonly maxTransitions?: number;
 }
 
 export type WorkflowDiagnostic =
-  | { readonly step: string; readonly missing: readonly string[] }
+  | { readonly kind: "missing-prerequisite"; readonly step: string; readonly missing: readonly string[] }
   | { readonly kind: "blocked-join"; readonly step: string; readonly fork: string;
       /** Branch entry IDs absent at the reported reachable waiting configuration. */
       readonly waitingFor: readonly string[] };
