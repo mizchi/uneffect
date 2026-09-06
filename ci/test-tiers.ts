@@ -31,6 +31,7 @@ export const ciTestTiers = {
     "test/host-neutral-transitions.test.ts",
     "test/model-replay.test.ts",
     "test/module-initialization-v2.test.ts",
+    "test/module-initialization-domain.test.ts",
     "test/module-initialization.test.ts",
     "test/modules.test.ts",
     "test/numeric-types.test.ts",

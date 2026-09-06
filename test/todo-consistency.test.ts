@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 64, 69, 70];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 64, 69, 70, 71];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);

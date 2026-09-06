@@ -87,6 +87,10 @@ from retrying the already-used npm version would be an invalid recovery.
 
 ### Post-release execution
 
+- [ ] [#71](https://github.com/mizchi/uneffect/issues/71) Require actual resume
+  traversal before normal completion, with converged lowering mutants that
+  bypass resume, remove the false path, or connect rejection to the join.
+
 - [ ] [#70](https://github.com/mizchi/uneffect/issues/70) Expose the existing
   experimental module-order v2 analyzer through an explicit CLI schema version,
   preserving default v1 output and unknown failures, with packed CLI acceptance

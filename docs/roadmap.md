@@ -38,6 +38,12 @@ phase roadmap and are not 0.3.0 release blockers.
 
 ## Current execution
 
+[#71](https://github.com/mizchi/uneffect/issues/71) is the next bounded #18
+hardening child, after #70's CI handoff. It separates an outstanding resumption
+obligation from predicted path labels so a converged resume-bypass lowering
+still fails its domain gate. Its 0.5–1 engineer-day estimate is included in
+#18; it adds no ESM syntax, schema version, or browser environment.
+
 [#70](https://github.com/mizchi/uneffect/issues/70) is the active integration
 child of #18: expose the existing conditional-TLA v2 analyzer through
 `module-order --schema-version 2`, retain default v1 output and strict unknown

@@ -112,6 +112,8 @@ interface ConditionalAwaitCandidate {
 interface ModuleControlFlowValue {
   readonly active: boolean;
   readonly paths: ReadonlySet<ModuleInitializationCompletionPath>;
+  /** True if any incoming normal path still owes an actual resume event. */
+  readonly pendingResume: boolean;
 }
 
 function digest(value: string): string {
@@ -222,7 +224,7 @@ function findConditionalAwaitCandidate(
 }
 
 function pathKey(value: ModuleControlFlowValue): string {
-  return `${value.active}:${[...value.paths].sort().join("\0")}`;
+  return `${value.active}:${value.pendingResume}:${[...value.paths].sort().join("\0")}`;
 }
 
 function makeControlFlow(
@@ -270,7 +272,7 @@ function makeControlFlow(
   const successors = new Map<string, ModuleInitializationControlFlowEdge[]>();
   for (const item of edges) successors.set(item.from, [...(successors.get(item.from) ?? []), item]);
   const value = (active: boolean, ...paths: ModuleInitializationCompletionPath[]): ModuleControlFlowValue => ({
-    active, paths: new Set(paths),
+    active, paths: new Set(paths), pendingResume: false,
   });
   const result = solveBasicBlockFixedPoint<ModuleControlFlowValue>({
     entry: start,
@@ -281,7 +283,11 @@ function makeControlFlow(
       equivalent: (left, right) => pathKey(left) === pathKey(right),
       join: (left, right) => ({
         status: "joined",
-        value: { active: left.active || right.active, paths: new Set([...left.paths, ...right.paths]) },
+        value: {
+          active: left.active || right.active,
+          paths: new Set([...left.paths, ...right.paths]),
+          pendingResume: left.pendingResume || right.pendingResume,
+        },
       }),
     },
     blocks: blocks.map((block) => ({
@@ -292,14 +298,17 @@ function makeControlFlow(
       })),
       transfer: (input) => {
         if (block.id === branch) return [
-          { to: suspend, value: value(true, "await-resume") },
+          { to: suspend, value: { ...value(true, "await-resume"), pendingResume: true } },
           { to: join, value: value(true, "branch-false") },
         ];
         if (block.id === suspend) return [
-          { to: resume, value: value(true, "await-resume") },
+          { to: resume, value: { ...value(true, "await-resume"), pendingResume: input.pendingResume } },
           { to: reject, value: value(true, "await-reject") },
         ];
-        return (successors.get(block.id) ?? []).map((item) => ({ to: item.to, value: input }));
+        // A predicted path label cannot discharge this obligation. Only
+        // traversing the resume block clears it on the normal branch.
+        const output = block.id === resume ? { ...input, pendingResume: false } : input;
+        return (successors.get(block.id) ?? []).map((item) => ({ to: item.to, value: output }));
       },
     })),
   });
@@ -320,7 +329,7 @@ function makeControlFlow(
     : result.status === "converged"
       ? {
         status: "unknown", reason: "domain-postcondition-failed",
-        detail: "conditional await CFG did not retain exactly false/resume completion and terminal rejection",
+        detail: "conditional await CFG did not retain exactly false/resume completion, mandatory resumption, and terminal rejection",
         iterations: result.iterations,
         budget: result.budget as ModuleInitializationControlFlowProof["budget"], reachableBy,
       }

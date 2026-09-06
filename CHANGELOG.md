@@ -4,6 +4,13 @@ All notable changes to Uneffect are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Hardened the conditional module-order v2 domain against a consistent lowering
+  fault that bypasses await resumption. Normal completion now requires the
+  actual resume block to discharge its outstanding obligation, preserving all
+  published schemas and the existing supported source fragment.
+
 ### Added
 
 - Added `module-order --schema-version 2` to select experimental conditional

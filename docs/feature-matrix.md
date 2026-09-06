@@ -477,6 +477,10 @@ CLI integration is tracked by [#70](https://github.com/mizchi/uneffect/issues/70
 `module-order --schema-version 2` selects this experimental artifact. Default
 and explicit version 1 retain the published v1 behavior, and `--require`
 rejects unknown evidence in both modes.
+Domain hardening [#71](https://github.com/mizchi/uneffect/issues/71) additionally
+requires an outstanding true-branch resumption obligation to be discharged by
+the actual resume block. Predicted path labels or fixed-point convergence
+alone cannot authorize normal completion after a resume-bypass lowering fault.
 
 The Hoare row includes direct numeric or Boolean nullish coalescing for a
 TypeChecker-validated nullable parameter or immutable identifier alias. Return,

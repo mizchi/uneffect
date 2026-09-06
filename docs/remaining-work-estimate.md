@@ -33,7 +33,7 @@ totals are calculated from them, not by mechanically adding label bounds.
 | 2 — Specification expressiveness | #25, #2, #5, #4, #6, #64 | 18–41 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 23–48 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 14 open Issues / 13 non-overlapping epics (including active child #70) | **48–104 engineer-weeks** | Low |
+| **Total additive effort** | 15 open Issues / 13 non-overlapping epics (including children #70/#71) | **48–104 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -46,6 +46,12 @@ TDD, negative controls, documentation, package validation, and stabilization.
 It is included in #18, not added to the total. It adds no semantic proof family;
 #18's broader remaining scope still needs re-estimation before another family
 is activated.
+
+#71 is the next domain-hardening child after #70's CI handoff. Its
+0.5–1 engineer-day estimate includes an implementation-fault Red case, explicit
+resumption obligations, negative controls, a warm benchmark, dogfood, package
+validation, and stabilization. It is also included in #18 and adds no semantic
+proof family.
 
 #37 was a bounded child of #25 and is complete. Its effort was included in the
 #25 epic range and was never added again to the then-current additive total. The

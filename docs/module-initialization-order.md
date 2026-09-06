@@ -137,6 +137,11 @@ still printed as JSON, diagnostics go to stderr, and the command exits 1.
 Successful extraction exits 0; it does not establish await fulfillment or
 liveness. The CLI uses the same named default proof budget as the v2 API.
 
+[Evidence consumer design notes](./module-order-consumers.md) distinguish
+schema validation, selected-path ordering, and source-bound verification, and
+record useful negative controls for future consumers. They do not add a viewer
+or widen this analyzer's supported fragment.
+
 The v2 `controlFlow` projection records `branch-true`, `branch-false`,
 `await-resume`, `await-reject`, and normal sequence edges. A shared finite
 fixed-point verifier must show that `complete` is represented by the false or
@@ -144,6 +149,15 @@ resume path; rejection remains terminal. Every edge retains its source span
 and source digest. `proofBudget.moduleControlFlowIterations` can lower the
 default named budget of 32 iterations, and exhaustion makes the artifact
 `unknown`.
+
+Domain-hardening child [#71](https://github.com/mizchi/uneffect/issues/71)
+tracks a pending-resumption obligation independently of the `await-resume`
+path label. The true branch raises it; only traversing the resume block clears
+it on normal execution. Joins preserve any outstanding obligation, and normal
+completion cannot retain one. A consistent lowering mutation that bypasses
+resume can therefore converge structurally while still failing the domain
+postcondition. This does not change the published v1/v2 schemas or admit new
+source syntax.
 
 `reachableBy` is abstract CFG reachability, not a solver claim that both
 Boolean values are feasible for a particular initializer. The result still
