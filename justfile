@@ -15,6 +15,10 @@ graph-check:
     pnpm exec tsc -p bench/graph-analysis/tsconfig.json
     pnpm vitest run test/graph-api.test.ts test/graph-analysis.test.ts test/workflow-parallel.test.ts
 
+module-order-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/module-order-api.test.ts test/module-initialization.test.ts test/module-initialization-v2.test.ts test/module-initialization-domain.test.ts test/workspace-module-initialization.test.ts
+
 graph-evaluate:
     pnpm tsx bench/graph-analysis/evaluate.ts
 

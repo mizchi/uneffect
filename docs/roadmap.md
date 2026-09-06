@@ -55,7 +55,7 @@ to the backlog total. Re-estimate #18's remaining semantics before selecting
 another proof family.
 
 [#69](https://github.com/mizchi/uneffect/issues/69) is the completed first
-post-0.3 bounded child of #18. It adds a separate experimental
+post-0.3 bounded child of #18. It introduced a separate
 `uneffect-module-order/v2` artifact for
 one runtime-present, source-local immutable-Boolean conditional top-level-await
 join while preserving the
@@ -65,6 +65,12 @@ terminal before importer execution. Conditional throws, multiple/nested awaits,
 mutable selectors, cycles, dynamic imports, and mixed Promise launches remain
 explicit non-proofs. Ambient declarations are also non-proofs: an erased
 `declare const` cannot supply runtime branch evidence.
+
+The v1/v2 analyzers now have a supported `/module-order` entrypoint with
+separate artifact contracts, consistent budget validation, compiler-error
+blockers, and installed-package API/CLI checks. This promotion retains both
+schema versions and the same bounded source fragment; broader #18 semantics
+remain future work.
 
 ## Phase 1 — Make proof boundaries dependable
 

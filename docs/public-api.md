@@ -17,6 +17,7 @@ that have not moved to the native frontend yet.
 | `@mizchi/uneffect/cfg` | Public reusable core | Compiler-independent fixed-point contracts, branch joins, and completion primitives. No compiler, host, or Uneffect domain imports; see [CFG API](./cfg.md). |
 | `@mizchi/uneffect/workflow` | Public supported model | Strict workflow input parsing, prerequisite checks, explicit fork/join barriers and bounded interleaving analysis. See [graph analysis](./graph-analysis.md). |
 | `@mizchi/uneffect/impact` | Public supported model | Strict dependency input parsing and potential impact with change origins. Input extraction is caller-owned. |
+| `@mizchi/uneffect/module-order` | Public supported model | Source-mapped ESM ordering from a TypeScript 6 Program, with explicit v1/v2 analyzers and bounded conditional-await joins. See [module initialization order](./module-initialization-order.md). |
 | `@mizchi/uneffect/corsa` | Public compatibility facade | High-level Corsa project checking and JSON report formatting. Raw checker facts and parity internals are excluded. |
 | `@mizchi/uneffect/corsa/api` | Public integration boundary | Versioned direct Corsa semantic queries without constructing a JavaScript TypeScript `Program`. The `uneffect-corsa-api-frontend/v1` descriptor lists the active capabilities and limitations; syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |
@@ -30,7 +31,8 @@ exports intentionally block those implementation paths.
 
 The release package probe runs the real `prepack` lifecycle, installs the
 resulting tarball into a fresh Node 24 project, type-checks the public root,
-CFG core, Corsa facade, Corsa API, spec, experimental Corsa, and versioned-schema imports with TypeScript 6, and
+CFG core, workflow, impact, module-order, Corsa facade, Corsa API, spec,
+experimental Corsa, and versioned-schema imports with TypeScript 6, and
 executes their supported runtime slices. It also confirms that low-level CFG,
 Promise/resource lowering, solver, and direct Quint helpers are present only on
 the experimental subpath. The exact tarball contents and SHA-256 digest are

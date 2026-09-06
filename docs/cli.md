@@ -34,7 +34,7 @@ npx quint run protocol.qnt
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes. `temporal --runtime web|node` is the public host-aware model combining user temporal annotations with supported JavaScript async observations. `ir`, `lint`, `z3`, `quint`, and `compose` expose the other specification projections. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
-| `module-order <entry.ts>` | The source-mapped ESM initialization partial-order artifact; `--schema-version 1\|2` selects the default v1 or experimental v2 conditional join, and `--require` rejects non-proof-grade extraction. |
+| `module-order <entry.ts>` | The source-mapped ESM initialization partial-order artifact; `--schema-version 1\|2` selects the default v1 or supported v2 conditional join, and `--require` rejects non-proof-grade extraction. |
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 

@@ -7,6 +7,7 @@ const snapshotSchema = "uneffect-public-api-snapshot/v1";
 const snapshotFile = resolve("api/public-api-v0.3.json");
 const update = process.argv.includes("--update");
 const entrypoints = [
+  { name: "./module-order", runtime: "dist/src/modules/module-order-api.js", declarations: "dist/src/modules/module-order-api.d.ts" },
   { name: "./workflow", runtime: "dist/src/graph-analysis/workflow-api.js", declarations: "dist/src/graph-analysis/workflow-api.d.ts" },
   { name: "./impact", runtime: "dist/src/graph-analysis/impact-api.js", declarations: "dist/src/graph-analysis/impact-api.d.ts" },
   { name: "./cfg", runtime: "dist/src/cfg/index.js", declarations: "dist/src/cfg/index.d.ts" },

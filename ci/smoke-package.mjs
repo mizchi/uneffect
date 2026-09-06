@@ -64,6 +64,9 @@ try {
     "dist/src/graph-analysis/workflow-api.d.ts",
     "dist/src/graph-analysis/impact-api.js",
     "dist/src/graph-analysis/impact-api.d.ts",
+    "dist/src/modules/module-order-api.js",
+    "dist/src/modules/module-order-api.d.ts",
+    "dist/src/modules/contracts.d.ts",
     "dist/src/api/public.d.ts",
     "dist/src/api/corsa-public.js",
     "dist/src/frontends/corsa/corsa-api-frontend.js",
@@ -100,6 +103,12 @@ try {
     import { solveBasicBlockFixedPoint, type BasicBlockFixedPointOptions } from "@mizchi/uneffect/cfg";
     import { verifyWorkflow, parseWorkflow, type Workflow } from "@mizchi/uneffect/workflow";
     import { analyzeImpact, parseDependencyGraph } from "@mizchi/uneffect/impact";
+    import {
+      analyzeModuleInitializationOrder, analyzeModuleInitializationOrderV2,
+      type ModuleInitializationOrder, type ModuleInitializationOrderV2,
+      type ModuleInitializationV2Options,
+    } from "@mizchi/uneffect/module-order";
+    import ts from "@typescript/typescript6";
     import * as root from "@mizchi/uneffect";
     import { checkCorsaProject } from "@mizchi/uneffect/corsa";
     import { corsaApiCapabilities, corsaApiLimitations, parseCorsaApiFrontendDescriptor } from "@mizchi/uneffect/corsa/api";
@@ -122,6 +131,13 @@ try {
       else void diagnostic.waitingFor;
     }
     analyzeImpact(parseDependencyGraph([{ id: "input", dependencies: [] }]), ["input"]);
+    const moduleProgram = ts.createProgram(["query.ts"], { noEmit: true });
+    const moduleOptions: ModuleInitializationV2Options = { proofBudget: { moduleControlFlowIterations: 32 } };
+    const moduleV1: ModuleInitializationOrder = analyzeModuleInitializationOrder(moduleProgram, "query.ts");
+    const moduleV2: ModuleInitializationOrderV2 = analyzeModuleInitializationOrderV2(moduleProgram, "query.ts", moduleOptions);
+    void moduleV1; void moduleV2;
+    // @ts-expect-error the public proof budget is numeric
+    analyzeModuleInitializationOrderV2(moduleProgram, "query.ts", { proofBudget: { moduleControlFlowIterations: "32" } });
     // @ts-expect-error unknown task kinds must not enter the typed contract
     const invalidStep: Workflow["steps"][number] = { id: "bad", kind: "frok", next: [] };
     void invalidStep;
@@ -229,7 +245,7 @@ try {
   `);
   execFileSync(process.execPath, [smoke], { cwd: consumer, stdio: "inherit" });
 
-  // Exercise the published CLI entry, including lazy loading of experimental v2.
+  // Exercise the published CLI entry, including lazy loading of supported v2.
   const moduleEntry = join(consumer, "module-conditional-tla.mts");
   const moduleSource = readFileSync(resolve("examples/dogfood/module-conditional-tla.ts"), "utf8");
   writeFileSync(moduleEntry, moduleSource);
@@ -259,6 +275,36 @@ try {
     || JSON.stringify(conditionalFlow.proof.reachableBy[`${moduleEntry}#reject:0`]) !== '["await-reject"]') {
     throw new Error("packed module-order CLI lost conditional completion or terminal rejection evidence");
   }
+  const moduleApiProbe = join(consumer, "module-api.mjs");
+  writeFileSync(moduleApiProbe, `
+    import assert from "node:assert/strict";
+    import ts from "@typescript/typescript6";
+    import {
+      analyzeModuleInitializationOrder, analyzeModuleInitializationOrderV2,
+      DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET,
+    } from "@mizchi/uneffect/module-order";
+    import * as experimental from "@mizchi/uneffect/experimental";
+    const entry = process.argv[2];
+    const program = ts.createProgram([entry], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+    });
+    assert.equal(experimental.analyzeModuleInitializationOrder, analyzeModuleInitializationOrder);
+    assert.equal(experimental.analyzeModuleInitializationOrderV2, analyzeModuleInitializationOrderV2);
+    assert.equal(analyzeModuleInitializationOrder(program, entry).evidence, "unknown");
+    assert.deepEqual(analyzeModuleInitializationOrderV2(program, entry), ${JSON.stringify(conditionalOrder)});
+    const limited = analyzeModuleInitializationOrderV2(program, entry, { proofBudget: { moduleControlFlowIterations: 1 } });
+    assert.equal(limited.evidence, "unknown");
+    assert(limited.unknowns.some((item) => item.kind === "module-control-flow-proof"));
+    // Missing entries must not skip validation just because there is no CFG candidate.
+    assert.throws(() => analyzeModuleInitializationOrderV2(program, "missing.mts", {
+      proofBudget: { moduleControlFlowIterations: 0 },
+    }), RangeError);
+    assert.throws(() => analyzeModuleInitializationOrderV2(program, entry, { proofBudget: null }), TypeError);
+    assert.equal(Reflect.set(DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET, "moduleControlFlowIterations", 1), false);
+  `);
+  execFileSync(process.execPath, [moduleApiProbe, moduleEntry], { cwd: consumer, stdio: "inherit" });
   const mutableModuleSource = moduleSource.replace("const warmCache", "let warmCache");
   if (mutableModuleSource === moduleSource) throw new Error("packed module-order negative control did not mutate the selector");
   writeFileSync(moduleEntry, mutableModuleSource);

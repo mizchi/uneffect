@@ -1,106 +1,42 @@
 import { createHash } from "node:crypto";
 import ts from "@typescript/typescript6";
-import {
-  analyzeModuleInitializationOrder,
-  type ModuleInitializationChoice,
-  type ModuleInitializationConstraint,
-  type ModuleInitializationCycleComponent,
-  type ModuleInitializationEvent,
-  type ModuleInitializationModule,
-  type ModuleInitializationSourceEvidence,
-  type ModuleInitializationUnknown,
-} from "./module-initialization.js";
+import { analyzeModuleInitializationOrder } from "./module-initialization.js";
 import { solveBasicBlockFixedPoint } from "../cfg/index.js";
 import { classifyLexicalExecution } from "../frontends/typescript/lexical-execution.js";
+import type {
+  ModuleInitializationV2Options,
+  ModuleInitializationControlFlowEdgeRole,
+  ModuleInitializationEventV2,
+  ModuleInitializationControlFlowEdge,
+  ModuleInitializationControlFlowProof,
+  ModuleInitializationCompletionPath,
+  ModuleInitializationControlFlow,
+  ModuleInitializationModuleV2,
+  ModuleInitializationUnknownV2,
+  ModuleInitializationConstraintV2,
+  ModuleInitializationOrderV2,
+  ModuleInitializationModule,
+  ModuleInitializationSourceEvidence,
+  ModuleInitializationUnknown,
+} from "./contracts.js";
 
-export const DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET = {
-  moduleControlFlowIterations: 32,
-} as const;
+import { moduleControlFlowLimit } from "./options.js";
+export { DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET } from "./options.js";
 
-export interface ModuleInitializationV2Options {
-  readonly proofBudget?: {
-    readonly moduleControlFlowIterations?: number;
-  };
-}
-
-export type ModuleInitializationEventKindV2 = ModuleInitializationEvent["kind"] | "branch" | "join";
-export type ModuleInitializationControlFlowEdgeRole =
-  | "sequence"
-  | "branch-true"
-  | "branch-false"
-  | "await-resume"
-  | "await-reject";
-
-export interface ModuleInitializationEventV2 extends Omit<ModuleInitializationEvent, "kind"> {
-  readonly kind: ModuleInitializationEventKindV2;
-}
-
-export interface ModuleInitializationControlFlowEdge {
-  readonly from: string;
-  readonly to: string;
-  readonly completion: "normal" | "throw";
-  readonly role: ModuleInitializationControlFlowEdgeRole;
-  readonly sourceFile: string;
-  readonly sourceSpan: { readonly start: number; readonly end: number };
-  readonly evidence: ModuleInitializationSourceEvidence;
-}
-
-export interface ModuleInitializationControlFlowProof {
-  readonly status: "converged" | "unknown";
-  readonly iterations: number;
-  readonly budget: { readonly name: "module-control-flow-iterations"; readonly limit: number };
-  readonly reachableBy: Readonly<Record<string, readonly ModuleInitializationCompletionPath[]>>;
-  readonly reason?: "proof-budget-exhausted" | "lattice-conflict" | "invalid-cfg" | "domain-postcondition-failed";
-  readonly detail?: string;
-}
-
-export type ModuleInitializationCompletionPath = "branch-false" | "await-resume" | "await-reject";
-
-export interface ModuleInitializationControlFlow {
-  readonly entry: string;
-  readonly completion: string;
-  readonly selector: { readonly name: string; readonly span: { readonly start: number; readonly end: number } };
-  readonly blocks: readonly ModuleInitializationEventV2[];
-  readonly edges: readonly ModuleInitializationControlFlowEdge[];
-  readonly proof: ModuleInitializationControlFlowProof;
-}
-
-export interface ModuleInitializationModuleV2 extends Omit<ModuleInitializationModule, "events"> {
-  readonly events: ModuleInitializationEventV2[];
-  readonly choices: ModuleInitializationChoice[];
-  readonly controlFlow?: ModuleInitializationControlFlow;
-}
-
-export type ModuleInitializationUnknownV2 = ModuleInitializationUnknown | {
-  readonly fileName: string;
-  readonly kind: "module-control-flow-proof";
-  readonly span?: { readonly start: number; readonly end: number };
-  readonly detail: string;
-};
-
-export type ModuleInitializationConstraintV2 = ModuleInitializationConstraint | {
-  readonly before: string;
-  readonly after: string;
-  readonly reason: "module-control-flow";
-  readonly sourceFile: string;
-  readonly sourceSpan: { readonly start: number; readonly end: number };
-  readonly semanticRule: "conditional-source-order";
-  readonly evidence: ModuleInitializationSourceEvidence;
-};
-
-export interface ModuleInitializationOrderV2 {
-  readonly schema: "uneffect-module-order/v2";
-  readonly schemaVersion: 2;
-  readonly entryFile: string;
-  readonly compiler: { readonly typescriptVersion: string; readonly compilerOptionsDigest: string };
-  readonly evidence: "verified" | "unknown";
-  readonly modules: ModuleInitializationModuleV2[];
-  readonly constraints: ModuleInitializationConstraintV2[];
-  readonly cycleComponents: ModuleInitializationCycleComponent[];
-  readonly unknowns: ModuleInitializationUnknownV2[];
-  readonly claims: readonly string[];
-  readonly exclusions: readonly string[];
-}
+export type {
+  ModuleInitializationV2Options,
+  ModuleInitializationEventKindV2,
+  ModuleInitializationControlFlowEdgeRole,
+  ModuleInitializationEventV2,
+  ModuleInitializationControlFlowEdge,
+  ModuleInitializationControlFlowProof,
+  ModuleInitializationCompletionPath,
+  ModuleInitializationControlFlow,
+  ModuleInitializationModuleV2,
+  ModuleInitializationUnknownV2,
+  ModuleInitializationConstraintV2,
+  ModuleInitializationOrderV2,
+} from "./contracts.js";
 
 interface ConditionalAwaitCandidate {
   readonly source: ts.SourceFile;
@@ -345,7 +281,7 @@ function makeControlFlow(
 }
 
 /**
- * Experimental v2 module-order projection. The published v1 implementation is
+ * Supported v2 module-order projection. The published v1 implementation is
  * called as an immutable baseline; this layer only discharges its single
  * conditional-await unknown after a bounded CFG proof succeeds.
  */
@@ -354,10 +290,9 @@ export function analyzeModuleInitializationOrderV2(
   entryFile: string,
   options: ModuleInitializationV2Options = {},
 ): ModuleInitializationOrderV2 {
+  const limit = moduleControlFlowLimit(options);
   const baseline = analyzeModuleInitializationOrder(program, entryFile);
   const candidate = findConditionalAwaitCandidate(program, baseline.modules, baseline.unknowns);
-  const limit = options.proofBudget?.moduleControlFlowIterations
-    ?? DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET.moduleControlFlowIterations;
   const controlFlow = candidate ? makeControlFlow(candidate, limit) : undefined;
   const candidateSpan = candidate ? {
     start: candidate.awaitExpression.getStart(candidate.source), end: candidate.awaitExpression.getEnd(),

@@ -2234,7 +2234,7 @@ same property is proved for arbitrary TypeScript.
   `await` nested inside a function declaration as module TLA. Promise execution,
   completion, handler execution, process exit, and host queues remain explicit
   exclusions; bare or unsupported launches fail closed.
-  A separate experimental `uneffect-module-order/v2` artifact preserves those
+  A separate supported `uneffect-module-order/v2` artifact preserves those
   v1 bytes and admits one runtime-present, source-local Boolean `const`
   controlling one direct top-level await without `else`. Its source-keyed CFG
   retains false, suspend, resume, reject, join, and complete blocks; the shared

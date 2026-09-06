@@ -5,6 +5,63 @@ summary answers which capabilities may occur in a static import closure. The
 module-order analyzer answers which represented initialization events must
 happen before others.
 
+## Supported programmatic API
+
+Install the `@typescript/typescript6` peer and pass a caller-owned TypeScript 6
+`Program` to the supported `@mizchi/uneffect/module-order` entrypoint:
+
+```ts
+import ts from "@typescript/typescript6"
+import { resolve } from "node:path"
+import {
+  analyzeModuleInitializationOrder,
+  analyzeModuleInitializationOrderV2,
+} from "@mizchi/uneffect/module-order"
+
+const entry = resolve("src/main.mts")
+const program = ts.createProgram([entry], {
+  target: ts.ScriptTarget.ES2024,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  noEmit: true,
+})
+const v1 = analyzeModuleInitializationOrder(program, entry)
+const v2 = analyzeModuleInitializationOrderV2(program, entry, {
+  proofBudget: { moduleControlFlowIterations: 32 },
+})
+// Inspect evidence, unknowns, claims, and exclusions together.
+console.log(v1.evidence, v2.evidence)
+```
+
+The entrypoint exports both analyzers, their versioned artifact types, and
+`DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET`. Contracts live separately from the
+compiler/CFG implementation. The original experimental exports remain aliases
+for compatibility; new consumers should use `/module-order`.
+
+Both analyzers are synchronous. `entryFile` must be a nonempty string naming
+a source in the supplied Program; malformed identities throw `TypeError`,
+while an absent or declaration-only entry produces `entry-not-found` unknown
+evidence. Analysis follows the entry's Program-visible static dependency
+closure. Source diagnostics outside that closure do not block it; configuration
+parsing, compiler option, and global type errors do block it. Diagnostics with
+no source coordinates are attributed to the entry without an invented span.
+Rebuild the Program after changing sources or compiler options.
+
+V2 options and `proofBudget` must be objects with only the documented fields.
+Omitted or `undefined` budgets use the frozen default of 32 iterations. Explicit
+`null`, wrong value types, and unknown fields throw `TypeError`; numeric limits
+that are not positive safe integers throw `RangeError`. Validation runs even
+when no conditional-await proof is needed. A valid but exhausted budget yields
+`unknown` with `module-control-flow-proof`, never a partial positive verdict.
+
+The artifact schemas remain `uneffect-module-order/v1` and
+`uneffect-module-order/v2`, with their existing published bytes. Stored JSON
+must be checked against its matching schema; these analyzers accept Programs,
+not persisted evidence. Schema conformance alone does not prove source identity
+or event ordering. The supported source fragments and exclusions follow below.
+
+## CLI and v1 ordering fragment
+
 ```sh
 npx uneffect module-order src/main.mts > module-order.json
 npx uneffect module-order --require src/main.mts > module-order.json
@@ -39,7 +96,8 @@ cycle family. It represents:
   `InnerModuleEvaluation`: dependency requests are traversed in source order,
   a request to an already-evaluating ancestor is a no-op, and synchronous
   `ExecuteModule` occurs while recursion unwinds;
-- TypeScript syntax and semantic errors as non-proof-grade input.
+- TypeScript syntax, semantic, configuration, and global errors as
+  non-proof-grade input.
 
 Every constraint records its source file/span, semantic rule, and SHA-256 of
 the exact Program source. The artifact records the TypeScript version and a
@@ -115,15 +173,15 @@ schema is `schemas/uneffect-workspace-module-order-v1.schema.json`. This is a
 source-semantics claim; exact runtime emit bytes are checked only when the
 caller separately requests `buildArtifacts: "require-exact"`.
 
-## Experimental conditional join (v2)
+## Supported conditional join (v2)
 
-The experimental entrypoint exports `analyzeModuleInitializationOrderV2`. Its
+The `/module-order` entrypoint exports `analyzeModuleInitializationOrderV2`. Its
 separate `uneffect-module-order/v2` artifact preserves v1 while admitting one
 additional shape: a top-level `if (selector)` with no `else`, where `selector`
 resolves by TypeChecker identity to a runtime-present, source-local Boolean
 `const`, and the branch contains exactly one lexically unconditional `await`.
 
-The CLI selects this existing experimental analyzer explicitly:
+The CLI selects this analyzer explicitly:
 
 ```sh
 uneffect module-order entry.mts --schema-version 2 --require
@@ -167,7 +225,7 @@ declaration is erased at runtime. Imported, mutable, aliased, property,
 nested-expression, multiple-await, await-then-throw, mixed Promise-launch,
 looping, and `else` shapes also remain `unknown`.
 
-The strict experimental schema is
+The strict versioned schema is
 `schemas/uneffect-module-order-v2.schema.json`. This first v2 slice does not
 widen `uneffect-workspace-module-order/v1`; the existing cross-project ambient
 fixture remains a negative control.

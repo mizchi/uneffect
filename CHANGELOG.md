@@ -6,6 +6,11 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Promoted module initialization ordering to the supported `/module-order`
+  entrypoint with explicit v1/v2 analyzers and separate artifact contracts.
+  Retained experimental aliases, both schema versions, and the CLI's v1 default.
+  Added `just module-order-check` and installed-package API/CLI parity checks.
+
 - Promoted the workflow and dependency-impact consumers to supported `/workflow`
   and `/impact` entrypoints. Added strict input parsers, discriminated diagnostics,
   consistent option validation, and a separate parallel transition limit. Moved
@@ -28,6 +33,10 @@ All notable changes to Uneffect are documented in this file.
 
 ### Fixed
 
+- Module ordering now reports configuration and global compiler errors as
+  `unknown`. V2 validates options even without a conditional-await candidate,
+  rejects malformed budgets, and freezes the shared default budget.
+
 - Reject duplicate empty CFG block IDs before invoking lattice callbacks.
 
 - Hardened the conditional module-order v2 domain against a consistent lowering
@@ -37,7 +46,7 @@ All notable changes to Uneffect are documented in this file.
 
 ### Added
 
-- Added `module-order --schema-version 2` to select experimental conditional
+- Added `module-order --schema-version 2` to select supported conditional
   top-level-await evidence from the CLI. The default remains v1; `--require`
   retains unknown artifacts and fails for unsupported inputs in either version.
 

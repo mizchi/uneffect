@@ -34,6 +34,7 @@ export const ciTestTiers = {
     "test/module-initialization-v2.test.ts",
     "test/module-initialization-domain.test.ts",
     "test/module-initialization.test.ts",
+    "test/module-order-api.test.ts",
     "test/modules.test.ts",
     "test/numeric-types.test.ts",
     "test/number-semantics.test.ts",

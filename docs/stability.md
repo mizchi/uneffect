@@ -32,6 +32,14 @@ snapshots, independent differential controls and installed-package probes define
 their qualification. See [graph analysis](./graph-analysis.md). This promotion
 does not claim full language semantics or stabilize the separate research APIs.
 
+`/module-order` is also a supported public contract for the documented v1
+ordering fragment and v2 conditional-await join. Qualification includes input
+validation, compiler-error blockers, API snapshots, installed API/CLI parity,
+mutable-selector controls, and CFG mutations that bypass resume, remove the
+false path, or merge rejection into completion. Both published schema versions
+retain their bytes. See [module initialization order](./module-initialization-order.md)
+for Program ownership, budgets, failure behavior, and semantic limits.
+
 The following workflow is the current safe line:
 
 1. Pin Uneffect, Node.js, TypeScript, and solver/tool versions.
@@ -82,7 +90,8 @@ boundary.
 
 `just package-check` runs the package lifecycle and tests the produced tarball,
 not the source-tree imports. A fresh Node 24 consumer must type-check and execute
-the documented root, Corsa, direct Corsa API, spec, and JSON-schema entrypoints.
+the documented root, CFG, workflow, impact, module-order, Corsa, direct Corsa
+API, spec, and JSON-schema entrypoints.
 The same probe rejects unknown fields and schema versions for the temporal and
 Corsa descriptors, verifies the stable/experimental export split, and installs
 a second consumer with optional dependencies omitted to require explicit Corsa

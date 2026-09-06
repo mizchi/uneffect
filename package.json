@@ -65,6 +65,10 @@
     "./impact": {
       "types": "./dist/src/graph-analysis/impact-api.d.ts",
       "import": "./dist/src/graph-analysis/impact-api.js"
+    },
+    "./module-order": {
+      "types": "./dist/src/modules/module-order-api.d.ts",
+      "import": "./dist/src/modules/module-order-api.js"
     }
   },
   "bin": {

@@ -1303,7 +1303,7 @@ describe("uneffect command line", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it("selects experimental module-order v2 explicitly for the conditional TLA dogfood", async () => {
+  it("selects supported module-order v2 explicitly for the conditional TLA dogfood", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-order-v2-cli-"));
     try {
       const dependency = join(directory, "dependency.mts"), entry = join(directory, "entry.mts");

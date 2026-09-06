@@ -466,7 +466,7 @@ completion precedes one synchronous importer start. Conditional/looping await,
 await-then-throw, multiple/transitive child dependencies, transformed
 declarations, and asynchronous or multi-module importers remain `unknown`.
 
-The separate experimental `uneffect-module-order/v2` seed adds only one
+The separate supported `uneffect-module-order/v2` seed adds only one
 runtime-present source-local Boolean `const` conditional TLA. Its budgeted CFG
 requires exactly the false and await-resume paths at normal completion and
 keeps await rejection terminal. Ambient/imported/mutable/written selectors,
@@ -474,7 +474,7 @@ nested control, multiple awaits, and await-then-throw remain `unknown`.
 Abstract CFG reachability does not prove that both Boolean values are feasible,
 and the workspace v1 contract is not widened.
 CLI integration is tracked by [#70](https://github.com/mizchi/uneffect/issues/70):
-`module-order --schema-version 2` selects this experimental artifact. Default
+`module-order --schema-version 2` selects this supported artifact. Default
 and explicit version 1 retain the published v1 behavior, and `--require`
 rejects unknown evidence in both modes.
 Domain hardening [#71](https://github.com/mizchi/uneffect/issues/71) additionally

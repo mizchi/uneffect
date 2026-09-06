@@ -2,6 +2,17 @@ import ts from "@typescript/typescript6";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { classifyLexicalExecution } from "../frontends/typescript/lexical-execution.js";
+import type {
+  ModuleInitializationEvent,
+  ModuleInitializationSourceEvidence,
+  ModuleInitializationConstraint,
+  ModuleInitializationChoice,
+  ModuleInitializationModule,
+  ModuleInitializationCycleRequest,
+  ModuleInitializationCycleComponent,
+  ModuleInitializationUnknown,
+  ModuleInitializationOrder,
+} from "./contracts.js";
 
 /** Whether an import/export declaration can execute module initialization. */
 export function isRuntimeModuleDependency(
@@ -19,114 +30,19 @@ export function isRuntimeModuleDependency(
     || statement.exportClause.elements.some((element) => !element.isTypeOnly);
 }
 
-export type ModuleInitializationEventKind =
-  | "start"
-  | "promise-launch"
-  | "rejection-handler-attach"
-  | "suspend"
-  | "resume"
-  | "reject"
-  | "throw"
-  | "complete";
-export type ModuleInitializationUnknownKind =
-  | "entry-not-found"
-  | "cycle"
-  | "external-static-import"
-  | "dynamic-import"
-  | "unhandled-top-level-promise-launch"
-  | "unsupported-top-level-promise-handler"
-  | "unsupported-mixed-top-level-async-shape"
-  | "conditional-top-level-await"
-  | "conditional-top-level-throw"
-  | "class-initialization-order"
-  | "typescript-error";
-
-export interface ModuleInitializationEvent {
-  id: string;
-  kind: ModuleInitializationEventKind;
-  span: { start: number; end: number };
-}
-
-export interface ModuleInitializationSourceEvidence {
-  kind: "program-source";
-  sourceDigest: string;
-}
-
-export interface ModuleInitializationConstraint {
-  before: string;
-  after: string;
-  reason: "module-sequencing" | "static-dependency-completes" | "synchronous-cycle-dfs-execution";
-  sourceFile: string;
-  sourceSpan: { start: number; end: number };
-  semanticRule: "source-order" | "ecma262-inner-module-evaluation-request" | "ecma262-inner-module-evaluation-execute";
-  evidence: ModuleInitializationSourceEvidence;
-}
-
-export interface ModuleInitializationChoice {
-  after: string;
-  alternatives: [string, string];
-  reason: "await-settlement";
-}
-
-export interface ModuleInitializationModule {
-  fileName: string;
-  dependencies: string[];
-  /** Dependencies with no normal-completion event; this module body is unreachable on that modeled path. */
-  blockedBy: string[];
-  events: ModuleInitializationEvent[];
-  choices: ModuleInitializationChoice[];
-}
-
-export interface ModuleInitializationCycleRequest {
-  from: string;
-  to: string;
-  sourceSpan: { start: number; end: number };
-  semanticRule: "ecma262-inner-module-evaluation-request" | "ecma262-inner-module-evaluation-revisit";
-  evidence: ModuleInitializationSourceEvidence;
-}
-
-export interface ModuleInitializationCycleComponent {
-  id: string;
-  kind: "synchronous-side-effect-import-ring";
-  root: string;
-  modules: string[];
-  executionOrder: string[];
-  requests: ModuleInitializationCycleRequest[];
-}
-
-export interface ModuleInitializationUnknown {
-  fileName: string;
-  kind: ModuleInitializationUnknownKind;
-  span?: { start: number; end: number };
-  detail: string;
-}
-
-export interface ModuleInitializationOrder {
-  schema: "uneffect-module-order/v1";
-  schemaVersion: 1;
-  entryFile: string;
-  compiler: { typescriptVersion: string; compilerOptionsDigest: string };
-  /** The extracted partial-order claim is proof-grade only when no unsupported boundary was encountered. */
-  evidence: "verified" | "unknown";
-  modules: ModuleInitializationModule[];
-  constraints: ModuleInitializationConstraint[];
-  cycleComponents: ModuleInitializationCycleComponent[];
-  unknowns: ModuleInitializationUnknown[];
-  claims: readonly [
-    "represented module events follow source order on the normal-completion path",
-    "an importer body starts only after every normally completed static dependency",
-    "top-level await may resume or reject",
-    "an unconditional top-level throw prevents normal completion",
-    "a synchronous side-effect-import simple ring executes in specification DFS postorder",
-    "a supported top-level Promise rejection handler is attached synchronously before module completion",
-  ];
-  exclusions: readonly [
-    "host scheduling time is not modeled",
-    "only synchronous side-effect-import simple rings have proof-grade cyclic order",
-    "dynamic and external module bodies are not modeled",
-    "Promise execution after a top-level launch is not modeled",
-  ];
-}
+export type {
+  ModuleInitializationEventKind,
+  ModuleInitializationUnknownKind,
+  ModuleInitializationEvent,
+  ModuleInitializationSourceEvidence,
+  ModuleInitializationConstraint,
+  ModuleInitializationChoice,
+  ModuleInitializationModule,
+  ModuleInitializationCycleRequest,
+  ModuleInitializationCycleComponent,
+  ModuleInitializationUnknown,
+  ModuleInitializationOrder,
+} from "./contracts.js";
 
 interface ModuleRecord {
   source: ts.SourceFile;
@@ -169,6 +85,7 @@ function conditionalAwait(node: ts.AwaitExpression, statement: ts.Statement): bo
  * This is an ordering artifact, not an effect summary and not a liveness proof.
  */
 export function analyzeModuleInitializationOrder(program: ts.Program, entryFile: string): ModuleInitializationOrder {
+  if (typeof entryFile !== "string" || entryFile.trim().length === 0) throw new TypeError("entryFile must be a nonempty string");
   const constraints: ModuleInitializationConstraint[] = [], unknowns: ModuleInitializationUnknown[] = [];
   const records = new Map<string, ModuleRecord>(), visiting = new Set<string>(), visited = new Set<string>(), cycleFiles = new Set<string>();
   const ordered: string[] = [];
@@ -187,7 +104,8 @@ export function analyzeModuleInitializationOrder(program: ts.Program, entryFile:
   const entry = program.getSourceFile(entryFile);
   const addUnknown = (item: ModuleInitializationUnknown): void => {
     if (!unknowns.some((existing) => existing.fileName === item.fileName && existing.kind === item.kind
-      && existing.span?.start === item.span?.start)) unknowns.push(item);
+      && existing.span?.start === item.span?.start
+      && (item.kind !== "typescript-error" || existing.detail === item.detail))) unknowns.push(item);
   };
   const sourceEvidence = (fileName: string): ModuleInitializationSourceEvidence => ({
     kind: "program-source",
@@ -354,12 +272,17 @@ export function analyzeModuleInitializationOrder(program: ts.Program, entryFile:
   if (!entry || entry.isDeclarationFile) addUnknown({ fileName: entryFile, kind: "entry-not-found", detail: "entry source is absent from the Program" });
   else visit(entry);
   const reachable = new Set(ordered);
-  for (const diagnostic of [...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics()]) {
-    if (diagnostic.category !== ts.DiagnosticCategory.Error || !diagnostic.file || !reachable.has(diagnostic.file.fileName)) continue;
+  const sourceDiagnostics = [...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics()]
+    .filter((diagnostic) => !diagnostic.file || reachable.has(diagnostic.file.fileName));
+  for (const diagnostic of [
+    ...program.getConfigFileParsingDiagnostics(), ...program.getOptionsDiagnostics(),
+    ...program.getGlobalDiagnostics(), ...sourceDiagnostics,
+  ]) {
+    if (diagnostic.category !== ts.DiagnosticCategory.Error) continue;
     const start = diagnostic.start ?? 0;
     addUnknown({
-      fileName: diagnostic.file.fileName, kind: "typescript-error",
-      span: { start, end: start + (diagnostic.length ?? 0) },
+      fileName: diagnostic.file?.fileName ?? entryFile, kind: "typescript-error",
+      ...(diagnostic.file ? { span: { start, end: start + (diagnostic.length ?? 0) } } : {}),
       detail: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
     });
   }

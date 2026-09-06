@@ -1,6 +1,171 @@
 {
   "schema": "uneffect-public-api-snapshot/v1",
   "entrypoints": {
+    "./module-order": {
+      "runtime": [
+        "DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET",
+        "analyzeModuleInitializationOrder",
+        "analyzeModuleInitializationOrderV2"
+      ],
+      "declarations": [
+        {
+          "name": "analyzeModuleInitializationOrder",
+          "declarations": [
+            "export declare function analyzeModuleInitializationOrder(program: ts.Program, entryFile: string): ModuleInitializationOrder;"
+          ]
+        },
+        {
+          "name": "analyzeModuleInitializationOrderV2",
+          "declarations": [
+            "export declare function analyzeModuleInitializationOrderV2(program: ts.Program, entryFile: string, options?: ModuleInitializationV2Options): ModuleInitializationOrderV2;"
+          ]
+        },
+        {
+          "name": "DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET",
+          "declarations": [
+            "DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET: Readonly<{\n    readonly moduleControlFlowIterations: 32;\n}>"
+          ]
+        },
+        {
+          "name": "ModuleInitializationChoice",
+          "declarations": [
+            "export interface ModuleInitializationChoice {\n    after: string;\n    alternatives: [string, string];\n    reason: \"await-settlement\";\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationCompletionPath",
+          "declarations": [
+            "export type ModuleInitializationCompletionPath = \"branch-false\" | \"await-resume\" | \"await-reject\";"
+          ]
+        },
+        {
+          "name": "ModuleInitializationConstraint",
+          "declarations": [
+            "export interface ModuleInitializationConstraint {\n    before: string;\n    after: string;\n    reason: \"module-sequencing\" | \"static-dependency-completes\" | \"synchronous-cycle-dfs-execution\";\n    sourceFile: string;\n    sourceSpan: {\n        start: number;\n        end: number;\n    };\n    semanticRule: \"source-order\" | \"ecma262-inner-module-evaluation-request\" | \"ecma262-inner-module-evaluation-execute\";\n    evidence: ModuleInitializationSourceEvidence;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationConstraintV2",
+          "declarations": [
+            "export type ModuleInitializationConstraintV2 = ModuleInitializationConstraint | {\n    readonly before: string;\n    readonly after: string;\n    readonly reason: \"module-control-flow\";\n    readonly sourceFile: string;\n    readonly sourceSpan: {\n        readonly start: number;\n        readonly end: number;\n    };\n    readonly semanticRule: \"conditional-source-order\";\n    readonly evidence: ModuleInitializationSourceEvidence;\n};"
+          ]
+        },
+        {
+          "name": "ModuleInitializationControlFlow",
+          "declarations": [
+            "export interface ModuleInitializationControlFlow {\n    readonly entry: string;\n    readonly completion: string;\n    readonly selector: {\n        readonly name: string;\n        readonly span: {\n            readonly start: number;\n            readonly end: number;\n        };\n    };\n    readonly blocks: readonly ModuleInitializationEventV2[];\n    readonly edges: readonly ModuleInitializationControlFlowEdge[];\n    readonly proof: ModuleInitializationControlFlowProof;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationControlFlowEdge",
+          "declarations": [
+            "export interface ModuleInitializationControlFlowEdge {\n    readonly from: string;\n    readonly to: string;\n    readonly completion: \"normal\" | \"throw\";\n    readonly role: ModuleInitializationControlFlowEdgeRole;\n    readonly sourceFile: string;\n    readonly sourceSpan: {\n        readonly start: number;\n        readonly end: number;\n    };\n    readonly evidence: ModuleInitializationSourceEvidence;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationControlFlowEdgeRole",
+          "declarations": [
+            "export type ModuleInitializationControlFlowEdgeRole = \"sequence\" | \"branch-true\" | \"branch-false\" | \"await-resume\" | \"await-reject\";"
+          ]
+        },
+        {
+          "name": "ModuleInitializationControlFlowProof",
+          "declarations": [
+            "export interface ModuleInitializationControlFlowProof {\n    readonly status: \"converged\" | \"unknown\";\n    readonly iterations: number;\n    readonly budget: {\n        readonly name: \"module-control-flow-iterations\";\n        readonly limit: number;\n    };\n    readonly reachableBy: Readonly<Record<string, readonly ModuleInitializationCompletionPath[]>>;\n    readonly reason?: \"proof-budget-exhausted\" | \"lattice-conflict\" | \"invalid-cfg\" | \"domain-postcondition-failed\";\n    readonly detail?: string;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationCycleComponent",
+          "declarations": [
+            "export interface ModuleInitializationCycleComponent {\n    id: string;\n    kind: \"synchronous-side-effect-import-ring\";\n    root: string;\n    modules: string[];\n    executionOrder: string[];\n    requests: ModuleInitializationCycleRequest[];\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationCycleRequest",
+          "declarations": [
+            "export interface ModuleInitializationCycleRequest {\n    from: string;\n    to: string;\n    sourceSpan: {\n        start: number;\n        end: number;\n    };\n    semanticRule: \"ecma262-inner-module-evaluation-request\" | \"ecma262-inner-module-evaluation-revisit\";\n    evidence: ModuleInitializationSourceEvidence;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationEvent",
+          "declarations": [
+            "export interface ModuleInitializationEvent {\n    id: string;\n    kind: ModuleInitializationEventKind;\n    span: {\n        start: number;\n        end: number;\n    };\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationEventKind",
+          "declarations": [
+            "export type ModuleInitializationEventKind = \"start\" | \"promise-launch\" | \"rejection-handler-attach\" | \"suspend\" | \"resume\" | \"reject\" | \"throw\" | \"complete\";"
+          ]
+        },
+        {
+          "name": "ModuleInitializationEventKindV2",
+          "declarations": [
+            "export type ModuleInitializationEventKindV2 = ModuleInitializationEvent[\"kind\"] | \"branch\" | \"join\";"
+          ]
+        },
+        {
+          "name": "ModuleInitializationEventV2",
+          "declarations": [
+            "export interface ModuleInitializationEventV2 extends Omit<ModuleInitializationEvent, \"kind\"> {\n    readonly kind: ModuleInitializationEventKindV2;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationModule",
+          "declarations": [
+            "export interface ModuleInitializationModule {\n    fileName: string;\n    dependencies: string[];\n    /** Dependencies with no normal-completion event; this module body is unreachable on that modeled path. */\n    blockedBy: string[];\n    events: ModuleInitializationEvent[];\n    choices: ModuleInitializationChoice[];\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationModuleV2",
+          "declarations": [
+            "export interface ModuleInitializationModuleV2 extends Omit<ModuleInitializationModule, \"events\"> {\n    readonly events: ModuleInitializationEventV2[];\n    readonly choices: ModuleInitializationChoice[];\n    readonly controlFlow?: ModuleInitializationControlFlow;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationOrder",
+          "declarations": [
+            "export interface ModuleInitializationOrder {\n    schema: \"uneffect-module-order/v1\";\n    schemaVersion: 1;\n    entryFile: string;\n    compiler: {\n        typescriptVersion: string;\n        compilerOptionsDigest: string;\n    };\n    /** The extracted partial-order claim is proof-grade only when no unsupported boundary was encountered. */\n    evidence: \"verified\" | \"unknown\";\n    modules: ModuleInitializationModule[];\n    constraints: ModuleInitializationConstraint[];\n    cycleComponents: ModuleInitializationCycleComponent[];\n    unknowns: ModuleInitializationUnknown[];\n    claims: readonly [\n        \"represented module events follow source order on the normal-completion path\",\n        \"an importer body starts only after every normally completed static dependency\",\n        \"top-level await may resume or reject\",\n        \"an unconditional top-level throw prevents normal completion\",\n        \"a synchronous side-effect-import simple ring executes in specification DFS postorder\",\n        \"a supported top-level Promise rejection handler is attached synchronously before module completion\"\n    ];\n    exclusions: readonly [\n        \"host scheduling time is not modeled\",\n        \"only synchronous side-effect-import simple rings have proof-grade cyclic order\",\n        \"dynamic and external module bodies are not modeled\",\n        \"Promise execution after a top-level launch is not modeled\"\n    ];\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationOrderV2",
+          "declarations": [
+            "export interface ModuleInitializationOrderV2 {\n    readonly schema: \"uneffect-module-order/v2\";\n    readonly schemaVersion: 2;\n    readonly entryFile: string;\n    readonly compiler: {\n        readonly typescriptVersion: string;\n        readonly compilerOptionsDigest: string;\n    };\n    readonly evidence: \"verified\" | \"unknown\";\n    readonly modules: ModuleInitializationModuleV2[];\n    readonly constraints: ModuleInitializationConstraintV2[];\n    readonly cycleComponents: ModuleInitializationCycleComponent[];\n    readonly unknowns: ModuleInitializationUnknownV2[];\n    readonly claims: readonly string[];\n    readonly exclusions: readonly string[];\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationSourceEvidence",
+          "declarations": [
+            "export interface ModuleInitializationSourceEvidence {\n    kind: \"program-source\";\n    sourceDigest: string;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationUnknown",
+          "declarations": [
+            "export interface ModuleInitializationUnknown {\n    fileName: string;\n    kind: ModuleInitializationUnknownKind;\n    span?: {\n        start: number;\n        end: number;\n    };\n    detail: string;\n}"
+          ]
+        },
+        {
+          "name": "ModuleInitializationUnknownKind",
+          "declarations": [
+            "export type ModuleInitializationUnknownKind = \"entry-not-found\" | \"cycle\" | \"external-static-import\" | \"dynamic-import\" | \"unhandled-top-level-promise-launch\" | \"unsupported-top-level-promise-handler\" | \"unsupported-mixed-top-level-async-shape\" | \"conditional-top-level-await\" | \"conditional-top-level-throw\" | \"class-initialization-order\" | \"typescript-error\";"
+          ]
+        },
+        {
+          "name": "ModuleInitializationUnknownV2",
+          "declarations": [
+            "export type ModuleInitializationUnknownV2 = ModuleInitializationUnknown | {\n    readonly fileName: string;\n    readonly kind: \"module-control-flow-proof\";\n    readonly span?: {\n        readonly start: number;\n        readonly end: number;\n    };\n    readonly detail: string;\n};"
+          ]
+        },
+        {
+          "name": "ModuleInitializationV2Options",
+          "declarations": [
+            "export interface ModuleInitializationV2Options {\n    readonly proofBudget?: {\n        readonly moduleControlFlowIterations?: number;\n    };\n}"
+          ]
+        }
+      ]
+    },
     "./workflow": {
       "runtime": [
         "parseWorkflow",

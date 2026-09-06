@@ -10,7 +10,7 @@ export const moduleOrderCommand: CliCommand = {
   arguments: "<entry.ts> [--schema-version 1|2] [--require]",
   details: [
     "--require  exit 1 unless the extracted ordering fragment is proof-grade",
-    "--schema-version 1|2  artifact version (default: 1); v2 is experimental and supports one bounded conditional TLA join",
+    "--schema-version 1|2  artifact version (default: 1); v2 supports one bounded conditional TLA join",
     "",
     "Unsupported cycles, external/dynamic imports, control flow, or TypeScript errors remain visible in the JSON artifact.",
   ],
