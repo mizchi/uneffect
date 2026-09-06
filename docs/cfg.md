@@ -1,5 +1,8 @@
 # Reusable CFG primitives
 
+For runnable consumers and measured applicability, see
+[workflow and dependency-impact prototypes](./cfg-prototype-evaluation.md).
+
 Import the compiler-independent core from `@mizchi/uneffect/cfg`:
 
 ```ts

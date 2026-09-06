@@ -49,6 +49,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 
 - [Source layout](./source-layout.md): responsibility directories and public API boundaries.
 - [Reusable CFG API](./cfg.md): compiler-independent fixed-point and completion primitives.
+- [CFG prototype evaluation](./cfg-prototype-evaluation.md): workflow preflight and dependency-impact consumers, runnable comparisons, and applicability limits.
 
 ## Current design decisions
 

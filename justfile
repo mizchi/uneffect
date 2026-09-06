@@ -10,6 +10,14 @@ cfg-check:
     pnpm exec tsc -p tsconfig.cfg.json
     pnpm vitest run test/cfg-public.test.ts test/refinement-flow.test.ts test/completion-flow.test.ts
 
+cfg-prototype-check:
+    pnpm exec tsc -p prototypes/cfg/tsconfig.core.json
+    pnpm exec tsc -p prototypes/cfg/tsconfig.json
+    pnpm vitest run test/cfg-prototypes.test.ts test/cfg-parallel-workflow.test.ts
+
+cfg-prototype:
+    pnpm tsx prototypes/cfg/evaluate.ts
+
 bench:
     pnpm bench
 
@@ -19,6 +27,8 @@ check:
 ci-fast:
     pnpm exec tsc -p tsconfig.json --noEmit
     pnpm exec tsc -p tsconfig.cfg.json
+    pnpm exec tsc -p prototypes/cfg/tsconfig.core.json
+    pnpm exec tsc -p prototypes/cfg/tsconfig.json
     just examples-check
     just skills-check
     UNEFFECT_CI_TIER=fast pnpm vitest run

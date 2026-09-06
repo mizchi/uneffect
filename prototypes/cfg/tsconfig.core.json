@@ -1,0 +1,4 @@
+{
+  "extends": "../../tsconfig.cfg.json",
+  "include": ["./contracts.ts", "./shared.ts", "./impact.ts", "./workflow.ts"]
+}
