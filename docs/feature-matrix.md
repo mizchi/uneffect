@@ -473,6 +473,10 @@ keeps await rejection terminal. Ambient/imported/mutable/written selectors,
 nested control, multiple awaits, and await-then-throw remain `unknown`.
 Abstract CFG reachability does not prove that both Boolean values are feasible,
 and the workspace v1 contract is not widened.
+CLI integration is tracked by [#70](https://github.com/mizchi/uneffect/issues/70):
+`module-order --schema-version 2` selects this experimental artifact. Default
+and explicit version 1 retain the published v1 behavior, and `--require`
+rejects unknown evidence in both modes.
 
 The Hoare row includes direct numeric or Boolean nullish coalescing for a
 TypeChecker-validated nullable parameter or immutable identifier alias. Return,

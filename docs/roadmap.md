@@ -38,6 +38,16 @@ phase roadmap and are not 0.3.0 release blockers.
 
 ## Current execution
 
+[#70](https://github.com/mizchi/uneffect/issues/70) is the active integration
+child of #18: expose the existing conditional-TLA v2 analyzer through
+`module-order --schema-version 2`, retain default v1 output and strict unknown
+handling, and qualify the packed CLI with the runtime-real dogfood fixture and
+its mutable-selector control. It adds no semantic proof family or workspace
+composition mode. Its 1–2 engineer-day estimate includes TDD, documentation,
+package validation, and stabilization; it is included in #18 rather than added
+to the backlog total. Re-estimate #18's remaining semantics before selecting
+another proof family.
+
 [#69](https://github.com/mizchi/uneffect/issues/69) is the completed first
 post-0.3 bounded child of #18. It adds a separate experimental
 `uneffect-module-order/v2` artifact for
@@ -124,7 +134,8 @@ explicit non-proofs. Ambient declarations are also non-proofs: an erased
    cross-project straight-line top-level-await family with declaration-bound
    completion evidence. Bounded child
    [#69](https://github.com/mizchi/uneffect/issues/69) adds one separately
-   versioned source-local conditional async join. Runtime-binding and
+   versioned source-local conditional async join. Its CLI integration is tracked by
+   [#70](https://github.com/mizchi/uneffect/issues/70). Runtime-binding and
    general-shape cycles, broader conditional joins, external packages, and
    dynamic initialization remain explicit non-proofs. Earlier application graphs contained no real TLA candidate,
    but Workhub did provide a top-level `main().catch(handler)` Promise-launch

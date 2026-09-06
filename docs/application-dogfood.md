@@ -336,6 +336,16 @@ selector exists at runtime. It is still only abstract CFG reachability, not a
 proof that both command-line values occur in a particular deployment, and it
 does not widen the published workspace v1 contract.
 
+Integration child #70 uses this same source as a CLI acceptance boundary.
+`module-order --schema-version 2 --require` must retain the false/resume
+completion paths, terminal rejection, and completion-before-importer edge.
+Default and explicitly selected v1 artifacts remain byte-identical and unknown
+for this source. Changing only `const warmCache` to `let warmCache` keeps v2
+unknown, and `--require` must fail. The package qualification gate repeats the
+v1/v2/mutable-selector checks through the actual installed CLI entry in a fresh
+Node 24 consumer. This is integration evidence for #69's existing fragment,
+not a newly observed external application's TLA family.
+
 ## Budgeted refinement CFG seed
 
 The application-shaped `examples/dogfood/telemetry-fixed-point-drain.ts` models

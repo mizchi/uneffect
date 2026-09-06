@@ -1303,6 +1303,66 @@ describe("uneffect command line", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("selects experimental module-order v2 explicitly for the conditional TLA dogfood", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-order-v2-cli-"));
+    try {
+      const dependency = join(directory, "dependency.mts"), entry = join(directory, "entry.mts");
+      writeFileSync(dependency, readFileSync("examples/dogfood/module-conditional-tla.ts", "utf8"));
+      writeFileSync(entry, 'import { cacheState } from "./dependency.mjs"; console.log(cacheState)');
+      const defaults = capture(), explicitV1 = capture(), v2 = capture();
+      expect(await runCli(["module-order", "--require", entry], defaults)).toBe(exitCode.failed);
+      expect(JSON.parse(defaults.stdout)).toMatchObject({ schema: "uneffect-module-order/v1", evidence: "unknown" });
+      expect(await runCli(["module-order", "--schema-version", "1", "--require", entry], explicitV1)).toBe(exitCode.failed);
+      expect(explicitV1.stdout).toBe(defaults.stdout);
+      expect(explicitV1.stderr).toBe(defaults.stderr);
+      expect(await runCli(["module-order", "--schema-version", "2", "--require", entry], v2), v2.stderr).toBe(exitCode.success);
+      expect(JSON.parse(v2.stdout)).toMatchObject({
+        schema: "uneffect-module-order/v2", schemaVersion: 2, evidence: "verified", unknowns: [],
+        modules: expect.arrayContaining([expect.objectContaining({
+          fileName: dependency,
+          controlFlow: expect.objectContaining({ proof: expect.objectContaining({
+            status: "converged",
+            reachableBy: expect.objectContaining({
+              [`${dependency}#complete`]: ["branch-false", "await-resume"],
+              [`${dependency}#reject:0`]: ["await-reject"],
+            }),
+          }) }),
+        })]),
+        constraints: expect.arrayContaining([expect.objectContaining({
+          before: `${dependency}#complete`, after: `${entry}#start`, reason: "static-dependency-completes",
+        })]),
+      });
+      expect(v2.stderr).toBe("");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("retains module-order v2 unknown evidence and failure for a mutable dogfood selector", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-order-v2-cli-mutant-"));
+    try {
+      const entry = join(directory, "entry.mts");
+      const source = readFileSync("examples/dogfood/module-conditional-tla.ts", "utf8");
+      const mutant = source.replace("const warmCache", "let warmCache");
+      expect(mutant).not.toBe(source);
+      writeFileSync(entry, mutant);
+      const inspected = capture(), required = capture();
+      expect(await runCli(["module-order", "--schema-version=2", entry], inspected)).toBe(exitCode.success);
+      expect(JSON.parse(inspected.stdout)).toMatchObject({
+        schema: "uneffect-module-order/v2", evidence: "unknown",
+        unknowns: expect.arrayContaining([expect.objectContaining({ kind: "conditional-top-level-await" })]),
+      });
+      expect(await runCli(["module-order", "--schema-version=2", "--require", entry], required)).toBe(exitCode.failed);
+      expect(required.stdout).toBe(inspected.stdout);
+      expect(required.stderr).toContain("conditional-top-level-await");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.each(["0", "3", "02", "latest"])("rejects unsupported module-order schema version %s before loading a file", async (version) => {
+    const io = capture();
+    expect(await runCli(["module-order", "--schema-version", version, "missing.mts"], io)).toBe(exitCode.usage);
+    expect(io.stdout).toBe("");
+    expect(io.stderr).toContain("--schema-version must be 1 or 2");
+  });
+
   it("checks the toolchain and names what each unmet requirement blocks", async () => {
     const io = capture();
     const status = await runCli(["doctor", "--skip-solver-probe"], io);

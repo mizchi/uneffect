@@ -2,6 +2,14 @@
 
 All notable changes to Uneffect are documented in this file.
 
+## Unreleased
+
+### Added
+
+- Added `module-order --schema-version 2` to select experimental conditional
+  top-level-await evidence from the CLI. The default remains v1; `--require`
+  retains unknown artifacts and fails for unsupported inputs in either version.
+
 ## 0.3.0 - 2026-09-06
 
 ### Added

@@ -87,6 +87,11 @@ from retrying the already-used npm version would be an invalid recovery.
 
 ### Post-release execution
 
+- [ ] [#70](https://github.com/mizchi/uneffect/issues/70) Expose the existing
+  experimental module-order v2 analyzer through an explicit CLI schema version,
+  preserving default v1 output and unknown failures, with packed CLI acceptance
+  and a mutable-selector dogfood control.
+
 - [x] [#69](https://github.com/mizchi/uneffect/issues/69) Preserved the published
   module-order v1 contract and added a versioned v2 artifact for one
   runtime-present, source-local immutable-Boolean conditional top-level-await

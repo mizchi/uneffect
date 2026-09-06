@@ -2243,6 +2243,12 @@ same property is proved for arbitrary TypeScript.
   rejection terminal. Ambient declarations, suppressed writes, nested
   expressions/control, multiple awaits, await-then-throw, mixed Promise
   launches, and imported or mutable selectors remain explicit unknowns.
+  CLI integration child [#70](https://github.com/mizchi/uneffect/issues/70)
+  exposes this existing analyzer through `module-order --schema-version 2`.
+  Default/explicit v1 output remains identical, unsupported versions are usage
+  errors, and unknown v2 results retain their JSON evidence and fail under
+  `--require`. Installed-package checks exercise the same runtime selector and
+  its const-to-let negative control.
   A separate strict `uneffect-workspace-module-order/v1` composition discharges
   one parent external-import boundary through an exact child declaration
   re-emission/source mapping. It admits only one direct child module with one

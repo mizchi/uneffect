@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -73,6 +73,7 @@ try {
   execFileSync("npm", [
     "install", "--ignore-scripts", "--no-package-lock", "--prefix", consumer,
     archive, typescript6Package,
+    `@types/node@${sourceManifest.devDependencies["@types/node"]}`,
     ...["corsa-oxlint", "@oxlint/plugins", "oxlint"].map((name) => `${name}@${sourceManifest.devDependencies[name]}`),
   ], { stdio: "inherit" });
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
@@ -186,6 +187,42 @@ try {
     console.log(JSON.stringify({ node: process.versions.node, typescript: ts.version, rootExports: Object.keys(root).length }));
   `);
   execFileSync(process.execPath, [smoke], { cwd: consumer, stdio: "inherit" });
+
+  // Exercise the published CLI entry, including lazy loading of experimental v2.
+  const moduleEntry = join(consumer, "module-conditional-tla.mts");
+  const moduleSource = readFileSync(resolve("examples/dogfood/module-conditional-tla.ts"), "utf8");
+  writeFileSync(moduleEntry, moduleSource);
+  const cliEntry = join(consumer, "node_modules", "@mizchi", "uneffect", sourceManifest.bin.uneffect);
+  const inspectModuleOrder = (args, expectedStatus, schema, evidence) => {
+    const result = spawnSync(process.execPath, [cliEntry, "module-order", moduleEntry, ...args], {
+      cwd: consumer, encoding: "utf8", timeout: 60_000,
+    });
+    if (result.error || result.status !== expectedStatus) {
+      throw new Error(`packed module-order CLI failed: ${result.error ?? result.stderr}`);
+    }
+    const artifact = JSON.parse(result.stdout);
+    if (artifact.schema !== schema || artifact.evidence !== evidence) {
+      throw new Error("packed module-order CLI schema or evidence drifted");
+    }
+    if (evidence === "unknown" && (!artifact.unknowns.some((item) => item.kind === "conditional-top-level-await")
+      || !result.stderr.includes("conditional-top-level-await"))) {
+      throw new Error("packed module-order CLI lost its conditional-await diagnostic");
+    }
+    return artifact;
+  };
+  inspectModuleOrder(["--require"], 1, "uneffect-module-order/v1", "unknown");
+  const conditionalOrder = inspectModuleOrder(["--schema-version", "2", "--require"], 0, "uneffect-module-order/v2", "verified");
+  const conditionalFlow = conditionalOrder.modules.find((item) => item.fileName === moduleEntry)?.controlFlow;
+  if (conditionalFlow?.proof.status !== "converged"
+    || JSON.stringify(conditionalFlow.proof.reachableBy[`${moduleEntry}#complete`]) !== '["branch-false","await-resume"]'
+    || JSON.stringify(conditionalFlow.proof.reachableBy[`${moduleEntry}#reject:0`]) !== '["await-reject"]') {
+    throw new Error("packed module-order CLI lost conditional completion or terminal rejection evidence");
+  }
+  const mutableModuleSource = moduleSource.replace("const warmCache", "let warmCache");
+  if (mutableModuleSource === moduleSource) throw new Error("packed module-order negative control did not mutate the selector");
+  writeFileSync(moduleEntry, mutableModuleSource);
+  inspectModuleOrder(["--schema-version", "2", "--require"], 1, "uneffect-module-order/v2", "unknown");
+
   packageEvidence.verification.runtime = "passed";
   writeEvidence();
 

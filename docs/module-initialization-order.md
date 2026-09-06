@@ -123,6 +123,20 @@ additional shape: a top-level `if (selector)` with no `else`, where `selector`
 resolves by TypeChecker identity to a runtime-present, source-local Boolean
 `const`, and the branch contains exactly one lexically unconditional `await`.
 
+The CLI selects this existing experimental analyzer explicitly:
+
+```sh
+uneffect module-order entry.mts --schema-version 2 --require
+```
+
+Omitting `--schema-version`, or passing `1`, retains the v1 artifact and its
+existing behavior. Version `2` selects `uneffect-module-order/v2`; other values
+are usage errors (exit 2). Without `--require`, either version prints unknown
+artifacts for inspection and exits 0. With `--require`, unknown evidence is
+still printed as JSON, diagnostics go to stderr, and the command exits 1.
+Successful extraction exits 0; it does not establish await fulfillment or
+liveness. The CLI uses the same named default proof budget as the v2 API.
+
 The v2 `controlFlow` projection records `branch-true`, `branch-false`,
 `await-resume`, `await-reject`, and normal sequence edges. A shared finite
 fixed-point verifier must show that `complete` is represented by the false or
