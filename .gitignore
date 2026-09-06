@@ -1,6 +1,5 @@
 node_modules/
 dist/
 coverage/
-target/
 _apalache-out/
 .uneffect/

@@ -10,6 +10,10 @@ traceability and map to those issues rather than forming a second active queue.
 Remaining volume and estimate assumptions are maintained in
 `docs/remaining-work-estimate.md`.
 
+The local Rust prototype and Cargo requirements have been retired; see
+[the migration record](./docs/rust-retirement.md). Historical Rust entries below
+record work completed before retirement, not a maintained runtime dependency.
+
 ## Status convention
 
 - GitHub Issues, milestones, priority labels, status labels, and effort labels

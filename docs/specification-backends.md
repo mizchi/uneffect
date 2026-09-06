@@ -545,7 +545,7 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Area | Status |
 |---|---|
 | Comment parsing into three categories | Implemented prototype |
-| Capability effect checking | Implemented for structured scoped and unscoped effects in TypeScript and Rust |
+| Capability effect checking | Implemented for structured scoped and unscoped effects in TypeScript |
 | Parameterized/scoped capability lattice | Implemented in both lattices with target-aware path/env and normalized URL/host domains |
 | Shared SMT-LIB/direct-Z3 invariant obligations | Implemented prototype and executed with Z3 |
 | Z3-backed temporal semantic lint | Implemented for global validity/contradiction, init consistency, globally impossible guards, and duplicate/subsumed safety properties |
@@ -554,4 +554,4 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect evidence` JSON CLI |
 | Quint safety-model generation | Implemented prototype and executed with Quint |
 | Temporal liveness/fairness generation | Implemented and Quint-typechecked for eventuality, response, recurrence, stabilization, and weak/strong action fairness |
-| Transfer ownership state model | Implemented in TypeScript/Rust with positive and broken Quint controls |
+| Transfer ownership state model | Implemented in TypeScript with positive and broken Quint controls |

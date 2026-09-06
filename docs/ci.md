@@ -38,7 +38,7 @@ older SHA cannot cancel proof evidence already running for a newer commit.
 
 | Tier | Runtime dependencies | Purpose |
 | --- | --- | --- |
-| `fast` | Node.js and Rust | Type checking, parser/analyzer unit tests, Rust parity, build, and package checks |
+| `fast` | Node.js | Type checking, parser/analyzer unit tests, Corsa fact validation and parity, build, and package checks |
 | `z3` | none beyond Node; native Z3 is optional and WASM is bundled | Hoare, ownership, property generation, and typed-array obligations |
 | `quint` | Quint evaluator | Promise, resource, event-loop, temporal-composition, and ownership models |
 | `integration` | native Z3, Quint, and Java/TLC | Three complete shards (`core`, `applications`, and `dogfood`) cover end-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
@@ -225,6 +225,6 @@ one realistic model, not a general Z3 stress guarantee.
 
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds
-including TypeScript checking and all Rust tests. Solver tiers still execute
+including TypeScript checking and Corsa fact-consumer tests. Solver tiers still execute
 every excluded test independently; the manifest coverage test makes that claim
 machine-checkable as new files are added.

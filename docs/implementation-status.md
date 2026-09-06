@@ -2035,10 +2035,10 @@ same property is proved for arbitrary TypeScript.
 
 ## Native integration, CI, and performance
 
-- The analyzer core is separated from frontend adapters. A Rust neutral IR and
-  schema-v8 consumer cover structured declarations, source spans, inferred
+- The analyzer core is separated from frontend adapters. A TypeScript neutral IR and
+  schema-v8 fact consumer cover structured declarations, source spans, inferred
   effects, calls, and ordered events. These are currently TypeScript-reference
-  facts passed through Rust, with machine-readable provenance. An optional
+  facts passed through the independent fact consumer, with machine-readable provenance. An optional
   real corsa-bind exporter covers a fail-closed multi-file top-level function
   declaration, single immutable arrow/function-expression binding, and
   identifier-named top-level class method direct-call/type/trivia slice with

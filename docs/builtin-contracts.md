@@ -230,7 +230,7 @@ type SymbolKey = {
 }
 ```
 
-Contracts are curated overlays, generated into Rust data where practical:
+Contracts are curated overlays consumed by the TypeScript semantic interpreter:
 
 ```text
 builtins/

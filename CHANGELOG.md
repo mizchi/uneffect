@@ -4,6 +4,15 @@ All notable changes to Uneffect are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Removed the local Rust crate and Cargo build/release requirements. Corsa v8
+  facts are validated and normalized in TypeScript; the external
+  `@corsa-bind/napi` binding is unchanged. Frontend comparisons retain provenance
+  and negative controls, with frozen former-normalizer outputs covering the
+  migration. `corsaTimeoutMs` remains accepted as a deprecated no-op because
+  normalization no longer starts a subprocess.
+
 ### Fixed
 
 - Hardened the conditional module-order v2 domain against a consistent lowering

@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { normalizeCorsaFacts } from "./corsa-fact-consumer.js";
 import ts from "@typescript/typescript6";
 import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectSet } from "./capabilities.js";
@@ -13,7 +13,7 @@ import { interpretBuiltinCallSemantics } from "./builtin-semantic-interpreter.js
 export interface CompareUneffectFrontendsOptions {
   files: Record<string, string>;
   corsaSchemaVersion?: number;
-  /** Allows slower cold Rust builds while retaining a finite process boundary. */
+  /** @deprecated Retained for source compatibility; normalization now runs in-process. */
   corsaTimeoutMs?: number;
   /** Actual schema-v8 facts emitted by the corsa-bind checker exporter. */
   corsaFacts?: CorsaCheckerFactFile;
@@ -30,7 +30,7 @@ export interface NormalizedFrontendIr {
   schemaVersion: 8;
   provenance: Omit<FrontendFactProvenance, "satisfiesRequirement">;
   functions: Array<{ name: string; effects: string[] }>;
-  calls: Array<{ caller: string; callee: string; callbackTiming: "none" }>;
+  calls: Array<{ caller: string; callee: string; callbackTiming: "none" | "inline" | "deferred" | "unknown" }>;
   orderedEvents: Array<{ kind: "call"; caller: string; callee: string; start: number; end: number }>;
   promiseObservations: Array<{ owner: string; source: string; observation: string; catchesRejection: boolean; conditional: boolean; controlConditions: Array<{ id: string; expected: boolean }>; controlPaths: Array<Array<{ id: string; expected: boolean }>>; start: number; end: number }>;
   rejectionOwnership: Array<{ owner: string; binding: string; status: string; observations: string[]; start: number; end: number }>;
@@ -273,12 +273,8 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   for (const item of referenceInput.suppressedErrors as any[]) suppressedErrors.push({ owner: names.get(item.owner)!, payload: item.payload as ResourceError });
   const irProvenance = { ...referenceInput.provenance, compilerRevision: referenceInput.compilerRevision };
   const typescriptIr: NormalizedFrontendIr = { schemaVersion: 8, provenance: irProvenance, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
-  const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
-    input: JSON.stringify(input), encoding: "utf8", timeout: options.corsaTimeoutMs ?? 120_000,
-  });
-  if (execution.error || execution.status !== 0) return { equivalent: false, semanticEquivalent: false, checkerMetadataEquivalent, provenance, schemaDrift: [...coverageFailures, { frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {
-    const corsaIr = JSON.parse(execution.stdout) as NormalizedFrontendIr;
+    const corsaIr = normalizeCorsaFacts(input);
     corsaIr.functions.sort((left, right) => left.name.localeCompare(right.name));
     const semanticEquivalent = JSON.stringify(semanticProjection(typescriptIr)) === JSON.stringify(semanticProjection(corsaIr));
     const provenanceFailure: FrontendSchemaDrift[] = provenance.satisfiesRequirement ? [] : [{

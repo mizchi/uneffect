@@ -40,7 +40,7 @@ explicit declaration is checked and may receive `verified` evidence; the
 unannotated inventory remains `inferred`. `none | Console` is invalid rather
 than silently reducing to `Console`, and `none` is unavailable as a
 user-defined Effect constructor. `module_effect none` applies the same empty
-upper bound to module initialization. The TypeScript and Rust/Corsa set parsers
+upper bound to module initialization. The TypeScript analyzer and Corsa fact consumer
 share this representation as an empty semantic set. **Implemented.**
 
 An unannotated boundary is not declared pure. Uneffect may report a locally
@@ -59,7 +59,7 @@ Throw(errorType)
 Unknown(reason)
 ```
 
-The TypeScript specification IR wraps each parsed effect in `{ value, span }`, where `span` contains exact UTF-16 source offsets into the original file. Parse failures include file, line, and column. The Rust core exposes `SourceSpan { file_id, start, end }` using UTF-8 byte offsets and a `LocatedEffectSet` that preserves source order separately from the deduplicated semantic `EffectSet`. `ParseEffectError` carries the offending member span. The versioned Corsa JSON consumer now accepts resolved symbol/type/overload/call/trivia records and preserves this byte-coordinate contract. **Implemented in both prototype layers.**
+The TypeScript specification IR wraps each parsed effect in `{ value, span }`, where `span` contains exact UTF-16 source offsets into the original file. Parse failures include file, line, and column. The versioned Corsa fact consumer accepts file IDs and UTF-8 byte spans on resolved symbol/type/overload/call/trivia records, validates their references, and preserves the byte-coordinate contract through normalization. **Implemented in TypeScript.**
 
 Composition is a join:
 
@@ -473,7 +473,7 @@ Env:     [EnvNameSet]
 Dom:     [EnumSet<DomOperation>, RegionSet]
 ```
 
-This keeps parsing, union, subset, unknown propagation, diagnostics, and serialization uniform. Only atom normalization and `covers(allowedAtom, actualAtom)` are domain-specific. **Implemented in the TypeScript prototype and Rust core.** Both implementations use versioned schemas. The Rust `EffectSchemaRegistry` is passed to `EffectSet::parse_with_schemas`, allowing a Corsa adapter to register user effects such as a two-argument `app.Api<TokenSet, UrlSet>` without adding name checks to the parser or lattice.
+This keeps parsing, union, subset, unknown propagation, diagnostics, and serialization uniform. Only atom normalization and `covers(allowedAtom, actualAtom)` are domain-specific. **Implemented in TypeScript.** Versioned schemas allow user effects such as a two-argument `app.Api<TokenSet, UrlSet>` without adding name checks to the parser or lattice.
 
 Subtyping is component-wise:
 
@@ -515,7 +515,7 @@ Suspend(invalidatedRegions)
 Transfer(region, target)
 ```
 
-Events carry a phase. Suspension starts a new phase and invalidates facts about regions that may escape to concurrent code. It does not invalidate proven local regions indiscriminately. The existing Rust `EffectTrace` implements the first five events except ownership transfer. See [formal models](./formal-models.md).
+Events carry a phase. Suspension starts a new phase and invalidates facts about regions that may escape to concurrent code. It does not invalidate proven local regions indiscriminately. The temporal and ownership analyses retain the bounded transition rules. See [formal models](./formal-models.md).
 
 ## Optimization boundary
 
@@ -538,10 +538,10 @@ Unknown or merely inferred summaries stop optimization. A domain label such as `
 Corsa symbols, types, overloads, and trivia
                   |
                   v
-Rust frontend: call graph + builtin contract instantiation
+TypeScript frontend adapters: call graph + builtin contract instantiation
                   |
                   v
-Rust core: effect lattice + regions + temporal/ownership IR
+TypeScript core: effect lattice + regions + temporal/ownership IR
           |                    |
           v                    v
  diagnostics             verified artifact

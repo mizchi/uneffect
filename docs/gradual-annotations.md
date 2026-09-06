@@ -8,7 +8,7 @@ directive on each following line. Directive names select the internal grammar,
 so Uneffect does not infer a proof domain from an expression. Unknown
 directives, missing payloads, and empty effect-union members are errors.
 Ordinary JSDoc is untouched. Parsed directives and capability members retain
-exact UTF-16 source spans in TypeScript. The Rust/Corsa boundary uses file IDs
+exact UTF-16 source spans in TypeScript. The Corsa fact boundary uses file IDs
 and UTF-8 byte spans; adapters must convert positions explicitly rather than
 mixing the two coordinate systems.
 

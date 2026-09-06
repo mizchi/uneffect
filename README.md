@@ -202,7 +202,7 @@ Corsa/Oxlint checker-fact and parity integrations live under
 
 ## Development
 
-The repository uses pnpm, Node.js 24+, Cargo, and `just`.
+The repository uses pnpm, Node.js 24+, and `just`.
 
 ```sh
 just install

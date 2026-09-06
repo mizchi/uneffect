@@ -154,6 +154,22 @@ try {
     if (corsaSchema.properties.schema.const !== "uneffect-corsa-api-frontend/v1") throw new Error("Corsa schema import failed");
     if (moduleOrderV2Schema.properties.schema.const !== "uneffect-module-order/v2") throw new Error("module-order v2 schema import failed");
 
+    const previousPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      const parity = await root.compareUneffectFrontends({
+        files: { "portable.ts": "/* uneffect:effect Console */ export function emit() { console.log(1) } export function main() { emit() }" },
+        corsaTimeoutMs: 1,
+      });
+      if (!parity.equivalent || !parity.corsaIr.functions.some((f) => f.name === "main" && f.effects.includes("Console")))
+        throw new Error("installed frontend comparison failed without Cargo: " + JSON.stringify(parity.schemaDrift));
+      const drift = await root.compareUneffectFrontends({ files: { "portable.ts": "export function main() {}" }, corsaSchemaVersion: 9 });
+      if (drift.equivalent || drift.corsaIr !== null) throw new Error("installed comparison accepted an unsupported fact schema");
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
+
     const parsedEffects = root.parseEffectSet("Console");
     const effectDiagnostics = root.analyzeEffects("smoke.ts", "/* uneffect:effect Console */\\nexport function run() { console.log(1) }");
     if (parsedEffects.length !== 1 || effectDiagnostics.some((diagnostic) => diagnostic.severity === "error"))

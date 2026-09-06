@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 describe("TypeScript/Corsa neutral projection parity", () => {
-  it("preserves explicit empty effect declarations across the TypeScript and Rust projections", async () => {
+  it("preserves explicit empty effect declarations across the reference and Corsa fact projections", async () => {
     const result = await compareUneffectFrontends({
       files: { "pure.ts": `/* uneffect:effect none */ export function pure(value: number) { return value }` },
     });
@@ -40,15 +40,18 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     }));
   });
 
-  it("keeps Corsa execution bounded and reports an explicit timeout", async () => {
-    const result = await compareUneffectFrontends({
-      files: { "timeout.ts": `export function run() {}` },
-      corsaTimeoutMs: 1,
-    });
-    expect(result.equivalent).toBe(false);
-    expect(result.schemaDrift).toContainEqual(expect.objectContaining({
-      frontend: "corsa", message: expect.stringContaining("ETIMEDOUT"),
-    }));
+  it("normalizes without Cargo even when a legacy subprocess timeout is supplied", async () => {
+    const previousPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      const result = await compareUneffectFrontends({
+        files: { "portable.ts": `export function run() {}` }, corsaTimeoutMs: 1,
+      });
+      expect(result.equivalent, JSON.stringify(result.schemaDrift)).toBe(true);
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
   });
 
   it("normalizes UTF-8 trivia and reports schema drift instead of treating it as parity", async () => {

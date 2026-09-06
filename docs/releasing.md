@@ -17,7 +17,7 @@ No npm token is stored in this repository.
 just release-check
 ```
 
-The checked-in npm, Rust, evidence, and effect-baseline versions must agree.
+The checked-in npm, evidence, and effect-baseline versions must agree.
 The publish job additionally refuses a GitHub Release whose tag is not exactly
 `v<package.json version>`.
 

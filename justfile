@@ -5,23 +5,18 @@ install:
 
 test:
     pnpm test
-    cargo test --workspace
 
 bench:
     pnpm bench
 
 check:
     pnpm check
-    cargo fmt --all --check
-    cargo test --workspace
 
 ci-fast:
     pnpm exec tsc -p tsconfig.json --noEmit
     just examples-check
     just skills-check
     UNEFFECT_CI_TIER=fast pnpm vitest run
-    cargo fmt --all --check
-    cargo test --workspace
 
 formal:
     pnpm vitest run test/formal-models.test.ts
@@ -48,7 +43,6 @@ package-check:
     npm pack --dry-run
     node ci/check-public-api.mjs
     node ci/smoke-package.mjs
-    cargo package --workspace --allow-dirty --no-verify
 
 # Full local gate before creating a release tag. Native Z3 permits solver-dense
 # suites to use one fresh process per file; CI keeps per-test WASM isolation.
@@ -56,8 +50,6 @@ release-check:
     UNEFFECT_Z3_BACKEND=native UNEFFECT_TEST_ISOLATION=file pnpm check
     just examples-check
     just skills-check
-    cargo fmt --all --check
-    cargo test --workspace
     just build
     just package-check
     git diff --check

@@ -20,7 +20,6 @@ describe("0.3.0 release metadata", () => {
     expect(manifest.version).toBe("0.3.0");
     expect(uneffectVersion).toBe(manifest.version);
     expect(effectBaselineToolVersion).toBe(manifest.version);
-    expect(readFileSync("crates/uneffect-core/Cargo.toml", "utf8")).toContain(`version = "${manifest.version}"`);
   });
 
   it("publishes explicit runtime, type, schema, and license surfaces", () => {
@@ -149,7 +148,7 @@ describe("0.3.0 release metadata", () => {
     expect(publish).toContain("npm publish");
     expect(publish).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/u);
     expect(config.packages["."]?.["extra-files"].map(({ path }) => path)).toEqual(expect.arrayContaining([
-      "crates/uneffect-core/Cargo.toml", "src/evidence.ts", "src/effect-baseline.ts",
+      "src/evidence.ts", "src/effect-baseline.ts",
     ]));
     expect(releaseState).toEqual({ ".": manifest.version });
 

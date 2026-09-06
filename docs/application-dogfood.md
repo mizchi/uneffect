@@ -682,7 +682,7 @@ direct `Console` fact from the standard `console.log` declaration identity, and
 `main` receives it transitively through two source-ordered local call edges.
 The adjacent `sameSpelledLookalike` function declares a local object named
 `console`; its distinct symbols produce no Effect. TypeScript reference facts
-and Rust-normalized Corsa facts agree on function effects, call edges, event
+and normalized Corsa facts agree on function effects, call edges, event
 order, and operation spans. This establishes one builtin and one direct-call
 family only, not general Console coverage, arbitrary globals, nested callbacks,
 dynamic dispatch, Content Mapper semantics, or persisted fact authentication.

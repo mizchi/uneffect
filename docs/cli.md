@@ -350,7 +350,7 @@ semantics remain curated code-owned contracts.
 ## Versions
 
 `uneffect --version` reports the published npm version. The contract layers —
-CLI surface, evidence schema, builtin registry, Corsa interchange, optimizer
-obligations, and the Rust crate — carry their own version, which is what an
+CLI surface, evidence schema, builtin registry, Corsa interchange, and optimizer
+obligations — carry their own version, which is what an
 evidence artifact records as `uneffectVersion`; see
 [native integration](./native-integration.md).

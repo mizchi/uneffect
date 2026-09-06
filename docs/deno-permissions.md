@@ -43,7 +43,7 @@ Examples:
 /* uneffect:effect Sys<hostname | cpus> */
 ```
 
-The same generic code performs set union, subset checks, unknown propagation, and unused-authority diagnostics. A versioned schema selects the atom domain. Both the TypeScript prototype and Rust core now use registries for parsing and containment; builtin and user-defined effects take the same path:
+The same generic code performs set union, subset checks, unknown propagation, and unused-authority diagnostics. A versioned schema selects the atom domain. The TypeScript implementation uses registries for parsing and containment; builtin and user-defined effects take the same path:
 
 | Capability | Argument domain | Atom containment |
 |---|---|---|
@@ -62,7 +62,7 @@ authority; environment writes do not additionally require a `Mutate` region.
 A locally shadowed object named `process` is not classified as environment
 authority.
 
-The Rust and TypeScript domains implement host/IP/optional-port scopes, `*.example.com` subdomain containment, final-`*` environment prefixes, target-aware Windows case folding, and validation of the finite `Sys` vocabulary.
+The TypeScript domains implement host/IP/optional-port scopes, `*.example.com` subdomain containment, final-`*` environment prefixes, target-aware Windows case folding, and validation of the finite `Sys` vocabulary.
 
 `projectDenoPermissions` converts verified positive requirements plus a separate deployment deny policy into deterministic `--allow-*` and `--deny-*` arguments. Unknown sets fail projection. Symbolic path anchors require explicit bindings, except `$TEMP`, which may be derived from an explicit Node/Deno target profile. Projection never reads the analyzer process environment implicitly.
 
@@ -114,7 +114,7 @@ PathAtom {
 }
 ```
 
-The Rust core implements this symbolic form, exact path equality, final `/**` recursive containment, rejection of unknown anchors and traversal, explicit binding-based cross-anchor containment, and target case policy. TypeScript projection resolves the selected target bindings and records their digest. Symlink identity remains outside lexical path authority and must be handled by deployment policy or a filesystem-aware trust boundary.
+The TypeScript implementation supports this symbolic form, exact path equality, final `/**` recursive containment, rejection of unknown anchors and traversal, explicit binding-based cross-anchor containment, and target case policy. Its projection resolves the selected target bindings and records their digest. Symlink identity remains outside lexical path authority and must be handled by deployment policy or a filesystem-aware trust boundary.
 
 Anchor resolution precedes path normalization and containment. If the relationship between two anchors is unknown, Uneffect does not guess containment. For example, `$PACKAGE_ROOT/** <= $WORKSPACE_ROOT/**` is proved only when the current analysis configuration records that package root as a descendant of workspace root.
 

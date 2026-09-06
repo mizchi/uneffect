@@ -1,0 +1,2531 @@
+[
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "compilerRevision": "corsa-checker@Version 7.0.2",
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true
+      },
+      "symbols": [
+        {
+          "id": 1,
+          "name": "loadConfigText",
+          "kind": "function",
+          "typeRepr": "(path: string) => Promise<string>",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [
+            {
+              "effect": "FsRead",
+              "builtin": {
+                "module": "node:fs/promises",
+                "export": "writeFile"
+              },
+              "symbolIdentity": "5",
+              "declaration": {
+                "fileName": "examples/dogfood/corsa-workhub-dynamic-fs-import.ts",
+                "start": 80,
+                "end": 88
+              },
+              "span": {
+                "start": 142,
+                "end": 164
+              }
+            }
+          ],
+          "span": {
+            "start": 7,
+            "end": 167
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": 1,
+          "source": "import(\"node:fs/promises\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 99,
+            "end": 125
+          }
+        },
+        {
+          "owner": 1,
+          "source": "readFile(path, \"utf8\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 142,
+            "end": 164
+          }
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true,
+        "compilerRevision": "corsa-checker@Version 7.0.2"
+      },
+      "functions": [
+        {
+          "name": "loadConfigText",
+          "effects": [
+            "FsRead"
+          ]
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": "loadConfigText",
+          "source": "import(\"node:fs/promises\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 99,
+          "end": 125
+        },
+        {
+          "owner": "loadConfigText",
+          "source": "readFile(path, \"utf8\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 142,
+          "end": 164
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "run",
+          "kind": "function",
+          "typeRepr": "(mode: \"prepare\" | \"run\" | \"ignore\") => Promise<void>",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 56,
+            "end": 284
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": 1,
+          "source": "Promise.resolve(\"shared\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": true,
+          "controlConditions": [
+            {
+              "id": "run@switch:128:case:0",
+              "expected": true
+            }
+          ],
+          "controlPaths": [
+            [
+              {
+                "id": "run@switch:128:case:0",
+                "expected": true
+              }
+            ],
+            [
+              {
+                "id": "run@switch:128:case:0",
+                "expected": false
+              },
+              {
+                "id": "run@switch:128:case:1",
+                "expected": true
+              }
+            ]
+          ],
+          "span": {
+            "start": 215,
+            "end": 240
+          }
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "run",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": "run",
+          "source": "Promise.resolve(\"shared\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": true,
+          "controlConditions": [
+            {
+              "id": "run@switch:128:case:0",
+              "expected": true
+            }
+          ],
+          "controlPaths": [
+            [
+              {
+                "id": "run@switch:128:case:0",
+                "expected": true
+              }
+            ],
+            [
+              {
+                "id": "run@switch:128:case:0",
+                "expected": false
+              },
+              {
+                "id": "run@switch:128:case:1",
+                "expected": true
+              }
+            ]
+          ],
+          "start": 215,
+          "end": 240
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "compilerRevision": "corsa-checker@Version 7.0.2",
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true
+      },
+      "symbols": [
+        {
+          "id": 1,
+          "name": "a.ts::run",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [
+            {
+              "effect": "Console",
+              "builtin": {
+                "module": "global",
+                "export": "console.log"
+              },
+              "symbolIdentity": "6",
+              "declaration": {
+                "fileName": "/users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64/lib/lib.dom.d.ts",
+                "start": 133867,
+                "end": 2349323
+              },
+              "span": {
+                "start": 54,
+                "end": 70
+              }
+            }
+          ],
+          "span": {
+            "start": 37,
+            "end": 72
+          }
+        },
+        {
+          "id": 2,
+          "name": "b.ts::run",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 127,
+            "end": 161
+          }
+        }
+      ],
+      "calls": [
+        {
+          "caller": 2,
+          "callee": 1,
+          "overloadIndex": null,
+          "callbackTiming": "none",
+          "span": {
+            "start": 144,
+            "end": 159
+          }
+        }
+      ],
+      "trivia": [
+        {
+          "owner": 1,
+          "text": "/* uneffect:effect Console */",
+          "span": {
+            "start": 0,
+            "end": 29
+          }
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true,
+        "compilerRevision": "corsa-checker@Version 7.0.2"
+      },
+      "functions": [
+        {
+          "name": "a.ts::run",
+          "effects": [
+            "Console"
+          ]
+        },
+        {
+          "name": "b.ts::run",
+          "effects": [
+            "Console"
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "caller": "b.ts::run",
+          "callee": "a.ts::run",
+          "callbackTiming": "none"
+        }
+      ],
+      "orderedEvents": [
+        {
+          "kind": "call",
+          "caller": "b.ts::run",
+          "callee": "a.ts::run",
+          "start": 144,
+          "end": 159
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "emit",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [
+            {
+              "effect": "Console",
+              "builtin": {
+                "module": "global",
+                "export": "console.log"
+              },
+              "symbolIdentity": "/Users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.dom.d.ts:2225759",
+              "declaration": {
+                "fileName": "/Users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript/lib/lib.dom.d.ts",
+                "start": 2225759,
+                "end": 2225785
+              },
+              "span": {
+                "start": 68,
+                "end": 84
+              }
+            }
+          ],
+          "span": {
+            "start": 43,
+            "end": 86
+          }
+        },
+        {
+          "id": 2,
+          "name": "main",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 93,
+            "end": 126
+          }
+        }
+      ],
+      "calls": [
+        {
+          "caller": 2,
+          "callee": 1,
+          "overloadIndex": null,
+          "callbackTiming": "none",
+          "span": {
+            "start": 118,
+            "end": 124
+          }
+        }
+      ],
+      "trivia": [
+        {
+          "owner": 1,
+          "text": "\n      /* uneffect:effect Console */\n      ",
+          "span": {
+            "start": 0,
+            "end": 43
+          }
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "emit",
+          "effects": [
+            "Console"
+          ]
+        },
+        {
+          "name": "main",
+          "effects": [
+            "Console"
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "caller": "main",
+          "callee": "emit",
+          "callbackTiming": "none"
+        }
+      ],
+      "orderedEvents": [
+        {
+          "kind": "call",
+          "caller": "main",
+          "callee": "emit",
+          "start": 118,
+          "end": 124
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "read",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 50,
+            "end": 75
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [
+        {
+          "owner": 1,
+          "text": "/* uneffect:effect FsRead<\"$CWD/データ/**\"> */ ",
+          "span": {
+            "start": 0,
+            "end": 50
+          }
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "read",
+          "effects": [
+            "FsRead<\"$CWD/データ/**\">"
+          ]
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "run",
+          "kind": "function",
+          "typeRepr": "() => Promise<number>",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 124,
+            "end": 222
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "async",
+          "fileName": "resource.ts",
+          "span": {
+            "start": 28,
+            "end": 66
+          }
+        }
+      ],
+      "promiseObservations": [
+        {
+          "owner": 1,
+          "source": "open()",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 191,
+            "end": 197
+          }
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": 1,
+          "binding": "resource",
+          "ownerAsync": true,
+          "asynchronous": true,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@152",
+          "scopeDepth": 0,
+          "scopeEnd": 222,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 1,
+          "protocolKind": "async",
+          "span": {
+            "start": 174,
+            "end": 197
+          }
+        }
+      ],
+      "disposals": [
+        {
+          "owner": 1,
+          "binding": "resource",
+          "order": 0,
+          "asynchronous": true,
+          "scopeId": "run@152",
+          "scopeDepth": 0,
+          "disposalPoint": 222,
+          "failureKind": "reject",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "reject",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": 1,
+          "payload": {
+            "kind": "error",
+            "errorType": "unknown",
+            "source": "dispose:resource"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "run",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "async",
+          "fileName": "resource.ts",
+          "start": 28,
+          "end": 66
+        }
+      ],
+      "promiseObservations": [
+        {
+          "owner": "run",
+          "source": "open()",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 191,
+          "end": 197
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": "run",
+          "binding": "resource",
+          "ownerAsync": true,
+          "asynchronous": true,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@152",
+          "scopeDepth": 0,
+          "scopeEnd": 222,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 1,
+          "protocolKind": "async",
+          "start": 174,
+          "end": 197
+        }
+      ],
+      "disposals": [
+        {
+          "owner": "run",
+          "binding": "resource",
+          "order": 0,
+          "asynchronous": true,
+          "scopeId": "run@152",
+          "scopeDepth": 0,
+          "disposalPoint": 222,
+          "failureKind": "reject",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "reject",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": "run",
+          "payload": {
+            "kind": "error",
+            "errorType": "unknown",
+            "source": "dispose:resource"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "compilerRevision": "corsa-checker@Version 7.0.2",
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true
+      },
+      "symbols": [
+        {
+          "id": 1,
+          "name": "synchronizeState",
+          "kind": "function",
+          "typeRepr": "(path: string, endpoint: string) => Promise<void>",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [
+            {
+              "effect": "FsRead",
+              "builtin": {
+                "module": "node:fs/promises",
+                "export": "readFileSync"
+              },
+              "symbolIdentity": "1",
+              "declaration": {
+                "fileName": "examples/dogfood/corsa-workhub-builtins.ts",
+                "start": 9,
+                "end": 17
+              },
+              "span": {
+                "start": 169,
+                "end": 191
+              }
+            },
+            {
+              "effect": "Fetch",
+              "builtin": {
+                "module": "global",
+                "export": "fetch"
+              },
+              "symbolIdentity": "8",
+              "declaration": {
+                "fileName": "/users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64/lib/lib.dom.d.ts",
+                "start": 140168,
+                "end": 2349323
+              },
+              "span": {
+                "start": 218,
+                "end": 233
+              }
+            },
+            {
+              "effect": "Net",
+              "builtin": {
+                "module": "global",
+                "export": "fetch"
+              },
+              "symbolIdentity": "8",
+              "declaration": {
+                "fileName": "/users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64/lib/lib.dom.d.ts",
+                "start": 140168,
+                "end": 2349323
+              },
+              "span": {
+                "start": 218,
+                "end": 233
+              }
+            },
+            {
+              "effect": "Fetch",
+              "builtin": {
+                "module": "global",
+                "export": "fetch"
+              },
+              "symbolIdentity": "8",
+              "declaration": {
+                "fileName": "/users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64/lib/lib.dom.d.ts",
+                "start": 140168,
+                "end": 2349323
+              },
+              "span": {
+                "start": 243,
+                "end": 292
+              }
+            },
+            {
+              "effect": "Net",
+              "builtin": {
+                "module": "global",
+                "export": "fetch"
+              },
+              "symbolIdentity": "8",
+              "declaration": {
+                "fileName": "/users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64/lib/lib.dom.d.ts",
+                "start": 140168,
+                "end": 2349323
+              },
+              "span": {
+                "start": 243,
+                "end": 292
+              }
+            },
+            {
+              "effect": "FsWrite",
+              "builtin": {
+                "module": "node:fs/promises",
+                "export": "writeFile"
+              },
+              "symbolIdentity": "2",
+              "declaration": {
+                "fileName": "examples/dogfood/corsa-workhub-builtins.ts",
+                "start": 19,
+                "end": 28
+              },
+              "span": {
+                "start": 302,
+                "end": 340
+              }
+            }
+          ],
+          "span": {
+            "start": 64,
+            "end": 343
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": 1,
+          "source": "readFile(path, \"utf8\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 169,
+            "end": 191
+          }
+        },
+        {
+          "owner": 1,
+          "source": "fetch(endpoint)",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 218,
+            "end": 233
+          }
+        },
+        {
+          "owner": 1,
+          "source": "fetch(endpoint, { method: \"PUT\", body: current })",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 243,
+            "end": 292
+          }
+        },
+        {
+          "owner": 1,
+          "source": "writeFile(path, await response.text())",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 302,
+            "end": 340
+          }
+        },
+        {
+          "owner": 1,
+          "source": "response.text()",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 324,
+            "end": 339
+          }
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true,
+        "compilerRevision": "corsa-checker@Version 7.0.2"
+      },
+      "functions": [
+        {
+          "name": "synchronizeState",
+          "effects": [
+            "Fetch",
+            "FsRead",
+            "FsWrite",
+            "Net"
+          ]
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": "synchronizeState",
+          "source": "readFile(path, \"utf8\")",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 169,
+          "end": 191
+        },
+        {
+          "owner": "synchronizeState",
+          "source": "fetch(endpoint)",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 218,
+          "end": 233
+        },
+        {
+          "owner": "synchronizeState",
+          "source": "fetch(endpoint, { method: \"PUT\", body: current })",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 243,
+          "end": 292
+        },
+        {
+          "owner": "synchronizeState",
+          "source": "writeFile(path, await response.text())",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 302,
+          "end": 340
+        },
+        {
+          "owner": "synchronizeState",
+          "source": "response.text()",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 324,
+          "end": 339
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "run",
+          "kind": "function",
+          "typeRepr": "(enabled: boolean) => Promise<void>",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 115,
+            "end": 276
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "async",
+          "fileName": "conditional.ts",
+          "span": {
+            "start": 28,
+            "end": 66
+          }
+        }
+      ],
+      "promiseObservations": [
+        {
+          "owner": 1,
+          "source": "Promise.resolve(1)",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": true,
+          "controlConditions": [
+            {
+              "id": "run@if:169",
+              "expected": true
+            }
+          ],
+          "controlPaths": [
+            [
+              {
+                "id": "run@if:169",
+                "expected": true
+              }
+            ]
+          ],
+          "span": {
+            "start": 240,
+            "end": 258
+          }
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": 1,
+          "binding": "resource",
+          "ownerAsync": true,
+          "asynchronous": true,
+          "conditional": true,
+          "controlConditions": [
+            {
+              "id": "run@if:169",
+              "expected": true
+            }
+          ],
+          "controlPaths": [
+            [
+              {
+                "id": "run@if:169",
+                "expected": true
+              }
+            ]
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@182",
+          "scopeDepth": 1,
+          "scopeEnd": 268,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 1,
+          "protocolKind": "async",
+          "span": {
+            "start": 206,
+            "end": 223
+          }
+        }
+      ],
+      "disposals": [
+        {
+          "owner": 1,
+          "binding": "resource",
+          "order": 0,
+          "asynchronous": true,
+          "scopeId": "run@182",
+          "scopeDepth": 1,
+          "disposalPoint": 268,
+          "failureKind": "reject",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "reject",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": 1,
+          "payload": {
+            "kind": "error",
+            "errorType": "unknown",
+            "source": "dispose:resource"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "run",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "async",
+          "fileName": "conditional.ts",
+          "start": 28,
+          "end": 66
+        }
+      ],
+      "promiseObservations": [
+        {
+          "owner": "run",
+          "source": "Promise.resolve(1)",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": true,
+          "controlConditions": [
+            {
+              "id": "run@if:169",
+              "expected": true
+            }
+          ],
+          "controlPaths": [
+            [
+              {
+                "id": "run@if:169",
+                "expected": true
+              }
+            ]
+          ],
+          "start": 240,
+          "end": 258
+        }
+      ],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": "run",
+          "binding": "resource",
+          "ownerAsync": true,
+          "asynchronous": true,
+          "conditional": true,
+          "controlConditions": [
+            {
+              "id": "run@if:169",
+              "expected": true
+            }
+          ],
+          "controlPaths": [
+            [
+              {
+                "id": "run@if:169",
+                "expected": true
+              }
+            ]
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@182",
+          "scopeDepth": 1,
+          "scopeEnd": 268,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 1,
+          "protocolKind": "async",
+          "start": 206,
+          "end": 223
+        }
+      ],
+      "disposals": [
+        {
+          "owner": "run",
+          "binding": "resource",
+          "order": 0,
+          "asynchronous": true,
+          "scopeId": "run@182",
+          "scopeDepth": 1,
+          "disposalPoint": 268,
+          "failureKind": "reject",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "reject",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": "run",
+          "payload": {
+            "kind": "error",
+            "errorType": "unknown",
+            "source": "dispose:resource"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "run",
+          "kind": "function",
+          "typeRepr": "() => number",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 0,
+            "end": 34
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "run",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "pure",
+          "kind": "function",
+          "typeRepr": "(value: number) => number",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 27,
+            "end": 79
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [
+        {
+          "owner": 1,
+          "text": "/* uneffect:effect none */ ",
+          "span": {
+            "start": 0,
+            "end": 27
+          }
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "pure",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "run",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 270,
+            "end": 350
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "sync",
+          "fileName": "suppressed.ts",
+          "span": {
+            "start": 142,
+            "end": 169
+          }
+        },
+        {
+          "id": 2,
+          "kind": "sync",
+          "fileName": "suppressed.ts",
+          "span": {
+            "start": 234,
+            "end": 261
+          }
+        }
+      ],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": 1,
+          "binding": "first",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "scopeEnd": 350,
+          "catchesFailure": false,
+          "disposalFailureType": "FirstError",
+          "protocolSymbol": 1,
+          "protocolKind": "sync",
+          "span": {
+            "start": 300,
+            "end": 319
+          }
+        },
+        {
+          "owner": 1,
+          "binding": "second",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 1,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "scopeEnd": 350,
+          "catchesFailure": false,
+          "disposalFailureType": "SecondError",
+          "protocolSymbol": 2,
+          "protocolKind": "sync",
+          "span": {
+            "start": 327,
+            "end": 348
+          }
+        }
+      ],
+      "disposals": [
+        {
+          "owner": 1,
+          "binding": "second",
+          "order": 0,
+          "asynchronous": false,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "disposalPoint": 350,
+          "failureKind": "throw",
+          "failureType": "SecondError",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        },
+        {
+          "owner": 1,
+          "binding": "first",
+          "order": 1,
+          "asynchronous": false,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "disposalPoint": 350,
+          "failureKind": "throw",
+          "failureType": "FirstError",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": 1,
+          "payload": {
+            "kind": "suppressed",
+            "error": {
+              "kind": "error",
+              "errorType": "FirstError",
+              "source": "dispose:first"
+            },
+            "suppressed": {
+              "kind": "error",
+              "errorType": "SecondError",
+              "source": "dispose:second"
+            }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "run",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "sync",
+          "fileName": "suppressed.ts",
+          "start": 142,
+          "end": 169
+        },
+        {
+          "id": 2,
+          "kind": "sync",
+          "fileName": "suppressed.ts",
+          "start": 234,
+          "end": 261
+        }
+      ],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": "run",
+          "binding": "first",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "scopeEnd": 350,
+          "catchesFailure": false,
+          "disposalFailureType": "FirstError",
+          "protocolSymbol": 1,
+          "protocolKind": "sync",
+          "start": 300,
+          "end": 319
+        },
+        {
+          "owner": "run",
+          "binding": "second",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 1,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "scopeEnd": 350,
+          "catchesFailure": false,
+          "disposalFailureType": "SecondError",
+          "protocolSymbol": 2,
+          "protocolKind": "sync",
+          "start": 327,
+          "end": 348
+        }
+      ],
+      "disposals": [
+        {
+          "owner": "run",
+          "binding": "second",
+          "order": 0,
+          "asynchronous": false,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "disposalPoint": 350,
+          "failureKind": "throw",
+          "failureType": "SecondError",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        },
+        {
+          "owner": "run",
+          "binding": "first",
+          "order": 1,
+          "asynchronous": false,
+          "scopeId": "run@292",
+          "scopeDepth": 0,
+          "disposalPoint": 350,
+          "failureKind": "throw",
+          "failureType": "FirstError",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": "run",
+          "payload": {
+            "kind": "suppressed",
+            "error": {
+              "kind": "error",
+              "errorType": "FirstError",
+              "source": "dispose:first"
+            },
+            "suppressed": {
+              "kind": "error",
+              "errorType": "SecondError",
+              "source": "dispose:second"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "compilerRevision": "corsa-checker@Version 7.0.2",
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true
+      },
+      "symbols": [
+        {
+          "id": 1,
+          "name": "Logger.emit",
+          "kind": "function",
+          "typeRepr": "(message: string) => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [
+            {
+              "effect": "Console",
+              "builtin": {
+                "module": "global",
+                "export": "console.log"
+              },
+              "symbolIdentity": "7",
+              "declaration": {
+                "fileName": "/users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64/lib/lib.dom.d.ts",
+                "start": 133867,
+                "end": 2349323
+              },
+              "span": {
+                "start": 111,
+                "end": 131
+              }
+            }
+          ],
+          "span": {
+            "start": 81,
+            "end": 133
+          }
+        },
+        {
+          "id": 2,
+          "name": "main",
+          "kind": "function",
+          "typeRepr": "(logger: Logger) => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 208,
+            "end": 258
+          }
+        }
+      ],
+      "calls": [
+        {
+          "caller": 2,
+          "callee": 1,
+          "overloadIndex": null,
+          "callbackTiming": "none",
+          "span": {
+            "start": 240,
+            "end": 256
+          }
+        }
+      ],
+      "trivia": [
+        {
+          "owner": 1,
+          "text": "/* uneffect:effect Console */",
+          "span": {
+            "start": 41,
+            "end": 70
+          }
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true,
+        "compilerRevision": "corsa-checker@Version 7.0.2"
+      },
+      "functions": [
+        {
+          "name": "Logger.emit",
+          "effects": [
+            "Console"
+          ]
+        },
+        {
+          "name": "main",
+          "effects": [
+            "Console"
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "caller": "main",
+          "callee": "Logger.emit",
+          "callbackTiming": "none"
+        }
+      ],
+      "orderedEvents": [
+        {
+          "kind": "call",
+          "caller": "main",
+          "callee": "Logger.emit",
+          "start": 240,
+          "end": 256
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "run",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 414,
+            "end": 490
+          }
+        },
+        {
+          "id": 2,
+          "name": "invalid",
+          "kind": "function",
+          "typeRepr": "() => void",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 497,
+            "end": 550
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "sync",
+          "fileName": "protocol.ts",
+          "span": {
+            "start": 28,
+            "end": 52
+          }
+        },
+        {
+          "id": 2,
+          "kind": "sync",
+          "fileName": "protocol.ts",
+          "span": {
+            "start": 186,
+            "end": 208
+          }
+        }
+      ],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": 1,
+          "binding": "first",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "scopeEnd": 490,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 1,
+          "protocolKind": "sync",
+          "span": {
+            "start": 444,
+            "end": 458
+          }
+        },
+        {
+          "owner": 1,
+          "binding": "second",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 1,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "scopeEnd": 490,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 2,
+          "protocolKind": "sync",
+          "span": {
+            "start": 466,
+            "end": 488
+          }
+        },
+        {
+          "owner": 2,
+          "binding": "fake",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "invalid@523",
+          "scopeDepth": 0,
+          "scopeEnd": 550,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": null,
+          "protocolKind": null,
+          "span": {
+            "start": 531,
+            "end": 548
+          }
+        }
+      ],
+      "disposals": [
+        {
+          "owner": 1,
+          "binding": "second",
+          "order": 0,
+          "asynchronous": false,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "disposalPoint": 490,
+          "failureKind": "throw",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        },
+        {
+          "owner": 1,
+          "binding": "first",
+          "order": 1,
+          "asynchronous": false,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "disposalPoint": 490,
+          "failureKind": "throw",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        },
+        {
+          "owner": 2,
+          "binding": "fake",
+          "order": 0,
+          "asynchronous": false,
+          "scopeId": "invalid@523",
+          "scopeDepth": 0,
+          "disposalPoint": 550,
+          "failureKind": "throw",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": 1,
+          "payload": {
+            "kind": "suppressed",
+            "error": {
+              "kind": "error",
+              "errorType": "unknown",
+              "source": "dispose:first"
+            },
+            "suppressed": {
+              "kind": "error",
+              "errorType": "unknown",
+              "source": "dispose:second"
+            }
+          }
+        },
+        {
+          "owner": 2,
+          "payload": {
+            "kind": "error",
+            "errorType": "unknown",
+            "source": "dispose:fake"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "run",
+          "effects": []
+        },
+        {
+          "name": "invalid",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [
+        {
+          "id": 1,
+          "kind": "sync",
+          "fileName": "protocol.ts",
+          "start": 28,
+          "end": 52
+        },
+        {
+          "id": 2,
+          "kind": "sync",
+          "fileName": "protocol.ts",
+          "start": 186,
+          "end": 208
+        }
+      ],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [
+        {
+          "owner": "run",
+          "binding": "first",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "scopeEnd": 490,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 1,
+          "protocolKind": "sync",
+          "start": 444,
+          "end": 458
+        },
+        {
+          "owner": "run",
+          "binding": "second",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 1,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "scopeEnd": 490,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": 2,
+          "protocolKind": "sync",
+          "start": 466,
+          "end": 488
+        },
+        {
+          "owner": "invalid",
+          "binding": "fake",
+          "ownerAsync": false,
+          "asynchronous": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "acquisitionIndex": 0,
+          "scopeId": "invalid@523",
+          "scopeDepth": 0,
+          "scopeEnd": 550,
+          "catchesFailure": false,
+          "disposalFailureType": "unknown",
+          "protocolSymbol": null,
+          "protocolKind": null,
+          "start": 531,
+          "end": 548
+        }
+      ],
+      "disposals": [
+        {
+          "owner": "run",
+          "binding": "second",
+          "order": 0,
+          "asynchronous": false,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "disposalPoint": 490,
+          "failureKind": "throw",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        },
+        {
+          "owner": "run",
+          "binding": "first",
+          "order": 1,
+          "asynchronous": false,
+          "scopeId": "run@436",
+          "scopeDepth": 0,
+          "disposalPoint": 490,
+          "failureKind": "throw",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        },
+        {
+          "owner": "invalid",
+          "binding": "fake",
+          "order": 0,
+          "asynchronous": false,
+          "scopeId": "invalid@523",
+          "scopeDepth": 0,
+          "disposalPoint": 550,
+          "failureKind": "throw",
+          "failureType": "unknown",
+          "catchesFailure": false,
+          "escapingFailure": "throw",
+          "exits": [
+            "normal",
+            "return",
+            "throw",
+            "reject"
+          ]
+        }
+      ],
+      "suppressedErrors": [
+        {
+          "owner": "run",
+          "payload": {
+            "kind": "suppressed",
+            "error": {
+              "kind": "error",
+              "errorType": "unknown",
+              "source": "dispose:first"
+            },
+            "suppressed": {
+              "kind": "error",
+              "errorType": "unknown",
+              "source": "dispose:second"
+            }
+          }
+        },
+        {
+          "owner": "invalid",
+          "payload": {
+            "kind": "error",
+            "errorType": "unknown",
+            "source": "dispose:fake"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false
+      },
+      "compilerRevision": "typescript-reference@6.0.3",
+      "symbols": [
+        {
+          "id": 1,
+          "name": "run",
+          "kind": "function",
+          "typeRepr": "() => Promise<number>",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 54,
+            "end": 151
+          }
+        }
+      ],
+      "calls": [],
+      "trivia": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": 1,
+          "source": "pending",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "span": {
+            "start": 136,
+            "end": 143
+          }
+        }
+      ],
+      "rejectionOwnership": [
+        {
+          "owner": 1,
+          "binding": "pending",
+          "status": "observed",
+          "observations": [
+            "await"
+          ],
+          "span": {
+            "start": 98,
+            "end": 114
+          }
+        }
+      ],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "typescript-reference",
+        "checkerBacked": false,
+        "compilerRevision": "typescript-reference@6.0.3"
+      },
+      "functions": [
+        {
+          "name": "run",
+          "effects": []
+        }
+      ],
+      "calls": [],
+      "orderedEvents": [],
+      "protocolSymbols": [],
+      "promiseObservations": [
+        {
+          "owner": "run",
+          "source": "pending",
+          "observation": "await",
+          "catchesRejection": false,
+          "conditional": false,
+          "controlConditions": [],
+          "controlPaths": [
+            []
+          ],
+          "start": 136,
+          "end": 143
+        }
+      ],
+      "rejectionOwnership": [
+        {
+          "owner": "run",
+          "binding": "pending",
+          "status": "observed",
+          "observations": [
+            "await"
+          ],
+          "start": 98,
+          "end": 114
+        }
+      ],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  },
+  {
+    "input": {
+      "schemaVersion": 8,
+      "fileId": 1,
+      "compilerRevision": "corsa-checker@Version 7.0.2",
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true
+      },
+      "symbols": [
+        {
+          "id": 1,
+          "name": "parse",
+          "kind": "function",
+          "typeRepr": "{ (value: string): string; (value: number): number; }",
+          "overloads": [
+            "(value: string): string",
+            "(value: number): number"
+          ],
+          "effectParameters": [],
+          "inferredEffects": [
+            {
+              "effect": "Console",
+              "builtin": {
+                "module": "global",
+                "export": "console.log"
+              },
+              "symbolIdentity": "5",
+              "declaration": {
+                "fileName": "/users/mz/ghq/github.com/mizchi/neo-effect/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64/lib/lib.dom.d.ts",
+                "start": 133867,
+                "end": 2349323
+              },
+              "span": {
+                "start": 230,
+                "end": 248
+              }
+            }
+          ],
+          "span": {
+            "start": 162,
+            "end": 283
+          }
+        },
+        {
+          "id": 2,
+          "name": "main",
+          "kind": "function",
+          "typeRepr": "() => string",
+          "overloads": [],
+          "effectParameters": [],
+          "inferredEffects": [],
+          "span": {
+            "start": 299,
+            "end": 336
+          }
+        }
+      ],
+      "calls": [
+        {
+          "caller": 2,
+          "callee": 1,
+          "overloadIndex": 0,
+          "callbackTiming": "none",
+          "span": {
+            "start": 324,
+            "end": 334
+          }
+        }
+      ],
+      "trivia": [],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    },
+    "expected": {
+      "schemaVersion": 8,
+      "provenance": {
+        "producer": "corsa-checker",
+        "checkerBacked": true,
+        "compilerRevision": "corsa-checker@Version 7.0.2"
+      },
+      "functions": [
+        {
+          "name": "parse",
+          "effects": [
+            "Console"
+          ]
+        },
+        {
+          "name": "main",
+          "effects": [
+            "Console"
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "caller": "main",
+          "callee": "parse",
+          "callbackTiming": "none"
+        }
+      ],
+      "orderedEvents": [
+        {
+          "kind": "call",
+          "caller": "main",
+          "callee": "parse",
+          "start": 324,
+          "end": 334
+        }
+      ],
+      "protocolSymbols": [],
+      "promiseObservations": [],
+      "rejectionOwnership": [],
+      "resourceScopes": [],
+      "disposals": [],
+      "suppressedErrors": []
+    }
+  }
+]

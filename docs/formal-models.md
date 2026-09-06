@@ -5,7 +5,7 @@ The unordered `effect` declaration answers what may happen. Async invalidation, 
 - `EffectSet`: an unordered may-effect upper bound.
 - `EffectTrace`: phase-tagged `Read`, `Mutate`, `Invalidate`, `External`, and `Suspend` events.
 
-`EffectTrace::may_effects()` erases order and projects to `EffectSet`. The reverse operation is impossible because the set has discarded temporal information.
+Projecting a trace to a may-effect set erases order. The reverse operation is impossible because the set has discarded temporal information.
 
 ## Cache validity
 
@@ -16,7 +16,7 @@ A fact derived from reading region `r` cannot be reused after:
 
 Region overlap is symmetric ancestor/descendant overlap. A suspension does not invalidate every local fact. Escape analysis supplies the set of regions that may be shared with concurrent work; uncertainty is handled conservatively.
 
-The Rust prototype implements this rule as `EffectTrace::cache_reusable(region, from, to)`.
+The invalidation model below retains this rule; the former Rust `EffectTrace` prototype has been retired.
 
 ## Quint regression model
 
@@ -88,7 +88,7 @@ every definite transfer invalidates facts derived from the source region
 a clone without transfer leaves source ownership available
 ```
 
-This model is implemented by the TypeScript ownership trace and Rust neutral event IR. Quint confirms the positive clone/shared trace and finds the deliberately broken transfer-then-read trace.
+This model is implemented by the TypeScript ownership trace. Quint confirms the positive clone/shared trace and finds the deliberately broken transfer-then-read trace.
 
 ## Function-summary composition
 
@@ -220,7 +220,7 @@ predicates, multiset `permutation`, frame conditions such as
 composition. Until those obligations exist, the executable regression tests
 establish examples only; they are not a proof for arbitrary arrays.
 
-`generateOwnershipQuint` emits the same ordered events as a safety model. The positive clone/shared trace preserves `ownershipSafe`; the deliberately broken transfer-then-read trace is a fixed-seed negative control that Quint confirms violates it. The Rust neutral event IR independently locks the same transition rule.
+`generateOwnershipQuint` emits the same ordered events as a safety model. The positive clone/shared trace preserves `ownershipSafe`; the deliberately broken transfer-then-read trace is a fixed-seed negative control that Quint confirms violates it. The TypeScript ownership tests retain the transition checks.
 
 ## Z3 boundary
 
@@ -291,7 +291,7 @@ derived from the static thenable type.
 | Claim | Source of truth | Machine status | Regression lock |
 |---|---|---|---|
 | A caught synchronous throw does not escape | Uneffect effect semantics | Implemented | TypeScript tests |
-| Cache facts do not survive overlapping invalidation | Temporal IR design | Implemented | Rust tests + Quint model |
+| Cache facts do not survive overlapping invalidation | Temporal IR design | Implemented | Quint model + TypeScript invalidation tests |
 | Broken invalidation is observable | Quint model | Confirmed counterexample | Fixed-seed negative model |
-| Transferred values cannot be reused | HTML ownership semantics + Uneffect design | Implemented | TypeScript/Rust checks + Quint negative model |
-| Scoped glob actuals are subsets of declarations | Scoped-effect design | Implemented for the documented path/URL/permission subset | TypeScript/Rust containment witnesses and negative tests |
+| Transferred values cannot be reused | HTML ownership semantics + Uneffect design | Implemented | TypeScript checks + Quint negative model |
+| Scoped glob actuals are subsets of declarations | Scoped-effect design | Implemented for the documented path/URL/permission subset | TypeScript containment witnesses and negative tests |

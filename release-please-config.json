@@ -7,11 +7,6 @@
       "package-name": "@mizchi/uneffect",
       "extra-files": [
         {
-          "type": "toml",
-          "path": "crates/uneffect-core/Cargo.toml",
-          "jsonpath": "$.package.version"
-        },
-        {
           "type": "generic",
           "path": "src/evidence.ts"
         },

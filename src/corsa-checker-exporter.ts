@@ -118,7 +118,7 @@ export const corsaCheckerFactRule = createRule({
   meta: {
     type: "problem",
     docs: {
-      description: "Export Corsa checker facts for Uneffect's Rust frontend consumer.",
+      description: "Export Corsa checker facts for Uneffect's semantic fact consumer.",
       requiresTypeChecking: true,
     },
     messages: { internal: "Uneffect Corsa fact export failed." },

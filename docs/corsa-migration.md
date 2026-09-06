@@ -69,9 +69,9 @@ the default.
    application's TypeScript dependency resolution. Different projects can keep
    their own compiler versions while Uneffect records the compiler used for
    evidence.
-2. **A Rust-oriented execution path.** Compact semantic facts can flow directly
-   into the existing Rust normalization and lattice code. This avoids moving a
-   growing analyzer entirely through JavaScript object graphs.
+2. **A maintained compiler binding.** `@corsa-bind/napi` owns the native Corsa
+   connection. Uneffect consumes its semantic facts in TypeScript without a
+   local Rust crate or Cargo subprocess.
 3. **Startup and memory potential.** The direct worker is already materially
    cheaper than the current temporary-project bridge in a small benchmark.
    Warm batched call-site measurements are still required.

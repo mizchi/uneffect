@@ -1,10 +1,14 @@
 # Native frontend integration
 
+The local Rust prototype has been retired. Corsa binding remains provided by
+`@corsa-bind/napi`; Uneffect normalization runs in TypeScript. See
+[the migration record](./rust-retirement.md) for preserved checks and evidence limits.
+
 Uneffect's implementation layer is replaceable; its frontend and proof contracts are versioned.
 
 ## Corsa interchange
 
-The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v8 consumes:
+The internal TypeScript `parseCorsaSemanticFacts` and `normalizeCorsaFacts` boundary consumes schema v8:
 
 - mandatory fact provenance (`typescript-reference` or `corsa-checker`) and a
   consistent `checkerBacked` flag,
@@ -25,11 +29,11 @@ The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`.
 - disposal protocol symbols as stable IDs with a `sync`/`async` role, and
   resource-to-protocol edges validated for existence and matching role.
 
-Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the semantic-fact boundary that a Corsa integration must supply; Rust does not rediscover source spellings.
+The consumer attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the semantic-fact boundary that a Corsa integration must supply; the consumer does not rediscover source spellings.
 
 `compareUneffectFrontends` exercises that boundary end to end. The TypeScript
-reference side emits schema-v8 mapper records, the Rust
-`uneffect-corsa-normalize` binary consumes them, and both sides are compared as
+reference side emits schema-v8 mapper records, an independent TypeScript
+fact consumer normalizes the selected input, and both sides are compared as
 the same normalized functions, transitive inferred effect sets, resolved local
 call edges, source-ordered call events, Promise ownership records, resource
 scopes, disposal order, and nested resource failure payloads. UTF-16 offsets
@@ -40,7 +44,7 @@ separates `checkerMetadataEquivalent`, `semanticEquivalent`, and overall
 checker-backed overload/effect atoms independently of neutral-IR domains that
 the Corsa exporter has not implemented. It must not be read as full frontend
 parity. With `requireCorsaCheckerFacts: true`, reference facts fail closed
-even when Rust normalization is semantically equal. The mapper records are
+even when fact normalization is semantically equal. The mapper records are
 currently produced by the TypeScript reference adapter, not by a linked
 typescript-go/Corsa build. The reference adapter proves that aliases of
 the standard symbols resolve through TypeChecker identity while same-spelled
@@ -51,7 +55,7 @@ user properties do not become protocols.
 The optional `@mizchi/uneffect/experimental/corsa` entry point runs an Oxlint JS plugin
 through `corsa-oxlint`. The visitor refuses parser services without full type
 information, reads Corsa symbol identity and type text, emits schema-v8 facts
-with `producer: corsa-checker`, and compares them through the Rust consumer:
+with `producer: corsa-checker`, and compares them through the fact consumer:
 
 ```ts
 import { compareUneffectFrontends } from "@mizchi/uneffect";
@@ -251,7 +255,7 @@ file extensions, return generated TypeScript plus source-span mappings, and do
 not expose the checker graph for ordinary `.ts` input. The intended native path
 is instead the `corsa-bind` type-aware Oxlint bridge: it collects compact node,
 type-text, property-name, and symbol facts from a pinned Corsa checker and sends
-them to Rust native rules. Expanding the implemented schema-v8 exporter from
+them to Uneffect semantic rules. Expanding the implemented schema-v8 exporter from
 the restricted slice above to the whole neutral IR remains the P6 production
 integration task. Content Mappers may later project an Uneffect
 foreign file format, but are neither required nor sufficient for TypeScript
@@ -265,7 +269,7 @@ Function-typed parameters are effect parameters. Direct invocation is inline; kn
 
 ## Published surfaces
 
-The contract layers — CLI surface, evidence schema, builtin registry, Corsa JSON schema, optimizer obligations, and Rust crate — are versioned at `0.3.0`, which is what an evidence artifact records as `uneffectVersion`. The npm package and Rust crate use the same release version. `just package-check` executes the real npm lifecycle, installs and probes its tarball from fresh consumers, retains an exact contents/checksum manifest, and runs the Cargo package check. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
+The implementation version is `0.3.0`, recorded as `uneffectVersion`; CLI, evidence, builtin, Corsa JSON, and optimizer contracts retain their documented schema identities. `just package-check` executes the real npm lifecycle, installs and probes its tarball from fresh consumers, and retains an exact contents/checksum manifest. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
 
 ## CI tiers
 
