@@ -5,7 +5,6 @@ import { generateQuint, generateSmtLib } from "../spec/spec-backends.js";
 import { parseSpec } from "../spec/spec-ir.js";
 import { lintSpecWithZ3 } from "../spec/spec-lint.js";
 import { generateComposedQuint, parseTemporalComposition } from "../spec/temporal-compose.js";
-import { generateTemporalModel } from "../spec/temporal-model.js";
 
 const backends = ["ir", "lint", "z3", "quint", "compose", "temporal"] as const;
 type Backend = typeof backends[number];
@@ -112,6 +111,7 @@ export const specCommand: CliCommand = {
       return exitCode.success;
     }
     if (backend === "temporal") {
+      const { generateTemporalModel } = await import("../spec/temporal-model.js");
       const selectedRuntime = runtime ?? "web";
       io.out(generateTemporalModel({
         fileName,

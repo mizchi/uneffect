@@ -1,5 +1,6 @@
 import type { DiagnosticNote } from "../support/diagnostics.js";
-import { parseLogicExpression, type InvariantObligation, type LogicExpression } from "./invariant-ir.js";
+import { parseLogicExpression } from "./logic.js";
+import type { InvariantObligation, LogicExpression } from "./logic-contracts.js";
 
 /** Exact value domain of the contract IR: rationals cover Int and Real models without rounding. */
 export type LogicValue = { kind: "number"; numerator: bigint; denominator: bigint } | { kind: "boolean"; value: boolean };

@@ -1,6 +1,6 @@
 import type { InvariantSpec, TemporalSpec } from "./spec-ir.js";
 import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
-import { generateObligationSmt, obligationFromSpec } from "../contracts/invariant-ir.js";
+import { generateObligationSmt, obligationFromSpec } from "../contracts/obligations.js";
 
 export function generateSmtLib(spec: InvariantSpec): string {
   return generateObligationSmt(obligationFromSpec(spec));

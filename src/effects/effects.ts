@@ -25,7 +25,8 @@ export interface EffectDiagnostic {
   message: string;
   notes?: DiagnosticNote[];
 }
-export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
+import type { EvidenceStatus } from "../evidence/status.js";
+export type { EvidenceStatus } from "../evidence/status.js";
 export type EffectUnknownReasonCode =
   | "typescript-errors"
   | "unknown-callback-timing"

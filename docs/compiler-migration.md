@@ -1,0 +1,270 @@
+# Corsa/Oxc migration
+
+The target is to remove the JavaScript TypeScript compiler from production
+analysis. Oxc owns syntax; Corsa owns authenticated symbols and types. The
+implementation remains TypeScript. The native TypeScript compiler used by
+Corsa and the development compiler are separate from the JavaScript
+`@typescript/typescript6` dependency being removed.
+
+## Available without the JavaScript compiler
+
+| Entry or command | Implementation |
+| --- | --- |
+| `/cfg`, `/workflow`, `/impact` | Language-independent graph contracts and solvers. |
+| `/corsa/api` | Native Corsa semantic queries. |
+| `/experimental/corsa/callables` | Native overload selection, generic substitution, constructor results, inferred declaration returns, complete overload sets, assignability, shorthand value symbols, and snapshot diagnostics. |
+| `/experimental/lint` | Source-independent prerequisite analysis. |
+| `/experimental/lint/corsa`, `cfg-lint` | Oxc CFG extraction and Corsa symbol/type queries, with native diagnostics. |
+| `/experimental/module-order/corsa`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
+| `/spec` | Definition helpers, separated from DSL parsing and linking. |
+| `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, and native contract/refinement callable linking. |
+| `/experimental/instrument`, `instrument` (without ownership options) | Oxc parameter assertion insertion with restricted Valibot schema expressions. |
+| `spec ir`, `spec lint`, `spec z3`, `spec quint`, `spec compose` | Specification analysis through the Oxc path. Z3-backed lint still needs its solver. |
+
+The default `check` command already uses the bounded Corsa/Oxc frontend.
+Options selecting proof domains that have not been migrated still use the
+compatibility Program implementation. `spec temporal` also retains that
+implementation for JavaScript async/resource observations.
+
+```ts
+import { parseSpec, generateQuint } from "@mizchi/uneffect/experimental/spec"
+
+const specification = parseSpec("protocol.ts", source)
+const quint = generateQuint("protocol", specification.temporal)
+```
+
+These parsing and generation APIs do not certify implementation bodies or
+add checker evidence. Existing declared temporal summaries remain trusted
+contracts with the existing composition limits. Generating SMT is distinct
+from discharging an obligation.
+
+## Boundaries established by this migration
+
+- `frontends/oxc/source.ts` owns validated syntax, declaration-leading comments,
+  export spans, child traversal, and UTF-16 positions, including CRLF and Unicode.
+- `frontends/oxc/dsl.ts` owns static property/import parsing and restricted DSL
+  callbacks. All four DSL source modules have no Program imports;
+  the existing adapters retain their optional checker authentication.
+- `frontends/oxc/expression.ts` accepts exactly one expression and rejects source
+  that escapes the synthetic parser wrapper.
+- `contracts/logic-contracts.ts` owns scalar and obligation types without AST or
+  checker objects. `logic.ts` parses restricted scalar expressions through Oxc;
+  `obligations.ts` constructs stable obligation identities and emits SMT.
+- `modules/module-order-core.ts` owns dependency ordering and cycle evidence;
+  `module-order-control-flow.ts` owns the bounded conditional-await proof. Both
+  accept neutral source facts shared by the legacy and native adapters.
+- `evidence/status.ts` owns the shared evidence-status contract without importing
+  an effect analyzer.
+- `invariant-ir.ts` retains the Program-specific lowering and compatibility
+  re-exports. Existing public declarations and obligation IDs remain unchanged.
+
+Parser recovery is an error. Temporal optional chaining, async/default/rest
+lambda parameters, prototype setters, and extra declarations in expression or
+type inputs are rejected because their semantics are absent from the IR. Some
+of these were silently accepted by the former parser; they are deliberate
+corrections rather than expanded proof support.
+
+## Remaining migration
+
+The current source inventory contains 66 files referring directly to
+`@typescript/typescript6` (including type-only references). The aggregate root
+and `/experimental` APIs still load legacy analyzers, so importing a new
+independent entry is necessary when the JavaScript compiler is absent.
+
+The next domains are:
+
+1. Connect Program-backed builtin and callable consumers to the native signature
+   facts in `/experimental/corsa/callables`, replacing AST objects in frontend
+   contracts with source positions, symbol identities, and neutral facts.
+2. Workspace module composition and callers of the legacy module Program API.
+   Standalone v1/v2 module extraction has moved to Corsa/Oxc.
+3. Contract implementation lowering, effect propagation, ownership/resources,
+   async/typed-array/refinement analysis, and workspace composition.
+4. DSL linking/authentication and source transformation/instrumentation.
+5. Move remaining compatibility APIs out of the default dependency graph, then
+   remove the optional TypeScript 6 peer once its production consumers are gone.
+
+Do not replace missing semantic evidence with name matching, silently fall back
+to the JavaScript compiler, or remove an existing checker before its supported
+fragment and negative controls have migrated.
+
+## Verification
+
+`just spec-frontend-check` covers the frozen pre-migration specification,
+expression, type, scalar-contract, obligation-ID, SMT, and Quint outputs, plus
+unsupported-input regressions. The frozen data is in
+`test/fixtures/oxc-spec-parity.json`; do not regenerate it from the new parser.
+
+The CLI regression blocks both JavaScript TypeScript package imports and runs
+`ir`, `quint`, `compose`, and `z3`. Installed-package smoke tests repeat that
+check for the published `/experimental/spec` entry. Existing contract/Z3 and
+temporal/Quint tests validate solver results separately from generation parity.
+
+`just module-order-check` compares native and Program artifacts for imports,
+cycles, top-level await, Promise launches, and conditional CFG proofs. The CLI
+and new async entry use Corsa/Oxc; `/module-order` retains its synchronous
+`ts.Program` contract. Native compiler version and option digest are recorded
+as native metadata, so those fields intentionally differ from Program output.
+`--project` selects consumer compiler options; without it, `module-order` uses
+ES2024/NodeNext and no ambient package types. Native errors retain
+`typescript-error` evidence, with point spans because native diagnostics do not
+provide token lengths. Missing tools, invalid syntax rejected by Oxc, and files
+outside the project fail the command rather than produce a positive artifact.
+
+## Typed DSL source and identity APIs
+
+`/experimental/spec` also exports `parseTemporalDsl`, `parseContractDsl`,
+`resolveTemporalDslSourceLink`, and `prepareContractDslSources`. These interpret
+trusted declarative source; source linking alone does not authenticate helper
+imports or prove that an implementation matches a contract. Clause text, order,
+and UTF-16 provenance are covered by the frozen pre-migration
+`test/fixtures/oxc-dsl-parity.json` fixture.
+
+`validateCorsaDslHelperIdentities(frontend, fileName, source, kind)` authenticates
+`"temporal"` or `"contract"` value-import helpers using Corsa alias targets and
+this package's actual authoring declaration paths. Matching a helper name or
+file basename is insufficient. The caller supplies an open Corsa snapshot and
+matching source text. This narrow check does not run compiler diagnostics or
+validate contract implementation signatures; those remain a separate boundary.
+
+`prepareCorsaContractDslLinks({ configFile, files, ...frontendOptions })` performs
+that boundary through `/experimental/spec`. It checks exact source text against
+one Corsa snapshot, authenticates helpers and numeric brands, and matches the
+implementation's parameter names and numeric/boolean domains to the DSL. Native
+intrinsic type identity after literal widening identifies number/boolean;
+`Nat`/`Float` require this package's runtime declaration or its verifier's owned
+package contract. Same-named types in unrelated modules are rejected. All
+project diagnostics are checked on the same snapshot, and `noCheck` projects
+are rejected. The result retains generated clauses and source provenance; this
+does not prove that the implementation satisfies those clauses.
+
+The native and Program adapters share Oxc function attachment/parameter checks
+and domain comparison. Program consumers in the main verifier still perform
+body analysis through the legacy compiler. `just corsa-contract-check` tests
+native linking, type/identity failures, source drift, and compiler-free loading;
+the package smoke repeats linking against installed declarations.
+
+DSL parsing rejects async callbacks, default/rest/renamed destructuring,
+optional helper calls, type-only helpers used as values, duplicate/static-key
+violations, prototype setters, and unknown contract sections. Text that can escape a generated
+annotation comment is rejected. Exported type declarations remain supported.
+The legacy Program API consumes the same Oxc parser and retains its signature
+and helper checks. `just spec-frontend-check` covers the new paths and an
+installed-package probe exercises them with JavaScript compiler imports blocked.
+
+Capability and refinement source APIs now use the same Oxc boundary:
+`parseCapabilityDsl`, `parseCapabilityDslWithSchemas`,
+`prepareCapabilityDslSources`, `parseRefinementDsl`, and
+`resolveRefinementDslSourceLink`. Local Effect schemas and their generated
+annotations remain project-local; refinement callable names, projections, runtime
+identities, and v1 binding manifests retain their shapes. Binding manifest types
+live in `refinement/binding-contracts.ts`, without importing body analyzers.
+
+Corsa helper authentication also accepts `"capability"` and `"refinement"`.
+It authenticates authoring helpers, not the user callables referenced by a
+refinement definition. Source APIs alone make no callable or body proof claim.
+`test/fixtures/oxc-capability-refinement-parity.json` freezes the former parser's
+outputs, including schema maps serialized as entry arrays. Optional helpers,
+recovered syntax, duplicate bindings, unknown schema fields, and annotation
+escapes are rejected. Builtin literal atoms containing ` | ` remain whole.
+
+`resolveCorsaRefinementDslLink({ configFile, implementationFile, files })` checks
+refinement callables in one native snapshot and returns the existing v1 binding
+manifest. It requires exactly one signature per callable and a runtime parameter;
+`create` input/result, `observe`, actions, and invariants must agree through
+bidirectional native assignability. Invariant results must be boolean. Helpers
+must belong to this package, and callable alias targets must be declared in the
+attached implementation. Barrel imports are followed; re-exporting a foreign
+declaration from the implementation does not establish that origin.
+
+Oxc callable locations and Runtime compatibility rules are shared with the
+Program adapter. For shorthand properties, `getShorthandAssignmentValueSymbol`
+uses the native property node identity to distinguish the referenced function
+from its object property. Assignability rejects type facts from another snapshot.
+Both source files must match the native snapshot; native project diagnostics are
+checked and `noCheck` is rejected. These checks preserve structural compatibility,
+not action/invariant body proofs, projection correctness, or runtime validation.
+Those main verifier consumers still retain their Program implementations.
+`just corsa-refinement-check` covers parity, mismatched Runtime shapes, overloads,
+foreign origins, aliases, helper impostors, and JavaScript-compiler-blocked use.
+
+## Runtime parameter assertions
+
+`/experimental/instrument` exports `instrumentRuntimeAssertions` and its result
+and diagnostic types. The default `instrument` CLI loads this Oxc transform;
+ownership flags explicitly load the existing semantic analyzer and solver.
+The compatibility aggregate API re-exports the same implementation.
+
+The transform preserves original source slices, handles exported/anonymous and
+ambient declarations, and places inserted code after directive prologues and
+the hashbang. It selects an unused namespace identifier and rewrites only AST
+references to `v`, leaving schema string literals unchanged. Recovered syntax,
+expression-wrapper escapes, optional/computed schema calls, prototype access,
+callbacks, and spreads are rejected. It does not certify function bodies or
+resolve the authoring namespace by checker identity: these are explicitly
+declared runtime schemas. Generated source requires Valibot when executed.
+
+`just instrument-check` compares `test/fixtures/oxc-instrument-parity.json`
+(frozen TypeScript 6 output), checks unsupported cases, executes generated
+checks on accepted/rejected values, and verifies legacy ownership proof/cache
+behavior. Import-blocked child processes and installed-package smoke tests
+exercise the independent API and default CLI.
+
+## Native callable signatures
+
+The earlier inventory identified missing **named binding methods**, not missing
+native compiler functionality. TypeScript 7.0.2 already serves signature
+queries, and Corsa 1.13.1 can carry them through `callJson`.
+`/experimental/corsa/callables` isolates these requests behind typed methods:
+
+```ts
+import { openCorsaCallableFrontend } from "@mizchi/uneffect/experimental/corsa/callables"
+
+const frontend = await openCorsaCallableFrontend({ configFile: "tsconfig.json" })
+try {
+  const signature = frontend.getResolvedSignature(fileName, callSpan, source)
+  // signature?.declaration, .parameters, .returnType
+} finally {
+  frontend.close()
+}
+```
+
+`getResolvedSignature` accepts the full Oxc call/new range and matching snapshot
+source. It returns the native-selected overload with instantiated parameter and
+return types. `getSignatureFromDeclaration` accepts function declarations
+(including export modifiers), function expressions, and arrows; inferred
+results are supported. `getSignaturesOfTypeAtPosition` returns all signatures
+for a call or construct type; it does not select an overload by array order.
+
+The native numeric handles stay scoped to the owning snapshot. Parameter
+sub-property queries register the instantiated symbol handles before type
+lookup. A small protocol-5 decoder indexes native node IDs and declaration
+locations; Oxc still interprets syntax. It checks section bounds, node kinds,
+paths, and UTF-16 spans, and rejects unsupported protocol versions and stale
+source. It reads UTF-8 source strictly; unsupported WTF-8 lone-surrogate bytes
+fail rather than changing source coordinates. No JavaScript compiler, AST enum
+import, display-string overload inference, or name-based declaration matching
+is involved.
+
+These are resolution facts, **not well-typedness or body proofs**. Call
+`getProjectDiagnostics()` before relying on them: it obtains configuration,
+program, global, syntax, and semantic diagnostics from the owning snapshot and
+rejects `noCheck`. `getPrimitiveTypeKind`, `getTypeAliasSymbol`, and symbol queries
+let consumers check intrinsic and declaration identity without printed-type
+inference. Type and symbol query inputs must belong to the same frontend. Native
+recovery/`any` signatures with no declaration return `null`. Existing main
+analyzers have not yet been switched to this API, and `/corsa/api`'s v1
+descriptor remains unchanged.
+
+`just corsa-callable-check` compares native facts against TypeScript 6 for
+overloads, generic substitution, async functions, constructors, arrows, and
+shadowing, then tests imported declarations, malformed binary data, source
+drift, invalid ranges, and compiler-import-blocked execution. Installed-package
+smoke tests repeat overloaded resolution through the new entrypoint.
+
+The wire contract is pinned to the upstream
+[7.0.2 signature endpoints](https://github.com/microsoft/typescript-go/blob/typescript/v7.0.2/internal/api/proto.go),
+[binary layout](https://github.com/microsoft/typescript-go/blob/typescript/v7.0.2/_packages/native-preview/src/api/node/protocol.ts),
+and [native node kinds](https://github.com/microsoft/typescript-go/blob/typescript/v7.0.2/internal/ast/kind_generated.go).
+The remaining work is migrating the Program consumers onto these facts while
+retaining their diagnostic, call-effect, and proof boundaries.

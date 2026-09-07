@@ -1,4 +1,5 @@
-import ts from "@typescript/typescript6";
+import { parseOxcExpression } from "../frontends/oxc/expression.js";
+import { parseSync, type Expression, type TSType } from "oxc-parser";
 
 export type TemporalExpression =
   | { kind: "name"; name: string }
@@ -73,35 +74,36 @@ export function formatTemporalValueType(type: TemporalValueType): string {
 }
 
 export function parseTemporalValueType(source: string): TemporalValueType {
-  const file = ts.createSourceFile("temporal-type.ts", `type __Value = ${source}`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const diagnostics = (file as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
-  if (diagnostics.length > 0) throw new Error(`invalid temporal state type: ${source}`);
-  const statement = file.statements[0];
-  const convertType = (node: ts.TypeNode): TemporalValueType => {
-    if (node.kind === ts.SyntaxKind.StringKeyword) return "string";
-    if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
-      if ((node.typeName.text === "int" || node.typeName.text === "bool") && !node.typeArguments?.length) return node.typeName.text;
-      if (node.typeName.text === "Set" && node.typeArguments?.length === 1) return { kind: "set", element: convertType(node.typeArguments[0]!) };
-      if (node.typeName.text === "Map" && node.typeArguments?.length === 2) {
-        const key = convertType(node.typeArguments[0]!), value = convertType(node.typeArguments[1]!);
+  const text = `type __Value = ${source}`;
+  const file = parseSync("temporal-type.ts", text, { lang: "ts" });
+  if (file.errors.length || file.program.body.length !== 1) throw new Error(`invalid temporal state type: ${source}`);
+  const statement = file.program.body[0];
+  const convertType = (node: TSType): TemporalValueType => {
+    if (node.type === "TSStringKeyword") return "string";
+    if (node.type === "TSTypeReference" && node.typeName.type === "Identifier") {
+      const name = node.typeName.name, arguments_ = node.typeArguments?.params;
+      if ((name === "int" || name === "bool") && !arguments_?.length) return name;
+      if (name === "Set" && arguments_?.length === 1) return { kind: "set", element: convertType(arguments_[0]!) };
+      if (name === "Map" && arguments_?.length === 2) {
+        const key = convertType(arguments_[0]!), value = convertType(arguments_[1]!);
         if (key !== "int" && key !== "bool" && key !== "string") throw new Error("temporal Map keys must be int, bool, or string");
         return { kind: "map", key, value };
       }
     }
-    if (ts.isTypeLiteralNode(node)) {
+    if (node.type === "TSTypeLiteral") {
       const fields: Record<string, TemporalValueType> = {};
       for (const member of node.members) {
-        if (!ts.isPropertySignature(member) || !member.type || !member.name || !ts.isIdentifier(member.name) || member.questionToken) throw new Error("temporal records require named, required fields");
-        if (fields[member.name.text]) throw new Error(`duplicate temporal record field \`${member.name.text}\``);
-        fields[member.name.text] = convertType(member.type);
+        if (member.type !== "TSPropertySignature" || !member.typeAnnotation || member.key.type !== "Identifier" || member.optional || member.computed || member.key.name === "__proto__") throw new Error("temporal records require named, required fields");
+        if (Object.hasOwn(fields, member.key.name)) throw new Error(`duplicate temporal record field \`${member.key.name}\``);
+        Object.defineProperty(fields, member.key.name, { value: convertType(member.typeAnnotation.typeAnnotation), enumerable: true, configurable: true, writable: true });
       }
       if (Object.keys(fields).length === 0) throw new Error("temporal records require at least one field");
       return { kind: "record", fields };
     }
-    throw new Error(`unsupported temporal state type: ${node.getText(file)}`);
+    throw new Error(`unsupported temporal state type: ${text.slice(node.start, node.end)}`);
   };
-  if (!statement || !ts.isTypeAliasDeclaration(statement)) throw new Error(`unsupported temporal state type: ${source}`);
-  return convertType(statement.type);
+  if (!statement || statement.type !== "TSTypeAliasDeclaration") throw new Error(`unsupported temporal state type: ${source}`);
+  return convertType(statement.typeAnnotation);
 }
 
 export function typeCheckTemporalExpression(
@@ -244,81 +246,70 @@ export function typeCheckTemporalExpression(
   return "int";
 }
 
-function convert(node: ts.Expression): TemporalExpression {
-  if (ts.isParenthesizedExpression(node)) return convert(node.expression);
-  if (ts.isIdentifier(node)) return { kind: "name", name: node.text };
-  if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
-  if (ts.isStringLiteral(node)) return { kind: "string", value: node.text };
-  if (node.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
-  if (node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
-  if (ts.isArrayLiteralExpression(node)) return { kind: "array", elements: node.elements.map((element) => {
-    if (ts.isSpreadElement(element) || ts.isOmittedExpression(element)) throw new Error("temporal arrays do not support spread or holes");
-    return convert(element);
+function convert(node: Expression, source: string): TemporalExpression {
+  const child = (expression: Expression) => convert(expression, source);
+  if (node.type === "ParenthesizedExpression") return child(node.expression);
+  if (node.type === "Identifier") return { kind: "name", name: node.name };
+  if (node.type === "Literal") {
+    if (typeof node.value === "number" && /^\d+$/.test(String(node.value))) return { kind: "integer", value: String(node.value) };
+    if (typeof node.value === "string") return { kind: "string", value: node.value };
+    if (typeof node.value === "boolean") return { kind: "boolean", value: node.value };
+  }
+  if (node.type === "ArrayExpression") return { kind: "array", elements: node.elements.map(element => {
+    if (!element || element.type === "SpreadElement") throw new Error("temporal arrays do not support spread or holes");
+    return child(element);
   }) };
-  if (ts.isObjectLiteralExpression(node)) {
+  if (node.type === "ObjectExpression") {
     let base: TemporalExpression | undefined;
     const fields: Record<string, TemporalExpression> = {};
     for (const property of node.properties) {
-      if (ts.isSpreadAssignment(property)) {
+      if (property.type === "SpreadElement") {
         if (base) throw new Error("temporal records allow one leading spread");
         if (Object.keys(fields).length > 0) throw new Error("temporal record spread must be first");
-        base = convert(property.expression);
-      } else if (ts.isPropertyAssignment(property) && ts.isIdentifier(property.name)) {
-        fields[property.name.text] = convert(property.initializer);
-      } else if (ts.isShorthandPropertyAssignment(property)) {
-        fields[property.name.text] = { kind: "name", name: property.name.text };
-      } else {
-        throw new Error("temporal records require identifier fields and ordinary values");
-      }
+        base = child(property.argument);
+      } else if (!property.computed && !property.method && property.kind === "init" && property.key.type === "Identifier" && property.key.name !== "__proto__") {
+        Object.defineProperty(fields, property.key.name, { value: child(property.value), enumerable: true, configurable: true, writable: true });
+      } else throw new Error("temporal records require identifier fields and ordinary values");
     }
     return { kind: "record", ...(base ? { base } : {}), fields };
   }
-  if (ts.isPropertyAccessExpression(node)) return { kind: "field", receiver: convert(node.expression), name: node.name.text };
-  if (ts.isConditionalExpression(node)) return { kind: "conditional", condition: convert(node.condition), whenTrue: convert(node.whenTrue), whenFalse: convert(node.whenFalse) };
-  if (ts.isArrowFunction(node) && node.parameters.length === 1 && ts.isIdentifier(node.parameters[0]!.name) && !ts.isBlock(node.body)) {
-    return { kind: "lambda", parameter: node.parameters[0]!.name.text, body: convert(node.body) };
+  if (node.type === "MemberExpression" && !node.computed && !node.optional && node.property.type === "Identifier") return { kind: "field", receiver: child(node.object), name: node.property.name };
+  if (node.type === "ConditionalExpression") return { kind: "conditional", condition: child(node.test), whenTrue: child(node.consequent), whenFalse: child(node.alternate) };
+  if (node.type === "ArrowFunctionExpression" && !node.async && node.params.length === 1 && node.params[0]!.type === "Identifier" && node.body.type !== "BlockStatement") {
+    return { kind: "lambda", parameter: node.params[0]!.name, body: child(node.body) };
   }
-  if (ts.isCallExpression(node)) {
-    if (ts.isIdentifier(node.expression) && (node.expression.text === "Set" || node.expression.text === "Map")) return { kind: "call", name: node.expression.text, arguments: node.arguments.map(convert) };
-    if (ts.isPropertyAccessExpression(node.expression)) {
-      if (!["contains", "union", "exclude", "forall", "exists", "size", "put", "remove", "get", "getOrElse", "keys", "values"].includes(node.expression.name.text)) {
-        throw new Error(`unsupported temporal method \`${node.expression.name.text}\``);
-      }
-      return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as Extract<TemporalExpression, { kind: "method" }>["name"], arguments: node.arguments.map(convert) };
+  if (node.type === "CallExpression" && !node.optional) {
+    const args = () => node.arguments.map(argument => {
+      if (argument.type === "SpreadElement") throw new Error("unsupported temporal expression: spread argument");
+      return child(argument);
+    });
+    if (node.callee.type === "Identifier" && (node.callee.name === "Set" || node.callee.name === "Map")) return { kind: "call", name: node.callee.name, arguments: args() };
+    if (node.callee.type === "MemberExpression" && !node.callee.computed && !node.callee.optional && node.callee.property.type === "Identifier") {
+      const name = node.callee.property.name;
+      if (!["contains", "union", "exclude", "forall", "exists", "size", "put", "remove", "get", "getOrElse", "keys", "values"].includes(name)) throw new Error(`unsupported temporal method \`${name}\``);
+      return { kind: "method", receiver: child(node.callee.object), name: name as Extract<TemporalExpression, { kind: "method" }>["name"], arguments: args() };
     }
   }
-  if (ts.isPrefixUnaryExpression(node)) {
-    if (node.operator === ts.SyntaxKind.ExclamationToken) return { kind: "unary", operator: "not", operand: convert(node.operand) };
-    if (node.operator === ts.SyntaxKind.MinusToken) return { kind: "unary", operator: "negate", operand: convert(node.operand) };
+  if (node.type === "UnaryExpression") {
+    if (node.operator === "!") return { kind: "unary", operator: "not", operand: child(node.argument) };
+    if (node.operator === "-") return { kind: "unary", operator: "negate", operand: child(node.argument) };
   }
-  if (ts.isBinaryExpression(node)) {
-    if (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken) {
-      throw new Error("temporal expressions require strict equality (`===` or `!==`)");
-    }
-    const operators = new Map<ts.SyntaxKind, TemporalBinaryOperator>([
-      [ts.SyntaxKind.EqualsEqualsEqualsToken, "eq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "neq"],
-      [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
-      [ts.SyntaxKind.LessThanToken, "lt"], [ts.SyntaxKind.LessThanEqualsToken, "lte"],
-      [ts.SyntaxKind.GreaterThanToken, "gt"], [ts.SyntaxKind.GreaterThanEqualsToken, "gte"],
-      [ts.SyntaxKind.PlusToken, "add"], [ts.SyntaxKind.MinusToken, "subtract"],
-      [ts.SyntaxKind.AsteriskToken, "multiply"], [ts.SyntaxKind.SlashToken, "divide"],
-      [ts.SyntaxKind.PercentToken, "modulo"],
+  if (node.type === "BinaryExpression" || node.type === "LogicalExpression") {
+    if (node.operator === "==" || node.operator === "!=") throw new Error("temporal expressions require strict equality (`===` or `!==`)");
+    const operators = new Map<string, TemporalBinaryOperator>([
+      ["===", "eq"], ["!==", "neq"], ["&&", "and"], ["||", "or"],
+      ["<", "lt"], ["<=", "lte"], [">", "gt"], [">=", "gte"],
+      ["+", "add"], ["-", "subtract"], ["*", "multiply"], ["/", "divide"], ["%", "modulo"],
     ]);
-    const operator = operators.get(node.operatorToken.kind);
-    if (operator) return { kind: "binary", operator, left: convert(node.left), right: convert(node.right) };
+    const operator = operators.get(node.operator);
+    if (operator && node.left.type !== "PrivateIdentifier") return { kind: "binary", operator, left: child(node.left), right: child(node.right) };
   }
-  throw new Error(`unsupported temporal expression: ${node.getText()}`);
+  throw new Error(`unsupported temporal expression: ${source.slice(node.start, node.end)}`);
 }
 
 export function parseTemporalExpression(source: string): TemporalExpression {
-  const file = ts.createSourceFile("temporal.ts", `const __value = (${source})`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const diagnostics = (file as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
-  if (diagnostics.length > 0) throw new Error(`invalid temporal expression: ${source}`);
-  const statement = file.statements[0];
-  if (!statement || !ts.isVariableStatement(statement)) throw new Error(`invalid temporal expression: ${source}`);
-  const initializer = statement.declarationList.declarations[0]?.initializer;
-  if (!initializer) throw new Error(`invalid temporal expression: ${source}`);
-  return convert(initializer);
+  const parsed = parseOxcExpression(source, "temporal");
+  return convert(parsed.expression, parsed.source);
 }
 
 const quintBinary: Record<TemporalBinaryOperator, string> = {

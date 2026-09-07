@@ -1,0 +1,109 @@
+{
+  "compiler": "@typescript/typescript6@6.0.2",
+  "cases": [
+    {
+      "name": "numeric",
+      "source": "/* uneffect:assert value: Nat */\nexport function double(value: number) { return value * 2 }",
+      "result": {
+        "code": "import * as __uneffect_v from \"valibot\";\n/* uneffect:assert value: Nat */\nexport function double(value: number) {\n__uneffect_v.parse(__uneffect_v.pipe(__uneffect_v.number(), __uneffect_v.safeInteger(), __uneffect_v.minValue(0)), value); return value * 2 }",
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "schema",
+      "source": "/* uneffect:assert value: v.object({ name: v.string(), tags: v.array(v.string()) }) */\nfunction check(value: unknown) { return value }",
+      "result": {
+        "code": "import * as __uneffect_v from \"valibot\";\n/* uneffect:assert value: v.object({ name: v.string(), tags: v.array(v.string()) }) */\nfunction check(value: unknown) {\n__uneffect_v.parse(__uneffect_v.object({ name: __uneffect_v.string(), tags: __uneffect_v.array(__uneffect_v.string()) }), value); return value }",
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "anonymous",
+      "source": "/* uneffect:assert value: Int */\nexport default function(value: number) { return value }",
+      "result": {
+        "code": "import * as __uneffect_v from \"valibot\";\n/* uneffect:assert value: Int */\nexport default function(value: number) {\n__uneffect_v.parse(__uneffect_v.pipe(__uneffect_v.number(), __uneffect_v.safeInteger()), value); return value }",
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "generator",
+      "source": "/* uneffect:assert value: Float */\nexport async function* generate(value: number) { yield value }",
+      "result": {
+        "code": "import * as __uneffect_v from \"valibot\";\n/* uneffect:assert value: Float */\nexport async function* generate(value: number) {\n__uneffect_v.parse(__uneffect_v.pipe(__uneffect_v.number(), __uneffect_v.finite()), value); yield value }",
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "parameters",
+      "source": "/* uneffect:assert x: Int */\n/* uneffect:assert values: v.array(v.number()) */\nfunction f(x = 1, ...values: number[]) { return values }",
+      "result": {
+        "code": "import * as __uneffect_v from \"valibot\";\n/* uneffect:assert x: Int */\n/* uneffect:assert values: v.array(v.number()) */\nfunction f(x = 1, ...values: number[]) {\n__uneffect_v.parse(__uneffect_v.pipe(__uneffect_v.number(), __uneffect_v.safeInteger()), x);\n__uneffect_v.parse(__uneffect_v.array(__uneffect_v.number()), values); return values }",
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "unicode",
+      "source": "// 😀\r\n/* uneffect:assert missing: Nat */\r\nexport function f(value: number) { return value }",
+      "result": {
+        "code": "// 😀\r\n/* uneffect:assert missing: Nat */\r\nexport function f(value: number) { return value }",
+        "diagnostics": [
+          {
+            "fileName": "input.ts",
+            "line": 3,
+            "kind": "unknown-parameter",
+            "parameter": "missing",
+            "message": "unknown parameter missing"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ambient",
+      "source": "/* uneffect:assert value: Nat */\ndeclare function f(value: number): number;",
+      "result": {
+        "code": "/* uneffect:assert value: Nat */\ndeclare function f(value: number): number;",
+        "diagnostics": [
+          {
+            "fileName": "input.ts",
+            "line": 2,
+            "kind": "unsupported-function",
+            "parameter": "value",
+            "message": "runtime assertions require a function body"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-schema",
+      "source": "/* uneffect:assert value: makeSchema() */\nfunction f(value: unknown) {}",
+      "result": {
+        "code": "/* uneffect:assert value: makeSchema() */\nfunction f(value: unknown) {}",
+        "diagnostics": [
+          {
+            "fileName": "input.ts",
+            "line": 2,
+            "kind": "invalid-schema",
+            "parameter": "value",
+            "message": "unsupported Valibot schema: makeSchema()"
+          }
+        ]
+      }
+    },
+    {
+      "name": "untouched",
+      "source": "const x = 1;\nfunction f() { return x }",
+      "result": {
+        "code": "const x = 1;\nfunction f() { return x }",
+        "diagnostics": []
+      }
+    },
+    {
+      "name": "multiple",
+      "source": "/* uneffect:assert a: Int */\nfunction first(a: number) { return a }\n/* uneffect:assert b: Float */\nexport function second(b: number) { return b }",
+      "result": {
+        "code": "import * as __uneffect_v from \"valibot\";\n/* uneffect:assert a: Int */\nfunction first(a: number) {\n__uneffect_v.parse(__uneffect_v.pipe(__uneffect_v.number(), __uneffect_v.safeInteger()), a); return a }\n/* uneffect:assert b: Float */\nexport function second(b: number) {\n__uneffect_v.parse(__uneffect_v.pipe(__uneffect_v.number(), __uneffect_v.finite()), b); return b }",
+        "diagnostics": []
+      }
+    }
+  ]
+}

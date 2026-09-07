@@ -1,0 +1,1206 @@
+{
+  "provenance": "Frozen before migration from @typescript/typescript6 6.0.2; only refresh after reviewing semantic compatibility.",
+  "expressions": [
+    {
+      "source": "phase === 0 && !ready",
+      "value": {
+        "ast": {
+          "kind": "binary",
+          "operator": "and",
+          "left": {
+            "kind": "binary",
+            "operator": "eq",
+            "left": {
+              "kind": "name",
+              "name": "phase"
+            },
+            "right": {
+              "kind": "integer",
+              "value": "0"
+            }
+          },
+          "right": {
+            "kind": "unary",
+            "operator": "not",
+            "operand": {
+              "kind": "name",
+              "name": "ready"
+            }
+          }
+        },
+        "quint": "phase == 0 and not(ready)",
+        "runtime": "phase === 0 && !ready"
+      }
+    },
+    {
+      "source": "epoch + 1 <= limit || ready",
+      "value": {
+        "ast": {
+          "kind": "binary",
+          "operator": "or",
+          "left": {
+            "kind": "binary",
+            "operator": "lte",
+            "left": {
+              "kind": "binary",
+              "operator": "add",
+              "left": {
+                "kind": "name",
+                "name": "epoch"
+              },
+              "right": {
+                "kind": "integer",
+                "value": "1"
+              }
+            },
+            "right": {
+              "kind": "name",
+              "name": "limit"
+            }
+          },
+          "right": {
+            "kind": "name",
+            "name": "ready"
+          }
+        },
+        "quint": "epoch + 1 <= limit or ready",
+        "runtime": "epoch + 1 <= limit || ready"
+      }
+    },
+    {
+      "source": "armed ? value + 1 : value",
+      "value": {
+        "ast": {
+          "kind": "conditional",
+          "condition": {
+            "kind": "name",
+            "name": "armed"
+          },
+          "whenTrue": {
+            "kind": "binary",
+            "operator": "add",
+            "left": {
+              "kind": "name",
+              "name": "value"
+            },
+            "right": {
+              "kind": "integer",
+              "value": "1"
+            }
+          },
+          "whenFalse": {
+            "kind": "name",
+            "name": "value"
+          }
+        },
+        "quint": "if (armed) value + 1 else value",
+        "runtime": "armed ? value + 1 : value"
+      }
+    },
+    {
+      "source": "({ ...lease, owner: 2 }).owner",
+      "value": {
+        "ast": {
+          "kind": "field",
+          "receiver": {
+            "kind": "record",
+            "base": {
+              "kind": "name",
+              "name": "lease"
+            },
+            "fields": {
+              "owner": {
+                "kind": "integer",
+                "value": "2"
+              }
+            }
+          },
+          "name": "owner"
+        },
+        "quint": "lease.with(\"owner\", 2).owner",
+        "runtime": "({ ...lease, owner: 2 }).owner"
+      }
+    },
+    {
+      "source": "({ ready, value: -1 })",
+      "value": {
+        "ast": {
+          "kind": "record",
+          "fields": {
+            "ready": {
+              "kind": "name",
+              "name": "ready"
+            },
+            "value": {
+              "kind": "unary",
+              "operator": "negate",
+              "operand": {
+                "kind": "integer",
+                "value": "1"
+              }
+            }
+          }
+        },
+        "quint": "{ ready: ready, value: -1 }",
+        "runtime": "{ ready: ready, value: -1 }"
+      }
+    },
+    {
+      "source": "nodes.forall(node => owners.union(Set(2)).contains(node))",
+      "value": {
+        "ast": {
+          "kind": "method",
+          "receiver": {
+            "kind": "name",
+            "name": "nodes"
+          },
+          "name": "forall",
+          "arguments": [
+            {
+              "kind": "lambda",
+              "parameter": "node",
+              "body": {
+                "kind": "method",
+                "receiver": {
+                  "kind": "method",
+                  "receiver": {
+                    "kind": "name",
+                    "name": "owners"
+                  },
+                  "name": "union",
+                  "arguments": [
+                    {
+                      "kind": "call",
+                      "name": "Set",
+                      "arguments": [
+                        {
+                          "kind": "integer",
+                          "value": "2"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "name": "contains",
+                "arguments": [
+                  {
+                    "kind": "name",
+                    "name": "node"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "quint": "nodes.forall(node => owners.union(Set(2)).contains(node))",
+        "runtime": "Array.from(nodes).every(node => new Set([...owners, ...new Set([2])]).has(node))"
+      }
+    },
+    {
+      "source": "epochs.put(2, 1).getOrElse(1, 0)",
+      "value": {
+        "ast": {
+          "kind": "method",
+          "receiver": {
+            "kind": "method",
+            "receiver": {
+              "kind": "name",
+              "name": "epochs"
+            },
+            "name": "put",
+            "arguments": [
+              {
+                "kind": "integer",
+                "value": "2"
+              },
+              {
+                "kind": "integer",
+                "value": "1"
+              }
+            ]
+          },
+          "name": "getOrElse",
+          "arguments": [
+            {
+              "kind": "integer",
+              "value": "1"
+            },
+            {
+              "kind": "integer",
+              "value": "0"
+            }
+          ]
+        },
+        "quint": "(if (epochs.put(2, 1).keys().contains(1)) epochs.put(2, 1).get(1) else 0)",
+        "runtime": "(new Map([...epochs, [2, 1]]).has(1) ? new Map([...epochs, [2, 1]]).get(1) : 0)"
+      }
+    },
+    {
+      "source": "Map([[\"日🙂\", true]])",
+      "value": {
+        "ast": {
+          "kind": "call",
+          "name": "Map",
+          "arguments": [
+            {
+              "kind": "array",
+              "elements": [
+                {
+                  "kind": "array",
+                  "elements": [
+                    {
+                      "kind": "string",
+                      "value": "日🙂"
+                    },
+                    {
+                      "kind": "boolean",
+                      "value": true
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "quint": "Map(\"日🙂\" -> true)",
+        "runtime": "new Map([[\"日🙂\", true]])"
+      }
+    },
+    {
+      "source": "[1, 2, 3]",
+      "value": {
+        "ast": {
+          "kind": "array",
+          "elements": [
+            {
+              "kind": "integer",
+              "value": "1"
+            },
+            {
+              "kind": "integer",
+              "value": "2"
+            },
+            {
+              "kind": "integer",
+              "value": "3"
+            }
+          ]
+        },
+        "quint": "[1, 2, 3]",
+        "runtime": "[1, 2, 3]"
+      }
+    },
+    {
+      "source": "0xff",
+      "value": {
+        "ast": {
+          "kind": "integer",
+          "value": "255"
+        },
+        "quint": "255",
+        "runtime": "255"
+      }
+    },
+    {
+      "source": "0b11",
+      "value": {
+        "ast": {
+          "kind": "integer",
+          "value": "3"
+        },
+        "quint": "3",
+        "runtime": "3"
+      }
+    },
+    {
+      "source": "0o77",
+      "value": {
+        "ast": {
+          "kind": "integer",
+          "value": "63"
+        },
+        "quint": "63",
+        "runtime": "63"
+      }
+    },
+    {
+      "source": "1_000",
+      "value": {
+        "ast": {
+          "kind": "integer",
+          "value": "1000"
+        },
+        "quint": "1000",
+        "runtime": "1000"
+      }
+    },
+    {
+      "source": "1e3",
+      "value": {
+        "ast": {
+          "kind": "integer",
+          "value": "1000"
+        },
+        "quint": "1000",
+        "runtime": "1000"
+      }
+    },
+    {
+      "source": "1.0",
+      "value": {
+        "ast": {
+          "kind": "integer",
+          "value": "1"
+        },
+        "quint": "1",
+        "runtime": "1"
+      }
+    },
+    {
+      "source": "999999999999999999999999999999",
+      "rejected": true
+    },
+    {
+      "source": "2 ** 3",
+      "rejected": true
+    },
+    {
+      "source": "0.5",
+      "rejected": true
+    },
+    {
+      "source": "obj[\"x\"]",
+      "rejected": true
+    },
+    {
+      "source": "phase == 0",
+      "rejected": true
+    },
+    {
+      "source": "values.forall(x => { return true; })",
+      "rejected": true
+    },
+    {
+      "source": "Set(...values)",
+      "rejected": true
+    },
+    {
+      "source": "[,1]",
+      "rejected": true
+    },
+    {
+      "source": "{...a, ...b}",
+      "rejected": true
+    }
+  ],
+  "types": [
+    {
+      "source": "int",
+      "value": "int"
+    },
+    {
+      "source": "bool",
+      "value": "bool"
+    },
+    {
+      "source": "string",
+      "value": "string"
+    },
+    {
+      "source": "Set<int>",
+      "value": {
+        "kind": "set",
+        "element": "int"
+      }
+    },
+    {
+      "source": "Map<string, Set<int>>",
+      "value": {
+        "kind": "map",
+        "key": "string",
+        "value": {
+          "kind": "set",
+          "element": "int"
+        }
+      }
+    },
+    {
+      "source": "{ owner: int; valid: bool }",
+      "value": {
+        "kind": "record",
+        "fields": {
+          "owner": "int",
+          "valid": "bool"
+        }
+      }
+    },
+    {
+      "source": "Map<Set<int>, bool>",
+      "rejected": true
+    },
+    {
+      "source": "{ value?: int }",
+      "rejected": true
+    },
+    {
+      "source": "{}",
+      "rejected": true
+    },
+    {
+      "source": "number",
+      "rejected": true
+    },
+    {
+      "source": "int | bool",
+      "rejected": true
+    }
+  ],
+  "spec": {
+    "source": "// 日本語 🙂\r\nconst prior = 0;\r\n/* uneffect:effect Console | Throw<Error> */\r\n/* uneffect:requires x >= 0 */\r\n/* uneffect:ensures result >= x */\r\nexport async function work(x: Nat, flag: boolean): Float { return (x + 1); }\r\n/* uneffect:effect none */\r\nfunction empty() {}\r\n/* uneffect: state phase: int */\r\n/* uneffect: init phase = 0 */\r\n/* uneffect: action advance: phase' = phase + 1 */\r\n/* uneffect: always valid: phase >= 0 */\r\n",
+    "expected": {
+      "fileName": "fixture.ts",
+      "capabilities": [
+        {
+          "functionName": "work",
+          "effects": [
+            {
+              "value": {
+                "kind": "capability",
+                "name": "Console",
+                "arguments": []
+              },
+              "span": {
+                "start": 48,
+                "end": 55
+              }
+            },
+            {
+              "value": {
+                "kind": "throw",
+                "errorType": "Error"
+              },
+              "span": {
+                "start": 58,
+                "end": 70
+              }
+            }
+          ]
+        },
+        {
+          "functionName": "empty",
+          "effects": []
+        }
+      ],
+      "invariants": [
+        {
+          "fileName": "fixture.ts",
+          "functionName": "work",
+          "parameters": [
+            "x",
+            "flag"
+          ],
+          "parameterDomains": {
+            "x": "nat",
+            "flag": "bool"
+          },
+          "resultDomain": "float",
+          "requires": [
+            "x >= 0"
+          ],
+          "ensures": [
+            "result >= x"
+          ],
+          "result": "(x + 1)",
+          "span": {
+            "start": 143,
+            "end": 219
+          }
+        }
+      ],
+      "temporal": {
+        "stutteringPolicy": "explicit-unchanged",
+        "clocks": [],
+        "states": [
+          {
+            "name": "phase",
+            "type": "int"
+          }
+        ],
+        "init": [
+          {
+            "target": "phase",
+            "expression": "0",
+            "expressionAst": {
+              "kind": "integer",
+              "value": "0"
+            }
+          }
+        ],
+        "actions": [
+          {
+            "name": "advance",
+            "assignments": [
+              {
+                "target": "phase",
+                "expression": "phase + 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "add",
+                  "left": {
+                    "kind": "name",
+                    "name": "phase"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "properties": [
+          {
+            "name": "valid",
+            "expression": "phase >= 0",
+            "expressionAst": {
+              "kind": "binary",
+              "operator": "gte",
+              "left": {
+                "kind": "name",
+                "name": "phase"
+              },
+              "right": {
+                "kind": "integer",
+                "value": "0"
+              }
+            }
+          }
+        ],
+        "liveness": [],
+        "recurrences": [],
+        "stabilizations": [],
+        "responses": []
+      }
+    }
+  },
+  "composition": {
+    "source": "// 日本語 🙂\n/* uneffect: state phase: int */\n/* uneffect: init phase = 0 */\n/* uneffect:temporal_contract ensures phase' = phase + 1 */\n/* uneffect:temporal_contract modifies phase */\n/* uneffect:temporal_contract throws Error */\n/* uneffect:temporal_contract rejects Error */\n/* uneffect:temporal_contract suspends true */\nexport async function step() {}\n/* uneffect:temporal_contract terminates true */\nfunction cleanup() {}\nexport async function main() { try { await step() } catch { cleanup() } finally { cleanup() } return; step() }\n",
+    "expected": {
+      "fileName": "composition.ts",
+      "root": "main",
+      "entry": 0,
+      "complete": 3,
+      "calls": [
+        {
+          "caller": "main",
+          "callee": "step",
+          "index": 0,
+          "normalTarget": 2,
+          "errorTarget": 1,
+          "catchesThrow": true,
+          "awaited": true,
+          "span": {
+            "start": 468,
+            "end": 474
+          }
+        },
+        {
+          "caller": "main",
+          "callee": "cleanup",
+          "index": 1,
+          "normalTarget": 2,
+          "errorTarget": -1,
+          "catchesThrow": false,
+          "awaited": false,
+          "span": {
+            "start": 485,
+            "end": 494
+          }
+        },
+        {
+          "caller": "main",
+          "callee": "cleanup",
+          "index": 2,
+          "normalTarget": 3,
+          "errorTarget": -1,
+          "catchesThrow": false,
+          "awaited": false,
+          "span": {
+            "start": 507,
+            "end": 516
+          }
+        }
+      ],
+      "summaries": [
+        [
+          "step",
+          {
+            "functionName": "step",
+            "requires": [],
+            "ensures": [
+              {
+                "target": "phase",
+                "expression": "phase + 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "add",
+                  "left": {
+                    "kind": "name",
+                    "name": "phase"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ],
+            "modifies": [
+              "phase"
+            ],
+            "throws": [
+              "Error"
+            ],
+            "rejects": [
+              "Error"
+            ],
+            "suspends": true,
+            "cancellable": false,
+            "terminates": false,
+            "evidence": "trusted",
+            "span": {
+              "start": 322,
+              "end": 353
+            }
+          }
+        ],
+        [
+          "cleanup",
+          {
+            "functionName": "cleanup",
+            "requires": [],
+            "ensures": [],
+            "modifies": [],
+            "throws": [],
+            "rejects": [],
+            "suspends": false,
+            "cancellable": false,
+            "terminates": true,
+            "evidence": "trusted",
+            "span": {
+              "start": 403,
+              "end": 424
+            }
+          }
+        ]
+      ],
+      "states": [
+        {
+          "name": "phase",
+          "type": "int"
+        }
+      ],
+      "init": [
+        {
+          "target": "phase",
+          "expression": "0",
+          "expressionAst": {
+            "kind": "integer",
+            "value": "0"
+          }
+        }
+      ],
+      "properties": [],
+      "liveness": [],
+      "recurrences": [],
+      "stabilizations": [],
+      "responses": [],
+      "stutteringPolicy": "explicit-unchanged"
+    },
+    "quint": "module migration {\n  var pc: int\n  var suspended: bool\n  var cancelled: bool\n  var phase: int\n\n  action init = all {\n    pc' = 0,\n    suspended' = false,\n    cancelled' = false,\n    phase' = 0,\n  }\n\n  action call_0_step = all {\n    pc == 0,\n    not(suspended),\n    pc' = 2,\n    suspended' = false,\n    cancelled' = false,\n    phase' = phase + 1,\n  }\n\n  action throw_0_step = all {\n    pc == 0,\n    pc' = 1,\n    suspended' = false,\n    cancelled' = false,\n    phase' = phase,\n  }\n\n  action reject_0_step = all {\n    pc == 0,\n    pc' = 1,\n    suspended' = false,\n    cancelled' = false,\n    phase' = phase,\n  }\n\n  action suspend_0_step = all {\n    pc == 0,\n    not(suspended),\n    pc' = 0,\n    suspended' = true,\n    cancelled' = false,\n    phase' = phase,\n  }\n\n  action resume_0_step = all {\n    pc == 0,\n    suspended,\n    pc' = 0,\n    suspended' = false,\n    cancelled' = false,\n    phase' = phase,\n  }\n\n  action call_1_cleanup = all {\n    pc == 1,\n    not(suspended),\n    pc' = 2,\n    suspended' = false,\n    cancelled' = false,\n    phase' = phase,\n  }\n\n  action call_2_cleanup = all {\n    pc == 2,\n    not(suspended),\n    pc' = 3,\n    suspended' = false,\n    cancelled' = false,\n    phase' = phase,\n  }\n\n  action step = any {\n    call_0_step,\n    throw_0_step,\n    reject_0_step,\n    suspend_0_step,\n    resume_0_step,\n    call_1_cleanup,\n    call_2_cleanup,\n  }\n}\n"
+  },
+  "logic": [
+    {
+      "source": "x + 1 >= result",
+      "value": {
+        "kind": "binary",
+        "operator": "gte",
+        "left": {
+          "kind": "binary",
+          "operator": "add",
+          "left": {
+            "kind": "variable",
+            "name": "x"
+          },
+          "right": {
+            "kind": "integer",
+            "value": "1"
+          }
+        },
+        "right": {
+          "kind": "variable",
+          "name": "result"
+        }
+      },
+      "hint": {
+        "value": {
+          "kind": "binary",
+          "operator": "gte",
+          "left": {
+            "kind": "binary",
+            "operator": "add",
+            "left": {
+              "kind": "variable",
+              "name": "x"
+            },
+            "right": {
+              "kind": "integer",
+              "value": "1"
+            }
+          },
+          "right": {
+            "kind": "variable",
+            "name": "result"
+          }
+        }
+      }
+    },
+    {
+      "source": "(value as number)! !== 2",
+      "value": {
+        "kind": "binary",
+        "operator": "neq",
+        "left": {
+          "kind": "variable",
+          "name": "value"
+        },
+        "right": {
+          "kind": "integer",
+          "value": "2"
+        }
+      },
+      "hint": {
+        "value": {
+          "kind": "binary",
+          "operator": "neq",
+          "left": {
+            "kind": "variable",
+            "name": "value"
+          },
+          "right": {
+            "kind": "integer",
+            "value": "2"
+          }
+        }
+      }
+    },
+    {
+      "source": "<number>value === 3",
+      "value": {
+        "kind": "binary",
+        "operator": "eq",
+        "left": {
+          "kind": "variable",
+          "name": "value"
+        },
+        "right": {
+          "kind": "integer",
+          "value": "3"
+        }
+      },
+      "hint": {
+        "value": {
+          "kind": "binary",
+          "operator": "eq",
+          "left": {
+            "kind": "variable",
+            "name": "value"
+          },
+          "right": {
+            "kind": "integer",
+            "value": "3"
+          }
+        }
+      }
+    },
+    {
+      "source": "true && !flag",
+      "value": {
+        "kind": "binary",
+        "operator": "and",
+        "left": {
+          "kind": "boolean",
+          "value": true
+        },
+        "right": {
+          "kind": "unary",
+          "operator": "not",
+          "operand": {
+            "kind": "variable",
+            "name": "flag"
+          }
+        }
+      },
+      "hint": {
+        "value": {
+          "kind": "binary",
+          "operator": "and",
+          "left": {
+            "kind": "boolean",
+            "value": true
+          },
+          "right": {
+            "kind": "unary",
+            "operator": "not",
+            "operand": {
+              "kind": "variable",
+              "name": "flag"
+            }
+          }
+        }
+      }
+    },
+    {
+      "source": "1.5 * value < 3",
+      "value": {
+        "kind": "binary",
+        "operator": "lt",
+        "left": {
+          "kind": "binary",
+          "operator": "mul",
+          "left": {
+            "kind": "real",
+            "value": "1.5"
+          },
+          "right": {
+            "kind": "variable",
+            "name": "value"
+          }
+        },
+        "right": {
+          "kind": "integer",
+          "value": "3"
+        }
+      },
+      "hint": {
+        "value": {
+          "kind": "binary",
+          "operator": "lt",
+          "left": {
+            "kind": "binary",
+            "operator": "mul",
+            "left": {
+              "kind": "real",
+              "value": "1.5"
+            },
+            "right": {
+              "kind": "variable",
+              "name": "value"
+            }
+          },
+          "right": {
+            "kind": "integer",
+            "value": "3"
+          }
+        }
+      }
+    },
+    {
+      "source": "0xff",
+      "value": {
+        "kind": "integer",
+        "value": "255"
+      },
+      "hint": {
+        "value": {
+          "kind": "integer",
+          "value": "255"
+        }
+      }
+    },
+    {
+      "source": "1_000",
+      "value": {
+        "kind": "integer",
+        "value": "1000"
+      },
+      "hint": {
+        "value": {
+          "kind": "integer",
+          "value": "1000"
+        }
+      }
+    },
+    {
+      "source": "1e3",
+      "value": {
+        "kind": "integer",
+        "value": "1000"
+      },
+      "hint": {
+        "value": {
+          "kind": "integer",
+          "value": "1000"
+        }
+      }
+    },
+    {
+      "source": "x == 0",
+      "value": {
+        "kind": "binary",
+        "operator": "eq",
+        "left": {
+          "kind": "variable",
+          "name": "x"
+        },
+        "right": {
+          "kind": "integer",
+          "value": "0"
+        }
+      },
+      "hint": {
+        "value": {
+          "kind": "binary",
+          "operator": "eq",
+          "left": {
+            "kind": "variable",
+            "name": "x"
+          },
+          "right": {
+            "kind": "integer",
+            "value": "0"
+          }
+        }
+      }
+    },
+    {
+      "source": "x / 2",
+      "rejected": true,
+      "hint": {
+        "rejected": true
+      }
+    },
+    {
+      "source": "x % 2",
+      "rejected": true,
+      "hint": {
+        "value": {
+          "kind": "binary",
+          "operator": "js-rem",
+          "left": {
+            "kind": "variable",
+            "name": "x"
+          },
+          "right": {
+            "kind": "integer",
+            "value": "2"
+          }
+        }
+      }
+    },
+    {
+      "source": "x ** 2",
+      "rejected": true,
+      "hint": {
+        "rejected": true
+      }
+    },
+    {
+      "source": "Math.floor(x)",
+      "rejected": true,
+      "hint": {
+        "rejected": true
+      }
+    },
+    {
+      "source": "ready ? x : 0",
+      "rejected": true,
+      "hint": {
+        "rejected": true
+      }
+    }
+  ],
+  "obligation": {
+    "spec": {
+      "fileName": "fixture.ts",
+      "functionName": "work",
+      "parameters": [
+        "x",
+        "flag"
+      ],
+      "parameterDomains": {
+        "x": "nat",
+        "flag": "bool"
+      },
+      "resultDomain": "float",
+      "requires": [
+        "x >= 0"
+      ],
+      "ensures": [
+        "result >= x"
+      ],
+      "result": "(x + 1)",
+      "span": {
+        "start": 143,
+        "end": 219
+      }
+    },
+    "expected": {
+      "id": "inv_f4383c5bc1e69b876c2a",
+      "kind": "postcondition",
+      "fileName": "fixture.ts",
+      "functionName": "work",
+      "span": {
+        "start": 143,
+        "end": 219
+      },
+      "variables": [
+        {
+          "name": "x",
+          "domain": "nat",
+          "sort": "Int"
+        },
+        {
+          "name": "flag",
+          "domain": "bool",
+          "sort": "Bool"
+        },
+        {
+          "name": "result",
+          "domain": "float",
+          "sort": "Real"
+        }
+      ],
+      "assumptions": [
+        {
+          "kind": "binary",
+          "operator": "gte",
+          "left": {
+            "kind": "variable",
+            "name": "x"
+          },
+          "right": {
+            "kind": "integer",
+            "value": "0"
+          }
+        },
+        {
+          "kind": "binary",
+          "operator": "gte",
+          "left": {
+            "kind": "variable",
+            "name": "x"
+          },
+          "right": {
+            "kind": "integer",
+            "value": "0"
+          }
+        },
+        {
+          "kind": "binary",
+          "operator": "eq",
+          "left": {
+            "kind": "variable",
+            "name": "result"
+          },
+          "right": {
+            "kind": "binary",
+            "operator": "add",
+            "left": {
+              "kind": "variable",
+              "name": "x"
+            },
+            "right": {
+              "kind": "integer",
+              "value": "1"
+            }
+          }
+        }
+      ],
+      "goal": {
+        "kind": "binary",
+        "operator": "gte",
+        "left": {
+          "kind": "variable",
+          "name": "result"
+        },
+        "right": {
+          "kind": "variable",
+          "name": "x"
+        }
+      },
+      "source": "result >= x",
+      "bindings": [
+        {
+          "name": "result",
+          "expression": {
+            "kind": "binary",
+            "operator": "add",
+            "left": {
+              "kind": "variable",
+              "name": "x"
+            },
+            "right": {
+              "kind": "integer",
+              "value": "1"
+            }
+          }
+        }
+      ],
+      "displayNames": {},
+      "controlFlow": {
+        "schema": "uneffect-contract-control-flow/v1",
+        "blockId": "cfg_bfadbec9c5bcb94ae9ce",
+        "completion": "synthetic",
+        "pathConditions": [
+          {
+            "kind": "binary",
+            "operator": "gte",
+            "left": {
+              "kind": "variable",
+              "name": "x"
+            },
+            "right": {
+              "kind": "integer",
+              "value": "0"
+            }
+          },
+          {
+            "kind": "binary",
+            "operator": "gte",
+            "left": {
+              "kind": "variable",
+              "name": "x"
+            },
+            "right": {
+              "kind": "integer",
+              "value": "0"
+            }
+          },
+          {
+            "kind": "binary",
+            "operator": "eq",
+            "left": {
+              "kind": "variable",
+              "name": "result"
+            },
+            "right": {
+              "kind": "binary",
+              "operator": "add",
+              "left": {
+                "kind": "variable",
+                "name": "x"
+              },
+              "right": {
+                "kind": "integer",
+                "value": "1"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "smt": "(set-logic ALL)\n(declare-const x Int)\n(declare-const flag Bool)\n(declare-const result Real)\n(assert (>= x 0))\n(assert (>= x 0))\n(assert (= result (+ x 1)))\n(assert (not (>= result x)))\n(check-sat)\n"
+  }
+}

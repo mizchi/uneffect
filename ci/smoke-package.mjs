@@ -64,6 +64,8 @@ try {
     "dist/src/graph-analysis/workflow-api.d.ts",
     "dist/src/graph-analysis/impact-api.js",
     "dist/src/graph-analysis/impact-api.d.ts",
+    "dist/src/modules/corsa-module-order.js",
+    "dist/src/modules/corsa-module-order.d.ts",
     "dist/src/modules/module-order-api.js",
     "dist/src/modules/module-order-api.d.ts",
     "dist/src/modules/contracts.d.ts",
@@ -108,9 +110,23 @@ try {
       type ModuleInitializationOrder, type ModuleInitializationOrderV2,
       type ModuleInitializationV2Options,
     } from "@mizchi/uneffect/module-order";
+    import { analyzeCorsaModuleInitializationOrderV2, type CorsaModuleOrderV2Options } from "@mizchi/uneffect/experimental/module-order/corsa";
     import ts from "@typescript/typescript6";
     import { lintPrerequisites, initializationRule, type RuleCfg } from "@mizchi/uneffect/experimental/lint";
     import { lowerCorsaRuleCfg, type CorsaRuleOptions } from "@mizchi/uneffect/experimental/lint/corsa";
+    import { parseSpec as parseNativeSpec, generateQuint as emitNativeQuint, type ParsedSpec, prepareCorsaContractDslLinks, type PrepareCorsaContractDslOptions, type PreparedContractDslLinks } from "@mizchi/uneffect/experimental/spec";
+    const contractLinker: (options: PrepareCorsaContractDslOptions) => Promise<PreparedContractDslLinks> = prepareCorsaContractDslLinks;
+    void contractLinker;
+    import { resolveCorsaRefinementDslLink, type ResolveCorsaRefinementDslOptions, type RefinementBindingManifest } from "@mizchi/uneffect/experimental/spec";
+    const refinementLinker: (options: ResolveCorsaRefinementDslOptions) => Promise<RefinementBindingManifest> = resolveCorsaRefinementDslLink;
+    void refinementLinker;
+    import { instrumentRuntimeAssertions, type InstrumentResult } from "@mizchi/uneffect/experimental/instrument";
+    import { openCorsaCallableFrontend, type CorsaCallableFrontend, type CorsaCallableSignature } from "@mizchi/uneffect/experimental/corsa/callables";
+    const callableFactory: (options: { configFile: string }) => Promise<CorsaCallableFrontend> = openCorsaCallableFrontend;
+    const callableSignature: CorsaCallableSignature | null = null;
+    void callableFactory; void callableSignature;
+    const instrumented: InstrumentResult = instrumentRuntimeAssertions("input.ts", "export function empty() {}");
+    void instrumented;
     import { lowerTypeScriptRuleCfg } from "@mizchi/uneffect/experimental";
     import * as root from "@mizchi/uneffect";
     import { checkCorsaProject } from "@mizchi/uneffect/corsa";
@@ -121,6 +137,9 @@ try {
     import corsaSchema from "@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json" with { type: "json" };
     import moduleOrderV2Schema from "@mizchi/uneffect/schemas/uneffect-module-order-v2.schema.json" with { type: "json" };
 
+    const nativeOptions: CorsaModuleOrderV2Options = { entryFile: "entry.mts", proofBudget: { moduleControlFlowIterations: 32 } };
+    const nativeAnalyzer: (options: CorsaModuleOrderV2Options) => Promise<ModuleInitializationOrderV2> = analyzeCorsaModuleInitializationOrderV2;
+    void nativeOptions; void nativeAnalyzer;
     const cfg: BasicBlockFixedPointOptions<number, "ready"> = {
       entry: "entry", initial: 1, budget: { name: "consumer", limit: 2 },
       lattice: { bottom: () => 0, equivalent: (a, b) => a === b, join: (a, b) => ({ status: "joined", value: Math.max(a, b) }) },
@@ -257,8 +276,10 @@ try {
   const moduleSource = readFileSync(resolve("examples/dogfood/module-conditional-tla.ts"), "utf8");
   writeFileSync(moduleEntry, moduleSource);
   const cliEntry = join(consumer, "node_modules", "@mizchi", "uneffect", sourceManifest.bin.uneffect);
+  const moduleConfig = join(consumer, "module-tsconfig.json");
+  writeFileSync(moduleConfig, JSON.stringify({ compilerOptions: { target: "ES2024", module: "NodeNext", types: ["node"], noEmit: true }, files: [moduleEntry] }));
   const inspectModuleOrder = (args, expectedStatus, schema, evidence) => {
-    const result = spawnSync(process.execPath, [cliEntry, "module-order", moduleEntry, ...args], {
+    const result = spawnSync(process.execPath, [cliEntry, "module-order", moduleEntry, "--project", moduleConfig, ...args], {
       cwd: consumer, encoding: "utf8", timeout: 60_000,
     });
     if (result.error || result.status !== expectedStatus) {
@@ -300,7 +321,11 @@ try {
     assert.equal(experimental.analyzeModuleInitializationOrder, analyzeModuleInitializationOrder);
     assert.equal(experimental.analyzeModuleInitializationOrderV2, analyzeModuleInitializationOrderV2);
     assert.equal(analyzeModuleInitializationOrder(program, entry).evidence, "unknown");
-    assert.deepEqual(analyzeModuleInitializationOrderV2(program, entry), ${JSON.stringify(conditionalOrder)});
+    const { compiler: legacyCompiler, ...legacyOrder } = analyzeModuleInitializationOrderV2(program, entry);
+    const { compiler: nativeCompiler, ...nativeOrder } = ${JSON.stringify(conditionalOrder)};
+    assert.deepEqual(legacyOrder, nativeOrder);
+    assert.equal(legacyCompiler.typescriptVersion, ts.version);
+    assert.match(nativeCompiler.typescriptVersion, /^7[.]/);
     const limited = analyzeModuleInitializationOrderV2(program, entry, { proofBudget: { moduleControlFlowIterations: 1 } });
     assert.equal(limited.evidence, "unknown");
     assert(limited.unknowns.some((item) => item.kind === "module-control-flow-proof"));
@@ -331,7 +356,41 @@ try {
     if (typeof lowerCorsaRuleCfg !== "function") throw new Error("Missing Corsa linter entry");
     const { lintPrerequisites } = await import("@mizchi/uneffect/experimental/lint");
     if (typeof lintPrerequisites !== "function") throw new Error("Missing compiler-independent linter entry");
+    const moduleOrder = await import("@mizchi/uneffect/experimental/module-order/corsa");
+    if (typeof moduleOrder.analyzeCorsaModuleInitializationOrderV2 !== "function") throw new Error("Missing native module-order entry");
+    const spec = await import("@mizchi/uneffect/experimental/spec");
+    if (typeof spec.parseSpec !== "function" || typeof spec.lintSpecWithZ3 !== "function") throw new Error("Missing native specification entry");
+    const instrument = await import("@mizchi/uneffect/experimental/instrument");
+    const checked = instrument.instrumentRuntimeAssertions("input.ts", '/* uneffect:assert value: Nat */ export function check(value: number) { return value }');
+    if (checked.diagnostics.length || !checked.code.includes("__uneffect_v.parse")) throw new Error("Missing compiler-independent runtime instrumentation");
   `);
+  const instrumentEntry = join(consumer, "instrument.ts");
+  writeFileSync(instrumentEntry, '/* uneffect:assert value: Nat */ export function check(value: number) { return value }');
+  const instrumentResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "instrument", instrumentEntry], {
+    cwd: consumer, encoding: "utf8", timeout: 30_000,
+  });
+  if (instrumentResult.status !== 0 || !instrumentResult.stdout.includes("__uneffect_v.parse")) {
+    throw new Error(`compiler-independent instrument CLI failed: ${instrumentResult.stderr || instrumentResult.error || instrumentResult.status}`);
+  }
+  const callableEntry = join(consumer, "callable.ts"), callableConfig = join(consumer, "tsconfig.callable.json");
+  const callableSource = 'export function choose(value: string): string; export function choose(value: number): number; export function choose(value: string | number) { return value; } export const selected = choose(42);';
+  writeFileSync(callableEntry, callableSource);
+  writeFileSync(callableConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: [] }, files: [callableEntry] }));
+  const callableProbe = join(consumer, "callable-probe.mjs");
+  writeFileSync(callableProbe, `
+    import assert from "node:assert/strict";
+    import { openCorsaCallableFrontend } from "@mizchi/uneffect/experimental/corsa/callables";
+    const frontend = await openCorsaCallableFrontend({ configFile: ${JSON.stringify(callableConfig)} });
+    try {
+      const source = ${JSON.stringify(callableSource)}, file = ${JSON.stringify(callableEntry)};
+      const start = source.indexOf("choose(42)");
+      const signature = frontend.getResolvedSignature(file, { start, end: start + 10 }, source);
+      assert.deepEqual(signature.returnType.texts, ["number"]);
+      assert.deepEqual(signature.parameters[0].type.texts, ["number"]);
+      assert.deepEqual(frontend.getSignaturesOfTypeAtPosition(file, start).map(item => item.returnType.texts[0]), ["string", "number"]);
+    } finally { frontend.close(); }
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, callableProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
   for (const [functionName, status, verdict] of [
     ["ready", 0, "clean"], ["branchMissing", 1, "findings"], ["unsupportedCallback", 2, "unknown"],
   ]) {
@@ -346,6 +405,102 @@ try {
     if (verdict === "findings" && report.diagnostics[0]?.location.fileName !== lintEntry) throw new Error("packed cfg-lint lost source location");
     if (verdict === "unknown" && "diagnostics" in report) throw new Error("packed cfg-lint leaked partial diagnostics");
   }
+
+  writeFileSync(moduleEntry, moduleSource);
+  for (const [version, status, evidence] of [["1", 1, "unknown"], ["2", 0, "verified"]]) {
+    const result = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "module-order", moduleEntry, "--project", moduleConfig, "--schema-version", version, "--require"], {
+      cwd: consumer, encoding: "utf8", timeout: 60_000,
+    });
+    if (result.error || result.status !== status || JSON.parse(result.stdout).evidence !== evidence) {
+      throw new Error(`packed native module-order failed: ${result.error ?? result.stderr}`);
+    }
+  }
+
+  const specEntry = join(consumer, "spec-native.ts");
+  const specFixture = JSON.parse(readFileSync(resolve("test/fixtures/oxc-spec-parity.json"), "utf8"));
+  writeFileSync(specEntry, specFixture.composition.source + "\n/* uneffect:action advance: phase' = phase + 1 */\n/* uneffect:ensures result >= x */\nfunction identity(x: number) { return x; }\n");
+  for (const backend of ["ir", "quint", "compose", "z3"]) {
+    const result = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "spec", backend, specEntry, ...(backend === "compose" ? ["main"] : [])], { cwd: consumer, encoding: "utf8", timeout: 30_000 });
+    if (result.error || result.status !== 0) throw new Error(`packed native spec ${backend} failed: ${result.error ?? result.stderr}`);
+    if (backend === "ir" && JSON.parse(result.stdout).temporal.states[0]?.name !== "phase") throw new Error("packed native spec lost state declarations");
+    if (backend === "z3" && !result.stdout.includes("(check-sat)")) throw new Error("packed native spec lost SMT output");
+    if (["quint", "compose"].includes(backend) && !result.stdout.includes("module spec_native")) throw new Error("packed native spec lost Quint output");
+  }
+
+  const dslFixture = JSON.parse(readFileSync(resolve("test/fixtures/oxc-dsl-parity.json"), "utf8"));
+  const temporalDslFile = join(consumer, "model.uneffect.ts"), contractDslFile = join(consumer, "contract.uneffect.ts");
+  writeFileSync(temporalDslFile, dslFixture.temporal[0].source);
+  writeFileSync(contractDslFile, dslFixture.contract[0].source);
+  const moreDslFixture = JSON.parse(readFileSync(resolve("test/fixtures/oxc-capability-refinement-parity.json"), "utf8"));
+  const capabilityDslFile = join(consumer, "policy.uneffect.ts"), refinementDslFile = join(consumer, "counter.uneffect.ts");
+  writeFileSync(capabilityDslFile, moreDslFixture.capability[0].source);
+  writeFileSync(refinementDslFile, moreDslFixture.refinement[0].source);
+  writeFileSync(join(consumer, "counter.ts"), 'type Runtime = {value: number; members: number[]}; export const create = (value: Runtime) => value, observe = create; export const increment = (value: Runtime) => { value.value++; }; export const nonnegative = (value: Runtime) => value.value >= 0;');
+  const dslConfig = join(consumer, "dsl-tsconfig.json");
+  writeFileSync(dslConfig, JSON.stringify({ compilerOptions: { target: "ES2024", module: "NodeNext", types: [] }, files: [temporalDslFile, contractDslFile, capabilityDslFile, refinementDslFile] }));
+  const dslProbe = join(consumer, "dsl-native.mjs");
+  writeFileSync(dslProbe, `
+    import assert from "node:assert/strict";
+    import { readFileSync } from "node:fs";
+    import { openCorsaApiFrontend } from "@mizchi/uneffect/corsa/api";
+    import { parseTemporalDsl, parseContractDsl, prepareContractDslSources, resolveTemporalDslSourceLink, parseCapabilityDslWithSchemas, prepareCapabilityDslSources, parseRefinementDsl, resolveRefinementDslSourceLink, validateCorsaDslHelperIdentities } from "@mizchi/uneffect/experimental/spec";
+    const temporal = readFileSync(${JSON.stringify(temporalDslFile)}, "utf8"), contract = readFileSync(${JSON.stringify(contractDslFile)}, "utf8");
+    assert.deepEqual(JSON.parse(JSON.stringify(parseTemporalDsl("model.uneffect.ts", temporal))), ${JSON.stringify(dslFixture.temporal[0].parsed)});
+    assert.deepEqual(parseContractDsl("contract.uneffect.ts", contract, "Increment"), ${JSON.stringify(dslFixture.contract[0].parsed)});
+    assert.equal(prepareContractDslSources({ "src/contract.ts": '/* uneffect:contract_from "./contract.uneffect.ts#Increment" */', "src/contract.uneffect.ts": contract }).provenance["src/contract.ts"].length, 4);
+    assert.equal(resolveTemporalDslSourceLink("src/model.ts", '/* uneffect:temporal_from "./model.uneffect.ts#default" */', { "src/model.uneffect.ts": temporal }).spec.states.length, 2);
+    const capability = readFileSync(${JSON.stringify(capabilityDslFile)}, "utf8"), refinement = readFileSync(${JSON.stringify(refinementDslFile)}, "utf8");
+    const plain = value => JSON.parse(JSON.stringify(value, (_key, item) => item instanceof Map ? [...item] : item));
+    assert.deepEqual(plain(parseCapabilityDslWithSchemas("policy.uneffect.ts", capability, "Load")), ${JSON.stringify(moreDslFixture.capability[0].parsed)});
+    assert.equal(prepareCapabilityDslSources({ "src/run.ts": '/* uneffect:capability_from "./policy.uneffect.ts#Load" */', "src/policy.uneffect.ts": capability }).schemas.size, 1);
+    assert.deepEqual(parseRefinementDsl("counter.uneffect.ts", refinement), ${JSON.stringify(moreDslFixture.refinement[0].parsed)});
+    assert.deepEqual(resolveRefinementDslSourceLink("src/counter.ts", '/* uneffect:refinement_from "./counter.uneffect.ts#default" */', { "src/counter.uneffect.ts": refinement }), ${JSON.stringify(moreDslFixture.refinement[0].link)});
+    const frontend = await openCorsaApiFrontend({ configFile: ${JSON.stringify(dslConfig)} });
+    try {
+      validateCorsaDslHelperIdentities(frontend, ${JSON.stringify(temporalDslFile)}, temporal, "temporal");
+      validateCorsaDslHelperIdentities(frontend, ${JSON.stringify(contractDslFile)}, contract, "contract");
+      validateCorsaDslHelperIdentities(frontend, ${JSON.stringify(capabilityDslFile)}, capability, "capability");
+      validateCorsaDslHelperIdentities(frontend, ${JSON.stringify(refinementDslFile)}, refinement, "refinement");
+    } finally { frontend.close(); }
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, dslProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
+
+  const linkedContractFiles = {
+    [join(consumer, "linked-contract.ts")]: '/* uneffect:contract_from "./contract.uneffect.ts#Increment" */\nexport function increment(value: number) { return value + 1; }',
+    [contractDslFile]: readFileSync(contractDslFile, "utf8"),
+    [join(consumer, "linked-nat.ts")]: 'import type { Nat } from "@mizchi/uneffect";\n/* uneffect:contract_from "./nat.uneffect.ts#Identity" */\nexport function identity(value: Nat): Nat { return value; }',
+    [join(consumer, "nat.uneffect.ts")]: 'import { defineContract, nat } from "@mizchi/uneffect/spec"; export const Identity = defineContract({ parameters: { value: nat() }, returns: nat(), ensures: ({value, result}) => result === value });',
+  };
+  for (const [file, source] of Object.entries(linkedContractFiles)) writeFileSync(file, source);
+  const linkedContractConfig = join(consumer, "contract-tsconfig.json");
+  writeFileSync(linkedContractConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: ["node"], skipLibCheck: true }, files: Object.keys(linkedContractFiles) }));
+  const linkedContractProbe = join(consumer, "contract-native.mjs");
+  writeFileSync(linkedContractProbe, `
+    import assert from "node:assert/strict";
+    import { prepareCorsaContractDslLinks } from "@mizchi/uneffect/experimental/spec";
+    const prepared = await prepareCorsaContractDslLinks(${JSON.stringify({ configFile: linkedContractConfig, files: linkedContractFiles })});
+    assert.equal(prepared.provenance[${JSON.stringify(join(consumer, "linked-contract.ts"))}].length, 4);
+    assert.equal(prepared.provenance[${JSON.stringify(join(consumer, "linked-nat.ts"))}].length, 1);
+    assert.match(prepared.files[${JSON.stringify(join(consumer, "linked-nat.ts"))}], /assert value: Nat/);
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, linkedContractProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
+
+  const linkedRefinementEntry = join(consumer, "counter.ts");
+  const linkedRefinementFiles = {
+    [linkedRefinementEntry]: '/* uneffect:refinement_from "./counter.uneffect.ts#default" */\n' + readFileSync(linkedRefinementEntry, "utf8"),
+    [refinementDslFile]: readFileSync(refinementDslFile, "utf8"),
+  };
+  writeFileSync(linkedRefinementEntry, linkedRefinementFiles[linkedRefinementEntry]);
+  const linkedRefinementConfig = join(consumer, "refinement-tsconfig.json");
+  writeFileSync(linkedRefinementConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: ["node"], skipLibCheck: true }, files: Object.keys(linkedRefinementFiles) }));
+  const linkedRefinementProbe = join(consumer, "refinement-native.mjs");
+  writeFileSync(linkedRefinementProbe, `
+    import assert from "node:assert/strict";
+    import { resolveCorsaRefinementDslLink } from "@mizchi/uneffect/experimental/spec";
+    const manifest = await resolveCorsaRefinementDslLink(${JSON.stringify({ configFile: linkedRefinementConfig, implementationFile: linkedRefinementEntry, files: linkedRefinementFiles })});
+    assert.deepEqual(manifest, ${JSON.stringify({ ...moreDslFixture.refinement[0].link, fileName: linkedRefinementEntry })});
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, linkedRefinementProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
 
   packageEvidence.verification.runtime = "passed";
   writeEvidence();

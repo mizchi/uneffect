@@ -1,0 +1,846 @@
+{
+  "compiler": "6.0.3",
+  "capability": [
+    {
+      "source": "\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability, defineEffectSchema } from \"@mizchi/uneffect/spec\";\n  const Audit = defineEffectSchema({ name: \"Audit\", arguments: [\"literal\"] });\n  export const Log = defineCapability({ effects: [Console()] });\n  export const AuditOnly = defineCapability({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\n  export const Load = defineCapability({ effects: [\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\n    Throw(TypeError),\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\n    Builtin(\"CookieRead\"),\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\n  ] });\n",
+      "parsed": {
+        "effects": [
+          {
+            "kind": "capability",
+            "name": "Fetch",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "GET"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "POST"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "url",
+                    "value": "https://api.example.com/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "FsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "path",
+                    "value": "$WORKSPACE_ROOT/config/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "throw",
+            "errorType": "TypeError"
+          },
+          {
+            "kind": "capability",
+            "name": "Net",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "host",
+                    "value": "api.example.com:443"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Dom",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "token",
+                    "value": "AttributeWrite"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "region",
+                    "value": "root"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "CookieRead",
+            "arguments": [
+              {
+                "kind": "all"
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "GlobalVarsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "featureFlag"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "counter"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Audit",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "metric.write"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/run.ts": "/* uneffect:effect Fetch<\"GET\" | \"POST\", \"https://api.example.com/**\"> | FsRead<\"$WORKSPACE_ROOT/config/**\"> | Throw<TypeError> | Net<\"api.example.com:443\"> | Dom<AttributeWrite, typeof root> | CookieRead | GlobalVarsRead<\"featureFlag\" | \"counter\"> | Audit<\"metric.write\"> */\nexport function run() {}",
+          "src/policy.uneffect.ts": "\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability, defineEffectSchema } from \"@mizchi/uneffect/spec\";\n  const Audit = defineEffectSchema({ name: \"Audit\", arguments: [\"literal\"] });\n  export const Log = defineCapability({ effects: [Console()] });\n  export const AuditOnly = defineCapability({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\n  export const Load = defineCapability({ effects: [\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\n    Throw(TypeError),\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\n    Builtin(\"CookieRead\"),\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\n  ] });\n"
+        },
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "source": "\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability as define, defineEffectSchema } from \"@mizchi/uneffect/spec\";\n  const Audit = defineEffectSchema({ name: \"Audit\", arguments: [\"literal\"] });\n  export const Log = define({ effects: [Console()] });\n  export const AuditOnly = define({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\n  export const Load = define({ effects: [\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\n    Throw(TypeError),\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\n    Builtin(\"CookieRead\"),\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\n  ] });\n",
+      "parsed": {
+        "effects": [
+          {
+            "kind": "capability",
+            "name": "Fetch",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "GET"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "POST"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "url",
+                    "value": "https://api.example.com/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "FsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "path",
+                    "value": "$WORKSPACE_ROOT/config/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "throw",
+            "errorType": "TypeError"
+          },
+          {
+            "kind": "capability",
+            "name": "Net",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "host",
+                    "value": "api.example.com:443"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Dom",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "token",
+                    "value": "AttributeWrite"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "region",
+                    "value": "root"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "CookieRead",
+            "arguments": [
+              {
+                "kind": "all"
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "GlobalVarsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "featureFlag"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "counter"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Audit",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "metric.write"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/run.ts": "/* uneffect:effect Fetch<\"GET\" | \"POST\", \"https://api.example.com/**\"> | FsRead<\"$WORKSPACE_ROOT/config/**\"> | Throw<TypeError> | Net<\"api.example.com:443\"> | Dom<AttributeWrite, typeof root> | CookieRead | GlobalVarsRead<\"featureFlag\" | \"counter\"> | Audit<\"metric.write\"> */\nexport function run() {}",
+          "src/policy.uneffect.ts": "\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability as define, defineEffectSchema } from \"@mizchi/uneffect/spec\";\n  const Audit = defineEffectSchema({ name: \"Audit\", arguments: [\"literal\"] });\n  export const Log = define({ effects: [Console()] });\n  export const AuditOnly = define({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\n  export const Load = define({ effects: [\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\n    Throw(TypeError),\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\n    Builtin(\"CookieRead\"),\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\n  ] });\n"
+        },
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "source": "\r\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability, defineEffectSchema } from \"@mizchi/uneffect/spec\";\r\n  const Audit = defineEffectSchema({ name: \"Audit\", arguments: [\"literal\"] });\r\n  export const Log = defineCapability({ effects: [Console()] });\r\n  export const AuditOnly = defineCapability({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\r\n  export const Load = defineCapability({ effects: [\r\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\r\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\r\n    Throw(TypeError),\r\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\r\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\r\n    Builtin(\"CookieRead\"),\r\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\r\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\r\n  ] });\r\n",
+      "parsed": {
+        "effects": [
+          {
+            "kind": "capability",
+            "name": "Fetch",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "GET"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "POST"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "url",
+                    "value": "https://api.example.com/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "FsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "path",
+                    "value": "$WORKSPACE_ROOT/config/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "throw",
+            "errorType": "TypeError"
+          },
+          {
+            "kind": "capability",
+            "name": "Net",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "host",
+                    "value": "api.example.com:443"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Dom",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "token",
+                    "value": "AttributeWrite"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "region",
+                    "value": "root"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "CookieRead",
+            "arguments": [
+              {
+                "kind": "all"
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "GlobalVarsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "featureFlag"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "counter"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Audit",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "metric.write"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/run.ts": "/* uneffect:effect Fetch<\"GET\" | \"POST\", \"https://api.example.com/**\"> | FsRead<\"$WORKSPACE_ROOT/config/**\"> | Throw<TypeError> | Net<\"api.example.com:443\"> | Dom<AttributeWrite, typeof root> | CookieRead | GlobalVarsRead<\"featureFlag\" | \"counter\"> | Audit<\"metric.write\"> */\nexport function run() {}",
+          "src/policy.uneffect.ts": "\r\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability, defineEffectSchema } from \"@mizchi/uneffect/spec\";\r\n  const Audit = defineEffectSchema({ name: \"Audit\", arguments: [\"literal\"] });\r\n  export const Log = defineCapability({ effects: [Console()] });\r\n  export const AuditOnly = defineCapability({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\r\n  export const Load = defineCapability({ effects: [\r\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\r\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\r\n    Throw(TypeError),\r\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\r\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\r\n    Builtin(\"CookieRead\"),\r\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\r\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\r\n  ] });\r\n"
+        },
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "source": "\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability, defineEffectSchema } from \"@mizchi/uneffect/spec\";\n  const Audit = defineEffectSchema({ name: \"Audit\", version: 1, arguments: [\"literal\"] });\n  export const Log = defineCapability({ effects: [Console()] });\n  export const AuditOnly = defineCapability({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\n  export const Load = defineCapability({ effects: [\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\n    Throw(TypeError),\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\n    Builtin(\"CookieRead\"),\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\n  ] });\n",
+      "parsed": {
+        "effects": [
+          {
+            "kind": "capability",
+            "name": "Fetch",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "GET"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "POST"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "url",
+                    "value": "https://api.example.com/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "FsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "path",
+                    "value": "$WORKSPACE_ROOT/config/**"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "throw",
+            "errorType": "TypeError"
+          },
+          {
+            "kind": "capability",
+            "name": "Net",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "host",
+                    "value": "api.example.com:443"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Dom",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "token",
+                    "value": "AttributeWrite"
+                  }
+                ]
+              },
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "region",
+                    "value": "root"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "CookieRead",
+            "arguments": [
+              {
+                "kind": "all"
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "GlobalVarsRead",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "featureFlag"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "counter"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "capability",
+            "name": "Audit",
+            "arguments": [
+              {
+                "kind": "finite",
+                "atoms": [
+                  {
+                    "kind": "literal",
+                    "value": "metric.write"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/run.ts": "/* uneffect:effect Fetch<\"GET\" | \"POST\", \"https://api.example.com/**\"> | FsRead<\"$WORKSPACE_ROOT/config/**\"> | Throw<TypeError> | Net<\"api.example.com:443\"> | Dom<AttributeWrite, typeof root> | CookieRead | GlobalVarsRead<\"featureFlag\" | \"counter\"> | Audit<\"metric.write\"> */\nexport function run() {}",
+          "src/policy.uneffect.ts": "\n  import { Builtin, Console, Custom, Fetch, FsRead, Throw, defineCapability, defineEffectSchema } from \"@mizchi/uneffect/spec\";\n  const Audit = defineEffectSchema({ name: \"Audit\", version: 1, arguments: [\"literal\"] });\n  export const Log = defineCapability({ effects: [Console()] });\n  export const AuditOnly = defineCapability({ effects: [Custom(Audit, { arguments: [[\"metric.write\"]] })] });\n  export const Load = defineCapability({ effects: [\n    Fetch({ methods: [\"GET\", \"POST\"], urls: [\"https://api.example.com/**\"] }),\n    FsRead({ paths: [\"$WORKSPACE_ROOT/config/**\"] }),\n    Throw(TypeError),\n    Builtin(\"Net\", { arguments: [[\"api.example.com:443\"]] }),\n    Builtin(\"Dom\", { arguments: [[\"AttributeWrite\"], [\"root\"]] }),\n    Builtin(\"CookieRead\"),\n    Builtin(\"GlobalVarsRead\", { arguments: [[\"featureFlag\", \"counter\"]] }),\n    Custom(Audit, { arguments: [[\"metric.write\"]] }),\n  ] });\n"
+        },
+        "schemas": [
+          [
+            "Audit",
+            {
+              "name": "Audit",
+              "version": 1,
+              "arguments": [
+                "literal"
+              ]
+            }
+          ]
+        ]
+      }
+    }
+  ],
+  "refinement": [
+    {
+      "source": "\n      import { defineRefinement, globalRuntime, identityProjection, setFromArrayProjection } from \"@mizchi/uneffect/spec\";\n      import { create, observe, increment, nonnegative } from \"./counter.js\";\n      export default defineRefinement({\n        name: \"counter\",\n        version: \"1\",\n        runtime: globalRuntime(),\n        create,\n        observe,\n        abstractions: { value: identityProjection(\"value\"), members: setFromArrayProjection(\"members\") },\n        actions: { increment },\n        invariants: { nonnegative },\n      });\n    ",
+      "parsed": {
+        "name": "counter",
+        "version": "1",
+        "runtimeIdentity": "globalThis",
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      },
+      "link": {
+        "schema": "uneffect-refinement-bindings/v1",
+        "fileName": "src/counter.ts",
+        "adapterName": "counter",
+        "version": "1",
+        "runtimeIdentity": {
+          "kind": "ambient",
+          "root": "globalThis",
+          "identity": "ecmascript:realm.globalThis"
+        },
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      }
+    },
+    {
+      "source": "\n      import { defineRefinement as define, globalRuntime, identityProjection, setFromArrayProjection } from \"@mizchi/uneffect/spec\";\n      import { create, observe, increment, nonnegative } from \"./counter.js\";\n      export default define({\n        name: \"counter\",\n        version: \"1\",\n        runtime: globalRuntime(),\n        create,\n        observe,\n        abstractions: { value: identityProjection(\"value\"), members: setFromArrayProjection(\"members\") },\n        actions: { increment },\n        invariants: { nonnegative },\n      });\n    ",
+      "parsed": {
+        "name": "counter",
+        "version": "1",
+        "runtimeIdentity": "globalThis",
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      },
+      "link": {
+        "schema": "uneffect-refinement-bindings/v1",
+        "fileName": "src/counter.ts",
+        "adapterName": "counter",
+        "version": "1",
+        "runtimeIdentity": {
+          "kind": "ambient",
+          "root": "globalThis",
+          "identity": "ecmascript:realm.globalThis"
+        },
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      }
+    },
+    {
+      "source": "\n      import { defineRefinement, nodeGlobalRuntime, identityProjection, setFromArrayProjection } from \"@mizchi/uneffect/spec\";\n      import { create, observe, increment, nonnegative } from \"./counter.js\";\n      export default defineRefinement({\n        name: \"counter\",\n        version: \"1\",\n        runtime: nodeGlobalRuntime(24, \"main\"),\n        create,\n        observe,\n        abstractions: { value: identityProjection(\"value\"), members: setFromArrayProjection(\"members\") },\n        actions: { increment },\n        invariants: { nonnegative },\n      });\n    ",
+      "parsed": {
+        "name": "counter",
+        "version": "1",
+        "runtimeIdentity": "node:global@24#main",
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      },
+      "link": {
+        "schema": "uneffect-refinement-bindings/v1",
+        "fileName": "src/counter.ts",
+        "adapterName": "counter",
+        "version": "1",
+        "runtimeIdentity": {
+          "kind": "host",
+          "host": "node",
+          "root": "global",
+          "version": "24",
+          "realm": "main",
+          "identity": "node:24:realm:main.global"
+        },
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      }
+    },
+    {
+      "source": "\r\n      import { defineRefinement, globalRuntime, identityProjection, setFromArrayProjection } from \"@mizchi/uneffect/spec\";\r\n      import { create, observe, increment, nonnegative } from \"./counter.js\";\r\n      export default defineRefinement({\r\n        name: \"counter\",\r\n        version: \"1\",\r\n        runtime: globalRuntime(),\r\n        create,\r\n        observe,\r\n        abstractions: { value: identityProjection(\"value\"), members: setFromArrayProjection(\"members\") },\r\n        actions: { increment },\r\n        invariants: { nonnegative },\r\n      });\r\n    ",
+      "parsed": {
+        "name": "counter",
+        "version": "1",
+        "runtimeIdentity": "globalThis",
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      },
+      "link": {
+        "schema": "uneffect-refinement-bindings/v1",
+        "fileName": "src/counter.ts",
+        "adapterName": "counter",
+        "version": "1",
+        "runtimeIdentity": {
+          "kind": "ambient",
+          "root": "globalThis",
+          "identity": "ecmascript:realm.globalThis"
+        },
+        "create": "create",
+        "observe": "observe",
+        "abstractions": {
+          "value": "value",
+          "members": "Set(members)"
+        },
+        "actions": {
+          "increment": "increment"
+        },
+        "invariants": {
+          "nonnegative": "nonnegative"
+        }
+      }
+    }
+  ]
+}

@@ -17,10 +17,31 @@ graph-check:
 
 module-order-check:
     pnpm exec tsc -p tsconfig.json --noEmit
-    pnpm vitest run test/module-order-api.test.ts test/module-initialization.test.ts test/module-initialization-v2.test.ts test/module-initialization-domain.test.ts test/workspace-module-initialization.test.ts
+    pnpm vitest run test/module-order-corsa.test.ts test/module-order-api.test.ts test/module-initialization.test.ts test/module-initialization-v2.test.ts test/module-initialization-domain.test.ts test/workspace-module-initialization.test.ts
 
 graph-evaluate:
     pnpm tsx bench/graph-analysis/evaluate.ts
+
+# Corsa/Oxc migration: syntax parity and compiler-independent specification commands.
+spec-frontend-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/oxc-spec-migration.test.ts test/oxc-dsl-migration.test.ts test/oxc-capability-refinement.test.ts test/corsa-dsl-identities.test.ts test/temporal-expressions.test.ts
+
+instrument-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/oxc-instrument.test.ts test/instrument.test.ts
+
+corsa-callable-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/corsa-callable-frontend.test.ts
+
+corsa-contract-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/corsa-contract-dsl.test.ts test/corsa-callable-frontend.test.ts test/corsa-dsl-identities.test.ts test/oxc-dsl-migration.test.ts
+
+corsa-refinement-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/corsa-refinement-dsl.test.ts test/refinement-dsl.test.ts test/corsa-callable-frontend.test.ts test/corsa-dsl-identities.test.ts test/oxc-capability-refinement.test.ts
 
 cfg-lint-check:
     pnpm exec tsc -p tsconfig.json --noEmit

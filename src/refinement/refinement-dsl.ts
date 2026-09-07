@@ -1,110 +1,23 @@
-import { projection, nodeGlobalRuntime } from "./refinement-authoring.js";
-import { posix } from "node:path";
 import { readFileSync } from "node:fs";
 import ts from "@typescript/typescript6";
-import { extractAnnotations } from "../support/annotations.js";
-import type { RefinementBindingManifest } from "./refinement-bindings.js";
-import { parseRefinementRuntimeIdentity } from "../evidence/runtime-identities.js";
-
+import type { RefinementBindingManifest } from "./binding-contracts.js";
+import { refinementDslSpecificationFile, resolveRefinementDslSourceLinks } from "./refinement-dsl-source.js";
+import { refinementCallableReferences, validateRefinementCallableTypes, type RefinementCallableReference } from "./refinement-link.js";
 export { defineRefinement, globalRuntime, identityProjection, mapFromEntriesProjection, nodeGlobalRuntime, setFromArrayProjection } from "./refinement-authoring.js";
 export type { RefinementCallable, RefinementDefinition, RefinementProjection, RefinementRuntimeDescriptor } from "./refinement-authoring.js";
+export { parseRefinementDsl } from "./refinement-dsl-source.js";
+export type { ParsedRefinementDefinition } from "./binding-contracts.js";
 
-export interface ParsedRefinementDefinition {
-  name: string;
-  version: string;
-  runtimeIdentity?: string;
-  create: string;
-  observe: string;
-  abstractions: Record<string, string>;
-  actions: Record<string, string>;
-  invariants: Record<string, string>;
-}
-
-function propertyName(node: ts.PropertyName, fileName: string): string {
-  if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
-  throw new Error(`${fileName}: computed refinement definition properties are unsupported`);
-}
-
-function objectEntries(node: ts.Expression | undefined, fileName: string, context: string): Array<[string, ts.Expression]> {
-  if (!node || !ts.isObjectLiteralExpression(node)) throw new Error(`${fileName}: ${context} must be an object literal`);
-  return node.properties.map((property) => {
-    if (ts.isShorthandPropertyAssignment(property)) return [property.name.text, property.name];
-    if (!ts.isPropertyAssignment(property)) throw new Error(`${fileName}: ${context} does not support spreads or methods`);
-    return [propertyName(property.name, fileName), property.initializer];
-  });
-}
-
-function identifier(node: ts.Expression | undefined, fileName: string, context: string): string {
-  if (!node || !ts.isIdentifier(node)) throw new Error(`${fileName}: ${context} must be a callable identifier`);
-  return node.text;
-}
-
-function literal(node: ts.Expression | undefined, fileName: string, context: string): string {
-  if (!node || !ts.isStringLiteral(node)) throw new Error(`${fileName}: ${context} must be a string literal`);
-  return node.text;
-}
-
-/** Parses the deliberately small refinement DSL without importing or executing it. */
-export function parseRefinementDsl(fileName: string, text: string): ParsedRefinementDefinition {
-  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const helpers = new Map<string, string>();
-  for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
-      || statement.moduleSpecifier.text !== "@mizchi/uneffect/spec") continue;
-    const bindings = statement.importClause?.namedBindings;
-    if (!bindings || !ts.isNamedImports(bindings)) throw new Error(`${fileName}: refinement DSL helpers require named imports`);
-    for (const element of bindings.elements) helpers.set(element.name.text, element.propertyName?.text ?? element.name.text);
-  }
-  const defineNames = new Set([...helpers].filter(([, exported]) => exported === "defineRefinement").map(([local]) => local));
-  const assignment = source.statements.find(ts.isExportAssignment);
-  if (!assignment || !ts.isCallExpression(assignment.expression) || !ts.isIdentifier(assignment.expression.expression)
-    || !defineNames.has(assignment.expression.expression.text) || assignment.expression.arguments.length !== 1) {
-    throw new Error(`${fileName}: default export must call defineRefinement imported from @mizchi/uneffect/spec`);
-  }
-  const entries = objectEntries(assignment.expression.arguments[0], fileName, "defineRefinement argument");
-  const fields = new Map(entries);
-  if (fields.size !== entries.length) throw new Error(`${fileName}: duplicate refinement definition property`);
-  const supported = new Set(["name", "version", "runtime", "create", "observe", "abstractions", "actions", "invariants"]);
-  for (const name of fields.keys()) if (!supported.has(name)) throw new Error(`${fileName}: unsupported refinement definition property ${name}`);
-  for (const name of ["name", "version", "create", "observe", "abstractions", "actions", "invariants"])
-    if (!fields.has(name)) throw new Error(`${fileName}: refinement definition requires ${name}`);
-
-  const callHelper = (node: ts.Expression | undefined, context: string): { helper: string; arguments: readonly ts.Expression[] } => {
-    if (!node || !ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) throw new Error(`${fileName}: ${context} must call a refinement DSL helper`);
-    const helper = helpers.get(node.expression.text);
-    if (!helper) throw new Error(`${fileName}: unsupported refinement DSL helper ${node.expression.text}; helpers must be imported from @mizchi/uneffect/spec`);
-    return { helper, arguments: node.arguments };
+function programReferenceNode(source: ts.SourceFile, reference: RefinementCallableReference): ts.Identifier {
+  let found: ts.Identifier | undefined;
+  const visit = (node: ts.Node): void => {
+    if (node.pos > reference.identifier.start || node.end < reference.identifier.end) return;
+    if (ts.isIdentifier(node) && node.getStart(source) === reference.identifier.start && node.end === reference.identifier.end) found = node;
+    if (!found) node.forEachChild(visit);
   };
-  const abstractions = Object.fromEntries(objectEntries(fields.get("abstractions"), fileName, "abstractions").map(([name, value]) => {
-    const call = callHelper(value, `abstraction ${name}`);
-    const kinds: Record<string, "identity" | "set-from-array" | "map-from-entries"> = {
-      identityProjection: "identity", setFromArrayProjection: "set-from-array", mapFromEntriesProjection: "map-from-entries",
-    };
-    const kind = kinds[call.helper];
-    if (!kind) throw new Error(`${fileName}: unsupported refinement projection helper ${call.helper}`);
-    if (call.arguments.length !== 1) throw new Error(`${fileName}: abstraction ${name} requires one string literal path`);
-    const path = literal(call.arguments[0], fileName, `abstraction ${name} path`);
-    projection(kind, path);
-    return [name, kind === "identity" ? path : `${kind === "set-from-array" ? "Set" : "Map"}(${path})`];
-  }));
-  const callableMap = (name: "actions" | "invariants"): Record<string, string> =>
-    Object.fromEntries(objectEntries(fields.get(name), fileName, name).map(([modelName, value]) => [modelName, identifier(value, fileName, `${name}.${modelName}`)]));
-
-  let runtimeIdentity: string | undefined;
-  if (fields.has("runtime")) {
-    const call = callHelper(fields.get("runtime"), "runtime");
-    if (call.helper === "globalRuntime" && call.arguments.length === 0) runtimeIdentity = "globalThis";
-    else if (call.helper === "nodeGlobalRuntime" && call.arguments.length === 2 && ts.isNumericLiteral(call.arguments[0]!) && ts.isStringLiteral(call.arguments[1]!)) {
-      const major = Number(call.arguments[0]!.text), realm = call.arguments[1]!.text;
-      runtimeIdentity = nodeGlobalRuntime(major, realm).identity;
-    } else throw new Error(`${fileName}: unsupported refinement runtime descriptor`);
-  }
-  return {
-    name: literal(fields.get("name"), fileName, "name"), version: literal(fields.get("version"), fileName, "version"),
-    ...(runtimeIdentity ? { runtimeIdentity } : {}),
-    create: identifier(fields.get("create"), fileName, "create"), observe: identifier(fields.get("observe"), fileName, "observe"),
-    abstractions, actions: callableMap("actions"), invariants: callableMap("invariants"),
-  };
+  visit(source);
+  if (!found) throw new Error(`${source.fileName}: missing Program callable reference ${reference.context}`);
+  return found;
 }
 
 function unalias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
@@ -132,46 +45,25 @@ export function validateRefinementDslIdentities(program: ts.Program, fileName: s
     }
   }
 
-  const assignment = source.statements.find(ts.isExportAssignment);
-  const call = assignment && ts.isCallExpression(assignment.expression) ? assignment.expression : undefined;
-  const root = call?.arguments[0];
-  const fields = new Map(objectEntries(root, fileName, "defineRefinement argument"));
-  const callable = (node: ts.Expression | undefined, context: string): ts.Signature => {
-    if (!node || !ts.isIdentifier(node)) throw new Error(`${fileName}: ${context} must be a callable identifier`);
+  const references = refinementCallableReferences(fileName, source.text);
+  validateRefinementCallableTypes(fileName, references, reference => {
+    const node = programReferenceNode(source, reference);
     const signatures = checker.getSignaturesOfType(checker.getTypeAtLocation(node), ts.SignatureKind.Call);
-    if (signatures.length !== 1) throw new Error(`${fileName}: ${context} must resolve to exactly one callable signature by TypeChecker identity`);
+    if (signatures.length !== 1) throw new Error(`${fileName}: ${reference.context} must resolve to exactly one callable signature by TypeChecker identity`);
     const signature = signatures[0]!;
-    if (signature.getParameters().length < 1) throw new Error(`${fileName}: ${context} must accept a runtime parameter`);
-    return signature;
-  };
-  const create = callable(fields.get("create"), "create"), observe = callable(fields.get("observe"), "observe");
-  const parameterType = (signature: ts.Signature): ts.Type => checker.getTypeOfSymbolAtLocation(signature.getParameters()[0]!, signature.getDeclaration());
-  const runtime = checker.getReturnTypeOfSignature(create), createInput = parameterType(create), observeInput = parameterType(observe);
-  const same = (left: ts.Type, right: ts.Type): boolean => checker.isTypeAssignableTo(left, right) && checker.isTypeAssignableTo(right, left);
-  if (!same(runtime, createInput)) throw new Error(`${fileName}: create input and result must have the same Runtime type`);
-  if (!same(runtime, observeInput)) throw new Error(`${fileName}: observe must accept the create Runtime type`);
-  for (const section of ["actions", "invariants"] as const) for (const [name, node] of objectEntries(fields.get(section), fileName, section)) {
-    const signature = callable(node, `${section}.${name}`);
-    if (!same(runtime, parameterType(signature))) throw new Error(`${fileName}: ${section}.${name} must accept the create Runtime type`);
-    if (section === "invariants" && !(checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.BooleanLike)) {
-      throw new Error(`${fileName}: invariants.${name} must return boolean`);
-    }
-  }
+    return { parameters: signature.getParameters().map(parameter => checker.getTypeOfSymbolAtLocation(parameter, signature.getDeclaration())), result: checker.getReturnTypeOfSignature(signature) };
+  }, (left, right) => checker.isTypeAssignableTo(left, right) && checker.isTypeAssignableTo(right, left),
+  type => (type.flags & ts.TypeFlags.BooleanLike) !== 0);
 }
 
 function validateRefinementDslCallableOrigins(program: ts.Program, specificationFile: string, implementationFile: string): void {
   const source = program.getSourceFile(specificationFile);
   if (!source) throw new Error(`${specificationFile}: refinement specification is not part of the TypeScript Program`);
-  const checker = program.getTypeChecker(), assignment = source.statements.find(ts.isExportAssignment);
-  const call = assignment && ts.isCallExpression(assignment.expression) ? assignment.expression : undefined;
-  const fields = new Map(objectEntries(call?.arguments[0], specificationFile, "defineRefinement argument"));
-  const selected: Array<[string, ts.Expression | undefined]> = [["create", fields.get("create")], ["observe", fields.get("observe")]];
-  for (const section of ["actions", "invariants"] as const) {
-    for (const [name, node] of objectEntries(fields.get(section), specificationFile, section)) selected.push([`${section}.${name}`, node]);
-  }
+  const checker = program.getTypeChecker();
+  const references = refinementCallableReferences(specificationFile, source.text);
   const expected = implementationFile.replaceAll("\\", "/");
-  for (const [name, node] of selected) {
-    if (!node || !ts.isIdentifier(node)) throw new Error(`${specificationFile}: ${name} must be a callable identifier`);
+  for (const reference of references) {
+    const name = reference.context, node = programReferenceNode(source, reference);
     const shorthand = ts.isShorthandPropertyAssignment(node.parent) ? checker.getShorthandAssignmentValueSymbol(node.parent) : undefined;
     const symbol = shorthand ?? checker.getSymbolAtLocation(node), target = symbol && unalias(checker, symbol);
     const declarations = target?.declarations ?? [];
@@ -181,39 +73,17 @@ function validateRefinementDslCallableOrigins(program: ts.Program, specification
   }
 }
 
-/** Resolves one implementation attachment and lowers its typed DSL to the stable v1 manifest. */
+/** Compatibility adapter preserving helper, callable type, and implementation-origin checks. */
 export function resolveRefinementDslLink(
   implementationFile: string,
   implementationSource: string,
   files: Readonly<Record<string, string>>,
   program?: ts.Program,
 ): RefinementBindingManifest {
-  const links = extractAnnotations(implementationSource, "refinement_from");
-  if (links.length !== 1) throw new Error(`${implementationFile}: expected exactly one uneffect:refinement_from declaration`);
-  const quoted = /^(?:"([^"]+)"|'([^']+)')$/.exec(links[0]!);
-  if (!quoted) throw new Error(`${implementationFile}: refinement_from requires a quoted relative .uneffect.ts path and #default export`);
-  const reference = quoted[1] ?? quoted[2]!, hash = reference.lastIndexOf("#");
-  const requested = reference.slice(0, hash), exportName = reference.slice(hash + 1);
-  if (hash < 0 || exportName !== "default" || (!requested.startsWith("./") && !requested.startsWith("../")) || !requested.endsWith(".uneffect.ts")) {
-    throw new Error(`${implementationFile}: invalid refinement specification reference`);
-  }
-  const specificationFile = posix.normalize(posix.join(posix.dirname(implementationFile), requested));
-  const specification = files[specificationFile];
-  if (specification === undefined) throw new Error(`${implementationFile}: refinement specification ${specificationFile} does not exist in the selected project`);
-  const parsed = parseRefinementDsl(specificationFile, specification);
-  if (program) {
+  return resolveRefinementDslSourceLinks(implementationFile, implementationSource, files, program ? specificationFile => {
     validateRefinementDslIdentities(program, specificationFile);
     validateRefinementDslCallableOrigins(program, specificationFile, implementationFile);
-  }
-  const runtimeIdentity = parsed.runtimeIdentity ? parseRefinementRuntimeIdentity(parsed.runtimeIdentity) : undefined;
-  if (parsed.runtimeIdentity && !runtimeIdentity) throw new Error(`${specificationFile}: unsupported refinement runtime identity ${parsed.runtimeIdentity}`);
-  return {
-    schema: "uneffect-refinement-bindings/v1", fileName: implementationFile,
-    adapterName: parsed.name, version: parsed.version,
-    ...(runtimeIdentity ? { runtimeIdentity } : {}),
-    create: parsed.create, observe: parsed.observe,
-    abstractions: parsed.abstractions, actions: parsed.actions, invariants: parsed.invariants,
-  };
+  } : undefined);
 }
 
 /** Loads one attached typed specification from disk for Node-based tooling. */
@@ -222,13 +92,7 @@ export function resolveRefinementDslFileLink(
   program?: ts.Program,
 ): RefinementBindingManifest {
   const implementationSource = readFileSync(implementationFile, "utf8");
-  const links = extractAnnotations(implementationSource, "refinement_from");
-  if (links.length !== 1) throw new Error(`${implementationFile}: expected exactly one uneffect:refinement_from declaration`);
-  const quoted = /^(?:"([^"]+)"|'([^']+)')$/.exec(links[0]!);
-  if (!quoted) throw new Error(`${implementationFile}: refinement_from requires a quoted relative .uneffect.ts path and #default export`);
-  const reference = quoted[1] ?? quoted[2]!, hash = reference.lastIndexOf("#");
-  const requested = reference.slice(0, hash);
-  const specificationFile = posix.normalize(posix.join(posix.dirname(implementationFile), requested));
+  const specificationFile = refinementDslSpecificationFile(implementationFile, implementationSource);
   const specificationSource = readFileSync(specificationFile, "utf8");
   return resolveRefinementDslLink(implementationFile, implementationSource, {
     [implementationFile]: implementationSource,

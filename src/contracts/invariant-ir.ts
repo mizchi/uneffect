@@ -1,88 +1,18 @@
+import { parseLogicExpression } from "./logic.js";
+import { makeObligation, controlFlowBlockId } from "./obligations.js";
 import { createHash } from "node:crypto";
 import ts from "@typescript/typescript6";
 import { extractAnnotations } from "../support/annotations.js";
-import type { InvariantSpec } from "../spec/spec-ir.js";
 import { TypeScriptFrontendAdapter } from "../frontends/frontend-adapter.js";
 import { resolveStableCallableSymbol, stableCallableDeclaration } from "../frontends/typescript/stable-callable.js";
 import { analyzeProgramEffects, type EffectSummary } from "../effects/effects.js";
 import { formatEffect } from "../effects/capabilities.js";
 
-export type LogicSort = "Int" | "Real" | "Bool";
-export type NumericDomain = "int" | "nat" | "float" | "bool";
-export type LogicExpression =
-  | { kind: "variable"; name: string }
-  | { kind: "integer"; value: string }
-  | { kind: "real"; value: string }
-  | { kind: "boolean"; value: boolean }
-  | { kind: "unary"; operator: "not" | "negate" | "floor" | "ceil"; operand: LogicExpression }
-  | { kind: "binary"; operator: string; left: LogicExpression; right: LogicExpression };
+import type { LogicSort, NumericDomain, LogicExpression, ObligationVariable, ObligationBinding, ContractControlFlowEvidence, ContractRelationalCallEvidence, ContractThrowEdge, InvariantObligation } from "./logic-contracts.js";
 
-export interface ObligationVariable { name: string; sort: LogicSort; domain: NumericDomain }
-/** How a source-level name (`result`, a local, a loop snapshot) is defined over the obligation variables. */
-export interface ObligationBinding { name: string; expression: LogicExpression }
-export interface ContractControlFlowEvidence {
-  schema: "uneffect-contract-control-flow/v1";
-  /** Stable identity of the source completion point shared by clauses proved at that point. */
-  blockId: string;
-  completion: "return" | "call" | "loop-entry" | "loop-back-edge" | "synthetic";
-  /** Conditions assumed by the solver on the path reaching this completion point. */
-  pathConditions: LogicExpression[];
-  narrowing?: {
-    source: "typescript-typechecker";
-    typescriptVersion: string;
-    programDigest: string;
-    facts: string[];
-  };
-  exceptionFlow?: {
-    schema: "uneffect-contract-exception-flow/v1";
-    discharged: ContractThrowEdge[];
-    escapes: ContractThrowEdge[];
-  };
-  relationalCalls?: ContractRelationalCallEvidence[];
-  effectBoundary?: {
-    schema: "uneffect-contract-effect-boundary/v1";
-    evidence: "verified" | "trusted" | "inferred" | "unknown";
-    inferred: string[];
-    discharged: string[];
-    escaping: string[];
-    blockers: string[];
-  };
-}
-export interface ContractRelationalCallEvidence {
-  schema: "uneffect-contract-relational-call/v1";
-  evidence: "verified" | "trusted";
-  typescriptVersion: string;
-  functionName: string;
-  clauses: string[];
-  preconditions?: string[];
-  callSpan: { start: number; end: number };
-  declarationFileName: string;
-  declarationDigest: string;
-  declarationSpan: { start: number; end: number };
-}
-export interface ContractThrowEdge {
-  kind: "synchronous-throw" | "promise-rejection";
-  evidence?: "verified" | "trusted";
-  effect: string;
-  originSpan: { start: number; end: number };
-  handlerSpan?: { start: number; end: number };
-  payload?: LogicExpression;
-}
-export interface InvariantObligation {
-  id: string;
-  kind: "postcondition" | "call-precondition" | "loop-init" | "loop-preserve";
-  fileName: string;
-  functionName: string;
-  span: { start: number; end: number };
-  variables: ObligationVariable[];
-  assumptions: LogicExpression[];
-  goal: LogicExpression;
-  source: string;
-  bindings: ObligationBinding[];
-  /** Readable aliases for generated variables, e.g. `count_i_loop_84` displayed as `i@loop`. */
-  displayNames: Record<string, string>;
-  controlFlow: ContractControlFlowEvidence;
-}
+export { parseLogicExpression, parseLogicExpressionForHints, proveBooleanImplication } from "./logic.js";
+export { logicToSmt, generateObligationSmt, obligationFromSpec } from "./obligations.js";
+export type { LogicSort, NumericDomain, LogicExpression, ObligationVariable, ObligationBinding, ContractControlFlowEvidence, ContractRelationalCallEvidence, ContractThrowEdge, InvariantObligation } from "./logic-contracts.js";
 
 /** A lowering rejection that stays locatable and actionable instead of collapsing to a bare message. */
 export class InvariantLoweringError extends Error {
@@ -1843,14 +1773,6 @@ function typeCheckerCallCompletions(
   return facts;
 }
 
-function parseTsExpression(text: string): ts.Expression {
-  const source = ts.createSourceFile("logic.ts", `const value = (${text})`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const statement = source.statements[0];
-  const expression = statement && ts.isVariableStatement(statement) ? statement.declarationList.declarations[0]?.initializer : undefined;
-  if (!expression) throw new Error(`invalid invariant expression: ${text}`);
-  return expression;
-}
-
 function semanticGuardExpression(node: ts.Expression, guards: ReadonlyMap<string, readonly SemanticGuardFact[]>): LogicExpression | undefined {
   if (!ts.isBinaryExpression(node)) return undefined;
   const equality = node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
@@ -1961,44 +1883,6 @@ function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(
   throw new Error(`unsupported invariant expression: ${node.getText()}`);
 }
 
-export function parseLogicExpression(text: string): LogicExpression { return logic(parseTsExpression(text)); }
-
-/** Parses scalar refinements for test-data hints without treating JavaScript `%` as SMT modulo. */
-export function parseLogicExpressionForHints(text: string): LogicExpression { return logic(parseTsExpression(text), new Set(), new Map(), new Map(), true); }
-
-/** Decides small, purely-boolean implications over the same IR emitted to Z3. */
-export function proveBooleanImplication(assumptionSources: string[], goalSource: string): boolean {
-  try {
-    const assumptions = assumptionSources.map(parseLogicExpression), goal = parseLogicExpression(goalSource);
-    const names = new Set<string>();
-    const collect = (expression: LogicExpression): void => {
-      if (expression.kind === "variable") names.add(expression.name);
-      else if (expression.kind === "unary") collect(expression.operand);
-      else if (expression.kind === "binary") { collect(expression.left); collect(expression.right); }
-    };
-    [...assumptions, goal].forEach(collect);
-    if (names.size > 12) return false;
-    const variables = [...names];
-    const evaluate = (expression: LogicExpression, values: Map<string, boolean>): boolean => {
-      if (expression.kind === "boolean") return expression.value;
-      if (expression.kind === "variable") return values.get(expression.name)!;
-      if (expression.kind === "unary" && expression.operator === "not") return !evaluate(expression.operand, values);
-      if (expression.kind === "binary" && expression.operator === "and") return evaluate(expression.left, values) && evaluate(expression.right, values);
-      if (expression.kind === "binary" && expression.operator === "or") return evaluate(expression.left, values) || evaluate(expression.right, values);
-      if (expression.kind === "binary" && expression.operator === "eq") return evaluate(expression.left, values) === evaluate(expression.right, values);
-      if (expression.kind === "binary" && expression.operator === "neq") return evaluate(expression.left, values) !== evaluate(expression.right, values);
-      throw new Error("non-boolean ownership guard");
-    };
-    for (let bits = 0; bits < 2 ** variables.length; bits++) {
-      const values = new Map(variables.map((name, index) => [name, Boolean(bits & (1 << index))]));
-      if (assumptions.every((item) => evaluate(item, values)) && !evaluate(goal, values)) return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function substitute(expression: LogicExpression, env: Environment): LogicExpression {
   if (expression.kind === "variable") return env.get(expression.name) ?? expression;
   if (expression.kind === "unary") return { ...expression, operand: substitute(expression.operand, env) };
@@ -2019,16 +1903,6 @@ function domain(type: ts.TypeNode | undefined, checkerFact?: ParameterTypeFact):
   throw new Error(`unsupported contract parameter type: ${name}`);
 }
 function sort(value: NumericDomain): LogicSort { return value === "bool" ? "Bool" : value === "float" ? "Real" : "Int"; }
-
-function stableId(value: Omit<InvariantObligation, "id">): string {
-  return `inv_${createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 20)}`;
-}
-
-function controlFlowBlockId(fileName: string, functionName: string, span: { start: number; end: number }, completion: ContractControlFlowEvidence["completion"]): string {
-  return `cfg_${createHash("sha256").update(JSON.stringify({ fileName, functionName, span, completion })).digest("hex").slice(0, 20)}`;
-}
-
-function makeObligation(value: Omit<InvariantObligation, "id">): InvariantObligation { return { id: stableId(value), ...value }; }
 
 /** Maps a lowering rejection to the concrete edit that brings the function back into the verified subset. */
 function loweringHint(message: string): string | undefined {
@@ -3692,46 +3566,4 @@ export function lowerInvariantProgram(
     }
   }
   return obligations;
-}
-
-const smtOperators: Record<string, string> = { add: "+", sub: "-", mul: "*", "int-mod": "mod", lt: "<", lte: "<=", gt: ">", gte: ">=", eq: "=", and: "and", or: "or" };
-export function logicToSmt(expression: LogicExpression): string {
-  if (expression.kind === "variable") return expression.name;
-  if (expression.kind === "integer") return expression.value;
-  if (expression.kind === "real") return expression.value;
-  if (expression.kind === "boolean") return String(expression.value);
-  if (expression.kind === "unary") {
-    if (expression.operator === "not") return `(not ${logicToSmt(expression.operand)})`;
-    if (expression.operator === "floor") return `(to_int ${logicToSmt(expression.operand)})`;
-    if (expression.operator === "ceil") return `(- (to_int (- ${logicToSmt(expression.operand)})))`;
-    return `(- ${logicToSmt(expression.operand)})`;
-  }
-  if (expression.operator === "neq") return `(not (= ${logicToSmt(expression.left)} ${logicToSmt(expression.right)}))`;
-  const operator = smtOperators[expression.operator];
-  if (!operator) throw new Error(`unsupported SMT operator: ${expression.operator}`);
-  return `(${operator} ${logicToSmt(expression.left)} ${logicToSmt(expression.right)})`;
-}
-
-export function generateObligationSmt(obligation: InvariantObligation, commands = true): string {
-  const lines = ["(set-logic ALL)", ...obligation.variables.map((item) => `(declare-const ${item.name} ${item.sort})`),
-    ...obligation.assumptions.map((item) => `(assert ${logicToSmt(item)})`), `(assert (not ${logicToSmt(obligation.goal)}))`];
-  if (commands) lines.push("(check-sat)");
-  return `${lines.join("\n")}\n`;
-}
-
-export function obligationFromSpec(spec: InvariantSpec): InvariantObligation {
-  if (!spec.result || spec.ensures.length === 0) throw new Error(`${spec.functionName} has no supported postcondition`);
-  const domains = spec.parameterDomains ?? Object.fromEntries(spec.parameters.map((name) => [name, "int"]));
-  const variables: ObligationVariable[] = spec.parameters.map((name) => ({ name, domain: domains[name] ?? "int", sort: sort(domains[name] ?? "int") }));
-  const resultDomain = spec.resultDomain ?? "int";
-  variables.push({ name: "result", domain: resultDomain, sort: sort(resultDomain) });
-  const assumptions = spec.requires.map(parseLogicExpression);
-  for (const item of variables) if (item.domain === "nat") assumptions.push({ kind: "binary", operator: "gte", left: variable(item.name), right: { kind: "integer", value: "0" } });
-  assumptions.push({ kind: "binary", operator: "eq", left: variable("result"), right: parseLogicExpression(spec.result) });
-  const goals = spec.ensures.map(parseLogicExpression);
-  const goal = goals.reduce((left, right): LogicExpression => ({ kind: "binary", operator: "and", left, right }));
-  const fileName = spec.fileName ?? "<spec>";
-  const span = spec.span ?? { start: 0, end: 0 };
-  const value = { kind: "postcondition" as const, fileName, functionName: spec.functionName, span, variables, assumptions, goal, source: spec.ensures.join(" && "), bindings: [{ name: "result", expression: parseLogicExpression(spec.result) }], displayNames: {}, controlFlow: { schema: "uneffect-contract-control-flow/v1" as const, blockId: controlFlowBlockId(fileName, spec.functionName, span, "synthetic"), completion: "synthetic" as const, pathConditions: [...assumptions] } };
-  return makeObligation(value);
 }

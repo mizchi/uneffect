@@ -11,10 +11,12 @@ npm install --save-dev @mizchi/uneffect
 npx uneffect check src/*.ts
 ```
 
-The default `check` and `cfg-lint` paths use the packaged TypeScript 7 native
+The default `check`, `cfg-lint`, and `module-order` paths use the packaged TypeScript 7 native
 compiler through Corsa plus Oxc. The JavaScript `@typescript/typescript6` peer
 is needed for `--typescript-program` and proof commands that still use the
-Program API, including `module-order`. Node.js 24 or newer is required.
+Program API, including `spec temporal`. The `spec ir`,
+`lint`, `z3`, `quint`, and `compose` paths use Oxc and do not load that peer.
+See [compiler migration](./compiler-migration.md). Node.js 24 or newer is required.
 
 `@informalsystems/quint` is an optional peer dependency. The model commands
 generate Quint source with nothing installed; add the package only to run what
@@ -35,7 +37,7 @@ npx quint run protocol.qnt
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes. `temporal --runtime web|node` is the public host-aware model combining user temporal annotations with supported JavaScript async observations. `ir`, `lint`, `z3`, `quint`, and `compose` expose the other specification projections. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
-| `module-order <entry.ts>` | The source-mapped ESM initialization partial-order artifact; `--schema-version 1\|2` selects the default v1 or supported v2 conditional join, and `--require` rejects non-proof-grade extraction. |
+| `module-order <entry.ts>` | The Corsa/Oxc source-mapped ESM initialization partial-order artifact; `--project` selects compiler options (default: isolated ES2024/NodeNext, no ambient package types); `--schema-version 1\|2` selects the default v1 or supported v2 conditional join, and `--require` rejects non-proof-grade extraction. |
 | `cfg-lint <file.ts> <function>` | Prototype initialization-before-use rule over function CFGs, using Corsa/Oxc without the JavaScript TypeScript compiler. JSON diagnostics, explicit operation assumptions, and unknown boundaries; see [CFG lint](./cfg-lint.md). |
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
@@ -110,6 +112,12 @@ fails the check.
 `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.
+
+Without ownership options, `instrument` transforms `uneffect:assert` parameter
+annotations through Oxc and needs no JavaScript TypeScript compiler. Named
+`Int`, `Nat`, and `Float` schemas and restricted Valibot expressions generate
+runtime checks; this command does not prove `requires`/`ensures` predicates.
+Ownership analysis and proof/cache options still load the Program implementation.
 
 The only host-aware async backend is `spec temporal --runtime web|node`.
 The removed `async-quint`, `promise-quint`, `web-loop-quint`, and

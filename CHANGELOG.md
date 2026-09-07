@@ -6,6 +6,62 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Added native refinement callable linking through `resolveCorsaRefinementDslLink`
+  in `/experimental/spec`. Validate Runtime compatibility, boolean invariant
+  results, helper/implementation origins, and diagnostics in one Corsa snapshot.
+  Share Oxc callable locations and compatibility rules with the Program adapter.
+  Added snapshot-owned assignability and native shorthand value-symbol queries;
+  preserve v1 manifests while rejecting foreign re-exports and unchecked projects.
+
+- Added `prepareCorsaContractDslLinks` to `/experimental/spec`, checking helper
+  identities, implementation signatures, and project diagnostics in one native
+  Corsa snapshot. Share Oxc attachment checks and domain comparison with the
+  Program adapter; authenticate numeric brands against package-owned declarations.
+  Reject body type errors, unchecked projects, stale source, and same-name
+  declaration impostors. Contract body proofs retain the existing verifier.
+
+- Added `/experimental/corsa/callables` for native overload resolution, generic
+  parameter/return substitution, constructor calls, and inferred declaration
+  results without the JavaScript compiler. A typed RPC bridge uses the native
+  7.0.2 signature endpoints through Corsa; protocol-5 source indexes authenticate
+  Oxc ranges and returned declarations. Reject stale source, malformed indexes,
+  foreign files, and recovery signatures without declaration identity.
+
+- Moved parameter runtime assertions and the default `instrument` CLI to Oxc,
+  with a compiler-independent `/experimental/instrument` entry. Preserve the
+  schema's string literals, avoid generated-name capture, and retain hashbangs
+  and directive prologues. Reject expression escapes, optional/computed helper
+  calls, prototype access, and recovered syntax. Ownership source traversal now
+  uses Oxc; ownership analysis and proof options retain their Program adapter.
+
+- Migrated capability/refinement DSL source parsing and link generation to Oxc,
+  completing the four DSL source paths in `/experimental/spec`. Added Corsa
+  helper identity support for both DSLs and isolated binding-manifest contracts.
+  Retained the Program callable/type/origin validators and stable IR output.
+  Reject optional helper calls, recovered syntax, duplicate bindings, invalid
+  schema fields, and annotation escapes; preserve delimiters inside builtin atoms.
+
+- Moved temporal and contract `.uneffect.ts` parsing/source linking to Oxc and
+  exposed compiler-independent analysis through `/experimental/spec`. Preserved
+  clause provenance, generated models, and the Program authentication adapters.
+  Added Corsa helper identity checks against package-owned declaration paths.
+  Reject DSL callback/default/import/property shapes absent from the neutral IR
+  and text that can escape generated annotations.
+
+- Migrated `module-order` v1/v2 CLI extraction to Corsa/Oxc, with `--project` and
+  `--corsa-executable` options and an independent async
+  `/experimental/module-order/corsa` API. Shared ordering/cycle analysis and
+  conditional-await proofs with the compatible synchronous Program API.
+  Native diagnostics and actual compiler provenance remain in the artifact.
+
+- Migrated specification, temporal-expression, temporal-composition, and scalar
+  contract expression parsing to Oxc. `spec ir/lint/z3/quint/compose` and the
+  independent `/experimental/spec` API no longer load the JavaScript TypeScript
+  compiler. Extracted neutral obligation contracts and SMT construction while
+  retaining Program adapter compatibility, obligation IDs, and generated output.
+- Reject parser recovery, escaped expression wrappers, and temporal optional
+  chains, async/default/rest lambdas, and prototype setters absent from the IR.
+
 - CFG lint now uses Oxc syntax and Corsa symbols with native compiler diagnostics.
   Independent `/experimental/lint` and `/experimental/lint/corsa` entries avoid
   loading the JavaScript TypeScript compiler; the Program adapter remains optional.

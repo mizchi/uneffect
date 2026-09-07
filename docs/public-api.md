@@ -9,6 +9,9 @@ through Corsa plus Oxc. The explicit `--typescript-program` compatibility path
 uses the separately pinned TypeScript 6 compiler API package for proof domains
 that have not moved to the native frontend yet.
 
+See [Corsa/Oxc migration](./compiler-migration.md) for the compiler-independent
+paths and remaining Program-backed domains.
+
 ## Package entrypoints
 
 | Import path | Status | Intended use |
@@ -21,7 +24,11 @@ that have not moved to the native frontend yet.
 | `@mizchi/uneffect/corsa` | Public compatibility facade | High-level Corsa project checking and JSON report formatting. Raw checker facts and parity internals are excluded. |
 | `@mizchi/uneffect/corsa/api` | Public integration boundary | Versioned direct Corsa semantic queries without constructing a JavaScript TypeScript `Program`. The `uneffect-corsa-api-frontend/v1` descriptor lists the active capabilities and limitations; syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |
+| `@mizchi/uneffect/experimental/module-order/corsa` | Experimental native adapter | Async v1/v2 ESM order extraction from `entryFile` and optional `configFile`, preserving ordering contracts without loading the JavaScript compiler. |
+| `@mizchi/uneffect/experimental/spec` | Experimental | Oxc specification and four DSL source parsers, Corsa helper identity checks, native contract signature validation (`prepareCorsaContractDslLinks`), and refinement callable type/origin validation (`resolveCorsaRefinementDslLink`, `ResolveCorsaRefinementDslOptions`). Also scalar contract/SMT generation, temporal composition, and specification lint without the JavaScript TypeScript compiler. |
 | `@mizchi/uneffect/experimental/lint` | Experimental | Compiler-independent CFG prerequisite rules and contracts. |
+| `@mizchi/uneffect/experimental/instrument` | Experimental | Oxc parameter assertion insertion (`instrumentRuntimeAssertions`, `InstrumentResult`, `InstrumentDiagnostic`), without loading the JavaScript TypeScript compiler or ownership analyzers. |
+| `@mizchi/uneffect/experimental/corsa/callables` | Experimental | Native resolved signatures, inferred declaration returns, complete overload sets, intrinsic/alias and shorthand value identity queries, assignability, and snapshot diagnostics (`getProjectDiagnostics`). Oxc ranges are matched to version-checked native node identities. Consumers must check diagnostics before relying on signature facts; body proofs are separate. |
 | `@mizchi/uneffect/experimental/lint/corsa` | Experimental | Oxc syntax and Corsa semantic extraction, without a JavaScript TypeScript compiler. |
 | `@mizchi/uneffect/experimental/corsa` | Experimental | Raw Corsa/Oxlint checker-fact export and frontend-parity internals. |
 | `@mizchi/uneffect/spec` | Public v1 authoring subset | Type-checked, declarative `*.uneffect.ts` temporal, capability, Hoare-contract, and refinement specifications. Uneffect parses these modules but does not execute them. |

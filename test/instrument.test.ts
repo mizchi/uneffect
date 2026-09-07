@@ -36,6 +36,28 @@ describe("runtime assertion instrumenter", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unknown-parameter", parameter: "missing" }));
   });
 
+  it("retains direct optional ownership calls and rejects expression-nested calls", () => {
+    const names = Array.from({ length: 13 }, (_, index) => `b${index}`);
+    const parameters = names.map(name => `${name}: boolean`).join(", ");
+    const call = `consume?.(${names.join(", ")}, pending)`;
+    const source = (statement: string) => `
+      declare function task(): Promise<void>;
+      /* uneffect: consumes_rejection_when 13: ${names.join(" && ")} */
+      declare function consume(${parameters}, value: Promise<void>): void;
+      async function run(${parameters}) {
+        const pending = task();
+        ${statement};
+      }
+    `;
+    const direct = instrumentOwnershipAssertions("optional.ts", source(call));
+    expect(direct.analysis.ownershipObligations).toHaveLength(1);
+    expect(direct.diagnostics).toEqual([]);
+    expect(direct.assertions).toHaveLength(1);
+    const nested = instrumentOwnershipAssertions("nested.ts", source(`(${call})`));
+    expect(nested.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported-function" }));
+    expect(nested.assertions).toEqual([]);
+  });
+
   it("inserts unresolved ownership checks and elides them only with matching verifier evidence", async () => {
     const names = Array.from({ length: 13 }, (_, index) => `b${index}`);
     const guard = names.join(" && "), parameters = names.map((name) => `${name}: boolean`).join(", ");

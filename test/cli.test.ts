@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "@typescript/typescript6";
 import { cliVersion, formatCliHelp, loadCliCommands, runCli } from "../src/cli/cli-runner.js";
@@ -1307,15 +1307,17 @@ describe("uneffect command line", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-order-v2-cli-"));
     try {
       const dependency = join(directory, "dependency.mts"), entry = join(directory, "entry.mts");
+      const project = join(directory, "tsconfig.json");
+      writeFileSync(project, JSON.stringify({ compilerOptions: { target: "ES2024", module: "NodeNext", types: ["node"], typeRoots: [resolve("node_modules/@types")] }, files: [entry] }));
       writeFileSync(dependency, readFileSync("examples/dogfood/module-conditional-tla.ts", "utf8"));
       writeFileSync(entry, 'import { cacheState } from "./dependency.mjs"; console.log(cacheState)');
       const defaults = capture(), explicitV1 = capture(), v2 = capture();
-      expect(await runCli(["module-order", "--require", entry], defaults)).toBe(exitCode.failed);
+      expect(await runCli(["module-order", "--project", project, "--require", entry], defaults)).toBe(exitCode.failed);
       expect(JSON.parse(defaults.stdout)).toMatchObject({ schema: "uneffect-module-order/v1", evidence: "unknown" });
-      expect(await runCli(["module-order", "--schema-version", "1", "--require", entry], explicitV1)).toBe(exitCode.failed);
+      expect(await runCli(["module-order", "--project", project, "--schema-version", "1", "--require", entry], explicitV1)).toBe(exitCode.failed);
       expect(explicitV1.stdout).toBe(defaults.stdout);
       expect(explicitV1.stderr).toBe(defaults.stderr);
-      expect(await runCli(["module-order", "--schema-version", "2", "--require", entry], v2), v2.stderr).toBe(exitCode.success);
+      expect(await runCli(["module-order", "--project", project, "--schema-version", "2", "--require", entry], v2), v2.stderr).toBe(exitCode.success);
       expect(JSON.parse(v2.stdout)).toMatchObject({
         schema: "uneffect-module-order/v2", schemaVersion: 2, evidence: "verified", unknowns: [],
         modules: expect.arrayContaining([expect.objectContaining({
@@ -1340,17 +1342,19 @@ describe("uneffect command line", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-order-v2-cli-mutant-"));
     try {
       const entry = join(directory, "entry.mts");
+      const project = join(directory, "tsconfig.json");
+      writeFileSync(project, JSON.stringify({ compilerOptions: { target: "ES2024", module: "NodeNext", types: ["node"], typeRoots: [resolve("node_modules/@types")] }, files: [entry] }));
       const source = readFileSync("examples/dogfood/module-conditional-tla.ts", "utf8");
       const mutant = source.replace("const warmCache", "let warmCache");
       expect(mutant).not.toBe(source);
       writeFileSync(entry, mutant);
       const inspected = capture(), required = capture();
-      expect(await runCli(["module-order", "--schema-version=2", entry], inspected)).toBe(exitCode.success);
+      expect(await runCli(["module-order", "--project", project, "--schema-version=2", entry], inspected)).toBe(exitCode.success);
       expect(JSON.parse(inspected.stdout)).toMatchObject({
         schema: "uneffect-module-order/v2", evidence: "unknown",
         unknowns: expect.arrayContaining([expect.objectContaining({ kind: "conditional-top-level-await" })]),
       });
-      expect(await runCli(["module-order", "--schema-version=2", "--require", entry], required)).toBe(exitCode.failed);
+      expect(await runCli(["module-order", "--project", project, "--schema-version=2", "--require", entry], required)).toBe(exitCode.failed);
       expect(required.stdout).toBe(inspected.stdout);
       expect(required.stderr).toContain("conditional-top-level-await");
     } finally { rmSync(directory, { recursive: true, force: true }); }

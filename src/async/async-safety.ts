@@ -3,7 +3,9 @@ import { bindingIdentity, type BindingIdentity } from "../frontends/typescript/b
 import { extractAnnotations, extractLocatedAnnotations } from "../support/annotations.js";
 import type { DiagnosticNote } from "../support/diagnostics.js";
 import { resolveDisposalProtocol } from "../resources/disposal-symbols.js";
-import { logicToSmt, parseLogicExpression, proveBooleanImplication, type LogicExpression } from "../contracts/invariant-ir.js";
+import { parseLogicExpression, proveBooleanImplication } from "../contracts/logic.js";
+import { type LogicExpression } from "../contracts/logic-contracts.js";
+import { logicToSmt } from "../contracts/obligations.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { solveBasicBlockFixedPoint } from "../cfg/index.js";
 import { evaluateStaticPrimitive } from "../frontends/typescript/static-evaluation.js";

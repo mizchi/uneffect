@@ -259,8 +259,12 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
     const projectFile = (file: string): string => {
       const absolute = resolve(file);
       const known = roots.get(absolute);
-      if (!known) throw new Error(`${absolute} is not part of the Corsa project`);
-      return known;
+      if (known) return known;
+      // Imported implementation files belong to the same snapshot even when
+      // they are absent from rootFiles. Authenticate membership with Corsa.
+      if (!client.getSourceFile(snapshot!.snapshot, project.id, absolute)) throw new Error(`${absolute} is not part of the Corsa project`);
+      roots.set(absolute, absolute);
+      return absolute;
     };
     let closed = false;
     const assertOpen = (): void => {

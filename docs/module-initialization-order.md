@@ -60,12 +60,42 @@ must be checked against its matching schema; these analyzers accept Programs,
 not persisted evidence. Schema conformance alone does not prove source identity
 or event ordering. The supported source fragments and exclusions follow below.
 
+## Corsa/Oxc API
+
+The CLI uses Oxc syntax and native Corsa semantic queries. An independent async
+adapter is available without the JavaScript TypeScript compiler:
+
+```ts
+import { analyzeCorsaModuleInitializationOrderV2 } from "@mizchi/uneffect/experimental/module-order/corsa"
+
+const order = await analyzeCorsaModuleInitializationOrderV2({
+  entryFile: "src/main.mts",
+  configFile: "tsconfig.json",
+  proofBudget: { moduleControlFlowIterations: 32 },
+})
+```
+
+`analyzeCorsaModuleInitializationOrder` returns v1. Both APIs accept optional
+`configFile` and `corsaExecutable`; v2 also accepts the proof budget above.
+They share ordering and CFG proof implementations with the synchronous Program
+API. Native artifacts record the actual native compiler version and compiler
+options digest. Native diagnostic spans are points, because the diagnostic
+protocol does not report token lengths. Frontend failures reject the promise;
+no JavaScript compiler fallback is attempted. The new adapter remains
+experimental while the synchronous `/module-order` contract remains supported.
+
 ## CLI and v1 ordering fragment
 
 ```sh
-npx uneffect module-order src/main.mts > module-order.json
+npx uneffect module-order --project tsconfig.json src/main.mts > module-order.json
 npx uneffect module-order --require src/main.mts > module-order.json
 ```
+
+`--project` uses consumer compiler options and Corsa's resolved module identities.
+Without it, the command creates an isolated ES2024/NodeNext project with no
+ambient package types. Pass a project when the entry uses Node or other ambient
+types. Diagnostic extraction overrides `noCheck` and `listFilesOnly` so project
+shortcuts cannot suppress compiler-error evidence. `--corsa-executable` selects an explicit native compiler.
 
 The command emits a `ModuleInitializationOrder` artifact identified by
 `schema: "uneffect-module-order/v1"` (and `schemaVersion: 1`). Without

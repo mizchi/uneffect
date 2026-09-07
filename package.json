@@ -77,6 +77,22 @@
     "./experimental/lint/corsa": {
       "types": "./dist/src/lint/corsa.d.ts",
       "import": "./dist/src/lint/corsa.js"
+    },
+    "./experimental/spec": {
+      "types": "./dist/src/spec/analysis-api.d.ts",
+      "import": "./dist/src/spec/analysis-api.js"
+    },
+    "./experimental/instrument": {
+      "types": "./dist/src/optimizer/runtime-assertions.d.ts",
+      "import": "./dist/src/optimizer/runtime-assertions.js"
+    },
+    "./experimental/corsa/callables": {
+      "types": "./dist/src/frontends/corsa/corsa-callable-frontend.d.ts",
+      "import": "./dist/src/frontends/corsa/corsa-callable-frontend.js"
+    },
+    "./experimental/module-order/corsa": {
+      "types": "./dist/src/modules/corsa-module-order.d.ts",
+      "import": "./dist/src/modules/corsa-module-order.js"
     }
   },
   "bin": {

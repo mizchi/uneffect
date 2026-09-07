@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { CliUsageError, exitCode, formatCommandHelp, parseCommandArgs, singleFileArgument, type CliCommand } from "./cli-support.js";
-import { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions } from "../optimizer/instrument.js";
+import { instrumentRuntimeAssertions } from "../optimizer/runtime-assertions.js";
 
 export const instrumentCommand: CliCommand = {
   name: "instrument",
@@ -25,9 +25,10 @@ export const instrumentCommand: CliCommand = {
     if (evidencePath !== undefined && evidencePath.length === 0) throw new CliUsageError("--ownership-evidence needs a cache file path");
     const fileName = resolve(singleFileArgument(positionals, "instrument"));
     const text = await readFile(fileName, "utf8");
-    const cached = verifyOwnership && evidencePath ? await buildVerifiedOwnershipCached(fileName, text, resolve(evidencePath)) : undefined;
-    const verified = cached ?? (verifyOwnership ? await buildVerifiedOwnership(fileName, text) : undefined);
-    const result = verified ?? (ownership ? instrumentOwnershipAssertions(fileName, text) : instrumentRuntimeAssertions(fileName, text));
+    const legacy = ownership ? await import("../optimizer/instrument.js") : undefined;
+    const cached = verifyOwnership && evidencePath ? await legacy!.buildVerifiedOwnershipCached(fileName, text, resolve(evidencePath)) : undefined;
+    const verified = cached ?? (verifyOwnership ? await legacy!.buildVerifiedOwnership(fileName, text) : undefined);
+    const result = verified ?? (ownership ? legacy!.instrumentOwnershipAssertions(fileName, text) : instrumentRuntimeAssertions(fileName, text));
     for (const diagnostic of result.diagnostics) io.err(`${diagnostic.fileName}:${diagnostic.line}: error: ${diagnostic.message}\n`);
     if (result.diagnostics.length > 0) return exitCode.failed;
     if (cached) io.err(`ownership evidence: ${cached.cache.reused} reused, ${cached.cache.verified} verified, ${cached.cache.stale.length} stale\n`);

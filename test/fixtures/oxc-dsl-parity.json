@@ -1,0 +1,1362 @@
+{
+  "compiler": "6.0.3",
+  "temporal": [
+    {
+      "source": "\n  import { bool, defineTemporal, int } from \"@mizchi/uneffect/spec\";\n\n  export default defineTemporal({\n    state: { attempts: int(), done: bool() },\n    init: { attempts: 0, done: false },\n    actions: {\n      retry: ({ attempts }) => ({ attempts: attempts + 1 }),\n      finish: ({ attempts }) => ({ done: attempts >= 1 }),\n    },\n    guards: { retry: ({ done }) => !done },\n    fairness: { retry: \"weak\" },\n    invariants: {\n      nonnegative: ({ attempts }) => attempts >= 0,\n    },\n    eventually: {\n      completes: ({ done }) => done,\n    },\n    repeatedly: {\n      observesCompletion: ({ done }) => done,\n    },\n    stabilizes: {\n      remainsDone: ({ done }) => done,\n    },\n    responses: {\n      retryCompletes: {\n        trigger: ({ attempts, done }) => attempts > 0 && !done,\n        response: ({ done }) => done,\n      },\n    },\n  });\n",
+      "parsed": {
+        "stutteringPolicy": "explicit-unchanged",
+        "clocks": [],
+        "states": [
+          {
+            "name": "attempts",
+            "type": "int"
+          },
+          {
+            "name": "done",
+            "type": "bool"
+          }
+        ],
+        "init": [
+          {
+            "target": "attempts",
+            "expression": "0",
+            "expressionAst": {
+              "kind": "integer",
+              "value": "0"
+            }
+          },
+          {
+            "target": "done",
+            "expression": "false",
+            "expressionAst": {
+              "kind": "boolean",
+              "value": false
+            }
+          }
+        ],
+        "actions": [
+          {
+            "name": "retry",
+            "assignments": [
+              {
+                "target": "attempts",
+                "expression": "attempts + 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "add",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ],
+            "guard": {
+              "name": "retry",
+              "expression": "!done",
+              "expressionAst": {
+                "kind": "unary",
+                "operator": "not",
+                "operand": {
+                  "kind": "name",
+                  "name": "done"
+                }
+              }
+            },
+            "fairness": "weak"
+          },
+          {
+            "name": "finish",
+            "assignments": [
+              {
+                "target": "done",
+                "expression": "attempts >= 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "gte",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "properties": [
+          {
+            "name": "nonnegative",
+            "expression": "attempts >= 0",
+            "expressionAst": {
+              "kind": "binary",
+              "operator": "gte",
+              "left": {
+                "kind": "name",
+                "name": "attempts"
+              },
+              "right": {
+                "kind": "integer",
+                "value": "0"
+              }
+            }
+          }
+        ],
+        "liveness": [
+          {
+            "name": "completes",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "recurrences": [
+          {
+            "name": "observesCompletion",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "stabilizations": [
+          {
+            "name": "remainsDone",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "responses": [
+          {
+            "name": "retryCompletes",
+            "trigger": "attempts > 0 && !done",
+            "triggerAst": {
+              "kind": "binary",
+              "operator": "and",
+              "left": {
+                "kind": "binary",
+                "operator": "gt",
+                "left": {
+                  "kind": "name",
+                  "name": "attempts"
+                },
+                "right": {
+                  "kind": "integer",
+                  "value": "0"
+                }
+              },
+              "right": {
+                "kind": "unary",
+                "operator": "not",
+                "operand": {
+                  "kind": "name",
+                  "name": "done"
+                }
+              }
+            },
+            "response": "done",
+            "responseAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ]
+      },
+      "quint": "module model {\n  var attempts: int\n  var done: bool\n\n  action init = all {\n    attempts' = 0,\n    done' = false,\n  }\n\n  action retry = all {\n    not(done),\n    attempts' = attempts + 1,\n    done' = done,\n  }\n\n  action finish = all {\n    attempts' = attempts,\n    done' = attempts >= 1,\n  }\n\n  action step = any {\n    retry,\n    finish,\n  }\n\n  val nonnegative = attempts >= 0\n\n  temporal completes = eventually(done)\n\n  temporal observesCompletion = always(eventually(done))\n\n  temporal remainsDone = eventually(always(done))\n\n  temporal retryCompletes = attempts > 0 and not(done) leadsTo done\n\n  val fairnessVars = (attempts, done)\n  temporal fair_retry = retry.weakFair(fairnessVars)\n}\n",
+      "link": {
+        "implementationFile": "src/model.ts",
+        "specificationFile": "src/model.uneffect.ts",
+        "exportName": "default",
+        "spec": {
+          "stutteringPolicy": "explicit-unchanged",
+          "clocks": [],
+          "states": [
+            {
+              "name": "attempts",
+              "type": "int"
+            },
+            {
+              "name": "done",
+              "type": "bool"
+            }
+          ],
+          "init": [
+            {
+              "target": "attempts",
+              "expression": "0",
+              "expressionAst": {
+                "kind": "integer",
+                "value": "0"
+              }
+            },
+            {
+              "target": "done",
+              "expression": "false",
+              "expressionAst": {
+                "kind": "boolean",
+                "value": false
+              }
+            }
+          ],
+          "actions": [
+            {
+              "name": "retry",
+              "assignments": [
+                {
+                  "target": "attempts",
+                  "expression": "attempts + 1",
+                  "expressionAst": {
+                    "kind": "binary",
+                    "operator": "add",
+                    "left": {
+                      "kind": "name",
+                      "name": "attempts"
+                    },
+                    "right": {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  }
+                }
+              ],
+              "guard": {
+                "name": "retry",
+                "expression": "!done",
+                "expressionAst": {
+                  "kind": "unary",
+                  "operator": "not",
+                  "operand": {
+                    "kind": "name",
+                    "name": "done"
+                  }
+                }
+              },
+              "fairness": "weak"
+            },
+            {
+              "name": "finish",
+              "assignments": [
+                {
+                  "target": "done",
+                  "expression": "attempts >= 1",
+                  "expressionAst": {
+                    "kind": "binary",
+                    "operator": "gte",
+                    "left": {
+                      "kind": "name",
+                      "name": "attempts"
+                    },
+                    "right": {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "properties": [
+            {
+              "name": "nonnegative",
+              "expression": "attempts >= 0",
+              "expressionAst": {
+                "kind": "binary",
+                "operator": "gte",
+                "left": {
+                  "kind": "name",
+                  "name": "attempts"
+                },
+                "right": {
+                  "kind": "integer",
+                  "value": "0"
+                }
+              }
+            }
+          ],
+          "liveness": [
+            {
+              "name": "completes",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "recurrences": [
+            {
+              "name": "observesCompletion",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "stabilizations": [
+            {
+              "name": "remainsDone",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "name": "retryCompletes",
+              "trigger": "attempts > 0 && !done",
+              "triggerAst": {
+                "kind": "binary",
+                "operator": "and",
+                "left": {
+                  "kind": "binary",
+                  "operator": "gt",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                },
+                "right": {
+                  "kind": "unary",
+                  "operator": "not",
+                  "operand": {
+                    "kind": "name",
+                    "name": "done"
+                  }
+                }
+              },
+              "response": "done",
+              "responseAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "source": "\n  import { bool, defineTemporal as define, int as scalar } from \"@mizchi/uneffect/spec\";\n\n  export default define({\n    state: { attempts: scalar(), done: bool() },\n    init: { attempts: 0, done: false },\n    actions: {\n      retry: ({ attempts }) => ({ attempts: attempts + 1 }),\n      finish: ({ attempts }) => ({ done: attempts >= 1 }),\n    },\n    guards: { retry: ({ done }) => !done },\n    fairness: { retry: \"weak\" },\n    invariants: {\n      nonnegative: ({ attempts }) => attempts >= 0,\n    },\n    eventually: {\n      completes: ({ done }) => done,\n    },\n    repeatedly: {\n      observesCompletion: ({ done }) => done,\n    },\n    stabilizes: {\n      remainsDone: ({ done }) => done,\n    },\n    responses: {\n      retryCompletes: {\n        trigger: ({ attempts, done }) => attempts > 0 && !done,\n        response: ({ done }) => done,\n      },\n    },\n  });\n",
+      "parsed": {
+        "stutteringPolicy": "explicit-unchanged",
+        "clocks": [],
+        "states": [
+          {
+            "name": "attempts",
+            "type": "int"
+          },
+          {
+            "name": "done",
+            "type": "bool"
+          }
+        ],
+        "init": [
+          {
+            "target": "attempts",
+            "expression": "0",
+            "expressionAst": {
+              "kind": "integer",
+              "value": "0"
+            }
+          },
+          {
+            "target": "done",
+            "expression": "false",
+            "expressionAst": {
+              "kind": "boolean",
+              "value": false
+            }
+          }
+        ],
+        "actions": [
+          {
+            "name": "retry",
+            "assignments": [
+              {
+                "target": "attempts",
+                "expression": "attempts + 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "add",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ],
+            "guard": {
+              "name": "retry",
+              "expression": "!done",
+              "expressionAst": {
+                "kind": "unary",
+                "operator": "not",
+                "operand": {
+                  "kind": "name",
+                  "name": "done"
+                }
+              }
+            },
+            "fairness": "weak"
+          },
+          {
+            "name": "finish",
+            "assignments": [
+              {
+                "target": "done",
+                "expression": "attempts >= 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "gte",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "properties": [
+          {
+            "name": "nonnegative",
+            "expression": "attempts >= 0",
+            "expressionAst": {
+              "kind": "binary",
+              "operator": "gte",
+              "left": {
+                "kind": "name",
+                "name": "attempts"
+              },
+              "right": {
+                "kind": "integer",
+                "value": "0"
+              }
+            }
+          }
+        ],
+        "liveness": [
+          {
+            "name": "completes",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "recurrences": [
+          {
+            "name": "observesCompletion",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "stabilizations": [
+          {
+            "name": "remainsDone",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "responses": [
+          {
+            "name": "retryCompletes",
+            "trigger": "attempts > 0 && !done",
+            "triggerAst": {
+              "kind": "binary",
+              "operator": "and",
+              "left": {
+                "kind": "binary",
+                "operator": "gt",
+                "left": {
+                  "kind": "name",
+                  "name": "attempts"
+                },
+                "right": {
+                  "kind": "integer",
+                  "value": "0"
+                }
+              },
+              "right": {
+                "kind": "unary",
+                "operator": "not",
+                "operand": {
+                  "kind": "name",
+                  "name": "done"
+                }
+              }
+            },
+            "response": "done",
+            "responseAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ]
+      },
+      "quint": "module model {\n  var attempts: int\n  var done: bool\n\n  action init = all {\n    attempts' = 0,\n    done' = false,\n  }\n\n  action retry = all {\n    not(done),\n    attempts' = attempts + 1,\n    done' = done,\n  }\n\n  action finish = all {\n    attempts' = attempts,\n    done' = attempts >= 1,\n  }\n\n  action step = any {\n    retry,\n    finish,\n  }\n\n  val nonnegative = attempts >= 0\n\n  temporal completes = eventually(done)\n\n  temporal observesCompletion = always(eventually(done))\n\n  temporal remainsDone = eventually(always(done))\n\n  temporal retryCompletes = attempts > 0 and not(done) leadsTo done\n\n  val fairnessVars = (attempts, done)\n  temporal fair_retry = retry.weakFair(fairnessVars)\n}\n",
+      "link": {
+        "implementationFile": "src/model.ts",
+        "specificationFile": "src/model.uneffect.ts",
+        "exportName": "default",
+        "spec": {
+          "stutteringPolicy": "explicit-unchanged",
+          "clocks": [],
+          "states": [
+            {
+              "name": "attempts",
+              "type": "int"
+            },
+            {
+              "name": "done",
+              "type": "bool"
+            }
+          ],
+          "init": [
+            {
+              "target": "attempts",
+              "expression": "0",
+              "expressionAst": {
+                "kind": "integer",
+                "value": "0"
+              }
+            },
+            {
+              "target": "done",
+              "expression": "false",
+              "expressionAst": {
+                "kind": "boolean",
+                "value": false
+              }
+            }
+          ],
+          "actions": [
+            {
+              "name": "retry",
+              "assignments": [
+                {
+                  "target": "attempts",
+                  "expression": "attempts + 1",
+                  "expressionAst": {
+                    "kind": "binary",
+                    "operator": "add",
+                    "left": {
+                      "kind": "name",
+                      "name": "attempts"
+                    },
+                    "right": {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  }
+                }
+              ],
+              "guard": {
+                "name": "retry",
+                "expression": "!done",
+                "expressionAst": {
+                  "kind": "unary",
+                  "operator": "not",
+                  "operand": {
+                    "kind": "name",
+                    "name": "done"
+                  }
+                }
+              },
+              "fairness": "weak"
+            },
+            {
+              "name": "finish",
+              "assignments": [
+                {
+                  "target": "done",
+                  "expression": "attempts >= 1",
+                  "expressionAst": {
+                    "kind": "binary",
+                    "operator": "gte",
+                    "left": {
+                      "kind": "name",
+                      "name": "attempts"
+                    },
+                    "right": {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "properties": [
+            {
+              "name": "nonnegative",
+              "expression": "attempts >= 0",
+              "expressionAst": {
+                "kind": "binary",
+                "operator": "gte",
+                "left": {
+                  "kind": "name",
+                  "name": "attempts"
+                },
+                "right": {
+                  "kind": "integer",
+                  "value": "0"
+                }
+              }
+            }
+          ],
+          "liveness": [
+            {
+              "name": "completes",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "recurrences": [
+            {
+              "name": "observesCompletion",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "stabilizations": [
+            {
+              "name": "remainsDone",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "name": "retryCompletes",
+              "trigger": "attempts > 0 && !done",
+              "triggerAst": {
+                "kind": "binary",
+                "operator": "and",
+                "left": {
+                  "kind": "binary",
+                  "operator": "gt",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                },
+                "right": {
+                  "kind": "unary",
+                  "operator": "not",
+                  "operand": {
+                    "kind": "name",
+                    "name": "done"
+                  }
+                }
+              },
+              "response": "done",
+              "responseAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "source": "\r\n  import { bool, defineTemporal, int } from \"@mizchi/uneffect/spec\";\r\n\r\n  // 日本語 🙂\r\nexport default defineTemporal({\r\n    state: { attempts: int(), done: bool() },\r\n    init: { attempts: 0, done: false },\r\n    actions: {\r\n      retry: ({ attempts }) => ({ attempts: attempts + 1 }),\r\n      finish: ({ attempts }) => ({ done: attempts >= 1 }),\r\n    },\r\n    guards: { retry: ({ done }) => !done },\r\n    fairness: { retry: \"weak\" },\r\n    invariants: {\r\n      nonnegative: ({ attempts }) => attempts >= 0,\r\n    },\r\n    eventually: {\r\n      completes: ({ done }) => done,\r\n    },\r\n    repeatedly: {\r\n      observesCompletion: ({ done }) => done,\r\n    },\r\n    stabilizes: {\r\n      remainsDone: ({ done }) => done,\r\n    },\r\n    responses: {\r\n      retryCompletes: {\r\n        trigger: ({ attempts, done }) => attempts > 0 && !done,\r\n        response: ({ done }) => done,\r\n      },\r\n    },\r\n  });\r\n",
+      "parsed": {
+        "stutteringPolicy": "explicit-unchanged",
+        "clocks": [],
+        "states": [
+          {
+            "name": "attempts",
+            "type": "int"
+          },
+          {
+            "name": "done",
+            "type": "bool"
+          }
+        ],
+        "init": [
+          {
+            "target": "attempts",
+            "expression": "0",
+            "expressionAst": {
+              "kind": "integer",
+              "value": "0"
+            }
+          },
+          {
+            "target": "done",
+            "expression": "false",
+            "expressionAst": {
+              "kind": "boolean",
+              "value": false
+            }
+          }
+        ],
+        "actions": [
+          {
+            "name": "retry",
+            "assignments": [
+              {
+                "target": "attempts",
+                "expression": "attempts + 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "add",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ],
+            "guard": {
+              "name": "retry",
+              "expression": "!done",
+              "expressionAst": {
+                "kind": "unary",
+                "operator": "not",
+                "operand": {
+                  "kind": "name",
+                  "name": "done"
+                }
+              }
+            },
+            "fairness": "weak"
+          },
+          {
+            "name": "finish",
+            "assignments": [
+              {
+                "target": "done",
+                "expression": "attempts >= 1",
+                "expressionAst": {
+                  "kind": "binary",
+                  "operator": "gte",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "1"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "properties": [
+          {
+            "name": "nonnegative",
+            "expression": "attempts >= 0",
+            "expressionAst": {
+              "kind": "binary",
+              "operator": "gte",
+              "left": {
+                "kind": "name",
+                "name": "attempts"
+              },
+              "right": {
+                "kind": "integer",
+                "value": "0"
+              }
+            }
+          }
+        ],
+        "liveness": [
+          {
+            "name": "completes",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "recurrences": [
+          {
+            "name": "observesCompletion",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "stabilizations": [
+          {
+            "name": "remainsDone",
+            "expression": "done",
+            "expressionAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ],
+        "responses": [
+          {
+            "name": "retryCompletes",
+            "trigger": "attempts > 0 && !done",
+            "triggerAst": {
+              "kind": "binary",
+              "operator": "and",
+              "left": {
+                "kind": "binary",
+                "operator": "gt",
+                "left": {
+                  "kind": "name",
+                  "name": "attempts"
+                },
+                "right": {
+                  "kind": "integer",
+                  "value": "0"
+                }
+              },
+              "right": {
+                "kind": "unary",
+                "operator": "not",
+                "operand": {
+                  "kind": "name",
+                  "name": "done"
+                }
+              }
+            },
+            "response": "done",
+            "responseAst": {
+              "kind": "name",
+              "name": "done"
+            }
+          }
+        ]
+      },
+      "quint": "module model {\n  var attempts: int\n  var done: bool\n\n  action init = all {\n    attempts' = 0,\n    done' = false,\n  }\n\n  action retry = all {\n    not(done),\n    attempts' = attempts + 1,\n    done' = done,\n  }\n\n  action finish = all {\n    attempts' = attempts,\n    done' = attempts >= 1,\n  }\n\n  action step = any {\n    retry,\n    finish,\n  }\n\n  val nonnegative = attempts >= 0\n\n  temporal completes = eventually(done)\n\n  temporal observesCompletion = always(eventually(done))\n\n  temporal remainsDone = eventually(always(done))\n\n  temporal retryCompletes = attempts > 0 and not(done) leadsTo done\n\n  val fairnessVars = (attempts, done)\n  temporal fair_retry = retry.weakFair(fairnessVars)\n}\n",
+      "link": {
+        "implementationFile": "src/model.ts",
+        "specificationFile": "src/model.uneffect.ts",
+        "exportName": "default",
+        "spec": {
+          "stutteringPolicy": "explicit-unchanged",
+          "clocks": [],
+          "states": [
+            {
+              "name": "attempts",
+              "type": "int"
+            },
+            {
+              "name": "done",
+              "type": "bool"
+            }
+          ],
+          "init": [
+            {
+              "target": "attempts",
+              "expression": "0",
+              "expressionAst": {
+                "kind": "integer",
+                "value": "0"
+              }
+            },
+            {
+              "target": "done",
+              "expression": "false",
+              "expressionAst": {
+                "kind": "boolean",
+                "value": false
+              }
+            }
+          ],
+          "actions": [
+            {
+              "name": "retry",
+              "assignments": [
+                {
+                  "target": "attempts",
+                  "expression": "attempts + 1",
+                  "expressionAst": {
+                    "kind": "binary",
+                    "operator": "add",
+                    "left": {
+                      "kind": "name",
+                      "name": "attempts"
+                    },
+                    "right": {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  }
+                }
+              ],
+              "guard": {
+                "name": "retry",
+                "expression": "!done",
+                "expressionAst": {
+                  "kind": "unary",
+                  "operator": "not",
+                  "operand": {
+                    "kind": "name",
+                    "name": "done"
+                  }
+                }
+              },
+              "fairness": "weak"
+            },
+            {
+              "name": "finish",
+              "assignments": [
+                {
+                  "target": "done",
+                  "expression": "attempts >= 1",
+                  "expressionAst": {
+                    "kind": "binary",
+                    "operator": "gte",
+                    "left": {
+                      "kind": "name",
+                      "name": "attempts"
+                    },
+                    "right": {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "properties": [
+            {
+              "name": "nonnegative",
+              "expression": "attempts >= 0",
+              "expressionAst": {
+                "kind": "binary",
+                "operator": "gte",
+                "left": {
+                  "kind": "name",
+                  "name": "attempts"
+                },
+                "right": {
+                  "kind": "integer",
+                  "value": "0"
+                }
+              }
+            }
+          ],
+          "liveness": [
+            {
+              "name": "completes",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "recurrences": [
+            {
+              "name": "observesCompletion",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "stabilizations": [
+            {
+              "name": "remainsDone",
+              "expression": "done",
+              "expressionAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ],
+          "responses": [
+            {
+              "name": "retryCompletes",
+              "trigger": "attempts > 0 && !done",
+              "triggerAst": {
+                "kind": "binary",
+                "operator": "and",
+                "left": {
+                  "kind": "binary",
+                  "operator": "gt",
+                  "left": {
+                    "kind": "name",
+                    "name": "attempts"
+                  },
+                  "right": {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                },
+                "right": {
+                  "kind": "unary",
+                  "operator": "not",
+                  "operand": {
+                    "kind": "name",
+                    "name": "done"
+                  }
+                }
+              },
+              "response": "done",
+              "responseAst": {
+                "kind": "name",
+                "name": "done"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "contract": [
+    {
+      "source": "\n  import { defineContract, int } from \"@mizchi/uneffect/spec\";\n  export const Increment = defineContract({\n    parameters: { value: int() },\n    returns: int(),\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\n  });\n",
+      "parsed": {
+        "parameters": [
+          {
+            "name": "value",
+            "domain": "int"
+          }
+        ],
+        "resultDomain": "int",
+        "requires": [
+          "value >= 0",
+          "value < 100"
+        ],
+        "ensures": [
+          "result === value + 1",
+          "result > 0"
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/contract.ts": "/* uneffect:\n * requires value >= 0\n * requires value < 100\n * ensures result === value + 1\n * ensures result > 0\n */\nexport function increment(value: number): number { return value + 1 }",
+          "src/contract.uneffect.ts": "\n  import { defineContract, int } from \"@mizchi/uneffect/spec\";\n  export const Increment = defineContract({\n    parameters: { value: int() },\n    returns: int(),\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\n  });\n"
+        },
+        "provenance": {
+          "src/contract.ts": [
+            {
+              "kind": "requires",
+              "expression": "value >= 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 6,
+              "column": 31,
+              "span": {
+                "start": 192,
+                "end": 202
+              }
+            },
+            {
+              "kind": "requires",
+              "expression": "value < 100",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 6,
+              "column": 58,
+              "span": {
+                "start": 219,
+                "end": 230
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result === value + 1",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 38,
+              "span": {
+                "start": 270,
+                "end": 290
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result > 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 76,
+              "span": {
+                "start": 308,
+                "end": 318
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "source": "\n  import { defineContract as define, int as scalar } from \"@mizchi/uneffect/spec\";\n  export const Increment = define({\n    parameters: { value: scalar() },\n    returns: scalar(),\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\n  });\n",
+      "parsed": {
+        "parameters": [
+          {
+            "name": "value",
+            "domain": "int"
+          }
+        ],
+        "resultDomain": "int",
+        "requires": [
+          "value >= 0",
+          "value < 100"
+        ],
+        "ensures": [
+          "result === value + 1",
+          "result > 0"
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/contract.ts": "/* uneffect:\n * requires value >= 0\n * requires value < 100\n * ensures result === value + 1\n * ensures result > 0\n */\nexport function increment(value: number): number { return value + 1 }",
+          "src/contract.uneffect.ts": "\n  import { defineContract as define, int as scalar } from \"@mizchi/uneffect/spec\";\n  export const Increment = define({\n    parameters: { value: scalar() },\n    returns: scalar(),\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\n  });\n"
+        },
+        "provenance": {
+          "src/contract.ts": [
+            {
+              "kind": "requires",
+              "expression": "value >= 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 6,
+              "column": 31,
+              "span": {
+                "start": 210,
+                "end": 220
+              }
+            },
+            {
+              "kind": "requires",
+              "expression": "value < 100",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 6,
+              "column": 58,
+              "span": {
+                "start": 237,
+                "end": 248
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result === value + 1",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 38,
+              "span": {
+                "start": 288,
+                "end": 308
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result > 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 76,
+              "span": {
+                "start": 326,
+                "end": 336
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "source": "\n  import { defineContract, nat } from \"@mizchi/uneffect/spec\";\n  export const Increment = defineContract({\n    parameters: { value: nat() },\n    returns: nat(),\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\n  });\n",
+      "parsed": {
+        "parameters": [
+          {
+            "name": "value",
+            "domain": "nat"
+          }
+        ],
+        "resultDomain": "nat",
+        "requires": [
+          "value >= 0",
+          "value < 100"
+        ],
+        "ensures": [
+          "result === value + 1",
+          "result > 0"
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/contract.ts": "/* uneffect:\n * assert value: Nat\n * returns Nat\n * requires value >= 0\n * requires value < 100\n * ensures result === value + 1\n * ensures result > 0\n */\nexport function increment(value: number): number { return value + 1 }",
+          "src/contract.uneffect.ts": "\n  import { defineContract, nat } from \"@mizchi/uneffect/spec\";\n  export const Increment = defineContract({\n    parameters: { value: nat() },\n    returns: nat(),\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\n  });\n"
+        },
+        "provenance": {
+          "src/contract.ts": [
+            {
+              "kind": "requires",
+              "expression": "value >= 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 6,
+              "column": 31,
+              "span": {
+                "start": 192,
+                "end": 202
+              }
+            },
+            {
+              "kind": "requires",
+              "expression": "value < 100",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 6,
+              "column": 58,
+              "span": {
+                "start": 219,
+                "end": 230
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result === value + 1",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 38,
+              "span": {
+                "start": 270,
+                "end": 290
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result > 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 76,
+              "span": {
+                "start": 308,
+                "end": 318
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "source": "\r\n  import { defineContract, int } from \"@mizchi/uneffect/spec\";\r\n  // 日本語 🙂\r\nexport const Increment = defineContract({\r\n    parameters: { value: int() },\r\n    returns: int(),\r\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\r\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\r\n  });\r\n",
+      "parsed": {
+        "parameters": [
+          {
+            "name": "value",
+            "domain": "int"
+          }
+        ],
+        "resultDomain": "int",
+        "requires": [
+          "value >= 0",
+          "value < 100"
+        ],
+        "ensures": [
+          "result === value + 1",
+          "result > 0"
+        ]
+      },
+      "prepared": {
+        "files": {
+          "src/contract.ts": "/* uneffect:\n * requires value >= 0\n * requires value < 100\n * ensures result === value + 1\n * ensures result > 0\n */\nexport function increment(value: number): number { return value + 1 }",
+          "src/contract.uneffect.ts": "\r\n  import { defineContract, int } from \"@mizchi/uneffect/spec\";\r\n  // 日本語 🙂\r\nexport const Increment = defineContract({\r\n    parameters: { value: int() },\r\n    returns: int(),\r\n    requires: [({ value }) => value >= 0, ({ value }) => value < 100],\r\n    ensures: [({ value, result }) => result === value + 1, ({ result }) => result > 0],\r\n  });\r\n"
+        },
+        "provenance": {
+          "src/contract.ts": [
+            {
+              "kind": "requires",
+              "expression": "value >= 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 31,
+              "span": {
+                "start": 208,
+                "end": 218
+              }
+            },
+            {
+              "kind": "requires",
+              "expression": "value < 100",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 7,
+              "column": 58,
+              "span": {
+                "start": 235,
+                "end": 246
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result === value + 1",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 8,
+              "column": 38,
+              "span": {
+                "start": 287,
+                "end": 307
+              }
+            },
+            {
+              "kind": "ensures",
+              "expression": "result > 0",
+              "fileName": "src/contract.uneffect.ts",
+              "line": 8,
+              "column": 76,
+              "span": {
+                "start": 325,
+                "end": 335
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

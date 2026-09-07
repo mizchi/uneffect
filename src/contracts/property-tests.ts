@@ -3,8 +3,9 @@ import { dirname, extname, join, posix } from "node:path";
 import ts from "@typescript/typescript6";
 import { executeZ3, type Z3ExecutionOptions, type Z3ValueRequest } from "../backends/z3.js";
 import { extractAnnotations } from "../support/annotations.js";
-import { logicToSmt, parseLogicExpression, parseLogicExpressionForHints } from "./invariant-ir.js";
-import type { LogicExpression } from "./invariant-ir.js";
+import { parseLogicExpression, parseLogicExpressionForHints } from "./logic.js";
+import { logicToSmt } from "./obligations.js";
+import type { LogicExpression } from "./logic-contracts.js";
 
 export type PropertyBoundaryKind = "Int" | "Nat" | "U8" | "U32" | "I32";
 export type PropertyLiteral = string | number | boolean;

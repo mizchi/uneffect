@@ -1,14 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import ts from "@typescript/typescript6";
-import { analyzeModuleInitializationOrder } from "../modules/module-initialization.js";
+import { analyzeCorsaModuleInitializationOrder, analyzeCorsaModuleInitializationOrderV2 } from "../modules/corsa-module-order.js";
 import { CliUsageError, exitCode, formatCommandHelp, parseCommandArgs, singleFileArgument, type CliCommand } from "./cli-support.js";
 
 export const moduleOrderCommand: CliCommand = {
   name: "module-order",
   summary: "Print the source-mapped ESM module-initialization partial-order IR.",
-  arguments: "<entry.ts> [--schema-version 1|2] [--require]",
+  arguments: "<entry.ts> [--project tsconfig.json] [--schema-version 1|2] [--require]",
   details: [
+    "--project <tsconfig.json>  use the native compiler project (default: isolated ES2024/NodeNext)",
+    "--corsa-executable <path>  explicit native compiler executable",
     "--require  exit 1 unless the extracted ordering fragment is proof-grade",
     "--schema-version 1|2  artifact version (default: 1); v2 supports one bounded conditional TLA join",
     "",
@@ -17,6 +18,8 @@ export const moduleOrderCommand: CliCommand = {
   async run(args, io) {
     const { values, positionals } = parseCommandArgs(args, {
       require: { type: "boolean" },
+      project: { type: "string" },
+      "corsa-executable": { type: "string" },
       "schema-version": { type: "string", default: "1" },
     });
     if (values.help) { io.out(formatCommandHelp(moduleOrderCommand)); return exitCode.success; }
@@ -24,18 +27,10 @@ export const moduleOrderCommand: CliCommand = {
     if (schemaVersion !== "1" && schemaVersion !== "2") throw new CliUsageError("--schema-version must be 1 or 2");
     const entryFile = resolve(singleFileArgument(positionals, "module-order"));
     await readFile(entryFile, "utf8");
-    const options: ts.CompilerOptions = {
-      target: ts.ScriptTarget.ES2024,
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
-      types: ["node"],
-      noEmit: true,
-    };
-    const program = ts.createProgram([entryFile], options);
+    const options = { entryFile, configFile: values.project as string | undefined, corsaExecutable: values["corsa-executable"] as string | undefined };
     const result = schemaVersion === "2"
-      ? (await import("../modules/module-initialization-v2.js")).analyzeModuleInitializationOrderV2(program, entryFile)
-      : analyzeModuleInitializationOrder(program, entryFile);
+      ? await analyzeCorsaModuleInitializationOrderV2(options)
+      : await analyzeCorsaModuleInitializationOrder(options);
     io.out(`${JSON.stringify(result, null, 2)}\n`);
     if (values.require && result.evidence !== "verified") {
       io.err("module initialization order is unknown:\n");

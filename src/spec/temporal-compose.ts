@@ -1,8 +1,9 @@
-import ts from "@typescript/typescript6";
+import type { Node, CallExpression } from "oxc-parser";
+import { parseOxcSource, topLevelOxcFunctions, oxcChildren, oxcParameterBinding, oxcParameterType, type NamedOxcFunction } from "../frontends/oxc/source.js";
 import { extractAnnotations } from "../support/annotations.js";
 import { parseSpec, type TemporalAssignment, type TemporalProperty, type TemporalResponse, type TemporalState } from "./spec-ir.js";
 import { formatTemporalValueType, generateQuintExpression, parseTemporalExpression, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
-import type { EvidenceStatus } from "../effects/effects.js";
+import type { EvidenceStatus } from "../evidence/status.js";
 
 export interface TemporalFunctionSummary {
   functionName: string;
@@ -48,7 +49,6 @@ export interface TemporalComposition {
   calls: TemporalCall[];
 }
 
-function leading(source: ts.SourceFile, node: ts.Node): string { return source.text.slice(node.getFullStart(), node.getStart(source)); }
 function nextAssignment(input: string): TemporalAssignment {
   const match = /^([A-Za-z_$][\w$]*)'\s*=\s*(.+)$/.exec(input);
   if (!match) throw new Error(`invalid temporal_ensures assignment: ${input}`);
@@ -65,19 +65,21 @@ interface GraphCall { callee: string; normal: GraphRef; error: GraphRef; awaited
 type GraphRef = GraphCall | "complete" | "throw";
 
 export function parseTemporalComposition(fileName: string, text: string, root: string): TemporalComposition {
-  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const source = parseOxcSource(fileName, text);
   const parsed = parseSpec(fileName, text, { temporalSymbols: new Map([["pc", "int"], ["suspended", "bool"], ["cancelled", "bool"]]) });
   const stateTypes = new Map<string, TemporalValueType>(parsed.temporal.states.map((state) => [state.name, state.type]));
-  const declarations = new Map<string, ts.FunctionDeclaration>();
+  const declarations = new Map<string, NamedOxcFunction>();
   const summaries = new Map<string, TemporalFunctionSummary>();
-  for (const node of source.statements) {
-    if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
-    declarations.set(node.name.text, node);
-    const comments = leading(source, node), symbols = new Map(stateTypes);
-    for (const parameter of node.parameters) if (ts.isIdentifier(parameter.name) && parameter.type) {
-      const typeName = parameter.type.getText(source);
+  for (const declaration of topLevelOxcFunctions(source)) {
+    const { node, comments } = declaration;
+    declarations.set(node.id.name, node);
+    const symbols = new Map(stateTypes);
+    for (const parameter of node.params) {
+      const binding = oxcParameterBinding(parameter), annotation = oxcParameterType(parameter);
+      if (!binding || !annotation) continue;
+      const typeName = source.textOf(annotation);
       const type = typeName === "boolean" ? "bool" : ["number", "Int", "Nat"].includes(typeName) ? "int" : undefined;
-      if (type) symbols.set(parameter.name.text, type);
+      if (type) symbols.set(binding.name, type);
     }
     const requires = extractAnnotations(comments, "temporal_requires").map(parseTemporalExpression);
     const ensures = extractAnnotations(comments, "temporal_ensures").map(nextAssignment);
@@ -89,55 +91,56 @@ export function parseTemporalComposition(fileName: string, text: string, root: s
     const terminates = booleanDirective(extractAnnotations(comments, "temporal_terminates"), "temporal_terminates");
     const fairnessValues = extractAnnotations(comments, "temporal_fair");
     const fairness = fairnessValues[0] as "weak" | "strong" | undefined;
-    if (fairnessValues.length > 1 || (fairness !== undefined && fairness !== "weak" && fairness !== "strong")) throw new Error(`${node.name.text}: temporal_fair requires weak or strong`);
-    for (const errorType of [...throws, ...rejects]) if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(errorType)) throw new Error(`${node.name.text}: invalid temporal error type`);
+    if (fairnessValues.length > 1 || (fairness !== undefined && fairness !== "weak" && fairness !== "strong")) throw new Error(`${node.id.name}: temporal_fair requires weak or strong`);
+    for (const errorType of [...throws, ...rejects]) if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(errorType)) throw new Error(`${node.id.name}: invalid temporal error type`);
     if (requires.length || ensures.length || modifies.length || throws.length || rejects.length || suspends || cancellable || terminates || fairness) {
-      for (const requirement of requires) if (typeCheckTemporalExpression(requirement, symbols) !== "bool") throw new Error(`${node.name.text}: temporal_requires must be boolean`);
+      for (const requirement of requires) if (typeCheckTemporalExpression(requirement, symbols) !== "bool") throw new Error(`${node.id.name}: temporal_requires must be boolean`);
       for (const postcondition of ensures) {
         const targetType = stateTypes.get(postcondition.target);
-        if (!targetType) throw new Error(`${node.name.text}: unknown temporal state \`${postcondition.target}\``);
-        if (!temporalTypesCompatible(targetType, typeCheckTemporalExpression(postcondition.expressionAst, symbols))) throw new Error(`${node.name.text}: temporal_ensures type mismatch for \`${postcondition.target}\``);
+        if (!targetType) throw new Error(`${node.id.name}: unknown temporal state \`${postcondition.target}\``);
+        if (!temporalTypesCompatible(targetType, typeCheckTemporalExpression(postcondition.expressionAst, symbols))) throw new Error(`${node.id.name}: temporal_ensures type mismatch for \`${postcondition.target}\``);
       }
       const assigned = new Set(ensures.map((item) => item.target));
-      if (modifies.some((name) => !assigned.has(name)) || ensures.some((item) => !modifies.includes(item.target))) throw new Error(`${node.name.text}: temporal_ensures targets must exactly match temporal_modifies`);
-      summaries.set(node.name.text, { functionName: node.name.text, requires, ensures, modifies, throws, rejects, suspends, cancellable, terminates, fairness, evidence: "trusted", span: { start: node.getStart(source), end: node.getEnd() } });
+      if (modifies.some((name) => !assigned.has(name)) || ensures.some((item) => !modifies.includes(item.target))) throw new Error(`${node.id.name}: temporal_ensures targets must exactly match temporal_modifies`);
+      summaries.set(node.id.name, { functionName: node.id.name, requires, ensures, modifies, throws, rejects, suspends, cancellable, terminates, fairness, evidence: "trusted", span: { start: declaration.start, end: declaration.end } });
     }
   }
   const rootNode = declarations.get(root);
   if (!rootNode) throw new Error(`unknown temporal composition root: ${root}`);
 
   const nodes: GraphCall[] = [];
-  const callsIn = (statement: ts.Node): ts.CallExpression[] => {
-    const values: ts.CallExpression[] = [];
-    const visit = (node: ts.Node): void => {
-      if (node !== statement && ts.isFunctionLike(node)) return;
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && summaries.has(node.expression.text)) values.push(node);
-      ts.forEachChild(node, visit);
+  const parents = new Map<Node, Node>();
+  const callsIn = (statement: Node): CallExpression[] => {
+    const values: CallExpression[] = [];
+    const visit = (node: Node): void => {
+      if (node !== statement && ["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "TSDeclareFunction"].includes(node.type)) return;
+      if (node.type === "CallExpression" && node.callee.type === "Identifier" && summaries.has(node.callee.name)) values.push(node);
+      for (const child of oxcChildren(node)) { parents.set(child, node); visit(child); }
     };
     visit(statement);
-    return values.sort((a, b) => a.getStart(source) - b.getStart(source));
+    return values.sort((a, b) => a.start - b.start);
   };
-  const compileAtomic = (statement: ts.Statement, continuation: GraphRef, handler: GraphRef): GraphRef => {
-    let entry = ts.isReturnStatement(statement) ? "complete" as GraphRef : continuation;
+  const compileAtomic = (statement: Node, continuation: GraphRef, handler: GraphRef): GraphRef => {
+    let entry = statement.type === "ReturnStatement" ? "complete" as GraphRef : continuation;
     for (const call of callsIn(statement).reverse()) {
-      const graph: GraphCall = { callee: (call.expression as ts.Identifier).text, normal: entry, error: handler, awaited: ts.isAwaitExpression(call.parent), span: { start: call.getStart(source), end: call.getEnd() } };
+      const graph: GraphCall = { callee: (call.callee as { name: string }).name, normal: entry, error: handler, awaited: parents.get(call)?.type === "AwaitExpression", span: { start: call.start, end: call.end } };
       nodes.push(graph); entry = graph;
     }
     return entry;
   };
-  const compileBlock = (statements: readonly ts.Statement[], continuation: GraphRef, handler: GraphRef): GraphRef => {
+  const compileBlock = (statements: readonly Node[], continuation: GraphRef, handler: GraphRef): GraphRef => {
     let entry = continuation;
     for (const statement of [...statements].reverse()) {
-      if (ts.isTryStatement(statement)) {
-        const finallyEntry = statement.finallyBlock ? compileBlock(statement.finallyBlock.statements, entry, handler) : entry;
-        const catchEntry = statement.catchClause ? compileBlock(statement.catchClause.block.statements, finallyEntry, handler) : handler;
-        entry = compileBlock(statement.tryBlock.statements, finallyEntry, catchEntry);
-      } else if (ts.isBlock(statement)) entry = compileBlock(statement.statements, entry, handler);
+      if (statement.type === "TryStatement") {
+        const finallyEntry = statement.finalizer ? compileBlock(statement.finalizer.body, entry, handler) : entry;
+        const catchEntry = statement.handler ? compileBlock(statement.handler.body.body, finallyEntry, handler) : handler;
+        entry = compileBlock(statement.block.body, finallyEntry, catchEntry);
+      } else if (statement.type === "BlockStatement") entry = compileBlock(statement.body, entry, handler);
       else entry = compileAtomic(statement, entry, handler);
     }
     return entry;
   };
-  const entryRef = compileBlock(rootNode.body!.statements, "complete", "throw");
+  const entryRef = compileBlock(rootNode.body.body, "complete", "throw");
   const reachable = new Set<GraphCall>();
   const mark = (ref: GraphRef): void => { if (typeof ref === "object" && !reachable.has(ref)) { reachable.add(ref); mark(ref.normal); mark(ref.error); } };
   mark(entryRef);

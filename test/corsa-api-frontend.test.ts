@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openCorsaApiFrontend, parseCorsaApiFrontendDescriptor, resolveCorsaExecutable } from "../src/frontends/corsa/corsa-api-frontend.js";
 import { openTypeScriptSemanticQuery } from "../src/frontends/typescript/typescript-semantic-query.js";
@@ -34,6 +35,21 @@ describe("Corsa API frontend", () => {
     } finally {
       frontend.close();
     }
+  });
+
+  it("queries imported project sources that are not root files", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-import-"));
+    const entry = join(directory, "entry.mts"), dependency = join(directory, "dependency.mts"), outside = join(directory, "outside.mts"), configFile = join(directory, "tsconfig.json");
+    writeFileSync(entry, 'import "./dependency.mjs";');
+    writeFileSync(dependency, 'export const flag = true;');
+    writeFileSync(outside, 'export const outside = true;');
+    writeFileSync(configFile, JSON.stringify({ compilerOptions: { module: "NodeNext", types: [] }, files: [entry] }));
+    const frontend = await openCorsaApiFrontend({ configFile });
+    try {
+      expect(frontend.rootFiles).toEqual([entry]);
+      expect(frontend.queryPosition(dependency, 13)).toMatchObject({ symbol: { name: "flag" }, type: { texts: ["true"] } });
+      expect(() => frontend.queryPosition(outside, 13)).toThrow(/not part of the Corsa project/);
+    } finally { frontend.close(); rmSync(directory, { recursive: true, force: true }); }
   });
 
   it("uses the package-owned prebuilt compiler by default", async () => {

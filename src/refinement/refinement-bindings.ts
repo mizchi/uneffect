@@ -27,18 +27,8 @@ import type { RefinementRuntimeIdentity } from "../evidence/runtime-identities.j
 import { resolveRefinementDslFileLink } from "./refinement-dsl.js";
 import { resolveStableRegion } from "../effects/region-alias.js";
 
-export interface RefinementBindingManifest {
-  schema: "uneffect-refinement-bindings/v1";
-  fileName: string;
-  adapterName: string;
-  version: string;
-  runtimeIdentity?: RefinementRuntimeIdentity;
-  create: string;
-  observe: string;
-  abstractions: Record<string, string>;
-  actions: Record<string, string>;
-  invariants: Record<string, string>;
-}
+import type { RefinementBindingManifest } from "./binding-contracts.js";
+export type { RefinementBindingManifest } from "./binding-contracts.js";
 
 export type RefinementBindingCoverageCode =
   | "missing-action-binding"

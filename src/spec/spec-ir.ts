@@ -1,9 +1,9 @@
-import ts from "@typescript/typescript6";
+import { parseOxcSource, topLevelOxcFunctions, oxcParameterBinding, oxcParameterType } from "../frontends/oxc/source.js";
 import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations, type SourceSpan } from "../support/annotations.js";
 import { parseEffectExpression, splitTopLevel, type Effect } from "../effects/capabilities.js";
 import { assertGuardedTemporalMapGets, formatTemporalValueType, parseTemporalExpression, parseTemporalValueType, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import { createDefaultTemporalDomainRegistry, type TemporalDomainRegistry } from "./temporal-domains.js";
-import type { NumericDomain } from "../contracts/invariant-ir.js";
+import type { NumericDomain } from "../contracts/logic-contracts.js";
 
 export interface CapabilitySpec {
   functionName: string;
@@ -89,9 +89,6 @@ export interface ParsedSpec {
   temporal: TemporalSpec;
 }
 
-function leading(source: ts.SourceFile, node: ts.Node): string {
-  return source.text.slice(node.getFullStart(), node.getStart(source));
-}
 
 function namedExpression(input: string, kind: string): { name: string; expression: string } {
   const match = /^([A-Za-z_$][\w$]*)\s*:\s*(.+)$/.exec(input);
@@ -156,24 +153,23 @@ function splitTemporalAssignments(input: string): string[] {
 }
 
 export function parseSpec(fileName: string, text: string, options: { temporalSymbols?: ReadonlyMap<string, TemporalValueType>; temporalDomains?: TemporalDomainRegistry } = {}): ParsedSpec {
-  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const source = parseOxcSource(fileName, text);
   const temporalDomains = options.temporalDomains ?? createDefaultTemporalDomainRegistry();
   const annotationError = validateUneffectAnnotations(text, 0, temporalDomains.directives())[0];
   if (annotationError) {
-    const position = source.getLineAndCharacterOfPosition(annotationError.span.start);
+    const position = source.positionAt(annotationError.span.start);
     throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: ${annotationError.message}`);
   }
   const capabilities: CapabilitySpec[] = [];
   const invariants: InvariantSpec[] = [];
 
-  for (const node of source.statements) {
-    if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
-    const comments = leading(source, node);
-    const effectAnnotations = extractLocatedAnnotations(comments, "effect", node.getFullStart());
+  for (const declaration of topLevelOxcFunctions(source)) {
+    const { node, comments } = declaration;
+    const effectAnnotations = extractLocatedAnnotations(comments, "effect", declaration.leadingStart);
     if (effectAnnotations.some((annotation) => annotation.value === "none")
       && effectAnnotations.some((annotation) => annotation.value !== "none")) {
       const annotation = effectAnnotations.find((item) => item.value === "none")!;
-      const position = source.getLineAndCharacterOfPosition(annotation.span.start);
+      const position = source.positionAt(annotation.span.start);
       throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: \`none\` cannot be combined with another effect declaration`);
     }
     const effects = effectAnnotations.flatMap((annotation): LocatedEffect[] => {
@@ -181,13 +177,13 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
       try {
         terms = splitTopLevel(annotation.value, "|");
       } catch (cause) {
-        const position = source.getLineAndCharacterOfPosition(annotation.span.start);
+        const position = source.positionAt(annotation.span.start);
         const message = cause instanceof Error ? cause.message : String(cause);
         throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: ${message}`);
       }
       if (annotation.value === "none") return [];
       if (terms.includes("none")) {
-        const position = source.getLineAndCharacterOfPosition(annotation.span.start);
+        const position = source.positionAt(annotation.span.start);
         throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: \`none\` must be the only member of an effect set`);
       }
       let cursor = 0;
@@ -198,32 +194,33 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
         try {
           return { value: parseEffectExpression(text), span };
         } catch (cause) {
-          const position = source.getLineAndCharacterOfPosition(span.start);
+          const position = source.positionAt(span.start);
           const message = cause instanceof Error ? cause.message : String(cause);
           throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: ${message}`);
         }
       });
     });
-    if (effectAnnotations.length > 0) capabilities.push({ functionName: node.name.text, effects });
+    if (effectAnnotations.length > 0) capabilities.push({ functionName: node.id.name, effects });
     const requires = extractAnnotations(comments, "requires");
     const ensures = extractAnnotations(comments, "ensures");
     if (requires.length > 0 || ensures.length > 0) {
-      const returned = node.body.statements.find(ts.isReturnStatement);
+      const returned = node.body.body.find(statement => statement.type === "ReturnStatement");
       invariants.push({
         fileName,
-        functionName: node.name.text,
-        parameters: node.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [parameter.name.text] : []),
-        parameterDomains: Object.fromEntries(node.parameters.flatMap((parameter) => {
-          if (!ts.isIdentifier(parameter.name)) return [];
-          const name = parameter.type?.getText(source) ?? "number";
+        functionName: node.id.name,
+        parameters: node.params.flatMap(parameter => { const binding = oxcParameterBinding(parameter); return binding ? [binding.name] : []; }),
+        parameterDomains: Object.fromEntries(node.params.flatMap((parameter) => {
+          const binding = oxcParameterBinding(parameter), type = oxcParameterType(parameter);
+          if (!binding) return [];
+          const name = type ? source.textOf(type) : "number";
           const domain: NumericDomain = name === "Nat" ? "nat" : name === "Float" ? "float" : name === "boolean" ? "bool" : "int";
-          return [[parameter.name.text, domain]];
+          return [[binding.name, domain]];
         })),
-        resultDomain: node.type?.getText(source) === "Float" ? "float" : node.type?.getText(source) === "boolean" ? "bool" : "int",
+        resultDomain: (node.returnType ? source.textOf(node.returnType.typeAnnotation) : undefined) === "Float" ? "float" : (node.returnType ? source.textOf(node.returnType.typeAnnotation) : undefined) === "boolean" ? "bool" : "int",
         requires,
         ensures,
-        result: returned?.expression?.getText(source),
-        span: { start: node.getStart(source), end: node.getEnd() },
+        result: returned?.argument ? source.textOf(returned.argument) : undefined,
+        span: { start: declaration.start, end: declaration.end },
       });
     }
   }

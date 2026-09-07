@@ -1,19 +1,11 @@
-import { parseSync, visitorKeys, type Node, type Expression, type Function as OxcFunction, type TSType } from "oxc-parser";
+import { oxcChildren as children } from "../frontends/oxc/source.js";
+import { parseSync, type Node, type Expression, type Function as OxcFunction, type TSType } from "oxc-parser";
 import type { SemanticQueryFrontend, SemanticPositionFact } from "../frontends/semantic-query.js";
 import type { RuleEvent, RuleLocation, SourceRuleBinding, SourceRuleLowering, SourceRuleOptions } from "./contracts.js";
 import { normalizeSourceOptions } from "./source-options.js";
 
 class UnsupportedSource extends Error {
   constructor(readonly node: Node, detail: string) { super(detail); }
-}
-
-function children(node: Node): Node[] {
-  const fields = node as unknown as Record<string, unknown>;
-  return (visitorKeys[node.type] ?? []).flatMap(key => {
-    const value = fields[key];
-    return (Array.isArray(value) ? value : [value]).filter((item): item is Node =>
-      item !== null && typeof item === "object" && "type" in item);
-  });
 }
 
 function returnsVoid(type: TSType): boolean {

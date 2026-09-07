@@ -1,7 +1,8 @@
 import ts from "@typescript/typescript6";
 import { posix } from "node:path";
 import { extractAnnotations } from "../support/annotations.js";
-import { logicToSmt, parseLogicExpression } from "../contracts/invariant-ir.js";
+import { parseLogicExpression } from "../contracts/logic.js";
+import { logicToSmt } from "../contracts/obligations.js";
 import { executeZ3, type Z3ExecutionOptions } from "../backends/z3.js";
 import { resolveStableRegion } from "../effects/region-alias.js";
 import { symbolIdentityKey } from "../frontends/typescript/binding-identity.js";
