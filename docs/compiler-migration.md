@@ -17,7 +17,7 @@ Corsa and the development compiler are separate from the JavaScript
 | `/experimental/lint/corsa`, `cfg-lint` | Oxc CFG extraction and Corsa symbol/type queries, with native diagnostics. |
 | `/experimental/module-order/corsa`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
 | `/spec` | Definition helpers, separated from DSL parsing and linking. |
-| `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, and property-test generation/execution. |
+| `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, property-test generation/execution, and structural contract completion analysis. |
 | `/experimental/instrument`, `instrument` (without ownership options) | Oxc parameter assertion insertion with restricted Valibot schema expressions. |
 | `spec ir`, `spec lint`, `spec z3`, `spec quint`, `spec compose` | Specification analysis through the Oxc path. Z3-backed lint still needs its solver. |
 
@@ -50,6 +50,10 @@ from discharging an obligation.
 - `contracts/logic-contracts.ts` owns scalar and obligation types without AST or
   checker objects. `logic.ts` parses restricted scalar expressions through Oxc;
   `obligations.ts` constructs stable obligation identities and emits SMT.
+- `contracts/control-flow-contracts.ts` defines AST-independent statement/expression
+  views and structural endpoint results. `control-flow-core.ts` composes the shared
+  CFG completion algebra; Oxc and Program adapters only read syntax. The Program
+  adapter preserves original node identity for checker callbacks.
 - `modules/module-order-core.ts` owns dependency ordering and cycle evidence;
   `module-order-control-flow.ts` owns the bounded conditional-await proof. Both
   accept neutral source facts shared by the legacy and native adapters.
@@ -299,3 +303,27 @@ and solver tuples; the installed-package smoke repeats generation with compiler
 imports blocked. Diagnostics now render structural compiler data without an AST
 method or compiler import, preserving nested message indentation and UTF-16 line
 attribution, including offsets inside CRLF.
+
+## Contract completion analysis
+
+`analyzeOxcContractControlFlow(fileName, text)` in `/experimental/spec` reports
+exits and possible fallthrough for named, body-bearing top-level function
+declarations. Spans include export modifiers and use UTF-16 offsets. Parsing
+errors are rejected. Each result explicitly carries `evidence: "structural"`;
+this API does not infer `never`, authenticate literal types, certify return
+values, or enumerate methods, closures, and anonymous declarations.
+
+The shared completion engine preserves loop transfer ownership, switch
+fallthrough, conservative catch reachability, and finally precedence. Unsupported
+expression effects and uncertain loop conditions remain conservative; source-only
+results do not substitute for Corsa semantic facts or contract body proofs.
+Optional calls and logical assignments cannot make skipped `never` calls into
+mandatory exits. Parentheses ending an optional chain preserve eager argument
+and computed-key evaluation.
+
+`just contract-flow-check` compares both adapters with 71 frozen pre-migration
+cases, checks conditional-call regressions and original Program node identity,
+and runs the source facade with JavaScript compiler loading forbidden.
+`just package-check` exercises the packed API under the same import restriction.
+The legacy contract instrumenter and checker bridge still use Program semantic
+callbacks; moving their syntax views does not remove that remaining dependency.

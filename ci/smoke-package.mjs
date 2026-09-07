@@ -509,10 +509,14 @@ try {
   const propertyProbe = join(consumer, "property-native.mjs");
   writeFileSync(propertyProbe, `
     import assert from "node:assert/strict";
-    import { generateUneffectPropertyTests, checkUneffectProperty } from "@mizchi/uneffect/experimental/spec";
+    import { generateUneffectPropertyTests, checkUneffectProperty, analyzeOxcContractControlFlow } from "@mizchi/uneffect/experimental/spec";
     for (const fixture of ${JSON.stringify(propertyFixtures)}) assert.deepEqual(generateUneffectPropertyTests(fixture.options), fixture.expected);
     const result = await checkUneffectProperty({ functionName: "identity", domains: ["Nat"], property: value => value === value });
     assert.equal(result.status, "passed");
+    const flows = analyzeOxcContractControlFlow("flow.ts", "export function f() { try { return 1; } finally {} } function g() { stop(); }");
+    assert.deepEqual(flows.map(flow => [flow.name, flow.exits, flow.mayFallThrough, flow.evidence]), [
+      ["f", ["return"], false, "structural"], ["g", ["normal"], true, "structural"],
+    ]);
   `);
   execFileSync(process.execPath, ["--import", noTsHook, propertyProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
 

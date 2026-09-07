@@ -1,0 +1,495 @@
+[
+  {
+    "body": "",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "throw 1;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "return stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "const value = stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "void (stop() as never);",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "1 + stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "!stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "await stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "typeof stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "delete stop().x;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "(stop())!;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "stop() satisfies never;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "false && stop();",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "true && stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "true || stop();",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "false || stop();",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "maybe ?? stop();",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "stop() ?? maybe;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "maybe?.(stop());",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "maybe?.[stop()];",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "maybe?.method(stop());",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "maybe?.method[stop()];",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "(maybe?.method)(stop());",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "(maybe?.method)[stop()];",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "use(stop());",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "new Thing(stop());",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "stop().value;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "tag`x${stop()}`;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (stop()) return 1;",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (true) return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (enabled === true) return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (disabled !== true) return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (!(disabled as boolean)) return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (widened === true) return 1;",
+    "exits": [
+      "normal",
+      "return"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "if (enabled && !disabled) return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (disabled || enabled) return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "if (flag) return 1; else throw 2;",
+    "exits": [
+      "return",
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "while (true) {}",
+    "exits": [],
+    "mayFallThrough": false
+  },
+  {
+    "body": "while (enabled === true) {}",
+    "exits": [],
+    "mayFallThrough": false
+  },
+  {
+    "body": "while (flag) { return 1; }",
+    "exits": [
+      "normal",
+      "return"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "while (true) { continue; }",
+    "exits": [],
+    "mayFallThrough": false
+  },
+  {
+    "body": "while (true) { if (flag) break; }",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "for (;;) {}",
+    "exits": [],
+    "mayFallThrough": false
+  },
+  {
+    "body": "for (; flag;) { return 1; }",
+    "exits": [
+      "normal",
+      "return"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "for (const x of items) { return 1; }",
+    "exits": [
+      "normal",
+      "return"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "for (const x in items) { throw 1; }",
+    "exits": [
+      "normal",
+      "throw"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "do { return 1; } while (false);",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "do { continue; } while (false);",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "do { continue; } while (true);",
+    "exits": [],
+    "mayFallThrough": false
+  },
+  {
+    "body": "outer: while (true) { while (true) { break outer; } }",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "outer: while (true) { while (true) { continue outer; } }",
+    "exits": [],
+    "mayFallThrough": false
+  },
+  {
+    "body": "label: { break label; }",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "outer: for (;;) { switch (x) { case 1: continue outer; default: return 1; } }",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "switch (x) {}",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "switch (x) { case 1: return 1; }",
+    "exits": [
+      "normal",
+      "return"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "switch (x) { case 1: default: return 1; }",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "switch (x) { case 1: break; default: return 1; }",
+    "exits": [
+      "normal",
+      "return"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "switch (stop()) { default: return 1; }",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "try { return 1; } finally {}",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "try { throw 1; } catch (e) { return 1; }",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "try { return 1; } catch (e) {}",
+    "exits": [
+      "normal",
+      "return"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "try {} finally { return 1; }",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "try { return 1; } finally { throw 2; }",
+    "exits": [
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "try { throw 1; } finally { if (flag) return 1; }",
+    "exits": [
+      "return",
+      "throw"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "outer: while (true) { try { break outer; } finally { continue outer; } }",
+    "exits": [],
+    "mayFallThrough": false
+  },
+  {
+    "body": "outer: while (true) { try { continue outer; } finally { break outer; } }",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "return 1; stop();",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  },
+  {
+    "body": "function nested() { return 1; }",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "const nested = () => { throw 1; };",
+    "exits": [
+      "normal"
+    ],
+    "mayFallThrough": true
+  },
+  {
+    "body": "const emoji = \"😀\";\r\nif (true) return 1;",
+    "exits": [
+      "return"
+    ],
+    "mayFallThrough": false
+  }
+]

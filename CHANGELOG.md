@@ -6,6 +6,13 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Share contract completion rules between Oxc and the Program compatibility
+  adapter through AST-independent syntax views and the CFG completion algebra.
+  Add structural `analyzeOxcContractControlFlow` to `/experimental/spec` without
+  JavaScript compiler imports. Preserve original checker node identity, loop
+  transfer ownership, switch fallthrough, and finally precedence. Correct
+  mandatory-exit inference for skipped optional calls and logical assignments.
+
 - Removed JavaScript compiler imports from property-test generation and diagnostic
   rendering. Oxc handles generator domains and structured SMT expressions; Corsa
   authenticates directly imported predicates in a disposable source snapshot.

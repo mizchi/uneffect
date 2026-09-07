@@ -37,3 +37,5 @@ export type {
   PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertyPredicateSpecialization,
   PropertySolverDiagnostic, PropertyTestBoundary, PropertyTestDomain,
 } from "../contracts/property-tests.js";
+export { analyzeOxcContractControlFlow } from "../frontends/oxc/contract-control-flow.js";
+export type { ContractExit, StructuralContractControlFlow } from "../contracts/control-flow-contracts.js";
