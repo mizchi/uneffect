@@ -6,6 +6,14 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Add a native migration gate for real awaited expressions and isolated build
+  output comparison. Awaited facts retain native thenable/union/generic semantics
+  and require project diagnostics before use as evidence. The experimental
+  `/experimental/build/corsa` entry detects missing, stale and modified JS/d.ts
+  without updating consumer outputs or incremental state, records compiler/input
+  digests including package metadata, and rejects unsupported emission settings
+  and project references. This does not establish workspace or source-map proof.
+
 - Add native contract reachability refinement through
   `analyzeCorsaContractControlFlow` in `/experimental/spec`. Corsa authenticates
   complete expression ranges, resolved `never` returns, and boolean literal

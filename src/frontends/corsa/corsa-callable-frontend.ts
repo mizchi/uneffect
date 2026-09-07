@@ -26,6 +26,9 @@ export interface CorsaCallableFrontend {
   getSignaturesOfTypeAtPosition(file: string, position: number, kind?: "call" | "construct"): readonly CorsaCallableSignature[];
   /** Exact Oxc expression range authenticated against native snapshot syntax. */
   getExpressionType(file: string, span: { start: number; end: number }, source: string): CorsaApiTypeFact | null;
+  /** Type of an actual, complete AwaitExpression; not an arbitrary type-unwrapping API.
+   * As with other type facts, project diagnostics must be checked before treating the result as evidence. */
+  getAwaitedExpressionType(file: string, span: { start: number; end: number }, source: string): CorsaApiTypeFact | null;
   /** Intrinsic never identity, without display-text inference. */
   isNeverType(type: CorsaApiTypeFact): boolean;
   /** Native boolean literal payload; broad boolean/any/unknown/never are not constants. */
@@ -200,7 +203,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       if (!source) { source = parseOxcSource(file, text); syntaxSources.set(index.path, source); }
       return source;
     };
-    const location = (file: string, span: { start: number; end: number }, text: string, mode: "call" | "declaration" | "expression"): string | null => {
+    const location = (file: string, span: { start: number; end: number }, text: string, mode: "call" | "declaration" | "expression" | "await"): string | null => {
       const index = sourceIndex(file);
       if (text !== index.text) throw new Error(`${file}: source does not match the Corsa snapshot`);
       if (!Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) || span.start < 0 || span.end <= span.start || span.end > text.length) throw new Error("invalid callable source range");
@@ -208,8 +211,8 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       let kind: number | undefined;
       const visit = (node: Node): void => {
         if (node.start > span.start || node.end < span.end) return;
-        if (mode === "expression") {
-          if (node.start === span.start && node.end === span.end) kind ??= nativeExpressionKind(node);
+        if (mode === "expression" || mode === "await") {
+          if (node.start === span.start && node.end === span.end && (mode === "expression" || node.type === "AwaitExpression")) kind ??= nativeExpressionKind(node);
           for (const child of oxcChildren(node)) visit(child);
           return;
         }
@@ -247,6 +250,12 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       },
       getExpressionType(file, span, text) {
         const handle = location(file, span, text, "expression");
+        if (!handle) return null;
+        const result = rpc.expressionType(handle);
+        return result === null ? null : typeFact(result);
+      },
+      getAwaitedExpressionType(file, span, text) {
+        const handle = location(file, span, text, "await");
         if (!handle) return null;
         const result = rpc.expressionType(handle);
         return result === null ? null : typeFact(result);

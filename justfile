@@ -31,6 +31,10 @@ instrument-check:
     pnpm exec tsc -p tsconfig.json --noEmit
     pnpm vitest run test/oxc-instrument.test.ts test/instrument.test.ts
 
+corsa-migration-gates:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/corsa-awaited-types.test.ts test/corsa-build-output.test.ts test/corsa-callable-frontend.test.ts test/corsa-contract-control-flow.test.ts
+
 corsa-callable-check:
     pnpm exec tsc -p tsconfig.json --noEmit
     pnpm vitest run test/corsa-callable-frontend.test.ts

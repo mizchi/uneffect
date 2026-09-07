@@ -503,6 +503,31 @@ try {
   `);
   execFileSync(process.execPath, ["--import", noTsHook, flowProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
 
+  const buildGateFile = join(consumer, "build-gate.ts"), buildGateConfig = join(consumer, "build-gate-tsconfig.json");
+  writeFileSync(buildGateFile, "export async function checked(value: Promise<number>) { return await value; }");
+  writeFileSync(buildGateConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", types: [], declaration: true, outDir: "build-gate-output" }, files: [buildGateFile] }));
+  const buildGateProbe = join(consumer, "build-gate.mjs");
+  writeFileSync(buildGateProbe, `
+    import assert from "node:assert/strict";
+    import { execFileSync } from "node:child_process";
+    import { readFileSync, appendFileSync } from "node:fs";
+    import { inspectCorsaBuildOutputs } from "@mizchi/uneffect/experimental/build/corsa";
+    import { openCorsaCallableFrontend } from "@mizchi/uneffect/experimental/corsa/callables";
+    const options = ${JSON.stringify({ configFile: buildGateConfig })};
+    const f = await openCorsaCallableFrontend(options);
+    try {
+      const text = readFileSync(${JSON.stringify(buildGateFile)}, "utf8"), start = text.indexOf("await value");
+      assert.equal(f.getProjectDiagnostics().length, 0);
+      assert.equal(f.getAwaitedExpressionType(${JSON.stringify(buildGateFile)}, { start, end: start + 11 }, text).texts[0], "number");
+      execFileSync(f.compilerExecutable, ["--project", options.configFile]);
+    } finally { f.close(); }
+    const result = inspectCorsaBuildOutputs(options);
+    assert.equal(result.status, "verified");
+    appendFileSync(result.outputs.find(output => output.kind === "runtime").fileName, "// modified");
+    assert.equal(inspectCorsaBuildOutputs(options).status, "mismatch");
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, buildGateProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
+
   const linkedRefinementEntry = join(consumer, "counter.ts");
   const linkedRefinementFiles = {
     [linkedRefinementEntry]: '/* uneffect:refinement_from "./counter.uneffect.ts#default" */\n' + readFileSync(linkedRefinementEntry, "utf8"),

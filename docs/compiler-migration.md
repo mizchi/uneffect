@@ -18,6 +18,7 @@ Corsa and the development compiler are separate from the JavaScript
 | `/experimental/module-order/corsa`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
 | `/spec` | Definition helpers, separated from DSL parsing and linking. |
 | `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, property-test generation/execution, and structural/native-refined contract completion analysis. |
+| `/experimental/build/corsa` | Bounded native JS/d.ts re-emission comparison, compiler/input digests, no writes to consumer outputs; single projects with explicit outDir. |
 | `/experimental/instrument`, `instrument` (without ownership options) | Oxc parameter assertion insertion with restricted Valibot schema expressions. |
 | `spec ir`, `spec lint`, `spec z3`, `spec quint`, `spec compose` | Specification analysis through the Oxc path. Z3-backed lint still needs its solver. |
 
@@ -355,3 +356,37 @@ generic, shadowed and optional calls; literal, member, computed, compound and
 narrowed boolean expressions; imported aliases; diagnostics and snapshot rejection.
 The installed-package smoke runs native refinement with JS compiler imports
 forbidden as well as the source-only analysis.
+
+
+## Awaited types and native emission gates
+
+`just corsa-migration-gates` exercises actual awaited-expression types, malformed
+and recursive thenables, isolated native emission, stale/missing/modified outputs,
+NodeNext package metadata, and a referenced producer's declaration tampering.
+`getAwaitedExpressionType` on `/experimental/corsa/callables` accepts a complete
+AwaitExpression range. It compares with the old checker's `getAwaitedType` for
+plain values, Promise/PromiseLike, nested promises, unions, any/unknown/never,
+non-callable then members, disposable resources, and generic/constrained inputs.
+A missing await range returns no fact. Project diagnostics must be checked before
+using a returned type: invalid thenables may otherwise produce recovery types.
+This does not add the unavailable native `getAwaitedType(type)` RPC.
+
+`inspectCorsaBuildOutputs({ configFile })` in `/experimental/build/corsa` compares
+native re-emission with the configured JS and d.ts files. It emits into a private
+temporary directory, redirects incremental build state there, and leaves consumer
+outputs intact. The staged config fixes the original root-file list, preserves
+relative config paths and default type roots, and checks resolved input membership
+before emitting; redirected outDir cannot pull old dist declarations into analysis.
+It records the executable digest/version and a digest of effective
+config, selected input bytes, and ancestor package.json files (including absence).
+Detected compiler/input changes fail closed; quiescent inputs are required because
+this is not an atomic filesystem snapshot.
+
+The gate is pinned to native 7.0.2; other compiler versions are rejected until
+the emission corpus is checked against them. The admitted domain requires an explicit outDir and runtime JS emission. Separate
+declarationDir and ordinary source/declaration maps are accepted, but map files are
+not compared. References, noCheck, noEmit, declaration-only emission, outFile,
+inlineSourceMap and mapRoot are rejected. `verified` means the selected JS/d.ts
+bytes match this native compiler; it does not establish producer identity, map
+integrity, build freshness, workspace composition, or equality to every TS6 emit.
+It is not wired into the high-level workspace assurance flags yet.

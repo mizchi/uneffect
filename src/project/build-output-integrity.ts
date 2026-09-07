@@ -2,21 +2,8 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import ts from "@typescript/typescript6";
 
-export interface BuildOutputFileIntegrity {
-  kind: "declaration" | "runtime";
-  status: "verified" | "missing" | "mismatch";
-  fileName: string;
-  projectFile?: string;
-  expectedDigest: string;
-  actualDigest?: string;
-  message?: string;
-}
-
-export interface BuildOutputIntegrity {
-  status: "not-checked" | "verified" | "missing" | "mismatch" | "error";
-  outputs: BuildOutputFileIntegrity[];
-  message?: string;
-}
+import type { BuildOutputFileIntegrity, BuildOutputIntegrity } from "./build-output-contracts.js";
+export type { BuildOutputFileIntegrity, BuildOutputIntegrity } from "./build-output-contracts.js";
 
 const statusRank: Record<BuildOutputIntegrity["status"], number> = {
   "not-checked": 0, verified: 1, missing: 2, mismatch: 3, error: 4,

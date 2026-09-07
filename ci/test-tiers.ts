@@ -78,6 +78,8 @@ export const ciTestTiers = {
     "test/oxc-capability-refinement.test.ts",
     "test/corsa-dsl-identities.test.ts",
     "test/corsa-callable-frontend.test.ts",
+    "test/corsa-awaited-types.test.ts",
+    "test/corsa-build-output.test.ts",
     "test/corsa-contract-dsl.test.ts",
     "test/corsa-refinement-dsl.test.ts",
     "test/test-timeouts.test.ts",
