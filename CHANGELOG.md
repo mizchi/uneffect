@@ -6,6 +6,14 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Removed JavaScript compiler imports from property-test generation and diagnostic
+  rendering. Oxc handles generator domains and structured SMT expressions; Corsa
+  authenticates directly imported predicates in a disposable source snapshot.
+  Preserve generated tests, hints, solver tuples, shrinking/replay, and diagnostic
+  formatting. Expose property generation/execution through `/experimental/spec`.
+  Reject syntax recovery, expression escapes, optional chaining, and ambiguous
+  predicate overloads.
+
 - Added native refinement callable linking through `resolveCorsaRefinementDslLink`
   in `/experimental/spec`. Validate Runtime compatibility, boolean invariant
   results, helper/implementation origins, and diagnostics in one Corsa snapshot.

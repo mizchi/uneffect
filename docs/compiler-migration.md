@@ -17,7 +17,7 @@ Corsa and the development compiler are separate from the JavaScript
 | `/experimental/lint/corsa`, `cfg-lint` | Oxc CFG extraction and Corsa symbol/type queries, with native diagnostics. |
 | `/experimental/module-order/corsa`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
 | `/spec` | Definition helpers, separated from DSL parsing and linking. |
-| `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, and native contract/refinement callable linking. |
+| `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, and property-test generation/execution. |
 | `/experimental/instrument`, `instrument` (without ownership options) | Oxc parameter assertion insertion with restricted Valibot schema expressions. |
 | `spec ir`, `spec lint`, `spec z3`, `spec quint`, `spec compose` | Specification analysis through the Oxc path. Z3-backed lint still needs its solver. |
 
@@ -66,7 +66,7 @@ corrections rather than expanded proof support.
 
 ## Remaining migration
 
-The current source inventory contains 66 files referring directly to
+The current source inventory contains 64 files referring directly to
 `@typescript/typescript6` (including type-only references). The aggregate root
 and `/experimental` APIs still load legacy analyzers, so importing a new
 independent entry is necessary when the JavaScript compiler is absent.
@@ -268,3 +268,34 @@ The wire contract is pinned to the upstream
 and [native node kinds](https://github.com/microsoft/typescript-go/blob/typescript/v7.0.2/internal/ast/kind_generated.go).
 The remaining work is migrating the Program consumers onto these facts while
 retaining their diagnostic, call-effect, and proof boundaries.
+
+## Property tests and diagnostic rendering
+
+`generateUneffectPropertyTests`, `generateUneffectPropertyTestsWithZ3`, and
+`checkUneffectProperty` retain their existing signatures and are also exported
+from `/experimental/spec`. Generator domains, source annotations, structured
+expressions, and the SMT conversion now use Oxc. Integer/literal-union, nested
+record, optional-field, bounded array/set/map, hint, shrinking, and replay
+behavior is preserved. These are generated runtime tests and finite input
+models, not a proof of the implementation or checker authentication of a
+spelled generator-domain type.
+
+Source-local predicates remain explicit exported unary declarations. Directly
+imported predicates use Corsa symbols and native declaration spans, with original
+source text checked against the snapshot. A private temporary project represents
+the supplied file map; caller files are never overwritten. Only selected source
+declarations are admitted. Barrel/default/namespace/type-only imports, dynamic
+aliases, and ambiguous overloads remain unsupported. This synchronous identity
+query opens Corsa lazily and closes it on success or failure; ordinary generators
+and property execution need no native compiler. It checks identity, not compiler
+diagnostics or predicate-body correctness: the generated test invokes the real
+predicate and rejects a specialization with no valid candidates.
+
+`just property-frontend-check` checks frozen pre-migration generated text and
+metadata in `test/fixtures/oxc-property-parity.json`, rejects recovered syntax,
+expression-wrapper escapes and optional chaining, and blocks JavaScript compiler
+imports. The existing property-test/Z3 suite covers execution, shrinking, replay
+and solver tuples; the installed-package smoke repeats generation with compiler
+imports blocked. Diagnostics now render structural compiler data without an AST
+method or compiler import, preserving nested message indentation and UTF-16 line
+attribution, including offsets inside CRLF.

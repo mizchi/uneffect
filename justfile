@@ -43,6 +43,10 @@ corsa-refinement-check:
     pnpm exec tsc -p tsconfig.json --noEmit
     pnpm vitest run test/corsa-refinement-dsl.test.ts test/refinement-dsl.test.ts test/corsa-callable-frontend.test.ts test/corsa-dsl-identities.test.ts test/oxc-capability-refinement.test.ts
 
+property-frontend-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/oxc-property-tests.test.ts
+
 cfg-lint-check:
     pnpm exec tsc -p tsconfig.json --noEmit
     pnpm exec tsc -p tsconfig.cfg-lint.json

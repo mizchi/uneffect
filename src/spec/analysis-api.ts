@@ -30,3 +30,10 @@ export { parseRefinementDsl, resolveRefinementDslSourceLink } from "../refinemen
 export { resolveCorsaRefinementDslLink } from "../refinement/corsa-refinement-dsl.js";
 export type { ResolveCorsaRefinementDslOptions } from "../refinement/corsa-refinement-dsl.js";
 export type { ParsedRefinementDefinition, RefinementBindingManifest } from "../refinement/binding-contracts.js";
+export { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../contracts/property-tests.js";
+export type {
+  CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions,
+  GenerateUneffectPropertyTestsResult, GenerateUneffectPropertyTestsWithZ3Options, GenerateUneffectPropertyTestsWithZ3Result,
+  PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertyPredicateSpecialization,
+  PropertySolverDiagnostic, PropertyTestBoundary, PropertyTestDomain,
+} from "../contracts/property-tests.js";

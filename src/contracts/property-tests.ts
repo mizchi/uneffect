@@ -1,6 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, posix } from "node:path";
-import ts from "@typescript/typescript6";
+import type { Node } from "oxc-parser";
+import { oxcChildren, oxcParameterBinding, oxcParameterType, parseOxcSource, topLevelOxcFunctions } from "../frontends/oxc/source.js";
+import { createPropertyPredicateResolver, type PropertyPredicateImport } from "./property-predicates.js";
+import { propertyTypeDomain as typeDomain, specializationValueMatches, exactUnaryPredicate, propertyExpression, propertyExpressionText, propertyPath, validatePropertyExpression as validateExpression, isIdentifier, isNumberLiteral, isStaticMember, isComputedMember, isCall, isBinary, isWrapped } from "./property-syntax.js";
 import { executeZ3, type Z3ExecutionOptions, type Z3ValueRequest } from "../backends/z3.js";
 import { extractAnnotations } from "../support/annotations.js";
 import { parseLogicExpression, parseLogicExpressionForHints } from "./logic.js";
@@ -92,15 +95,8 @@ export interface CheckUneffectPropertyResult {
   tested: number;
 }
 
-interface PredicateImport {
-  localName: string;
-  exportedName: string;
-  declarationFileName: string;
-}
+interface InternalBoundary extends PropertyTestBoundary { parameters: string[]; predicateImports: PropertyPredicateImport[] }
 
-interface InternalBoundary extends PropertyTestBoundary { parameters: string[]; predicateImports: PredicateImport[] }
-
-const supported = new Set<PropertyBoundaryKind>(["Int", "Nat", "U8", "U32", "I32"]);
 const edgeValues: Record<PropertyBoundaryKind, readonly number[]> = {
   Int: [0, 1, -1, 2, -2, 2_147_483_647, -2_147_483_648], Nat: [0, 1, 2, 255, 65_535],
   U8: [0, 1, 2, 254, 255], U32: [0, 1, 2, 4_294_967_294, 4_294_967_295], I32: [0, 1, -1, 2_147_483_647, -2_147_483_648],
@@ -336,61 +332,6 @@ export async function checkUneffectProperty(options: CheckUneffectPropertyOption
   return { status: "passed", replayed: false, tested };
 }
 
-function literalValue(type: ts.TypeNode): PropertyLiteral | undefined {
-  if (type.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (type.kind === ts.SyntaxKind.FalseKeyword) return false;
-  if (!ts.isLiteralTypeNode(type)) return undefined;
-  if (type.literal.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (type.literal.kind === ts.SyntaxKind.FalseKeyword) return false;
-  if (ts.isStringLiteral(type.literal) || ts.isNumericLiteral(type.literal)) return ts.isStringLiteral(type.literal) ? type.literal.text : Number(type.literal.text);
-  if (ts.isPrefixUnaryExpression(type.literal) && type.literal.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(type.literal.operand)) return -Number(type.literal.operand.text);
-  return undefined;
-}
-
-function typeDomain(type: ts.TypeNode | undefined): PropertyTestDomain | undefined {
-  if (!type) return undefined;
-  if (ts.isParenthesizedTypeNode(type)) return typeDomain(type.type);
-  if (ts.isTypeLiteralNode(type)) {
-    const fields: Record<string, PropertyTestDomain> = {};
-    const optional: string[] = [];
-    for (const member of type.members) {
-      if (!ts.isPropertySignature(member) || !member.type
-        || (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name))) return undefined;
-      const field = typeDomain(member.type);
-      if (!field || typeof field === "object" && field.kind === "union") return undefined;
-      if (member.questionToken) {
-        if (typeof field === "object" && field.kind !== "record") return undefined;
-        optional.push(member.name.text);
-      }
-      fields[member.name.text] = field;
-    }
-    return Object.keys(fields).length > 0 ? { kind: "record", fields, ...(optional.length ? { optional } : {}) } : undefined;
-  }
-  if (ts.isUnionTypeNode(type)) {
-    const members = type.types.map((member) => typeDomain(member) ?? (literalValue(member) === undefined ? undefined : { kind: "literal" as const, value: literalValue(member)! }));
-    if (members.some((member) => member === undefined || typeof member === "object" && member.kind !== "literal")) return undefined;
-    return { kind: "union", members: members as Array<PropertyBoundaryKind | { kind: "literal"; value: PropertyLiteral }> };
-  }
-  if (!ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return undefined;
-  if (supported.has(type.typeName.text as PropertyBoundaryKind)) return type.typeName.text as PropertyBoundaryKind;
-  if ((type.typeName.text === "BoundedUint8Array" || type.typeName.text === "BoundedUint32Array") && type.typeArguments?.length === 1) {
-    const maximumNode = type.typeArguments[0]!;
-    if (!ts.isLiteralTypeNode(maximumNode) || !ts.isNumericLiteral(maximumNode.literal)) return undefined;
-    return { kind: "bounded-array", element: type.typeName.text === "BoundedUint8Array" ? "U8" : "U32", maximum: Number(maximumNode.literal.text) };
-  }
-  if (type.typeName.text === "BoundedSet" && type.typeArguments?.length === 2) {
-    const element = typeDomain(type.typeArguments[0]), maximumNode = type.typeArguments[1]!;
-    if (typeof element !== "string" || !ts.isLiteralTypeNode(maximumNode) || !ts.isNumericLiteral(maximumNode.literal)) return undefined;
-    return { kind: "bounded-set", element, maximum: Number(maximumNode.literal.text) };
-  }
-  if (type.typeName.text === "BoundedMap" && type.typeArguments?.length === 3) {
-    const key = typeDomain(type.typeArguments[0]), value = typeDomain(type.typeArguments[1]), maximumNode = type.typeArguments[2]!;
-    if (typeof key !== "string" || typeof value !== "string" || !ts.isLiteralTypeNode(maximumNode) || !ts.isNumericLiteral(maximumNode.literal)) return undefined;
-    return { kind: "bounded-map", key, value, maximum: Number(maximumNode.literal.text) };
-  }
-  return undefined;
-}
-
 function generatedName(fileName: string): string {
   const extension = extname(fileName);
   return `${fileName.slice(0, -extension.length)}.uneffect.test.ts`;
@@ -401,142 +342,6 @@ function boundaryKey(fileName: string, functionName: string): string { return `$
 function importPath(sourceName: string, generatedFile: string): string {
   const relative = posix.relative(dirname(generatedFile), sourceName.replace(/\.[cm]?tsx?$/, ".js"));
   return relative.startsWith(".") ? relative : `./${relative}`;
-}
-
-function exactUnaryPredicate(requirement: string, parameter: string): string | undefined {
-  try {
-    let expression = propertyExpression(requirement);
-    while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
-    return ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)
-      && expression.arguments.length === 1 && ts.isIdentifier(expression.arguments[0]!)
-      && expression.arguments[0]!.text === parameter
-      ? expression.expression.text : undefined;
-  } catch { return undefined; }
-}
-
-function createPropertyProgram(files: Record<string, string>): ts.Program {
-  const options: ts.CompilerOptions = {
-    target: ts.ScriptTarget.ES2024,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    noLib: true,
-    types: [],
-    noEmit: true,
-  };
-  const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
-  host.fileExists = (fileName) => Object.hasOwn(files, fileName) || ts.sys.fileExists(fileName);
-  host.readFile = (fileName) => files[fileName] ?? ts.sys.readFile(fileName);
-  host.getSourceFile = (fileName, version, onError, fresh) => Object.hasOwn(files, fileName)
-    ? ts.createSourceFile(fileName, files[fileName]!, version, true, ts.ScriptKind.TS)
-    : original(fileName, version, onError, fresh);
-  const resolveModule = (moduleName: string, containingFile: string): ts.ResolvedModuleFull | undefined => {
-    if (moduleName.startsWith(".")) {
-      const joined = posix.normalize(posix.join(posix.dirname(containingFile), moduleName));
-      const absoluteStem = joined.replace(/\.[cm]?js$/, "");
-      const stems = posix.isAbsolute(absoluteStem)
-        ? [absoluteStem, posix.relative(process.cwd().replaceAll("\\", "/"), absoluteStem)] : [absoluteStem];
-      const candidate = stems.flatMap((stem) => [`${stem}.ts`, `${stem}.tsx`, `${stem}.mts`, `${stem}.cts`, `${stem}/index.ts`])
-        .find((name) => Object.hasOwn(files, name));
-      if (candidate) return {
-        resolvedFileName: candidate,
-        extension: candidate.endsWith(".tsx") ? ts.Extension.Tsx : candidate.endsWith(".mts") ? ts.Extension.Mts : candidate.endsWith(".cts") ? ts.Extension.Cts : ts.Extension.Ts,
-        isExternalLibraryImport: false,
-      };
-    }
-    return ts.resolveModuleName(moduleName, containingFile, options, host).resolvedModule;
-  };
-  host.resolveModuleNames = (moduleNames, containingFile) => moduleNames.map((moduleName) => resolveModule(moduleName, containingFile));
-  host.resolveModuleNameLiterals = (moduleLiterals, containingFile) => moduleLiterals.map((moduleLiteral) => ({ resolvedModule: resolveModule(moduleLiteral.text, containingFile) }));
-  return ts.createProgram(Object.keys(files), options, host);
-}
-
-function exportedUnaryDeclaration(declaration: ts.Node | undefined): declaration is ts.FunctionDeclaration & { name: ts.Identifier } {
-  return Boolean(declaration && ts.isFunctionDeclaration(declaration) && declaration.name && declaration.body
-    && declaration.parameters.length === 1 && declaration.parameters[0] && ts.isIdentifier(declaration.parameters[0].name)
-    && declaration.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword));
-}
-
-function resolvePredicateImport(
-  source: ts.SourceFile,
-  predicate: string,
-  checker: ts.TypeChecker | undefined,
-  files: Readonly<Record<string, string>>,
-): PredicateImport | undefined {
-  const local = source.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === predicate);
-  if (local) return exportedUnaryDeclaration(local) ? {
-    localName: predicate,
-    exportedName: predicate,
-    declarationFileName: source.fileName,
-  } : undefined;
-
-  if (!checker) return undefined;
-  for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.importClause?.isTypeOnly) continue;
-    const bindings = statement.importClause?.namedBindings;
-    if (!bindings || !ts.isNamedImports(bindings)) continue;
-    const specifier = bindings.elements.find((element) => element.name.text === predicate);
-    if (!specifier || specifier.isTypeOnly) continue;
-    const symbol = checker.getSymbolAtLocation(specifier.name);
-    const canonical = symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
-    const declaration = canonical?.declarations?.length === 1 ? canonical.declarations[0] : undefined;
-    if (!exportedUnaryDeclaration(declaration)) return undefined;
-    const moduleSymbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
-    const moduleSource = moduleSymbol?.declarations?.length === 1 && ts.isSourceFile(moduleSymbol.declarations[0])
-      ? moduleSymbol.declarations[0] : undefined;
-    if (!moduleSource || moduleSource.fileName !== declaration.getSourceFile().fileName
-      || !Object.hasOwn(files, declaration.getSourceFile().fileName)) return undefined;
-    return {
-      localName: predicate,
-      exportedName: declaration.name.text,
-      declarationFileName: declaration.getSourceFile().fileName,
-    };
-  }
-  return undefined;
-}
-
-function specializationValueMatches(type: ts.TypeNode | undefined, value: PropertyLiteral): boolean {
-  if (type?.kind === ts.SyntaxKind.StringKeyword) return typeof value === "string";
-  if (type?.kind === ts.SyntaxKind.NumberKeyword) return typeof value === "number" && Number.isFinite(value);
-  if (type?.kind === ts.SyntaxKind.BooleanKeyword) return typeof value === "boolean";
-  return false;
-}
-
-function propertyExpression(expression: string): ts.Expression {
-  const source = ts.createSourceFile("property-expression.ts", `const value = (${expression})`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const statement = source.statements[0];
-  const value = statement && ts.isVariableStatement(statement) ? statement.declarationList.declarations[0]?.initializer : undefined;
-  if (!value) throw new Error(`invalid property expression: ${expression}`);
-  return value;
-}
-
-function validateStructuredPropertyExpression(node: ts.Expression, allowedPredicates: ReadonlySet<string> = new Set()): void {
-  if (ts.isIdentifier(node) || ts.isNumericLiteral(node) || ts.isStringLiteral(node) || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return;
-  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return validateStructuredPropertyExpression(node.expression, allowedPredicates);
-  if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.ExclamationToken, ts.SyntaxKind.MinusToken].includes(node.operator)) return validateStructuredPropertyExpression(node.operand, allowedPredicates);
-  if (ts.isPropertyAccessExpression(node) && propertyPath(node)) return;
-  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ["has", "get"].includes(node.expression.name.text)
-    && ts.isIdentifier(node.expression.expression) && node.arguments.length === 1 && ts.isNumericLiteral(node.arguments[0]!)) return;
-  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && allowedPredicates.has(node.expression.text) && node.arguments.length === 1) {
-    validateStructuredPropertyExpression(node.arguments[0]!, allowedPredicates);
-    return;
-  }
-  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression
-    && (ts.isNumericLiteral(node.argumentExpression) || ts.isIdentifier(node.argumentExpression))) return;
-  if (ts.isBinaryExpression(node) && [
-    ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken,
-    ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken,
-    ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
-    ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken,
-  ].includes(node.operatorToken.kind)) {
-    validateStructuredPropertyExpression(node.left, allowedPredicates);
-    validateStructuredPropertyExpression(node.right, allowedPredicates);
-    return;
-  }
-  throw new Error(`unsupported property expression: ${node.getText()}`);
-}
-
-function validateExpression(expression: string, allowedPredicates: ReadonlySet<string> = new Set()): void {
-  try { parseLogicExpression(expression); } catch { validateStructuredPropertyExpression(propertyExpression(expression), allowedPredicates); }
 }
 
 function integerValue(expression: LogicExpression): number | undefined {
@@ -771,68 +576,68 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
   if (options.backend !== undefined && options.backend !== "quickcheck") throw new Error(`unsupported property backend: ${options.backend}`);
   const maximumGeneratedArrayLength = arrayCap(options.arrayLengthCap);
   const generatedFiles: Record<string, string> = {}, boundaries: InternalBoundary[] = [], diagnostics: GenerateUneffectPropertyTestsResult["diagnostics"] = [];
-  const program = options.predicateSpecializations && Object.keys(options.files).length > 1 ? createPropertyProgram(options.files) : undefined;
-  const checker = program?.getTypeChecker();
-  for (const [fileName, text] of Object.entries(options.files)) {
-    const source = program?.getSourceFile(fileName) ?? ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const fileBoundaries: InternalBoundary[] = [];
-    for (const node of source.statements) {
-      if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
-      const comments = text.slice(node.getFullStart(), node.getStart(source));
-      const requires = extractAnnotations(comments, "requires"), ensures = extractAnnotations(comments, "ensures");
-      if (requires.length === 0 && ensures.length === 0) continue;
-      if (ensures.length === 0) { diagnostics.push({ fileName, functionName: node.name.text, message: "property generation requires at least one ensures clause" }); continue; }
-      if (node.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) {
-        diagnostics.push({ fileName, functionName: node.name.text, message: "property generation currently supports identifier parameters only" }); continue;
-      }
-      const parameters = node.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
-      const predicateImports = new Map<string, PredicateImport>();
-      const specializationErrors: string[] = [];
-      const domains = node.parameters.map((parameter, index): PropertyTestDomain | undefined => {
-        const inferred = typeDomain(parameter.type);
-        if (inferred) return inferred;
-        const matches = requires.map((requirement) => exactUnaryPredicate(requirement, parameters[index]!)).filter((value): value is string => value !== undefined);
-        if (matches.length !== 1) {
-          specializationErrors.push(`${parameters[index]} requires exactly one direct unary predicate clause`);
-          return undefined;
+  const predicates = createPropertyPredicateResolver(options.files, !!options.predicateSpecializations && Object.keys(options.files).length > 1);
+  try {
+    for (const [fileName, text] of Object.entries(options.files)) {
+      const source = parseOxcSource(fileName, text);
+      const fileBoundaries: InternalBoundary[] = [];
+      for (const declaration of topLevelOxcFunctions(source)) {
+        const { node, comments } = declaration;
+        const requires = extractAnnotations(comments, "requires"), ensures = extractAnnotations(comments, "ensures");
+        if (requires.length === 0 && ensures.length === 0) continue;
+        if (ensures.length === 0) { diagnostics.push({ fileName, functionName: node.id.name, message: "property generation requires at least one ensures clause" }); continue; }
+        if (node.params.some((parameter) => !oxcParameterBinding(parameter))) {
+          diagnostics.push({ fileName, functionName: node.id.name, message: "property generation currently supports identifier parameters only" }); continue;
         }
-        const predicate = matches[0]!, predicateImport = resolvePredicateImport(source, predicate, checker, options.files);
-        if (!predicateImport) { specializationErrors.push(`${predicate} is neither an exported source-local nor a directly imported exported unary function declaration`); return undefined; }
-        const specializationKey = `${predicateImport.declarationFileName}:${predicateImport.exportedName}`;
-        const specialization = options.predicateSpecializations?.[specializationKey];
-        if (!specialization) { specializationErrors.push(`${predicate} has no ${specializationKey} specialization`); return undefined; }
-        if (specialization.version !== "uneffect-property-predicate/v1") { specializationErrors.push(`${predicate} uses an unsupported specialization version`); return undefined; }
-        if (specialization.values.length === 0) { specializationErrors.push(`${predicate} has an empty candidate universe`); return undefined; }
-        if (specialization.values.some((value) => !specializationValueMatches(parameter.type, value))) {
-          specializationErrors.push(`${predicate} candidates do not match the ordinary primitive parameter type`); return undefined;
+        const parameters = node.params.map((parameter) => oxcParameterBinding(parameter)!.name);
+        const predicateImports = new Map<string, PropertyPredicateImport>();
+        const specializationErrors: string[] = [];
+        const domains = node.params.map((parameter, index): PropertyTestDomain | undefined => {
+          const inferred = typeDomain(oxcParameterType(parameter));
+          if (inferred) return inferred;
+          const matches = requires.map((requirement) => exactUnaryPredicate(requirement, parameters[index]!)).filter((value): value is string => value !== undefined);
+          if (matches.length !== 1) {
+            specializationErrors.push(`${parameters[index]} requires exactly one direct unary predicate clause`);
+            return undefined;
+          }
+          const predicate = matches[0]!, predicateImport = predicates.resolve(source, predicate);
+          if (!predicateImport) { specializationErrors.push(`${predicate} is neither an exported source-local nor a directly imported exported unary function declaration`); return undefined; }
+          const specializationKey = `${predicateImport.declarationFileName}:${predicateImport.exportedName}`;
+          const specialization = options.predicateSpecializations?.[specializationKey];
+          if (!specialization) { specializationErrors.push(`${predicate} has no ${specializationKey} specialization`); return undefined; }
+          if (specialization.version !== "uneffect-property-predicate/v1") { specializationErrors.push(`${predicate} uses an unsupported specialization version`); return undefined; }
+          if (specialization.values.length === 0) { specializationErrors.push(`${predicate} has an empty candidate universe`); return undefined; }
+          if (specialization.values.some((value) => !specializationValueMatches(oxcParameterType(parameter), value))) {
+            specializationErrors.push(`${predicate} candidates do not match the ordinary primitive parameter type`); return undefined;
+          }
+          predicateImports.set(predicate, predicateImport);
+          return { kind: "specialized", predicate, values: [...new Set(specialization.values)] };
+        });
+        if (domains.some((value) => !value)) {
+          diagnostics.push({
+            fileName,
+            functionName: node.id.name,
+            message: `property generation currently supports identifier parameters with scalar, bounded typed-array, literal-union, or explicitly specialized exported unary-predicate boundaries${specializationErrors.length ? `: ${specializationErrors.join("; ")}` : ""}`,
+          }); continue;
         }
-        predicateImports.set(predicate, predicateImport);
-        return { kind: "specialized", predicate, values: [...new Set(specialization.values)] };
-      });
-      if (domains.some((value) => !value)) {
-        diagnostics.push({
-          fileName,
-          functionName: node.name.text,
-          message: `property generation currently supports identifier parameters with scalar, bounded typed-array, literal-union, or explicitly specialized exported unary-predicate boundaries${specializationErrors.length ? `: ${specializationErrors.join("; ")}` : ""}`,
-        }); continue;
+        try { [...requires, ...ensures].forEach((expression) => validateExpression(expression, new Set(predicateImports.keys()))); } catch (cause) {
+          diagnostics.push({ fileName, functionName: node.id.name, message: cause instanceof Error ? cause.message : String(cause) }); continue;
+        }
+        const generatorHints = refinementHints(requires, parameters, domains as PropertyTestDomain[]);
+        const derivedTuples = correlatedRefinementTuples(requires, parameters, domains as PropertyTestDomain[], generatorHints);
+        const suppliedTuples = options.refinementTuples?.[boundaryKey(fileName, node.id.name)] ?? [];
+        const generatorTuples = [...derivedTuples, ...suppliedTuples.map((tuple) => [...tuple])]
+          .filter((tuple, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(tuple)) === index);
+        const boundary: InternalBoundary = { fileName, functionName: node.id.name, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, predicateImports: [...predicateImports.values()], requires, ensures };
+        boundaries.push(boundary); fileBoundaries.push(boundary);
       }
-      try { [...requires, ...ensures].forEach((expression) => validateExpression(expression, new Set(predicateImports.keys()))); } catch (cause) {
-        diagnostics.push({ fileName, functionName: node.name.text, message: cause instanceof Error ? cause.message : String(cause) }); continue;
+      if (fileBoundaries.length > 0) {
+        const outputName = generatedName(fileName);
+        generatedFiles[outputName] = fileBoundaries.map((boundary) => emitTest(boundary, fileName, outputName, options.cases ?? 100, options.seed ?? 0x5eed, options.shrinking !== false, maximumGeneratedArrayLength,
+          options.counterexampleDirectory ? join(options.counterexampleDirectory, `${boundary.functionName}.uneffect-counterexample.json`) : undefined)).join("\n");
       }
-      const generatorHints = refinementHints(requires, parameters, domains as PropertyTestDomain[]);
-      const derivedTuples = correlatedRefinementTuples(requires, parameters, domains as PropertyTestDomain[], generatorHints);
-      const suppliedTuples = options.refinementTuples?.[boundaryKey(fileName, node.name.text)] ?? [];
-      const generatorTuples = [...derivedTuples, ...suppliedTuples.map((tuple) => [...tuple])]
-        .filter((tuple, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(tuple)) === index);
-      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, predicateImports: [...predicateImports.values()], requires, ensures };
-      boundaries.push(boundary); fileBoundaries.push(boundary);
     }
-    if (fileBoundaries.length > 0) {
-      const outputName = generatedName(fileName);
-      generatedFiles[outputName] = fileBoundaries.map((boundary) => emitTest(boundary, fileName, outputName, options.cases ?? 100, options.seed ?? 0x5eed, options.shrinking !== false, maximumGeneratedArrayLength,
-        options.counterexampleDirectory ? join(options.counterexampleDirectory, `${boundary.functionName}.uneffect-counterexample.json`) : undefined)).join("\n");
-    }
-  }
+  } finally { predicates.close(); }
   return { generatedFiles, boundaries: boundaries.map(({ parameters: _, predicateImports: __, ...boundary }) => boundary), diagnostics };
 }
 
@@ -890,13 +695,6 @@ function recordPresenceRelations(
   });
 }
 
-function propertyPath(node: ts.Expression): { root: string; path: string[] } | undefined {
-  if (ts.isIdentifier(node)) return { root: node.text, path: [] };
-  if (!ts.isPropertyAccessExpression(node)) return undefined;
-  const parent = propertyPath(node.expression);
-  return parent ? { root: parent.root, path: [...parent.path, node.name.text] } : undefined;
-}
-
 function nestedRecordValue(entries: readonly (readonly [string, number])[]): PropertyRecord {
   const result: PropertyRecord = {};
   for (const [path, value] of entries) {
@@ -912,102 +710,102 @@ function nestedRecordValue(entries: readonly (readonly [string, number])[]): Pro
   return result;
 }
 
-function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string, Z3ArrayLayout>, records: ReadonlyMap<string, Z3RecordLayout>, sets: ReadonlyMap<string, Z3SetLayout>, maps: ReadonlyMap<string, Z3MapLayout>): string {
-  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return structuredPropertyToSmt(node.expression, arrays, records, sets, maps);
-  if (ts.isIdentifier(node)) return node.text;
-  if (ts.isNumericLiteral(node)) return node.text;
-  if (ts.isStringLiteral(node)) return smtStringLiteral(node.text);
-  if (node.kind === ts.SyntaxKind.TrueKeyword) return "true";
-  if (node.kind === ts.SyntaxKind.FalseKeyword) return "false";
-  if (ts.isPrefixUnaryExpression(node)) {
-    const operand = structuredPropertyToSmt(node.operand, arrays, records, sets, maps);
-    if (node.operator === ts.SyntaxKind.ExclamationToken) return `(not ${operand})`;
-    if (node.operator === ts.SyntaxKind.MinusToken) return `(- ${operand})`;
+function structuredPropertyToSmt(node: Node, arrays: ReadonlyMap<string, Z3ArrayLayout>, records: ReadonlyMap<string, Z3RecordLayout>, sets: ReadonlyMap<string, Z3SetLayout>, maps: ReadonlyMap<string, Z3MapLayout>): string {
+  if (isWrapped(node)) return structuredPropertyToSmt(node.expression, arrays, records, sets, maps);
+  if (isIdentifier(node)) return node.name;
+  if (isNumberLiteral(node)) return String(node.value);
+  if (node.type === "Literal" && typeof node.value === "string") return smtStringLiteral(node.value);
+  if (node.type === "Literal" && node.value === true) return "true";
+  if (node.type === "Literal" && node.value === false) return "false";
+  if (node.type === "UnaryExpression") {
+    const operand = structuredPropertyToSmt(node.argument, arrays, records, sets, maps);
+    if (node.operator === "!") return `(not ${operand})`;
+    if (node.operator === "-") return `(- ${operand})`;
   }
-  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.name.text === "length" && arrays.has(node.expression.text)) {
-    return `${node.expression.text}__length`;
+  if (isStaticMember(node) && isIdentifier(node.object) && node.property.name === "length" && arrays.has(node.object.name)) {
+    return `${node.object.name}__length`;
   }
-  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.name.text === "size" && sets.has(node.expression.text)) {
-    const layout = sets.get(node.expression.text)!;
+  if (isStaticMember(node) && isIdentifier(node.object) && node.property.name === "size" && sets.has(node.object.name)) {
+    const layout = sets.get(node.object.name)!;
     return `(+ ${layout.universe.map((_, index) => `(ite ${layout.name}__member__${index} 1 0)`).join(" ")})`;
   }
-  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.name.text === "size" && maps.has(node.expression.text)) {
-    const layout = maps.get(node.expression.text)!;
+  if (isStaticMember(node) && isIdentifier(node.object) && node.property.name === "size" && maps.has(node.object.name)) {
+    const layout = maps.get(node.object.name)!;
     return `(+ ${layout.universe.map((_, index) => `(ite ${layout.name}__member__${index} 1 0)`).join(" ")})`;
   }
-  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ["has", "get"].includes(node.expression.name.text)
-    && ts.isIdentifier(node.expression.expression) && node.arguments.length === 1 && ts.isNumericLiteral(node.arguments[0]!)) {
-    const owner = node.expression.expression.text;
-    const layout = sets.get(owner) ?? maps.get(owner), value = Number(node.arguments[0]!.text);
+  if (isCall(node) && isStaticMember(node.callee) && ["has", "get"].includes(node.callee.property.name)
+    && isIdentifier(node.callee.object) && node.arguments.length === 1 && isNumberLiteral(node.arguments[0]!)) {
+    const owner = node.callee.object.name;
+    const layout = sets.get(owner) ?? maps.get(owner), value = Number(node.arguments[0]!.value);
     const index = layout?.universe.indexOf(value) ?? -1;
-    if (!layout || index < 0) throw new Error(`collection access ${node.getText()} is outside the solver-backed finite universe`);
-    return node.expression.name.text === "get" ? `${layout.name}__value__${index}` : `${layout.name}__member__${index}`;
+    if (!layout || index < 0) throw new Error(`collection access ${propertyExpressionText(node)} is outside the solver-backed finite universe`);
+    return node.callee.property.name === "get" ? `${layout.name}__value__${index}` : `${layout.name}__member__${index}`;
   }
-  if (ts.isPropertyAccessExpression(node)) {
+  if (isStaticMember(node)) {
     const access = propertyPath(node), layout = access && records.get(access.root);
     const path = access?.path.join("__");
-    if (!layout || !path || !recordLeaves(layout.fields).some((leaf) => leaf.path === path)) throw new Error(`unknown solver-backed record field ${node.getText()}`);
+    if (!layout || !path || !recordLeaves(layout.fields).some((leaf) => leaf.path === path)) throw new Error(`unknown solver-backed record field ${propertyExpressionText(node)}`);
     return `${layout.name}__${path}`;
   }
-  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression && ts.isNumericLiteral(node.argumentExpression)) {
-    const layout = arrays.get(node.expression.text), index = Number(node.argumentExpression.text);
-    if (!layout || !Number.isSafeInteger(index) || index < 0 || index >= layout.maximum) throw new Error(`array index ${node.getText()} is outside the solver-backed finite layout`);
+  if (isComputedMember(node) && isIdentifier(node.object) && node.property && isNumberLiteral(node.property)) {
+    const layout = arrays.get(node.object.name), index = Number(node.property.value);
+    if (!layout || !Number.isSafeInteger(index) || index < 0 || index >= layout.maximum) throw new Error(`array index ${propertyExpressionText(node)} is outside the solver-backed finite layout`);
     return `${layout.name}__${index}`;
   }
-  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression) {
-    const layout = arrays.get(node.expression.text);
-    if (!layout || layout.maximum === 0) throw new Error(`dynamic array access ${node.getText()} has no finite solver-backed elements`);
-    const index = structuredPropertyToSmt(node.argumentExpression, arrays, records, sets, maps);
+  if (isComputedMember(node) && isIdentifier(node.object) && node.property) {
+    const layout = arrays.get(node.object.name);
+    if (!layout || layout.maximum === 0) throw new Error(`dynamic array access ${propertyExpressionText(node)} has no finite solver-backed elements`);
+    const index = structuredPropertyToSmt(node.property, arrays, records, sets, maps);
     let selected = "-1";
     for (let at = layout.maximum - 1; at >= 0; at--) selected = `(ite (= ${index} ${at}) ${layout.name}__${at} ${selected})`;
     return selected;
   }
-  if (ts.isBinaryExpression(node)) {
-    const undefinedAccess = (candidate: ts.Expression, other: ts.Expression): string | undefined => {
-      if (!ts.isIdentifier(other) || other.text !== "undefined") return undefined;
+  if (isBinary(node)) {
+    const undefinedAccess = (candidate: Node, other: Node): string | undefined => {
+      if (!isIdentifier(other) || other.name !== "undefined") return undefined;
       const access = propertyPath(candidate), layout = access && records.get(access.root), path = access?.path.join("__");
       const leaf = layout && path ? recordLeaves(layout.fields, "", layout.optional).find((candidate) => candidate.presence === path) : undefined;
       return leaf?.presence ? `${layout!.name}__${leaf.presence}__present` : undefined;
     };
     const presence = undefinedAccess(node.left, node.right) ?? undefinedAccess(node.right, node.left);
-    if (presence && [ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken].includes(node.operatorToken.kind)) return `(not ${presence})`;
-    if (presence && [ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(node.operatorToken.kind)) return presence;
-    const operator = new Map<ts.SyntaxKind, string>([
-      [ts.SyntaxKind.PlusToken, "+"], [ts.SyntaxKind.MinusToken, "-"], [ts.SyntaxKind.AsteriskToken, "*"],
-      [ts.SyntaxKind.LessThanToken, "<"], [ts.SyntaxKind.LessThanEqualsToken, "<="], [ts.SyntaxKind.GreaterThanToken, ">"], [ts.SyntaxKind.GreaterThanEqualsToken, ">="],
-      [ts.SyntaxKind.EqualsEqualsToken, "="], [ts.SyntaxKind.EqualsEqualsEqualsToken, "="], [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
-    ]).get(node.operatorToken.kind);
+    if (presence && ["==", "==="].includes(node.operator)) return `(not ${presence})`;
+    if (presence && ["!=", "!=="].includes(node.operator)) return presence;
+    const operator = new Map<string, string>([
+      ["+", "+"], ["-", "-"], ["*", "*"],
+      ["<", "<"], ["<=", "<="], [">", ">"], [">=", ">="],
+      ["==", "="], ["===", "="], ["&&", "and"], ["||", "or"],
+    ]).get(node.operator);
     const left = structuredPropertyToSmt(node.left, arrays, records, sets, maps), right = structuredPropertyToSmt(node.right, arrays, records, sets, maps);
-    if (node.operatorToken.kind === ts.SyntaxKind.SlashToken || node.operatorToken.kind === ts.SyntaxKind.PercentToken) {
+    if (node.operator === "/" || node.operator === "%") {
       const absolute = (value: string): string => `(ite (< ${value} 0) (- ${value}) ${value})`;
       const magnitude = `(div ${absolute(left)} ${absolute(right)})`;
       const quotient = `(ite (= (< ${left} 0) (< ${right} 0)) ${magnitude} (- ${magnitude}))`;
-      return node.operatorToken.kind === ts.SyntaxKind.SlashToken ? quotient : `(- ${left} (* ${quotient} ${right}))`;
+      return node.operator === "/" ? quotient : `(- ${left} (* ${quotient} ${right}))`;
     }
-    if (node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) return `(not (= ${left} ${right}))`;
+    if (node.operator === "!=" || node.operator === "!==") return `(not (= ${left} ${right}))`;
     if (operator) return `(${operator} ${left} ${right})`;
   }
-  throw new Error(`unsupported solver-backed property expression: ${node.getText()}`);
+  throw new Error(`unsupported solver-backed property expression: ${propertyExpressionText(node)}`);
 }
 
-function structuredAccessBounds(node: ts.Expression, arrays: ReadonlyMap<string, Z3ArrayLayout>, records: ReadonlyMap<string, Z3RecordLayout>, sets: ReadonlyMap<string, Z3SetLayout>, maps: ReadonlyMap<string, Z3MapLayout>): string[] {
+function structuredAccessBounds(node: Node, arrays: ReadonlyMap<string, Z3ArrayLayout>, records: ReadonlyMap<string, Z3RecordLayout>, sets: ReadonlyMap<string, Z3SetLayout>, maps: ReadonlyMap<string, Z3MapLayout>): string[] {
   const bounds: string[] = [];
-  const visit = (current: ts.Node): void => {
-    if (ts.isBinaryExpression(current) && [ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken].includes(current.operatorToken.kind)) {
+  const visit = (current: Node): void => {
+    if (isBinary(current) && ["/", "%"].includes(current.operator)) {
       const divisor = structuredPropertyToSmt(current.right, arrays, records, sets, maps);
       bounds.push(`(not (= ${divisor} 0))`);
     }
-    if (ts.isElementAccessExpression(current) && ts.isIdentifier(current.expression) && current.argumentExpression
-      && !ts.isNumericLiteral(current.argumentExpression) && arrays.has(current.expression.text)) {
-      const index = structuredPropertyToSmt(current.argumentExpression, arrays, records, sets, maps);
-      bounds.push(`(>= ${index} 0)`, `(< ${index} ${current.expression.text}__length)`);
+    if (isComputedMember(current) && isIdentifier(current.object) && current.property
+      && !isNumberLiteral(current.property) && arrays.has(current.object.name)) {
+      const index = structuredPropertyToSmt(current.property, arrays, records, sets, maps);
+      bounds.push(`(>= ${index} 0)`, `(< ${index} ${current.object.name}__length)`);
     }
-    if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression) && current.expression.name.text === "get"
-      && ts.isIdentifier(current.expression.expression) && current.arguments.length === 1 && ts.isNumericLiteral(current.arguments[0]!)) {
-      const layout = maps.get(current.expression.expression.text), value = Number(current.arguments[0]!.text), index = layout?.universe.indexOf(value) ?? -1;
+    if (isCall(current) && isStaticMember(current.callee) && current.callee.property.name === "get"
+      && isIdentifier(current.callee.object) && current.arguments.length === 1 && isNumberLiteral(current.arguments[0]!)) {
+      const layout = maps.get(current.callee.object.name), value = Number(current.arguments[0]!.value), index = layout?.universe.indexOf(value) ?? -1;
       if (layout && index >= 0) bounds.push(`${layout.name}__member__${index}`);
     }
-    ts.forEachChild(current, visit);
+    for (const child of oxcChildren(current)) visit(child);
   };
   visit(node);
   return bounds;
@@ -1022,14 +820,14 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
   const injected: Record<string, PropertyValue[][]> = {};
   const solverDiagnostics: PropertySolverDiagnostic[] = [];
   for (const [fileName, text] of Object.entries(options.files)) {
-    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    for (const node of source.statements) {
-      if (!ts.isFunctionDeclaration(node) || !node.name || !accepted.has(boundaryKey(fileName, node.name.text))) continue;
-      const comments = text.slice(node.getFullStart(), node.getStart(source));
+    const source = parseOxcSource(fileName, text);
+    for (const declaration of topLevelOxcFunctions(source)) {
+      const { node, comments } = declaration;
+      if (!accepted.has(boundaryKey(fileName, node.id.name))) continue;
       const requires = extractAnnotations(comments, "requires");
       if (requires.length === 0) continue;
-      const names = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : "");
-      const domains = node.parameters.map((parameter) => typeDomain(parameter.type));
+      const names = node.params.map((parameter) => oxcParameterBinding(parameter)?.name ?? "");
+      const domains = node.params.map((parameter) => typeDomain(oxcParameterType(parameter)));
       if (names.some((name) => !name) || domains.some((domain) => !domain
         || typeof domain === "object" && domain.kind === "union"
           && numericLiteralUnion(domain) === undefined && booleanLiteralUnion(domain) === undefined
@@ -1048,11 +846,11 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         if (typeof domain === "object" && domain.kind === "bounded-set") {
           const literals: number[] = [];
           for (const expression of requirementExpressions) {
-            const visit = (current: ts.Node): void => {
-              if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression) && current.expression.name.text === "has"
-                && ts.isIdentifier(current.expression.expression) && current.expression.expression.text === name
-                && current.arguments.length === 1 && ts.isNumericLiteral(current.arguments[0]!)) literals.push(Number(current.arguments[0]!.text));
-              ts.forEachChild(current, visit);
+            const visit = (current: Node): void => {
+              if (isCall(current) && isStaticMember(current.callee) && current.callee.property.name === "has"
+                && isIdentifier(current.callee.object) && current.callee.object.name === name
+                && current.arguments.length === 1 && isNumberLiteral(current.arguments[0]!)) literals.push(Number(current.arguments[0]!.value));
+              for (const child of oxcChildren(current)) visit(child);
             };
             visit(expression);
           }
@@ -1063,11 +861,11 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         if (typeof domain === "object" && domain.kind === "bounded-map") {
           const literals: number[] = [];
           for (const expression of requirementExpressions) {
-            const visit = (current: ts.Node): void => {
-              if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression) && ["has", "get"].includes(current.expression.name.text)
-                && ts.isIdentifier(current.expression.expression) && current.expression.expression.text === name
-                && current.arguments.length === 1 && ts.isNumericLiteral(current.arguments[0]!)) literals.push(Number(current.arguments[0]!.text));
-              ts.forEachChild(current, visit);
+            const visit = (current: Node): void => {
+              if (isCall(current) && isStaticMember(current.callee) && ["has", "get"].includes(current.callee.property.name)
+                && isIdentifier(current.callee.object) && current.callee.object.name === name
+                && current.arguments.length === 1 && isNumberLiteral(current.arguments[0]!)) literals.push(Number(current.arguments[0]!.value));
+              for (const child of oxcChildren(current)) visit(child);
             };
             visit(expression);
           }
@@ -1281,10 +1079,10 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         blocks.push(`(not (and ${equalities.join(" ")}))`);
       }
       tuples.sort((left, right) => sampleSize(left) - sampleSize(right) || JSON.stringify(left).localeCompare(JSON.stringify(right)));
-      const key = boundaryKey(fileName, node.name.text);
+      const key = boundaryKey(fileName, node.id.name);
       injected[key] = [...(options.refinementTuples?.[key] ?? []).map((tuple) => [...tuple]), ...tuples];
       if (terminal === "unknown" || terminal === "unsat" && tuples.length === 0) solverDiagnostics.push({
-        fileName, functionName: node.name.text, status: terminal,
+        fileName, functionName: node.id.name, status: terminal,
         message: terminal === "unsat"
           ? `requires has no ${layouts.size + records.size === 0 ? "scalar" : "supported structured"} model`
           : `Z3 could not enumerate a ${layouts.size + records.size === 0 ? "scalar" : "supported structured"} model${terminalReason ? ` (${terminalReason})` : ""}`,

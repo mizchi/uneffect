@@ -1,5 +1,4 @@
 /* uneffect:module_effect none */
-import ts from "@typescript/typescript6";
 import type { AsyncSafetyDiagnostic } from "../async/async-safety.js";
 import { formatEffect } from "../effects/capabilities.js";
 import type { CheckResult } from "../project/check.js";
@@ -63,18 +62,41 @@ export interface ResourceCheckerDiagnostic {
   notes?: DiagnosticNote[];
 }
 
+interface CompilerDiagnosticMessage {
+  messageText: string;
+  next?: readonly CompilerDiagnosticMessage[];
+}
+/** Structural compiler data; neither AST methods nor a compiler module are needed to render it. */
+interface CompilerDiagnosticInput {
+  category: number;
+  code: number;
+  messageText: string | CompilerDiagnosticMessage;
+  start?: number;
+  file?: { fileName: string; text: string };
+}
+function diagnosticMessageText(message: string | CompilerDiagnosticMessage, depth = 0): string {
+  if (typeof message === "string") return message;
+  return (depth ? `\n${"  ".repeat(depth)}` : "") + message.messageText
+    + (message.next ?? []).map(child => diagnosticMessageText(child, depth + 1)).join("");
+}
+function diagnosticLine(text: string, position: number): number {
+  const lines = text.slice(0, position).split(/\r\n|[\r\n\u2028\u2029]/u).length;
+  return lines - (text[position] === "\n" && text[position - 1] === "\r" ? 1 : 0);
+}
+
 /** Convert compiler failures into the same source-attributed diagnostic contract used by every frontend. */
 /* uneffect:effect none */
 export function fromTypeScriptDiagnostic(
-  diagnostic: ts.Diagnostic,
+  diagnostic: CompilerDiagnosticInput,
   kind: TypeScriptCheckerDiagnostic["kind"],
 ): TypeScriptCheckerDiagnostic {
   const fileName = diagnostic.file?.fileName ?? "<typescript-options>";
   const line = diagnostic.file && diagnostic.start !== undefined
-    ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line + 1 : 1;
-  const severity = diagnostic.category === ts.DiagnosticCategory.Warning ? "warning" : "error";
+    ? diagnosticLine(diagnostic.file.text, diagnostic.start) : 1;
+  // DiagnosticCategory.Warning is wire value 0 in both native and JS compilers.
+  const severity = diagnostic.category === 0 ? "warning" : "error";
   const label = kind === "syntax" ? "syntax errors" : kind === "semantic" ? "semantic errors" : "option errors";
-  const detail = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+  const detail = diagnosticMessageText(diagnostic.messageText);
   return {
     domain: "typescript", kind, severity, fileName, line, functionName: "<typescript>",
     message: `TypeScript source has ${label} (\`TS${diagnostic.code}\`): ${detail}`,

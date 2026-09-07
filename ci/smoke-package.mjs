@@ -120,6 +120,9 @@ try {
     import { resolveCorsaRefinementDslLink, type ResolveCorsaRefinementDslOptions, type RefinementBindingManifest } from "@mizchi/uneffect/experimental/spec";
     const refinementLinker: (options: ResolveCorsaRefinementDslOptions) => Promise<RefinementBindingManifest> = resolveCorsaRefinementDslLink;
     void refinementLinker;
+    import { generateUneffectPropertyTests, type GenerateUneffectPropertyTestsOptions, type GenerateUneffectPropertyTestsResult } from "@mizchi/uneffect/experimental/spec";
+    const propertyGenerator: (options: GenerateUneffectPropertyTestsOptions) => GenerateUneffectPropertyTestsResult = generateUneffectPropertyTests;
+    void propertyGenerator;
     import { instrumentRuntimeAssertions, type InstrumentResult } from "@mizchi/uneffect/experimental/instrument";
     import { openCorsaCallableFrontend, type CorsaCallableFrontend, type CorsaCallableSignature } from "@mizchi/uneffect/experimental/corsa/callables";
     const callableFactory: (options: { configFile: string }) => Promise<CorsaCallableFrontend> = openCorsaCallableFrontend;
@@ -501,6 +504,17 @@ try {
     assert.deepEqual(manifest, ${JSON.stringify({ ...moreDslFixture.refinement[0].link, fileName: linkedRefinementEntry })});
   `);
   execFileSync(process.execPath, ["--import", noTsHook, linkedRefinementProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
+
+  const propertyFixtures = JSON.parse(readFileSync(resolve("test/fixtures/oxc-property-parity.json"), "utf8"));
+  const propertyProbe = join(consumer, "property-native.mjs");
+  writeFileSync(propertyProbe, `
+    import assert from "node:assert/strict";
+    import { generateUneffectPropertyTests, checkUneffectProperty } from "@mizchi/uneffect/experimental/spec";
+    for (const fixture of ${JSON.stringify(propertyFixtures)}) assert.deepEqual(generateUneffectPropertyTests(fixture.options), fixture.expected);
+    const result = await checkUneffectProperty({ functionName: "identity", domains: ["Nat"], property: value => value === value });
+    assert.equal(result.status, "passed");
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, propertyProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
 
   packageEvidence.verification.runtime = "passed";
   writeEvidence();
