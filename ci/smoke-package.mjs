@@ -510,8 +510,9 @@ try {
   writeFileSync(buildGateProbe, `
     import assert from "node:assert/strict";
     import { execFileSync } from "node:child_process";
-    import { readFileSync, appendFileSync } from "node:fs";
-    import { inspectCorsaBuildOutputs } from "@mizchi/uneffect/experimental/build/corsa";
+    import { readFileSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+    import { join } from "node:path";
+    import { inspectCorsaBuildOutputs, inspectCorsaWorkspaceBuildOutputs } from "@mizchi/uneffect/experimental/build/corsa";
     import { openCorsaCallableFrontend } from "@mizchi/uneffect/experimental/corsa/callables";
     const options = ${JSON.stringify({ configFile: buildGateConfig })};
     const f = await openCorsaCallableFrontend(options);
@@ -525,6 +526,26 @@ try {
     assert.equal(result.status, "verified");
     appendFileSync(result.outputs.find(output => output.kind === "runtime").fileName, "// modified");
     assert.equal(inspectCorsaBuildOutputs(options).status, "mismatch");
+
+    const workspace = ${JSON.stringify(join(consumer, "workspace-build-gate"))};
+    for (const name of ["lib", "app"]) {
+      mkdirSync(join(workspace, name), { recursive: true });
+      writeFileSync(join(workspace, name, "index.ts"), name === "lib" ? "export const value = 1;" : 'export { value } from "../lib/index.js";');
+      writeFileSync(join(workspace, name, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, strict: true, module: "NodeNext", target: "ES2022", types: [], outDir: "dist" },
+        files: ["index.ts"], references: name === "app" ? [{ path: "../lib" }] : [],
+      }));
+    }
+    const workspaceOptions = { configFile: join(workspace, "tsconfig.json") };
+    writeFileSync(workspaceOptions.configFile, JSON.stringify({ files: [], references: [{ path: "./app" }] }));
+    execFileSync(f.compilerExecutable, ["--build", workspaceOptions.configFile]);
+    const verified = inspectCorsaWorkspaceBuildOutputs(workspaceOptions);
+    assert.equal(verified.status, "verified", verified.message);
+    assert.equal(verified.outputs.length, 4);
+    appendFileSync(join(workspace, "lib", "dist", "index.d.ts"), "// modified");
+    const changed = inspectCorsaWorkspaceBuildOutputs(workspaceOptions);
+    assert.equal(changed.status, "mismatch");
+    assert.equal(changed.projects.find(project => project.configFile === join(workspace, "app", "tsconfig.json")).status, "not-checked");
   `);
   execFileSync(process.execPath, ["--import", noTsHook, buildGateProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
 

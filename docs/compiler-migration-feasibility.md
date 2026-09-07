@@ -155,8 +155,13 @@ compiler provenance を更新し、対応する compiler で成果物・summary 
   ビルド後の source 変更を検出した。再出力は consumer の生成物・tsbuildinfo を変更しない。
 - NodeNext の package.json 変更を入力 digest に含める。compiler と入力の前後比較も行うが、
   atomic snapshot ではないため検査中に入力を変更しないことが前提。
-- references の producer 宣言改変は検出できた。references を持つ consumer の検証自体は
-  明示的に拒否し、workspace 全体の証明を達成したとは扱わない。
+- 同じ入口の `inspectCorsaWorkspaceBuildOutputs` は references を依存順に検証する。
+  solution config と菱形の依存を扱い、producer の欠落・改変・古い出力・診断エラーで
+  consumer を `not-checked` にする。単一 project API は references を引き続き拒否する。
+- workspace の全 consumer 検査後に producer の入力・生成物・compiler と全 project 設定を
+  再確認し、検査途中の変更を検出した場合は先行 project の検証結果も無効にする。
+  生成物・tsbuildinfo は変更せず、JS compiler 禁止の package smoke でも動作を確認する。
+  詳細と対応範囲は [native build-output API](./corsa-build-outputs.md) を参照。
 
-任意の型に対する awaited 変換、全 emit 設定、workspace の合成証拠は引き続き未解決。
+任意の型に対する awaited 変換、全 emit 設定、workspace の契約・effect summary 合成証拠は引き続き未解決。
 本体コードの旧経路を外す前に、この限定ゲートを対応範囲へ広げる必要がある。
