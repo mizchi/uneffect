@@ -512,7 +512,9 @@ try {
     import { execFileSync } from "node:child_process";
     import { readFileSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
     import { join } from "node:path";
+    import { createHash } from "node:crypto";
     import { inspectCorsaBuildOutputs, inspectCorsaWorkspaceBuildOutputs } from "@mizchi/uneffect/experimental/build/corsa";
+    import { composeCorsaWorkspaceSummaries } from "@mizchi/uneffect/experimental/workspace/corsa";
     import { openCorsaCallableFrontend } from "@mizchi/uneffect/experimental/corsa/callables";
     const options = ${JSON.stringify({ configFile: buildGateConfig })};
     const f = await openCorsaCallableFrontend(options);
@@ -528,9 +530,11 @@ try {
     assert.equal(inspectCorsaBuildOutputs(options).status, "mismatch");
 
     const workspace = ${JSON.stringify(join(consumer, "workspace-build-gate"))};
+    const producerSource = "export function value(n: number): number { return n + 1; }";
+    const consumerSource = 'import { value as increment } from "../lib/index.js"; export const value = increment(1);';
     for (const name of ["lib", "app"]) {
       mkdirSync(join(workspace, name), { recursive: true });
-      writeFileSync(join(workspace, name, "index.ts"), name === "lib" ? "export const value = 1;" : 'export { value } from "../lib/index.js";');
+      writeFileSync(join(workspace, name, "index.ts"), name === "lib" ? producerSource : consumerSource);
       writeFileSync(join(workspace, name, "tsconfig.json"), JSON.stringify({
         compilerOptions: { composite: true, strict: true, module: "NodeNext", target: "ES2022", types: [], outDir: "dist" },
         files: ["index.ts"], references: name === "app" ? [{ path: "../lib" }] : [],
@@ -542,10 +546,25 @@ try {
     const verified = inspectCorsaWorkspaceBuildOutputs(workspaceOptions);
     assert.equal(verified.status, "verified", verified.message);
     assert.equal(verified.outputs.length, 4);
+    const summaryOptions = { ...workspaceOptions, summaries: [{
+      id: "increment", compiler: { version: verified.compiler.version, digest: verified.compiler.digest },
+      projectFile: join(workspace, "lib", "tsconfig.json"), inputDigest: verified.projects[0].inputDigest,
+      source: { fileName: join(workspace, "lib", "index.ts"), span: { start: 0, end: producerSource.length },
+        digest: createHash("sha256").update(producerSource).digest("hex") },
+      evidence: "verified", claims: { requires: ["n >= 0"], ensures: ["result === n + 1"], effects: [] },
+    }], calls: [{ projectFile: join(workspace, "app", "tsconfig.json"), fileName: join(workspace, "app", "index.ts"),
+      span: { start: consumerSource.indexOf("increment(1)"), end: consumerSource.indexOf("increment(1)") + 12 } }] };
+    const composition = await composeCorsaWorkspaceSummaries(summaryOptions);
+    assert.equal(composition.status, "bound", JSON.stringify(composition.blockers));
+    assert.equal(composition.bindings[0].evidence, "trusted");
+    assert.equal(composition.bindings[0].arguments[0].parameter, "n");
     appendFileSync(join(workspace, "lib", "dist", "index.d.ts"), "// modified");
     const changed = inspectCorsaWorkspaceBuildOutputs(workspaceOptions);
     assert.equal(changed.status, "mismatch");
     assert.equal(changed.projects.find(project => project.configFile === join(workspace, "app", "tsconfig.json")).status, "not-checked");
+    const blockedComposition = await composeCorsaWorkspaceSummaries(summaryOptions);
+    assert.equal(blockedComposition.status, "unknown");
+    assert.equal(blockedComposition.bindings.length, 0);
   `);
   execFileSync(process.execPath, ["--import", noTsHook, buildGateProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
 

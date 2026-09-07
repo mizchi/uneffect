@@ -152,6 +152,16 @@ describe("Corsa callable signatures", () => {
           const call = next.getResolvedSignature(file, { start, end: start + 9 }, text);
           expect(call?.returnType.texts).toContain("string");
           expect(call?.declaration.fileName.toLowerCase()).toBe(imported.toLowerCase());
+          const symbol = next.getSymbolAtPosition(file, start)!;
+          const target = next.getAliasedSymbol(symbol)!;
+          const declarations = next.getDeclarationSpans(target);
+          expect(declarations).toEqual([call!.declaration]);
+          target.declarations!.length = 0;
+          declarations[0]!.span.start = 999;
+          expect(next.getDeclarationSpans(target)).toEqual([call!.declaration]);
+          expect(() => next.getDeclarationSpans({ ...target })).toThrow(/owning snapshot/);
+          next.close();
+          expect(() => next.getDeclarationSpans(target)).toThrow(/closed/);
         } finally { next.close(); }
       });
     });

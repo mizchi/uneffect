@@ -81,6 +81,7 @@ export const ciTestTiers = {
     "test/corsa-awaited-types.test.ts",
     "test/corsa-build-output.test.ts",
     "test/corsa-workspace-build-output.test.ts",
+    "test/corsa-workspace-summaries.test.ts",
     "test/corsa-contract-dsl.test.ts",
     "test/corsa-refinement-dsl.test.ts",
     "test/test-timeouts.test.ts",

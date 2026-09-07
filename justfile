@@ -33,7 +33,7 @@ instrument-check:
 
 corsa-migration-gates:
     pnpm exec tsc -p tsconfig.json --noEmit
-    pnpm vitest run test/corsa-awaited-types.test.ts test/corsa-build-output.test.ts test/corsa-workspace-build-output.test.ts test/corsa-callable-frontend.test.ts test/corsa-contract-control-flow.test.ts
+    pnpm vitest run test/corsa-awaited-types.test.ts test/corsa-build-output.test.ts test/corsa-workspace-build-output.test.ts test/corsa-workspace-summaries.test.ts test/corsa-callable-frontend.test.ts test/corsa-contract-control-flow.test.ts
 
 corsa-callable-check:
     pnpm exec tsc -p tsconfig.json --noEmit

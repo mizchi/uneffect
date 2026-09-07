@@ -97,6 +97,10 @@
     "./experimental/build/corsa": {
       "types": "./dist/src/project/corsa-build-output.d.ts",
       "import": "./dist/src/project/corsa-build-output.js"
+    },
+    "./experimental/workspace/corsa": {
+      "types": "./dist/src/project/corsa-workspace-summaries.d.ts",
+      "import": "./dist/src/project/corsa-workspace-summaries.js"
     }
   },
   "bin": {

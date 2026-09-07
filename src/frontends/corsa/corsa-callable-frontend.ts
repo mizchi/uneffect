@@ -36,6 +36,8 @@ export interface CorsaCallableFrontend {
   assertSource(file: string, source: string): void;
   getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;
   getAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
+  /** Snapshot-owned symbol declarations, distinct from declarations of its structural type. */
+  getDeclarationSpans(symbol: CorsaApiSymbolFact): readonly { fileName: string; span: { start: number; end: number } }[];
   getTypeAliasSymbol(type: CorsaApiTypeFact): CorsaApiSymbolFact | null;
   /** Both type facts must originate in this frontend's snapshot. */
   isTypeAssignableTo(source: CorsaApiTypeFact, target: CorsaApiTypeFact): boolean;
@@ -131,7 +133,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
     const syntaxSources = new Map<string, OxcSource>();
     const booleanLiterals = new WeakMap<CorsaApiTypeFact, boolean>();
     const ownedTypes = new WeakMap<CorsaApiTypeFact, string>();
-    const ownedSymbols = new WeakMap<CorsaApiSymbolFact, { id: string; flags: number }>();
+    const ownedSymbols = new WeakMap<CorsaApiSymbolFact, { id: string; flags: number; declarations: readonly string[] }>();
     const assertOpen = (): void => { if (closed) throw new Error("Corsa callable frontend is closed"); };
     const sourceIndex = (file: string): NativeSourceIndex => {
       assertOpen();
@@ -164,7 +166,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       if (typeof value.name !== "string" || typeof value.flags !== "number"
         || value.declarations !== undefined && (!Array.isArray(value.declarations) || value.declarations.some(item => typeof item !== "string"))) throw new Error("invalid native symbol response");
       const symbol: CorsaApiSymbolFact = { id, name: value.name, flags: value.flags, declarations: (value.declarations ?? []) as string[] };
-      ownedSymbols.set(symbol, { id, flags: value.flags });
+      ownedSymbols.set(symbol, { id, flags: value.flags, declarations: [...symbol.declarations!] });
       return symbol;
     };
     let intrinsicNumbers: { number: number; boolean: number } | undefined;
@@ -282,6 +284,15 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
         const owned = ownedSymbols.get(symbol);
         if (!owned) throw new Error("symbol fact must come from this owning snapshot");
         return (owned.flags & 2_097_152) === 0 ? null : symbolFact(client.getAliasedSymbol(snapshot!, project.id, owned.id));
+      },
+      getDeclarationSpans(symbol) {
+        assertOpen();
+        const owned = ownedSymbols.get(symbol);
+        if (!owned) throw new Error("symbol fact must come from this owning snapshot");
+        return owned.declarations.map(handle => {
+          const index = sourceIndex(parseNativeNodeHandle(handle).path);
+          return { fileName: index.fileName, span: { ...index.node(handle).span } };
+        });
       },
       getTypeAliasSymbol(type) { return symbolFact(rpc.typeAlias(ownedTypeId(type))); },
       isTypeAssignableTo(source, target) {

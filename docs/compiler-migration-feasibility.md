@@ -162,6 +162,12 @@ compiler provenance を更新し、対応する compiler で成果物・summary 
   再確認し、検査途中の変更を検出した場合は先行 project の検証結果も無効にする。
   生成物・tsbuildinfo は変更せず、JS compiler 禁止の package smoke でも動作を確認する。
   詳細と対応範囲は [native build-output API](./corsa-build-outputs.md) を参照。
+- `/experimental/workspace/corsa` で、指定された直接 import 呼出に対する contract/effect summary の
+  結び付けを追加した。native の元ソース・宣言範囲と producer の input digest を照合し、
+  同名関数・古い summary・別 compiler・可変 alias を拒否する。実引数の span も保持する。
+  persisted な主張の authority は `trusted` に保ち、本体の証明成功に昇格させない。
+  対応範囲は [native workspace summary binding](./corsa-workspace-summaries.md) を参照。
 
-任意の型に対する awaited 変換、全 emit 設定、workspace の契約・effect summary 合成証拠は引き続き未解決。
+任意の型に対する awaited 変換、全 emit 設定、workspace の本体証明・module/callback/mutation を含む
+契約・effect summary の完全な合成証拠は引き続き未解決。
 本体コードの旧経路を外す前に、この限定ゲートを対応範囲へ広げる必要がある。
