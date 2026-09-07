@@ -1,3 +1,4 @@
+/* uneffect:module_effect Console */
 /* uneffect:effect Console */
 function report(value: number) {
   console.log(value);
@@ -5,15 +6,14 @@ function report(value: number) {
 
 /* uneffect:requires n >= 0 */
 /* uneffect:ensures result == n */
-/* uneffect:effect Console */
+/* uneffect:effect none */
 function count(n: number) {
   let i = 0;
   /* uneffect:loop_invariant i >= 0 && i <= n */
   while (i < n) {
     i = i + 1;
   }
-  report(i);
   return i;
 }
 
-count(3);
+report(count(3));

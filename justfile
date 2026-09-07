@@ -43,6 +43,10 @@ corsa-contract-check:
     pnpm exec tsc -p tsconfig.json --noEmit
     pnpm vitest run test/corsa-contract-dsl.test.ts test/corsa-callable-frontend.test.ts test/corsa-dsl-identities.test.ts test/oxc-dsl-migration.test.ts
 
+corsa-body-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/corsa-contract-check.test.ts
+
 corsa-refinement-check:
     pnpm exec tsc -p tsconfig.json --noEmit
     pnpm vitest run test/corsa-refinement-dsl.test.ts test/refinement-dsl.test.ts test/corsa-callable-frontend.test.ts test/corsa-dsl-identities.test.ts test/oxc-capability-refinement.test.ts

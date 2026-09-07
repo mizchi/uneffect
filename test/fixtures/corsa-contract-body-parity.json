@@ -1,0 +1,62 @@
+{
+  "oracle": "@typescript/typescript6 Program verifier",
+  "cases": [
+    {
+      "name": "boolean-precondition",
+      "source": "/* uneffect:requires enabled */\n/* uneffect:ensures result === false */\nexport function invert(enabled: boolean): boolean { return !enabled; }",
+      "expected": [
+        {
+          "status": "verified",
+          "evidence": "verified",
+          "span": {
+            "start": 124,
+            "end": 140
+          },
+          "obligation": {
+            "functionName": "invert",
+            "clause": "ensures",
+            "source": "result === false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "boolean-counterexample",
+      "source": "/* uneffect:ensures result === enabled */\nexport function invert(enabled: boolean): boolean { return !enabled; }",
+      "expected": [
+        {
+          "status": "counterexample",
+          "evidence": "unknown",
+          "span": {
+            "start": 94,
+            "end": 110
+          },
+          "obligation": {
+            "functionName": "invert",
+            "clause": "ensures",
+            "source": "result === enabled"
+          }
+        }
+      ]
+    },
+    {
+      "name": "constant-number",
+      "source": "/* uneffect:ensures result > 0 */\nexport function positive(): number { return 7; }",
+      "expected": [
+        {
+          "status": "verified",
+          "evidence": "verified",
+          "span": {
+            "start": 71,
+            "end": 80
+          },
+          "obligation": {
+            "functionName": "positive",
+            "clause": "ensures",
+            "source": "result > 0"
+          }
+        }
+      ]
+    }
+  ]
+}

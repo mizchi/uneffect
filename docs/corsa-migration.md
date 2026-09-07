@@ -1,12 +1,19 @@
 # Corsa migration decision and roadmap
 
+This document preserves the initial decision and prototype measurements, whose
+upstream status was checked on 2026-09-03. For the current native RPC/Oxc/CLI
+implementation, remaining work, and acceptance gates, use the
+[TypeScript 7 / Corsa migration plan](./typescript7-migration-plan.md) and
+[implementation status](./compiler-migration.md).
+
 ## Decision
 
 A staged migration to `@corsa-bind/napi` is realistic and worth continuing.
-A complete replacement of the TypeScript Compiler API is not realistic with
-the current Corsa 1.13.1 API for Hoare, ownership, resource CFGs, or temporal
-extraction. The admitted Effect catalog slice no longer needs a JavaScript
-TypeScript 6 `Program`.
+The named Corsa 1.13.1 bindings alone are not a drop-in replacement for the
+TypeScript Compiler API used by Hoare, ownership, resource CFGs, or temporal
+extraction. The subsequent migration combines native RPC, Oxc, shared analysis
+IR, and native CLI emission; full feature parity remains unproved. The admitted
+Effect catalog slice no longer needs a JavaScript TypeScript 6 `Program`.
 
 Default `uneffect check` — both `--project <tsconfig.json>` and
 file-specified `uneffect check file.ts` — uses Corsa for checker identity
@@ -31,8 +38,9 @@ Upstream status checked on 2026-09-03:
   along with `getTypesAtPositions`, `getPropertyOfType`, and `isTypeAssignableTo`.
 
 The Corsa worker is pinned to TypeScript 7 native platform binaries
-(`@typescript/typescript-<platform>-<arch>/lib/tsc`). The JavaScript TypeScript 6
-peer is TypeScript 7. The Program path (`--typescript-program`, workspace
+(`@typescript/typescript-<platform>-<arch>/lib/tsc`). The optional JavaScript
+Compiler API peer is `@typescript/typescript6`; the development compiler is
+TypeScript 7. The Program path (`--typescript-program`, workspace
 composition, contracts, `--corsa-parity`) loads the optional
 `@typescript/typescript6` Compiler API. Default check is TypeScript-7-only:
 one native Corsa compiler plus Oxc, no JS TypeScript 6 `Program` alongside it.

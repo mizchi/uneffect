@@ -188,7 +188,7 @@ export const checkCommand: CliCommand = {
       if (result.diagnostics.length === 0 && !values.evidence && !baselineAssessment) io.err("no diagnostics\n");
       else {
         for (const diagnostic of result.diagnostics) {
-          io.err(`error syntax ${diagnostic.fileName}\n  message: ${diagnostic.message}\n`);
+          io.err(`error ${diagnostic.domain} ${diagnostic.fileName}\n  message: ${diagnostic.message}\n`);
         }
       }
       if (values.evidence) io.err(formatCorsaCheckEvidence(result));

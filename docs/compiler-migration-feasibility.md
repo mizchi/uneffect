@@ -4,6 +4,9 @@
 実測環境: Node 24.12.0、`@corsa-bind/napi` 1.13.1、native TypeScript 7.0.2、
 比較用 JS TypeScript 6.0.3、Oxc parser 0.148.0。
 
+この監査時点以降の実装は末尾に追記している。現在の依存数・実装順序・完了条件は
+[TypeScript 7 / Corsa 移行計画](./typescript7-migration-plan.md) を参照。
+
 ## 結論
 
 利用者向けの解析・検証機能について、JS TypeScript 実装を恒久的に必要とする

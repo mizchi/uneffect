@@ -18,6 +18,12 @@ Program API, including `spec temporal`. The `spec ir`,
 `lint`, `z3`, `quint`, and `compose` paths use Oxc and do not load that peer.
 See [compiler migration](./compiler-migration.md). Node.js 24 or newer is required.
 
+Default `check` now produces solver evidence for the
+[bounded Boolean/constant-return contract fragment](./corsa-contract-bodies.md).
+Other contract bodies produce unsupported artifacts and exit 1. Use the explicit
+`--typescript-program` path for the existing numeric, loop, and interprocedural
+contract analyses while their native lowering is being migrated.
+
 `@informalsystems/quint` is an optional peer dependency. The model commands
 generate Quint source with nothing installed; add the package only to run what
 they generate, and its own `quint` binary comes with it:

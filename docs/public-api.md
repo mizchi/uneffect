@@ -12,6 +12,14 @@ that have not moved to the native frontend yet.
 See [Corsa/Oxc migration](./compiler-migration.md) for the compiler-independent
 paths and remaining Program-backed domains.
 
+The native contract-body slice expands `CorsaCheckResult.artifacts` and JSON
+`contracts` from empty tuples to verification-artifact arrays, and diagnostic
+domains from syntax to syntax/contract. JSON diagnostics retain native
+domain/kind and also supply the shared code/notes fields. Runtime export names
+are unchanged. See [native contract bodies](./corsa-contract-bodies.md) for the
+bounded coverage and the new optional artifact provenance; unsupported contract
+bodies now fail instead of returning empty proof results.
+
 ## Package entrypoints
 
 | Import path | Status | Intended use |

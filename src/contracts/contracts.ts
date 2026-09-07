@@ -1,44 +1,15 @@
 import ts from "@typescript/typescript6";
 import { createHash } from "node:crypto";
 import type { DiagnosticNote } from "../support/diagnostics.js";
-import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";
-import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type ExternalContractBinding, type InvariantObligation } from "./invariant-ir.js";
-import { executeZ3, type Z3Execution, type Z3ExecutionOptions } from "../backends/z3.js";
+import { InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type ExternalContractBinding, type InvariantObligation } from "./invariant-ir.js";
+import type { Z3ExecutionOptions } from "../backends/z3.js";
 import { formatEffect } from "../effects/capabilities.js";
 import type { EffectSummary } from "../effects/effects.js";
 import { extractLocatedAnnotations } from "../support/annotations.js";
 
-export interface VerificationArtifact {
-  obligationId: string;
-  status: "verified" | "counterexample" | "unknown" | "unsupported";
-  evidence: "verified" | "unknown";
-  source: { fileName: string; span: { start: number; end: number } };
-  counterexample?: { raw: string; assignments: Record<string, string> };
-  message?: string;
-  /** Concrete solver runtime and preserved fallback attempts for proof provenance. */
-  solver?: Pick<Z3Execution, "backend" | "version" | "attempts">;
-  /** The obligation this artifact discharges, so evidence can be reported without re-lowering. */
-  obligation?: { functionName: string; clause: ContractDiagnostic["clause"]; source: string };
-  /** Versioned path evidence identifying the source completion point proved by this artifact. */
-  controlFlow?: ContractControlFlowEvidence;
-}
-
-export interface ContractDiagnostic {
-  fileName: string;
-  functionName: string;
-  clause: "requires" | "ensures" | "invariant" | "unsupported";
-  line: number;
-  message: string;
-  notes?: DiagnosticNote[];
-  model?: string;
-  obligationId?: string;
-  artifact?: VerificationArtifact;
-}
-
-export interface ContractVerificationResult {
-  diagnostics: ContractDiagnostic[];
-  artifacts: VerificationArtifact[];
-}
+import type { VerificationArtifact, ContractDiagnostic, ContractVerificationResult } from "./verification-contracts.js";
+export type { VerificationArtifact, ContractDiagnostic, ContractVerificationResult } from "./verification-contracts.js";
+import { solveContractObligations } from "./contract-solver.js";
 
 export interface ContractVerificationOptions {
   externalContractBindings?: readonly ExternalContractBinding[];
@@ -79,18 +50,8 @@ export function attachContractEffectBoundaries(artifacts: readonly VerificationA
   });
 }
 
-function parseAssignments(model: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const match of model.matchAll(/\(define-fun\s+([^\s()]+)\s*\(\)\s+[^\s()]+\s+([^()\s]+|\([^)]*\))\)/g)) result[match[1]!] = match[2]!;
-  return result;
-}
-
 function lineAt(source: ts.SourceFile, position: number): number {
   return source.getLineAndCharacterOfPosition(Math.min(position, source.text.length)).line + 1;
-}
-
-function clauseOf(obligation: InvariantObligation): ContractDiagnostic["clause"] {
-  return obligation.kind === "postcondition" ? "ensures" : obligation.kind === "call-precondition" ? "requires" : "invariant";
 }
 
 export function reconcileContractArtifacts(sources: ReadonlyMap<string, string>, input: readonly VerificationArtifact[]): { artifacts: VerificationArtifact[]; diagnostics: ContractDiagnostic[] } {
@@ -212,28 +173,7 @@ export async function verifyContractObligations(
   }
 
   if (obligations.length === 0) return { diagnostics: [], artifacts: [] };
-  const diagnostics: ContractDiagnostic[] = [];
-  const artifacts: VerificationArtifact[] = [];
-  for (const obligation of obligations) {
-    const execution = await executeZ3(generateObligationSmt(obligation, false), { ...z3, produceModel: true });
-    const status = execution.status;
-    const solver = { backend: execution.backend, version: execution.version, attempts: execution.attempts };
-    const base = { obligationId: obligation.id, source: { fileName, span: obligation.span }, obligation: { functionName: obligation.functionName, clause: clauseOf(obligation), source: obligation.source }, solver, controlFlow: obligation.controlFlow };
-    if (status === "unsat") {
-      artifacts.push({ ...base, status: "verified", evidence: "verified" });
-    } else if (status === "sat") {
-      const model = execution.model ?? "";
-      const assignments = parseAssignments(model);
-      const artifact: VerificationArtifact = { ...base, status: "counterexample", evidence: "unknown", counterexample: { raw: model, assignments } };
-      artifacts.push(artifact);
-      diagnostics.push({ fileName, functionName: obligation.functionName, clause: clauseOf(obligation), line: lineAt(source, obligation.span.start), message: describeObligation(obligation), notes: [{ label: "rule", detail: obligationRule(obligation) }, ...explainCounterexample(obligation, assignments)], model, obligationId: obligation.id, artifact });
-    } else {
-      const detail = status === "error" ? `${execution.failureKind ?? "infrastructure failure"}: ${execution.stderr}` : status;
-      const artifact: VerificationArtifact = { ...base, status: "unknown", evidence: "unknown", message: `Z3 returned ${detail} for ${clauseOf(obligation)} ${obligation.source}` };
-      artifacts.push(artifact);
-      diagnostics.push({ fileName, functionName: obligation.functionName, clause: "unsupported", line: lineAt(source, obligation.span.start), message: artifact.message!, notes: [{ label: "because", detail: "the solver neither proved nor refuted this obligation, so the contract carries no evidence" }, { label: "hint", detail: "simplify the clause (nonlinear arithmetic and unbounded multiplication are the usual causes) or split it into smaller obligations" }], obligationId: obligation.id, artifact });
-    }
-  }
+  const { diagnostics, artifacts } = await solveContractObligations(fileName, obligations, position => lineAt(source, position), z3);
   const reconciled = reconcileContractArtifacts(new Map([[fileName, text]]), artifacts);
   return { diagnostics: [...diagnostics, ...reconciled.diagnostics], artifacts: reconciled.artifacts };
 }

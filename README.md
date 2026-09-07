@@ -48,13 +48,18 @@ export function count(n: number): number {
 }
 ```
 
-Check a file or the files selected by a TypeScript project:
+The numeric loop contract above currently uses the explicit Program path.
+Install its compatibility compiler and check the file:
 
 ```sh
-npx uneffect check src/example.ts
-npx uneffect check --project tsconfig.json --infer
+npm install --save-dev @typescript/typescript6
+npx uneffect check --typescript-program src/example.ts
 npx uneffect check --typescript-program --infer --assurance no-unknown src/example.ts
 ```
+
+Default `check` uses Corsa/Oxc for effect inference and
+[bounded Boolean/constant-return contracts](./docs/corsa-contract-bodies.md).
+Other contract bodies produce an explicit unsupported diagnostic during migration.
 
 For a low-annotation CI rollout, commit an inferred-effect baseline and reject
 new effects or newly unknown calls on later changes:
@@ -222,6 +227,7 @@ just check
 - [Public API and compatibility](./docs/public-api.md)
 - [Adoption patterns guide](./docs/adoption-patterns.md)
 - [Native integration](./docs/native-integration.md)
+- [TypeScript 7 / Corsa migration plan](./docs/typescript7-migration-plan.md)
 - [Roadmap and known gaps](./docs/roadmap.md)
 - [Implementation TODO](./TODO.md)
 - [GitHub Issues](https://github.com/mizchi/uneffect/issues)

@@ -61,6 +61,7 @@
       "required": ["code", "severity", "fileName", "line", "functionName", "message", "notes"],
       "properties": {
         "code": { "type": "string" }, "severity": { "enum": ["error", "warning"] },
+        "domain": { "enum": ["syntax", "contract"] }, "kind": { "enum": ["syntax", "contract"] },
         "fileName": { "type": "string" }, "line": { "type": "integer", "minimum": 1 },
         "functionName": { "type": "string" }, "message": { "type": "string" },
         "notes": { "type": "array", "items": { "$ref": "#/$defs/note" } }
@@ -209,6 +210,30 @@
             "functionName": { "type": "string" },
             "clause": { "enum": ["requires", "ensures", "invariant", "unsupported"] },
             "source": { "type": "string" }
+          }
+        },
+        "native": {
+          "type": "object", "additionalProperties": false,
+          "required": ["coverage", "compilerRevision", "compilerDigest", "sourceDigest"],
+          "properties": {
+            "coverage": { "const": "boolean-and-constant-return" },
+            "compilerRevision": { "type": "string" },
+            "compilerDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "sourceDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        "controlFlow": {
+          "type": "object", "additionalProperties": false,
+          "required": ["schema", "blockId", "completion", "pathConditions"],
+          "properties": {
+            "schema": { "const": "uneffect-contract-control-flow/v1" },
+            "blockId": { "type": "string" },
+            "completion": { "enum": ["return", "call", "loop-entry", "loop-back-edge", "synthetic"] },
+            "pathConditions": { "type": "array", "items": { "type": "object" } },
+            "narrowing": { "type": "object" },
+            "exceptionFlow": { "type": "object" },
+            "relationalCalls": { "type": "array", "items": { "type": "object" } },
+            "effectBoundary": { "type": "object" }
           }
         },
         "solver": {

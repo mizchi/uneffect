@@ -1,4 +1,4 @@
-import type { DiagnosticNote } from "../support/diagnostics.js";
+import type { DiagnosticNote } from "../support/diagnostic-contracts.js";
 import { parseLogicExpression } from "./logic.js";
 import type { InvariantObligation, LogicExpression } from "./logic-contracts.js";
 

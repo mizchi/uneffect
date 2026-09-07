@@ -6,10 +6,10 @@ import type { ContractDiagnostic } from "../contracts/contracts.js";
 import type { EffectDiagnostic } from "../effects/effects.js";
 import type { ReactSemanticDiagnostic } from "../analysis/react-semantics.js";
 import type { TrustedTypesDiagnostic } from "../analysis/trusted-types.js";
+import type { DiagnosticNote } from "./diagnostic-contracts.js";
+export type { DiagnosticNote } from "./diagnostic-contracts.js";
 
 export type DiagnosticSeverity = "error" | "warning";
-/** One explanation line under a diagnostic: `because`, `counterexample`, `evaluation`, `hint`, ... */
-export interface DiagnosticNote { label: string; detail: string }
 export interface TypeScriptCheckerDiagnostic {
   domain: "typescript";
   kind: "syntax" | "semantic" | "options";

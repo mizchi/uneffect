@@ -5,6 +5,7 @@ export interface OxcSource {
   readonly fileName: string;
   readonly text: string;
   readonly program: Program;
+  readonly comments: readonly { start: number; end: number }[];
   textOf(node: Pick<Node, "start" | "end">): string;
   positionAt(offset: number): { line: number; character: number };
 }
@@ -20,7 +21,7 @@ export function parseOxcSource(fileName: string, text: string): OxcSource {
     else if (char === "\n" || char === "\u2028" || char === "\u2029") starts.push(index + 1);
   }
   return {
-    fileName, text, program: parsed.program,
+    fileName, text, program: parsed.program, comments: parsed.comments,
     textOf: node => text.slice(node.start, node.end),
     positionAt(offset) {
       let low = 0, high = starts.length;

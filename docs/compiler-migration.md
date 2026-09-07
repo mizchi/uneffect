@@ -6,6 +6,10 @@ implementation remains TypeScript. The native TypeScript compiler used by
 Corsa and the development compiler are separate from the JavaScript
 `@typescript/typescript6` dependency being removed.
 
+See the [TypeScript 7 / Corsa migration plan](./typescript7-migration-plan.md)
+for the current inventory, implementation order, API compatibility decisions,
+and full-migration acceptance gates. This document records available APIs.
+
 ## Available without the JavaScript compiler
 
 | Entry or command | Implementation |
@@ -18,14 +22,19 @@ Corsa and the development compiler are separate from the JavaScript
 | `/experimental/module-order/corsa`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
 | `/spec` | Definition helpers, separated from DSL parsing and linking. |
 | `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, property-test generation/execution, and structural/native-refined contract completion analysis. |
-| `/experimental/build/corsa` | Bounded native JS/d.ts re-emission comparison, compiler/input digests, no writes to consumer outputs; single projects with explicit outDir. |
+| `/experimental/build/corsa` | Bounded native JS/d.ts re-emission comparison for single projects and reference workspaces in dependency order; compiler/input digests, explicit outDir, no writes to consumer outputs. |
+| `/experimental/workspace/corsa` | Bind supplied summaries to authenticated direct import calls using native declarations and build-output checks. Claims remain trusted; body and caller-precondition proofs are not performed. |
 | `/experimental/instrument`, `instrument` (without ownership options) | Oxc parameter assertion insertion with restricted Valibot schema expressions. |
 | `spec ir`, `spec lint`, `spec z3`, `spec quint`, `spec compose` | Specification analysis through the Oxc path. Z3-backed lint still needs its solver. |
 
 The default `check` command already uses the bounded Corsa/Oxc frontend.
-Options selecting proof domains that have not been migrated still use the
-compatibility Program implementation. `spec temporal` also retains that
-implementation for JavaScript async/resource observations.
+Explicit Program/parity options, contract/resource summaries, declaration
+transforms, module-entry/build assurance options, and project references select
+the compatibility Program implementation. Source annotations alone do not select
+it. Native check now proves the [bounded Boolean/constant-return body fragment](./corsa-contract-bodies.md)
+and reports other contract candidates as unsupported; ownership, typed-array, and
+resource outputs remain empty. `spec temporal` also retains the compatibility implementation
+for JavaScript async/resource observations.
 
 ```ts
 import { parseSpec, generateQuint } from "@mizchi/uneffect/experimental/spec"
@@ -60,6 +69,8 @@ from discharging an obligation.
   accept neutral source facts shared by the legacy and native adapters.
 - `evidence/status.ts` owns the shared evidence-status contract without importing
   an effect analyzer.
+- `contracts/verification-contracts.ts` owns neutral artifact and diagnostic types;
+  `contract-solver.ts` discharges obligations for both Program and native lowerers.
 - `invariant-ir.ts` retains the Program-specific lowering and compatibility
   re-exports. Existing public declarations and obligation IDs remain unchanged.
 
@@ -71,23 +82,25 @@ corrections rather than expanded proof support.
 
 ## Remaining migration
 
-The current source inventory contains 64 files referring directly to
-`@typescript/typescript6` (including type-only references). The aggregate root
-and `/experimental` APIs still load legacy analyzers, so importing a new
-independent entry is necessary when the JavaScript compiler is absent.
+At `97c50e4c`, 64 source files refer directly to `@typescript/typescript6`:
+63 have runtime imports or lazy requires, and one contains catalog metadata.
+There are no files with only type imports. These are direct-reference counts,
+not per-entry load counts. The aggregate root and `/experimental` APIs still
+load legacy analyzers, so importing a new independent entry is necessary when
+the JavaScript compiler is absent.
 
 The next domains are:
 
-1. Connect Program-backed builtin and callable consumers to the native signature
-   facts in `/experimental/corsa/callables`, replacing AST objects in frontend
-   contracts with source positions, symbol identities, and neutral facts.
-2. Workspace module composition and callers of the legacy module Program API.
-   Standalone v1/v2 module extraction has moved to Corsa/Oxc.
-3. Contract implementation lowering, effect propagation, ownership/resources,
-   async/typed-array/refinement analysis, and workspace composition.
-4. DSL linking/authentication and source transformation/instrumentation.
-5. Move remaining compatibility APIs out of the default dependency graph, then
-   remove the optional TypeScript 6 peer once its production consumers are gone.
+1. Freeze feature acceptance and define the replacement for public Program APIs.
+2. Close known TSX, exhaustive-switch, and arbitrary-awaited-type gaps; expose
+   the neutral native facts required by existing analyzers.
+3. Move contract body lowering and effect/call-graph propagation, followed by
+   ownership/resources, async, typed arrays, refinement, and proof consumers.
+4. Integrate native proof producers and consumers with workspace module
+   composition, build assurance, summaries, and transformation evidence.
+   Native build inspection and trusted summary binding already exist.
+5. Switch the aggregate APIs and all supported CLI modes, isolate compatibility
+   tooling, then remove the TypeScript 6 peer and remaining production imports.
 
 Do not replace missing semantic evidence with name matching, silently fall back
 to the JavaScript compiler, or remove an existing checker before its supported
@@ -390,3 +403,28 @@ inlineSourceMap and mapRoot are rejected. `verified` means the selected JS/d.ts
 bytes match this native compiler; it does not establish producer identity, map
 integrity, build freshness, workspace composition, or equality to every TS6 emit.
 It is not wired into the high-level workspace assurance flags yet.
+
+The separate `inspectCorsaWorkspaceBuildOutputs` API handles references in
+dependency order, invalidates consumers of failed producers, and rechecks inputs
+and outputs after inspecting all projects. The standalone API above still rejects
+references. See [native build outputs](./corsa-build-outputs.md) for the shared
+emit restrictions and evidence boundary.
+
+`composeCorsaWorkspaceSummaries` uses that workspace check and native declaration
+identity to bind supplied claims to selected direct import calls. It does not
+generate or prove those claims, discharge caller preconditions, or replace the
+high-level workspace checker. See [workspace summary binding](./corsa-workspace-summaries.md).
+
+## First native contract body proofs
+
+Default check now lowers synchronous, single-return top-level functions with
+Boolean parameters or safe integer constants into neutral obligations. Native
+signature identity and project diagnostics precede solver execution. The result
+contains solver artifacts, counterexamples, or explicit unsupported diagnostics;
+the CLI JSON and exit status include them. Effect summaries remain independent.
+
+`just corsa-body-check` compares the frozen Program outputs and negative controls.
+See [native contract bodies](./corsa-contract-bodies.md) for the exact syntax and
+evidence boundary, and the [migration matrix](./compiler-migration-matrix.md) for
+all package exports and CLI modes. Call summary generation/composition, numeric
+parameter semantics, and full body lowering remain subsequent work.

@@ -2,12 +2,13 @@ import { formatEffect } from "../../effects/capabilities.js";
 import type { AssuranceAssessment } from "../../evidence/assurance.js";
 import type { CorsaCheckResult } from "./corsa-check.js";
 import type { EffectBaselineAssessment } from "../../effects/effect-baseline.js";
+import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
 
 export interface CorsaCheckJsonReport {
   schema: "uneffect-check/v1";
   outcome: "passed" | "failed";
   counts: { errors: number; warnings: number };
-  diagnostics: CorsaCheckResult["diagnostics"];
+  diagnostics: Array<CorsaCheckResult["diagnostics"][number] & { code: string; notes: DiagnosticNote[] }>;
   effects: Array<{
     fileName?: string;
     span?: { start: number; end: number };
@@ -17,7 +18,7 @@ export interface CorsaCheckJsonReport {
     parameters?: string[];
     unknownReasons?: CorsaCheckResult["summaries"][number]["unknownReasons"];
   }>;
-  contracts: [];
+  contracts: CorsaCheckResult["artifacts"];
   assumptions: CorsaCheckResult["assumptions"];
   typedArrays: { obligations: []; windows: []; statistics: { solverQueries: number } };
   ownership: [];
@@ -37,7 +38,8 @@ export function createCorsaCheckJsonReport(
     schema: "uneffect-check/v1",
     outcome: passed ? "passed" : "failed",
     counts: { errors: result.errors, warnings: result.warnings },
-    diagnostics: result.diagnostics,
+    diagnostics: result.diagnostics.map(diagnostic => ({ ...diagnostic,
+      code: `${diagnostic.domain}/${diagnostic.kind}`, notes: diagnostic.notes ?? [] })),
     effects: result.summaries.map((summary) => ({
       ...(summary.fileName === undefined ? {} : { fileName: summary.fileName }),
       ...(summary.span === undefined ? {} : { span: summary.span }),
@@ -47,7 +49,7 @@ export function createCorsaCheckJsonReport(
       ...(summary.parameters === undefined ? {} : { parameters: summary.parameters }),
       ...(summary.unknownReasons === undefined ? {} : { unknownReasons: summary.unknownReasons }),
     })),
-    contracts: [],
+    contracts: result.artifacts,
     assumptions: result.assumptions,
     typedArrays: {
       obligations: result.typedArrays.obligations,
@@ -66,5 +68,6 @@ export function formatCorsaCheckEvidence(result: CorsaCheckResult): string {
   return result.summaries.map((summary) => {
     const effects = summary.effects.map(formatEffect).join(" | ") || "none";
     return `effects ${summary.functionName}: ${effects} (${summary.evidence})\n`;
-  }).join("");
+  }).join("") + result.artifacts.map(artifact =>
+    `contract ${artifact.obligation?.functionName ?? "<contract>"}: ${artifact.status} (${artifact.obligationId})\n`).join("");
 }

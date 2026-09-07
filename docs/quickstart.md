@@ -56,8 +56,14 @@ does not change the emitted JavaScript.
 
 ## 3. Check it
 
+This example contains a numeric loop contract, which currently uses the explicit
+Program path. Install its compatibility compiler before running it. Default
+native check supports [Boolean/constant-return bodies](./corsa-contract-bodies.md)
+and reports other contract bodies as unsupported.
+
 ```sh
-npx uneffect check src/uneffect-example.ts
+npm install --save-dev @typescript/typescript6
+npx uneffect check --typescript-program src/uneffect-example.ts
 ```
 
 No output and exit code 0 mean no enabled checker produced a diagnostic. They
@@ -65,7 +71,7 @@ do not mean arbitrary TypeScript or every host behavior was proved. Add
 `--evidence` to see successful obligations and inferred effects:
 
 ```sh
-npx uneffect check --evidence src/uneffect-example.ts
+npx uneffect check --typescript-program --evidence src/uneffect-example.ts
 ```
 
 For an existing project, pass its TypeScript configuration. Explicit files use
@@ -233,7 +239,7 @@ Start with an explicit file list so the checked boundary is reviewable:
 ```json
 {
   "scripts": {
-    "check:uneffect": "uneffect check src/uneffect-example.ts"
+    "check:uneffect": "uneffect check --typescript-program src/uneffect-example.ts"
   }
 }
 ```
@@ -339,7 +345,7 @@ Run the same package script in CI and pin the lockfile. Once the selected files
 have no unresolved effect summaries, add an explicit assurance gate:
 
 ```sh
-npx uneffect check --assurance no-unknown src/uneffect-example.ts
+npx uneffect check --typescript-program --assurance no-unknown src/uneffect-example.ts
 ```
 
 Executable top-level code may declare its own authority upper bound in the file
@@ -432,14 +438,14 @@ to infer no Effect is still only `inferred`, so it does not satisfy the
 `declared` or `verified` profile as a function boundary.
 
 ```sh
-npx uneffect check --assurance declared src/uneffect-example.ts
+npx uneffect check --typescript-program --assurance declared src/uneffect-example.ts
 ```
 
 For a deliberately narrow boundary that must use no recorded trusted semantic
 inputs, require both declaration checking and an empty collected ledger:
 
 ```sh
-npx uneffect check --assurance verified src/uneffect-example.ts
+npx uneffect check --typescript-program --assurance verified src/uneffect-example.ts
 ```
 
 A correctly declared call to a reviewed builtin still blocks this profile. Use

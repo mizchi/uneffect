@@ -26,7 +26,9 @@ const dogfoodExamples = exampleFiles.filter((file) => file.startsWith("examples/
 run("pnpm", ["exec", "tsc", "-p", "examples/tsconfig.json"], "top-level example typecheck");
 
 const smokeCommands = [
-  ["check", "examples/demo.ts"],
+  ["check", "--typescript-program", "examples/demo.ts"],
+  ["check", "--typescript-program", "examples/quickstart.ts"],
+  ["check", "examples/native-contract.ts", "--evidence"],
   ["instrument", "examples/gradual.ts"],
   ["spec", "temporal", "examples/async-patterns.ts", "main", "--runtime", "web"],
   ["spec", "temporal", "examples/promise-chain.ts", "main", "--runtime", "web"],

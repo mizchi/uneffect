@@ -6,6 +6,9 @@ import { openCorsaApiFrontend, type CorsaApiFrontend, type CorsaApiSymbolFact } 
 import type { EffectSummary, EvidenceStatus } from "../../effects/effects.js";
 import type { BuiltinSemantics, SemanticPrimitive } from "../../effects/builtin-semantic-schema.js";
 import { collectSyntaxFacts, enclosingFunction, type SyntaxSite } from "../oxc-syntax.js";
+import type { VerificationArtifact } from "../../contracts/verification-contracts.js";
+import { hasNativeContractCandidates } from "../../contracts/contract-annotations.js";
+import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
 
 export interface CorsaCheckOptions {
   configFile: string;
@@ -17,13 +20,14 @@ export interface CorsaCheckOptions {
 }
 
 export interface CorsaCheckDiagnostic {
-  domain: "syntax";
-  kind: "syntax";
+  domain: "syntax" | "contract";
+  kind: "syntax" | "contract";
   severity: "error" | "warning";
   fileName: string;
   line: number;
   functionName: string;
   message: string;
+  notes?: DiagnosticNote[];
 }
 
 export interface CorsaProjectProvenance {
@@ -42,7 +46,7 @@ export interface CorsaProjectProvenance {
 export interface CorsaCheckResult {
   diagnostics: CorsaCheckDiagnostic[];
   sources: Map<string, string>;
-  artifacts: [];
+  artifacts: VerificationArtifact[];
   summaries: EffectSummary[];
   assumptions: { schema: "uneffect-assumptions/v1"; entries: []; violations: [] };
   typedArrays: { obligations: []; diagnostics: []; windows: []; statistics: { solverQueries: 0 }; files: Record<string, never> };
@@ -257,11 +261,21 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       })
       .sort((left, right) => (left.fileName ?? "").localeCompare(right.fileName ?? "")
         || (left.span?.start ?? 0) - (right.span?.start ?? 0));
+    let artifacts: VerificationArtifact[] = [];
+    if ([...sources.values()].some(hasNativeContractCandidates)) {
+      const { verifyCorsaContracts } = await import("../../contracts/corsa-contracts.js");
+      const contracts = await verifyCorsaContracts({ configFile, cwd: options.cwd, corsaExecutable: options.corsaExecutable, files: sources });
+      artifacts = contracts.artifacts;
+      diagnostics.push(...contracts.diagnostics.map(diagnostic => ({
+        domain: "contract" as const, kind: "contract" as const, severity: "error" as const,
+        fileName: diagnostic.fileName, functionName: diagnostic.functionName, line: diagnostic.line, message: diagnostic.message, notes: diagnostic.notes,
+      })));
+    }
     const errors = diagnostics.filter((item) => item.severity === "error").length;
     return {
       diagnostics,
       sources,
-      artifacts: [],
+      artifacts,
       summaries,
       assumptions: { schema: "uneffect-assumptions/v1", entries: [], violations: [] },
       typedArrays: { obligations: [], diagnostics: [], windows: [], statistics: { solverQueries: 0 }, files: {} },

@@ -1496,13 +1496,13 @@
         {
           "name": "CorsaCheckDiagnostic",
           "declarations": [
-            "export interface CorsaCheckDiagnostic {\n    domain: \"syntax\";\n    kind: \"syntax\";\n    severity: \"error\" | \"warning\";\n    fileName: string;\n    line: number;\n    functionName: string;\n    message: string;\n}"
+            "export interface CorsaCheckDiagnostic {\n    domain: \"syntax\" | \"contract\";\n    kind: \"syntax\" | \"contract\";\n    severity: \"error\" | \"warning\";\n    fileName: string;\n    line: number;\n    functionName: string;\n    message: string;\n    notes?: DiagnosticNote[];\n}"
           ]
         },
         {
           "name": "CorsaCheckJsonReport",
           "declarations": [
-            "export interface CorsaCheckJsonReport {\n    schema: \"uneffect-check/v1\";\n    outcome: \"passed\" | \"failed\";\n    counts: {\n        errors: number;\n        warnings: number;\n    };\n    diagnostics: CorsaCheckResult[\"diagnostics\"];\n    effects: Array<{\n        fileName?: string;\n        span?: {\n            start: number;\n            end: number;\n        };\n        functionName: string;\n        effects: string[];\n        evidence: CorsaCheckResult[\"summaries\"][number][\"evidence\"];\n        parameters?: string[];\n        unknownReasons?: CorsaCheckResult[\"summaries\"][number][\"unknownReasons\"];\n    }>;\n    contracts: [];\n    assumptions: CorsaCheckResult[\"assumptions\"];\n    typedArrays: {\n        obligations: [];\n        windows: [];\n        statistics: {\n            solverQueries: number;\n        };\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    assurance: AssuranceAssessment | null;\n    project: CorsaCheckResult[\"project\"];\n    effectBaseline?: EffectBaselineAssessment;\n}"
+            "export interface CorsaCheckJsonReport {\n    schema: \"uneffect-check/v1\";\n    outcome: \"passed\" | \"failed\";\n    counts: {\n        errors: number;\n        warnings: number;\n    };\n    diagnostics: Array<CorsaCheckResult[\"diagnostics\"][number] & {\n        code: string;\n        notes: DiagnosticNote[];\n    }>;\n    effects: Array<{\n        fileName?: string;\n        span?: {\n            start: number;\n            end: number;\n        };\n        functionName: string;\n        effects: string[];\n        evidence: CorsaCheckResult[\"summaries\"][number][\"evidence\"];\n        parameters?: string[];\n        unknownReasons?: CorsaCheckResult[\"summaries\"][number][\"unknownReasons\"];\n    }>;\n    contracts: CorsaCheckResult[\"artifacts\"];\n    assumptions: CorsaCheckResult[\"assumptions\"];\n    typedArrays: {\n        obligations: [];\n        windows: [];\n        statistics: {\n            solverQueries: number;\n        };\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    assurance: AssuranceAssessment | null;\n    project: CorsaCheckResult[\"project\"];\n    effectBaseline?: EffectBaselineAssessment;\n}"
           ]
         },
         {
@@ -1514,7 +1514,7 @@
         {
           "name": "CorsaCheckResult",
           "declarations": [
-            "export interface CorsaCheckResult {\n    diagnostics: CorsaCheckDiagnostic[];\n    sources: Map<string, string>;\n    artifacts: [];\n    summaries: EffectSummary[];\n    assumptions: {\n        schema: \"uneffect-assumptions/v1\";\n        entries: [];\n        violations: [];\n    };\n    typedArrays: {\n        obligations: [];\n        diagnostics: [];\n        windows: [];\n        statistics: {\n            solverQueries: 0;\n        };\n        files: Record<string, never>;\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    errors: number;\n    warnings: number;\n    project: CorsaProjectProvenance;\n}"
+            "export interface CorsaCheckResult {\n    diagnostics: CorsaCheckDiagnostic[];\n    sources: Map<string, string>;\n    artifacts: VerificationArtifact[];\n    summaries: EffectSummary[];\n    assumptions: {\n        schema: \"uneffect-assumptions/v1\";\n        entries: [];\n        violations: [];\n    };\n    typedArrays: {\n        obligations: [];\n        diagnostics: [];\n        windows: [];\n        statistics: {\n            solverQueries: 0;\n        };\n        files: Record<string, never>;\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    errors: number;\n    warnings: number;\n    project: CorsaProjectProvenance;\n}"
           ]
         },
         {

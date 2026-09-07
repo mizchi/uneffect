@@ -368,6 +368,27 @@ try {
     if (checked.diagnostics.length || !checked.code.includes("__uneffect_v.parse")) throw new Error("Missing compiler-independent runtime instrumentation");
   `);
   const instrumentEntry = join(consumer, "instrument.ts");
+  const bodyEntry = join(consumer, "native-body.ts"), bodyConfig = join(consumer, "tsconfig.native-body.json");
+  writeFileSync(bodyEntry, '/* uneffect:ensures result */\nexport function checked() { return false; }');
+  writeFileSync(bodyConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: [] }, files: [bodyEntry] }));
+  const bodyProbe = join(consumer, "native-body-probe.mjs");
+  writeFileSync(bodyProbe, `
+    import assert from "node:assert/strict";
+    import { checkCorsaProject, createCorsaCheckJsonReport } from "@mizchi/uneffect/corsa";
+    const result = await checkCorsaProject({ configFile: ${JSON.stringify(bodyConfig)} });
+    assert.equal(result.errors, 1);
+    assert.equal(result.artifacts.length, 1);
+    assert.equal(result.artifacts[0].status, "counterexample");
+    assert.equal(result.artifacts[0].native.coverage, "boolean-and-constant-return");
+    assert.deepEqual(createCorsaCheckJsonReport(result).contracts, result.artifacts);
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, bodyProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
+  const bodyResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "check", "--project", bodyConfig, "--json"], {
+    cwd: consumer, encoding: "utf8", timeout: 30_000,
+  });
+  if (bodyResult.status !== 1 || JSON.parse(bodyResult.stdout).contracts?.[0]?.status !== "counterexample") {
+    throw new Error(`compiler-independent contract CLI failed: ${bodyResult.stderr || bodyResult.error || bodyResult.status}`);
+  }
   writeFileSync(instrumentEntry, '/* uneffect:assert value: Nat */ export function check(value: number) { return value }');
   const instrumentResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "instrument", instrumentEntry], {
     cwd: consumer, encoding: "utf8", timeout: 30_000,
