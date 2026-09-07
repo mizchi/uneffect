@@ -12,12 +12,12 @@ Corsa and the development compiler are separate from the JavaScript
 | --- | --- |
 | `/cfg`, `/workflow`, `/impact` | Language-independent graph contracts and solvers. |
 | `/corsa/api` | Native Corsa semantic queries. |
-| `/experimental/corsa/callables` | Native overload selection, generic substitution, constructor results, inferred declaration returns, complete overload sets, assignability, shorthand value symbols, and snapshot diagnostics. |
+| `/experimental/corsa/callables` | Native overload selection, generic substitution, constructor results, inferred declaration returns, complete overload sets, assignability, shorthand value symbols, exact expression types, intrinsic never/boolean-literal facts, and snapshot diagnostics. |
 | `/experimental/lint` | Source-independent prerequisite analysis. |
 | `/experimental/lint/corsa`, `cfg-lint` | Oxc CFG extraction and Corsa symbol/type queries, with native diagnostics. |
 | `/experimental/module-order/corsa`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
 | `/spec` | Definition helpers, separated from DSL parsing and linking. |
-| `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, property-test generation/execution, and structural contract completion analysis. |
+| `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, property-test generation/execution, and structural/native-refined contract completion analysis. |
 | `/experimental/instrument`, `instrument` (without ownership options) | Oxc parameter assertion insertion with restricted Valibot schema expressions. |
 | `spec ir`, `spec lint`, `spec z3`, `spec quint`, `spec compose` | Specification analysis through the Oxc path. Z3-backed lint still needs its solver. |
 
@@ -327,3 +327,31 @@ and runs the source facade with JavaScript compiler loading forbidden.
 `just package-check` exercises the packed API under the same import restriction.
 The legacy contract instrumenter and checker bridge still use Program semantic
 callbacks; moving their syntax views does not remove that remaining dependency.
+
+
+`analyzeCorsaContractControlFlow({ configFile, files })` refines the same rules
+with resolved native call signatures and boolean literal types. `files` must
+contain the exact text present in the configured project. It checks all project
+diagnostics (including imported files), rejects `noCheck`, parser recovery and
+source mismatch, then reports both structural and refined exits for each named
+top-level function. Any project type error prevents endpoint results, including
+return-coverage diagnostics when enabled in that project's configuration.
+
+Results carry `evidence: "structural-with-corsa-types"`, the compiler revision,
+and a source SHA-256 digest. This is checker-assisted structural analysis, not
+native internal-CFG evidence or proof of contract predicates. Existing contract
+instrumentation and full body verification still retain their Program path.
+
+The callable frontend's `getExpressionType` matches complete Oxc ranges to
+native protocol-5 nodes before querying `getTypeAtLocation`; querying the first
+identifier would conflate `enabled` with `enabled && widened`. Unsupported
+expression kinds yield no fact. `isNeverType` uses native intrinsic identity,
+and `getBooleanLiteralValue` reads the native literal payload. Display strings,
+cloned facts, foreign snapshots, and closed frontends cannot supply semantic
+facts. Parsed Oxc sources are reused within a snapshot.
+
+`just contract-flow-check` includes native/checker parity for direct, overloaded,
+generic, shadowed and optional calls; literal, member, computed, compound and
+narrowed boolean expressions; imported aliases; diagnostics and snapshot rejection.
+The installed-package smoke runs native refinement with JS compiler imports
+forbidden as well as the source-only analysis.

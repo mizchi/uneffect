@@ -6,6 +6,13 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- Add native contract reachability refinement through
+  `analyzeCorsaContractControlFlow` in `/experimental/spec`. Corsa authenticates
+  complete expression ranges, resolved `never` returns, and boolean literal
+  payloads without JavaScript compiler or display-text inference. Check native
+  project diagnostics and source identity before reporting structural/refined
+  exits; reject unchecked projects, stale sources, and foreign semantic facts.
+
 - Share contract completion rules between Oxc and the Program compatibility
   adapter through AST-independent syntax views and the CFG completion algebra.
   Add structural `analyzeOxcContractControlFlow` to `/experimental/spec` without

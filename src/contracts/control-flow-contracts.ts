@@ -42,3 +42,11 @@ export interface StructuralContractControlFlow {
   readonly exits: readonly ContractExit[];
   readonly mayFallThrough: boolean;
 }
+
+/** Structural completion algebra refined by native signature and literal-type facts. Not a contract body proof. */
+export interface CorsaContractControlFlow extends Omit<StructuralContractControlFlow, "evidence"> {
+  readonly evidence: "structural-with-corsa-types";
+  readonly compilerRevision: string;
+  readonly sourceDigest: string;
+  readonly structural: { readonly exits: readonly ContractExit[]; readonly mayFallThrough: boolean };
+}

@@ -39,3 +39,6 @@ export type {
 } from "../contracts/property-tests.js";
 export { analyzeOxcContractControlFlow } from "../frontends/oxc/contract-control-flow.js";
 export type { ContractExit, StructuralContractControlFlow } from "../contracts/control-flow-contracts.js";
+export { analyzeCorsaContractControlFlow } from "../contracts/corsa-control-flow.js";
+export type { AnalyzeCorsaContractControlFlowOptions } from "../contracts/corsa-control-flow.js";
+export type { CorsaContractControlFlow } from "../contracts/control-flow-contracts.js";

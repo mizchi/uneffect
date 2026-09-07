@@ -45,7 +45,7 @@ corsa-refinement-check:
 
 contract-flow-check:
     pnpm exec tsc -p tsconfig.json --noEmit
-    pnpm vitest run test/oxc-contract-control-flow.test.ts test/contract-control-flow.test.ts test/typescript-control-flow-contract.test.ts
+    pnpm vitest run test/oxc-contract-control-flow.test.ts test/corsa-contract-control-flow.test.ts test/corsa-callable-frontend.test.ts test/contract-control-flow.test.ts test/typescript-control-flow-contract.test.ts
 
 property-frontend-check:
     pnpm exec tsc -p tsconfig.json --noEmit

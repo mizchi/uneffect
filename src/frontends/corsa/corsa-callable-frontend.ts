@@ -1,9 +1,10 @@
 import { resolve } from "node:path";
 import type { CorsaApiClient } from "@corsa-bind/napi";
 import type { Node } from "oxc-parser";
-import { oxcChildren, parseOxcSource } from "../oxc/source.js";
+import { oxcChildren, parseOxcSource, type OxcSource } from "../oxc/source.js";
 import { resolveCorsaExecutable, type CorsaApiFrontendOptions, type CorsaApiTypeFact, type CorsaApiSymbolFact } from "./corsa-api-frontend.js";
 import { decodeNativeSourceIndex, nativeCallableKinds, parseNativeNodeHandle, type NativeSourceIndex } from "./native-source-index.js";
+import { nativeExpressionKind } from "./native-expression-kind.js";
 
 export interface CorsaCallableSignature {
   readonly id: string;
@@ -23,6 +24,12 @@ export interface CorsaCallableFrontend {
   getSignatureFromDeclaration(file: string, span: { start: number; end: number }, source: string): CorsaCallableSignature | null;
   /** Returns the full overload set; never chooses an overload by its position in this list. */
   getSignaturesOfTypeAtPosition(file: string, position: number, kind?: "call" | "construct"): readonly CorsaCallableSignature[];
+  /** Exact Oxc expression range authenticated against native snapshot syntax. */
+  getExpressionType(file: string, span: { start: number; end: number }, source: string): CorsaApiTypeFact | null;
+  /** Intrinsic never identity, without display-text inference. */
+  isNeverType(type: CorsaApiTypeFact): boolean;
+  /** Native boolean literal payload; broad boolean/any/unknown/never are not constants. */
+  getBooleanLiteralValue(type: CorsaApiTypeFact): boolean | undefined;
   assertSource(file: string, source: string): void;
   getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;
   getAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
@@ -73,6 +80,8 @@ function callableQueries(client: CorsaApiClient, snapshot: string, project: stri
     typeAlias(type: string): unknown { return client.callJson<unknown>("getAliasSymbolOfType", { ...context, objectId: numericHandle(type) }); },
     shorthand(location: string): unknown { return client.callJson<unknown>("getShorthandAssignmentValueSymbol", { ...context, location }); },
     numberType(): unknown { return client.callJson<unknown>("getNumberType", context); },
+    neverType(): unknown { return client.callJson<unknown>("getNeverType", context); },
+    expressionType(location: string): unknown { return client.callJson<unknown>("getTypeAtLocation", { ...context, location }); },
     booleanType(): unknown { return client.callJson<unknown>("getBooleanType", context); },
     diagnostics(): unknown[] {
       return ["getConfigFileParsingDiagnostics", "getProgramDiagnostics", "getGlobalDiagnostics", "getSyntacticDiagnostics", "getSemanticDiagnostics"]
@@ -116,6 +125,8 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
     if (!project) throw new Error(`Corsa did not open callable project ${configFile}`);
     const rpc = callableQueries(client, snapshot, project.id);
     const sources = new Map<string, NativeSourceIndex>();
+    const syntaxSources = new Map<string, OxcSource>();
+    const booleanLiterals = new WeakMap<CorsaApiTypeFact, boolean>();
     const ownedTypes = new WeakMap<CorsaApiTypeFact, string>();
     const ownedSymbols = new WeakMap<CorsaApiSymbolFact, { id: string; flags: number }>();
     const assertOpen = (): void => { if (closed) throw new Error("Corsa callable frontend is closed"); };
@@ -135,6 +146,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       const type = { id, texts: [client.typeToString(snapshot!, project.id, id)],
         ...(value.symbol ? { symbol: String(numericHandle(value.symbol)) } : {}) };
       ownedTypes.set(type, id);
+      if (typeof value.value === "boolean") booleanLiterals.set(type, value.value);
       return type;
     };
     const ownedTypeId = (type: CorsaApiTypeFact): string => {
@@ -153,6 +165,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       return symbol;
     };
     let intrinsicNumbers: { number: number; boolean: number } | undefined;
+    let intrinsicNever: number | undefined;
     const signatureFact = (input: unknown): CorsaCallableSignature | null => {
       if (input === null) return null;
       const value = record(input), id = String(numericHandle(value.id));
@@ -180,14 +193,26 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       });
       return { id, declaration: { fileName: index.fileName, span: node.span }, parameters, returnType: typeFact(rpc.returnType(id)) };
     };
-    const location = (file: string, span: { start: number; end: number }, text: string, mode: "call" | "declaration"): string | null => {
+    const matchingSource = (file: string, text: string): OxcSource => {
+      const index = sourceIndex(file);
+      if (text !== index.text) throw new Error(`${file}: source does not match the Corsa snapshot`);
+      let source = syntaxSources.get(index.path);
+      if (!source) { source = parseOxcSource(file, text); syntaxSources.set(index.path, source); }
+      return source;
+    };
+    const location = (file: string, span: { start: number; end: number }, text: string, mode: "call" | "declaration" | "expression"): string | null => {
       const index = sourceIndex(file);
       if (text !== index.text) throw new Error(`${file}: source does not match the Corsa snapshot`);
       if (!Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) || span.start < 0 || span.end <= span.start || span.end > text.length) throw new Error("invalid callable source range");
-      const source = parseOxcSource(file, text);
+      const source = matchingSource(file, text);
       let kind: number | undefined;
       const visit = (node: Node): void => {
         if (node.start > span.start || node.end < span.end) return;
+        if (mode === "expression") {
+          if (node.start === span.start && node.end === span.end) kind ??= nativeExpressionKind(node);
+          for (const child of oxcChildren(node)) visit(child);
+          return;
+        }
         const candidate = node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration" ? node.declaration : node;
         if (node.start === span.start && node.end === span.end && candidate && candidate.type in nativeCallableKinds) {
           const call = candidate.type === "CallExpression" || candidate.type === "NewExpression";
@@ -198,7 +223,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       visit(source.program);
       if (kind === undefined) return null;
       const node = index.find(kind, span);
-      if (!node) throw new Error(`${file}: Oxc range does not match a native callable node`);
+      if (!node) throw new Error(`${file}: Oxc range does not match a native ${mode} node`);
       return node.handle;
     };
     return {
@@ -219,6 +244,21 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
         const result = rpc.overloads(type.id, kind === "call" ? 0 : 1);
         if (!Array.isArray(result)) throw new Error("invalid native overload response");
         return result.flatMap(value => { const signature = signatureFact(value); return signature ? [signature] : []; });
+      },
+      getExpressionType(file, span, text) {
+        const handle = location(file, span, text, "expression");
+        if (!handle) return null;
+        const result = rpc.expressionType(handle);
+        return result === null ? null : typeFact(result);
+      },
+      isNeverType(type) {
+        const id = numericHandle(ownedTypeId(type));
+        intrinsicNever ??= numericHandle(record(rpc.neverType()).id);
+        return id === intrinsicNever;
+      },
+      getBooleanLiteralValue(type) {
+        ownedTypeId(type);
+        return booleanLiterals.get(type);
       },
       assertSource(file, text) {
         if (sourceIndex(file).text !== text) throw new Error(`${file}: source does not match the Corsa snapshot`);
@@ -244,7 +284,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       getShorthandAssignmentValueSymbol(file, span, text) {
         const index = sourceIndex(file);
         if (text !== index.text) throw new Error(`${file}: source does not match the Corsa snapshot`);
-        const source = parseOxcSource(file, text);
+        const source = matchingSource(file, text);
         let matched = false;
         const visit = (node: Node): void => {
           if (node.start > span.start || node.end < span.end) return;

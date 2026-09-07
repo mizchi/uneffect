@@ -488,6 +488,21 @@ try {
   `);
   execFileSync(process.execPath, ["--import", noTsHook, linkedContractProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
 
+  const flowFile = join(consumer, "native-flow.ts"), flowConfig = join(consumer, "flow-tsconfig.json");
+  const flowSource = 'declare function stop(): never; declare const enabled: true; export function checked() { if (enabled) stop(); } export function optional(stop?: () => never) { stop?.(); }';
+  writeFileSync(flowFile, flowSource);
+  writeFileSync(flowConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: [] }, files: [flowFile] }));
+  const flowProbe = join(consumer, "native-flow.mjs");
+  writeFileSync(flowProbe, `
+    import assert from "node:assert/strict";
+    import { analyzeCorsaContractControlFlow } from "@mizchi/uneffect/experimental/spec";
+    const flows = await analyzeCorsaContractControlFlow(${JSON.stringify({ configFile: flowConfig, files: { [flowFile]: flowSource } })});
+    assert.deepEqual(flows.map(flow => [flow.name, flow.structural.mayFallThrough, flow.mayFallThrough, flow.evidence]), [
+      ["checked", true, false, "structural-with-corsa-types"], ["optional", true, true, "structural-with-corsa-types"],
+    ]);
+  `);
+  execFileSync(process.execPath, ["--import", noTsHook, flowProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
+
   const linkedRefinementEntry = join(consumer, "counter.ts");
   const linkedRefinementFiles = {
     [linkedRefinementEntry]: '/* uneffect:refinement_from "./counter.uneffect.ts#default" */\n' + readFileSync(linkedRefinementEntry, "utf8"),

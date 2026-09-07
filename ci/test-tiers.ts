@@ -21,6 +21,7 @@ export const ciTestTiers = {
     "test/completion-flow.test.ts",
     "test/contract-control-flow.test.ts",
     "test/oxc-contract-control-flow.test.ts",
+    "test/corsa-contract-control-flow.test.ts",
     "test/declaration-transforms.test.ts",
     "test/deno-permissions.test.ts",
     "test/diagnostics.test.ts",
