@@ -3,6 +3,9 @@
 For supported consumers, strict input contracts and measured applicability, see
 [workflow and dependency-impact APIs](./graph-analysis.md).
 
+The [CFG lint prototype](./cfg-lint.md) builds configurable operation prerequisite
+rules on the workflow checker, with a separate bounded TypeScript extractor.
+
 Import the compiler-independent core from `@mizchi/uneffect/cfg`:
 
 ```ts

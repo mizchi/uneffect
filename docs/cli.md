@@ -7,13 +7,14 @@ documents its own options with `uneffect <command> --help`.
 ## Install
 
 ```sh
-npm install --save-dev @mizchi/uneffect typescript
+npm install --save-dev @mizchi/uneffect
 npx uneffect check src/*.ts
 ```
 
-TypeScript is a peer dependency: the analyzer reads your program through the
-same compiler you build with, so the project chooses the version. Node.js 24 or
-newer is required.
+The default `check` and `cfg-lint` paths use the packaged TypeScript 7 native
+compiler through Corsa plus Oxc. The JavaScript `@typescript/typescript6` peer
+is needed for `--typescript-program` and proof commands that still use the
+Program API, including `module-order`. Node.js 24 or newer is required.
 
 `@informalsystems/quint` is an optional peer dependency. The model commands
 generate Quint source with nothing installed; add the package only to run what
@@ -35,6 +36,7 @@ npx quint run protocol.qnt
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
 | `module-order <entry.ts>` | The source-mapped ESM initialization partial-order artifact; `--schema-version 1\|2` selects the default v1 or supported v2 conditional join, and `--require` rejects non-proof-grade extraction. |
+| `cfg-lint <file.ts> <function>` | Prototype initialization-before-use rule over function CFGs, using Corsa/Oxc without the JavaScript TypeScript compiler. JSON diagnostics, explicit operation assumptions, and unknown boundaries; see [CFG lint](./cfg-lint.md). |
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 
@@ -49,8 +51,7 @@ are listed, its `include`/`files` roots; report exact TypeScript package/version
 parity),
 `--corsa-parity` (run the admitted Corsa `Fetch`/`Console` sidecar against the
 same project and make a frontend mismatch an assurance `unknown` blocker),
-`--corsa-executable <tsgo>` (override Uneffect's fixed prebuilt compiler; valid
-only with `--corsa-parity`),
+`--corsa-executable <tsgo>` (override Uneffect's fixed prebuilt native compiler),
 `--module-entry <entry.ts>` (with project-only checking, emit the supported
 `uneffect-workspace-module-order/v1` composition and fail closed when its exact
 cross-project TLA shape cannot be established),

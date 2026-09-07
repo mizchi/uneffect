@@ -69,6 +69,14 @@
     "./module-order": {
       "types": "./dist/src/modules/module-order-api.d.ts",
       "import": "./dist/src/modules/module-order-api.js"
+    },
+    "./experimental/lint": {
+      "types": "./dist/src/lint/index.d.ts",
+      "import": "./dist/src/lint/index.js"
+    },
+    "./experimental/lint/corsa": {
+      "types": "./dist/src/lint/corsa.d.ts",
+      "import": "./dist/src/lint/corsa.js"
     }
   },
   "bin": {

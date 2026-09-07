@@ -109,6 +109,9 @@ try {
       type ModuleInitializationV2Options,
     } from "@mizchi/uneffect/module-order";
     import ts from "@typescript/typescript6";
+    import { lintPrerequisites, initializationRule, type RuleCfg } from "@mizchi/uneffect/experimental/lint";
+    import { lowerCorsaRuleCfg, type CorsaRuleOptions } from "@mizchi/uneffect/experimental/lint/corsa";
+    import { lowerTypeScriptRuleCfg } from "@mizchi/uneffect/experimental";
     import * as root from "@mizchi/uneffect";
     import { checkCorsaProject } from "@mizchi/uneffect/corsa";
     import { corsaApiCapabilities, corsaApiLimitations, parseCorsaApiFrontendDescriptor } from "@mizchi/uneffect/corsa/api";
@@ -136,6 +139,9 @@ try {
     const moduleV1: ModuleInitializationOrder = analyzeModuleInitializationOrder(moduleProgram, "query.ts");
     const moduleV2: ModuleInitializationOrderV2 = analyzeModuleInitializationOrderV2(moduleProgram, "query.ts", moduleOptions);
     void moduleV1; void moduleV2;
+    const ruleCfg: RuleCfg = { entry: "entry", blocks: [{ id: "entry", events: [], successors: [] }] };
+    lintPrerequisites(ruleCfg, initializationRule);
+    lowerTypeScriptRuleCfg(moduleProgram, { fileName: "query.ts", functionName: "run", bindings: [] });
     // @ts-expect-error the public proof budget is numeric
     analyzeModuleInitializationOrderV2(moduleProgram, "query.ts", { proofBudget: { moduleControlFlowIterations: "32" } });
     // @ts-expect-error unknown task kinds must not enter the typed contract
@@ -184,6 +190,7 @@ try {
       "analyzePromiseChains", "generatePromiseChainsQuint", "generateResourceSafetyQuint",
       "executeZ3", "logicToSmt", "solveBasicBlockFixedPoint",
       "analyzeModuleInitializationOrderV2",
+      "lintPrerequisites", "lowerTypeScriptRuleCfg",
     ];
     for (const name of lowLevel) if (name in root) throw new Error(\`experimental API leaked from package root: \${name}\`);
     for (const name of lowLevel) if (typeof experimental[name] !== "function") throw new Error(\`missing experimental API: \${name}\`);
@@ -310,6 +317,36 @@ try {
   writeFileSync(moduleEntry, mutableModuleSource);
   inspectModuleOrder(["--schema-version", "2", "--require"], 1, "uneffect-module-order/v2", "unknown");
 
+  const lintEntry = join(consumer, "cfg-lint.mts");
+  writeFileSync(lintEntry, readFileSync(resolve("examples/dogfood/cfg-lint-initialization.ts"), "utf8"));
+  const noTsHook = join(consumer, "no-typescript.mjs");
+  writeFileSync(noTsHook, `
+    import { registerHooks } from "node:module";
+    registerHooks({ resolve(specifier, context, next) {
+      if (specifier === "typescript" || specifier.startsWith("typescript/") || specifier === "@typescript/typescript6" || specifier.startsWith("@typescript/typescript6/"))
+        throw new Error("Unexpected JavaScript TypeScript compiler import: " + specifier);
+      return next(specifier, context);
+    } });
+    const { lowerCorsaRuleCfg } = await import("@mizchi/uneffect/experimental/lint/corsa");
+    if (typeof lowerCorsaRuleCfg !== "function") throw new Error("Missing Corsa linter entry");
+    const { lintPrerequisites } = await import("@mizchi/uneffect/experimental/lint");
+    if (typeof lintPrerequisites !== "function") throw new Error("Missing compiler-independent linter entry");
+  `);
+  for (const [functionName, status, verdict] of [
+    ["ready", 0, "clean"], ["branchMissing", 1, "findings"], ["unsupportedCallback", 2, "unknown"],
+  ]) {
+    const result = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "cfg-lint", lintEntry, functionName], {
+      cwd: consumer, encoding: "utf8", timeout: 60_000,
+    });
+    if (result.error || result.status !== status) throw new Error(`packed cfg-lint failed: ${result.error ?? result.stderr}`);
+    const report = JSON.parse(result.stdout);
+    if (report.status !== verdict || report.ruleId !== "initialization-before-use" || report.assumedOperations.length !== 2) {
+      throw new Error("packed cfg-lint lost its verdict or operation assumptions");
+    }
+    if (verdict === "findings" && report.diagnostics[0]?.location.fileName !== lintEntry) throw new Error("packed cfg-lint lost source location");
+    if (verdict === "unknown" && "diagnostics" in report) throw new Error("packed cfg-lint leaked partial diagnostics");
+  }
+
   packageEvidence.verification.runtime = "passed";
   writeEvidence();
 
@@ -360,6 +397,24 @@ try {
     if (exhausted.status !== "unknown" || exhausted.reason !== "proof-budget-exhausted") throw new Error("CFG lost budget failure");
   `);
   execFileSync(process.execPath, [cfgSmoke], { cwd: absentConsumer, stdio: "inherit" });
+
+  const lintSmoke = join(absentConsumer, "lint-smoke.mjs");
+  writeFileSync(lintSmoke, `
+    import { defineTemporal, bool, defineContract, nat, defineCapability, Console, globalRuntime } from "@mizchi/uneffect/spec";
+    const definition = { state: { ready: bool() }, init: { ready: false }, actions: {} };
+    if (defineTemporal(definition) !== definition || nat().kind !== "nat" || globalRuntime().identity !== "globalThis") throw new Error("spec authoring requires a compiler");
+    if (typeof defineContract !== "function" || defineCapability({ effects: [Console()] }).effects.length !== 1) throw new Error("spec authoring missing exports");
+    import { lintPrerequisites, initializationRule } from "@mizchi/uneffect/experimental/lint";
+    import { lowerCorsaRuleCfg } from "@mizchi/uneffect/experimental/lint/corsa";
+    const result = lintPrerequisites({ entry: "entry", blocks: [{ id: "entry", successors: [], events: [
+      { operation: "use", subject: "x", location: { fileName: "input.ts", start: 0, end: 1 } },
+    ] }] }, initializationRule);
+    if (result.status !== "findings") throw new Error("compiler-independent lint failed");
+    const missing = await lowerCorsaRuleCfg({ fileName: "input.mts", functionName: "run", bindings: [] });
+    if (missing.status !== "unknown" || missing.reason !== "frontend-error") throw new Error("missing compiler did not fail closed");
+  `);
+  writeFileSync(join(absentConsumer, "input.mts"), "export function run() {};");
+  execFileSync(process.execPath, [lintSmoke], { cwd: absentConsumer, stdio: "inherit" });
 
   const graphSmoke = join(absentConsumer, "graph-smoke.mjs");
   writeFileSync(graphSmoke, `

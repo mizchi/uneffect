@@ -2,21 +2,9 @@ import ts from "@typescript/typescript6";
 import { posix } from "node:path";
 import { extractAnnotations } from "../support/annotations.js";
 import type { NumericDomain } from "./invariant-ir.js";
-import type { TemporalType } from "../spec/temporal-dsl.js";
 
-type ValueOf<Type> = Type extends TemporalType<infer Value> ? Value : never;
-type ParameterShape = Readonly<Record<string, TemporalType<unknown>>>;
-type ParametersOf<Shape extends ParameterShape> = { readonly [Name in keyof Shape]: ValueOf<Shape[Name]> };
-type ContractPredicate<Value> = (values: Value) => boolean;
-export interface ContractDefinition<Parameters extends ParameterShape, Result extends TemporalType<unknown>> {
-  readonly parameters: Parameters;
-  readonly returns: Result;
-  readonly requires?: ContractPredicate<ParametersOf<Parameters>> | readonly ContractPredicate<ParametersOf<Parameters>>[];
-  readonly ensures: ContractPredicate<ParametersOf<Parameters> & { readonly result: ValueOf<Result> }> | readonly ContractPredicate<ParametersOf<Parameters> & { readonly result: ValueOf<Result> }>[];
-}
-export const defineContract = <const Parameters extends ParameterShape, const Result extends TemporalType<unknown>>(definition: ContractDefinition<Parameters, Result>): ContractDefinition<Parameters, Result> => definition;
-export const nat = (): TemporalType<number> => ({ kind: "nat" }) as TemporalType<number>;
-export const float = (): TemporalType<number> => ({ kind: "float" }) as TemporalType<number>;
+export { defineContract, float, nat } from "./contract-authoring.js";
+export type { ContractDefinition } from "./contract-authoring.js";
 
 export interface ParsedContractDsl {
   parameters: Array<{ name: string; domain: NumericDomain }>;
@@ -190,7 +178,7 @@ export function validateContractDslLink(program: ts.Program, implementationFile:
       if (!["defineContract", "int", "nat", "float", "bool"].includes(exported)) continue;
       let symbol = checker.getSymbolAtLocation(element.name);
       if (symbol?.flags && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
-      const expectedFile = exported === "defineContract" || exported === "nat" || exported === "float" ? "contract-dsl" : "temporal-dsl";
+      const expectedFile = exported === "defineContract" || exported === "nat" || exported === "float" ? "contract-(?:dsl|authoring)" : "temporal-(?:dsl|authoring)";
       const valid = symbol?.name === exported && symbol.declarations?.some((item) => new RegExp(`(?:^|/)${expectedFile}\\.(?:d\\.)?ts$`).test(item.getSourceFile().fileName.replaceAll("\\", "/")));
       if (!valid) throw new Error(`${specificationFile}: ${element.name.text} does not resolve to @mizchi/uneffect/spec#${exported} by TypeChecker symbol identity`);
     }

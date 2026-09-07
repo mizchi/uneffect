@@ -6,6 +6,12 @@ All notable changes to Uneffect are documented in this file.
 
 ### Changed
 
+- CFG lint now uses Oxc syntax and Corsa symbols with native compiler diagnostics.
+  Independent `/experimental/lint` and `/experimental/lint/corsa` entries avoid
+  loading the JavaScript TypeScript compiler; the Program adapter remains optional.
+- Separated `/spec` authoring helpers from their compiler-dependent DSL parsers,
+  preserving the existing exports and declaration contracts.
+
 - Promoted module initialization ordering to the supported `/module-order`
   entrypoint with explicit v1/v2 analyzers and separate artifact contracts.
   Retained experimental aliases, both schema versions, and the CLI's v1 default.
@@ -45,6 +51,13 @@ All notable changes to Uneffect are documented in this file.
   published schemas and the existing supported source fragment.
 
 ### Added
+
+- Added a CFG prerequisite-lint prototype with configurable operation contracts,
+  a bounded Corsa/Oxc extractor, and `cfg-lint` JSON diagnostics. It checks
+  initialization-before-use through branches, early exits, aliases, and loops,
+  reporting unsupported sources and exhausted analysis as unknown. Evaluation
+  includes 256 independent concrete-state graph comparisons and a documented
+  false positive for correlated conditions.
 
 - Added `module-order --schema-version 2` to select supported conditional
   top-level-await evidence from the CLI. The default remains v1; `--require`

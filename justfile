@@ -22,6 +22,18 @@ module-order-check:
 graph-evaluate:
     pnpm tsx bench/graph-analysis/evaluate.ts
 
+cfg-lint-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm exec tsc -p tsconfig.cfg-lint.json
+    pnpm exec tsc -p bench/cfg-lint/tsconfig.json
+    pnpm vitest run test/cfg-lint.test.ts test/cfg-lint-typescript.test.ts test/cfg-lint-cli.test.ts test/cfg-lint-corsa.test.ts
+
+cfg-lint file function *args:
+    pnpm tsx src/cli/index.ts cfg-lint {{quote(file)}} {{quote(function)}} {{args}}
+
+cfg-lint-evaluate:
+    pnpm tsx bench/cfg-lint/evaluate.ts
+
 bench:
     pnpm bench
 
@@ -33,6 +45,8 @@ ci-fast:
     pnpm exec tsc -p tsconfig.cfg.json
     pnpm exec tsc -p tsconfig.graph-analysis.json
     pnpm exec tsc -p bench/graph-analysis/tsconfig.json
+    pnpm exec tsc -p tsconfig.cfg-lint.json
+    pnpm exec tsc -p bench/cfg-lint/tsconfig.json
     just examples-check
     just skills-check
     UNEFFECT_CI_TIER=fast pnpm vitest run

@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.cfg.json",
+  "include": ["src/lint/index.ts", "src/lint/source-options.ts", "src/lint/contracts.ts", "src/lint/input.ts", "src/lint/prerequisites.ts"]
+}

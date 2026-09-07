@@ -3,25 +3,8 @@ import { posix } from "node:path";
 import { effectSchema, formatEffect, parseEffectExpression, type AtomDomain, type Effect, type EffectSchema } from "./capabilities.js";
 import { extractAnnotations } from "../support/annotations.js";
 
-declare const capabilityDescriptor: unique symbol;
-export interface CapabilityDescriptor { readonly [capabilityDescriptor]: true }
-export interface CapabilityDefinition { readonly effects: readonly CapabilityDescriptor[] }
-export const defineCapability = <const Definition extends CapabilityDefinition>(definition: Definition): Definition => definition;
-export const Console = (): CapabilityDescriptor => ({}) as CapabilityDescriptor;
-export const Fetch = (_scope: { readonly methods: readonly ("GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS")[]; readonly urls: readonly string[] }): CapabilityDescriptor => ({}) as CapabilityDescriptor;
-export const FsRead = (_scope: { readonly paths: readonly string[] }): CapabilityDescriptor => ({}) as CapabilityDescriptor;
-export const FsWrite = (_scope: { readonly paths: readonly string[] }): CapabilityDescriptor => ({}) as CapabilityDescriptor;
-export const Throw = (_error: ErrorConstructor): CapabilityDescriptor => ({}) as CapabilityDescriptor;
-export type BuiltinEffectName =
-  | "Console" | "Storage" | "Random" | "Timer" | "InvokeUserCode"
-  | "CookieRead" | "CookieWrite" | "LocalStorageRead" | "LocalStorageWrite"
-  | "GlobalVarsRead" | "GlobalVarsWrite"
-  | "ScriptLoad" | "ExecuteExternalCode" | "Fetch" | "Dom" | "Clone" | "Transfer" | "SharedMemory"
-  | "FsRead" | "FsWrite" | "Ffi" | "Net" | "Env" | "Run" | "Sys" | "Import";
-export const Builtin = (_name: BuiltinEffectName, _scope?: { readonly arguments: readonly (readonly string[] | "All")[] }): CapabilityDescriptor => ({}) as CapabilityDescriptor;
-export interface LocalEffectSchema<Name extends string = string> { readonly name: Name; readonly version: 1; readonly arguments: readonly AtomDomain[] }
-export const defineEffectSchema = <const Name extends string, const Domains extends readonly AtomDomain[]>(schema: { readonly name: Name; readonly version?: 1; readonly arguments: Domains }): LocalEffectSchema<Name> => ({ ...schema, version: 1 });
-export const Custom = (_schema: LocalEffectSchema, _scope?: { readonly arguments: readonly (readonly string[] | "All")[] }): CapabilityDescriptor => ({}) as CapabilityDescriptor;
+export { Builtin, Console, Custom, Fetch, FsRead, FsWrite, Throw, defineCapability, defineEffectSchema } from "./capability-authoring.js";
+export type { BuiltinEffectName, CapabilityDefinition, CapabilityDescriptor, LocalEffectSchema } from "./capability-authoring.js";
 
 function unalias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
   return symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
@@ -40,7 +23,7 @@ export function validateCapabilityDslHelperIdentities(program: ts.Program, fileN
       if (!helpers.has(exported)) continue;
       const symbol = checker.getSymbolAtLocation(element.name), target = symbol && unalias(checker, symbol);
       const valid = target?.name === exported && target.declarations?.some((declaration) =>
-        /(?:^|\/)capability-dsl\.(?:d\.)?ts$/.test(declaration.getSourceFile().fileName.replaceAll("\\", "/")));
+        /(?:^|\/)capability-(?:dsl|authoring)\.(?:d\.)?ts$/.test(declaration.getSourceFile().fileName.replaceAll("\\", "/")));
       if (!valid) throw new Error(`${fileName}: ${element.name.text} does not resolve to @mizchi/uneffect/spec#${exported} by TypeChecker symbol identity`);
     }
   }

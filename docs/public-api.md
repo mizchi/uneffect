@@ -21,6 +21,8 @@ that have not moved to the native frontend yet.
 | `@mizchi/uneffect/corsa` | Public compatibility facade | High-level Corsa project checking and JSON report formatting. Raw checker facts and parity internals are excluded. |
 | `@mizchi/uneffect/corsa/api` | Public integration boundary | Versioned direct Corsa semantic queries without constructing a JavaScript TypeScript `Program`. The `uneffect-corsa-api-frontend/v1` descriptor lists the active capabilities and limitations; syntax/CFG parity is not claimed. |
 | `@mizchi/uneffect/experimental` | Experimental | The complete research API, including low-level IR, solver, CFG, async, Promise, event-loop, resource, and Quint operations. Names, options, and generated text may change without notice. |
+| `@mizchi/uneffect/experimental/lint` | Experimental | Compiler-independent CFG prerequisite rules and contracts. |
+| `@mizchi/uneffect/experimental/lint/corsa` | Experimental | Oxc syntax and Corsa semantic extraction, without a JavaScript TypeScript compiler. |
 | `@mizchi/uneffect/experimental/corsa` | Experimental | Raw Corsa/Oxlint checker-fact export and frontend-parity internals. |
 | `@mizchi/uneffect/spec` | Public v1 authoring subset | Type-checked, declarative `*.uneffect.ts` temporal, capability, Hoare-contract, and refinement specifications. Uneffect parses these modules but does not execute them. |
 | `@mizchi/uneffect/schemas/*` | Versioned data contract | Published JSON schemas. Compatibility follows the schema identifier, not an unversioned TypeScript implementation detail. |
@@ -28,6 +30,11 @@ that have not moved to the native frontend yet.
 
 Do not import unpublished paths such as `dist/src/async/async-patterns.js`. Package
 exports intentionally block those implementation paths.
+
+The experimental subpath also exposes `lintPrerequisites`, `initializationRule`,
+and `lowerTypeScriptRuleCfg`, with `lowerCorsaRuleCfg` as the native adapter.
+Use the independent lint entries above to avoid the aggregate's compiler imports. See the [CFG lint prototype](./cfg-lint.md) for
+source coverage, trusted operation contracts, and measured limitations.
 
 The release package probe runs the real `prepack` lifecycle, installs the
 resulting tarball into a fresh Node 24 project, type-checks the public root,
@@ -80,6 +87,9 @@ explicit hyphenated markers. Removed `capability`, `contract`, `temporal`,
 `refinement`, `runtime`, `async`, and `resource` headers are not compatibility
 aliases and fail closed as unknown dialects. Typed refinement metadata belongs
 in an attached `.uneffect.ts` module.
+
+The `/spec` authoring entry loads neither a compiler nor a parser. Its helper
+implementations live separately from the optional TypeScript DSL parsers.
 
 See [TypeScript temporal specification modules](./temporal-dsl.md) for the
 initial `@mizchi/uneffect/spec` syntax and its explicit unsupported boundary.

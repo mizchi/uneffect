@@ -45,6 +45,11 @@ const commandLoaders: readonly CliCommandLoader[] = [
     load: async () => (await import("./module-order-command.js")).moduleOrderCommand,
   },
   {
+    name: "cfg-lint",
+    summary: "Prototype: check initialization prerequisites along function control flow.",
+    load: async () => (await import("./cfg-lint-command.js")).cfgLintCommand,
+  },
+  {
     name: "resource-model",
     summary: "Generate the Quint resource-safety model for one file.",
     load: async () => (await import("./resource-command.js")).resourceCommand,
