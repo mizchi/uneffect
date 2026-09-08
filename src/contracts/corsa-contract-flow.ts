@@ -39,6 +39,7 @@ export function lowerNativeReturnPaths(body: FunctionBody, expression: (node: Ex
   const statement = (node: Statement, next: string): string => {
     if (node.type === "BlockStatement") return statements(node.body, next);
     if (node.type === "EmptyStatement") return next;
+    if (node.type === "VariableDeclaration" && node.kind === "const") return next;
     if (node.type === "ReturnStatement") {
       if (!node.argument) throw new Error("native contract body must return a scalar expression");
       expression(node.argument, null);

@@ -83,6 +83,13 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
   // Requires must be safe over the declared type before any of them can narrow the body.
   for (const assumption of assumptions) if (checkNativeScalar(assumption, parameters).kind !== "boolean") throw new Error("requires must be Boolean");
   const requiredParameters = narrowNativeRanges(parameters, assumptions);
+  const immutableBindings = new Map<string, LogicExpression>();
+  for (const statement of node.body.body) {
+    if (statement.type !== "VariableDeclaration" || statement.kind !== "const") break;
+    for (const declarator of statement.declarations) if (declarator.id.type === "Identifier" && declarator.init) {
+      immutableBindings.set(declarator.id.name, substituteLogic(nativeBodyExpression(declarator.init, resolveCall), immutableBindings));
+    }
+  }
   const simpleConst = node.body.body.length > 1 && node.body.body.slice(0, -1).every(statement => statement.type === "VariableDeclaration"
     && statement.kind === "const" && statement.declarations.length > 0 && statement.declarations.every(declaration => declaration.id.type === "Identifier" && declaration.init))
     && node.body.body.at(-1)?.type === "ReturnStatement";
@@ -114,7 +121,7 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
         }
         return checkNativeScalar(substituteLogic(nativeBodyExpression(returned.argument!, resolveCall), substitutions), parameters);
       })() }]
-    : lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression, resolveCall),
+    : lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(substituteLogic(nativeBodyExpression(expression, resolveCall), immutableBindings),
       conditions === null ? parameters : narrowNativeRanges(requiredParameters, conditions), conditions === null ? "structure" : "proof"));
   const resultKind = paths[0]!.result.kind;
   if (paths.some(path => path.result.kind !== resultKind) || frontend.getPrimitiveTypeKind(signature.returnType) !== resultKind) {

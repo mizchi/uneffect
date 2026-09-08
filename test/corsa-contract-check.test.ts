@@ -122,6 +122,13 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("reuses immutable const bindings across branches", async () => {
+    await project(`/* uneffect:ensures result === 1 */\nexport function checked(enabled: boolean): number { const base = 1; if (enabled) return base; return base; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("verified");
+    });
+  });
+
   it("keeps mutable let bindings outside the native const slice", async () => {
     await project(`/* uneffect:ensures result === 2 */\nexport function checked(): number { let next = 1; next **= 2; return next; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
