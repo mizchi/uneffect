@@ -119,8 +119,10 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
     const callableBodies = new Map<string, { source: OxcSource; fn: OxcFunctionSource }>();
     for (const candidateSource of sources) for (const candidate of topLevelOxcFunctions(candidateSource)) callableBodies.set(candidate.node.id.name, { source: candidateSource, fn: candidate });
     const resolveCall = (call: Extract<Expression, { type: "CallExpression" }>): LogicExpression | undefined => {
-      if (call.callee.type !== "Identifier" || call.optional) return undefined;
-      const target = callableBodies.get(call.callee.name);
+      let callee = call.callee;
+      while (callee.type === "ParenthesizedExpression") callee = callee.expression;
+      if (callee.type !== "Identifier" || call.optional) return undefined;
+      const target = callableBodies.get(callee.name);
       if (!target || target.fn.node.params.length > 8 || target.fn.node.body.body.length !== 1
         || target.fn.node.body.body[0]!.type !== "ReturnStatement" || !target.fn.node.body.body[0]!.argument
         || !extractLocatedAnnotations(target.fn.comments, "ensures").length) return undefined;
