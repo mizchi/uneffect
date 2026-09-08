@@ -123,7 +123,7 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
   });
 
   it("keeps mutable let bindings outside the native const slice", async () => {
-    await project(`/* uneffect:ensures result === 2 */\nexport function checked(): number { let next = 1; next += 1; return next; }`, async (_file, configFile) => {
+    await project(`/* uneffect:ensures result === 2 */\nexport function checked(): number { let next = 1; next **= 2; return next; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
       expect(result.artifacts[0]?.status).toBe("unsupported");
     });

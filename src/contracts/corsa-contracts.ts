@@ -89,6 +89,7 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
   const returned = node.body.body.at(-1) as Extract<Statement, { type: "ReturnStatement" }>;
   const declarations = node.body.body.slice(0, -1) as Array<Extract<Statement, { type: "VariableDeclaration" }>>;
   const linearAssignment = node.body.body.length > 1 && node.body.body.at(-1)?.type === "ReturnStatement"
+    && node.body.body.slice(0, -1).some(statement => statement.type === "VariableDeclaration")
     && node.body.body.slice(0, -1).every(statement => statement.type === "VariableDeclaration" || statement.type === "ExpressionStatement");
   const paths = simpleConst
     ? [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: (() => {
