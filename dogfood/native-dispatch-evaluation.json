@@ -1,0 +1,22 @@
+{
+  "basisCommit": "20eed6bc",
+  "stage": "frozen-table-dispatch",
+  "outcome": "failed",
+  "summaries": 111,
+  "unknownSummaries": 64,
+  "syntaxDiagnostics": 16,
+  "files": [
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "sourceSha256": "a5626d24ef7897bfc0adc30ba3bb18fd31686e8eaeb4bdf3cf5a23b4be226f13"
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "sourceSha256": "b96b627d66821a70f5ec5c68d4b7d8ca09754de4b7118a600b9d427dbafe49d2"
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "sourceSha256": "1a84cc2282d29929328c4c030da72d64471c028a6176a51601d93ae670ce3cc1"
+    }
+  ]
+}

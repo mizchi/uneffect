@@ -371,28 +371,43 @@ try {
   `);
   const instrumentEntry = join(consumer, "instrument.ts");
   const bodyEntry = join(consumer, "native-body.ts"), bodyConfig = join(consumer, "tsconfig.native-body.json");
-  writeFileSync(bodyEntry, '/* uneffect:ensures result */\nexport function checked() { return false; }');
+  writeFileSync(bodyEntry, [
+    '/* uneffect:ensures result */\nexport function checked() { return false; }',
+    '/* uneffect:ensures result === enabled */\nexport function branched(enabled: boolean) { if (enabled) return false; return false; }',
+    '/* uneffect:ensures result >= 0 */\nexport function shifted(value: -2 | 0 | 3) { return value + 2; }',
+    '/* uneffect:ensures result >= 2 */\nexport function successor(value: 0 | 1 | 2) { return value + 1; }',
+    '/* uneffect:ensures result === value */\nexport function rounded(value: 9007199254740991) { return (value + 2) - 2; }',
+  ].join("\n"));
   writeFileSync(bodyConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: [] }, files: [bodyEntry] }));
   const bodyProbe = join(consumer, "native-body-probe.mjs");
   writeFileSync(bodyProbe, `
     import assert from "node:assert/strict";
     import { checkCorsaProject, createCorsaCheckJsonReport } from "@mizchi/uneffect/corsa";
     const result = await checkCorsaProject({ configFile: ${JSON.stringify(bodyConfig)} });
-    assert.equal(result.errors, 1);
-    assert.equal(result.artifacts.length, 1);
+    assert.equal(result.errors, 4);
+    assert.equal(result.artifacts.length, 6);
     assert.equal(result.artifacts[0].status, "counterexample");
     assert.equal(result.artifacts[0].native.coverage, "boolean-and-constant-return");
+    assert.deepEqual(result.artifacts.slice(1, 3).map(item => item.status), ["counterexample", "verified"]);
+    assert.ok(result.artifacts.slice(1, 3).every(item => item.native.coverage === "boolean-branching"));
+    assert.equal(result.artifacts[1].counterexample.assignments.enabled, "true");
+    assert.deepEqual(result.artifacts.slice(3).map(item => item.status), ["verified", "counterexample", "unsupported"]);
+    assert.ok(result.artifacts.slice(3, 5).every(item => item.native.coverage === "safe-integer-arithmetic"));
+    assert.equal(result.artifacts[4].counterexample.assignments.value, "0");
+    assert.match(result.artifacts[5].message, /safe integer range/);
     assert.deepEqual(createCorsaCheckJsonReport(result).contracts, result.artifacts);
   `);
   execFileSync(process.execPath, ["--import", noTsHook, bodyProbe], { cwd: consumer, stdio: "inherit", timeout: 30_000 });
   const bodyResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "check", "--project", bodyConfig, "--json"], {
     cwd: consumer, encoding: "utf8", timeout: 30_000,
   });
-  if (bodyResult.status !== 1 || JSON.parse(bodyResult.stdout).contracts?.[0]?.status !== "counterexample") {
+  const bodyContracts = bodyResult.stdout ? JSON.parse(bodyResult.stdout).contracts : undefined;
+  if (bodyResult.status !== 1 || bodyContracts?.length !== 6 || bodyContracts[1].status !== "counterexample" || bodyContracts[2].status !== "verified"
+    || bodyContracts[3].status !== "verified" || bodyContracts[4].status !== "counterexample" || bodyContracts[5].status !== "unsupported") {
     throw new Error(`compiler-independent contract CLI failed: ${bodyResult.stderr || bodyResult.error || bodyResult.status}`);
   }
   const effectEntry = join(consumer, "native-effect-calls.ts");
-  writeFileSync(effectEntry, 'function leaf() { console["log"]("leaf"); } function middle() { leaf(); } export function main() { middle(); } export function shadowed(leaf: () => void) { leaf(); }');
+  writeFileSync(effectEntry, 'const handlers = Object.freeze({ log() { console["log"]("leaf"); } }); function leaf() { handlers.log(); } function middle() { leaf(); } export function main() { middle(); } export function shadowed(leaf: () => void) { leaf(); }');
   const effectResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "check", effectEntry, "--infer", "--assurance", "no-unknown", "--json"], {
     cwd: consumer, encoding: "utf8", timeout: 30_000,
   });

@@ -1,18 +1,21 @@
 import { parseSync, type Node } from "oxc-parser";
 import { oxcChildren } from "../oxc/source.js";
 import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
+import { collectFrozenEffectTables } from "./corsa-effect-tables.js";
 
 /** Native identities link bodies; shorthand writes conservatively exclude same-name candidates. */
 export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: string, text: string): {
   declarations: Array<{ symbolId: string; start: number; name: string }>;
   writes: Set<string>;
   ambiguousWrites: Set<string>;
+  calls: Map<number, string>;
 } {
   const parsed = parseSync(file, text, { lang: file.endsWith(".tsx") ? "tsx" : "ts" });
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
   const writes = new Set<string>();
   const ambiguousWrites = new Set<string>();
-  if (parsed.errors.length) return { declarations, writes, ambiguousWrites };
+  const calls = new Map<number, string>();
+  if (parsed.errors.length) return { declarations, writes, ambiguousWrites, calls };
   const recordWrite = (node: Node, shorthand = false): void => {
     if (node.type === "Identifier") {
       const symbol = frontend.getSymbolAtPosition(file, node.start);
@@ -33,12 +36,14 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
     for (const child of oxcChildren(node)) visit(child);
   };
   visit(parsed.program);
-  if (dynamicScope) return { declarations, writes, ambiguousWrites };
+  if (dynamicScope) return { declarations, writes, ambiguousWrites, calls };
   for (const statement of parsed.program.body) {
     const node = statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration" ? statement.declaration : statement;
     if (node?.type !== "FunctionDeclaration" || !node.id || !node.body || node.async || node.generator) continue;
     const symbol = frontend.getSymbolAtPosition(file, node.id.start);
     if (symbol?.declarations?.length === 1) declarations.push({ symbolId: symbol.id, start: node.start, name: node.id.name });
   }
-  return { declarations, writes, ambiguousWrites };
+  const frozen = collectFrozenEffectTables(frontend, file, parsed.program);
+  declarations.push(...frozen.declarations);
+  return { declarations, writes, ambiguousWrites, calls: frozen.calls };
 }

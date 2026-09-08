@@ -76,7 +76,10 @@ describe("native syntax self dogfood", () => {
       const mutation = check([mutationFile]);
       expect(original.effects.find(item => item.functionName === "location")?.effects).toEqual([]);
       expect(mutation.effects.find(item => item.functionName === "location")?.effects).toContain("Console");
-      expect(mutation.effects.find(item => item.functionName === "scoreDiagnostic")?.effects).not.toContain("Console");
+      for (const name of ["criterionSatisfied", "scoreDiagnostic", "evaluateQuality"]) {
+        expect(original.effects.find(item => item.functionName === name)?.effects).not.toContain("Console");
+        expect(mutation.effects.find(item => item.functionName === name)?.effects).toContain("Console");
+      }
       expect(mutation.effects.find(item => item.functionName === "scoreDiagnostic")?.evidence).toBe("unknown");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });

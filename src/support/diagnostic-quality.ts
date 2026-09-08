@@ -20,14 +20,14 @@ const causeLabels = new Set(["because", "rule", "fails"]);
 const valueLabels = new Set(["counterexample", "state", "fails", "declared", "inferred", "binding", "construct"]);
 const jargon = /\b(unsat|sat)\b|define-fun|smt-lib|\(assert|Z3 returned/iu;
 
-const criterionChecks: Record<QualityCriterionId, QualityCriterion["satisfied"]> = {
+const criterionChecks: Readonly<Record<QualityCriterionId, QualityCriterion["satisfied"]>> = Object.freeze({
   location: (diagnostic, source) => (source.split(/\r?\n/u)[diagnostic.line - 1] ?? "").trim().length > 0,
   subject: (diagnostic) => diagnostic.message.includes(diagnostic.functionName) || diagnostic.message.includes("`"),
   cause: (diagnostic) => diagnostic.notes.some((note) => causeLabels.has(note.label) && note.detail.length > 0),
   evidence: (diagnostic, source) => diagnostic.notes.some((note) => valueLabels.has(note.label) || quotesSource(note.detail, source)),
   action: (diagnostic) => diagnostic.notes.some((note) => note.label === "hint" && note.detail.length > 0),
   "plain-language": (diagnostic) => !jargon.test(diagnostic.message),
-};
+});
 
 /** True when a note quotes program text, so the reader sees the construct instead of a paraphrase. */
 /* uneffect:effect none */

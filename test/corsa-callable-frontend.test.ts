@@ -35,6 +35,31 @@ async function project(run: (frontend: Awaited<ReturnType<typeof openCorsaCallab
 const range = (text: string) => ({ start: source.indexOf(text), end: source.indexOf(text) + text.length });
 
 describe("Corsa callable signatures", () => {
+  it("authenticates finite safe integer literal types without using display text", async () => {
+    await project(async (initial, file, configFile) => {
+      initial.close();
+      const text = `type Choices = -2 | 0 | 3; type Counterfeit = number;
+export function numeric(a: Choices, b: 4, c: Counterfeit, d: 0.5 | 1, e: 9007199254740992, f: true | 1, g: 1 & { tag: true }, h: ${Array.from({ length: 17 }, (_, index) => index).join(" | ")}) { return a; }`;
+      writeFileSync(file, text);
+      const frontend = await openCorsaCallableFrontend({ configFile });
+      try {
+        expect(frontend.getProjectDiagnostics()).toEqual([]);
+        const signatures = frontend.getSignaturesOfTypeAtPosition(file, text.indexOf("numeric("));
+        const parameters = signatures[0]!.parameters;
+        const numeric = parameters[0]!.type;
+        numeric.texts = ["any"];
+        numeric.value = 999;
+        numeric.id = "not-a-native-handle";
+        expect(frontend.getFiniteNumberValues(numeric)).toEqual([-2, 0, 3]);
+        expect(Object.isFrozen(frontend.getFiniteNumberValues(numeric))).toBe(true);
+        expect(frontend.getFiniteNumberValues(parameters[1]!.type)).toEqual([4]);
+        for (const parameter of parameters.slice(2)) expect(frontend.getFiniteNumberValues(parameter.type)).toBeNull();
+        expect(() => frontend.getFiniteNumberValues({ ...numeric })).toThrow(/owning snapshot/);
+        frontend.close();
+        expect(() => frontend.getFiniteNumberValues(numeric)).toThrow(/closed/);
+      } finally { frontend.close(); }
+    });
+  });
   it("matches TypeScript overload selection, generic substitution, async, constructor, and shadowed calls", async () => {
     await project((frontend, file) => {
       const program = ts.createProgram([file], { strict: true, target: ts.ScriptTarget.ES2024, types: [] });

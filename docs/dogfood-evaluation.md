@@ -246,3 +246,67 @@ dialect・alias・temporal句の表を own property に限定した。追加dire
 [registry-evaluation-annotations-after.json](../dogfood/registry-evaluation-annotations-after.json)
 には修正後の結果とソースハッシュを保存した。9件の回帰テストと10選択の実コード評価は
 `just dogfood-native` および通常のfast CIで継続実行する。
+
+## Effect解析から契約本体証明への続行
+
+### 凍結した表を経由する既知effectの伝播
+
+診断品質の `criterionChecks` を変更不能な表とし、nativeのreceiver identityと静的な
+member名から同期inline関数へ呼出を結び付けた。実際の `location` 評価関数へConsoleを
+挿入した場合、修正前はその関数だけがConsoleを持ち、呼出元へ伝播しなかった。
+現在は `criterionSatisfied` → `scoreDiagnostic` → `evaluateQuality` まで到達する。
+この変化は `test/corsa-syntax-dogfood.test.ts` の実ソース変異テストで固定した。
+
+mutableな表、shadowされたfreeze、spread、async/generatorは結び付けない。
+別名importはnative identityで認証し、同名のparameterや未選択のファイルの本体から
+effectを借りない。組み込み `Object.freeze` の契約を信頼する範囲であり、任意の
+object dispatchやcallbackを解決したわけではない。既知effectを伝えるだけで
+呼出全体の上界を証明しないため、callerのunknownを維持する。
+
+実コード3ファイルの再実行結果は111 summaries・64 unknown・構文未対応16件で、
+`no-unknown` は引き続き失敗する。結果とソースハッシュは
+[native-dispatch-evaluation.json](../dogfood/native-dispatch-evaluation.json) に保存した。
+意図的なConsole挿入の検出改善なので、実バグの発見件数には加えない。
+旧Program版の診断処理pureチェックも通ることを確認した。
+
+### Boolean分岐・早期returnの契約証明
+
+旧Program版でif/else・早期return・ネスト・分岐違反の4ケースを実行し、status・evidence・
+return span・契約本文を `corsa-contract-body-parity.json` に固定した。
+native実装前はこの4ケースの比較が失敗し、実装後は成功する。
+
+共有CFG固定点エンジンでreturnまでの経路条件を保持し、既存solverでpostconditionを証明する。
+誤った分岐では反例とBoolean入力値を返す。同じreturnへ入る別の経路も維持し、
+未対応構文・fallthrough・経路予算超過は部分的な証明成功を返さない。
+単一returnのcoverageを維持し、文を含む本体は `boolean-branching` と区別する。
+
+配布packageのAPI/CLIにも、JS TypeScript importを禁止した状態で、凍結表のeffect伝播と
+分岐違反・別経路の成功を確かめる検査を追加した。
+数値引数・算術・代入・loop・呼出先のrequires/ensures合成はまだ未対応である。
+
+### 有限の安全整数型と演算
+
+次の段階で、安全整数literal型と最大16値のunionをnative signatureから認証するようにした。
+型の表示文字列を変えても取得結果は変わらず、foreign/fabricatedな型factやclose済みsnapshotは
+使えない。返した値一覧は凍結し、通常のnumber、小数、unsafe integer、mixed union、
+branded intersection、17値以上のunionは採用しない。
+
+型の値域から、加算・減算・乗算・符号反転の中間値域をBigIntで求める。本体とrequires/ensuresは
+同じsort・値域検査を使う。数値比較と分岐も扱い、例えば `value: -2 | 0 | 3` に対する
+`return value + 2` の非負性を証明できる。`value: 0 | 1 | 2` に対する
+`return value + 1` が常に2以上という誤った契約では `value = 0` を反例として返す。
+
+通常のnumberを範囲条件だけで整数とは見なさない。最大安全整数に対する `(value + 2) - 2` は
+JavaScriptでは丸めによって元の値と異なるため、数学的整数の恒等式として通してはいけない。
+途中の値域が安全整数を超えれば関数全体をunsupportedとし、clause側のoverflowも拒否する。
+値域は分岐やrequiresでまだ絞り込まないため、実際には安全でも拒否する式は残る。
+
+旧Program版にProgramを渡して生成した数値の加算・分岐・反例3ケースを、既存の固定corpusに
+追加した。数値を使う証拠には `safe-integer-arithmetic` を付ける。定数数値returnも同じ検査を
+通るため新coverageになる。型の取得と証明の回帰検証、配布packageのJS compiler禁止API/CLIで
+成功・反例・unsafe intermediateの拒否を確認する。この段階も移行範囲の拡張であり、
+意図的な反例を既存の実バグ発見件数へ加算しない。
+
+出力artifactと公開JSON Schemaの照合では、分岐のcoverageがSchemaに未登録だった不整合も
+検出した。分岐・安全整数の両coverageをSchemaへ追加し、実際の証明結果が公開定義に含まれる
+ことを回帰検証する。

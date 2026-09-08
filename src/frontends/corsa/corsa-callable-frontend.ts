@@ -33,6 +33,8 @@ export interface CorsaCallableFrontend {
   isNeverType(type: CorsaApiTypeFact): boolean;
   /** Native boolean literal payload; broad boolean/any/unknown/never are not constants. */
   getBooleanLiteralValue(type: CorsaApiTypeFact): boolean | undefined;
+  /** Snapshot-authenticated safe integer literal or union (at most 16 values); no text inference. */
+  getFiniteNumberValues(type: CorsaApiTypeFact): readonly number[] | null;
   assertSource(file: string, source: string): void;
   getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;
   getAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
@@ -88,6 +90,7 @@ function callableQueries(client: CorsaApiClient, snapshot: string, project: stri
     neverType(): unknown { return client.callJson<unknown>("getNeverType", context); },
     expressionType(location: string): unknown { return client.callJson<unknown>("getTypeAtLocation", { ...context, location }); },
     booleanType(): unknown { return client.callJson<unknown>("getBooleanType", context); },
+    constituents(type: string): unknown { return client.callJson<unknown>("getTypesOfType", { snapshot, project, type }); },
     diagnostics(): unknown[] {
       return ["getConfigFileParsingDiagnostics", "getProgramDiagnostics", "getGlobalDiagnostics", "getSyntacticDiagnostics", "getSemanticDiagnostics"]
         .flatMap(method => {
@@ -132,6 +135,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
     const sources = new Map<string, NativeSourceIndex>();
     const syntaxSources = new Map<string, OxcSource>();
     const booleanLiterals = new WeakMap<CorsaApiTypeFact, boolean>();
+    const numberLiterals = new WeakMap<CorsaApiTypeFact, number>();
     const ownedTypes = new WeakMap<CorsaApiTypeFact, string>();
     const ownedSymbols = new WeakMap<CorsaApiSymbolFact, { id: string; flags: number; declarations: readonly string[] }>();
     const assertOpen = (): void => { if (closed) throw new Error("Corsa callable frontend is closed"); };
@@ -152,6 +156,7 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
         ...(value.symbol ? { symbol: String(numericHandle(value.symbol)) } : {}) };
       ownedTypes.set(type, id);
       if (typeof value.value === "boolean") booleanLiterals.set(type, value.value);
+      if (typeof value.value === "number") numberLiterals.set(type, value.value);
       return type;
     };
     const ownedTypeId = (type: CorsaApiTypeFact): string => {
@@ -270,6 +275,22 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
       getBooleanLiteralValue(type) {
         ownedTypeId(type);
         return booleanLiterals.get(type);
+      },
+      getFiniteNumberValues(type) {
+        const id = ownedTypeId(type);
+        intrinsicNumbers ??= { number: numericHandle(record(rpc.numberType()).id), boolean: numericHandle(record(rpc.booleanType()).id) };
+        if (numericHandle(record(rpc.literalBase(id)).id) !== intrinsicNumbers.number) return null;
+        const members = numberLiterals.has(type) ? [type] : rpc.constituents(id);
+        if (!Array.isArray(members) || !members.length || members.length > 16) return null;
+        const values: number[] = [];
+        for (const raw of members) {
+          const member = raw === type ? type : typeFact(raw);
+          const value = numberLiterals.get(member);
+          if (value === undefined || !Number.isSafeInteger(value)) return null;
+          if (numericHandle(record(rpc.literalBase(ownedTypeId(member))).id) !== intrinsicNumbers.number) return null;
+          values.push(value);
+        }
+        return Object.freeze([...new Set(values)].sort((a, b) => a - b));
       },
       assertSource(file, text) {
         if (sourceIndex(file).text !== text) throw new Error(`${file}: source does not match the Corsa snapshot`);

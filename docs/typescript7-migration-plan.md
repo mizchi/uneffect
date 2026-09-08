@@ -141,6 +141,24 @@ Console が `nodeCheck` と `runEnvironmentChecks` に届くことを `just dogf
 呼出全体の上界は未証明なので、local call の unknown は維持する。callback / object dispatch、
 async / generator、builtin の完全性、注釈の検証は引き続き M2 の残作業。
 
+次のsliceとして、認証した `Object.freeze` で初期化するmodule constの表について、
+同期inline関数の静的member呼出を接続した。receiverのnative identityで別名importと
+同名parameterを区別する。mutable表、spread/accessor、async/generator、任意のobject dispatchは
+保証に使わない。実コードの診断評価表を凍結し、評価関数へ挿入したConsoleが
+`criterionSatisfied` → `scoreDiagnostic` → `evaluateQuality` に届くことを確認した。
+組み込みfreezeの実行時契約を信頼する範囲であり、effect上界のunknownは維持する。
+
+契約本体にはBoolean条件のif/else・ネスト・早期returnを追加した。共有CFGエンジンで
+各returnへの経路を列挙し、旧Program版の成功・反例と照合する。単一returnのcoverageは
+維持し、文間経路を使うartifactは `boolean-branching` とする。
+
+数値の次のsliceは、nativeが認証した安全整数literal型・最大16値のunionを対象にした。
+加減算・乗算・符号反転・大小比較を、本体とrequires/ensuresの両方で検査する。
+中間値域をBigIntで計算し、安全整数を超える演算は `unsupported` とする。
+数値の証拠には `safe-integer-arithmetic` coverageを付け、旧Program版の数値成功・反例と比較する。
+通常のnumber、数値brand、除算・剰余、値域の経路別絞込み、代入・loop・
+呼出先requires/ensuresの合成は引き続き未移行であり、M2全体の完了ではない。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

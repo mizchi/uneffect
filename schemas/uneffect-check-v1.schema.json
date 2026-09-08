@@ -216,7 +216,7 @@
           "type": "object", "additionalProperties": false,
           "required": ["coverage", "compilerRevision", "compilerDigest", "sourceDigest"],
           "properties": {
-            "coverage": { "const": "boolean-and-constant-return" },
+            "coverage": { "enum": ["boolean-and-constant-return", "boolean-branching", "safe-integer-arithmetic"] },
             "compilerRevision": { "type": "string" },
             "compilerDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
             "sourceDigest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }

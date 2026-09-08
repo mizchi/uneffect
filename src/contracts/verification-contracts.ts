@@ -17,7 +17,7 @@ export interface VerificationArtifact {
   controlFlow?: ContractControlFlowEvidence;
   /** Bounded native body proof; independent of effect and workspace summary evidence. */
   native?: {
-    coverage: "boolean-and-constant-return";
+    coverage: "boolean-and-constant-return" | "boolean-branching" | "safe-integer-arithmetic";
     compilerRevision: string;
     compilerDigest: string;
     sourceDigest: string;

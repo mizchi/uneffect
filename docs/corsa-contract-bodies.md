@@ -14,6 +14,17 @@ export function invert(enabled: boolean): boolean {
 export function positive(): number {
   return 7;
 }
+
+/* uneffect:ensures result === enabled */
+export function choose(enabled: boolean): boolean {
+  if (enabled) return true;
+  return false;
+}
+
+/* uneffect:ensures result >= 0 */
+export function shifted(value: -2 | 0 | 3): number {
+  return value + 2;
+}
 ```
 
 `uneffect check input.ts --json` の `contracts` に、成功時の `verified`、違反時の
@@ -24,22 +35,51 @@ export function positive(): number {
 ## 現在の対応範囲
 
 - 名前付き top-level function declaration。同期・非 generator・非 generic、overload なし。
-- 必須の単純な Boolean 引数。native が認証した `true` / `false` のリテラル型は、
-  alias 経由でもその値を前提に残す。名前は ASCII 英数字と `_`、先頭は英字または `_`。
+- 必須の単純なBoolean引数と、安全整数の数値literal型・最大16値の有限union。
+  nativeが認証したliteral値はimportやalias経由でも前提に残す。
+  名前は ASCII 英数字と `_`、先頭は英字または `_`。
   `result` は返り値を表す予約名。
-- 本体は一つの return のみ。Boolean 引数、Boolean literal、非負の safe-integer literal、
-  括弧、Boolean の `!` / `&&` / `||`、同じ種類の scalar の `===` / `!==` を扱う。
-- 契約式は上記の変数・literal、同種の比較、Boolean 演算。数値比較は定数と定数の返り値に限定する。
+- 本体はreturn、block、Boolean条件の `if/else`、空文。ネストと早期returnを扱う。
+  式は引数、Booleanと安全整数literal、括弧、Booleanの `!` / `&&` / `||`、
+  同じ種類のscalarの `===` / `!==`、数値の `+` / `-` / `*`・符号反転・大小比較を扱う。
+- requiresとensuresにも同じsort・演算範囲の検査を適用する。
 
-数値引数・算術、分岐・代入・loop、呼出・property access、async、method / arrow、
+通常の `number`、小数、branded数値型、除算・剰余、代入・loop・switch・例外、
+呼出・property access、async、method / arrow、
 default / optional / rest 引数、`contract_from` の本体証明はまだ対応しない。
 対応範囲外の契約注釈は `unsupported` artifact と診断を返す。
 別の関数の独立した証明は保持する。文字列中の注釈風テキストは契約として扱わない。
 
+数値はnativeのliteral payloadと型の構成要素から取得し、表示文字列や型名で推測しない。
+本体・requires・ensuresの各演算について、BigIntで計算した値域が安全整数範囲内にあることを
+確認してからSMTのIntへ落とす。中間結果が範囲を超える式は、後で小さな値に戻っても
+`unsupported` とする。例えば最大安全整数に対する `(value + 2) - 2` はJavaScriptでは
+元の値と一致せず、数学的な整数の恒等式として証明してはいけない。
+
+この値域検査はrequiresや分岐による絞込みをまだ使わないため、安全な式を拒否する場合もある。
+`number` に `0 <= value && value <= 3` を付けても小数を排除できないので、整数とは見なさない。
+入力型とrequiresは証明の前提であり、入力を実行時に検査する機能ではない。
+0と-0は許可した演算と比較で同じ整数として扱える範囲に限る。符号を観測する
+`Object.is` や除算はこのfragmentの対象外である。
+
+分岐は共有CFG固定点エンジンを使って経路条件を合流・伝播し、各returnと各経路について
+postcondition obligationを作る。return後の経路とBoolean literalで到達不能な分岐は
+証明対象から外す。ただし未対応構文の検査は到達性にかかわらず行う。
+returnなしで末尾へ進める場合は `unsupported` とする。requiresや型の制約によって
+その経路が実行不能でも、現段階ではfallthroughを許可しない。
+
+上限は512 CFG blocks、1 blockあたり256経路、固定点処理4,096 steps。
+予算超過は関数全体を `unsupported / unknown evidence` とし、部分的な成功を返さない。
+同じpredicateの繰返しによる矛盾は経路列挙中に除去せず、solverで判定する。
+上限の意味は実行時ループの回数制限ではない。
+
 native の project 全体の診断と `noCheck`、Oxc と snapshot の source 一致を検査してから証明する。
 project 診断・snapshot 不一致は API エラーとなり、肯定的な結果を返さない。
 Oxc が読んだ return の UTF-16 span、source SHA-256、compiler executable SHA-256、binding revision、
-`native.coverage: "boolean-and-constant-return"`、solver の version / attempts を artifact に記録する。
+数値を含む証拠は `native.coverage: "safe-integer-arithmetic"` として記録する。
+Booleanのみの単一returnは従来の `"boolean-and-constant-return"`、文を含む本体は
+`"boolean-branching"` を維持する。従来の定数数値returnも、数値の検査を通るため新coverageになる。
+solverのversion / attemptsもartifactに保持する。
 `compilerRevision` は Corsa binding の revision であり、native compiler の意味的 version と同一ではない。
 検証対象の snapshot の証拠であり、実行時までの source の不変性は主張しない。
 
@@ -52,8 +92,12 @@ caller の requires 証明・ensures 合成も未実装。
 - `contracts/verification-contracts.ts`: Program を含まない artifact / 診断の型。
 - `contracts/contract-solver.ts`: 中立 obligation の solver 実行と証拠・反例の生成。旧 verifier も共有する。
 - `contracts/corsa-contracts.ts`: Oxc の限定 lowering、native signature 認証、snapshot 診断。
+- `contracts/corsa-contract-flow.ts`: scalar CFGの構築、経路条件の合流と予算、return経路の抽出。
+- `contracts/native-scalars.ts`: 本体と契約式に共通のsort・安全整数値域の検査。
 - `contracts/contract-annotations.ts`: 契約候補と空 payload の検出。実際の注釈位置は Oxc comments で確認する。
 
 `just corsa-body-check` で固定した Program 結果と native 結果を比較し、成功・違反・未対応・
 solver 障害・snapshot 不一致・compiler-free CLI を検証する。
 配布 package の API / CLI でも JS compiler を禁止して実行する。
+分岐・早期return・ネスト・分岐違反の4ケースも、旧Program版で生成した固定結果と比較する。
+数値unionの加算・分岐・反例の3ケースも、旧Program版に実際のProgramを渡した固定結果と比較する。

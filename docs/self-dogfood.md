@@ -113,6 +113,24 @@ removed in favor of a membership check, and empty extraction deliberately does
 not claim success. Before/after evidence and this limitation are recorded as
 DF-007 in [the evaluation](./dogfood-evaluation.md).
 
+Native effect propagation now links synchronous inline functions on authenticated
+frozen module tables. The diagnostic criterion table is frozen, and an injected
+Console effect reaches `criterionSatisfied`, `scoreDiagnostic`, and `evaluateQuality`.
+The original purity regression still passes on the Program path. Unknown effect
+bounds and the existing syntax/unknown baseline remain explicit. This is coverage
+progress demonstrated by a mutation control, not an additional real bug discovery.
+`just dogfood-native` also runs native Boolean branch/early-return contract proofs
+against frozen Program results, including a wrong branch and its counterexample.
+
+The next native contract slice admits safe integer literal parameters and finite
+unions authenticated from native payloads, including imported aliases. Addition,
+subtraction, multiplication, negation, and comparisons share BigInt range checks
+between bodies and clauses. A bound on a broad `number` never implies integrality.
+Unsafe intermediates remain unsupported even when a later operation cancels them
+mathematically. Numeric proofs use `safe-integer-arithmetic` coverage, and fixed
+Program cases preserve successful and violated contracts. General numbers, brands,
+division, path-refined arithmetic bounds, and call-contract composition remain open.
+
 ## First boundary: static evaluation
 
 `src/frontends/typescript/static-evaluation.ts` declares both exported evaluators as `effect none`

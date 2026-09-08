@@ -19,6 +19,42 @@ function names(result: Awaited<ReturnType<typeof check>>, name: string) {
 }
 
 describe("native direct-call effect propagation", () => {
+  it("propagates synchronous inline bodies through frozen table member calls", async () => {
+    const result = await check({ "main.ts": `
+      const handlers = Object.freeze({ log() { console.log("method"); }, "send": () => fetch("https://example.com") });
+      function middle() { handlers.log(); handlers["send"](); }
+      export function main() { middle(); }
+    ` });
+    expect(result.errors).toBe(0);
+    for (const name of ["middle", "main"]) {
+      expect(names(result, name)?.sort()).toEqual(["Console", "Fetch", "Net"]);
+      expect(result.summaries.find(item => item.functionName === name)?.evidence).toBe("unknown");
+    }
+  });
+
+  it("authenticates frozen table receiver identities across renamed imports", async () => {
+    const files = {
+      "table.ts": 'export const handlers = Object.freeze({ log: () => console.log("real") });',
+      "main.ts": 'import { handlers as actual } from "./table.js"; export function main() { actual.log(); } export function shadowed(actual: { log(): void }) { actual.log(); }',
+    };
+    const result = await check(files);
+    expect(names(result, "main")).toEqual(["Console"]);
+    expect(names(result, "shadowed")).toEqual([]);
+    expect(names(await check(files, ["main.ts"]), "main")).toEqual([]);
+  });
+
+  it.each([
+    'const handlers = { log() { console.log("mutable"); } };',
+    'const Object = { freeze: <T>(value: T) => value }; const handlers = Object.freeze({ log() { console.log("fake"); } });',
+    'const handlers = Object.freeze({ async log() { console.log("deferred"); } });',
+    'const handlers = Object.freeze({ *log() { console.log("deferred"); } });',
+    'const other = { log() {} }; const handlers = Object.freeze({ log() { console.log("overwritten"); }, ...other });',
+  ])("does not infer frozen dispatch for unsupported tables: %s", async declaration => {
+    const result = await check({ "main.ts": `${declaration} export function main() { handlers.log(); }` });
+    expect(names(result, "main")).toEqual([]);
+    expect(result.summaries.find(item => item.functionName === "main")?.evidence).toBe("unknown");
+  });
+
   it("retains known effects through multiple callers without upgrading incomplete evidence", async () => {
     const result = await check({ "main.ts": `
       export function main() { middle(); }

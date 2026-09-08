@@ -9,6 +9,9 @@ import { verifyCorsaContracts } from "../src/contracts/corsa-contracts.js";
 import { solveContractObligations } from "../src/contracts/contract-solver.js";
 import { obligationFromSpec } from "../src/contracts/obligations.js";
 
+const coverageSchema = JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8")).$defs.contract.properties.native.properties.coverage;
+const publishedCoverage: string[] = coverageSchema.enum ?? [coverageSchema.const];
+
 async function project(text: string, run: (file: string, configFile: string) => Promise<void>, options = {}) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-native-body-"));
   const file = join(directory, "input.ts"), configFile = join(directory, "tsconfig.json");
@@ -18,6 +21,59 @@ async function project(text: string, run: (file: string, configFile: string) => 
 }
 
 describe("native contract bodies through check", () => {
+  it.each([
+    ['value: -2 | 0 | 3', 'return value + 2;', 'result >= 0', ["verified"]],
+    ['value: -2 | 0 | 3', 'if (value < 0) return -value; return value;', 'result >= 0', ["verified", "verified"]],
+    ['value: 1 | 2 | 3', 'return value * value;', 'result >= 1 && result <= 9', ["verified"]],
+    ['left: 1 | 2 | 3, right: 0 | 1', 'return left - right;', 'result >= 0', ["verified"]],
+    ['value: 0 | 1 | 2', 'return value + 1;', 'result >= 2', ["counterexample"]],
+    ['', 'return 2 + 3 * 4;', 'result === 14', ["verified"]],
+    ['', 'return -0;', 'result === 0', ["verified"]],
+  ] as const)("proves bounded numeric bodies: %s / %s", async (parameters, body, clause, statuses) => {
+    await project(`/* uneffect:ensures ${clause} */\nexport function checked(${parameters}) { ${body} }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(statuses);
+      expect(result.artifacts.every(item => item.native?.coverage === "safe-integer-arithmetic")).toBe(true);
+      if (statuses[0] === "counterexample") expect(result.artifacts[0]!.counterexample?.assignments.value).toBe("0");
+    });
+  });
+
+  it.each([
+    ['value: number', 'return value + 1;', 'result > value'],
+    ['value: 0.5 | 1', 'return value + 1;', 'result > value'],
+    ['value: 9007199254740992', 'return value;', 'result > 0'],
+    ['value: 9007199254740991', 'return (value + 2) - 2;', 'result === value'],
+    ['value: 9007199254740991', 'return value * 2;', 'result > value'],
+    ['value: 9007199254740991', 'return value;', 'result + 1 > result'],
+    ['value: 1 | 2', 'return value / 2;', 'result >= 0'],
+    ['value: 1 | 2', 'return value % 2;', 'result >= 0'],
+    ['', 'return 1e999;', 'result > 0'],
+  ])("does not replace unsafe Number semantics by mathematical integers: %s / %s", async (parameters, body, clause) => {
+    await project(`/* uneffect:ensures ${clause} */\nexport function checked(${parameters}) { ${body} }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts).toEqual([expect.objectContaining({ status: "unsupported", evidence: "unknown" })]);
+    });
+  });
+
+  it("does not assume a broad number is integral from bounds in requires", async () => {
+    await project(`/* uneffect:requires value >= 0 && value <= 3 */\n/* uneffect:ensures result > value */
+export function checked(value: number) { return value + 1; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts).toEqual([expect.objectContaining({ status: "unsupported", evidence: "unknown" })]);
+    });
+  });
+
+  it("preserves numeric preconditions on an imported finite type alias", async () => {
+    await project(`import type { Count } from "./types.js";
+/* uneffect:requires value > 0 */\n/* uneffect:ensures result >= 2 */
+export function checked(value: Count) { return value + 1; }`, async (file, configFile) => {
+      writeFileSync(join(file, "..", "types.ts"), "export type Count = 0 | 1 | 2;");
+      const result = await checkCorsaProject({ configFile });
+      expect(result.errors).toBe(0);
+      expect(result.artifacts).toEqual([expect.objectContaining({ status: "verified", native: expect.objectContaining({ coverage: "safe-integer-arithmetic" }) })]);
+      expect(result.artifacts[0]!.controlFlow?.pathConditions).toHaveLength(2);
+    });
+  });
   const parity = JSON.parse(readFileSync("test/fixtures/corsa-contract-body-parity.json", "utf8")) as {
     cases: Array<{ name: string; source: string; expected: unknown[] }>;
   };
@@ -38,10 +94,11 @@ export function positive(): number { return 7; }`;
       const result = await checkCorsaProject({ configFile });
       expect(result.errors).toBe(0);
       expect(result.artifacts).toHaveLength(2);
-      for (const artifact of result.artifacts) {
+      for (const [index, artifact] of result.artifacts.entries()) {
         expect(artifact).toMatchObject({ status: "verified", evidence: "verified", solver: { backend: expect.any(String) },
-          native: { coverage: "boolean-and-constant-return", sourceDigest: expect.stringMatching(/^[a-f0-9]{64}$/) } });
+          native: { coverage: index === 0 ? "boolean-and-constant-return" : "safe-integer-arithmetic", sourceDigest: expect.stringMatching(/^[a-f0-9]{64}$/) } });
         expect(artifact.source.fileName).toBe(file);
+        expect(publishedCoverage).toContain(artifact.native!.coverage);
         expect(text.slice(artifact.source.span.start, artifact.source.span.end)).toMatch(/^return /);
       }
       expect(createCorsaCheckJsonReport(result).contracts).toEqual(result.artifacts);
@@ -69,7 +126,12 @@ export function invert(enabled: boolean) { return !enabled; }`, async (_file, co
     "export function checked(value: any) { return value; }",
     "export function checked(value: boolean = true) { return value; }",
     "export async function checked() { return true; }",
-    "export function checked(value: boolean) { if (value) return true; return false; }",
+    "export function checked(value: boolean) { if (value) return true; }",
+    "export function checked(value: boolean) { if (1) return value; return false; }",
+    "export function checked(value: boolean) { value = !value; return value; }",
+    "export function checked(value: boolean) { if (value) return true; else return Boolean(true); }",
+    "export function checked(value: boolean) { try { return value; } finally { value = false; } }",
+    "export function checked(value: boolean) { while (value) { return true; } return false; }",
     "export function checked() { return Boolean(true); }",
     "export const checked = () => true;",
     "export class Checked { checked() { return true; } }",
@@ -93,6 +155,50 @@ export function good() { return true; }`, async (_file, configFile) => {
         expect.objectContaining({ status: "unsupported" }),
         expect.objectContaining({ status: "verified", obligation: expect.objectContaining({ functionName: "good" }) }),
       ]));
+    });
+  });
+
+  it("retains distinct return paths and counterexample inputs for a broken branch", async () => {
+    const text = `/* uneffect:ensures result === enabled */
+export function checked(enabled: boolean) { if (enabled) return false; return false; }`;
+    await project(text, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["counterexample", "verified"]);
+      expect(result.artifacts[0]!.counterexample?.assignments.enabled).toBe("true");
+      for (const artifact of result.artifacts) {
+        expect(artifact.native?.coverage).toBe("boolean-branching");
+        expect(publishedCoverage).toContain(artifact.native!.coverage);
+        expect(artifact.controlFlow?.completion).toBe("return");
+        expect(artifact.controlFlow?.pathConditions).toHaveLength(1);
+      }
+      expect(result.artifacts[0]!.controlFlow?.blockId).not.toBe(result.artifacts[1]!.controlFlow?.blockId);
+      expect(result.artifacts[1]!.controlFlow?.pathConditions[0]).toMatchObject({ kind: "unary", operator: "not" });
+    });
+  });
+
+  it("excludes returns after unconditional termination", async () => {
+    await project(`/* uneffect:ensures result */
+export function checked(): boolean { if (true) return true; return false; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.errors).toBe(0);
+      expect(result.artifacts).toEqual([expect.objectContaining({ status: "verified", native: expect.objectContaining({ coverage: "boolean-branching" }) })]);
+    });
+  });
+
+  it("joins paths without dropping a branch reaching the same return", async () => {
+    await project(`/* uneffect:ensures result */
+export function checked(enabled: boolean) { if (enabled) {} return enabled; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status).sort()).toEqual(["counterexample", "verified"]);
+      expect(new Set(result.artifacts.map(item => item.obligationId)).size).toBe(2);
+    });
+  });
+
+  it("returns a non-proof when Boolean path enumeration exceeds its bound", async () => {
+    await project(`/* uneffect:ensures result */
+export function checked(enabled: boolean) { ${"if (enabled) {} ".repeat(10)} return true; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts).toEqual([expect.objectContaining({ status: "unsupported", evidence: "unknown", message: expect.stringMatching(/budget/), native: expect.objectContaining({ coverage: "boolean-branching" }) })]);
     });
   });
 

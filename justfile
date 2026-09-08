@@ -194,7 +194,7 @@ dogfood:
 # Native coverage on real source, mutation controls, and reviewed replay regressions.
 dogfood-native:
     pnpm exec tsc -p tsconfig.json --noEmit
-    pnpm vitest run test/syntax-facts.test.ts test/corsa-check.test.ts test/corsa-syntax-dogfood.test.ts test/corsa-effect-propagation.test.ts test/model-replay.test.ts test/registry-read-rule.test.ts test/registry-dogfood.test.ts test/registry-source-bugs.test.ts test/temporal-expressions.test.ts test/deno-permissions.test.ts test/annotation-registry.test.ts
+    pnpm vitest run test/syntax-facts.test.ts test/corsa-check.test.ts test/corsa-syntax-dogfood.test.ts test/corsa-effect-propagation.test.ts test/corsa-contract-check.test.ts test/model-replay.test.ts test/registry-read-rule.test.ts test/registry-dogfood.test.ts test/registry-source-bugs.test.ts test/temporal-expressions.test.ts test/deno-permissions.test.ts test/annotation-registry.test.ts
 
 # First constraint-bearing self-check: one leaf utility with explicit pure
 # function and module boundaries. Expand this list only after each file has a

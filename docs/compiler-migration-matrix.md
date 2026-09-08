@@ -14,7 +14,7 @@
 | Export | 現在の backend / 境界 | 主な回帰テスト | 残る工程 |
 | --- | --- | --- | --- |
 | `.` | 集約入口は Program 依存 | `public-surface.test.ts`, `contracts.test.ts` | M2〜M5 |
-| `./corsa` | native check。限定 effect、直接呼出の既知 effect 伝播、限定本体証明 | `corsa-check.test.ts`, `corsa-effect-propagation.test.ts`, `corsa-contract-check.test.ts` | M2〜M5 |
+| `./corsa` | native check。直接呼出・凍結表の静的呼出の既知 effect 伝播、分岐・有限安全整数の限定本体証明 | `corsa-check.test.ts`, `corsa-effect-propagation.test.ts`, `corsa-contract-check.test.ts` | M2〜M5 |
 | `./corsa/api` | native semantic facts | `corsa-api-frontend.test.ts` | M1、既存型契約維持 |
 | `./experimental` | 集約入口は Program 依存 | `public-surface.test.ts`, `release-readiness.test.ts` | M2〜M5 |
 | `./experimental/corsa` | checker exporter と旧 frontend parity | `corsa-checker-exporter.test.ts`, `corsa-effect-parity.test.ts` | M0 / M5、oracle 隔離 |
@@ -65,5 +65,13 @@ native 側の結果から期待値を再生成しない。比較項目は status
 `test/corsa-contract-check.test.ts` では、この比較に加えて未対応構文、誤った型、別 snapshot、
 solver 障害、注釈の誤認・空 payload、JS compiler 禁止の CLI を検証する。
 この小さな corpus は M2 の本体証明開始の証拠であり、call summary や全ドメインの同等性ではない。
+
+分岐・早期return・ネスト・分岐違反も旧Program版の固定結果に追加した。
+新しい `boolean-branching` coverageでは共有CFGが各returnへの経路条件を保持し、
+solverがそれぞれの事後条件を検証する。経路予算超過・fallthrough・未対応構文で
+空の成功を返さないことも検証する。数値literal型・最大16値のunionには加減算・乗算・符号反転・
+大小比較を接続し、`safe-integer-arithmetic` coverageで記録する。本体と契約式の中間値域を検査し、
+IEEE 754の丸めが関係する式を無制限の整数算術へ置換しない。
+通常のnumber・数値brand・除算・剰余と呼出契約の合成は残る。
 
 検証: `just corsa-body-check`。全 feature corpus の固定と API 方針の確定は継続する。

@@ -229,6 +229,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (symbol && site.kind === "call" && site.receiverPosition === undefined) {
           caller.calleeSymbols.add((frontend.getAliasedSymbol(symbol) ?? symbol).id);
         }
+        const frozenTarget = site.kind === "call" ? bindings.calls.get(site.start) : undefined;
+        if (frozenTarget) caller.calleeSymbols.add(frozenTarget);
       };
       for (const [index, site] of callSites.entries()) {
         const resolution = classified[index];
