@@ -88,11 +88,27 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
     && node.body.body.at(-1)?.type === "ReturnStatement";
   const returned = node.body.body.at(-1) as Extract<Statement, { type: "ReturnStatement" }>;
   const declarations = node.body.body.slice(0, -1) as Array<Extract<Statement, { type: "VariableDeclaration" }>>;
+  const linearAssignment = node.body.body.length > 1 && node.body.body.at(-1)?.type === "ReturnStatement"
+    && node.body.body.slice(0, -1).every(statement => statement.type === "VariableDeclaration" || statement.type === "ExpressionStatement");
   const paths = simpleConst
     ? [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: (() => {
         const substitutions = new Map<string, LogicExpression>();
         for (const declaration of declarations) for (const declarator of declaration.declarations) if (declarator.id.type === "Identifier") substitutions.set(declarator.id.name,
           substituteLogic(nativeBodyExpression(declarator.init!, resolveCall), substitutions));
+        return checkNativeScalar(substituteLogic(nativeBodyExpression(returned.argument!, resolveCall), substitutions), parameters);
+      })() }]
+    : linearAssignment
+    ? [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: (() => {
+        const substitutions = new Map<string, LogicExpression>();
+        for (const statement of node.body.body.slice(0, -1)) {
+          if (statement.type === "VariableDeclaration") for (const declarator of statement.declarations) {
+            if (declarator.id.type !== "Identifier" || !declarator.init) throw new Error("native linear bindings require initialized identifiers");
+            substitutions.set(declarator.id.name, substituteLogic(nativeBodyExpression(declarator.init, resolveCall), substitutions));
+          } else if (statement.type === "ExpressionStatement" && statement.expression.type === "AssignmentExpression"
+            && statement.expression.operator === "=" && statement.expression.left.type === "Identifier") {
+            substitutions.set(statement.expression.left.name, substituteLogic(nativeBodyExpression(statement.expression.right, resolveCall), substitutions));
+          } else throw new Error("native linear body contains unsupported statement");
+        }
         return checkNativeScalar(substituteLogic(nativeBodyExpression(returned.argument!, resolveCall), substitutions), parameters);
       })() }]
     : lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression, resolveCall),
