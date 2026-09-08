@@ -63,6 +63,13 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("proves division over a finite literal union", async () => {
+    await project(`/* uneffect:ensures result >= 0 && result <= 1 */\nexport function checked(value: 0 | 1 | 2): number { return value / 2; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("verified");
+    });
+  });
+
   it("proves unary plus without widening the native scalar", async () => {
     await project(`/* uneffect:ensures result === 1 */\nexport function checked(): number { return +1; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
