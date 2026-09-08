@@ -136,6 +136,13 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("keeps dynamic const initializers unsupported", async () => {
+    await project(`declare function unknown(): number;\n/* uneffect:ensures result === 1 */\nexport function checked(): number { const next = unknown(); return next; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("unsupported");
+    });
+  });
+
   it.each([["/", "0"], ["%", "0"]])("rejects zero divisor for %s", async (operator, divisor) => {
     await project(`/* uneffect:ensures result === 0 */\nexport function checked(): number { return 5 ${operator} ${divisor}; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
