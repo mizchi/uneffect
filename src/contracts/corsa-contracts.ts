@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Expression } from "oxc-parser";
+import type { Expression, Statement } from "oxc-parser";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { openCorsaCallableFrontend, type CorsaCallableFrontend } from "../frontends/corsa/corsa-callable-frontend.js";
@@ -83,8 +83,18 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
   // Requires must be safe over the declared type before any of them can narrow the body.
   for (const assumption of assumptions) if (checkNativeScalar(assumption, parameters).kind !== "boolean") throw new Error("requires must be Boolean");
   const requiredParameters = narrowNativeRanges(parameters, assumptions);
-  const paths = lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression, resolveCall),
-    conditions === null ? parameters : narrowNativeRanges(requiredParameters, conditions), conditions === null ? "structure" : "proof"));
+  const simpleConst = node.body.body.length === 2 && node.body.body[0]?.type === "VariableDeclaration"
+    && node.body.body[0].kind === "const" && node.body.body[0].declarations.length === 1
+    && node.body.body[0].declarations[0]?.id.type === "Identifier" && node.body.body[0].declarations[0].init
+    && node.body.body[1]?.type === "ReturnStatement" && node.body.body[1].argument;
+  const declaration = node.body.body[0] as Extract<Statement, { type: "VariableDeclaration" }>;
+  const returned = node.body.body[1] as Extract<Statement, { type: "ReturnStatement" }>;
+  const paths = simpleConst
+    ? [{ span: { start: returned.start, end: returned.end }, conditions: [] as const,
+        result: checkNativeScalar(substituteLogic(nativeBodyExpression(returned.argument!, resolveCall),
+          new Map([[declaration.declarations[0]!.id.type === "Identifier" ? declaration.declarations[0]!.id.name : "", nativeBodyExpression(declaration.declarations[0]!.init!, resolveCall)]])), parameters) }]
+    : lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression, resolveCall),
+      conditions === null ? parameters : narrowNativeRanges(requiredParameters, conditions), conditions === null ? "structure" : "proof"));
   const resultKind = paths[0]!.result.kind;
   if (paths.some(path => path.result.kind !== resultKind) || frontend.getPrimitiveTypeKind(signature.returnType) !== resultKind) {
     throw new Error("native return type does not match the lowered scalar body");
