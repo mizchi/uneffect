@@ -52,6 +52,13 @@ export function caller(): number { return add(1, 1); }`, async (_file, configFil
     });
   });
 
+  it.each([["/", "0"], ["%", "0"]])("rejects zero divisor for %s", async (operator, divisor) => {
+    await project(`/* uneffect:ensures result === 0 */\nexport function checked(): number { return 5 ${operator} ${divisor}; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("unsupported");
+    });
+  });
+
   it.each([
     `/* uneffect:requires value > 0 */\n/* uneffect:ensures result === value + 1 */\nexport function inc(value: 0 | 1): number { return value + 1; }\n/* uneffect:ensures result === 2 */\nexport function caller(): number { return inc(0); }`,
     `/* uneffect:ensures result === value + 1 */\nexport function inc(value: 0 | 1): number { return value + 1; }\n/* uneffect:ensures result === 2 */\nexport function caller(value: 0 | 1, other: 0 | 1): number { return inc(value + other); }`,
