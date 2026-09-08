@@ -26,7 +26,7 @@ import {
   formatEffectBaselineAssessment, processEffectBaseline,
 } from "../effects/effect-baseline.js";
 
-/** TypeScript 6 Program path: workspace composition, contracts, and `--corsa-parity`. */
+/** TypeScript 6 Program path: workspace composition, contracts, and `--corsa-builtins`. */
 export async function runTypeScriptCheckCommand(args: readonly string[], io: CliStreams): Promise<number> {
     const { values, positionals } = parseCommandArgs(args, {
       infer: { type: "boolean" }, strict: { type: "boolean" }, evidence: { type: "boolean" },
@@ -38,7 +38,7 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
       "resource-contract": { type: "string", multiple: true },
       "declaration-transforms": { type: "string" },
       project: { type: "string" },
-      "corsa-parity": { type: "boolean" },
+      "corsa-builtins": { type: "boolean" },
       "corsa-executable": { type: "string" },
       "module-entry": { type: "string" },
       "require-build-artifacts": { type: "boolean" },
@@ -56,11 +56,11 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
     const baselineFile = values["effect-baseline"] === undefined ? undefined : resolve(String(values["effect-baseline"]));
     const writeBaselineFile = values["write-effect-baseline"] === undefined ? undefined : resolve(String(values["write-effect-baseline"]));
     const inferAll = Boolean(values.infer || baselineFile || writeBaselineFile);
-    if ((values["corsa-parity"] || values["corsa-executable"] !== undefined) && values.project === undefined) {
-      throw new CliUsageError("Corsa parity requires --project so compiler and source membership are explicit");
+    if ((values["corsa-builtins"] || values["corsa-executable"] !== undefined) && values.project === undefined) {
+      throw new CliUsageError("Corsa builtin classification requires --project so compiler and source membership are explicit");
     }
-    if (values["corsa-executable"] !== undefined && !values["corsa-parity"]) {
-      throw new CliUsageError("--corsa-executable requires --corsa-parity");
+    if (values["corsa-executable"] !== undefined && !values["corsa-builtins"]) {
+      throw new CliUsageError("--corsa-executable requires --corsa-builtins");
     }
     if ((values["require-build-artifacts"] || values["require-exact-build-artifacts"]) && (values.project === undefined || positionals.length > 0)) {
       throw new CliUsageError("build-artifact assurance requires --project without positional files");
@@ -134,7 +134,7 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
         const refinementComposition = composeWorkspaceRefinements(program, domain, completedRefinements);
         composedRefinements.links.push(...refinementComposition.links);
         composedRefinements.blockers.push(...refinementComposition.blockers);
-        const corsaFrontend = values["corsa-parity"] ? await openCorsaApiFrontend({
+        const corsaFrontend = values["corsa-builtins"] ? await openCorsaApiFrontend({
           configFile: domain.projectFile,
           ...(values["corsa-executable"] === undefined ? {} : { corsaExecutable: String(values["corsa-executable"]) }),
         }) : undefined;
@@ -217,7 +217,7 @@ export async function runTypeScriptCheckCommand(args: readonly string[], io: Cli
     const program = createCheckProgram(fileNames, {
       compilerOptions: project?.compilerOptions, projectReferences: project?.projectReferences,
     });
-    const corsaFrontend = values["corsa-parity"] ? await openCorsaApiFrontend({
+    const corsaFrontend = values["corsa-builtins"] ? await openCorsaApiFrontend({
       configFile: project!.projectFile,
       ...(values["corsa-executable"] === undefined ? {} : { corsaExecutable: String(values["corsa-executable"]) }),
     }) : undefined;

@@ -22,7 +22,7 @@ const checkArgOptions = {
   "resource-contract": { type: "string", multiple: true },
   "declaration-transforms": { type: "string" },
   project: { type: "string" },
-  "corsa-parity": { type: "boolean" },
+  "corsa-builtins": { type: "boolean" },
   "corsa-executable": { type: "string" },
   "module-entry": { type: "string" },
   "require-build-artifacts": { type: "boolean" },
@@ -34,7 +34,7 @@ const checkArgOptions = {
 } as const;
 
 function usesTypeScriptProgramPath(values: Record<string, unknown>): boolean {
-  if (values["typescript-program"] || values["corsa-parity"]) return true;
+  if (values["typescript-program"]) return true;
   if (values["contract-summary"] !== undefined || values["resource-contract"] !== undefined) return true;
   if (values["declaration-transforms"] !== undefined || values["module-entry"] !== undefined) return true;
   if (values["require-build-artifacts"] || values["require-exact-build-artifacts"]) return true;
@@ -67,7 +67,7 @@ export const checkCommand: CliCommand = {
     "--resource-contract  bind a reviewed package resource lifecycle artifact; repeat to compose exports",
     "--declaration-transforms  bind generated TypeScript to exact spans in non-TypeScript sources",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
-    "--corsa-parity  compare the admitted Corsa Effect slice with TypeScript; mismatches block assurance",
+    "--corsa-builtins  include Oxc/Corsa builtin call classifications and coverage in JSON",
     "--corsa-executable  use this pinned Corsa-compatible compiler instead of Uneffect's prebuilt tsgo",
     "--typescript-program  use a JavaScript TypeScript 6 Program instead of the default Corsa check",
     "--module-entry  compose the supported module-initialization order from this workspace entry",
@@ -76,7 +76,7 @@ export const checkCommand: CliCommand = {
     "--json       emit a versioned decision report to stdout, including failures",
     "",
     "Default check uses Corsa plus Oxc and does not construct a JS TypeScript 6 Program.",
-    "Workspace references, contracts, and `--corsa-parity` still load the TypeScript 6 path.",
+    "Workspace references and explicit Program options still load the TypeScript 6 path.",
     "This is the default command: `uneffect <file.ts>` runs it.",
     "Exits 1 when any error-severity diagnostic is reported.",
   ],
@@ -87,8 +87,8 @@ export const checkCommand: CliCommand = {
     if (values["effect-baseline"] !== undefined && values["write-effect-baseline"] !== undefined) {
       throw new CliUsageError("--effect-baseline and --write-effect-baseline are mutually exclusive");
     }
-    if (values["corsa-parity"] && values.project === undefined) {
-      throw new CliUsageError("Corsa parity requires --project so compiler and source membership are explicit");
+    if (values["corsa-builtins"] && values.project === undefined) {
+      throw new CliUsageError("Corsa builtin classification requires --project so compiler and source membership are explicit");
     }
     if (values["corsa-executable"] !== undefined && values.project === undefined && positionals.length === 0) {
       throw new CliUsageError("--corsa-executable requires --project or input files");
@@ -139,6 +139,7 @@ export const checkCommand: CliCommand = {
     try {
       result = await checkCorsaProject({
         configFile,
+        includeBuiltinCalls: Boolean(values["corsa-builtins"]),
         requireAnnotations: !values.infer && values["effect-baseline"] === undefined && values["write-effect-baseline"] === undefined,
         ...(files.length === 0 ? {} : { fileNames: files }),
         ...(values["corsa-executable"] === undefined ? {} : { corsaExecutable: String(values["corsa-executable"]) }),

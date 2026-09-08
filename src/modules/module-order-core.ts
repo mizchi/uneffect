@@ -20,6 +20,8 @@ export interface ModuleOrderFrontend {
   readonly compiler: ModuleInitializationOrder["compiler"];
   getModule(fileName: string): ModuleSourceFacts | undefined;
   readonly diagnostics: readonly ModuleInitializationUnknown[];
+  /** Configuration/global failures apply regardless of the entry's source closure. */
+  readonly projectDiagnostics?: readonly ModuleInitializationUnknown[];
 }
 
 /** Shared ordering and cycle analysis over authenticated frontend facts. */
@@ -70,6 +72,7 @@ export function buildModuleInitializationOrder(frontend: ModuleOrderFrontend, en
   for (const diagnostic of frontend.diagnostics) {
     if (!diagnostic.span || reachable.has(diagnostic.fileName)) addUnknown(diagnostic);
   }
+  for (const diagnostic of frontend.projectDiagnostics ?? []) addUnknown(diagnostic);
   const tarjanIndex = new Map<string, number>(), tarjanLow = new Map<string, number>();
   const tarjanStack: string[] = [], tarjanOnStack = new Set<string>();
   const stronglyConnected: string[][] = [];

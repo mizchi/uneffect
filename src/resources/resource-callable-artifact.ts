@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import type { ResourceCallableSummary } from "./resource-protocol.js";
 import type { AssumptionEntry, AssumptionScope } from "../evidence/assumptions.js";
 import { resolveStableCallableSymbol } from "../frontends/typescript/stable-callable.js";

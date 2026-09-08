@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

@@ -19,7 +19,7 @@ and full-migration acceptance gates. This document records available APIs.
 | `/experimental/corsa/callables` | Native overload selection, generic substitution, constructor results, inferred declaration returns, complete overload sets, assignability, shorthand value symbols, exact expression types, intrinsic never/boolean-literal facts, and snapshot diagnostics. |
 | `/experimental/lint` | Source-independent prerequisite analysis. |
 | `/experimental/lint/corsa`, `cfg-lint` | Oxc CFG extraction and Corsa symbol/type queries, with native diagnostics. |
-| `/experimental/module-order/corsa`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
+| `/module-order`, `module-order` | Oxc module facts and Corsa import/boolean identities, native diagnostics, shared v1 ordering and v2 conditional-await CFG proof. |
 | `/spec` | Definition helpers, separated from DSL parsing and linking. |
 | `/experimental/spec` | Oxc specification and temporal-expression parsing, scalar contract expressions, SMT/Quint generation, temporal composition, specification lint, four DSL source parsers, native contract/refinement callable linking, property-test generation/execution, and structural/native-refined contract completion analysis. |
 | `/experimental/build/corsa` | Bounded native JS/d.ts re-emission comparison for single projects and reference workspaces in dependency order; compiler/input digests, explicit outDir, no writes to consumer outputs. |

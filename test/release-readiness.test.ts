@@ -88,7 +88,7 @@ describe("0.3.0 release metadata", () => {
     expect(corsa).toContain("checkCorsaProject");
     const experimentalCorsa = readFileSync("src/api/corsa-experimental.ts", "utf8");
     expect(experimentalCorsa).toContain('export * from "../frontends/corsa/corsa-checker-exporter.js"');
-    expect(experimentalCorsa).toContain('export * from "../frontends/corsa/corsa-effect-parity.js"');
+    expect(experimentalCorsa).toContain('export * from "../frontends/corsa/corsa-builtin-calls.js"');
 
     const apiCheck = readFileSync("ci/check-public-api.mjs", "utf8");
     expect(apiCheck).toContain("uneffect-public-api-snapshot/v1");

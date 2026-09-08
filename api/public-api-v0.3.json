@@ -11,13 +11,13 @@
         {
           "name": "analyzeModuleInitializationOrder",
           "declarations": [
-            "export declare function analyzeModuleInitializationOrder(program: ts.Program, entryFile: string): ModuleInitializationOrder;"
+            "export declare function analyzeCorsaModuleInitializationOrder(options: CorsaModuleOrderOptions): Promise<ModuleInitializationOrder>;"
           ]
         },
         {
           "name": "analyzeModuleInitializationOrderV2",
           "declarations": [
-            "export declare function analyzeModuleInitializationOrderV2(program: ts.Program, entryFile: string, options?: ModuleInitializationV2Options): ModuleInitializationOrderV2;"
+            "export declare function analyzeCorsaModuleInitializationOrderV2(options: CorsaModuleOrderV2Options): Promise<ModuleInitializationOrderV2>;"
           ]
         },
         {
@@ -162,6 +162,18 @@
           "name": "ModuleInitializationV2Options",
           "declarations": [
             "export interface ModuleInitializationV2Options {\n    readonly proofBudget?: {\n        readonly moduleControlFlowIterations?: number;\n    };\n}"
+          ]
+        },
+        {
+          "name": "ModuleOrderOptions",
+          "declarations": [
+            "export interface CorsaModuleOrderOptions {\n    readonly entryFile: string;\n    /** Uses the project options and Corsa's resolved module identities. Defaults to an isolated ES2024/NodeNext project. */\n    readonly configFile?: string;\n    /** Defaults to the packaged native compiler; no JavaScript compiler fallback. */\n    readonly corsaExecutable?: string;\n}"
+          ]
+        },
+        {
+          "name": "ModuleOrderV2Options",
+          "declarations": [
+            "export interface CorsaModuleOrderV2Options extends CorsaModuleOrderOptions, ModuleInitializationV2Options {\n}"
           ]
         }
       ]
@@ -724,7 +736,7 @@
         {
           "name": "CheckResult",
           "declarations": [
-            "export interface CheckResult {\n    diagnostics: CheckerDiagnostic[];\n    /** Source text per absolute file name, so a report can quote the offending line. */\n    sources: Map<string, string>;\n    /** Evidence for what was checked, including the obligations that were proved. */\n    artifacts: VerificationArtifact[];\n    summaries: EffectSummary[];\n    /** Every trusted semantic input used by this exact check boundary. */\n    assumptions: AssumptionLedger;\n    typedArrays: TypedArrayProgramSafetyResult;\n    ownership: Array<OwnershipDiagnostic & {\n        fileName: string;\n    }>;\n    asyncIterators: IteratorCheckEvidence[];\n    resourceProtocols: ResourceLifecycleEvidence[];\n    corsaEffectParity?: CorsaEffectParityResult;\n    errors: number;\n    warnings: number;\n    project?: TypeScriptProjectProvenance;\n}"
+            "export interface CheckResult {\n    diagnostics: CheckerDiagnostic[];\n    /** Source text per absolute file name, so a report can quote the offending line. */\n    sources: Map<string, string>;\n    /** Evidence for what was checked, including the obligations that were proved. */\n    artifacts: VerificationArtifact[];\n    summaries: EffectSummary[];\n    /** Every trusted semantic input used by this exact check boundary. */\n    assumptions: AssumptionLedger;\n    typedArrays: TypedArrayProgramSafetyResult;\n    ownership: Array<OwnershipDiagnostic & {\n        fileName: string;\n    }>;\n    asyncIterators: IteratorCheckEvidence[];\n    resourceProtocols: ResourceLifecycleEvidence[];\n    corsaBuiltinCalls?: CorsaBuiltinCallsResult;\n    errors: number;\n    warnings: number;\n    project?: TypeScriptProjectProvenance;\n}"
           ]
         },
         {
@@ -1502,19 +1514,19 @@
         {
           "name": "CorsaCheckJsonReport",
           "declarations": [
-            "export interface CorsaCheckJsonReport {\n    schema: \"uneffect-check/v1\";\n    outcome: \"passed\" | \"failed\";\n    counts: {\n        errors: number;\n        warnings: number;\n    };\n    diagnostics: Array<CorsaCheckResult[\"diagnostics\"][number] & {\n        code: string;\n        notes: DiagnosticNote[];\n    }>;\n    effects: Array<{\n        fileName?: string;\n        span?: {\n            start: number;\n            end: number;\n        };\n        functionName: string;\n        effects: string[];\n        evidence: CorsaCheckResult[\"summaries\"][number][\"evidence\"];\n        parameters?: string[];\n        unknownReasons?: CorsaCheckResult[\"summaries\"][number][\"unknownReasons\"];\n    }>;\n    contracts: CorsaCheckResult[\"artifacts\"];\n    assumptions: CorsaCheckResult[\"assumptions\"];\n    typedArrays: {\n        obligations: [];\n        windows: [];\n        statistics: {\n            solverQueries: number;\n        };\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    assurance: AssuranceAssessment | null;\n    project: CorsaCheckResult[\"project\"];\n    effectBaseline?: EffectBaselineAssessment;\n}"
+            "export interface CorsaCheckJsonReport {\n    corsaBuiltinCalls?: CorsaCheckResult[\"corsaBuiltinCalls\"];\n    schema: \"uneffect-check/v1\";\n    outcome: \"passed\" | \"failed\";\n    counts: {\n        errors: number;\n        warnings: number;\n    };\n    diagnostics: Array<CorsaCheckResult[\"diagnostics\"][number] & {\n        code: string;\n        notes: DiagnosticNote[];\n    }>;\n    effects: Array<{\n        fileName?: string;\n        span?: {\n            start: number;\n            end: number;\n        };\n        functionName: string;\n        effects: string[];\n        evidence: CorsaCheckResult[\"summaries\"][number][\"evidence\"];\n        parameters?: string[];\n        unknownReasons?: CorsaCheckResult[\"summaries\"][number][\"unknownReasons\"];\n    }>;\n    contracts: CorsaCheckResult[\"artifacts\"];\n    assumptions: CorsaCheckResult[\"assumptions\"];\n    typedArrays: {\n        obligations: [];\n        windows: [];\n        statistics: {\n            solverQueries: number;\n        };\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    assurance: AssuranceAssessment | null;\n    project: CorsaCheckResult[\"project\"];\n    effectBaseline?: EffectBaselineAssessment;\n}"
           ]
         },
         {
           "name": "CorsaCheckOptions",
           "declarations": [
-            "export interface CorsaCheckOptions {\n    configFile: string;\n    corsaExecutable?: string;\n    cwd?: string;\n    requireAnnotations?: boolean;\n    builtinRegistry?: BuiltinContractRegistry;\n    fileNames?: readonly string[];\n}"
+            "export interface CorsaCheckOptions {\n    includeBuiltinCalls?: boolean;\n    configFile: string;\n    corsaExecutable?: string;\n    cwd?: string;\n    requireAnnotations?: boolean;\n    builtinRegistry?: BuiltinContractRegistry;\n    fileNames?: readonly string[];\n}"
           ]
         },
         {
           "name": "CorsaCheckResult",
           "declarations": [
-            "export interface CorsaCheckResult {\n    diagnostics: CorsaCheckDiagnostic[];\n    sources: Map<string, string>;\n    artifacts: VerificationArtifact[];\n    summaries: EffectSummary[];\n    assumptions: {\n        schema: \"uneffect-assumptions/v1\";\n        entries: [];\n        violations: [];\n    };\n    typedArrays: {\n        obligations: [];\n        diagnostics: [];\n        windows: [];\n        statistics: {\n            solverQueries: 0;\n        };\n        files: Record<string, never>;\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    errors: number;\n    warnings: number;\n    project: CorsaProjectProvenance;\n}"
+            "export interface CorsaCheckResult {\n    corsaBuiltinCalls?: CorsaBuiltinCallsResult;\n    diagnostics: CorsaCheckDiagnostic[];\n    sources: Map<string, string>;\n    artifacts: VerificationArtifact[];\n    summaries: EffectSummary[];\n    assumptions: {\n        schema: \"uneffect-assumptions/v1\";\n        entries: [];\n        violations: [];\n    };\n    typedArrays: {\n        obligations: [];\n        diagnostics: [];\n        windows: [];\n        statistics: {\n            solverQueries: 0;\n        };\n        files: Record<string, never>;\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    errors: number;\n    warnings: number;\n    project: CorsaProjectProvenance;\n}"
           ]
         },
         {

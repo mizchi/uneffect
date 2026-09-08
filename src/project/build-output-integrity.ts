@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 
 import type { BuildOutputFileIntegrity, BuildOutputIntegrity } from "./build-output-contracts.js";
 export type { BuildOutputFileIntegrity, BuildOutputIntegrity } from "./build-output-contracts.js";

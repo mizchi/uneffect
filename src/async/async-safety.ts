@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { bindingIdentity, type BindingIdentity } from "../frontends/typescript/binding-identity.js";
 import { extractAnnotations, extractLocatedAnnotations } from "../support/annotations.js";
 import type { DiagnosticNote } from "../support/diagnostics.js";

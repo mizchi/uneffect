@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { prepareCapabilityDslSourceLinks } from "./capability-dsl-source.js";
 import type { PreparedCapabilityDslLinks } from "./capability-dsl-source.js";
 export { Builtin, Console, Custom, Fetch, FsRead, FsWrite, Throw, defineCapability, defineEffectSchema } from "./capability-authoring.js";

@@ -1,9 +1,10 @@
+import { resolveModuleInitializationContract } from "../src/frontends/typescript/builtin-runtime-binding.js";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
-import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, type BuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
 import { builtinSemanticCatalog, compileBuiltinSemanticCatalog } from "../src/effects/builtin-semantic-catalog.js";
 
 describe("builtin semantic overlays", () => {

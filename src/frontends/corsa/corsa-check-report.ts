@@ -5,6 +5,7 @@ import type { EffectBaselineAssessment } from "../../effects/effect-baseline.js"
 import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
 
 export interface CorsaCheckJsonReport {
+  corsaBuiltinCalls?: CorsaCheckResult["corsaBuiltinCalls"];
   schema: "uneffect-check/v1";
   outcome: "passed" | "failed";
   counts: { errors: number; warnings: number };
@@ -35,6 +36,7 @@ export function createCorsaCheckJsonReport(
 ): CorsaCheckJsonReport {
   const passed = result.errors === 0 && (assurance?.passed ?? true);
   return {
+    ...(result.corsaBuiltinCalls === undefined ? {} : { corsaBuiltinCalls: result.corsaBuiltinCalls }),
     schema: "uneffect-check/v1",
     outcome: passed ? "passed" : "failed",
     counts: { errors: result.errors, warnings: result.warnings },

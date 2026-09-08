@@ -1,5 +1,5 @@
 import { buildModuleInitializationOrder, type ModuleSourceFacts } from "./module-order-core.js";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { classifyLexicalExecution } from "../frontends/typescript/lexical-execution.js";

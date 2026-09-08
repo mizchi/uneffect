@@ -47,7 +47,7 @@ TS7.0 の公式発表では新しい programmatic API を 7.1 に向けた別 AP
 | --- | --- | --- |
 | CFG / workflow / impact | 言語非依存 API | 集約入口の依存整理 |
 | spec / DSL / SMT・Quint / property test | Oxc の独立入口、native contract / refinement linking | DSL と実装本体の適合性証明は別 |
-| CFG lint / module-order | native CLI と v1/v2 解析 | 安定版 `/module-order` の Program API、workspace checker への統合 |
+| CFG lint / module-order | native CLI、公開 `/module-order` の非同期 v1/v2 API | workspace checker への統合 |
 | callable / type / 到達性 | native signature・型同一性・実在する await 式の型・never/boolean refinement | 任意型の awaited 化、網羅的 switch 等の機能差 |
 | build outputs | 単一 project と references の依存順 JS/d.ts 照合 | freshness、map、対応する emit 設定、既存 assurance flags への統合 |
 | workspace summary | native 宣言・入力・出力と直接 import 呼出の結び付け | 主張は `trusted`。本体証明、呼出側の事前条件、効果の合成は未実装 |
@@ -59,7 +59,7 @@ TS7.0 の公式発表では新しい programmatic API を 7.1 に向けた別 AP
 
 `check` が現時点で旧経路を選ぶ条件は次のとおり。
 
-- `--typescript-program` または `--corsa-parity`。
+- `--typescript-program`。`--corsa-builtins` は Oxc/Corsa のみで動作する。
 - `--contract-summary`、`--resource-contract`、`--declaration-transforms`、`--module-entry` の指定。
 - `--require-build-artifacts` または `--require-exact-build-artifacts`。
 - `--project` の設定に project references がある場合。

@@ -110,7 +110,7 @@ try {
       type ModuleInitializationOrder, type ModuleInitializationOrderV2,
       type ModuleInitializationV2Options,
     } from "@mizchi/uneffect/module-order";
-    import { analyzeCorsaModuleInitializationOrderV2, type CorsaModuleOrderV2Options } from "@mizchi/uneffect/experimental/module-order/corsa";
+    import { type ModuleOrderV2Options } from "@mizchi/uneffect/module-order";
     import ts from "@typescript/typescript6";
     import { lintPrerequisites, initializationRule, type RuleCfg } from "@mizchi/uneffect/experimental/lint";
     import { lowerCorsaRuleCfg, type CorsaRuleOptions } from "@mizchi/uneffect/experimental/lint/corsa";
@@ -140,8 +140,8 @@ try {
     import corsaSchema from "@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json" with { type: "json" };
     import moduleOrderV2Schema from "@mizchi/uneffect/schemas/uneffect-module-order-v2.schema.json" with { type: "json" };
 
-    const nativeOptions: CorsaModuleOrderV2Options = { entryFile: "entry.mts", proofBudget: { moduleControlFlowIterations: 32 } };
-    const nativeAnalyzer: (options: CorsaModuleOrderV2Options) => Promise<ModuleInitializationOrderV2> = analyzeCorsaModuleInitializationOrderV2;
+    const nativeOptions: ModuleOrderV2Options = { entryFile: "entry.mts", proofBudget: { moduleControlFlowIterations: 32 } };
+    const nativeAnalyzer: (options: ModuleOrderV2Options) => Promise<ModuleInitializationOrderV2> = analyzeModuleInitializationOrderV2;
     void nativeOptions; void nativeAnalyzer;
     const cfg: BasicBlockFixedPointOptions<number, "ready"> = {
       entry: "entry", initial: 1, budget: { name: "consumer", limit: 2 },
@@ -158,14 +158,14 @@ try {
     analyzeImpact(parseDependencyGraph([{ id: "input", dependencies: [] }]), ["input"]);
     const moduleProgram = ts.createProgram(["query.ts"], { noEmit: true });
     const moduleOptions: ModuleInitializationV2Options = { proofBudget: { moduleControlFlowIterations: 32 } };
-    const moduleV1: ModuleInitializationOrder = analyzeModuleInitializationOrder(moduleProgram, "query.ts");
-    const moduleV2: ModuleInitializationOrderV2 = analyzeModuleInitializationOrderV2(moduleProgram, "query.ts", moduleOptions);
+    const moduleV1: ModuleInitializationOrder = await analyzeModuleInitializationOrder({ entryFile: "query.ts" });
+    const moduleV2: ModuleInitializationOrderV2 = await analyzeModuleInitializationOrderV2({ entryFile: "query.ts", ...moduleOptions });
     void moduleV1; void moduleV2;
     const ruleCfg: RuleCfg = { entry: "entry", blocks: [{ id: "entry", events: [], successors: [] }] };
     lintPrerequisites(ruleCfg, initializationRule);
     lowerTypeScriptRuleCfg(moduleProgram, { fileName: "query.ts", functionName: "run", bindings: [] });
     // @ts-expect-error the public proof budget is numeric
-    analyzeModuleInitializationOrderV2(moduleProgram, "query.ts", { proofBudget: { moduleControlFlowIterations: "32" } });
+    analyzeModuleInitializationOrderV2({ entryFile: "query.ts", proofBudget: { moduleControlFlowIterations: "32" } });
     // @ts-expect-error unknown task kinds must not enter the typed contract
     const invalidStep: Workflow["steps"][number] = { id: "bad", kind: "frok", next: [] };
     void invalidStep;
@@ -309,37 +309,31 @@ try {
   const moduleApiProbe = join(consumer, "module-api.mjs");
   writeFileSync(moduleApiProbe, `
     import assert from "node:assert/strict";
-    import ts from "@typescript/typescript6";
     import {
       analyzeModuleInitializationOrder, analyzeModuleInitializationOrderV2,
       DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET,
     } from "@mizchi/uneffect/module-order";
     import * as experimental from "@mizchi/uneffect/experimental";
     const entry = process.argv[2];
-    const program = ts.createProgram([entry], {
-      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
-    });
+    const options = { entryFile: entry, configFile: process.argv[3] };
     assert.equal(experimental.analyzeModuleInitializationOrder, analyzeModuleInitializationOrder);
     assert.equal(experimental.analyzeModuleInitializationOrderV2, analyzeModuleInitializationOrderV2);
-    assert.equal(analyzeModuleInitializationOrder(program, entry).evidence, "unknown");
-    const { compiler: legacyCompiler, ...legacyOrder } = analyzeModuleInitializationOrderV2(program, entry);
-    const { compiler: nativeCompiler, ...nativeOrder } = ${JSON.stringify(conditionalOrder)};
-    assert.deepEqual(legacyOrder, nativeOrder);
-    assert.equal(legacyCompiler.typescriptVersion, ts.version);
-    assert.match(nativeCompiler.typescriptVersion, /^7[.]/);
-    const limited = analyzeModuleInitializationOrderV2(program, entry, { proofBudget: { moduleControlFlowIterations: 1 } });
+    assert.equal((await analyzeModuleInitializationOrder(options)).evidence, "unknown");
+    const { compiler, ...order } = await analyzeModuleInitializationOrderV2(options);
+    const { compiler: cliCompiler, ...cliOrder } = ${JSON.stringify(conditionalOrder)};
+    assert.deepEqual(order, cliOrder);
+    assert.match(compiler.typescriptVersion, /^7[.]/);
+    assert.equal(compiler.typescriptVersion, cliCompiler.typescriptVersion);
+    const limited = await analyzeModuleInitializationOrderV2({ ...options, proofBudget: { moduleControlFlowIterations: 1 } });
     assert.equal(limited.evidence, "unknown");
     assert(limited.unknowns.some((item) => item.kind === "module-control-flow-proof"));
-    // Missing entries must not skip validation just because there is no CFG candidate.
-    assert.throws(() => analyzeModuleInitializationOrderV2(program, "missing.mts", {
+    await assert.rejects(analyzeModuleInitializationOrderV2({ entryFile: "missing.mts",
       proofBudget: { moduleControlFlowIterations: 0 },
     }), RangeError);
-    assert.throws(() => analyzeModuleInitializationOrderV2(program, entry, { proofBudget: null }), TypeError);
+    await assert.rejects(analyzeModuleInitializationOrderV2({ ...options, proofBudget: null }), TypeError);
     assert.equal(Reflect.set(DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET, "moduleControlFlowIterations", 1), false);
   `);
-  execFileSync(process.execPath, [moduleApiProbe, moduleEntry], { cwd: consumer, stdio: "inherit" });
+  execFileSync(process.execPath, [moduleApiProbe, moduleEntry, moduleConfig], { cwd: consumer, stdio: "inherit" });
   const mutableModuleSource = moduleSource.replace("const warmCache", "let warmCache");
   if (mutableModuleSource === moduleSource) throw new Error("packed module-order negative control did not mutate the selector");
   writeFileSync(moduleEntry, mutableModuleSource);
@@ -359,8 +353,8 @@ try {
     if (typeof lowerCorsaRuleCfg !== "function" || typeof lowerCorsaRegistryReadCfg !== "function") throw new Error("Missing Corsa linter entry");
     const { lintPrerequisites, ownPropertyReadRule } = await import("@mizchi/uneffect/experimental/lint");
     if (typeof lintPrerequisites !== "function" || ownPropertyReadRule.id !== "own-property-before-read") throw new Error("Missing compiler-independent linter entry");
-    const moduleOrder = await import("@mizchi/uneffect/experimental/module-order/corsa");
-    if (typeof moduleOrder.analyzeCorsaModuleInitializationOrderV2 !== "function") throw new Error("Missing native module-order entry");
+    const moduleOrder = await import("@mizchi/uneffect/module-order");
+    if (typeof moduleOrder.analyzeModuleInitializationOrderV2 !== "function") throw new Error("Missing native module-order entry");
     const spec = await import("@mizchi/uneffect/experimental/spec");
     if (typeof spec.parseSpec !== "function" || typeof spec.lintSpecWithZ3 !== "function") throw new Error("Missing native specification entry");
     const equality = spec.generateRuntimeAssertionExpression(spec.parseTemporalExpression("Map([[1, Set({ owner: 1 })]]) === Map([[1, Set({ owner: 1 })]])"));

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import type { RefinementBindingManifest } from "./binding-contracts.js";
 import { refinementDslSpecificationFile, resolveRefinementDslSourceLinks } from "./refinement-dsl-source.js";
 import { refinementCallableReferences, validateRefinementCallableTypes, type RefinementCallableReference } from "./refinement-link.js";

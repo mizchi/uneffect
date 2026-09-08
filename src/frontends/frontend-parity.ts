@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { normalizeCorsaFacts } from "./corsa/corsa-fact-consumer.js";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { extractAnnotations } from "../support/annotations.js";
 import { formatEffect, parseEffectSet } from "../effects/capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "../async/async-safety.js";

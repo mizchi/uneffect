@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-corsa-builtin-calls-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "corsaRevision",
+    "entries",
+    "files",
+    "summary"
+  ],
+  "properties": {
+    "schema": {
+      "const": "uneffect-corsa-builtin-calls/v1"
+    },
+    "corsaRevision": {
+      "type": "string"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fileName",
+              "start",
+              "end",
+              "status",
+              "operation",
+              "compilerRevision",
+              "symbol"
+            ],
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "const": "classified"
+              },
+              "operation": {
+                "enum": [
+                  "Fetch",
+                  "Console"
+                ]
+              },
+              "compilerRevision": {
+                "type": "string"
+              },
+              "symbol": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "declarations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "valueDeclaration": {
+                    "type": "string"
+                  }
+                }
+              },
+              "receiver": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "flags": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "declarations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "valueDeclaration": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fileName",
+              "start",
+              "end",
+              "status"
+            ],
+            "properties": {
+              "fileName": {
+                "type": "string"
+              },
+              "start": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "const": "unclassified"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "parser",
+          "errors",
+          "exclusions"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "./uneffect-syntax-facts-v1.schema.json#/properties/source"
+          },
+          "parser": {
+            "$ref": "./uneffect-syntax-facts-v1.schema.json#/properties/parser"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclusions": {
+            "type": "array",
+            "items": {
+              "$ref": "./uneffect-syntax-facts-v1.schema.json#/$defs/exclusion"
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classified",
+        "unclassified",
+        "excluded",
+        "invalidFiles"
+      ],
+      "properties": {
+        "classified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unclassified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excluded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalidFiles": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ import type { AssuranceProfile, AssuranceStatus } from "../evidence/assurance.js
 import type { TypeScriptWorkspace } from "../frontends/typescript/typescript-project.js";
 import type { DeclarationOutputIntegrity, WorkspaceEffectComposition } from "../project/workspace-effects.js";
 import type { WorkspaceRefinementComposition, WorkspaceRefinementLink } from "../project/workspace-refinements.js";
-import type { CorsaEffectParityResult } from "../frontends/corsa/corsa-effect-parity.js";
+import type { CorsaBuiltinCallsResult } from "../frontends/corsa/corsa-builtin-calls.js";
 import type { WorkspaceModuleInitializationComposition } from "../project/workspace-module-initialization.js";
 import type { BuildOutputIntegrity } from "../project/build-output-integrity.js";
 import type { EffectUnknownReason } from "../effects/effects.js";
@@ -56,7 +56,7 @@ export interface CheckJsonReport {
   ownership: Array<OwnershipDiagnostic & { fileName: string }>;
   asyncIterators: IteratorCheckEvidence[];
   resourceProtocols: CheckReportResourceProtocol[];
-  corsaEffectParity?: CorsaEffectParityResult;
+  corsaBuiltinCalls?: CorsaBuiltinCallsResult;
   assurance: AssuranceAssessment | null;
   project: TypeScriptProjectProvenance | null;
   effectBaseline?: EffectBaselineAssessment;
@@ -153,7 +153,7 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
       status: resource.status, evidence: resource.evidence, authority: resource.authority, state: resource.state,
       transitionKinds: resource.transitions.map((transition) => transition.kind),
     })),
-    ...(result.corsaEffectParity === undefined ? {} : { corsaEffectParity: result.corsaEffectParity }),
+    ...(result.corsaBuiltinCalls === undefined ? {} : { corsaBuiltinCalls: result.corsaBuiltinCalls }),
     assurance: assurance ?? null,
     project: result.project ?? null,
   };

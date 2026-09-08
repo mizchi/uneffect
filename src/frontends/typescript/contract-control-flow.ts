@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../../support/typescript-compiler.js";
 import { createContractControlFlow } from "../../contracts/control-flow-core.js";
 import type { ContractExit, ControlFlowSyntax } from "../../contracts/control-flow-contracts.js";
 

@@ -3,7 +3,8 @@
  * Native `@typescript/typescript-*` (TS7) is allowed.
  */
 export async function resolve(specifier, context, nextResolve) {
-  if (specifier === "typescript" || specifier.startsWith("typescript/")) {
+  if (specifier === "typescript" || specifier.startsWith("typescript/")
+    || specifier === "@typescript/typescript6" || specifier.startsWith("@typescript/typescript6/")) {
     throw new Error(`javascript typescript must not load on default check: ${specifier}`);
   }
   const result = await nextResolve(specifier, context);

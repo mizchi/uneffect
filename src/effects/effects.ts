@@ -1,11 +1,12 @@
-import ts from "@typescript/typescript6";
+import { resolveModuleInitializationContract } from "../frontends/typescript/builtin-runtime-binding.js";
+import ts from "../support/typescript-compiler.js";
 import { extractLocatedAnnotations, validateUneffectAnnotations, type AnnotationDiagnostic } from "../support/annotations.js";
 import type { DiagnosticNote } from "../support/diagnostics.js";
 import { effectPermits, effectSchema, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, parseParameterizedCapabilityScope, unknownCapabilityReasons, type Effect, type EffectSchema } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, standardLibraryOperation, type FrontendSymbolAdapter } from "../frontends/frontend-adapter.js";
 import type { CorsaApiFrontend } from "../frontends/corsa/corsa-api-frontend.js";
 import { overlayCorsaBuiltinCatalog } from "../frontends/corsa/corsa-builtin-catalog.js";
-import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry } from "./builtin-contracts.js";
+import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { buildProgramCallGraph, expressionAtExclusiveConstArgumentPath, reviewedOpaqueCallablePropertyEffects, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "../resources/disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "../async/promise-chains.js";

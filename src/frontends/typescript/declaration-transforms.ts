@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import ts from "@typescript/typescript6";
+import ts from "../../support/typescript-compiler.js";
 
 export const declarationTransformManifestSchema = "uneffect-declaration-transforms/v1" as const;
 export const declarationTransformEvidenceSchema = "uneffect-declaration-transform-evidence/v1" as const;

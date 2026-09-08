@@ -1,3 +1,4 @@
+import { analyzeCorsaBuiltinCalls, type CorsaBuiltinCallsResult } from "./corsa-builtin-calls.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry } from "../../effects/builtin-contracts.js";
@@ -13,6 +14,7 @@ import { collectCorsaEffectBindings } from "./corsa-effect-calls.js";
 import { propagateEffectNames } from "../../effects/effect-propagation.js";
 
 export interface CorsaCheckOptions {
+  includeBuiltinCalls?: boolean;
   configFile: string;
   corsaExecutable?: string;
   cwd?: string;
@@ -46,6 +48,7 @@ export interface CorsaProjectProvenance {
 }
 
 export interface CorsaCheckResult {
+  corsaBuiltinCalls?: CorsaBuiltinCallsResult;
   diagnostics: CorsaCheckDiagnostic[];
   sources: Map<string, string>;
   artifacts: VerificationArtifact[];
@@ -300,6 +303,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     }
     const errors = diagnostics.filter((item) => item.severity === "error").length;
     return {
+      ...(options.includeBuiltinCalls ? { corsaBuiltinCalls: analyzeCorsaBuiltinCalls(sources, frontend) } : {}),
       diagnostics,
       sources,
       artifacts,

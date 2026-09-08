@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { analyzeIteratorCleanupInProgram, type AsyncIteratorCleanup } from "../async/async-iterator-cleanup.js";
 import type { AssumptionEntry } from "../evidence/assumptions.js";
 import type { AsyncIteratorCheckerDiagnostic } from "../support/diagnostics.js";

@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../../support/typescript-compiler.js";
 
 /** Resolve the statement that owns leading Uneffect annotations for a callable. */
 export function callableAnnotationOwner(node: ts.Node): ts.Node {

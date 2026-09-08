@@ -22,7 +22,7 @@ import { exportCorsaCheckerFacts } from "../src/frontends/corsa/corsa-checker-ex
 import { resolveCorsaExecutable } from "../src/frontends/corsa/corsa-api-frontend.js";
 import { compareUneffectFrontends } from "../src/frontends/frontend-parity.js";
 import { analyzeModuleInitializationOrder } from "../src/modules/module-initialization.js";
-import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
+import { analyzeModuleInitializationOrderV2 } from "./oracles/typescript-module-order-v2.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/project/custom-validators.js";
 import { resolveRefinementDslFileLink, resolveRefinementDslLink } from "../src/refinement/refinement-dsl.js";
 import * as publicApi from "../src/api/public.js";

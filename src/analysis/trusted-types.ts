@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import type { DiagnosticNote, DiagnosticSeverity } from "../support/diagnostics.js";
 
 export interface TrustedTypesDiagnostic {

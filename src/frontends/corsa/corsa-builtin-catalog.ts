@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import ts from "@typescript/typescript6";
+import ts from "../../support/typescript-compiler.js";
 import { builtinContractRegistry, type BuiltinContractRegistry } from "../../effects/builtin-contracts.js";
 import type { CorsaApiFrontend, CorsaApiSymbolFact, CorsaBuiltinCallQuery, CorsaBuiltinCallResolution } from "./corsa-api-frontend.js";
 import type { FrontendSymbolAdapter, ResolvedCallSite } from "../frontend-adapter.js";

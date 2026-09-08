@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { createHash } from "node:crypto";
 import type { DiagnosticNote } from "../support/diagnostics.js";
 import { InvariantLoweringError, lowerInvariantProgram, type ContractControlFlowEvidence, type ExternalContractBinding, type InvariantObligation } from "./invariant-ir.js";

@@ -90,10 +90,6 @@
       "types": "./dist/src/frontends/corsa/corsa-callable-frontend.d.ts",
       "import": "./dist/src/frontends/corsa/corsa-callable-frontend.js"
     },
-    "./experimental/module-order/corsa": {
-      "types": "./dist/src/modules/corsa-module-order.d.ts",
-      "import": "./dist/src/modules/corsa-module-order.js"
-    },
     "./experimental/build/corsa": {
       "types": "./dist/src/project/corsa-build-output.d.ts",
       "import": "./dist/src/project/corsa-build-output.js"
@@ -125,7 +121,8 @@
     "test": "tsx ci/run-test-tiers.ts",
     "bench": "vitest bench --run",
     "check": "tsc -p tsconfig.json --noEmit && tsx ci/run-test-tiers.ts",
-    "prepack": "pnpm build"
+    "prepack": "pnpm build",
+    "smoke:corsa": "node ci/smoke-corsa-no-typescript.mjs"
   },
   "engines": {
     "node": ">=24"

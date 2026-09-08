@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import type { RuleCfg, RuleEvent, RuleLocation, TypeScriptRuleBinding, TypeScriptRuleLowering, TypeScriptRuleOptions } from "./contracts.js";
 import { normalizeSourceOptions } from "./source-options.js";
 

@@ -63,25 +63,30 @@ async function analyze(options: CorsaModuleOrderOptions, limit?: number): Promis
     frontend = await openCorsaApiFrontend({ configFile, corsaExecutable: executable });
     const output = await check();
     const diagnostics: ModuleInitializationUnknown[] = [];
+    const projectDiagnostics: ModuleInitializationUnknown[] = [];
     // Native diagnostics report a point, not a range. Do not invent a token length.
     for (const line of output.split(/\r?\n/u)) {
       const match = /^(?:(.+)\((\d+),(\d+)\): )?error TS\d+: (.*)$/u.exec(line);
       if (!match) continue;
       const fileName = match[1] ? resolve(match[1]) : entryFile;
-      let start = 0;
+      let span: { start: number; end: number } | undefined;
       if (match[1]) {
-        const text = texts.get(fileName) ?? "";
-        const lines = text.match(/[^\r\n\u2028\u2029]*(?:\r\n|[\r\n\u2028\u2029]|$)/gu) ?? [];
-        start = lines.slice(0, Number(match[2]) - 1).reduce((sum, value) => sum + value.length, 0) + Number(match[3]) - 1;
+        const text = texts.get(fileName) ?? await readFile(fileName, "utf8").catch(() => undefined);
+        if (text !== undefined) {
+          const lines = text.match(/[^\r\n\u2028\u2029]*(?:\r\n|[\r\n\u2028\u2029]|$)/gu) ?? [];
+          const start = lines.slice(0, Number(match[2]) - 1).reduce((sum, value) => sum + value.length, 0) + Number(match[3]) - 1;
+          span = { start, end: start };
+        }
       }
-      diagnostics.push({ fileName, kind: "typescript-error", ...(match[1] ? { span: { start, end: start } } : {}), detail: match[4]! });
+      const target = match[1] && texts.has(fileName) ? diagnostics : projectDiagnostics;
+      target.push({ fileName, kind: "typescript-error", ...(span ? { span } : {}), detail: match[4]! });
     }
     const version = (await run(["--version"])).trim().replace(/^Version\s+/u, "");
     const config = JSON.parse(await run([...diagnosticOptions, "--showConfig", "-p", configFile])) as { compilerOptions: Record<string, unknown> };
     const compilerOptionsDigest = createHash("sha256").update(JSON.stringify(Object.fromEntries(Object.entries(config.compilerOptions).sort(([a], [b]) => a.localeCompare(b))))).digest("hex");
     const records = new Map<string, OxcModuleFacts>();
     const native = frontend;
-    const baseline = buildModuleInitializationOrder({ compiler: { typescriptVersion: version, compilerOptionsDigest }, diagnostics,
+    const baseline = buildModuleInitializationOrder({ compiler: { typescriptVersion: version, compilerOptionsDigest }, diagnostics, projectDiagnostics,
       getModule(fileName) {
         if (/\.d\.[cm]?ts$/u.test(fileName) || !texts.has(fileName)) return undefined;
         let record = records.get(fileName);

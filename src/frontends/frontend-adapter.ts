@@ -1,6 +1,7 @@
-import ts from "@typescript/typescript6";
+import { builtinContractApplies } from "./typescript/builtin-runtime-binding.js";
+import ts from "../support/typescript-compiler.js";
 import { createHash } from "node:crypto";
-import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinResultRefinement, type BuiltinSymbolKey } from "../effects/builtin-contracts.js";
+import { builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinResultRefinement, type BuiltinSymbolKey } from "../effects/builtin-contracts.js";
 import type { SourceSpan } from "../support/annotations.js";
 import type { BuiltinSemantics } from "../effects/builtin-semantic-schema.js";
 import { hasStableRootPath } from "./typescript/stable-callable.js";

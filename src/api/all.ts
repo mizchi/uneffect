@@ -1,3 +1,4 @@
+export { resolveModuleInitializationContract } from "../frontends/typescript/builtin-runtime-binding.js";
 export * from "../runtime/numeric.js";
 export { analyzeEffectSummariesInProgram, analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "../effects/effects.js";
 export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus, ExternalFunctionEffectContract, ExternalModuleEffectContract } from "../effects/effects.js";
@@ -102,7 +103,7 @@ export { checkClockConformance, createBrowserClockObserver, createDenoClockObser
 export type { ClockConformanceDiagnostic, ClockConformancePolicy, ClockConformanceResult, ClockObservation, ClockRateRange, HostClockObserver, HostClockSources } from "../support/clock-conformance.js";
 export { projectDenoPermissions, resolveTargetTemp } from "../effects/deno-permissions.js";
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "../effects/deno-permissions.js";
-export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract } from "../effects/builtin-contracts.js";
+export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract } from "../effects/builtin-contracts.js";
 export { stableSerializeBuiltinSemantics, validateBuiltinSemantics } from "../effects/builtin-semantic-schema.js";
 export type {
   BuiltinSemantics,
@@ -131,10 +132,12 @@ export type {
   DeclarationTransformEvidence, DeclarationTransformManifest,
   DeclarationTransformValidation, EmbeddedTypeScriptTransform,
 } from "../frontends/typescript/declaration-transforms.js";
-export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "../modules/module-initialization.js";
+export { isRuntimeModuleDependency } from "../modules/module-initialization.js";
+export { analyzeModuleInitializationOrder, analyzeModuleInitializationOrderV2, DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET } from "../modules/module-order-api.js";
+export type { ModuleOrderOptions, ModuleOrderV2Options } from "../modules/module-order-api.js";
 export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationCycleComponent, ModuleInitializationCycleRequest, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationSourceEvidence, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "../modules/module-initialization.js";
-export { analyzeModuleInitializationOrderV2, DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET } from "../modules/module-initialization-v2.js";
-export type { ModuleInitializationCompletionPath, ModuleInitializationConstraintV2, ModuleInitializationControlFlow, ModuleInitializationControlFlowEdge, ModuleInitializationControlFlowEdgeRole, ModuleInitializationControlFlowProof, ModuleInitializationEventKindV2, ModuleInitializationEventV2, ModuleInitializationModuleV2, ModuleInitializationOrderV2, ModuleInitializationUnknownV2, ModuleInitializationV2Options } from "../modules/module-initialization-v2.js";
+
+export type { ModuleInitializationCompletionPath, ModuleInitializationConstraintV2, ModuleInitializationControlFlow, ModuleInitializationControlFlowEdge, ModuleInitializationControlFlowEdgeRole, ModuleInitializationControlFlowProof, ModuleInitializationEventKindV2, ModuleInitializationEventV2, ModuleInitializationModuleV2, ModuleInitializationOrderV2, ModuleInitializationUnknownV2, ModuleInitializationV2Options } from "../modules/contracts.js";
 export { loadTypeScriptProject, loadTypeScriptWorkspace } from "../frontends/typescript/typescript-project.js";
 export type { TypeScriptBuildArtifactEvidence, TypeScriptBuildArtifactObservation, TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance, TypeScriptProjectReference, TypeScriptWorkspace, TypeScriptWorkspaceBlocker } from "../frontends/typescript/typescript-project.js";
 export { createCheckJsonReport, createCheckWorkspaceJsonReport } from "../cli/check-report.js";

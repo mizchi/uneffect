@@ -5,7 +5,7 @@ import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { analyzeModuleInitializationOrder } from "../src/modules/module-initialization.js";
-import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
+import { analyzeModuleInitializationOrderV2 } from "./oracles/typescript-module-order-v2.js";
 import { analyzeCorsaModuleInitializationOrder, analyzeCorsaModuleInitializationOrderV2 } from "../src/modules/corsa-module-order.js";
 
 const cases: Array<[string, Record<string, string>]> = [

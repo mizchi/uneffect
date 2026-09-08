@@ -1,7 +1,7 @@
 /* uneffect:module_effect Throw<Error> | InvokeUserCode */
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { createContractSummaryBundle } from "../contracts/contract-summary.js";
 import { verifyContractObligations } from "../contracts/contracts.js";
 import { builtinContractRegistry } from "../effects/builtin-contracts.js";

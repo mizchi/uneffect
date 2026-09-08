@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { inspectContractImplementation, validateContractSignatureDomains } from "./contract-link.js";
 import { numericContractDomain } from "./numeric-contract-identity.js";
 import type { NumericDomain } from "./logic-contracts.js";

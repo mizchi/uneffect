@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { createRequire } from "node:module";
-import ts from "@typescript/typescript6";
+import ts, { compilerPackageFile } from "../../support/typescript-compiler.js";
 
 export interface TypeScriptCompilerProvenance {
   analyzerVersion: string;
@@ -71,10 +71,8 @@ class TypeScriptProjectConfigError extends Error {
   }
 }
 
-const analyzerRequire = createRequire(import.meta.url);
-
 function compilerProvenance(projectFile: string): TypeScriptCompilerProvenance {
-  const analyzerPackageFile = analyzerRequire.resolve("@typescript/typescript6/package.json");
+  const analyzerPackageFile = compilerPackageFile;
   const resolver = createRequire(projectFile);
   try {
     const consumerPackageFile = resolver.resolve("typescript/package.json");

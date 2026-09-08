@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { joinFlowValues, solveBasicBlockFixedPoint } from "../cfg/index.js";
 import {
   findHandlerJoinCandidates,

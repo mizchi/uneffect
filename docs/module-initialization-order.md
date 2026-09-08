@@ -7,82 +7,58 @@ happen before others.
 
 ## Supported programmatic API
 
-Install the `@typescript/typescript6` peer and pass a caller-owned TypeScript 6
-`Program` to the supported `@mizchi/uneffect/module-order` entrypoint:
+`@mizchi/uneffect/module-order` uses Oxc syntax and native Corsa semantic
+queries. Neither JavaScript TypeScript package is required.
 
 ```ts
-import ts from "@typescript/typescript6"
-import { resolve } from "node:path"
 import {
   analyzeModuleInitializationOrder,
   analyzeModuleInitializationOrderV2,
+  type ModuleOrderV2Options,
 } from "@mizchi/uneffect/module-order"
 
-const entry = resolve("src/main.mts")
-const program = ts.createProgram([entry], {
-  target: ts.ScriptTarget.ES2024,
-  module: ts.ModuleKind.NodeNext,
-  moduleResolution: ts.ModuleResolutionKind.NodeNext,
-  noEmit: true,
-})
-const v1 = analyzeModuleInitializationOrder(program, entry)
-const v2 = analyzeModuleInitializationOrderV2(program, entry, {
-  proofBudget: { moduleControlFlowIterations: 32 },
-})
-// Inspect evidence, unknowns, claims, and exclusions together.
-console.log(v1.evidence, v2.evidence)
-```
-
-The entrypoint exports both analyzers, their versioned artifact types, and
-`DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET`. Contracts live separately from the
-compiler/CFG implementation. The original experimental exports remain aliases
-for compatibility; new consumers should use `/module-order`.
-
-Both analyzers are synchronous. `entryFile` must be a nonempty string naming
-a source in the supplied Program; malformed identities throw `TypeError`,
-while an absent or declaration-only entry produces `entry-not-found` unknown
-evidence. Analysis follows the entry's Program-visible static dependency
-closure. Source diagnostics outside that closure do not block it; configuration
-parsing, compiler option, and global type errors do block it. Diagnostics with
-no source coordinates are attributed to the entry without an invented span.
-Rebuild the Program after changing sources or compiler options.
-
-V2 options and `proofBudget` must be objects with only the documented fields.
-Omitted or `undefined` budgets use the frozen default of 32 iterations. Explicit
-`null`, wrong value types, and unknown fields throw `TypeError`; numeric limits
-that are not positive safe integers throw `RangeError`. Validation runs even
-when no conditional-await proof is needed. A valid but exhausted budget yields
-`unknown` with `module-control-flow-proof`, never a partial positive verdict.
-
-The artifact schemas remain `uneffect-module-order/v1` and
-`uneffect-module-order/v2`, with their existing published bytes. Stored JSON
-must be checked against its matching schema; these analyzers accept Programs,
-not persisted evidence. Schema conformance alone does not prove source identity
-or event ordering. The supported source fragments and exclusions follow below.
-
-## Corsa/Oxc API
-
-The CLI uses Oxc syntax and native Corsa semantic queries. An independent async
-adapter is available without the JavaScript TypeScript compiler:
-
-```ts
-import { analyzeCorsaModuleInitializationOrderV2 } from "@mizchi/uneffect/experimental/module-order/corsa"
-
-const order = await analyzeCorsaModuleInitializationOrderV2({
+const options: ModuleOrderV2Options = {
   entryFile: "src/main.mts",
   configFile: "tsconfig.json",
   proofBudget: { moduleControlFlowIterations: 32 },
+}
+const v1 = await analyzeModuleInitializationOrder({
+  entryFile: options.entryFile,
+  configFile: options.configFile,
 })
+const v2 = await analyzeModuleInitializationOrderV2(options)
+console.log(v1.evidence, v2.evidence)
 ```
 
-`analyzeCorsaModuleInitializationOrder` returns v1. Both APIs accept optional
-`configFile` and `corsaExecutable`; v2 also accepts the proof budget above.
-They share ordering and CFG proof implementations with the synchronous Program
-API. Native artifacts record the actual native compiler version and compiler
-options digest. Native diagnostic spans are points, because the diagnostic
-protocol does not report token lengths. Frontend failures reject the promise;
-no JavaScript compiler fallback is attempted. The new adapter remains
-experimental while the synchronous `/module-order` contract remains supported.
+Both analyzers return Promises. `entryFile` must name a readable source in the
+project. `configFile` is optional: without it, the analyzer opens an isolated
+ES2024/NodeNext project. Both APIs accept `corsaExecutable` to select a native
+compiler. Invalid inputs and frontend failures reject the Promise. There is
+no JavaScript compiler fallback.
+
+Source diagnostics are limited to the entry's static dependency closure.
+Configuration errors (including inherited tsconfigs), compiler option errors,
+and missing global types block verification regardless of that closure.
+Native diagnostics retain point spans where text is available; coordinate-free
+errors use the entry identity without inventing a span. Native artifacts record
+the compiler version and compiler-options digest. Source changes during analysis
+cause rejection so callers can retry with a stable project.
+
+V2 accepts `proofBudget`. Omitted or `undefined` budgets use the frozen default
+of 32 iterations, exported as `DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET`.
+Explicit `null`, wrong types, and unknown fields reject with `TypeError`;
+numeric limits that are not positive safe integers reject with `RangeError`.
+Validation precedes file access, even without a conditional-await proof.
+An exhausted budget yields `unknown` with `module-control-flow-proof`.
+
+The artifact schemas remain `uneffect-module-order/v1` and
+`uneffect-module-order/v2`. Inspect evidence, unknowns, claims, and exclusions
+together; schema conformance alone does not prove event ordering.
+
+The unreleased synchronous Program API and the redundant
+`/experimental/module-order/corsa` package export have been removed.
+The module-order functions exported from `/experimental` use this same native
+API, although importing that aggregate entrypoint still loads other TS6 modules.
 
 ## CLI and v1 ordering fragment
 

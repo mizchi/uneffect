@@ -1,7 +1,7 @@
 import { parseLogicExpression } from "./logic.js";
 import { makeObligation, controlFlowBlockId } from "./obligations.js";
 import { createHash } from "node:crypto";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { extractAnnotations } from "../support/annotations.js";
 import { TypeScriptFrontendAdapter } from "../frontends/frontend-adapter.js";
 import { resolveStableCallableSymbol, stableCallableDeclaration } from "../frontends/typescript/stable-callable.js";

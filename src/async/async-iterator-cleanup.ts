@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import type { ResourceProtocolModel } from "../resources/resource-protocol.js";
 import { analyzeResourceCallableSummaries } from "../resources/resource-callable-typescript.js";
 import type { ResourceCallableSummary } from "../resources/resource-protocol.js";

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { analyzeAsyncSafetyInProgram } from "../async/async-safety.js";
 import { attachContractEffectBoundaries, verifyContractObligations, type VerificationArtifact } from "../contracts/contracts.js";
 import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type OwnershipCheckerDiagnostic, type ResourceCheckerDiagnostic, type TypedArrayCheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "../support/diagnostics.js";
@@ -20,7 +20,7 @@ import { analyzeResourceCallableSummaries, analyzeResourceLifecyclesInSource, ty
 import { bindResourceCallableArtifactsToProgram, type ResourceCallableContractArtifact } from "../resources/resource-callable-artifact.js";
 import { standardLibraryOperation } from "../frontends/frontend-adapter.js";
 import type { CorsaApiFrontend } from "../frontends/corsa/corsa-api-frontend.js";
-import { analyzeCorsaEffectParity, type CorsaEffectParityResult } from "../frontends/corsa/corsa-effect-parity.js";
+import { analyzeCorsaBuiltinCalls, type CorsaBuiltinCallsResult } from "../frontends/corsa/corsa-builtin-calls.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -68,7 +68,7 @@ export interface CheckResult {
   ownership: Array<OwnershipDiagnostic & { fileName: string }>;
   asyncIterators: IteratorCheckEvidence[];
   resourceProtocols: ResourceLifecycleEvidence[];
-  corsaEffectParity?: CorsaEffectParityResult;
+  corsaBuiltinCalls?: CorsaBuiltinCallsResult;
   errors: number;
   warnings: number;
   project?: TypeScriptProjectProvenance;
@@ -301,11 +301,11 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
   const collectedAssumptions = collectAssumptionLedger(program, Object.fromEntries(sources), typedArrays, {}, options.builtinRegistry, options.assumptionRegistry).ledger;
   const assumptions = mergeAssumptionLedger(program, collectedAssumptions, [...iteratorAssumptions, ...resourceAssumptions, ...contractSummaryAssumptions]).ledger;
-  const corsaEffectParity = options.corsaFrontend === undefined
-    ? undefined : analyzeCorsaEffectParity(program, options.corsaFrontend);
+  const corsaBuiltinCalls = options.corsaFrontend === undefined
+    ? undefined : analyzeCorsaBuiltinCalls(sources, options.corsaFrontend);
   return {
     diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, typedArrays, ownership, asyncIterators, resourceProtocols, errors, warnings: diagnostics.length - errors,
-    ...(corsaEffectParity === undefined ? {} : { corsaEffectParity }),
+    ...(corsaBuiltinCalls === undefined ? {} : { corsaBuiltinCalls }),
     ...(options.project === undefined ? {} : { project: options.project }),
   };
 }

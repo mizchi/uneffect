@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import ts from "@typescript/typescript6";
+import ts from "../../support/typescript-compiler.js";
 import type { SemanticPositionFact, SemanticQueryFrontend, SemanticSymbolFact } from "../semantic-query.js";
 
 export interface TypeScriptSemanticQueryOptions {

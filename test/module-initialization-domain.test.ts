@@ -4,7 +4,7 @@ import { join } from "node:path";
 import ts from "@typescript/typescript6";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BasicBlockFixedPointOptions } from "../src/cfg/index.js";
-import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
+import { analyzeModuleInitializationOrderV2 } from "./oracles/typescript-module-order-v2.js";
 
 const fault = vi.hoisted(() => ({ mode: "none", solverStatus: "" }));
 vi.mock("../src/cfg/index.js", async (importOriginal) => {

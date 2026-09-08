@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { posix } from "node:path";
 import { createHash } from "node:crypto";
 import { extractAnnotations } from "../support/annotations.js";

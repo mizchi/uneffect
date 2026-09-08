@@ -1,6 +1,6 @@
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import type { EffectSummary, ExternalFunctionEffectContract, ExternalModuleEffectContract, ExternalMutationRoot } from "../effects/effects.js";
 import type { IteratorEffectParameter } from "../effects/call-graph.js";
 import { isRuntimeModuleDependency } from "../modules/module-initialization.js";

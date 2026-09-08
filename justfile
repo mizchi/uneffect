@@ -201,5 +201,13 @@ dogfood-native:
 # load-bearing negative control in test/dogfood.test.ts.
 dogfood-leaf:
     pnpm tsx src/cli/index.ts check --infer --effect-baseline dogfood/effect-baseline.json src/frontends/typescript/static-evaluation.ts src/optimizer/ownership-evidence-cache.ts
-    pnpm tsx src/cli/index.ts check --typescript-program --infer --assurance no-unknown src/frontends/typescript/static-evaluation.ts src/frontends/typescript/project-coordinates.ts src/resources/disposal-symbols.ts src/support/diagnostics.ts src/support/diagnostic-quality.ts src/cli/cli-support.ts src/cli/cli-runner.ts src/support/environment.ts src/cli/doctor-command.ts src/support/todo-consistency.ts src/support/fixtures.ts src/optimizer/ownership-evidence-cache.ts src/evidence/model-replay.ts src/optimizer/project-optimizer.ts src/cfg/fixed-point.ts src/modules/module-initialization-v2.ts
+    pnpm tsx src/cli/index.ts check --typescript-program --infer --assurance no-unknown src/frontends/typescript/static-evaluation.ts src/frontends/typescript/project-coordinates.ts src/resources/disposal-symbols.ts src/support/diagnostics.ts src/support/diagnostic-quality.ts src/cli/cli-support.ts src/cli/cli-runner.ts src/support/environment.ts src/cli/doctor-command.ts src/support/todo-consistency.ts src/support/fixtures.ts src/optimizer/ownership-evidence-cache.ts src/evidence/model-replay.ts src/optimizer/project-optimizer.ts src/cfg/fixed-point.ts src/modules/corsa-module-order.ts
     pnpm vitest run test/dogfood.test.ts -t "classifies every unknown summary|explicit pure boundary|pure construction|disposal traversal|pure diagnostic|pure CLI helpers|environment report|CLI help formatting|CLI dispatch|doctor environment inspection|TODO hierarchy|fixture discovery|ownership cache keys|model trace loading|persisted optimizer evidence|fixed-point engine|conditional TLA dogfood"
+
+# Builtin discovery and classification must run without the JS TypeScript compiler.
+corsa-builtins-check:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    pnpm vitest run test/corsa-builtin-calls.test.ts test/corsa-builtin-catalog.test.ts test/builtin-contracts.test.ts test/release-readiness.test.ts
+
+corsa-package-check:
+    node ci/smoke-corsa-no-typescript.mjs

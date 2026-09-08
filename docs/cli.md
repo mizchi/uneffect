@@ -57,8 +57,9 @@ functions, new unknown reasons, or an analyzer-version mismatch),
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
 are listed, its `include`/`files` roots; report exact TypeScript package/version
 parity),
-`--corsa-parity` (run the admitted Corsa `Fetch`/`Console` sidecar against the
-same project and make a frontend mismatch an assurance `unknown` blocker),
+`--corsa-builtins` (include Oxc/Corsa `Fetch`/`Console` call classifications,
+unclassified calls, syntax exclusions, and parser errors in JSON; this inventory
+does not compare compilers or prove effect freedom),
 `--corsa-executable <tsgo>` (override Uneffect's fixed prebuilt native compiler),
 `--module-entry <entry.ts>` (with project-only checking, emit the supported
 `uneffect-workspace-module-order/v1` composition and fail closed when its exact

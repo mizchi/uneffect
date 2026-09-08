@@ -33,7 +33,7 @@ root / experimental の再 export、CLI の 10 commands、src の直接依存 64
 | CFG、固定点、completion、workflow の並列待ち合わせ、impact | 言語非依存の経路あり | 既存のグラフ契約を維持する |
 | 数値 schema、capability の集合演算、注釈、設定・module manifest、診断整形、doctor | 中核は独立済み／移植可能な見込み | root の依存グラフ、AST を使う周辺の読み取りを分離する |
 | spec DSL、SMT/Quint 生成、lint、temporal composition、property test | Oxc の独立経路あり | 全体の package facade を整理。モデル生成と実装の証明を混同しない |
-| CFG linter、単独 project の module-order v1/v2 | Corsa/Oxc の独立経路あり | 既存の対象範囲・除外条件を維持。Program 入口は別途置き換え |
+| CFG linter、単独 project の module-order v1/v2 | Corsa/Oxc の独立経路あり。公開 `/module-order` も native 化済み | 既存の対象範囲・除外条件を維持。workspace checker への統合が残る |
 | effects、call graph、callback、region alias、typed Throw、builtin semantics | native check は限定範囲。全面移植は可能な見込みだが大きい | 型・宣言の同一性、callback の実行回数・時点、可変 alias、getter/Proxy 等の反例を維持 |
 | requires / ensures / loop invariant、機械数、Z3 による本体証明 | DSL・式・obligation・callable linking は移行済み、本体 lowering は未移行 | invariant-ir の状態遷移・合流・ループ・例外・呼び出し条件を Oxc/中立 IR に移す |
 | 契約の到達性と runtime 計装 | 構造解析と native never/boolean refinement はあるが、まだ機能差あり | 網羅的 switch、method/arrow/getter 等、契約配置・return 書換えの挙動を維持 |

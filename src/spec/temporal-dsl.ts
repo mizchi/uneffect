@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { resolveTemporalDslSourceLink } from "./temporal-dsl-source.js";
 import type { TemporalDslLink } from "./temporal-dsl-source.js";
 export { bool, defineTemporal, int, text } from "./temporal-authoring.js";

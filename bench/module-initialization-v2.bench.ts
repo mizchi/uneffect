@@ -1,24 +1,20 @@
-import ts from "@typescript/typescript6";
-import { bench, describe } from "vitest";
-import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-initialization-v2.js";
+import { bench, describe, afterAll } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { analyzeModuleInitializationOrderV2 } from "../src/modules/module-order-api.js";
 
-const fileName = "examples/dogfood/module-conditional-tla.ts";
-const program = ts.createProgram([fileName], {
-  target: ts.ScriptTarget.ES2024,
-  module: ts.ModuleKind.NodeNext,
-  moduleResolution: ts.ModuleResolutionKind.NodeNext,
-  types: ["node"],
-  noEmit: true,
-});
-// Prime the compiler so the measurement isolates warm analysis and its domain.
-analyzeModuleInitializationOrderV2(program, fileName);
-
-describe("module initialization v2", () => {
-  bench("warm conditional await with a mandatory-resumption obligation", () => {
-    const result = analyzeModuleInitializationOrderV2(program, fileName);
+const directory = mkdtempSync(join(tmpdir(), "uneffect-native-order-bench-"));
+const options = { entryFile: join(directory, "entry.mts") };
+writeFileSync(options.entryFile, "const ready = Math.random() > .5; if (ready) await Promise.resolve(); export {};");
+afterAll(() => rmSync(directory, { recursive: true, force: true }));
+// Includes native compiler startup and source acquisition; no reused TS6 Program.
+describe("native module initialization v2", () => {
+  bench("conditional await including native frontend startup", async () => {
+    const result = await analyzeModuleInitializationOrderV2(options);
     const proof = result.modules[0]?.controlFlow?.proof;
     if (result.evidence !== "verified" || proof?.status !== "converged" || proof.iterations > proof.budget.limit) {
       throw new Error("conditional module domain benchmark did not verify within its budget");
     }
-  }, { time: 500, iterations: 20 });
+  }, { time: 500, iterations: 5 });
 });

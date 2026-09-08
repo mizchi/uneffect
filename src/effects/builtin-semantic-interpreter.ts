@@ -1,4 +1,4 @@
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import type { SourceSpan } from "../support/annotations.js";
 import type { BuiltinSymbolKey } from "./builtin-contracts.js";
 import type {

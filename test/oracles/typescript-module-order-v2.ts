@@ -1,11 +1,12 @@
-import { applyModuleOrderControlFlow } from "./module-order-control-flow.js";
-import ts from "@typescript/typescript6";
-import { analyzeModuleInitializationOrder } from "./module-initialization.js";
-import { classifyLexicalExecution } from "../frontends/typescript/lexical-execution.js";
-import type { ModuleInitializationV2Options, ModuleInitializationOrderV2, ModuleInitializationModule, ModuleInitializationUnknown } from "./contracts.js";
+/** Test-only TS6 oracle for validating the native module-order backend. Never shipped. */
+import { applyModuleOrderControlFlow } from "../../src/modules/module-order-control-flow.js";
+import ts from "../../src/support/typescript-compiler.js";
+import { analyzeModuleInitializationOrder } from "../../src/modules/module-initialization.js";
+import { classifyLexicalExecution } from "../../src/frontends/typescript/lexical-execution.js";
+import type { ModuleInitializationV2Options, ModuleInitializationOrderV2, ModuleInitializationModule, ModuleInitializationUnknown } from "../../src/modules/contracts.js";
 
-import { moduleControlFlowLimit } from "./options.js";
-export { DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET } from "./options.js";
+import { moduleControlFlowLimit } from "../../src/modules/options.js";
+export { DEFAULT_MODULE_CONTROL_FLOW_PROOF_BUDGET } from "../../src/modules/options.js";
 
 export type {
   ModuleInitializationV2Options,
@@ -20,7 +21,7 @@ export type {
   ModuleInitializationUnknownV2,
   ModuleInitializationConstraintV2,
   ModuleInitializationOrderV2,
-} from "./contracts.js";
+} from "../../src/modules/contracts.js";
 
 interface ConditionalAwaitCandidate {
   readonly source: ts.SourceFile;

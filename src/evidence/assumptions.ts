@@ -1,7 +1,8 @@
+import { resolveModuleInitializationContract } from "../frontends/typescript/builtin-runtime-binding.js";
 import { createHash } from "node:crypto";
-import ts from "@typescript/typescript6";
+import ts from "../support/typescript-compiler.js";
 import { extractAnnotations } from "../support/annotations.js";
-import { builtinContractRegistry, findBuiltinContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../effects/builtin-contracts.js";
+import { builtinContractRegistry, findBuiltinContract, type BuiltinContractRegistry } from "../effects/builtin-contracts.js";
 import { collectBuiltinCallRefinements } from "../frontends/frontend-adapter.js";
 import { isRuntimeModuleDependency } from "../modules/module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "../analysis/typed-array-safety.js";

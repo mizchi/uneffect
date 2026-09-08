@@ -20,7 +20,7 @@ file-specified `uneffect check file.ts` — uses Corsa for checker identity
 and Oxc for syntax. It does not construct a JS TypeScript 6 `Program` and
 does not load the `typescript` package for checker facts. File-specified
 checks write an ephemeral tsconfig so Corsa can open the files.
-`--typescript-program`, `--corsa-parity`, workspace project references,
+`--typescript-program`, workspace project references,
 contract summaries, and build-artifact gates still load the TypeScript 6
 path. Uneffect must not make Corsa authoritative for a construct merely
 because both frontends happen to return the same type text in a fixture.
@@ -41,7 +41,7 @@ The Corsa worker is pinned to TypeScript 7 native platform binaries
 (`@typescript/typescript-<platform>-<arch>/lib/tsc`). The optional JavaScript
 Compiler API peer is `@typescript/typescript6`; the development compiler is
 TypeScript 7. The Program path (`--typescript-program`, workspace
-composition, contracts, `--corsa-parity`) loads the optional
+composition, contracts) loads the optional
 `@typescript/typescript6` Compiler API. Default check is TypeScript-7-only:
 one native Corsa compiler plus Oxc, no JS TypeScript 6 `Program` alongside it.
 Dual TS6+Corsa memory is a migration tax on the remaining Program path, not
@@ -122,16 +122,16 @@ The current main analyzer still needs TypeScript 6 when imported through
 
 - Ship Corsa N-API and a fixed native compiler as optional platform prebuilds.
 - Keep the JavaScript TypeScript peer optional at install time. It is required
-  for `--typescript-program`, workspace composition, and `--corsa-parity`, not
+  for `--typescript-program` and workspace composition, not
   for default `check` or file-specified `check`.
 - Verify Corsa-only and TypeScript-main package consumers independently.
 - Admit `Fetch` and `Console`; reject shadowed names and unsupported FS aliases.
 
 ### Phase 1 — semantic sidecar in the main analyzer
 
-- Collect call-expression positions during the existing TypeScript AST walk.
-- Batch semantic requests once per source file and attach Corsa facts to a
-  compiler-neutral sidecar. (Implemented for the initial slice.)
+- Collect call-expression positions with Oxc and batch Corsa queries per source.
+- `--corsa-builtins` reports classified and unclassified calls plus syntax coverage
+  without loading a JS compiler. It replaces the unreleased parity API.
 - Default `check --project` classifies admitted `Fetch`/`Console`, lib.dom
   methods such as `Document#createElement`, properties such as
   `Document#cookie`, and DOM constructors such as `new WebSocket` through
@@ -140,11 +140,9 @@ The current main analyzer still needs TypeScript 6 when imported through
   fail-closed (not `FsRead`).
 - When a TypeScript Program sidecar is attached, admitted catalog lookup uses
   `overlayCorsaBuiltinCatalog`. Other builtins still go through
-  `TypeScriptFrontendAdapter`. The TypeScript adapter remains the parity oracle.
-- Run TypeScript and Corsa resolution together for `Fetch` and `Console` in CI;
-  expose mismatches from `check --corsa-parity` as assurance blockers.
-- Report parity mismatch as unknown; do not silently fall back in proof-grade
-  mode.
+  `TypeScriptFrontendAdapter`. This adapter remains limited to the legacy path.
+- Corsa classification is a bounded inventory, not compiler parity evidence.
+  Unclassified calls must not be interpreted as pure functions.
 - Benchmark cold open, warm 100/1,000-call batches, memory, and incremental
   snapshot updates. Cold open and warm batches are measured; memory and
   incremental snapshot updates remain open.
