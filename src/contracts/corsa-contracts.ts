@@ -120,7 +120,11 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
         if (requires.length) {
           const requirement = substituteLogic(parseLogicExpression(requires[0]!.value), new Map([[target.fn.node.params[0]!.type === "Identifier" ? target.fn.node.params[0]!.name : "", argument]]));
           const checked = checkNativeScalar(requirement, new Map());
-          if (checked.kind !== "boolean" || requirement.kind !== "boolean" || requirement.value !== true) return undefined;
+          const constantTrue = requirement.kind === "binary"
+            && ["lt", "lte", "gt", "gte", "eq", "neq"].includes(requirement.operator)
+            && requirement.left.kind === "integer" && requirement.right.kind === "integer"
+            && ({ lt: BigInt(requirement.left.value) < BigInt(requirement.right.value), lte: BigInt(requirement.left.value) <= BigInt(requirement.right.value), gt: BigInt(requirement.left.value) > BigInt(requirement.right.value), gte: BigInt(requirement.left.value) >= BigInt(requirement.right.value), eq: requirement.left.value === requirement.right.value, neq: requirement.left.value !== requirement.right.value } as Record<string, boolean>)[requirement.operator];
+          if (checked.kind !== "boolean" || !constantTrue) return undefined;
         }
         return substituteLogic(body, new Map([[target.fn.node.params[0]!.type === "Identifier" ? target.fn.node.params[0]!.name : "", argument]]));
       } catch { return undefined; }

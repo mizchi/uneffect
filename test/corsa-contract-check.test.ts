@@ -49,6 +49,17 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("accepts a literal argument satisfying a callee requires", async () => {
+    await project(`/* uneffect:requires value > 0 */
+/* uneffect:ensures result === value + 1 */
+export function inc(value: 0 | 1): number { return value + 1; }
+/* uneffect:ensures result === 2 */
+export function caller(): number { return inc(1); }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["verified", "verified"]);
+    });
+  });
+
   it("composes an authenticated zero-argument callee contract", async () => {
     await project(`/* uneffect:ensures result === 5 */
 export function five(): number { return 5; }
