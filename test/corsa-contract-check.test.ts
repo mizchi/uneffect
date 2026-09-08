@@ -56,17 +56,24 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
-  it.each([["/", "2"], ["%", "1"]])("proves constant safe integer %s", async (operator, expected) => {
-    await project(`/* uneffect:ensures result === ${expected} */\nexport function checked(): number { return 5 ${operator} 2; }`, async (_file, configFile) => {
+  it.each([["/", "2"], ["%", "0"]])("proves constant safe integer %s", async (operator, expected) => {
+    await project(`/* uneffect:ensures result === ${expected} */\nexport function checked(): number { return 4 ${operator} 2; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
       expect(result.artifacts[0]?.status).toBe("verified");
     });
   });
 
   it("proves division over a finite literal union", async () => {
-    await project(`/* uneffect:ensures result >= 0 && result <= 1 */\nexport function checked(value: 0 | 1 | 2): number { return value / 2; }`, async (_file, configFile) => {
+    await project(`/* uneffect:ensures result >= 0 && result <= 2 */\nexport function checked(value: 0 | 2 | 4): number { return value / 2; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
       expect(result.artifacts[0]?.status).toBe("verified");
+    });
+  });
+
+  it("rejects a non-integral constant division", async () => {
+    await project(`/* uneffect:ensures result === 2.5 */\nexport function checked(): number { return 5 / 2; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("unsupported");
     });
   });
 

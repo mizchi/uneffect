@@ -64,6 +64,9 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
         && right.minimum === right.maximum && right.minimum !== 0n) {
         const values = left.values ?? (left.minimum === left.maximum ? [left.minimum] : undefined);
         if (!values) throw new Error("native division requires a finite numerator domain");
+        if (expression.operator === "div" && values.some(value => value % right.minimum !== 0n)) {
+          throw new Error("native division requires an exact integer result");
+        }
         const results = values.map(value => expression.operator === "div" ? value / right.minimum : value % right.minimum);
         return integer(results.reduce((a, b) => a < b ? a : b), results.reduce((a, b) => a > b ? a : b));
       }
