@@ -106,19 +106,21 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
     const resolveCall = (call: Extract<Expression, { type: "CallExpression" }>): LogicExpression | undefined => {
       if (call.callee.type !== "Identifier" || call.optional) return undefined;
       const target = callableBodies.get(call.callee.name);
-      if (!target || target.fn.node.params.length > 1 || target.fn.node.body.body.length !== 1
+      if (!target || target.fn.node.params.length > 8 || target.fn.node.body.body.length !== 1
         || target.fn.node.body.body[0]!.type !== "ReturnStatement" || !target.fn.node.body.body[0]!.argument
         || !extractLocatedAnnotations(target.fn.comments, "ensures").length) return undefined;
       if (!frontend.getSignatureFromDeclaration(target.source.fileName, target.fn, target.source.text)) return undefined;
       if (target.fn.node.params.length === 0 && call.arguments.length !== 0) return undefined;
-      if (target.fn.node.params.length === 1 && (call.arguments.length !== 1 || call.arguments[0]!.type === "SpreadElement")) return undefined;
+      if (call.arguments.length !== target.fn.node.params.length || call.arguments.some(argument => argument.type === "SpreadElement")) return undefined;
       try {
         const body = nativeBodyExpression(target.fn.node.body.body[0]!.argument);
         if (target.fn.node.params.length === 0) return body;
-        const argument = nativeBodyExpression(call.arguments[0] as Expression);
+        const arguments_ = call.arguments.map(argument => nativeBodyExpression(argument as Expression));
+        const substitutions = new Map<string, LogicExpression>();
+        target.fn.node.params.forEach((parameter, index) => { if (parameter.type === "Identifier") substitutions.set(parameter.name, arguments_[index]!); });
         const requires = extractLocatedAnnotations(target.fn.comments, "requires");
         if (requires.length) {
-          const requirement = substituteLogic(parseLogicExpression(requires[0]!.value), new Map([[target.fn.node.params[0]!.type === "Identifier" ? target.fn.node.params[0]!.name : "", argument]]));
+          const requirement = substituteLogic(parseLogicExpression(requires[0]!.value), substitutions);
           const checked = checkNativeScalar(requirement, new Map());
           const constantTrue = requirement.kind === "binary"
             && ["lt", "lte", "gt", "gte", "eq", "neq"].includes(requirement.operator)
@@ -126,7 +128,7 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
             && ({ lt: BigInt(requirement.left.value) < BigInt(requirement.right.value), lte: BigInt(requirement.left.value) <= BigInt(requirement.right.value), gt: BigInt(requirement.left.value) > BigInt(requirement.right.value), gte: BigInt(requirement.left.value) >= BigInt(requirement.right.value), eq: requirement.left.value === requirement.right.value, neq: requirement.left.value !== requirement.right.value } as Record<string, boolean>)[requirement.operator];
           if (checked.kind !== "boolean" || !constantTrue) return undefined;
         }
-        return substituteLogic(body, new Map([[target.fn.node.params[0]!.type === "Identifier" ? target.fn.node.params[0]!.name : "", argument]]));
+        return substituteLogic(body, substitutions);
       } catch { return undefined; }
     };
     for (const source of sources) {
