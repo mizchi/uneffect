@@ -70,7 +70,7 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
   throw new Error("unsupported native scalar expression or mismatched sorts");
 }
 
-/** No coercion, calls, assertions, properties, division, or remainder in this fragment. */
+/** No coercion, assertions, properties, or general division/remainder in this fragment. */
 export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>) => LogicExpression | undefined): LogicExpression {
   if (node.type === "ParenthesizedExpression") return nativeBodyExpression(node.expression);
   if (node.type === "Identifier") return { kind: "variable", name: node.name };
