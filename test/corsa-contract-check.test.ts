@@ -122,6 +122,13 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("keeps mutable let bindings outside the native const slice", async () => {
+    await project(`/* uneffect:ensures result === 2 */\nexport function checked(): number { let next = 1; next = next + 1; return next; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("unsupported");
+    });
+  });
+
   it.each([["/", "0"], ["%", "0"]])("rejects zero divisor for %s", async (operator, divisor) => {
     await project(`/* uneffect:ensures result === 0 */\nexport function checked(): number { return 5 ${operator} ${divisor}; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
