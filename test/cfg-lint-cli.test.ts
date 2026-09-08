@@ -22,6 +22,32 @@ describe("cfg-lint CLI prototype", () => {
     expect(result.code).toBe(2);
     expect(JSON.parse(result.stdout)).toMatchObject({ status: "unknown", reason: "proof-budget-exhausted" });
   });
+  it.each([
+    ["unsafe", 1, "findings"], ["guarded", 0, "clean"], ["statementGuard", 2, "unknown"],
+  ] as const)("checks own-entry reads in %s", async (functionName, code, status) => {
+    const result = await run(["examples/dogfood/cfg-lint-registry.ts", functionName, "--registry", "table"]);
+    expect(result.code, result.stderr).toBe(code);
+    expect(JSON.parse(result.stdout)).toMatchObject({ status, ruleId: "own-property-before-read", registry: "table",
+      analysisScope: "expression-local-registry-reads", assumptions: expect.arrayContaining([expect.stringContaining("data properties")]),
+    });
+  });
+  it.each([
+    ["--registry", "table[key]"], ["--registry", ""], ["--registry", "table", "--use", "use"],
+  ].map(options => [options]))("rejects invalid registry options before reading source: %j", async options => {
+    const result = await run(["missing.ts", "run", ...options]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).not.toContain("ENOENT");
+  });
+  it("checks early returns with explicit statement flow", async () => {
+    const result = await run(["examples/dogfood/cfg-lint-registry.ts", "statementGuard", "--registry", "table", "--flow", "statement"]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ status: "clean", analysisScope: "statement-registry-reads" });
+  });
+  it.each([["--flow", "statement"], ["--registry", "table", "--flow", "invalid"]].map(args => [args]))("validates flow options: %j", async args => {
+    const result = await run(["missing.ts", "run", ...args]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).not.toContain("ENOENT");
+  });
   it.each([[], ["missing.ts"], ["missing.ts", "run", "--budget", "0"], ["missing.ts", "run", "--budget", "2.5"]].map(args => [args]))(
     "rejects malformed arguments before reading source: %j", async args => {
       const result = await run(args);

@@ -108,6 +108,10 @@ virtual source の扱いを明示する。state とクエリ・解析ロジッ�
 
 ### M1: 型・構文・到達性の既知の差を埋める
 
+- 自己検証で見つかった object method / 関数値 property と、文字列・数値 literal の
+  member access は Oxc の syntax facts に接続済み。`just dogfood-native` で実コード
+  3 ファイルの未対応構文を 50 → 16 件に削減し、意図的な Console 挿入も検出する。
+  残る動的キー、object accessor は未移行。
 - 共通 `parseOxcSource` の TSX mode を揃える。Oxc 自体は TSX を解析できる。
 - 網羅的 union switch の終端判定を移す。現状の安全側の `mayFallThrough` だけでは
   旧経路で成立した契約を証明できない。非網羅・fallthrough・default も比較する。
@@ -129,6 +133,13 @@ native `emit` RPC を待つ必要はなく、既存の隔離 CLI 再出力を再
 **Effects:** call graph、builtin semantic interpreter、region alias、callback、typed Throw、
 Promise の伝播を native symbol / signature facts へ接続する。効果の上界、scope、
 callback の回数・実行時点、可変 alias、shadowing、getter / Proxy の反例を保持する。
+
+直接呼出の最初の接続は実装済み。選択ファイル内の同期 top-level 宣言を native symbol で
+照合し、既存 CFG 固定点エンジンで既知 effect を caller へ伝播する。別名 import、再 export、
+再帰を扱い、再代入・隠蔽・未選択の本体は除外する。実コードの `minimumMajor` に挿入した
+Console が `nodeCheck` と `runEnvironmentChecks` に届くことを `just dogfood-native` で確認する。
+呼出全体の上界は未証明なので、local call の unknown は維持する。callback / object dispatch、
+async / generator、builtin の完全性、注釈の検証は引き続き M2 の残作業。
 
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →

@@ -94,7 +94,101 @@ Invalid graph/rule shapes, references, and unregistered events produce
 `TypeError`/`RangeError`. Source extraction also reports invalid bindings and
 compiler errors as unknown.
 
-## Source fragment and trust
+## Registry own-entry policy
+
+`--registry` selects the opt-in `own-property-before-read` rule instead of
+initialization operations. It accepts a plain parameter or module `const` name and optional static
+property path; operation flags cannot be combined with it.
+
+```sh
+just cfg-lint examples/dogfood/cfg-lint-registry.ts unsafe --registry table
+just cfg-lint src/evidence/model-replay.ts replayModelCounterexample --registry adapter.actions --project tsconfig.json
+just cfg-lint src/support/diagnostics.ts diagnosticHint --registry hints --flow statement --project tsconfig.json
+just registry-dogfood
+```
+
+The API is `lowerCorsaRegistryReadCfg({ fileName, functionName, registry, flow?, configFile? })`
+from `/experimental/lint/corsa`, followed by `lintPrerequisites(cfg, ownPropertyReadRule)`
+from `/experimental/lint`. The native diagnostics lifecycle and the shared CFG
+prerequisite engine are reused; `registry-reads.ts` authenticates identities and extracts
+events, `registry-control-flow.ts` connects statements without owning abstract state,
+and `registry-enumeration.ts` authenticates keys from frozen table enumeration.
+
+By default (`--flow expression`), each direct read in the function body requires
+an authenticated `Object.hasOwn(table, key)` on the same key in the **same expression**,
+unless frozen-table enumeration establishes permanent membership as described below.
+It handles ternaries, `&&`, `||`, and negation, using native symbols to distinguish
+shadowed identifiers and reject a locally supplied `Object.hasOwn` as a guard.
+String/number literals and static key paths such as `step.action` are supported.
+For example, `Object.hasOwn(table, key) ? table[key] : undefined` passes, while
+`const action = table[key]; if (action) action()` reports the read. This is an
+own-before-read policy; it does not prove that a later call is unsafe.
+
+In expression mode, each expression starts without facts. Calls, assignments, awaits, spreads,
+coercions, and unrelated property reads conservatively invalidate facts. The
+analysis assumes stable data properties for registry/key paths and entries,
+primitive string/number keys, unmodified `Object.hasOwn` / `Object.keys` /
+`Object.freeze`, and standard array iteration.
+It does not establish these runtime assumptions or model getters/proxies. The
+CLI records them in `assumptions` with `analysisScope: "expression-local-registry-reads"`.
+
+With `--flow statement`, facts carry through blocks, `if/else`, early `return` /
+`throw`, `while`, `do/while`, and unlabeled `break/continue`. For example,
+`if (!Object.hasOwn(table, key)) return; return table[key];` passes. Both incoming
+paths must guarantee the same binding/key, and mutations or unknown calls revoke
+the guarantee. Local variable initializers conservatively revoke facts after
+evaluation, because they can rebind an existing `var`. Await also revokes facts.
+The CLI reports `analysisScope: "statement-registry-reads"`. Try/catch/finally,
+for/for-of/for-in, switch, destructuring declarations, and disposal remain unknown;
+destructuring assignments containing selected reads/guards are also unknown because
+their interleaved writes and reads require a separate evaluation-order model.
+There is no fallback to expression mode when statement lowering fails.
+
+Function-body `const` aliases of the selected table are supported. A capture is a
+separate region from the original binding/property path; guards on a replacement
+object do not establish facts about the captured object. Chained const captures
+share the captured region. Guards should refer to that alias; cross-region facts
+are conservatively not transferred even if no reassignment is visible. Mutable
+or block-local aliases and selected references in nested functions remain unknown.
+
+Untagged template substitutions are evaluated and coerced left to right. Each
+nonliteral substitution conservatively invalidates facts before the next one,
+because string conversion can call user code. RegExp literals also invalidate;
+literal primitives do not. This can flag a safe string-typed substitution until
+primitive type evidence is connected. Tagged templates remain unsupported.
+
+For a module `const` initialized with authenticated `Object.freeze` on a plain
+literal table, a `const` key in `for (... of Object.keys(table))` identifies a
+permanent own entry. The rule can admit these reads even inside templates and
+after unrelated calls. This is a lexical key-provenance fact, available in
+expression mode; general for-of statement lowering is still unsupported. Mutable
+tables, mutable loop keys, enumeration of another object, and shadowed Object
+builtins do not establish that guarantee. It proves property membership only.
+
+Statement-level guards return `unknown` in expression mode.
+Class/tagged-template/JSX expressions and computed object property definitions in a
+selected expression are also unsupported because implicit execution is not modeled.
+No selected direct reads also returns `unknown`, so an empty extraction cannot
+claim success. Reads in helpers, parameter defaults, and arbitrary escaping aliases
+are not covered. Statement mode excludes paths terminated by return/throw; it does
+not correlate separate predicates, and keeps both branches of constant conditions.
+Expression mode does not model statement reachability. Findings describe missing
+abstract guarantees and can include safe alternative idioms.
+
+`test/registry-read-rule.test.ts` checks the original replay implementation from
+`b77d95d0` (frozen as a fixture) and the current actual implementation with
+JavaScript TypeScript imports prohibited. It automatically detects the one
+historical unguarded registry read and accepts the own-entry fix. This is
+rediscovery of a known bug, not a new automatic bug discovery; see
+[the dogfood evaluation](./dogfood-evaluation.md).
+`test/registry-dogfood.test.ts` additionally checks ten actual function/table selections
+with compiler imports blocked. Nine are clean after reviewed source fixes. One
+lookup was replaced by a membership check, so no selected reads remain and the
+adapter returns `unknown`; this is retained as an empty-extraction control.
+Inputs and before/after reports are in `dogfood/registry-*.json`; findings are
+reviewed separately from bugs, including the annotation parser regressions.
+
+## Initialization source fragment and trust
 
 The adapter analyzes one top-level synchronous function using Oxc's AST and
 Corsa's checker-backed symbol identities. UTF-16 source offsets are preserved. It supports blocks, `if/else`, `while`, `do/while`,

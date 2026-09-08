@@ -9,6 +9,8 @@ import { collectSyntaxFacts, enclosingFunction, type SyntaxSite } from "../oxc-s
 import type { VerificationArtifact } from "../../contracts/verification-contracts.js";
 import { hasNativeContractCandidates } from "../../contracts/contract-annotations.js";
 import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
+import { collectCorsaEffectBindings } from "./corsa-effect-calls.js";
+import { propagateEffectNames } from "../../effects/effect-propagation.js";
 
 export interface CorsaCheckOptions {
   configFile: string;
@@ -158,6 +160,9 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     }
     const sources = new Map<string, string>();
     const diagnostics: CorsaCheckDiagnostic[] = [];
+    const declarations = new Map<string, { key: string; name: string } | null>();
+    const writes = new Set<string>();
+    const ambiguousWrites = new Set<string>();
     const byFunction = new Map<string, {
       functionName: string;
       fileName: string;
@@ -165,11 +170,19 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       parameters: string[];
       names: string[];
       unclassified: boolean;
+      calleeSymbols: Set<string>;
     }>();
     for (const fileName of rootFiles) {
       const sourceText = readFileSync(fileName, "utf8");
       sources.set(fileName, sourceText);
       const syntax = collectSyntaxFacts(fileName, sourceText);
+      const bindings = collectCorsaEffectBindings(frontend, fileName, sourceText);
+      for (const binding of bindings.declarations) {
+        const key = `${fileName}:${binding.start}:${binding.name}`;
+        declarations.set(binding.symbolId, declarations.has(binding.symbolId) ? null : { key, name: binding.name });
+      }
+      for (const symbol of bindings.writes) writes.add(symbol);
+      for (const name of bindings.ambiguousWrites) ambiguousWrites.add(name);
       for (const message of syntax.errors) {
         diagnostics.push({
           domain: "syntax", kind: "syntax", severity: "error", fileName, line: 1,
@@ -194,7 +207,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         const key = `${fileName}:${owner.start}:${owner.name}`;
         const current = byFunction.get(key) ?? {
           functionName: owner.name, fileName, span: { start: owner.start, end: owner.end },
-          parameters: [...owner.parameters], names: [], unclassified: false,
+          parameters: [...owner.parameters], names: [], unclassified: false, calleeSymbols: new Set<string>(),
         };
         byFunction.set(key, current);
         return current;
@@ -210,7 +223,12 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (!owner) return;
         const symbol = frontend.getSymbolAtPosition(fileName, site.calleePosition);
         if (declaredByEcmaScriptLibrary(symbol)) return;
-        ensure(owner).unclassified = true;
+        const caller = ensure(owner);
+        // Linking supplies known effects, not proof of a complete effect upper bound.
+        caller.unclassified = true;
+        if (symbol && site.kind === "call" && site.receiverPosition === undefined) {
+          caller.calleeSymbols.add((frontend.getAliasedSymbol(symbol) ?? symbol).id);
+        }
       };
       for (const [index, site] of callSites.entries()) {
         const resolution = classified[index];
@@ -236,13 +254,20 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (byFunction.has(key)) continue;
         byFunction.set(key, {
           functionName: fn.name, fileName, span: { start: fn.start, end: fn.end },
-          parameters: [...fn.parameters], names: [], unclassified: false,
+          parameters: [...fn.parameters], names: [], unclassified: false, calleeSymbols: new Set<string>(),
         });
       }
     }
-    const summaries: EffectSummary[] = [...byFunction.values()]
-      .map((item) => {
-        const effects = uniqueEffects(item.names);
+    const propagated = propagateEffectNames([...byFunction].map(([id, item]) => ({
+      id, names: item.names,
+      callees: [...item.calleeSymbols].flatMap(symbol => {
+        const target = writes.has(symbol) ? undefined : declarations.get(symbol);
+        return target && !ambiguousWrites.has(target.name) && byFunction.has(target.key) ? [target.key] : [];
+      }),
+    })));
+    const summaries: EffectSummary[] = [...byFunction]
+      .map(([id, item]) => {
+        const effects = uniqueEffects([...propagated.get(id)!]);
         const evidence: EvidenceStatus = item.unclassified ? "unknown" : effects.length > 0 ? "trusted" : "inferred";
         return {
           functionName: item.functionName,
@@ -254,7 +279,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           ...(item.unclassified ? {
             unknownReasons: [{
               code: "unresolved-call" as const,
-              message: "a call is outside the admitted Corsa builtin catalog",
+              message: "a call is outside the complete Corsa effect model; known callee effects may be retained",
             }],
           } : {}),
         };

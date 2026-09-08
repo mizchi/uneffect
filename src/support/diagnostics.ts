@@ -177,7 +177,10 @@ const hints: Readonly<Record<string, string>> = {
 };
 
 /* uneffect:effect none */
-export function diagnosticHint(code: string): string | undefined { return hints[code]; }
+export function diagnosticHint(code: string): string | undefined {
+  if (!Object.hasOwn(hints, code)) return undefined;
+  return hints[code];
+}
 
 /* uneffect:effect none */
 function severityOf(diagnostic: CheckerDiagnostic): DiagnosticSeverity {

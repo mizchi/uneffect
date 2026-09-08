@@ -9,6 +9,37 @@ import {
 } from "../src/spec/temporal-expressions.js";
 
 describe("restricted TypeScript temporal expressions", () => {
+  it.each([
+    ['Set(1, 2) === Set(2, 1)', true],
+    ['Set(1) !== Set(1)', false],
+    ['Map([[1, true], [2, false]]) === Map([[2, false], [1, true]])', true],
+    ['Map([[1, true]]) !== Map([[1, false]])', true],
+    ['({ owner: 1, valid: true }) === ({ valid: true, owner: 1 })', true],
+    ['({ owner: 1 }) !== ({ owner: 2 })', true],
+    ['Set({ owner: 1 }, { owner: 1 }) === Set({ owner: 1 })', true],
+    ['Map([[1, Set({ owner: 1 })]]) === Map([[1, Set({ owner: 1 })]])', true],
+  ] as const)("executes value equality for %s", (source, expected) => {
+    const expression = parseTemporalExpression(source);
+    expect(typeCheckTemporalExpression(expression, new Map())).toBe("bool");
+    const code = generateRuntimeAssertionExpression(expression);
+    expect(new Function(`return (${code})`)()).toBe(expected);
+    const assert = new Function(generateRuntimeAssertionStatement(expression, "collection mismatch"));
+    if (expected) expect(() => assert()).not.toThrow();
+    else expect(() => assert()).toThrow("collection mismatch");
+  });
+
+  it("compares runtime collection parameters once without capturing caller names", () => {
+    const expression = parseTemporalExpression("left.value === right.value");
+    const code = generateRuntimeAssertionExpression(expression);
+    const evaluate = new Function("left", "right", `return (${code})`);
+    let reads = 0;
+    const left = { get value() { reads++; return new Set([{ owner: 1 }]); } };
+    const right = { get value() { reads++; return new Set([{ owner: 1 }]); } };
+    expect(evaluate(left, right)).toBe(true);
+    expect(reads).toBe(2);
+    expect(evaluate({ value: new Set([1]) }, { value: new Set([2]) })).toBe(false);
+    expect(evaluate({ value: 1 }, { value: 1 })).toBe(true);
+  });
   it("types string literals and string-keyed finite collections without numeric coercion", () => {
     const nodes = parseTemporalExpression('Set("node-a", "node-b")');
     const leases = parseTemporalExpression('Map([["node-a", true]])');

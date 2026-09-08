@@ -26,6 +26,49 @@ const afterTakeover: LeaseState = { ...initial, ownerEpoch: 2, ownerIsA: false }
 const afterPublish: LeaseState = { ...afterTakeover, residentEpochB: 2 };
 
 describe("model counterexample refinement replay", () => {
+  it.each(["toString", "constructor", "advance"])("reports an unregistered action as missing: %s", async action => {
+    const state = { value: 0 };
+    const trace = createModelCounterexample({ backend: "manual", modelHash: "action-registry", initialState: state,
+      steps: [{ action, before: state, after: state }] });
+    const result = await replayModelCounterexample(trace, {
+      schema: "uneffect-refinement-adapter/v1", name: "empty-actions", version: "1",
+      create: initial => initial, observe: runtime => runtime, actions: {},
+    });
+    expect(result).toMatchObject({ status: "missing-action", matchedSteps: 0, missingAction: action });
+  });
+
+  it.each(["toString", "constructor", "__proto__"])("executes an explicitly registered prototype-colliding action: %s", async action => {
+    const trace = createModelCounterexample({ backend: "manual", modelHash: "own-action", initialState: { value: 0 },
+      steps: [{ action, before: { value: 0 }, after: { value: 1 } }] });
+    const result = await replayModelCounterexample(trace, {
+      schema: "uneffect-refinement-adapter/v1", name: "own-actions", version: "1",
+      create: initial => initial, observe: runtime => runtime,
+      actions: { [action]: runtime => { runtime.value++; } },
+    });
+    expect(result).toMatchObject({ status: "replayed", matchedSteps: 1 });
+  });
+
+  it.each([
+    { type: "Set<int>", value: "Set(2, 1)", raw: "{1, 2}", different: "{3}", differentValue: "Set(3)" },
+    { type: "Map<int, int>", value: "Map([[2, 4], [1, 2]])", raw: "[1 |-> 2, 2 |-> 4]", different: "[1 |-> 3, 2 |-> 4]", differentValue: "Map([[1, 3], [2, 4]])" },
+    { type: "{ owner: int, valid: bool }", value: "{ owner: 1, valid: true }", raw: "[valid |-> TRUE, owner |-> 1]", different: "[valid |-> TRUE, owner |-> 2]", differentValue: "{ owner: 2, valid: true }" },
+  ].flatMap(item => [{ ...item, initialValue: item.value, expected: "equal" }, { ...item, initialValue: item.differentValue, raw: item.different, expected: "different" }]))("recovers $expected actions guarded by value equality for $type", ({ type, value, initialValue, raw, expected }) => {
+    const spec = parseSpec("guarded.ts", `/* uneffect: state item: ${type} */ /* uneffect: state ready: bool */
+      /* uneffect: init item = ${initialValue} */ /* uneffect: init ready = false */
+      /* uneffect: action equal: ready' = true */ /* uneffect: action_when equal: item === ${value} */
+      /* uneffect: action different: ready' = true */ /* uneffect: action_when different: item !== ${value} */
+      /* uneffect:always unfinished: !ready */`).temporal;
+    const trace = parseTlcCounterexample(`Error: Invariant unfinished is violated.
+State 1: <Initial predicate>
+/\\ item = ${raw}
+/\\ ready = FALSE
+State 2: <q_step>
+/\\ item = ${raw}
+/\\ ready = TRUE
+`, spec, "collection-equality");
+    expect(trace.steps.map(step => step.action)).toEqual([expected]);
+  });
+
   it("normalizes a scalar TLC trace and recovers actions from the temporal IR", () => {
     const spec = parseSpec("counter.ts", `/* uneffect: state value: int */ /* uneffect: state ready: bool */ /* uneffect: init value = 0 */ /* uneffect: init ready = false */ /* uneffect: action increment: value' = value + 1 */ /* uneffect: action finish: ready' = true */ /* uneffect: action_when finish: value >= 2 && !ready */ /* uneffect:always unfinished: !ready */`).temporal;
     const trace = parseTlcCounterexample(`

@@ -5,6 +5,38 @@ import { projectDenoPermissions, resolveTargetTemp } from "../src/effects/deno-p
 const effects = (source: string): Effect[] => source.split(" + ").map((value) => parseEffectExpression(value));
 
 describe("Deno permission projection", () => {
+  it("rejects inherited anchors that are absent from the evidence bindings", () => {
+    const policy = { allow: effects('FsRead<"$WORKSPACE_ROOT/data">'), deny: [] };
+    for (const root of ["/repo-a", "/repo-b"]) {
+      expect(() => projectDenoPermissions(policy, { anchors: Object.create({ WORKSPACE_ROOT: root }), platform: "posix" }))
+        .toThrow(/missing path anchor binding/);
+    }
+    const anchors = Object.create({ WORKSPACE_ROOT: "/repo", CWD: "/repo" });
+    expect(capabilityPermits(parseEffectExpression('FsRead<"$WORKSPACE_ROOT/**">') as CapabilityEffect,
+      parseEffectExpression('FsRead<"$CWD/file">') as CapabilityEffect, { anchors, platform: "posix" })).toBe(false);
+  });
+
+  it("includes nonenumerable own bindings and snapshots getter values once", () => {
+    const policy = { allow: effects('FsRead<"$WORKSPACE_ROOT/data">'), deny: [] };
+    const outputs = ["/repo-a", "/repo-b"].map(root => projectDenoPermissions(policy, {
+      anchors: Object.defineProperty({}, "WORKSPACE_ROOT", { value: root }), platform: "posix",
+    }));
+    expect(outputs[0]!.bindingDigest).not.toBe(outputs[1]!.bindingDigest);
+    let reads = 0;
+    const projected = projectDenoPermissions(policy, { anchors: { get WORKSPACE_ROOT() { reads++; return reads === 1 ? "/repo-a" : "/repo-b"; } }, platform: "posix" });
+    expect(reads).toBe(1);
+    expect(projected).toEqual(outputs[0]);
+  });
+
+  it("uses only own target environment entries and preserves fallback precedence", () => {
+    const environment = Object.assign(Object.create({ TEMP: "C:\\Inherited", TMPDIR: "/inherited" }), { TMP: "/selected" });
+    expect(resolveTargetTemp({ runtime: "node", os: "linux", environment })).toBe("/selected");
+    expect(resolveTargetTemp({ runtime: "node", os: "windows", environment })).toBe("/selected");
+  });
+  it("does not evaluate lower-priority environment getters after resolving TEMP", () => {
+    const environment = { TEMP: "C:\\Selected", get TMP(): string { throw new Error("unused fallback"); }, get TMPDIR(): string { throw new Error("unused POSIX fallback"); } };
+    expect(resolveTargetTemp({ runtime: "node", os: "windows", environment })).toBe("C:\\Selected");
+  });
   it("projects common capability sets and keeps deny policy separate", () => {
     const result = projectDenoPermissions({
       allow: effects('FsRead<"$WORKSPACE_ROOT/data/**"> + Net<"api.example.com:443"> + Env<"AWS_*"> + Sys<hostname | cpus>'),

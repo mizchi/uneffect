@@ -68,6 +68,15 @@ The TypeScript domains implement host/IP/optional-port scopes, `*.example.com` s
 
 The projection artifact includes a SHA-256 digest of sorted resolved anchor bindings, target runtime/OS identity, and path platform. Changing `$WORKSPACE_ROOT`, `$CWD`, `$TEMP`, or another binding therefore invalidates downstream verification evidence. TypeScript path parsing normalizes separators and dot segments and rejects parent traversal, unknown `$NAME` anchors, and wildcards other than a final `/**`.
 
+Anchor bindings and target environment entries are explicit own properties.
+Inherited defaults must be materialized before passing the configuration; they
+are not used by projection or cross-anchor comparison. Projection takes one own
+property snapshot for both generated arguments and evidence. Nonenumerable own
+bindings are included, and getter-backed values are captured once. This prevents
+different permission paths from sharing a digest because lookup and enumeration
+used different configuration values. Direct `resolveTargetTemp` preserves the
+documented short-circuit lookup order, including fallback getters.
+
 A bare capability is the common `All` form:
 
 ```text

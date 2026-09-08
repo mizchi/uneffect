@@ -46,7 +46,7 @@ const commandLoaders: readonly CliCommandLoader[] = [
   },
   {
     name: "cfg-lint",
-    summary: "Prototype: check initialization prerequisites along function control flow.",
+    summary: "Prototype: check initialization prerequisites or own-entry registry reads.",
     load: async () => (await import("./cfg-lint-command.js")).cfgLintCommand,
   },
   {

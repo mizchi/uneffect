@@ -152,13 +152,16 @@ function payloadBlocks(text: string, baseOffset: number): PayloadBlock[] {
   }
   return blocks;
 }
-function canonicalDirective(dialect: string, directive: string): string { return aliases[dialect]?.[directive] ?? directive; }
+function canonicalDirective(dialect: string, directive: string): string {
+  const group = Object.hasOwn(aliases, dialect) ? aliases[dialect] : undefined;
+  return group && Object.hasOwn(group, directive) ? group[directive] ?? directive : directive;
+}
 
 export function extractLocatedAnnotations(text: string, directive: UneffectDirective | string, baseOffset = 0): LocatedAnnotation[] {
   const values: LocatedAnnotation[] = [];
   for (const block of payloadBlocks(text, baseOffset)) {
     if (block.dialect === directive
-      && !dialectDirectives[block.dialect as UneffectDialect]) {
+      && !Object.hasOwn(dialectDirectives, block.dialect)) {
       for (const line of block.lines) {
         const value = line.cleaned.trim();
         if (!value) continue;
@@ -213,7 +216,9 @@ export function extractLocatedAnnotations(text: string, directive: UneffectDirec
       }
       if (block.dialect === "unified" && match[1] === "temporal_contract" && match[2]) {
         const clause = /^([^\s]+)(?:\s+(.+))?$/.exec(match[2].trim());
-        if (!clause || temporalContractAliases[clause[1]!] !== directive || !clause[2]) continue;
+        if (!clause) continue;
+        const canonical = Object.hasOwn(temporalContractAliases, clause[1]!) ? temporalContractAliases[clause[1]!] : undefined;
+        if (canonical !== directive || !clause[2]) continue;
         const value = clause[2].trim(), start = line.start + line.cleaned.indexOf(value);
         values.push({ value, span: { start, end: start + value.length } });
         continue;
@@ -231,7 +236,7 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0, additi
   const diagnostics: AnnotationDiagnostic[] = [];
   const additional = new Set(additionalDirectives);
   for (const block of payloadBlocks(text, baseOffset)) {
-    const allowed = dialectDirectives[block.dialect as UneffectDialect];
+    const allowed = Object.hasOwn(dialectDirectives, block.dialect) ? dialectDirectives[block.dialect as UneffectDialect] : undefined;
     const dialectPlugin = pluginDirectives.get(block.dialect);
     if (!allowed && additional.has(block.dialect)) {
       const payload = block.lines.map((line) => line.cleaned.trim()).find(Boolean);
@@ -265,7 +270,7 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0, additi
         const clause = /^([^\s]+)(?:\s+(.*))?$/.exec(match[2]?.trim() ?? ""), clauseName = clause?.[1] ?? "temporal_contract";
         const clauseStart = line.start + leading + candidate.indexOf(clauseName, name.length);
         const clauseSpan = { start: clauseStart, end: clauseStart + clauseName.length };
-        if (!temporalContractAliases[clauseName]) diagnostics.push({ kind: "unknown-directive", directive: clauseName, dialect: "temporal_contract", span: clauseSpan, message: `unknown Uneffect temporal contract clause \`${clauseName}\`` });
+        if (!Object.hasOwn(temporalContractAliases, clauseName)) diagnostics.push({ kind: "unknown-directive", directive: clauseName, dialect: "temporal_contract", span: clauseSpan, message: `unknown Uneffect temporal contract clause \`${clauseName}\`` });
         else if (!clause?.[2]?.trim()) diagnostics.push({ kind: "missing-payload", directive: clauseName, dialect: "temporal_contract", span: clauseSpan, message: `Uneffect temporal contract clause \`${clauseName}\` requires a payload` });
       }
       else if (!match[2]?.trim()) diagnostics.push({ kind: "missing-payload", directive: name, dialect: block.dialect, span, message: `Uneffect directive \`${name}\` requires a payload` });

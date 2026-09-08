@@ -1,4 +1,5 @@
 import { parseOxcExpression } from "../frontends/oxc/expression.js";
+import { temporalRuntimeEquality } from "./temporal-runtime-equality.js";
 import { parseSync, type Expression, type TSType } from "oxc-parser";
 
 export type TemporalExpression =
@@ -392,6 +393,15 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
     return expression.operator === "not" ? (backend === "quint" ? `not(${operand})` : `!${operand}`) : `-${operand}`;
   }
   const own = precedence(expression);
+  if (backend === "runtime" && (expression.operator === "eq" || expression.operator === "neq")) {
+    // A scalar literal on either side cannot equal a collection. Keep compact
+    // scalar predicates; dynamic values require the same value semantics as Quint.
+    const scalar = (value: TemporalExpression) => ["integer", "boolean", "string"].includes(value.kind);
+    if (!scalar(expression.left) && !scalar(expression.right)) {
+      const comparison = `(${temporalRuntimeEquality})(${emit(expression.left, backend)}, ${emit(expression.right, backend)})`;
+      return expression.operator === "eq" ? comparison : `!${comparison}`;
+    }
+  }
   const operator = (backend === "quint" ? quintBinary : runtimeBinary)[expression.operator];
   const value = `${emit(expression.left, backend, own)} ${operator} ${emit(expression.right, backend, own + 1)}`;
   return own < parent ? `(${value})` : value;

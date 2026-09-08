@@ -128,9 +128,19 @@ function functionFact(
       parameters: functionParameters(node),
     } };
   }
-  if (parent?.type === "Property") return {
-    exclusion: { reason: "object-member-function", span: { start: node.start, end: node.end } },
-  };
+  if (parent?.type === "Property") {
+    const key = staticName(isNode(parent.key) ? parent.key : undefined, parent.computed === true);
+    if (!key) return { exclusion: { reason: "computed-function-name", span: { start: node.start, end: node.end } } };
+    // Accessor reads/writes need effect composition before their exclusion can be removed.
+    if (parent.kind === "get" || parent.kind === "set") return {
+      exclusion: { reason: "object-member-function", span: { start: node.start, end: node.end } },
+    };
+    return { fact: {
+      name: key,
+      kind: parent.method === true ? "method" : node.type === "ArrowFunctionExpression" ? "arrow" : "function-expression",
+      start: node.start, end: node.end, parameters: functionParameters(node),
+    } };
+  }
   return { fact: {
     name: node.type === "FunctionExpression"
       ? identifierName(isNode(node.id) ? node.id : undefined) ?? "<anonymous>"
@@ -151,9 +161,9 @@ function callSite(node: EstreeNode): SyntaxSite | undefined {
     return { kind: node.type === "NewExpression" ? "construct" : "call", start: node.start, end: node.end, calleePosition: callee.start, name };
   }
   const unwrapped = callee.type === "TSNonNullExpression" && isNode(callee.expression) ? callee.expression : callee;
-  if (unwrapped.type !== "MemberExpression" || unwrapped.computed || !isNode(unwrapped.object) || !isNode(unwrapped.property)) return undefined;
+  if (unwrapped.type !== "MemberExpression" || !isNode(unwrapped.object) || !isNode(unwrapped.property)) return undefined;
   if (typeof unwrapped.property.start !== "number" || typeof unwrapped.object.start !== "number") return undefined;
-  const name = staticName(unwrapped.property);
+  const name = staticName(unwrapped.property, unwrapped.computed === true);
   if (!name) return undefined;
   return {
     kind: node.type === "NewExpression" ? "construct" : "call",
@@ -163,6 +173,14 @@ function callSite(node: EstreeNode): SyntaxSite | undefined {
     receiverPosition: unwrapped.object.start,
     name,
   };
+}
+
+/** A member used as an argument is still a read, even when its parent is a call. */
+function isCallTarget(node: EstreeNode, parents: ReadonlyMap<EstreeNode, EstreeNode>): boolean {
+  const parent = parents.get(node);
+  const target = parent?.type === "TSNonNullExpression" ? parent : node;
+  const call = target === node ? parent : parents.get(target);
+  return (call?.type === "CallExpression" || call?.type === "NewExpression") && call.callee === target;
 }
 
 /** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */
@@ -188,6 +206,7 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
       const callee = isNode(node.callee) ? node.callee : undefined;
       const unwrapped = callee?.type === "TSNonNullExpression" && isNode(callee.expression) ? callee.expression : callee;
       if (unwrapped?.type === "MemberExpression" && unwrapped.computed
+        && !staticName(isNode(unwrapped.property) ? unwrapped.property : undefined, true)
         && typeof node.start === "number" && typeof node.end === "number") {
         exclusions.get(node.type === "NewExpression" ? "construct-sites" : "call-sites")!.push({
           reason: node.type === "NewExpression" ? "computed-construct-target" : "computed-call-target",
@@ -210,17 +229,17 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
     if (node.type === "ImportExpression" && typeof node.start === "number" && typeof node.end === "number") {
       exclusions.get("call-sites")!.push({ reason: "dynamic-import", span: { start: node.start, end: node.end } });
     }
-    if (node.type === "MemberExpression" && node.computed && typeof node.start === "number" && typeof node.end === "number") {
-      const parent = parents.get(node);
-      if (parent?.type !== "CallExpression" && parent?.type !== "NewExpression") {
+    if (node.type === "MemberExpression" && node.computed
+      && !staticName(isNode(node.property) ? node.property : undefined, true)
+      && typeof node.start === "number" && typeof node.end === "number") {
+      if (!isCallTarget(node, parents)) {
         exclusions.get("property-sites")!.push({ reason: "computed-property", span: { start: node.start, end: node.end } });
       }
-    } else if (node.type === "MemberExpression" && !node.computed && isNode(node.object) && isNode(node.property)
+    } else if (node.type === "MemberExpression" && isNode(node.object) && isNode(node.property)
       && typeof node.start === "number" && typeof node.end === "number"
       && typeof node.object.start === "number" && typeof node.property.start === "number") {
-      const parent = parents.get(node);
-      if (parent?.type === "CallExpression" || parent?.type === "NewExpression") return;
-      const name = staticName(node.property);
+      if (isCallTarget(node, parents)) return;
+      const name = staticName(node.property, node.computed === true);
       if (name) sites.push({
         kind: "property", start: node.start, end: node.end,
         calleePosition: node.property.start, receiverPosition: node.object.start, name,

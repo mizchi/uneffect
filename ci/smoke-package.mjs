@@ -355,14 +355,16 @@ try {
         throw new Error("Unexpected JavaScript TypeScript compiler import: " + specifier);
       return next(specifier, context);
     } });
-    const { lowerCorsaRuleCfg } = await import("@mizchi/uneffect/experimental/lint/corsa");
-    if (typeof lowerCorsaRuleCfg !== "function") throw new Error("Missing Corsa linter entry");
-    const { lintPrerequisites } = await import("@mizchi/uneffect/experimental/lint");
-    if (typeof lintPrerequisites !== "function") throw new Error("Missing compiler-independent linter entry");
+    const { lowerCorsaRuleCfg, lowerCorsaRegistryReadCfg } = await import("@mizchi/uneffect/experimental/lint/corsa");
+    if (typeof lowerCorsaRuleCfg !== "function" || typeof lowerCorsaRegistryReadCfg !== "function") throw new Error("Missing Corsa linter entry");
+    const { lintPrerequisites, ownPropertyReadRule } = await import("@mizchi/uneffect/experimental/lint");
+    if (typeof lintPrerequisites !== "function" || ownPropertyReadRule.id !== "own-property-before-read") throw new Error("Missing compiler-independent linter entry");
     const moduleOrder = await import("@mizchi/uneffect/experimental/module-order/corsa");
     if (typeof moduleOrder.analyzeCorsaModuleInitializationOrderV2 !== "function") throw new Error("Missing native module-order entry");
     const spec = await import("@mizchi/uneffect/experimental/spec");
     if (typeof spec.parseSpec !== "function" || typeof spec.lintSpecWithZ3 !== "function") throw new Error("Missing native specification entry");
+    const equality = spec.generateRuntimeAssertionExpression(spec.parseTemporalExpression("Map([[1, Set({ owner: 1 })]]) === Map([[1, Set({ owner: 1 })]])"));
+    if (new Function("return (" + equality + ")")() !== true) throw new Error("Packed runtime collection equality lost value semantics");
     const instrument = await import("@mizchi/uneffect/experimental/instrument");
     const checked = instrument.instrumentRuntimeAssertions("input.ts", '/* uneffect:assert value: Nat */ export function check(value: number) { return value }');
     if (checked.diagnostics.length || !checked.code.includes("__uneffect_v.parse")) throw new Error("Missing compiler-independent runtime instrumentation");
@@ -388,6 +390,18 @@ try {
   });
   if (bodyResult.status !== 1 || JSON.parse(bodyResult.stdout).contracts?.[0]?.status !== "counterexample") {
     throw new Error(`compiler-independent contract CLI failed: ${bodyResult.stderr || bodyResult.error || bodyResult.status}`);
+  }
+  const effectEntry = join(consumer, "native-effect-calls.ts");
+  writeFileSync(effectEntry, 'function leaf() { console["log"]("leaf"); } function middle() { leaf(); } export function main() { middle(); } export function shadowed(leaf: () => void) { leaf(); }');
+  const effectResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "check", effectEntry, "--infer", "--assurance", "no-unknown", "--json"], {
+    cwd: consumer, encoding: "utf8", timeout: 30_000,
+  });
+  if (effectResult.error || effectResult.status !== 1) throw new Error(`packed native effect propagation failed: ${effectResult.error ?? effectResult.stderr}`);
+  const effectReport = JSON.parse(effectResult.stdout);
+  const caller = effectReport.effects.find(item => item.functionName === "main");
+  const shadowed = effectReport.effects.find(item => item.functionName === "shadowed");
+  if (!caller?.effects.includes("Console") || caller.evidence !== "unknown" || shadowed?.effects.length !== 0 || shadowed.evidence !== "unknown") {
+    throw new Error("packed native effects lost propagation, shadowing, or incomplete evidence");
   }
   writeFileSync(instrumentEntry, '/* uneffect:assert value: Nat */ export function check(value: number) { return value }');
   const instrumentResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "instrument", instrumentEntry], {
@@ -428,6 +442,23 @@ try {
     }
     if (verdict === "findings" && report.diagnostics[0]?.location.fileName !== lintEntry) throw new Error("packed cfg-lint lost source location");
     if (verdict === "unknown" && "diagnostics" in report) throw new Error("packed cfg-lint leaked partial diagnostics");
+  }
+
+  const registryEntry = join(consumer, "registry-read.mts");
+  writeFileSync(registryEntry, readFileSync(resolve("examples/dogfood/cfg-lint-registry.ts"), "utf8"));
+  for (const [functionName, status, verdict, flow, registry] of [["unsafe", 1, "findings", "expression", "table"], ["guarded", 0, "clean", "expression", "table"],
+    ["statementGuard", 2, "unknown", "expression", "table"], ["statementGuard", 0, "clean", "statement", "table"], ["unsafe", 1, "findings", "statement", "table"],
+    ["capturedAlias", 0, "clean", "expression", "table"], ["frozenLoop", 0, "clean", "expression", "names"]]) {
+    const result = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "cfg-lint", registryEntry, functionName, "--registry", registry, "--flow", flow], {
+      cwd: consumer, encoding: "utf8", timeout: 60_000,
+    });
+    if (result.error || result.status !== status) throw new Error(`packed registry lint failed: ${result.error ?? result.stderr}`);
+    const report = JSON.parse(result.stdout);
+    if (report.status !== verdict || report.ruleId !== "own-property-before-read" || report.registry !== registry
+      || report.analysisScope !== (flow === "statement" ? "statement-registry-reads" : "expression-local-registry-reads")
+      || !report.assumptions?.length) throw new Error("packed registry lint lost its scope or verdict");
+    if (verdict === "findings" && (report.diagnostics.length !== 1 || report.diagnostics[0]?.location.fileName !== registryEntry)) throw new Error("packed registry lint lost its source diagnostic");
+    if (verdict === "unknown" && "diagnostics" in report) throw new Error("packed registry lint leaked partial diagnostics");
   }
 
   writeFileSync(moduleEntry, moduleSource);

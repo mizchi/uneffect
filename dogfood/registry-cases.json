@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {"fileName": "src/support/diagnostics.ts", "functionName": "diagnosticHint", "registry": "hints", "flow": "statement", "expected": "clean"},
+    {"fileName": "src/effects/capability-dsl-source.ts", "functionName": "prepareCapabilityDslSourceLinks", "registry": "files", "expected": "clean"},
+    {"fileName": "src/optimizer/runtime-assertions.ts", "functionName": "schemaCode", "registry": "namedSchemas", "expected": "clean"},
+    {"fileName": "src/effects/deno-permissions.ts", "functionName": "resolvePath", "registry": "options.anchors", "expected": "clean"},
+    {"fileName": "src/effects/deno-permissions.ts", "functionName": "resolveTargetTemp", "registry": "target.environment", "expected": "clean"},
+    {"fileName": "src/effects/deno-permissions.ts", "functionName": "emit", "registry": "flags", "expected": "clean"},
+    {"fileName": "src/support/annotations.ts", "functionName": "canonicalDirective", "registry": "aliases", "expected": "clean"},
+    {"fileName": "src/support/annotations.ts", "functionName": "validateUneffectAnnotations", "registry": "dialectDirectives", "expected": "clean"},
+    {"fileName": "src/support/annotations.ts", "functionName": "extractLocatedAnnotations", "registry": "dialectDirectives", "expected": "unknown", "expectedDetail": "no direct registry reads were selected; aliases and escaping tables are not analyzed"},
+    {"fileName": "src/support/annotations.ts", "functionName": "extractLocatedAnnotations", "registry": "temporalContractAliases", "expected": "clean"}
+  ]
+}

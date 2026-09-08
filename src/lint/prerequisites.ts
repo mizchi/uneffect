@@ -11,6 +11,15 @@ export const initializationRule: PrerequisiteRule = Object.freeze({
   }),
 });
 
+export const ownPropertyReadRule: PrerequisiteRule = Object.freeze({
+  id: "own-property-before-read",
+  operations: Object.freeze({
+    guard: Object.freeze({ provides: Object.freeze(["own-property"]) }),
+    read: Object.freeze({ requires: Object.freeze(["own-property"]) }),
+    invalidate: Object.freeze({ revokes: Object.freeze(["own-property"]) }),
+  }),
+});
+
 /** Compile operation prerequisites to the existing CFG must-analysis consumer. */
 export function lintPrerequisites(graph: RuleCfg, rule: PrerequisiteRule, options: RuleAnalysisOptions = {}): RuleAnalysisResult {
   const config = record(options, "options", ["budget"]);

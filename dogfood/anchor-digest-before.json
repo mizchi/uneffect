@@ -1,0 +1,39 @@
+{
+  "commit": "b77d95d0",
+  "fileName": "src/effects/deno-permissions.ts",
+  "sourceSha256": "0bb93f69713e458cf6ffdbe4f552650965494d4de8b1d16e922721a0883abd93",
+  "reports": [
+    {
+      "kind": "inherited",
+      "root": "/repo-a",
+      "args": [
+        "--allow-read=/repo-a/data"
+      ],
+      "bindingDigest": "f4883edd5d63a7a676700cc98e1678d1e858905a90279a617ac165c576c5b718"
+    },
+    {
+      "kind": "inherited",
+      "root": "/repo-b",
+      "args": [
+        "--allow-read=/repo-b/data"
+      ],
+      "bindingDigest": "f4883edd5d63a7a676700cc98e1678d1e858905a90279a617ac165c576c5b718"
+    },
+    {
+      "kind": "nonenumerable-own",
+      "root": "/repo-a",
+      "args": [
+        "--allow-read=/repo-a/data"
+      ],
+      "bindingDigest": "f4883edd5d63a7a676700cc98e1678d1e858905a90279a617ac165c576c5b718"
+    },
+    {
+      "kind": "nonenumerable-own",
+      "root": "/repo-b",
+      "args": [
+        "--allow-read=/repo-b/data"
+      ],
+      "bindingDigest": "f4883edd5d63a7a676700cc98e1678d1e858905a90279a617ac165c576c5b718"
+    }
+  ]
+}

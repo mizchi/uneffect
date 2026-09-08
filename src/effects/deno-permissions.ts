@@ -5,11 +5,13 @@ import type { CapabilityAtom, CapabilityEffect, Effect } from "./capabilities.js
 export interface TargetProfile {
   runtime: "node" | "deno";
   os: "windows" | "linux" | "darwin";
+  /** Explicit own entries; inherited defaults must be materialized by the caller. */
   environment: Readonly<Record<string, string | undefined>>;
   windowsDirectory?: string;
 }
 
 export interface PermissionProjectionOptions {
+  /** Explicit own entries. Projection snapshots them once for arguments and evidence. */
   anchors: Readonly<Record<string, string | undefined>>;
   platform: "posix" | "windows";
   target?: TargetProfile;
@@ -21,25 +23,29 @@ export interface DenoPermissionProjection { args: string[]; scopes: Record<strin
 
 export function resolveTargetTemp(target: TargetProfile): string {
   const env = target.environment;
-  if (target.os === "windows") return env.TEMP ?? env.TMP ?? `${target.windowsDirectory ?? "C:\\Windows"}\\Temp`;
-  return env.TMPDIR ?? env.TMP ?? env.TEMP ?? "/tmp";
+  if (target.os === "windows") return (Object.hasOwn(env, "TEMP") ? env.TEMP : undefined)
+    ?? (Object.hasOwn(env, "TMP") ? env.TMP : undefined) ?? `${target.windowsDirectory ?? "C:\\Windows"}\\Temp`;
+  return (Object.hasOwn(env, "TMPDIR") ? env.TMPDIR : undefined)
+    ?? (Object.hasOwn(env, "TMP") ? env.TMP : undefined)
+    ?? (Object.hasOwn(env, "TEMP") ? env.TEMP : undefined) ?? "/tmp";
 }
 
 function resolvePath(value: string, options: PermissionProjectionOptions): string {
   const match = /^\$([A-Z_]+)(?:\/(.*))?$/.exec(value);
   if (!match) return value.replace(/\/\*\*$/, "");
   const name = match[1]!;
-  const binding = options.anchors[name] ?? (name === "TEMP" && options.target ? resolveTargetTemp(options.target) : undefined);
+  const explicit = Object.hasOwn(options.anchors, name) ? options.anchors[name] : undefined;
+  const binding = explicit ?? (name === "TEMP" && options.target ? resolveTargetTemp(options.target) : undefined);
   if (!binding) throw new Error(`missing path anchor binding: ${name}`);
   const path = options.platform === "windows" ? win32 : posix;
   const remainder = (match[2] ?? "").replace(/\/\*\*$/, "");
   return remainder ? path.resolve(binding, ...remainder.split("/")) : path.resolve(binding);
 }
 
-const flags: Record<string, string> = {
+const flags: Readonly<Record<string, string>> = Object.freeze({
   FsRead: "read", FsWrite: "write", Net: "net", Env: "env", Run: "run",
   Sys: "sys", Ffi: "ffi", Import: "import",
-};
+});
 
 function atomScope(capability: string, atom: CapabilityAtom, options: PermissionProjectionOptions): string {
   if ((capability === "FsRead" || capability === "FsWrite" || capability === "Ffi") && atom.kind === "path") return resolvePath(atom.value, options);
@@ -72,6 +78,11 @@ function emit(prefix: "allow" | "deny", values: Map<string, Set<string> | null>)
 }
 
 export function projectDenoPermissions(policy: DenoPermissionPolicy, options: PermissionProjectionOptions): DenoPermissionProjection {
+  const snapshot = (bindings: Readonly<Record<string, string | undefined>>) => Object.fromEntries(
+    Object.getOwnPropertyNames(bindings).map(name => [name, bindings[name]]));
+  options = { ...options, anchors: snapshot(options.anchors), target: options.target ? {
+    ...options.target, environment: snapshot(options.target.environment),
+  } : undefined };
   const allow = new Map<string, Set<string> | null>(), deny = new Map<string, Set<string> | null>();
   for (const effect of policy.allow) collect(allow, effect, options);
   for (const effect of policy.deny) collect(deny, effect, options);

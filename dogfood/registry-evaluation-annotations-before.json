@@ -1,0 +1,123 @@
+{
+  "rule": "own-property-before-read",
+  "reports": [
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "diagnosticHint",
+      "registry": "hints",
+      "flow": "statement",
+      "sourceSha256": "358802ed48725e4a32c8f90b39be5968f6892d491dec89e42a3f08e3313c9fae",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/effects/capability-dsl-source.ts",
+      "functionName": "prepareCapabilityDslSourceLinks",
+      "registry": "files",
+      "flow": "expression",
+      "sourceSha256": "06485c39c4f01923e42afb1aa3031b0756ce7b86de0d3176ab80ad1ee9fa2c43",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/optimizer/runtime-assertions.ts",
+      "functionName": "schemaCode",
+      "registry": "namedSchemas",
+      "flow": "expression",
+      "sourceSha256": "394c2b5d8ac2120b23a0f05f0cda35ccfbe09a436f36bf0362a7787c5dc51348",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "resolvePath",
+      "registry": "options.anchors",
+      "flow": "expression",
+      "sourceSha256": "83411764cb1fe63f6d0497badd820e1d67a607a87500259080a3157709a043fd",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "resolveTargetTemp",
+      "registry": "target.environment",
+      "flow": "expression",
+      "sourceSha256": "83411764cb1fe63f6d0497badd820e1d67a607a87500259080a3157709a043fd",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "emit",
+      "registry": "flags",
+      "flow": "expression",
+      "sourceSha256": "83411764cb1fe63f6d0497badd820e1d67a607a87500259080a3157709a043fd",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/support/annotations.ts",
+      "functionName": "canonicalDirective",
+      "registry": "aliases",
+      "flow": "expression",
+      "sourceSha256": "e5c31141cbd290707f3e3c9c72a1e4dbcb0f8141d37b408ffd51a44324ebe5bc",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 7779,
+          "end": 7795,
+          "source": "aliases[dialect]",
+          "line": 155
+        }
+      ]
+    },
+    {
+      "fileName": "src/support/annotations.ts",
+      "functionName": "validateUneffectAnnotations",
+      "registry": "dialectDirectives",
+      "flow": "expression",
+      "sourceSha256": "e5c31141cbd290707f3e3c9c72a1e4dbcb0f8141d37b408ffd51a44324ebe5bc",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 12131,
+          "end": 12182,
+          "source": "dialectDirectives[block.dialect as UneffectDialect]",
+          "line": 234
+        }
+      ]
+    },
+    {
+      "fileName": "src/support/annotations.ts",
+      "functionName": "extractLocatedAnnotations",
+      "registry": "dialectDirectives",
+      "flow": "expression",
+      "sourceSha256": "e5c31141cbd290707f3e3c9c72a1e4dbcb0f8141d37b408ffd51a44324ebe5bc",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 8105,
+          "end": 8156,
+          "source": "dialectDirectives[block.dialect as UneffectDialect]",
+          "line": 161
+        }
+      ]
+    },
+    {
+      "fileName": "src/support/annotations.ts",
+      "functionName": "extractLocatedAnnotations",
+      "registry": "temporalContractAliases",
+      "flow": "expression",
+      "sourceSha256": "e5c31141cbd290707f3e3c9c72a1e4dbcb0f8141d37b408ffd51a44324ebe5bc",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 11190,
+          "end": 11225,
+          "source": "temporalContractAliases[clause[1]!]",
+          "line": 216
+        }
+      ]
+    }
+  ]
+}

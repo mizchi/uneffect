@@ -1,0 +1,82 @@
+{
+  "rule": "own-property-before-read",
+  "reports": [
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "diagnosticHint",
+      "registry": "hints",
+      "flow": "statement",
+      "sourceSha256": "e9dedf4682bb74445da256810f526952512baa7195c440e1fb5e0e9f75019691",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 12216,
+          "end": 12227,
+          "source": "hints[code]",
+          "line": 180
+        }
+      ]
+    },
+    {
+      "fileName": "src/effects/capability-dsl-source.ts",
+      "functionName": "prepareCapabilityDslSourceLinks",
+      "registry": "files",
+      "flow": "expression",
+      "sourceSha256": "cf0ad382b0db780aafe9c6964d0a360318e6425e466233770e4e6840387b3730",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 12676,
+          "end": 12700,
+          "source": "files[specificationFile]",
+          "line": 152
+        }
+      ]
+    },
+    {
+      "fileName": "src/optimizer/runtime-assertions.ts",
+      "functionName": "schemaCode",
+      "registry": "namedSchemas",
+      "flow": "expression",
+      "sourceSha256": "394c2b5d8ac2120b23a0f05f0cda35ccfbe09a436f36bf0362a7787c5dc51348",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "resolvePath",
+      "registry": "options.anchors",
+      "flow": "expression",
+      "sourceSha256": "0bb93f69713e458cf6ffdbe4f552650965494d4de8b1d16e922721a0883abd93",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 1336,
+          "end": 1357,
+          "source": "options.anchors[name]",
+          "line": 32
+        }
+      ]
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "resolveTargetTemp",
+      "registry": "target.environment",
+      "flow": "expression",
+      "sourceSha256": "0bb93f69713e458cf6ffdbe4f552650965494d4de8b1d16e922721a0883abd93",
+      "status": "unknown",
+      "reason": "unsupported-source",
+      "detail": "registry aliases require alias analysis"
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "emit",
+      "registry": "flags",
+      "flow": "expression",
+      "sourceSha256": "0bb93f69713e458cf6ffdbe4f552650965494d4de8b1d16e922721a0883abd93",
+      "status": "unknown",
+      "reason": "unsupported-source",
+      "detail": "expression execution order or implicit calls are not modeled"
+    }
+  ]
+}

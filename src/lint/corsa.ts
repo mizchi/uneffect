@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { openCorsaApiFrontend, resolveCorsaExecutable, type CorsaApiFrontend } from "../frontends/corsa/corsa-api-frontend.js";
-import type { SourceRuleLowering, SourceRuleOptions } from "./contracts.js";
+import type { RegistryReadRuleOptions, SourceRuleLowering, SourceRuleOptions } from "./contracts.js";
 import { name, record } from "./input.js";
 import { normalizeSourceOptions } from "./source-options.js";
 
@@ -17,16 +17,52 @@ export interface CorsaRuleOptions extends SourceRuleOptions {
 
 const execute = promisify(execFile);
 
+export interface CorsaRegistryReadOptions extends RegistryReadRuleOptions {
+  readonly configFile?: string;
+  readonly corsaExecutable?: string;
+}
+
+function failure(error: unknown): SourceRuleLowering {
+  return { status: "unknown", reason: error instanceof TypeError ? "invalid-input" : "frontend-error", detail: error instanceof Error ? error.message : String(error) };
+}
+
 /** Oxc syntax + Corsa symbols, with native compiler diagnostics checked before extraction. */
 export async function lowerCorsaRuleCfg(options: CorsaRuleOptions): Promise<SourceRuleLowering> {
+  try {
+    const input = record(options, "options", ["fileName", "functionName", "bindings", "configFile", "corsaExecutable"]);
+    const normalized = normalizeSourceOptions({ fileName: input.fileName as string, functionName: input.functionName as string, bindings: input.bindings as SourceRuleOptions["bindings"] });
+    return await checkedSource({ ...options, fileName: normalized.fileName }, async (source, frontend, fileName) => {
+      const { lowerOxcRuleCfg } = await import("./oxc.js");
+      return lowerOxcRuleCfg(source, frontend, { ...normalized, fileName });
+    });
+  } catch (error) { return failure(error); }
+}
+
+/** Own-entry reads under explicit runtime assumptions and a selected control-flow scope. */
+export async function lowerCorsaRegistryReadCfg(options: CorsaRegistryReadOptions): Promise<SourceRuleLowering> {
+  try {
+    const input = record(options, "options", ["fileName", "functionName", "registry", "flow", "configFile", "corsaExecutable"]);
+    const fileName = name(input.fileName, "fileName"), functionName = name(input.functionName, "functionName"), registry = name(input.registry, "registry");
+    if (!/^[$A-Za-z_][$\w]*(?:\.[$A-Za-z_][$\w]*)*$/u.test(registry)) throw new TypeError("registry must be a binding name with optional static properties");
+    if (input.flow !== undefined && input.flow !== "expression" && input.flow !== "statement") throw new TypeError("flow must be expression or statement");
+    const flow = input.flow;
+    return await checkedSource({ ...options, fileName }, async (source, frontend, absolute) => {
+      const { lowerRegistryReadCfg } = await import("./registry-reads.js");
+      return lowerRegistryReadCfg(source, frontend, { fileName: absolute, functionName, registry, flow });
+    });
+  } catch (error) { return failure(error); }
+}
+
+async function checkedSource(
+  options: { fileName: string; configFile?: string; corsaExecutable?: string },
+  lower: (source: string, frontend: CorsaApiFrontend, fileName: string) => Promise<SourceRuleLowering>,
+): Promise<SourceRuleLowering> {
   let directory: string | undefined;
   let frontend: CorsaApiFrontend | undefined;
   try {
-    const input = record(options, "options", ["fileName", "functionName", "bindings", "configFile", "corsaExecutable"]);
-    const sourceOptions = normalizeSourceOptions({ fileName: input.fileName as string, functionName: input.functionName as string, bindings: input.bindings as SourceRuleOptions["bindings"] });
-    const fileName = resolve(sourceOptions.fileName);
-    const configFile = input.configFile === undefined ? undefined : resolve(name(input.configFile, "configFile"));
-    const corsaExecutable = input.corsaExecutable === undefined ? undefined : name(input.corsaExecutable, "corsaExecutable");
+    const fileName = resolve(options.fileName);
+    const configFile = options.configFile === undefined ? undefined : resolve(name(options.configFile, "configFile"));
+    const corsaExecutable = options.corsaExecutable === undefined ? undefined : name(options.corsaExecutable, "corsaExecutable");
     if (/\.d\.[cm]?ts$/u.test(fileName)) throw new TypeError("fileName must identify an implementation source");
     const source = await readFile(fileName, "utf8");
     const executable = resolveCorsaExecutable({ corsaExecutable });
@@ -49,14 +85,13 @@ export async function lowerCorsaRuleCfg(options: CorsaRuleOptions): Promise<Sour
       }
       throw error;
     }
-    const { lowerOxcRuleCfg } = await import("./oxc.js");
     frontend = await openCorsaApiFrontend({ configFile: project, corsaExecutable: executable });
     if (!frontend.rootFiles.some(file => resolve(file) === fileName)) throw new TypeError("fileName is not a root file of the Corsa project");
-    const result = lowerOxcRuleCfg(source, frontend, { ...sourceOptions, fileName });
+    const result = await lower(source, frontend, fileName);
     if (await readFile(fileName, "utf8") !== source) return { status: "unknown", reason: "unsupported-source", detail: "source changed during analysis; retry with a stable project" };
     return result;
   } catch (error) {
-    return { status: "unknown", reason: error instanceof TypeError ? "invalid-input" : "frontend-error", detail: error instanceof Error ? error.message : String(error) };
+    return failure(error);
   } finally {
     try { frontend?.close(); } finally { if (directory) await rm(directory, { recursive: true, force: true }); }
   }

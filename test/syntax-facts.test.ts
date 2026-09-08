@@ -9,6 +9,59 @@ import {
 } from "../src/frontends/oxc-syntax.js";
 
 describe("versioned syntax facts", () => {
+  it("keeps object handler bodies separate from their enclosing factory", () => {
+    const source = `function factory() { return {
+      run() { console.log("method") },
+      arrow: () => console.log("arrow"),
+      expression: function internal() { console.log("expression") },
+      ["fixed-name"]() { console.log("literal") },
+    }; }`;
+    const facts = collectSyntaxFacts("handlers.ts", source);
+    expect(facts.coverage.every(entry => entry.status === "complete")).toBe(true);
+    expect(facts.functions.map(({ name, kind }) => ({ name, kind }))).toEqual([
+      { name: "factory", kind: "function" },
+      { name: "run", kind: "method" },
+      { name: "arrow", kind: "arrow" },
+      { name: "expression", kind: "function-expression" },
+      { name: "fixed-name", kind: "method" },
+    ]);
+    expect(facts.sites.filter(site => site.name === "log").map(site => enclosingFunction(facts.functions, site.start)?.name))
+      .toEqual(["run", "arrow", "expression", "fixed-name"]);
+    expect(parseSyntaxFacts(JSON.parse(JSON.stringify(facts)))).toEqual(facts);
+  });
+
+  it("collects literal member names while retaining dynamic-key exclusions", () => {
+    const source = `function run(key: string) {
+      console["log"]("hello"); new globalThis["WebSocket"]("wss://example.com");
+      void document["title"]; void [1, 2][0];
+      console[key]("dynamic"); void document[key];
+    }`;
+    const facts = collectSyntaxFacts("literal-members.ts", source);
+    expect(facts.sites.map(({ kind, name }) => ({ kind, name }))).toEqual([
+      { kind: "call", name: "log" }, { kind: "construct", name: "WebSocket" },
+      { kind: "property", name: "title" }, { kind: "property", name: "0" },
+    ]);
+    expect(facts.coverage.flatMap(entry => entry.exclusions).map(entry => entry.reason))
+      .toEqual(["computed-call-target", "computed-property"]);
+    expect(parseSyntaxFacts(JSON.parse(JSON.stringify(facts)))).toEqual(facts);
+  });
+
+  it("does not admit dynamic object names or accessor invocation semantics", () => {
+    const facts = collectSyntaxFacts("dynamic-handlers.ts", `const key = "run";
+      const handlers = { [key]() { console.log("dynamic") }, get value() { console.log("getter"); return 1; } };`);
+    expect(facts.coverage.find(entry => entry.domain === "function-boundaries")?.exclusions.map(entry => entry.reason))
+      .toEqual(["computed-function-name", "object-member-function"]);
+  });
+
+  it("does not drop property reads used as call or constructor arguments", () => {
+    const facts = collectSyntaxFacts("arguments.ts", `function run(key: string) {
+      consume(document["title"]); new Box(document.title); consume(document[key]);
+    }`);
+    expect(facts.sites.filter(site => site.kind === "property").map(site => site.name)).toEqual(["title", "title"]);
+    expect(facts.coverage.find(entry => entry.domain === "property-sites")?.exclusions)
+      .toEqual([expect.objectContaining({ reason: "computed-property" })]);
+  });
+
   it("normalizes supported function boundaries with the TypeScript bridge", () => {
     const source = `
       declare function run(value: number): number;

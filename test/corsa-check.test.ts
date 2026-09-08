@@ -27,6 +27,28 @@ function capabilityNames(result: Awaited<ReturnType<typeof checkCorsaProject>>):
 }
 
 describe("Corsa-native project check", () => {
+  it("authenticates literal member calls and isolates object handlers", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-handlers-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `
+        export function factory() { return {
+          report: () => console["log"]("hello"),
+          connect() { return new globalThis["WebSocket"]("wss://example.com"); },
+        }; }
+        export function shadowed(console: { log(value: string): void }) { console["log"]("local"); }
+        export function cookies() { console.log(document["cookie"]); }
+        export function shadowedCookie(document: { cookie: string }) { return String(document["cookie"]); }
+      `);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const checked = await checkCorsaProject({ configFile: temporaryConfig });
+      expect(checked.errors).toBe(0);
+      expect(capabilityNames(checked)).toMatchObject({ factory: [], report: ["Console"], connect: ["Net"], shadowed: [],
+        cookies: ["Console", "CookieRead"], shadowedCookie: [] });
+      expect(checked.summaries.find(item => item.functionName === "shadowed")?.evidence).toBe("unknown");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("does not import a JavaScript TypeScript 6 Program on the shipped check driver", () => {
     const driver = readFileSync("src/cli/check-command.ts", "utf8");
     const corsaCheck = readFileSync("src/frontends/corsa/corsa-check.ts", "utf8");

@@ -149,7 +149,7 @@ export function prepareCapabilityDslSourceLinks(files: Readonly<Record<string, s
     if (!requested.startsWith("./") && !requested.startsWith("../")) throw new Error(`${fileName}: capability from path must be relative`);
     if (!requested.endsWith(".uneffect.ts") || !/^[A-Za-z_$][\w$]*$/.test(exportName)) throw new Error(`${fileName}: invalid capability specification reference`);
     const specificationFile = posix.normalize(posix.join(posix.dirname(fileName), requested));
-    const specification = files[specificationFile];
+    const specification = Object.hasOwn(files, specificationFile) ? files[specificationFile] : undefined;
     if (specification === undefined) throw new Error(`${fileName}: capability specification ${specificationFile} does not exist in the selected project`);
     validate?.(specificationFile);
     const parsed = parseCapabilityDslWithSchemas(specificationFile, specification, exportName);

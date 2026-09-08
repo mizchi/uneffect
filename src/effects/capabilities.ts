@@ -274,7 +274,7 @@ function resolvedPath(value: string, options: CapabilityComparisonOptions): stri
   const path = options.platform === "windows" ? win32 : posix;
   let resolved: string;
   if (match) {
-    const binding = options.anchors[match[1]!];
+    const binding = Object.hasOwn(options.anchors, match[1]!) ? options.anchors[match[1]!] : undefined;
     if (!binding) return undefined;
     resolved = path.resolve(binding, ...(match[2] ?? "").split("/").filter(Boolean));
   } else resolved = path.resolve(withoutRecursive);

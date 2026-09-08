@@ -44,7 +44,7 @@ npx quint run protocol.qnt
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
 | `module-order <entry.ts>` | The Corsa/Oxc source-mapped ESM initialization partial-order artifact; `--project` selects compiler options (default: isolated ES2024/NodeNext, no ambient package types); `--schema-version 1\|2` selects the default v1 or supported v2 conditional join, and `--require` rejects non-proof-grade extraction. |
-| `cfg-lint <file.ts> <function>` | Prototype initialization-before-use rule over function CFGs, using Corsa/Oxc without the JavaScript TypeScript compiler. JSON diagnostics, explicit operation assumptions, and unknown boundaries; see [CFG lint](./cfg-lint.md). |
+| `cfg-lint <file.ts> <function>` | Prototype initialization-before-use rule over function CFGs, or `--registry binding.path` for own-entry guards. Add `--flow statement` for branches, early returns, and supported loops. Uses Corsa/Oxc without the JavaScript TypeScript compiler. JSON diagnostics include explicit assumptions and unknown boundaries; see [CFG lint](./cfg-lint.md). |
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 

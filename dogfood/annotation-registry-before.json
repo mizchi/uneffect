@@ -1,0 +1,49 @@
+{
+  "commit": "b77d95d0",
+  "fileName": "src/support/annotations.ts",
+  "sourceSha256": "e5c31141cbd290707f3e3c9c72a1e4dbcb0f8141d37b408ffd51a44324ebe5bc",
+  "reports": [
+    {
+      "source": "/* uneffect:constructor payload */",
+      "error": "TypeError: accepted.has is not a function"
+    },
+    {
+      "source": "/* uneffect:temporal_contract constructor payload */",
+      "diagnostics": []
+    },
+    {
+      "source": "/* uneffect:\n constructor payload\n */",
+      "additionalDirective": "constructor",
+      "diagnostics": [],
+      "extracted": []
+    },
+    {
+      "source": "/* uneffect:toString payload */",
+      "error": "TypeError: accepted.has is not a function"
+    },
+    {
+      "source": "/* uneffect:temporal_contract toString payload */",
+      "diagnostics": []
+    },
+    {
+      "source": "/* uneffect:\n toString payload\n */",
+      "additionalDirective": "toString",
+      "diagnostics": [],
+      "extracted": []
+    },
+    {
+      "source": "/* uneffect:__proto__ payload */",
+      "error": "TypeError: accepted.has is not a function"
+    },
+    {
+      "source": "/* uneffect:temporal_contract __proto__ payload */",
+      "diagnostics": []
+    },
+    {
+      "source": "/* uneffect:\n __proto__ payload\n */",
+      "additionalDirective": "__proto__",
+      "diagnostics": [],
+      "extracted": []
+    }
+  ]
+}

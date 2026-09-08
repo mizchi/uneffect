@@ -14,7 +14,7 @@
 | Export | 現在の backend / 境界 | 主な回帰テスト | 残る工程 |
 | --- | --- | --- | --- |
 | `.` | 集約入口は Program 依存 | `public-surface.test.ts`, `contracts.test.ts` | M2〜M5 |
-| `./corsa` | native check。限定 effect と限定本体証明 | `corsa-check.test.ts`, `corsa-contract-check.test.ts` | M2〜M5 |
+| `./corsa` | native check。限定 effect、直接呼出の既知 effect 伝播、限定本体証明 | `corsa-check.test.ts`, `corsa-effect-propagation.test.ts`, `corsa-contract-check.test.ts` | M2〜M5 |
 | `./corsa/api` | native semantic facts | `corsa-api-frontend.test.ts` | M1、既存型契約維持 |
 | `./experimental` | 集約入口は Program 依存 | `public-surface.test.ts`, `release-readiness.test.ts` | M2〜M5 |
 | `./experimental/corsa` | checker exporter と旧 frontend parity | `corsa-checker-exporter.test.ts`, `corsa-effect-parity.test.ts` | M0 / M5、oracle 隔離 |
@@ -24,7 +24,7 @@
 | `./impact` | 言語非依存 | `graph-api.test.ts`, `graph-analysis.test.ts` | 既存契約維持 |
 | `./module-order` | 同期 Program API | `module-order-api.test.ts` | M0 / M5 の API 置換 |
 | `./experimental/lint` | 中立 CFG 上の prerequisite 解析 | `cfg-lint.test.ts` | 既存契約維持 |
-| `./experimental/lint/corsa` | Oxc / native 型・symbol | `cfg-lint-corsa.test.ts` | M1、既存境界維持 |
+| `./experimental/lint/corsa` | Oxc / native 型・symbol | `cfg-lint-corsa.test.ts`, `registry-read-rule.test.ts`, `registry-dogfood.test.ts` | M1、登録表の式内/文間ガードを検査。例外・別名・helper の証明は対象外 |
 | `./experimental/spec` | Oxc 解析・生成、native DSL linking / completion | `oxc-spec-migration.test.ts`, `corsa-contract-dsl.test.ts`, `corsa-contract-control-flow.test.ts` | M1 / M2、生成と本体証明を区別 |
 | `./experimental/instrument` | Oxc の限定 assertion 挿入 | `oxc-instrument.test.ts` | M3 の証拠消費 |
 | `./experimental/corsa/callables` | native signature / type facts | `corsa-callable-frontend.test.ts`, `corsa-awaited-types.test.ts` | M1 の不足 facts |
@@ -40,7 +40,7 @@
 
 | Command / mode | 現在の backend | 主な回帰テスト | 残る工程 |
 | --- | --- | --- | --- |
-| `check` 通常 / files / 単独 project | native。注釈のある限定本体を検証、他の契約は unsupported | `corsa-check.test.ts`, `corsa-contract-check.test.ts` | M2 / M3 |
+| `check` 通常 / files / 単独 project | native。限定本体を検証、直接呼出の既知 effect を伝播。未移行の契約は unsupported | `corsa-check.test.ts`, `corsa-effect-propagation.test.ts`, `corsa-syntax-dogfood.test.ts`, `corsa-contract-check.test.ts` | M2 / M3 |
 | `check --typescript-program`, `--corsa-parity` | Program / oracle 比較 | `corsa-effect-parity.test.ts` | M0 / M5 |
 | `check --contract-summary`, `--resource-contract` | Program | `contract-summary.test.ts`, `resource-callable-artifact.test.ts` | M2 / M3 / M4 |
 | `check --declaration-transforms`, `--module-entry` | Program | `workspace-module-initialization.test.ts`, `release-readiness.test.ts` | M4 |
@@ -52,7 +52,7 @@
 | `evidence` | Program | `evidence-optimizer.test.ts` | M2〜M5 |
 | `contract-summary` | Program の producer 証明 | `contract-summary.test.ts` | M2 / M4 |
 | `module-order --schema-version 1 / 2` | native | `module-order-corsa.test.ts` | M4、境界維持 |
-| `cfg-lint` | native | `cfg-lint-cli.test.ts`, `cfg-lint-corsa.test.ts` | 境界維持 |
+| `cfg-lint` | native | `cfg-lint-cli.test.ts`, `cfg-lint-corsa.test.ts`, `registry-read-rule.test.ts`, `registry-dogfood.test.ts` | `--registry` / `--flow statement`。既知バグの再検出と、別の実コードで新たに2件のバグを再現。前提を JSON に表示 |
 | `resource-model` | Program のイベント抽出 | `resource-protocol-typescript.test.ts` | M3 |
 | `async-model` | Program のイベント抽出 | `resource-temporal-product.test.ts` | M3 |
 

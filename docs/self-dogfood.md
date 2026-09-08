@@ -16,6 +16,103 @@ fail-closed. That case requires zero effect diagnostics and an explicit
 allow-listed reason code on every unknown summary, so they cannot silently
 become proof.
 
+## Native migration dogfood
+
+The [diagnostic review evaluation](dogfood-evaluation.md) separates coverage
+gaps, manually confirmed product bugs, and injected negative controls. Its
+first review reproduced and fixed two existing replay bugs: inherited action
+dispatch and reference-based collection equality during TLC action recovery.
+`just dogfood-native` also runs their public-API regression tests.
+
+`just dogfood-native` runs the default Corsa/Oxc CLI against the actual
+`src/support/diagnostic-quality.ts`, `src/support/environment.ts`, and
+`src/evidence/model-replay.ts` sources with JavaScript TypeScript imports
+blocked. `dogfood/native-syntax-baseline.json` caps syntax blockers per file
+and unknown summaries; a minimum summary count and named criterion checks
+guard against silently dropping analyzed functions. This is a migration
+regression gate: the checked application still exits 1 under `no-unknown`.
+
+The first iteration found unsupported object handlers and literal member
+accesses. Oxc now records ordinary object methods, arrow/function-valued
+properties, and string/number literal member names. Dynamic keys and object
+accessors remain excluded. Corsa still authenticates builtin identity:
+`console["log"]` carries `Console`, while a shadowed parameter does not.
+Boundary tests also found property reads disappearing when used as call or
+constructor arguments; these reads now stay in the syntax facts.
+
+| Measure, on the same three source files | Before | After |
+| --- | ---: | ---: |
+| Unsupported syntax diagnostics | 50 | 16 |
+| Collected function summaries | 105 | 111 |
+| Unknown effect summaries | 64 | 64 |
+
+The remaining 16 syntax diagnostics concern dynamic property keys. The
+argument-read fix exposes one of those that the old collector omitted.
+The added six summaries belong to the real diagnostic criteria. A mutation
+test inserts `console["log"]` into the actual `location` criterion and
+requires its own summary to contain `Console`. Callback dispatch is still
+unmigrated: `scoreDiagnostic` remains unknown. These results establish syntax
+coverage and direct builtin effects, not annotation enforcement or body proof.
+
+The next iteration carries known effects through direct calls to synchronous
+top-level function declarations in the selected files. Corsa symbol identity
+links same-file calls, renamed imports, and re-exports. The compiler-independent
+`effects/effect-propagation.ts` uses the shared CFG fixed-point engine to union
+effects through callers, including recursive cycles. A second real-source
+mutation inserts Console into `environment.ts`'s `minimumMajor`; the effect
+now reaches both `nodeCheck` and `runEnvironmentChecks` (previously only the
+helper carried it). The packed CLI repeats a direct-call and shadowing check
+with JavaScript compiler imports blocked.
+
+This step preserves unknown evidence for local calls, including pure-looking
+cycles. It accumulates known effects without claiming a complete upper bound;
+the three-file unknown baseline remains 64. Mutable aliases, object dispatch,
+async/generator callees, and unselected implementations remain unlinked.
+Assignments exclude stale function bodies. Shorthand destructuring exposed a
+native position query that returns a property symbol instead of the assigned
+variable; those writes conservatively exclude same-name candidates until the
+binding-specific query is connected. Direct eval excludes the file's body
+candidates. These exclusions and a same-name parameter are regression tests.
+
+The review of those coverage reports reproduced two actual replay bugs; the
+results and limits are recorded in [the evaluation](./dogfood-evaluation.md).
+An opt-in CFG policy now automatically redetects the historical inherited-action
+lookup: `cfg-lint --registry adapter.actions` flags the original unguarded read
+and accepts the current same-expression own-property guard. This is regression
+rediscovery of a known bug, not a new automatic discovery. `just dogfood-native`
+includes both historical/current real-source checks with JS compiler imports
+blocked. The policy's runtime assumptions and selectable expression/statement scopes are explicit
+in [the linter documentation](./cfg-lint.md#registry-own-entry-policy).
+
+The next evaluation applies the rule to six additional actual sites. It reports
+three missing guarantees; execution reproduces two new bugs in diagnostic hints
+and capability source selection. Both are fixed and included in `just dogfood-native`.
+The remaining finding concerns inherited anchor configuration and is not counted
+as a confirmed bug. Two other sites remain unknown. `just registry-dogfood`
+prints the current results; before/after source digests and spans are checked in
+under `dogfood/registry-evaluation-*.json`. The related runtime assertion emitter
+also had collection reference equality and now has execution regressions for
+content comparison. The evaluation separates this manual finding from the two
+new linter-assisted discoveries.
+
+The remaining anchor finding was subsequently reproduced as a digest mismatch:
+different inherited/nonenumerable bindings generated different permission paths
+with the same digest. Projection now snapshots explicit own bindings once for
+both arguments and evidence. Const captures, template evaluation order, and
+frozen-table `Object.keys` provenance extend the registry policy; all six selected
+sites now pass under its explicit assumptions. The evaluation records which
+improvements required analyzer changes and which required source fixes.
+
+The annotation parser adds four function/table selections. Their findings led
+to reproductions of exceptions on unknown dialects, accepted unknown temporal
+clauses, and lost payloads for explicitly added directives named like inherited
+properties. Own-entry checks fix these symptoms without banning those names.
+Nine API regressions and all ten source selections run in `just dogfood-native`.
+The current source results are nine clean and one unknown: the last lookup was
+removed in favor of a membership check, and empty extraction deliberately does
+not claim success. Before/after evidence and this limitation are recorded as
+DF-007 in [the evaluation](./dogfood-evaluation.md).
+
 ## First boundary: static evaluation
 
 `src/frontends/typescript/static-evaluation.ts` declares both exported evaluators as `effect none`
@@ -45,9 +142,10 @@ The constraint-bearing gate uses `--typescript-program --infer` deliberately.
 Default `uneffect check` is Corsa plus Oxc and fail-closes unsupported syntax;
 it does not enforce Node builtin annotations. A separate Corsa baseline remains
 on the currently supported self-hosted subset, `static-evaluation.ts` and
-`ownership-evidence-cache.ts`. Object-member functions and computed properties
-keep the other leaf files outside that Corsa baseline instead of being silently
-accepted. The annotation gate loads a TypeScript Program so its Node and
+`ownership-evidence-cache.ts`. Dynamic computed properties, object accessors,
+and unresolved calls still keep other leaf files outside that Corsa baseline.
+Ordinary object handlers and literal member names are covered by the native
+migration gate above. The annotation gate loads a TypeScript Program so its Node and
 callable-parameter annotations stay load-bearing. Runtime imports load
 a wider internal Program whose unannotated dependencies are still adoption
 candidates. Inference mode continues to enforce every annotation in the selected

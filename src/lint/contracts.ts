@@ -58,6 +58,24 @@ export interface SourceRuleOptions {
 }
 export type SourceRuleLowering = RuleUnknown | { readonly status: "lowered"; readonly cfg: RuleCfg };
 
+/**
+ * Opt-in policy for direct reads of one selected table in a function body.
+ * Expression mode checks independent expressions; statement mode carries facts
+ * through the supported function CFG. Helpers and arbitrary escaping aliases
+ * remain outside the scope; function-body const captures are tracked separately.
+ * Assumes stable data properties (no getters/proxies), string/number keys, and
+ * unmodified Object.hasOwn/Object.keys/Object.freeze and standard array iteration.
+ * These runtime assumptions are not verified.
+ */
+export interface RegistryReadRuleOptions {
+  readonly fileName: string;
+  readonly functionName: string;
+  /** A plain parameter or module const name, with optional static properties, e.g. adapter.actions. */
+  readonly registry: string;
+  /** Default: expression. Statement mode rejects unsupported control flow. */
+  readonly flow?: "expression" | "statement";
+}
+
 /** Compatibility names for the optional TypeScript Program adapter. */
 export type TypeScriptRuleBinding = SourceRuleBinding;
 export type TypeScriptRuleOptions = SourceRuleOptions;

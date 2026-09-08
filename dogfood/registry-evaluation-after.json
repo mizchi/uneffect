@@ -1,0 +1,68 @@
+{
+  "rule": "own-property-before-read",
+  "reports": [
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "diagnosticHint",
+      "registry": "hints",
+      "flow": "statement",
+      "sourceSha256": "358802ed48725e4a32c8f90b39be5968f6892d491dec89e42a3f08e3313c9fae",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/effects/capability-dsl-source.ts",
+      "functionName": "prepareCapabilityDslSourceLinks",
+      "registry": "files",
+      "flow": "expression",
+      "sourceSha256": "06485c39c4f01923e42afb1aa3031b0756ce7b86de0d3176ab80ad1ee9fa2c43",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/optimizer/runtime-assertions.ts",
+      "functionName": "schemaCode",
+      "registry": "namedSchemas",
+      "flow": "expression",
+      "sourceSha256": "394c2b5d8ac2120b23a0f05f0cda35ccfbe09a436f36bf0362a7787c5dc51348",
+      "status": "clean",
+      "reads": []
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "resolvePath",
+      "registry": "options.anchors",
+      "flow": "expression",
+      "sourceSha256": "0bb93f69713e458cf6ffdbe4f552650965494d4de8b1d16e922721a0883abd93",
+      "status": "findings",
+      "reads": [
+        {
+          "start": 1336,
+          "end": 1357,
+          "source": "options.anchors[name]",
+          "line": 32
+        }
+      ]
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "resolveTargetTemp",
+      "registry": "target.environment",
+      "flow": "expression",
+      "sourceSha256": "0bb93f69713e458cf6ffdbe4f552650965494d4de8b1d16e922721a0883abd93",
+      "status": "unknown",
+      "reason": "unsupported-source",
+      "detail": "registry aliases require alias analysis"
+    },
+    {
+      "fileName": "src/effects/deno-permissions.ts",
+      "functionName": "emit",
+      "registry": "flags",
+      "flow": "expression",
+      "sourceSha256": "0bb93f69713e458cf6ffdbe4f552650965494d4de8b1d16e922721a0883abd93",
+      "status": "unknown",
+      "reason": "unsupported-source",
+      "detail": "expression execution order or implicit calls are not modeled"
+    }
+  ]
+}

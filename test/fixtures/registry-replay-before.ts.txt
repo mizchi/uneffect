@@ -235,8 +235,8 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
   }
   const left = evaluateTemporalExpression(expression.left, state), right = evaluateTemporalExpression(expression.right, state);
   switch (expression.operator) {
-    case "eq": return same(left, right);
-    case "neq": return !same(left, right);
+    case "eq": return left === right;
+    case "neq": return left !== right;
     case "and": return Boolean(left) && Boolean(right);
     case "or": return Boolean(left) || Boolean(right);
     case "lt": return Number(left) < Number(right);
@@ -409,7 +409,7 @@ export async function replayModelCounterexample<State extends object, Runtime>(t
       const step = trace.steps[index]!, number = index + 1;
       const before = await observe();
       if (!same(before, step.before)) return { status: "state-mismatch", matchedSteps: index, violations, traceDigest, adapterDigest, mismatch: { step: number, action: step.action, expected: step.before, actual: before } };
-      const action = Object.hasOwn(adapter.actions, step.action) ? adapter.actions[step.action] : undefined;
+      const action = adapter.actions[step.action];
       if (!action) return { status: "missing-action", matchedSteps: index, violations, traceDigest, adapterDigest, missingAction: step.action };
       await action(runtime, clone(step));
       const after = await observe();
