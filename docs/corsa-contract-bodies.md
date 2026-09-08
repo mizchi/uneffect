@@ -25,6 +25,12 @@ export function choose(enabled: boolean): boolean {
 export function shifted(value: -2 | 0 | 3): number {
   return value + 2;
 }
+
+/* uneffect:ensures result >= 0 */
+export function guarded(value: 0 | 9007199254740991): number {
+  if (value === 9007199254740991) return 0;
+  return value + 1;
+}
 ```
 
 `uneffect check input.ts --json` の `contracts` に、成功時の `verified`、違反時の
@@ -56,7 +62,35 @@ default / optional / rest 引数、`contract_from` の本体証明はまだ対�
 `unsupported` とする。例えば最大安全整数に対する `(value + 2) - 2` はJavaScriptでは
 元の値と一致せず、数学的な整数の恒等式として証明してはいけない。
 
-この値域検査はrequiresや分岐による絞込みをまだ使わないため、安全な式を拒否する場合もある。
+値域検査には、検査済みのrequiresと、その地点までに成立した分岐条件を使う。
+引数と整数literalの等値・不等値・大小比較、否定、成立したAND、不成立のORから区間を絞る。
+数値変数同士の比較も両辺に反映する。`value < limit` ならvalueの上限をlimitの上限-1へ、
+limitの下限をvalueの下限+1へ絞る。等値では区間を交差させ、不等値で値を除外するのは
+相手側が1値まで絞られた場合だけである。複数値の相手との不等値から特定の値は除外しない。
+比較する両辺には、1回だけ現れる数値変数への定数の加減算と符号反転も使える。
+`value + 1 < limit` や `1 - value > 2 - limit` は、検査済みの式を `±変数 + 定数` に
+整理して変数の区間へ逆算する。整理と逆算にはBigIntを使い、元の式の中間演算を
+省略して安全性を判定しない。先行条件なしに危険な `value + 1` を比較に書いても拒否する。
+整数literalが左側にある比較も扱う。成立したORや不成立のANDから片側の条件を仮定せず、
+合流点でも経路ごとに検査する。返り値とensuresの値域にもその経路の条件を適用する。
+
+requiresはそれぞれ宣言型の値域から検査を始め、他のrequiresや式全体の成立を根拠に安全とは判断しない。
+ifの条件式も、その条件全体が成立することを仮定する前に検査する。
+本体・requires・ensures内の `&&` / `||` は左から順に検査する。右辺には `&&` の左辺が真、
+`||` の左辺が偽という条件だけを渡す。例えば `value < MAX && value + 1 > value` は
+右辺の加算を安全にできるが、左右を入れ替えると左辺の加算を正当化できない。
+左辺がBoolean literalで右辺を短絡する場合は、右辺の中間値域検査を省く。
+その場合もBoolean同士というsort制約、呼出や除算などの未対応構文の拒否は維持する。
+数式や型から必ず短絡すると推論する機能はない。
+比較の連鎖を反映するため、条件を最大16回走査し、変化がなくなれば終了する。
+有限unionの具体的な値集合も保持し、affine比較を満たす値だけを補助情報として残す。
+区間は引き続き過大近似であり、値集合が空になる経路を削除したり、unionの穴から
+別の値を生成したりはしない。SMTには元の全union前提を渡す。
+矛盾した循環でもこの上限で停止する。上限時の区間も過大近似として利用できるが、
+絞込みが不十分で安全な式を拒否する場合はある。SMTには元の比較をそのまま渡す。
+複数の変数出現を含む式や乗除算からの絞込み、有限unionの穴を使った区間分割は
+未対応なので、安全な式を拒否する場合は残る。矛盾した区間から経路を削除せず、SMTには
+元の型と条件を保持する。未到達の式も構文とsortを検査し、中間値域は到達した経路で検査する。
 `number` に `0 <= value && value <= 3` を付けても小数を排除できないので、整数とは見なさない。
 入力型とrequiresは証明の前提であり、入力を実行時に検査する機能ではない。
 0と-0は許可した演算と比較で同じ整数として扱える範囲に限る。符号を観測する
@@ -94,6 +128,8 @@ caller の requires 証明・ensures 合成も未実装。
 - `contracts/corsa-contracts.ts`: Oxc の限定 lowering、native signature 認証、snapshot 診断。
 - `contracts/corsa-contract-flow.ts`: scalar CFGの構築、経路条件の合流と予算、return経路の抽出。
 - `contracts/native-scalars.ts`: 本体と契約式に共通のsort・安全整数値域の検査。
+- `contracts/native-ranges.ts`: 検査済み条件による区間の絞込み。入力の状態は変更しない。
+- `contracts/native-affine.ts`: 検査済みの定数加減算・符号反転の整理。演算自体の安全性は判定しない。
 - `contracts/contract-annotations.ts`: 契約候補と空 payload の検出。実際の注釈位置は Oxc comments で確認する。
 
 `just corsa-body-check` で固定した Program 結果と native 結果を比較し、成功・違反・未対応・

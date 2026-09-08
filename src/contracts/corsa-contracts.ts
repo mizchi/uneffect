@@ -10,6 +10,7 @@ import { parseLogicExpression } from "./logic.js";
 import { makeObligation, controlFlowBlockId } from "./obligations.js";
 import { solveContractObligations } from "./contract-solver.js";
 import { lowerNativeReturnPaths } from "./corsa-contract-flow.js";
+import { narrowNativeRanges } from "./native-ranges.js";
 import { checkNativeScalar, nativeBodyExpression, nativeInteger, hasNumericExpression, type NativeScalar } from "./native-scalars.js";
 import type { InvariantObligation, LogicExpression, ObligationVariable } from "./logic-contracts.js";
 import type { ContractVerificationResult, VerificationArtifact } from "./verification-contracts.js";
@@ -48,27 +49,28 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
     } else {
       const values = frontend.getFiniteNumberValues(native.type);
       if (!values) throw new Error("native numeric parameters require finite safe integer literal types (at most 16 values)");
-      parameters.set(parameter.name, nativeInteger(expression, BigInt(values[0]!), BigInt(values[values.length - 1]!)));
+      const numeric = nativeInteger(expression, BigInt(values[0]!), BigInt(values[values.length - 1]!));
+      parameters.set(parameter.name, numeric.kind === "number" ? { ...numeric, values: Object.freeze(values.map(BigInt)) } : numeric);
       variables.push({ name: parameter.name, sort: "Int", domain: "int" });
       typeAssumptions.push(values.map((value): LogicExpression => ({ kind: "binary", operator: "eq", left: expression,
         right: { kind: "integer", value: String(value) } })).reduce((left, right) => ({ kind: "binary", operator: "or", left, right })));
     }
   }
-  const paths = lowerNativeReturnPaths(node.body, expression => checkNativeScalar(nativeBodyExpression(expression), parameters));
+  const assumptions = [...typeAssumptions, ...extractLocatedAnnotations(fn.comments, "requires").map(({ value }) => parseLogicExpression(value))];
+  // Requires must be safe over the declared type before any of them can narrow the body.
+  for (const assumption of assumptions) if (checkNativeScalar(assumption, parameters).kind !== "boolean") throw new Error("requires must be Boolean");
+  const requiredParameters = narrowNativeRanges(parameters, assumptions);
+  const paths = lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression),
+    conditions === null ? parameters : narrowNativeRanges(requiredParameters, conditions), conditions === null ? "structure" : "proof"));
   const resultKind = paths[0]!.result.kind;
   if (paths.some(path => path.result.kind !== resultKind) || frontend.getPrimitiveTypeKind(signature.returnType) !== resultKind) {
     throw new Error("native return type does not match the lowered scalar body");
   }
-  const kinds = new Map(parameters);
-  const assumptions = [...typeAssumptions, ...extractLocatedAnnotations(fn.comments, "requires").map(({ value }) => parseLogicExpression(value))];
-  for (const assumption of assumptions) if (checkNativeScalar(assumption, kinds).kind !== "boolean") throw new Error("requires must be Boolean");
   const resultExpression: LogicExpression = { kind: "variable", name: "result" };
-  const numericResults = paths.map(path => path.result).filter(result => result.kind === "number");
-  kinds.set("result", resultKind === "boolean" ? { kind: "boolean", expression: resultExpression } : nativeInteger(resultExpression,
-    numericResults.map(result => result.minimum).reduce((a, b) => a < b ? a : b),
-    numericResults.map(result => result.maximum).reduce((a, b) => a > b ? a : b)));
   variables.push({ name: "result", sort: resultKind === "boolean" ? "Bool" : "Int", domain: resultKind === "boolean" ? "bool" : "int" });
   return paths.flatMap(({ span, result, conditions }) => ensures.map(({ value }) => {
+    const kinds = new Map(narrowNativeRanges(requiredParameters, conditions));
+      kinds.set("result", result.kind === "number" ? { ...result, expression: resultExpression } : { kind: "boolean", expression: resultExpression });
     const goal = parseLogicExpression(value);
     if (checkNativeScalar(goal, kinds).kind !== "boolean") throw new Error("ensures must be Boolean");
     return makeObligation({ kind: "postcondition", fileName: source.fileName, functionName: node.id.name, span, variables,

@@ -377,6 +377,11 @@ try {
     '/* uneffect:ensures result >= 0 */\nexport function shifted(value: -2 | 0 | 3) { return value + 2; }',
     '/* uneffect:ensures result >= 2 */\nexport function successor(value: 0 | 1 | 2) { return value + 1; }',
     '/* uneffect:ensures result === value */\nexport function rounded(value: 9007199254740991) { return (value + 2) - 2; }',
+    '/* uneffect:ensures result >= 0 */\nexport function guarded(value: 0 | 9007199254740991) { if (value === 9007199254740991) return 0; return value + 1; }',
+    '/* uneffect:ensures result */\nexport function shorted(value: 0 | 9007199254740991) { return value === 9007199254740991 || value + 1 > value; }',
+    '/* uneffect:ensures result */\nexport function shortedViolation(value: 0 | 9007199254740991) { return value < 9007199254740991 && value + 1 > value; }',
+    '/* uneffect:ensures result <= limit */\nexport function relative(value: 0 | 9007199254740991, limit: 1 | 9007199254740991) { if (value < limit) return value + 1; return 0; }',
+    '/* uneffect:requires value < limit */\n/* uneffect:ensures result <= limit */\nexport function offset(value: 0 | 9007199254740989 | 9007199254740991, limit: 2 | 9007199254740991) { if (value + 1 < limit) return value + 2; return 0; }',
   ].join("\n"));
   writeFileSync(bodyConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: [] }, files: [bodyEntry] }));
   const bodyProbe = join(consumer, "native-body-probe.mjs");
@@ -384,14 +389,17 @@ try {
     import assert from "node:assert/strict";
     import { checkCorsaProject, createCorsaCheckJsonReport } from "@mizchi/uneffect/corsa";
     const result = await checkCorsaProject({ configFile: ${JSON.stringify(bodyConfig)} });
-    assert.equal(result.errors, 4);
-    assert.equal(result.artifacts.length, 6);
+    assert.equal(result.errors, 5);
+    assert.equal(result.artifacts.length, 14);
     assert.equal(result.artifacts[0].status, "counterexample");
     assert.equal(result.artifacts[0].native.coverage, "boolean-and-constant-return");
     assert.deepEqual(result.artifacts.slice(1, 3).map(item => item.status), ["counterexample", "verified"]);
     assert.ok(result.artifacts.slice(1, 3).every(item => item.native.coverage === "boolean-branching"));
     assert.equal(result.artifacts[1].counterexample.assignments.enabled, "true");
-    assert.deepEqual(result.artifacts.slice(3).map(item => item.status), ["verified", "counterexample", "unsupported"]);
+    assert.deepEqual(result.artifacts.slice(3, 6).map(item => item.status), ["verified", "counterexample", "unsupported"]);
+    assert.deepEqual(result.artifacts.slice(6).map(item => item.status), ["verified", "verified", "verified", "counterexample", "verified", "verified", "verified", "verified"]);
+    assert.equal(result.artifacts[9].counterexample.assignments.value, "9007199254740991");
+    assert.ok(result.artifacts.slice(6).every(item => item.native.coverage === "safe-integer-arithmetic"));
     assert.ok(result.artifacts.slice(3, 5).every(item => item.native.coverage === "safe-integer-arithmetic"));
     assert.equal(result.artifacts[4].counterexample.assignments.value, "0");
     assert.match(result.artifacts[5].message, /safe integer range/);
@@ -402,8 +410,12 @@ try {
     cwd: consumer, encoding: "utf8", timeout: 30_000,
   });
   const bodyContracts = bodyResult.stdout ? JSON.parse(bodyResult.stdout).contracts : undefined;
-  if (bodyResult.status !== 1 || bodyContracts?.length !== 6 || bodyContracts[1].status !== "counterexample" || bodyContracts[2].status !== "verified"
-    || bodyContracts[3].status !== "verified" || bodyContracts[4].status !== "counterexample" || bodyContracts[5].status !== "unsupported") {
+  if (bodyResult.status !== 1 || bodyContracts?.length !== 14 || bodyContracts[1].status !== "counterexample" || bodyContracts[2].status !== "verified"
+    || bodyContracts[3].status !== "verified" || bodyContracts[4].status !== "counterexample" || bodyContracts[5].status !== "unsupported"
+    || bodyContracts[6].status !== "verified" || bodyContracts[7].status !== "verified"
+    || bodyContracts[8].status !== "verified" || bodyContracts[9].status !== "counterexample"
+    || bodyContracts[10].status !== "verified" || bodyContracts[11].status !== "verified"
+    || bodyContracts[12].status !== "verified" || bodyContracts[13].status !== "verified") {
     throw new Error(`compiler-independent contract CLI failed: ${bodyResult.stderr || bodyResult.error || bodyResult.status}`);
   }
   const effectEntry = join(consumer, "native-effect-calls.ts");

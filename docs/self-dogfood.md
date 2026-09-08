@@ -128,8 +128,21 @@ subtraction, multiplication, negation, and comparisons share BigInt range checks
 between bodies and clauses. A bound on a broad `number` never implies integrality.
 Unsafe intermediates remain unsupported even when a later operation cancels them
 mathematically. Numeric proofs use `safe-integer-arithmetic` coverage, and fixed
-Program cases preserve successful and violated contracts. General numbers, brands,
-division, path-refined arithmetic bounds, and call-contract composition remain open.
+Program cases preserve successful and violated contracts. Checked requires and
+branch predicates now refine arithmetic bounds per path, including early returns.
+Predicates are validated before being assumed, and branches never borrow each
+other's bounds. Concrete enumeration checks that narrowing preserves every state
+satisfying the assumptions. Short-circuit expressions also use the checked left
+operand's truth value to refine the right operand in bodies and clauses. Literal
+short circuits skip only arithmetic bounds, retaining syntax and Boolean sort
+validation. Variable comparisons refine both operands, with up to 16 passes to
+propagate chains while bounding work on contradictory cycles. Partial intervals
+still overapproximate the concrete states; original comparisons stay in SMT.
+Checked comparisons can also invert constant addition/subtraction and negation
+around a single variable occurrence. BigInt normalization never replaces the
+original expression's intermediate-range checks. General numbers, brands,
+division, multi-variable expression refinement, and call-contract composition
+remain open.
 
 ## First boundary: static evaluation
 
