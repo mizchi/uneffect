@@ -374,3 +374,13 @@ SMTのOR前提は変更せず、値集合が空の経路を静的に削除もし
 保証されない。`value=1, limit=2, result=3` を反例として返す検査も残し、
 演算の安全性とpostconditionの成立を区別する。
 通常のnumber、複数の変数出現を含む式や乗除算からの絞込み、呼出契約の合成は残る。
+
+単一引数・単一return・`ensures`付きcalleeの1段展開を追加した。引数式を置換してcallerの
+安全整数値域で再検査する。callee側requires、複数段・再帰・動的dispatchはunsupportedである。
+
+### 最小の直接呼出合成
+
+native signature identityを認証できる同一snapshot内の、引数なし・単一return・`ensures`付き
+calleeをcallerの式へ1段だけ展開するsliceを追加した。未契約関数、arrow/const、再帰は
+unsupportedのまま保持する。引数付き呼出、動的dispatch、callee側requiresの代入、複数段の
+合成は次の境界として残る。

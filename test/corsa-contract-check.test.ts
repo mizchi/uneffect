@@ -24,6 +24,54 @@ async function project(text: string, run: (file: string, configFile: string) => 
 }
 
 describe("native contract bodies through check", () => {
+  it("composes an authenticated one-argument affine callee", async () => {
+    await project(`/* uneffect:ensures result === value + 1 */
+export function inc(value: 0 | 1): number { return value + 1; }
+/* uneffect:ensures result === 2 */
+export function caller(): number { return inc(1); }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["verified", "verified"]);
+      expect(result.artifacts.every(item => item.native?.coverage === "safe-integer-arithmetic")).toBe(true);
+    });
+  });
+
+  it.each([
+    `/* uneffect:requires value > 0 */\n/* uneffect:ensures result === value + 1 */\nexport function inc(value: 0 | 1): number { return value + 1; }\n/* uneffect:ensures result === 2 */\nexport function caller(): number { return inc(0); }`,
+    `/* uneffect:ensures result === value + 1 */\nexport function inc(value: 0 | 1): number { return value + 1; }\n/* uneffect:ensures result === 2 */\nexport function caller(value: 0 | 1, other: 0 | 1): number { return inc(value + other); }`,
+  ])("does not erase callee preconditions or unsafe argument shapes", async source => {
+    await project(source, async (_file, configFile) => {
+      try {
+        const result = await checkCorsaProject({ configFile });
+        expect(result.artifacts.some(item => item.status === "unsupported")).toBe(true);
+      } catch (error) {
+        expect(String(error)).toMatch(/TS2345|native contract/);
+      }
+    });
+  });
+
+  it("composes an authenticated zero-argument callee contract", async () => {
+    await project(`/* uneffect:ensures result === 5 */
+export function five(): number { return 5; }
+/* uneffect:ensures result === 5 */
+export function caller(): number { return five(); }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["verified", "verified"]);
+      expect(result.artifacts.every(item => item.native?.coverage === "safe-integer-arithmetic")).toBe(true);
+    });
+  });
+
+  it.each([
+    'function five(): number { return 5; }\n/* uneffect:ensures result === 5 */\nexport function caller(): number { return five(); }',
+    'export function five(): number { return 5; }\n/* uneffect:ensures result === 5 */\nexport function caller(): number { return five(); }',
+    'export const five = () => 5;\n/* uneffect:ensures result === 5 */\nexport function caller(): number { return five(); }',
+    '/* uneffect:ensures result === 5 */\nexport function five(): number { return five(); }',
+  ])("keeps uncontracted, ambiguous, non-declaration, and recursive calls unsupported: %s", async source => {
+    await project(source, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.some(item => item.status === "unsupported")).toBe(true);
+    });
+  });
+
   it.each([
     'value + 1 < limit',
     '1 + value < limit',

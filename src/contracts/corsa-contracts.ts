@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Expression } from "oxc-parser";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { openCorsaCallableFrontend, type CorsaCallableFrontend } from "../frontends/corsa/corsa-callable-frontend.js";
@@ -16,7 +17,14 @@ import type { InvariantObligation, LogicExpression, ObligationVariable } from ".
 import type { ContractVerificationResult, VerificationArtifact } from "./verification-contracts.js";
 
 const digest = (input: string | Uint8Array): string => createHash("sha256").update(input).digest("hex");
-function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFunctionSource): InvariantObligation[] {
+function substituteLogic(expression: LogicExpression, substitutions: ReadonlyMap<string, LogicExpression>): LogicExpression {
+  if (expression.kind === "variable") return substitutions.get(expression.name) ?? expression;
+  if (expression.kind === "unary") return { ...expression, operand: substituteLogic(expression.operand, substitutions) };
+  if (expression.kind === "binary") return { ...expression, left: substituteLogic(expression.left, substitutions), right: substituteLogic(expression.right, substitutions) };
+  return expression;
+}
+function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFunctionSource,
+  resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>) => LogicExpression | undefined): InvariantObligation[] {
   const { node } = fn;
   if (validateUneffectAnnotations(fn.comments).length) throw new Error("invalid native contract annotation");
   if (node.async || node.generator || node.typeParameters || node.params.some(parameter => parameter.type !== "Identifier" || parameter.optional)) {
@@ -60,7 +68,7 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
   // Requires must be safe over the declared type before any of them can narrow the body.
   for (const assumption of assumptions) if (checkNativeScalar(assumption, parameters).kind !== "boolean") throw new Error("requires must be Boolean");
   const requiredParameters = narrowNativeRanges(parameters, assumptions);
-  const paths = lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression),
+  const paths = lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression, resolveCall),
     conditions === null ? parameters : narrowNativeRanges(requiredParameters, conditions), conditions === null ? "structure" : "proof"));
   const resultKind = paths[0]!.result.kind;
   if (paths.some(path => path.result.kind !== resultKind) || frontend.getPrimitiveTypeKind(signature.returnType) !== resultKind) {
@@ -93,6 +101,30 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
     if (errors.length) throw new Error(errors.map(error => `${error.fileName ?? options.configFile}: TS${error.code}: ${error.message}`).join("\n"));
     const compilerDigest = digest(readFileSync(frontend.compilerExecutable));
     const result: ContractVerificationResult = { diagnostics: [], artifacts: [] };
+    const callableBodies = new Map<string, { source: OxcSource; fn: OxcFunctionSource }>();
+    for (const candidateSource of sources) for (const candidate of topLevelOxcFunctions(candidateSource)) callableBodies.set(candidate.node.id.name, { source: candidateSource, fn: candidate });
+    const resolveCall = (call: Extract<Expression, { type: "CallExpression" }>): LogicExpression | undefined => {
+      if (call.callee.type !== "Identifier" || call.optional) return undefined;
+      const target = callableBodies.get(call.callee.name);
+      if (!target || target.fn.node.params.length > 1 || target.fn.node.body.body.length !== 1
+        || target.fn.node.body.body[0]!.type !== "ReturnStatement" || !target.fn.node.body.body[0]!.argument
+        || !extractLocatedAnnotations(target.fn.comments, "ensures").length) return undefined;
+      if (!frontend.getSignatureFromDeclaration(target.source.fileName, target.fn, target.source.text)) return undefined;
+      if (target.fn.node.params.length === 0 && call.arguments.length !== 0) return undefined;
+      if (target.fn.node.params.length === 1 && (call.arguments.length !== 1 || call.arguments[0]!.type === "SpreadElement")) return undefined;
+      try {
+        const body = nativeBodyExpression(target.fn.node.body.body[0]!.argument);
+        if (target.fn.node.params.length === 0) return body;
+        const argument = nativeBodyExpression(call.arguments[0] as Expression);
+        const requires = extractLocatedAnnotations(target.fn.comments, "requires");
+        if (requires.length) {
+          const requirement = substituteLogic(parseLogicExpression(requires[0]!.value), new Map([[target.fn.node.params[0]!.type === "Identifier" ? target.fn.node.params[0]!.name : "", argument]]));
+          const checked = checkNativeScalar(requirement, new Map());
+          if (checked.kind !== "boolean" || requirement.kind !== "boolean" || requirement.value !== true) return undefined;
+        }
+        return substituteLogic(body, new Map([[target.fn.node.params[0]!.type === "Identifier" ? target.fn.node.params[0]!.name : "", argument]]));
+      } catch { return undefined; }
+    };
     for (const source of sources) {
       const native: NonNullable<VerificationArtifact["native"]> = { coverage: "boolean-and-constant-return", compilerRevision: frontend.compilerRevision, compilerDigest, sourceDigest: digest(source.text) };
       const covered: Array<{ start: number; end: number }> = [];
@@ -109,7 +141,7 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
           ? "boolean-and-constant-return" : "boolean-branching";
         let obligations: InvariantObligation[];
         try {
-          obligations = lowerBody(frontend, source, fn);
+          obligations = lowerBody(frontend, source, fn, resolveCall);
         } catch (error) {
           unsupported(fn.node.id.name, { start: fn.start, end: fn.end }, error instanceof Error ? error.message : String(error), coverage);
           continue;

@@ -49,6 +49,8 @@ export function guarded(value: 0 | 9007199254740991): number {
   式は引数、Booleanと安全整数literal、括弧、Booleanの `!` / `&&` / `||`、
   同じ種類のscalarの `===` / `!==`、数値の `+` / `-` / `*`・符号反転・大小比較を扱う。
 - requiresとensuresにも同じsort・演算範囲の検査を適用する。
+- 同一snapshot内の認証済みcalleeを、引数なし・単一return・`ensures`付きの場合に限り
+  return式へ1段だけ展開する。
 
 通常の `number`、小数、branded数値型、除算・剰余、代入・loop・switch・例外、
 呼出・property access、async、method / arrow、
@@ -122,6 +124,10 @@ effect summary の証拠区分は独立している。本体証明だけで effe
 caller の requires 証明・ensures 合成も未実装。
 
 ## 実装と検証
+
+同一snapshot内でnative signature identityを認証した、単一return・`ensures`付きのcalleeは
+引数なしまたは単一引数の場合に1段だけcallerへ展開する。callee側requires、複数段・再帰・
+動的dispatchはunsupportedとして扱う。
 
 - `contracts/verification-contracts.ts`: Program を含まない artifact / 診断の型。
 - `contracts/contract-solver.ts`: 中立 obligation の solver 実行と証拠・反例の生成。旧 verifier も共有する。
