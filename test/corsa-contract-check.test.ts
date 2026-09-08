@@ -45,6 +45,17 @@ export function caller(): number { return add(1, 1); }`, async (_file, configFil
     });
   });
 
+  it("accepts conjunctions of constant callee preconditions", async () => {
+    await project(`/* uneffect:requires value > 0 && value < 2 */
+/* uneffect:ensures result === value + 1 */
+export function inc(value: 0 | 1): number { return value + 1; }
+/* uneffect:ensures result === 2 */
+export function caller(): number { return inc(1); }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["verified", "verified"]);
+    });
+  });
+
   it.each([["/", "2"], ["%", "1"]])("proves constant safe integer %s", async (operator, expected) => {
     await project(`/* uneffect:ensures result === ${expected} */\nexport function checked(): number { return 5 ${operator} 2; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });

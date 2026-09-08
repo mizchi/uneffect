@@ -23,6 +23,21 @@ function substituteLogic(expression: LogicExpression, substitutions: ReadonlyMap
   if (expression.kind === "binary") return { ...expression, left: substituteLogic(expression.left, substitutions), right: substituteLogic(expression.right, substitutions) };
   return expression;
 }
+function constantBoolean(expression: LogicExpression): boolean | undefined {
+  if (expression.kind === "boolean") return expression.value;
+  if (expression.kind === "unary" && expression.operator === "not") {
+    const value = constantBoolean(expression.operand); return value === undefined ? undefined : !value;
+  }
+  if (expression.kind !== "binary") return undefined;
+  if (expression.operator === "and" || expression.operator === "or") {
+    const left = constantBoolean(expression.left), right = constantBoolean(expression.right);
+    return left === undefined || right === undefined ? undefined : expression.operator === "and" ? left && right : left || right;
+  }
+  if (!["lt", "lte", "gt", "gte", "eq", "neq"].includes(expression.operator)
+    || expression.left.kind !== "integer" || expression.right.kind !== "integer") return undefined;
+  const left = BigInt(expression.left.value), right = BigInt(expression.right.value);
+  return ({ lt: left < right, lte: left <= right, gt: left > right, gte: left >= right, eq: left === right, neq: left !== right } as Record<string, boolean>)[expression.operator];
+}
 function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFunctionSource,
   resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>) => LogicExpression | undefined): InvariantObligation[] {
   const { node } = fn;
@@ -122,10 +137,7 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
         if (requires.length) {
           const requirement = substituteLogic(parseLogicExpression(requires[0]!.value), substitutions);
           const checked = checkNativeScalar(requirement, new Map());
-          const constantTrue = requirement.kind === "binary"
-            && ["lt", "lte", "gt", "gte", "eq", "neq"].includes(requirement.operator)
-            && requirement.left.kind === "integer" && requirement.right.kind === "integer"
-            && ({ lt: BigInt(requirement.left.value) < BigInt(requirement.right.value), lte: BigInt(requirement.left.value) <= BigInt(requirement.right.value), gt: BigInt(requirement.left.value) > BigInt(requirement.right.value), gte: BigInt(requirement.left.value) >= BigInt(requirement.right.value), eq: requirement.left.value === requirement.right.value, neq: requirement.left.value !== requirement.right.value } as Record<string, boolean>)[requirement.operator];
+          const constantTrue = constantBoolean(requirement);
           if (checked.kind !== "boolean" || !constantTrue) return undefined;
         }
         return substituteLogic(body, substitutions);
