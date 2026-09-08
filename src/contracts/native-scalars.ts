@@ -63,11 +63,13 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
       if ((expression.operator === "div" || expression.operator === "mod")
         && right.minimum === right.maximum && right.minimum !== 0n) {
         const values = left.values ?? (left.minimum === left.maximum ? [left.minimum] : undefined);
-        if (!values) throw new Error("native division requires a finite numerator domain");
-        if (expression.operator === "div" && values.some(value => value % right.minimum !== 0n)) {
+        const divisors = right.values ?? (right.minimum === right.maximum ? [right.minimum] : undefined);
+        if (!values || !divisors) throw new Error("native division requires finite domains");
+        if (divisors.some(value => value === 0n)) throw new Error("native division by zero");
+        if (expression.operator === "div" && values.some(value => divisors.some(divisor => value % divisor !== 0n))) {
           throw new Error("native division requires an exact integer result");
         }
-        const results = values.map(value => expression.operator === "div" ? value / right.minimum : value % right.minimum);
+        const results = values.flatMap(value => divisors.map(divisor => expression.operator === "div" ? value / divisor : value % divisor));
         return integer(results.reduce((a, b) => a < b ? a : b), results.reduce((a, b) => a > b ? a : b));
       }
     }
