@@ -16,7 +16,7 @@ export function controlFlowBlockId(fileName: string, functionName: string, span:
 
 export function makeObligation(value: Omit<InvariantObligation, "id">): InvariantObligation { return { id: stableId(value), ...value }; }
 
-const smtOperators: Record<string, string> = { add: "+", sub: "-", mul: "*", "int-mod": "mod", lt: "<", lte: "<=", gt: ">", gte: ">=", eq: "=", and: "and", or: "or" };
+const smtOperators: Record<string, string> = { add: "+", sub: "-", mul: "*", div: "div", mod: "mod", "int-mod": "mod", lt: "<", lte: "<=", gt: ">", gte: ">=", eq: "=", and: "and", or: "or" };
 export function logicToSmt(expression: LogicExpression): string {
   if (expression.kind === "variable") return expression.name;
   if (expression.kind === "integer") return expression.value;

@@ -35,6 +35,23 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("composes an authenticated multi-argument affine callee", async () => {
+    await project(`/* uneffect:ensures result === left + right */
+export function add(left: 0 | 1, right: 0 | 1): number { return left + right; }
+/* uneffect:ensures result === 2 */
+export function caller(): number { return add(1, 1); }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["verified", "verified"]);
+    });
+  });
+
+  it.each([["/", "2"], ["%", "1"]])("proves constant safe integer %s", async (operator, expected) => {
+    await project(`/* uneffect:ensures result === ${expected} */\nexport function checked(): number { return 5 ${operator} 2; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("verified");
+    });
+  });
+
   it.each([
     `/* uneffect:requires value > 0 */\n/* uneffect:ensures result === value + 1 */\nexport function inc(value: 0 | 1): number { return value + 1; }\n/* uneffect:ensures result === 2 */\nexport function caller(): number { return inc(0); }`,
     `/* uneffect:ensures result === value + 1 */\nexport function inc(value: 0 | 1): number { return value + 1; }\n/* uneffect:ensures result === 2 */\nexport function caller(value: 0 | 1, other: 0 | 1): number { return inc(value + other); }`,

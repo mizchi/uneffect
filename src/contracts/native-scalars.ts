@@ -8,7 +8,7 @@ export type NativeScalar =
 const maximumSafe = BigInt(Number.MAX_SAFE_INTEGER);
 const bodyOperators = new Map([
   ["===", "eq"], ["!==", "neq"], ["&&", "and"], ["||", "or"],
-  ["+", "add"], ["-", "sub"], ["*", "mul"], ["<", "lt"], ["<=", "lte"], [">", "gt"], [">=", "gte"],
+  ["+", "add"], ["-", "sub"], ["*", "mul"], ["/", "div"], ["%", "mod"], ["<", "lt"], ["<=", "lte"], [">", "gt"], [">=", "gte"],
 ]);
 
 /** Bounds use BigInt so the check itself cannot round an overflowing intermediate. */
@@ -59,6 +59,11 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
       if (expression.operator === "mul") {
         const products = [left.minimum * right.minimum, left.minimum * right.maximum, left.maximum * right.minimum, left.maximum * right.maximum];
         return integer(products.reduce((a, b) => a < b ? a : b), products.reduce((a, b) => a > b ? a : b));
+      }
+      if ((expression.operator === "div" || expression.operator === "mod")
+        && left.minimum === left.maximum && right.minimum === right.maximum && right.minimum !== 0n) {
+        const value = expression.operator === "div" ? left.minimum / right.minimum : left.minimum % right.minimum;
+        return integer(value, value);
       }
     }
   }
