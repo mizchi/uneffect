@@ -78,7 +78,7 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
 }
 
 /** No coercion, assertions, properties, or general division/remainder in this fragment. */
-export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>) => LogicExpression | undefined): LogicExpression {
+export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>, conditions: readonly LogicExpression[]) => LogicExpression | undefined): LogicExpression {
   if (node.type === "ParenthesizedExpression") return nativeBodyExpression(node.expression, resolveCall);
   if (node.type === "Identifier") return { kind: "variable", name: node.name };
   if (node.type === "Literal") {
@@ -86,7 +86,7 @@ export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extr
     if (typeof node.value === "number" && Number.isSafeInteger(node.value)) return { kind: "integer", value: String(node.value) };
   }
   if (node.type === "CallExpression" && resolveCall) {
-    const resolved = resolveCall(node);
+    const resolved = resolveCall(node, []);
     if (resolved) return resolved;
   }
   if (node.type === "UnaryExpression" && (node.operator === "!" || node.operator === "-" || node.operator === "+")) {
@@ -95,7 +95,14 @@ export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extr
   }
   if ((node.type === "BinaryExpression" || node.type === "LogicalExpression") && node.left.type !== "PrivateIdentifier") {
     const operator = bodyOperators.get(node.operator);
-    if (operator) return { kind: "binary", operator, left: nativeBodyExpression(node.left, resolveCall), right: nativeBodyExpression(node.right, resolveCall) };
+    if (operator) {
+      const left = nativeBodyExpression(node.left, resolveCall);
+      const guard: LogicExpression | undefined = operator === "and" ? left
+        : operator === "or" ? { kind: "unary", operator: "not", operand: left } : undefined;
+      const right = nativeBodyExpression(node.right, guard && resolveCall
+        ? (call, conditions) => resolveCall(call, [guard, ...conditions]) : resolveCall);
+      return { kind: "binary", operator, left, right };
+    }
   }
   throw new Error(`native contract body does not support ${node.type}`);
 }

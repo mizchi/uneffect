@@ -36,7 +36,8 @@ export function guarded(value: 0 | 9007199254740991): number {
 `uneffect check input.ts --json` の `contracts` に、成功時の `verified`、違反時の
 `counterexample`、solver 障害時の `unknown` を返す。契約違反・未検証があれば終了コードは 1。
 `--evidence` にも契約の status を表示する。証明は引数の型と requires を前提とする
-関数本体の postcondition であり、実行時の引数検査や呼出側の事前条件証明ではない。
+関数本体の postcondition を検証する。対応する関数呼出には別途 `requires` obligationを作る。
+実行時の引数検査は挿入しない。
 
 ## 現在の対応範囲
 
@@ -49,11 +50,16 @@ export function guarded(value: 0 | 9007199254740991): number {
   式は引数、Booleanと安全整数literal、括弧、Booleanの `!` / `&&` / `||`、
   同じ種類のscalarの `===` / `!==`、数値の `+` / `-` / `*`・符号反転・大小比較を扱う。
 - requiresとensuresにも同じsort・演算範囲の検査を適用する。
-- 同一snapshot内の認証済みcalleeを、引数なし・単一return・`ensures`付きの場合に限り
-  return式へ1段だけ展開する。
+- 分岐の前に宣言したconstを展開する。初期化式は宣言時点で検査し、後続の分岐条件を借りない。
+  初期化済みの変数宣言から始まる直線的な本体では単純代入と対応する複合代入も扱う。
+  分岐内部の局所宣言・代入による状態の合流は未対応。
+- 同一snapshot内の単一return・`ensures`付きcalleeを、0〜8個の必須引数で最大2段展開する。
+  wrapperのreturn式では、呼出結果へのscalar演算、複数の呼出、`&&` / `||` による短絡を扱う。
+  直接呼出と名前付きimport（import時の改名を含む）をCorsaの宣言identityで照合する。
+  詳細は下の「別ファイルの関数呼出」を参照。
 
-通常の `number`、小数、branded数値型、除算・剰余、代入・loop・switch・例外、
-呼出・property access、async、method / arrow、
+通常の `number`、小数、branded数値型、一般の除算・剰余、分岐内部の代入・loop・switch・例外、
+一般の呼出・property access、async、method / arrow、
 default / optional / rest 引数、`contract_from` の本体証明はまだ対応しない。
 対応範囲外の契約注釈は `unsupported` artifact と診断を返す。
 別の関数の独立した証明は保持する。文字列中の注釈風テキストは契約として扱わない。
@@ -121,17 +127,80 @@ solverのversion / attemptsもartifactに保持する。
 
 effect summary の証拠区分は独立している。本体証明だけで effect を `verified` に上げない。
 この artifact を workspace の trusted summary binding に渡す機能、producer summary の生成、
-caller の requires 証明・ensures 合成も未実装。
+一般的なensures summary 合成も未実装。
+
+## 別ファイルの関数呼出
+
+```ts
+// retry-policy.mts
+/* uneffect:ensures result === 2 - attempts */
+export function remaining(attempts: 0 | 1 | 2): number { return 2 - attempts; }
+
+// retry-client.mts
+import { remaining as retriesLeft } from "./retry-policy.mjs";
+/* uneffect:ensures result === 1 */
+export function budget(): number { return retriesLeft(1); }
+```
+
+両方のファイルを検証projectに含めると、`budget` の契約を検証できる。
+`retriesLeft(2)` に対して `result > 0` を要求すれば反例を返す。
+関数名や構造的な関数型だけでは合成せず、呼出先symbolの宣言とresolved signatureの宣言を、
+解析した実装のfile/spanと照合する。同名の別ファイル、未契約関数、関数型だけを合わせた
+別の値は根拠にしない。calleeの本体を展開して再検査する処理であり、ensuresを未検証の公理として使わない。
+
+書換え・分割代入・直接evalがある対象、外部変数のcapture、overload、generic、async、
+method・関数値の変数alias、再帰・3段以上の展開は対象外。
+calleeの全requiresを引数へ代入し、定数として真のもの以外は呼出位置に独立した
+`call-precondition` obligationを作る。引数なしのrequiresも省略しない。
+callerの引数型・検査済みrequires・その呼出までに成立した経路条件を使ってZ3で証明する。
+例えば `if (attempts === 2) return 0; return retriesLeft(attempts);` なら、
+calleeの `requires attempts < 2` を有限型 `0 | 1 | 2` と早期returnから証明できる。
+guardを外すと `attempts = 2` を反例として返す。
+
+`&&` の右辺には左辺が真、`||` の右辺には左辺が偽という条件を渡す。
+ifの条件式中の呼出には、まだ判定していない条件の成立を仮定しない。
+calleeのrequires・ensures、callerのensuresを呼出の正当化に利用しない。
+宣言初期化や代入右辺はその時点の値で検証し、未使用の初期化式や引数の検査も省略しない。
+
+結果の `obligation.clause` は `requires`、`controlFlow.completion` は `call` で、
+呼出式のfile/span、経路条件、solverの証拠・反例を保持する。
+postconditionとcall-preconditionは独立した結果であり、postconditionだけが成功しても
+呼出の事前条件が違反・不明ならcheckは失敗する。solverが証明できない場合はunknownのままとする。
+calleeの本体は最大2段展開し、callerの型と成立済み条件から安全な演算範囲を確認する。
+callerのrequiresだけで通常のnumber引数を整数として扱うことはできない。
+
+### Wrapperを挟む2段の呼出
+
+`caller -> wrapper -> leaf` を、各段のCorsa symbol・resolved signatureと実装の照合を
+通して展開する。wrapperとleafの全requires、および未使用引数を含む各段の引数評価を
+callerの変数へ順に代入する。引数の改名・入替えも同時代入として扱い、名前の衝突による
+取り違えを防ぐ。wrapperのrequiresをleafのrequiresの証明に無条件で使うことはない。
+
+引き継いだrequiresは外側の呼出位置にobligationを作る。これはその呼出を許可するための
+条件であり、内側のcall spanをcallerのファイル位置として表示するものではない。
+wrapper自身を検証した結果には、wrapper内の実際の呼出位置でのobligationも含まれる。
+各関数の検証結果は独立しているため、あるcallerから安全に呼べても、wrapperのより広い
+入力領域で事前条件違反があればproject全体のcheckは失敗する。
+
+wrapper内の各引数評価とrequiresには、その呼出に到達するまでの短絡条件を保持する。
+callerの経路条件と合わせて検査するため、`count === 2 || remaining(count) > 0` では
+右辺に到達したときの `count !== 2` を使える。呼出より後の条件は使わない。
+wrapper自身のrequiresに内側のguardを流用せず、隣の呼出のrequiresも仮定しない。
+
+深さはcallerから最大2呼出。1回の展開は外側を含めて最大32呼出とし、
+再帰は宣言identityの再訪で拒否する。
+各展開の入力構文、および展開後の返り値・全引数・全requiresとその到達条件の式は、それぞれ合計4,096
+ノードまでとする。共有された引数式も使用回数だけ数え、展開やSMT出力の増大を制限する。
+callerのconst・代入結果を置換した後にも同じ上限を検査する。
+上限超過は理由付きのunsupportedとなり、打切りまでの部分結果を証明として返さない。
+引数内の呼出、三項演算子、if文を含むwrapperは、この2段合成では未対応。
 
 ## 実装と検証
-
-同一snapshot内でnative signature identityを認証した、単一return・`ensures`付きのcalleeは
-引数なしまたは単一引数の場合に1段だけcallerへ展開する。callee側requires、複数段・再帰・
-動的dispatchはunsupportedとして扱う。
 
 - `contracts/verification-contracts.ts`: Program を含まない artifact / 診断の型。
 - `contracts/contract-solver.ts`: 中立 obligation の solver 実行と証拠・反例の生成。旧 verifier も共有する。
 - `contracts/corsa-contracts.ts`: Oxc の限定 lowering、native signature 認証、snapshot 診断。
+- `contracts/native-contract-calls.ts`: 呼出先の宣言照合、書換え検査、最大2段の式・引数・requires展開と予算管理。
 - `contracts/corsa-contract-flow.ts`: scalar CFGの構築、経路条件の合流と予算、return経路の抽出。
 - `contracts/native-scalars.ts`: 本体と契約式に共通のsort・安全整数値域の検査。
 - `contracts/native-ranges.ts`: 検査済み条件による区間の絞込み。入力の状態は変更しない。

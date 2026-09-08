@@ -10,6 +10,7 @@ import { hasNativeContractCandidates, nativeContractAnnotations } from "./contra
 import { parseLogicExpression } from "./logic.js";
 import { makeObligation, controlFlowBlockId } from "./obligations.js";
 import { solveContractObligations } from "./contract-solver.js";
+import { createNativeContractCalls, substituteLogic, constantBoolean, assertNativeCallExpressionBudget, nativeCallExpansionExpressions, substituteNativeCallExpansion, type NativeCallExpansion } from "./native-contract-calls.js";
 import { lowerNativeReturnPaths } from "./corsa-contract-flow.js";
 import { narrowNativeRanges } from "./native-ranges.js";
 import { checkNativeScalar, nativeBodyExpression, nativeInteger, hasNumericExpression, type NativeScalar } from "./native-scalars.js";
@@ -17,29 +18,8 @@ import type { InvariantObligation, LogicExpression, ObligationVariable } from ".
 import type { ContractVerificationResult, VerificationArtifact } from "./verification-contracts.js";
 
 const digest = (input: string | Uint8Array): string => createHash("sha256").update(input).digest("hex");
-function substituteLogic(expression: LogicExpression, substitutions: ReadonlyMap<string, LogicExpression>): LogicExpression {
-  if (expression.kind === "variable") return substitutions.get(expression.name) ?? expression;
-  if (expression.kind === "unary") return { ...expression, operand: substituteLogic(expression.operand, substitutions) };
-  if (expression.kind === "binary") return { ...expression, left: substituteLogic(expression.left, substitutions), right: substituteLogic(expression.right, substitutions) };
-  return expression;
-}
-function constantBoolean(expression: LogicExpression): boolean | undefined {
-  if (expression.kind === "boolean") return expression.value;
-  if (expression.kind === "unary" && expression.operator === "not") {
-    const value = constantBoolean(expression.operand); return value === undefined ? undefined : !value;
-  }
-  if (expression.kind !== "binary") return undefined;
-  if (expression.operator === "and" || expression.operator === "or") {
-    const left = constantBoolean(expression.left), right = constantBoolean(expression.right);
-    return left === undefined || right === undefined ? undefined : expression.operator === "and" ? left && right : left || right;
-  }
-  if (!["lt", "lte", "gt", "gte", "eq", "neq"].includes(expression.operator)
-    || expression.left.kind !== "integer" || expression.right.kind !== "integer") return undefined;
-  const left = BigInt(expression.left.value), right = BigInt(expression.right.value);
-  return ({ lt: left < right, lte: left <= right, gt: left > right, gte: left >= right, eq: left === right, neq: left !== right } as Record<string, boolean>)[expression.operator];
-}
 function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFunctionSource,
-  resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>) => LogicExpression | undefined): InvariantObligation[] {
+  resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>) => NativeCallExpansion | undefined): InvariantObligation[] {
   const { node } = fn;
   if (validateUneffectAnnotations(fn.comments).length) throw new Error("invalid native contract annotation");
   if (node.async || node.generator || node.typeParameters || node.params.some(parameter => parameter.type !== "Identifier" || parameter.optional)) {
@@ -83,53 +63,91 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
   // Requires must be safe over the declared type before any of them can narrow the body.
   for (const assumption of assumptions) if (checkNativeScalar(assumption, parameters).kind !== "boolean") throw new Error("requires must be Boolean");
   const requiredParameters = narrowNativeRanges(parameters, assumptions);
-  const immutableBindings = new Map<string, LogicExpression>();
-  for (const statement of node.body.body) {
-    if (statement.type !== "VariableDeclaration" || statement.kind !== "const") break;
-    for (const declarator of statement.declarations) if (declarator.id.type === "Identifier" && declarator.init) {
-      immutableBindings.set(declarator.id.name, substituteLogic(nativeBodyExpression(declarator.init, resolveCall), immutableBindings));
+  const callObligations = new Map<string, InvariantObligation>();
+  const evaluate = (expression: Expression, conditions: readonly LogicExpression[] | null,
+    substitutions: ReadonlyMap<string, LogicExpression>): NativeScalar => {
+    const phase = conditions === null ? "structure" : "proof";
+    const lowered = nativeBodyExpression(expression, (call, guards) => {
+      const expansion = resolveCall?.(call);
+      if (!expansion) return undefined;
+      const evaluated = substituteNativeCallExpansion(expansion, substitutions);
+      assertNativeCallExpressionBudget(nativeCallExpansionExpressions(evaluated));
+      const outerPath = [...(conditions ?? []), ...guards.map(guard => substituteLogic(guard, substitutions))];
+      const context = (inner: readonly LogicExpression[]) => {
+        const path = [...outerPath, ...inner];
+        const skipped = path.some(condition => constantBoolean(condition) === false);
+        return { path, phase: conditions === null || skipped ? "structure" as const : "proof" as const,
+          ranges: conditions === null ? parameters : narrowNativeRanges(requiredParameters, path) };
+      };
+      // Each argument is checked at its own evaluation point, even when unused.
+      for (const argument of evaluated.arguments) {
+        const at = context(argument.conditions);
+        checkNativeScalar(argument.expression, at.ranges, at.phase);
+      }
+      for (const requirement of evaluated.requirements) {
+        const { path, ranges, phase: callPhase } = context(requirement.conditions);
+        const goal = requirement.expression;
+        if (checkNativeScalar(goal, ranges, callPhase).kind !== "boolean") throw new Error("callee requires must be Boolean");
+        if (callPhase === "structure" || constantBoolean(goal) === true) continue;
+        const span = { start: call.start, end: call.end };
+        const obligation = makeObligation({ kind: "call-precondition", fileName: source.fileName, functionName: node.id.name,
+          span, variables: [...variables], assumptions: [...assumptions, ...path], goal, source: requirement.source,
+          bindings: [], displayNames: {}, controlFlow: { schema: "uneffect-contract-control-flow/v1",
+            blockId: controlFlowBlockId(source.fileName, node.id.name, span, "call"), completion: "call", pathConditions: [...assumptions, ...path] } });
+        callObligations.set(obligation.id, obligation);
+      }
+      return expansion.expression;
+    });
+    return checkNativeScalar(substituteLogic(lowered, substitutions), conditions === null
+      ? parameters : narrowNativeRanges(requiredParameters, conditions), phase);
+  };
+  const bindings = new Map<string, LogicExpression>();
+  const declare = (statement: Extract<Statement, { type: "VariableDeclaration" }>): void => {
+    for (const declarator of statement.declarations) {
+      if (declarator.id.type !== "Identifier" || !declarator.init) throw new Error("native bindings require initialized identifiers");
+      bindings.set(declarator.id.name, evaluate(declarator.init, [], bindings).expression);
     }
-  }
-  const simpleConst = node.body.body.length > 1 && node.body.body.slice(0, -1).every(statement => statement.type === "VariableDeclaration"
-    && statement.kind === "const" && statement.declarations.length > 0 && statement.declarations.every(declaration => declaration.id.type === "Identifier" && declaration.init))
-    && node.body.body.at(-1)?.type === "ReturnStatement";
-  const returned = node.body.body.at(-1) as Extract<Statement, { type: "ReturnStatement" }>;
-  const declarations = node.body.body.slice(0, -1) as Array<Extract<Statement, { type: "VariableDeclaration" }>>;
-  const linearAssignment = node.body.body.length > 1 && node.body.body.at(-1)?.type === "ReturnStatement"
-    && node.body.body.slice(0, -1).some(statement => statement.type === "VariableDeclaration")
-    && node.body.body.slice(0, -1).every(statement => statement.type === "VariableDeclaration" || statement.type === "ExpressionStatement");
-  const paths = simpleConst
-    ? [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: (() => {
-        const substitutions = new Map<string, LogicExpression>();
-        for (const declaration of declarations) for (const declarator of declaration.declarations) if (declarator.id.type === "Identifier") substitutions.set(declarator.id.name,
-          substituteLogic(nativeBodyExpression(declarator.init!, resolveCall), substitutions));
-        return checkNativeScalar(substituteLogic(nativeBodyExpression(returned.argument!, resolveCall), substitutions), parameters);
-      })() }]
-    : linearAssignment
-    ? [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: (() => {
-        const substitutions = new Map<string, LogicExpression>();
-        for (const statement of node.body.body.slice(0, -1)) {
-          if (statement.type === "VariableDeclaration") for (const declarator of statement.declarations) {
-            if (declarator.id.type !== "Identifier" || !declarator.init) throw new Error("native linear bindings require initialized identifiers");
-            substitutions.set(declarator.id.name, substituteLogic(nativeBodyExpression(declarator.init, resolveCall), substitutions));
-          } else if (statement.type === "ExpressionStatement" && statement.expression.type === "AssignmentExpression"
-            && ["=", "+=", "-=", "*=", "/=", "%="].includes(statement.expression.operator) && statement.expression.left.type === "Identifier") {
-            const name = statement.expression.left.name, right = substituteLogic(nativeBodyExpression(statement.expression.right, resolveCall), substitutions);
-            const value = statement.expression.operator === "=" ? right : substituteLogic({ kind: "binary", operator: ({ "+=": "add", "-=": "sub", "*=": "mul", "/=": "div", "%=": "mod" } as Record<string, "add" | "sub" | "mul" | "div" | "mod">)[statement.expression.operator], left: { kind: "variable", name }, right }, substitutions);
-            substitutions.set(name, value);
-          } else throw new Error("native linear body contains unsupported statement");
-        }
-        return checkNativeScalar(substituteLogic(nativeBodyExpression(returned.argument!, resolveCall), substitutions), parameters);
-      })() }]
-    : lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(substituteLogic(nativeBodyExpression(expression, resolveCall), immutableBindings),
-      conditions === null ? parameters : narrowNativeRanges(requiredParameters, conditions), conditions === null ? "structure" : "proof"));
+  };
+  const returned = node.body.body.at(-1);
+  const linear = returned?.type === "ReturnStatement"
+    && (node.body.body.length === 1 || node.body.body.some(statement => statement.type === "VariableDeclaration"))
+    && node.body.body.slice(0, -1).every(statement =>
+    statement.type === "VariableDeclaration" || statement.type === "ExpressionStatement");
+  const paths = linear ? (() => {
+    for (const statement of node.body.body.slice(0, -1)) {
+      if (statement.type === "VariableDeclaration") declare(statement);
+      else if (statement.type === "ExpressionStatement" && statement.expression.type === "AssignmentExpression"
+        && ["=", "+=", "-=", "*=", "/=", "%="].includes(statement.expression.operator) && statement.expression.left.type === "Identifier") {
+        const assignment = statement.expression, name = statement.expression.left.name;
+        if (!bindings.has(name) && !parameters.has(name)) throw new Error("native assignment requires a local binding");
+        const right = evaluate(assignment.right, [], bindings).expression;
+        const value: LogicExpression = assignment.operator === "=" ? right : { kind: "binary",
+          operator: ({ "+=": "add", "-=": "sub", "*=": "mul", "/=": "div", "%=": "mod" } as Record<string, string>)[assignment.operator]!,
+          left: bindings.get(name) ?? { kind: "variable", name }, right };
+        bindings.set(name, checkNativeScalar(value, requiredParameters).expression);
+      } else throw new Error("native linear body contains unsupported statement");
+    }
+    if (!returned.argument) throw new Error("native contract body must return a scalar expression");
+    return [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: evaluate(returned.argument, [], bindings) }];
+  })() : (() => {
+    // Only entry-prefix const bindings are shared by this bounded branching CFG.
+    // Evaluate them now; a later guard must never justify an earlier initializer.
+    let prefix = 0;
+    for (const statement of node.body.body) {
+      if (statement.type !== "VariableDeclaration" || statement.kind !== "const") break;
+      declare(statement);
+      prefix++;
+    }
+    return lowerNativeReturnPaths({ ...node.body, body: node.body.body.slice(prefix) },
+      (expression, conditions) => evaluate(expression, conditions, bindings));
+  })();
   const resultKind = paths[0]!.result.kind;
   if (paths.some(path => path.result.kind !== resultKind) || frontend.getPrimitiveTypeKind(signature.returnType) !== resultKind) {
     throw new Error("native return type does not match the lowered scalar body");
   }
   const resultExpression: LogicExpression = { kind: "variable", name: "result" };
   variables.push({ name: "result", sort: resultKind === "boolean" ? "Bool" : "Int", domain: resultKind === "boolean" ? "bool" : "int" });
-  return paths.flatMap(({ span, result, conditions }) => ensures.map(({ value }) => {
+  const postconditions = paths.flatMap(({ span, result, conditions }) => ensures.map(({ value }) => {
     const kinds = new Map(narrowNativeRanges(requiredParameters, conditions));
       kinds.set("result", result.kind === "number" ? { ...result, expression: resultExpression } : { kind: "boolean", expression: resultExpression });
     const goal = parseLogicExpression(value);
@@ -139,6 +157,7 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
       goal, source: value, bindings: [{ name: "result", expression: result.expression }], displayNames: {},
       controlFlow: { schema: "uneffect-contract-control-flow/v1", blockId: controlFlowBlockId(source.fileName, node.id.name, span, "return"), completion: "return", pathConditions: [...assumptions, ...conditions] } });
   }));
+  return [...callObligations.values(), ...postconditions];
 }
 
 /** Prove only admitted bodies; unsupported annotations always produce non-proof artifacts. */
@@ -154,35 +173,7 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
     if (errors.length) throw new Error(errors.map(error => `${error.fileName ?? options.configFile}: TS${error.code}: ${error.message}`).join("\n"));
     const compilerDigest = digest(readFileSync(frontend.compilerExecutable));
     const result: ContractVerificationResult = { diagnostics: [], artifacts: [] };
-    const callableBodies = new Map<string, { source: OxcSource; fn: OxcFunctionSource }>();
-    for (const candidateSource of sources) for (const candidate of topLevelOxcFunctions(candidateSource)) callableBodies.set(candidate.node.id.name, { source: candidateSource, fn: candidate });
-    const resolveCall = (call: Extract<Expression, { type: "CallExpression" }>): LogicExpression | undefined => {
-      let callee = call.callee;
-      while (callee.type === "ParenthesizedExpression") callee = callee.expression;
-      if (callee.type !== "Identifier" || call.optional) return undefined;
-      const target = callableBodies.get(callee.name);
-      if (!target || target.fn.node.params.length > 8 || target.fn.node.body.body.length !== 1
-        || target.fn.node.body.body[0]!.type !== "ReturnStatement" || !target.fn.node.body.body[0]!.argument
-        || !extractLocatedAnnotations(target.fn.comments, "ensures").length) return undefined;
-      if (!frontend.getSignatureFromDeclaration(target.source.fileName, target.fn, target.source.text)) return undefined;
-      if (target.fn.node.params.length === 0 && call.arguments.length !== 0) return undefined;
-      if (call.arguments.length !== target.fn.node.params.length || call.arguments.some(argument => argument.type === "SpreadElement")) return undefined;
-      try {
-        const body = nativeBodyExpression(target.fn.node.body.body[0]!.argument);
-        if (target.fn.node.params.length === 0) return body;
-        const arguments_ = call.arguments.map(argument => nativeBodyExpression(argument as Expression));
-        const substitutions = new Map<string, LogicExpression>();
-        target.fn.node.params.forEach((parameter, index) => { if (parameter.type === "Identifier") substitutions.set(parameter.name, arguments_[index]!); });
-        const requires = extractLocatedAnnotations(target.fn.comments, "requires");
-        if (requires.length) {
-          const requirement = substituteLogic(parseLogicExpression(requires[0]!.value), substitutions);
-          const checked = checkNativeScalar(requirement, new Map());
-          const constantTrue = constantBoolean(requirement);
-          if (checked.kind !== "boolean" || !constantTrue) return undefined;
-        }
-        return substituteLogic(body, substitutions);
-      } catch { return undefined; }
-    };
+    const calls = createNativeContractCalls(frontend, sources);
     for (const source of sources) {
       const native: NonNullable<VerificationArtifact["native"]> = { coverage: "boolean-and-constant-return", compilerRevision: frontend.compilerRevision, compilerDigest, sourceDigest: digest(source.text) };
       const covered: Array<{ start: number; end: number }> = [];
@@ -199,7 +190,7 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
           ? "boolean-and-constant-return" : "boolean-branching";
         let obligations: InvariantObligation[];
         try {
-          obligations = lowerBody(frontend, source, fn, resolveCall);
+          obligations = lowerBody(frontend, source, fn, call => calls(source, call));
         } catch (error) {
           unsupported(fn.node.id.name, { start: fn.start, end: fn.end }, error instanceof Error ? error.message : String(error), coverage);
           continue;

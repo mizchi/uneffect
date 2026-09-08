@@ -45,7 +45,7 @@ corsa-contract-check:
 
 corsa-body-check:
     pnpm exec tsc -p tsconfig.json --noEmit
-    pnpm vitest run test/corsa-contract-check.test.ts
+    pnpm vitest run test/corsa-contract-check.test.ts test/corsa-contract-composition.test.ts
 
 corsa-refinement-check:
     pnpm exec tsc -p tsconfig.json --noEmit

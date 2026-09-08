@@ -98,6 +98,7 @@ export const ciTestTiers = {
   ],
   z3: [
     "test/corsa-contract-check.test.ts",
+    "test/corsa-contract-composition.test.ts",
     "test/assumption-registry.test.ts",
     "test/contract-summary.test.ts",
     "test/contracts.test.ts",

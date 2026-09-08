@@ -192,7 +192,8 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     await project(source, async (_file, configFile) => {
       try {
         const result = await checkCorsaProject({ configFile });
-        expect(result.artifacts.some(item => item.status === "unsupported")).toBe(true);
+        expect(result.artifacts.some(item => item.status === "unsupported"
+          || item.status === "counterexample" && item.obligation?.clause === "requires")).toBe(true);
       } catch (error) {
         expect(String(error)).toMatch(/TS2345|native contract/);
       }
