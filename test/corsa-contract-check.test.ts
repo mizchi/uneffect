@@ -115,6 +115,13 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("lowers chained const bindings in declaration order", async () => {
+    await project(`/* uneffect:ensures result === 3 */\nexport function checked(): number { const first = 1; const second = first + 2; return second; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("verified");
+    });
+  });
+
   it.each([["/", "0"], ["%", "0"]])("rejects zero divisor for %s", async (operator, divisor) => {
     await project(`/* uneffect:ensures result === 0 */\nexport function checked(): number { return 5 ${operator} ${divisor}; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
