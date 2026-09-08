@@ -80,7 +80,7 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
 
 /** No coercion, assertions, properties, or general division/remainder in this fragment. */
 export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>) => LogicExpression | undefined): LogicExpression {
-  if (node.type === "ParenthesizedExpression") return nativeBodyExpression(node.expression);
+  if (node.type === "ParenthesizedExpression") return nativeBodyExpression(node.expression, resolveCall);
   if (node.type === "Identifier") return { kind: "variable", name: node.name };
   if (node.type === "Literal") {
     if (typeof node.value === "boolean") return { kind: "boolean", value: node.value };

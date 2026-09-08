@@ -35,6 +35,16 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("preserves call resolution through parenthesized arguments", async () => {
+    await project(`/* uneffect:ensures result === value + 1 */
+export function inc(value: 0 | 1): number { return value + 1; }
+/* uneffect:ensures result === 2 */
+export function caller(): number { return inc((1)); }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["verified", "verified"]);
+    });
+  });
+
   it("composes an authenticated multi-argument affine callee", async () => {
     await project(`/* uneffect:ensures result === left + right */
 export function add(left: 0 | 1, right: 0 | 1): number { return left + right; }
