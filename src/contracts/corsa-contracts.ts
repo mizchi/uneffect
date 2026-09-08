@@ -105,9 +105,9 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
             if (declarator.id.type !== "Identifier" || !declarator.init) throw new Error("native linear bindings require initialized identifiers");
             substitutions.set(declarator.id.name, substituteLogic(nativeBodyExpression(declarator.init, resolveCall), substitutions));
           } else if (statement.type === "ExpressionStatement" && statement.expression.type === "AssignmentExpression"
-            && ["=", "+=", "-=", "*="].includes(statement.expression.operator) && statement.expression.left.type === "Identifier") {
+            && ["=", "+=", "-=", "*=", "/=", "%="].includes(statement.expression.operator) && statement.expression.left.type === "Identifier") {
             const name = statement.expression.left.name, right = substituteLogic(nativeBodyExpression(statement.expression.right, resolveCall), substitutions);
-            const value = statement.expression.operator === "=" ? right : substituteLogic({ kind: "binary", operator: statement.expression.operator.slice(0, -1) === "+" ? "add" : statement.expression.operator.slice(0, -1) === "-" ? "sub" : "mul", left: { kind: "variable", name }, right }, substitutions);
+            const value = statement.expression.operator === "=" ? right : substituteLogic({ kind: "binary", operator: ({ "+=": "add", "-=": "sub", "*=": "mul", "/=": "div", "%=": "mod" } as Record<string, "add" | "sub" | "mul" | "div" | "mod">)[statement.expression.operator], left: { kind: "variable", name }, right }, substitutions);
             substitutions.set(name, value);
           } else throw new Error("native linear body contains unsupported statement");
         }
