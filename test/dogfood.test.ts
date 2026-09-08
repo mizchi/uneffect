@@ -2711,6 +2711,7 @@ describe("Uneffect dogfood", () => {
     expect(dependentUnknowns.every((summary) => summary.functionName === "<module>")).toBe(true);
     expect(dependentUnknowns.map((summary) => summary.fileName).sort()).toEqual([
       "src/api/all.ts", "src/api/experimental.ts", "src/api/public.ts",
+      "src/cli/cfg-lint-command.ts", "src/cli/module-order-command.ts", "src/contracts/corsa-contracts.ts",
       "src/frontends/corsa/corsa-fact-consumer.ts", "src/frontends/frontend-parity.ts",
     ]);
     expect(result.summaries.find((summary) => summary.fileName === "src/frontends/corsa/corsa-fact-schema.ts"
