@@ -52,6 +52,13 @@ export function caller(): number { return add(1, 1); }`, async (_file, configFil
     });
   });
 
+  it("proves unary plus without widening the native scalar", async () => {
+    await project(`/* uneffect:ensures result === 1 */\nexport function checked(): number { return +1; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("verified");
+    });
+  });
+
   it.each([["/", "0"], ["%", "0"]])("rejects zero divisor for %s", async (operator, divisor) => {
     await project(`/* uneffect:ensures result === 0 */\nexport function checked(): number { return 5 ${operator} ${divisor}; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });

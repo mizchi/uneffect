@@ -82,8 +82,9 @@ export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extr
     const resolved = resolveCall(node);
     if (resolved) return resolved;
   }
-  if (node.type === "UnaryExpression" && (node.operator === "!" || node.operator === "-")) {
-    return { kind: "unary", operator: node.operator === "!" ? "not" : "negate", operand: nativeBodyExpression(node.argument, resolveCall) };
+  if (node.type === "UnaryExpression" && (node.operator === "!" || node.operator === "-" || node.operator === "+")) {
+    const operand = nativeBodyExpression(node.argument, resolveCall);
+    return node.operator === "+" ? operand : { kind: "unary", operator: node.operator === "!" ? "not" : "negate", operand };
   }
   if ((node.type === "BinaryExpression" || node.type === "LogicalExpression") && node.left.type !== "PrivateIdentifier") {
     const operator = bodyOperators.get(node.operator);
