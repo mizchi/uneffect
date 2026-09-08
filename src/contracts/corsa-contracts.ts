@@ -84,15 +84,15 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
   for (const assumption of assumptions) if (checkNativeScalar(assumption, parameters).kind !== "boolean") throw new Error("requires must be Boolean");
   const requiredParameters = narrowNativeRanges(parameters, assumptions);
   const simpleConst = node.body.body.length > 1 && node.body.body.slice(0, -1).every(statement => statement.type === "VariableDeclaration"
-    && statement.kind === "const" && statement.declarations.length === 1 && statement.declarations[0]?.id.type === "Identifier" && statement.declarations[0].init)
+    && statement.kind === "const" && statement.declarations.length > 0 && statement.declarations.every(declaration => declaration.id.type === "Identifier" && declaration.init))
     && node.body.body.at(-1)?.type === "ReturnStatement";
   const returned = node.body.body.at(-1) as Extract<Statement, { type: "ReturnStatement" }>;
   const declarations = node.body.body.slice(0, -1) as Array<Extract<Statement, { type: "VariableDeclaration" }>>;
   const paths = simpleConst
     ? [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: (() => {
         const substitutions = new Map<string, LogicExpression>();
-        for (const declaration of declarations) if (declaration.declarations[0]!.id.type === "Identifier") substitutions.set(declaration.declarations[0]!.id.name,
-          substituteLogic(nativeBodyExpression(declaration.declarations[0]!.init!, resolveCall), substitutions));
+        for (const declaration of declarations) for (const declarator of declaration.declarations) if (declarator.id.type === "Identifier") substitutions.set(declarator.id.name,
+          substituteLogic(nativeBodyExpression(declarator.init!, resolveCall), substitutions));
         return checkNativeScalar(substituteLogic(nativeBodyExpression(returned.argument!, resolveCall), substitutions), parameters);
       })() }]
     : lowerNativeReturnPaths(node.body, (expression, conditions) => checkNativeScalar(nativeBodyExpression(expression, resolveCall),
