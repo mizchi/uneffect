@@ -80,6 +80,13 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("proves division over finite denominator unions", async () => {
+    await project(`/* uneffect:ensures result >= 0 && result <= 4 */\nexport function checked(value: 0 | 2 | 4, divisor: 1 | 2): number { return value / divisor; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts[0]?.status).toBe("verified");
+    });
+  });
+
   it("rejects a non-integral constant division", async () => {
     await project(`/* uneffect:ensures result === 2.5 */\nexport function checked(): number { return 5 / 2; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
