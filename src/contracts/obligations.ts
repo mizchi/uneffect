@@ -22,6 +22,7 @@ export function logicToSmt(expression: LogicExpression): string {
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "real") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
+  if (expression.kind === "conditional") return `(ite ${logicToSmt(expression.test)} ${logicToSmt(expression.consequent)} ${logicToSmt(expression.alternate)})`;
   if (expression.kind === "unary") {
     if (expression.operator === "not") return `(not ${logicToSmt(expression.operand)})`;
     if (expression.operator === "floor") return `(to_int ${logicToSmt(expression.operand)})`;

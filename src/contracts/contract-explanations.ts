@@ -66,6 +66,10 @@ export function parseModel(assignments: Readonly<Record<string, string>>): Logic
 
 /** Evaluate an IR expression under a model; `undefined` means the value is outside the exact domain. */
 export function evaluateLogic(expression: LogicExpression, model: LogicModel): LogicValue | undefined {
+  if (expression.kind === "conditional") {
+    const test = evaluateLogic(expression.test, model);
+    return test?.kind === "boolean" ? evaluateLogic(test.value ? expression.consequent : expression.alternate, model) : undefined;
+  }
   if (expression.kind === "variable") return model.get(expression.name);
   if (expression.kind === "integer") return rational(BigInt(expression.value), 1n);
   if (expression.kind === "real") return parseModelValue(expression.value);
@@ -111,6 +115,10 @@ export function evaluateLogic(expression: LogicExpression, model: LogicModel): L
 
 /** Render the IR back as TypeScript-like source so a report never shows SMT-LIB. */
 export function formatLogic(expression: LogicExpression, displayNames: Readonly<Record<string, string>> = {}, outer = 0): string {
+  if (expression.kind === "conditional") {
+    const text = `${formatLogic(expression.test, displayNames, 1)} ? ${formatLogic(expression.consequent, displayNames)} : ${formatLogic(expression.alternate, displayNames)}`;
+    return outer > 0 ? `(${text})` : text;
+  }
   if (expression.kind === "variable") return displayNames[expression.name] ?? expression.name;
   if (expression.kind === "integer" || expression.kind === "real") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
@@ -145,6 +153,7 @@ export function failingConjunct(expression: LogicExpression, model: LogicModel):
 }
 
 function referencedNames(expression: LogicExpression, into: Set<string>): Set<string> {
+  if (expression.kind === "conditional") for (const child of [expression.test, expression.consequent, expression.alternate]) referencedNames(child, into);
   if (expression.kind === "variable") into.add(expression.name);
   else if (expression.kind === "unary") referencedNames(expression.operand, into);
   else if (expression.kind === "binary") { referencedNames(expression.left, into); referencedNames(expression.right, into); }

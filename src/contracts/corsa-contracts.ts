@@ -11,7 +11,7 @@ import { parseLogicExpression } from "./logic.js";
 import { makeObligation, controlFlowBlockId } from "./obligations.js";
 import { solveContractObligations } from "./contract-solver.js";
 import { createNativeContractCalls, substituteLogic, constantBoolean, assertNativeCallExpressionBudget, nativeCallExpansionExpressions, substituteNativeCallExpansion, type NativeCallExpansion } from "./native-contract-calls.js";
-import { lowerNativeReturnPaths } from "./corsa-contract-flow.js";
+import { lowerNativeReturnPaths, nativeReturnConditional } from "./corsa-contract-flow.js";
 import { narrowNativeRanges } from "./native-ranges.js";
 import { checkNativeScalar, nativeBodyExpression, nativeInteger, hasNumericExpression, type NativeScalar } from "./native-scalars.js";
 import type { InvariantObligation, LogicExpression, ObligationVariable } from "./logic-contracts.js";
@@ -82,7 +82,8 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
       // Each argument is checked at its own evaluation point, even when unused.
       for (const argument of evaluated.arguments) {
         const at = context(argument.conditions);
-        checkNativeScalar(argument.expression, at.ranges, at.phase);
+        const scalar = checkNativeScalar(argument.expression, at.ranges, argument.structureOnly ? "structure" : at.phase);
+        if (argument.requiresBoolean && scalar.kind !== "boolean") throw new Error("native contract conditions must be Boolean");
       }
       for (const requirement of evaluated.requirements) {
         const { path, ranges, phase: callPhase } = context(requirement.conditions);
@@ -128,6 +129,8 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
       } else throw new Error("native linear body contains unsupported statement");
     }
     if (!returned.argument) throw new Error("native contract body must return a scalar expression");
+    if (nativeReturnConditional(returned.argument)) return lowerNativeReturnPaths({ ...node.body, body: [returned] },
+      (expression, conditions) => evaluate(expression, conditions, bindings));
     return [{ span: { start: returned.start, end: returned.end }, conditions: [] as const, result: evaluate(returned.argument, [], bindings) }];
   })() : (() => {
     // Only entry-prefix const bindings are shared by this bounded branching CFG.
@@ -186,7 +189,9 @@ export async function verifyCorsaContracts(options: CorsaApiFrontendOptions & { 
       for (const fn of topLevelOxcFunctions(source)) {
         if (!hasNativeContractCandidates(fn.comments)) continue;
         covered.push({ start: fn.leadingStart, end: fn.start });
-        const coverage = fn.node.body.body.length === 1 && fn.node.body.body[0]!.type === "ReturnStatement"
+        const soleStatement = fn.node.body.body.length === 1 ? fn.node.body.body[0] : undefined;
+        const coverage = soleStatement?.type === "ReturnStatement"
+          && !(soleStatement.argument && nativeReturnConditional(soleStatement.argument))
           ? "boolean-and-constant-return" : "boolean-branching";
         let obligations: InvariantObligation[];
         try {

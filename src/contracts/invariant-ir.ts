@@ -1884,6 +1884,8 @@ function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set(
 }
 
 function substitute(expression: LogicExpression, env: Environment): LogicExpression {
+  if (expression.kind === "conditional") return { kind: "conditional", test: substitute(expression.test, env),
+    consequent: substitute(expression.consequent, env), alternate: substitute(expression.alternate, env) };
   if (expression.kind === "variable") return env.get(expression.name) ?? expression;
   if (expression.kind === "unary") return { ...expression, operand: substitute(expression.operand, env) };
   if (expression.kind === "binary") return { ...expression, left: substitute(expression.left, env), right: substitute(expression.right, env) };
@@ -2214,6 +2216,10 @@ export function lowerInvariantProgram(
       return evaluated.flatMap(({ path, values }) => path.completion !== "normal" ? [path] : settle(path, values));
     };
     const scalarExpressionSort = (expression: LogicExpression): LogicSort | undefined => {
+      if (expression.kind === "conditional") {
+        const yes = scalarExpressionSort(expression.consequent), no = scalarExpressionSort(expression.alternate);
+        return scalarExpressionSort(expression.test) === "Bool" && yes === no ? yes : undefined;
+      }
       if (expression.kind === "boolean") return "Bool";
       if (expression.kind === "integer") return "Int";
       if (expression.kind === "real") return "Real";

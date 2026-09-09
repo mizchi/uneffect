@@ -5,6 +5,7 @@ export type LogicExpression =
   | { kind: "integer"; value: string }
   | { kind: "real"; value: string }
   | { kind: "boolean"; value: boolean }
+  | { kind: "conditional"; test: LogicExpression; consequent: LogicExpression; alternate: LogicExpression }
   | { kind: "unary"; operator: "not" | "negate" | "floor" | "ceil"; operand: LogicExpression }
   | { kind: "binary"; operator: string; left: LogicExpression; right: LogicExpression };
 

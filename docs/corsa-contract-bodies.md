@@ -47,14 +47,17 @@ export function guarded(value: 0 | 9007199254740991): number {
   名前は ASCII 英数字と `_`、先頭は英字または `_`。
   `result` は返り値を表す予約名。
 - 本体はreturn、block、Boolean条件の `if/else`、空文。ネストと早期returnを扱う。
+  三項演算子も使える（括弧・ネスト、演算・引数・初期化式・条件式への埋込みを含む）。
   式は引数、Booleanと安全整数literal、括弧、Booleanの `!` / `&&` / `||`、
   同じ種類のscalarの `===` / `!==`、数値の `+` / `-` / `*`・符号反転・大小比較を扱う。
 - requiresとensuresにも同じsort・演算範囲の検査を適用する。
 - 分岐の前に宣言したconstを展開する。初期化式は宣言時点で検査し、後続の分岐条件を借りない。
   初期化済みの変数宣言から始まる直線的な本体では単純代入と対応する複合代入も扱う。
   分岐内部の局所宣言・代入による状態の合流は未対応。
-- 同一snapshot内の単一return・`ensures`付きcalleeを、0〜8個の必須引数で最大2段展開する。
-  wrapperのreturn式では、呼出結果へのscalar演算、複数の呼出、`&&` / `||` による短絡を扱う。
+- 同一snapshot内の `ensures`付きcalleeを、0〜8個の必須引数で最大2段展開する。
+  calleeの本体はreturn、block、if/else、空文から構成でき、ネストと早期returnを扱う。
+  wrapperのreturn式では、呼出結果へのscalar演算、複数の呼出、`&&` / `||` による短絡、三項を扱う。
+  引数内の呼出も先に評価して展開する。未使用引数の検査は省略しない。
   直接呼出と名前付きimport（import時の改名を含む）をCorsaの宣言identityで照合する。
   詳細は下の「別ファイルの関数呼出」を参照。
 
@@ -115,12 +118,29 @@ returnなしで末尾へ進める場合は `unsupported` とする。requiresや
 同じpredicateの繰返しによる矛盾は経路列挙中に除去せず、solverで判定する。
 上限の意味は実行時ループの回数制限ではない。
 
+`return condition ? a : b` も同じCFGで経路を分け、条件が真の枝と偽の枝を独立に検証する。
+条件はBooleanに限り、条件式自体はその成立を仮定する前に検査する。
+各枝では成立済みの条件から安全整数の値域を絞り、呼出のrequiresを検証する。
+return前のconst初期化や直線的な代入は、その実行時点で検査してから分岐する。
+初期化式の呼出に、後の三項演算子の条件を流用しない。
+Boolean literalで選ばれない枝も構文・sort検査は行い、到達しない演算や呼出の証明は作らない。
+各経路のartifactは元のreturn文のspanとcompletionのIDを共有し、経路条件とobligation IDで区別する。
+ネストした三項にも既存のCFG予算を適用する。
+
+式に埋め込まれた三項と、三項を返すcalleeの呼出合成は、中立IRの
+`{ kind: "conditional", test, consequent, alternate }` として保持し、SMTの `ite` へ出力する。
+条件はBoolean、両枝は同じscalar種別に限る。条件式を先に検査し、各枝の成立条件で
+中間演算の安全性を確認する。数値の結果範囲は両枝の区間を合わせて過大近似する。
+両枝の有限値集合が得られ、合計16値以内なら、後続の厳密な整数除算にも利用できる。
+反例の表示・評価も同じIRを扱い、モデルが選んだ枝だけを評価する。
+requires / ensures注釈そのものの三項構文は、引き続き未対応である。
+
 native の project 全体の診断と `noCheck`、Oxc と snapshot の source 一致を検査してから証明する。
 project 診断・snapshot 不一致は API エラーとなり、肯定的な結果を返さない。
 Oxc が読んだ return の UTF-16 span、source SHA-256、compiler executable SHA-256、binding revision、
 数値を含む証拠は `native.coverage: "safe-integer-arithmetic"` として記録する。
-Booleanのみの単一returnは従来の `"boolean-and-constant-return"`、文を含む本体は
-`"boolean-branching"` を維持する。従来の定数数値returnも、数値の検査を通るため新coverageになる。
+Booleanのみの単一return式は従来の `"boolean-and-constant-return"`、return位置の三項や文を
+CFGで扱う本体は `"boolean-branching"` を維持する。従来の定数数値returnも、数値の検査を通るため新coverageになる。
 solverのversion / attemptsもartifactに保持する。
 `compilerRevision` は Corsa binding の revision であり、native compiler の意味的 version と同一ではない。
 検証対象の snapshot の証拠であり、実行時までの source の不変性は主張しない。
@@ -149,7 +169,7 @@ export function budget(): number { return retriesLeft(1); }
 別の値は根拠にしない。calleeの本体を展開して再検査する処理であり、ensuresを未検証の公理として使わない。
 
 書換え・分割代入・直接evalがある対象、外部変数のcapture、overload、generic、async、
-method・関数値の変数alias、再帰・3段以上の展開は対象外。
+method・関数値の変数alias、再帰・関数本体を3段以上辿る展開は対象外。
 calleeの全requiresを引数へ代入し、定数として真のもの以外は呼出位置に独立した
 `call-precondition` obligationを作る。引数なしのrequiresも省略しない。
 callerの引数型・検査済みrequires・その呼出までに成立した経路条件を使ってZ3で証明する。
@@ -178,26 +198,59 @@ callerの変数へ順に代入する。引数の改名・入替えも同時代�
 
 引き継いだrequiresは外側の呼出位置にobligationを作る。これはその呼出を許可するための
 条件であり、内側のcall spanをcallerのファイル位置として表示するものではない。
+引数内の呼出から引き継ぐrequiresも、同じ外側の呼出位置に表示する。
 wrapper自身を検証した結果には、wrapper内の実際の呼出位置でのobligationも含まれる。
 各関数の検証結果は独立しているため、あるcallerから安全に呼べても、wrapperのより広い
 入力領域で事前条件違反があればproject全体のcheckは失敗する。
 
-wrapper内の各引数評価とrequiresには、その呼出に到達するまでの短絡条件を保持する。
+wrapper内の各引数評価とrequiresには、その呼出に到達するまでの短絡・三項の条件を保持する。
 callerの経路条件と合わせて検査するため、`count === 2 || remaining(count) > 0` では
 右辺に到達したときの `count !== 2` を使える。呼出より後の条件は使わない。
 wrapper自身のrequiresに内側のguardを流用せず、隣の呼出のrequiresも仮定しない。
 
-深さはcallerから最大2呼出。1回の展開は外側を含めて最大32呼出とし、
+関数本体を辿る深さはcallerから最大2段。1回の展開は引数内と外側を含めて最大32呼出とし、
 再帰は宣言identityの再訪で拒否する。
 各展開の入力構文、および展開後の返り値・全引数・全requiresとその到達条件の式は、それぞれ合計4,096
 ノードまでとする。共有された引数式も使用回数だけ数え、展開やSMT出力の増大を制限する。
 callerのconst・代入結果を置換した後にも同じ上限を検査する。
 上限超過は理由付きのunsupportedとなり、打切りまでの部分結果を証明として返さない。
-引数内の呼出、三項演算子、if文を含むwrapperは、この2段合成では未対応。
+三項の条件と両枝もノード数・自由変数検査・再帰検査の対象に含める。
+
+### If文と早期returnを含むcallee
+
+calleeの分岐は、関数単独の検証と同じCFG固定点エンジンで経路を列挙する。
+すべての到達経路がreturnすることを確認した後、経路条件と返り値をconditional IRへまとめる。
+途中でreturnせず末尾へ到達するcalleeは、callerの型やrequiresにかかわらずunsupportedとする。
+callee内の局所宣言・代入、loop・switch・例外は、この呼出合成では未対応。
+
+返り値とは別に、各条件式とreturn式の評価地点・到達条件を保持する。
+`if (check(value)) {} return 0` のように条件が返り値に影響しなくても、checkのrequiresと
+条件式の演算を検査する。合流先の呼出はすべての到達経路で検査し、一方のguardを流用しない。
+各式の構文・型は到達性にかかわらず検査し、実行時の演算範囲とrequiresの証明は
+到達した経路に限る。条件式はBooleanに限り、捨てられた条件も同じ制約を受ける。
+
+CFGの再訪で呼出解決を繰り返さないよう、構文ごとに式と呼出先を保持し、各到達条件を
+別々に付ける。CFGの512 blocks・256経路/block・4,096 stepsに加え、呼出合成の
+2段・32呼出・4,096ノードの上限も維持する。構文検査用の式、各経路の評価記録と
+引数置換後の式も予算検査に含め、超過時は部分的な証明を返さない。
+
+### 引数内の呼出
+
+`consume(normalize(value))` では、`normalize` の結果と全引数評価・requiresを保持してから、
+`consume` の引数へ結果を代入する。呼出先でその引数を使わなくても検査する。
+引数は左から順に扱い、後の引数の条件やcalleeのrequires・本体のguardは、先に評価する
+引数内の呼出の前提に使わない。引数式自身の `&&` / `||` の到達条件は引き継ぐ。
+
+引数の呼出はcallee本体に入る前のcaller側の評価なので、`f(f(value))` は再帰ではない。
+一方、`f` の本体から引数式を通して `f` を呼べば再帰として拒否する。
+引数を解析するときも本体の深さ・32呼出・4,096ノードの予算は共有する。
 
 ## 実装と検証
 
 - `contracts/verification-contracts.ts`: Program を含まない artifact / 診断の型。
+- `contracts/logic-contracts.ts`: conditionalを含む中立な式・obligationの型。
+- `contracts/obligations.ts`: 中立IRからSMTへの出力。conditionalはiteへ変換する。
+- `contracts/contract-explanations.ts`: 同じIRからの式表示とモデル評価。
 - `contracts/contract-solver.ts`: 中立 obligation の solver 実行と証拠・反例の生成。旧 verifier も共有する。
 - `contracts/corsa-contracts.ts`: Oxc の限定 lowering、native signature 認証、snapshot 診断。
 - `contracts/native-contract-calls.ts`: 呼出先の宣言照合、書換え検査、最大2段の式・引数・requires展開と予算管理。

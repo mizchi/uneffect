@@ -5,12 +5,14 @@ import { extractLocatedAnnotations, validateUneffectAnnotations } from "../suppo
 import type { LogicExpression } from "./logic-contracts.js";
 import { parseLogicExpression } from "./logic.js";
 import { nativeBodyExpression } from "./native-scalars.js";
+import { lowerNativeExpressionPaths } from "./corsa-contract-flow.js";
 
 type Call = Extract<Expression, { type: "CallExpression" }>;
 const maximumDepth = 2;
 const maximumNodes = 4096;
 const maximumCalls = 32;
 class ExpansionLimit extends Error {}
+class ExpansionFlowError extends Error {}
 
 /** Count occurrences, including shared substituted subtrees, before serialization
  * or scalar/solver traversal can turn a compact DAG into an oversized expression. */
@@ -22,6 +24,7 @@ export function assertNativeCallExpressionBudget(roots: readonly LogicExpression
     const node = pending.pop()!;
     if (node.kind === "unary") pending.push(node.operand);
     if (node.kind === "binary") pending.push(node.left, node.right);
+    if (node.kind === "conditional") pending.push(node.test, node.consequent, node.alternate);
   }
 }
 
@@ -37,6 +40,8 @@ function checkSyntaxSize(roots: readonly Node[]): void {
 interface NativeCallEvaluation {
   readonly expression: LogicExpression;
   readonly conditions: readonly LogicExpression[];
+  readonly requiresBoolean?: boolean;
+  readonly structureOnly?: boolean;
 }
 export interface NativeCallExpansion {
   readonly expression: LogicExpression;
@@ -67,13 +72,14 @@ interface Target {
 }
 
 function variables(expression: LogicExpression): string[] {
+  if (expression.kind === "conditional") return [expression.test, expression.consequent, expression.alternate].flatMap(variables);
   if (expression.kind === "variable") return [expression.name];
   if (expression.kind === "unary") return variables(expression.operand);
   if (expression.kind === "binary") return [...variables(expression.left), ...variables(expression.right)];
   return [];
 }
 
-/** Up to two scalar return expansions, retaining each nested evaluation guard.
+/** Up to two active scalar return bodies, retaining each nested evaluation guard.
  * Runtime binding identity and signature declaration
  * must both match a snapshot-owned implementation; structural callable types alone
  * never authorize inlining. Targets with writes or direct eval fail closed.
@@ -114,7 +120,6 @@ export function createNativeContractCalls(frontend: CorsaCallableFrontend, sourc
       const { node } = fn;
       if (node.async || node.generator || node.typeParameters || node.params.length > 8
         || node.params.some(parameter => parameter.type !== "Identifier" || parameter.optional)
-        || node.body.body.length !== 1 || node.body.body[0]!.type !== "ReturnStatement" || !node.body.body[0]!.argument
         || validateUneffectAnnotations(fn.comments).length
         || !extractLocatedAnnotations(fn.comments, "ensures").length
         || extractLocatedAnnotations(fn.comments, "contract_from").length) continue;
@@ -148,21 +153,74 @@ export function createNativeContractCalls(frontend: CorsaCallableFrontend, sourc
     const { node } = target.fn;
     if (call.arguments.length !== node.params.length || call.arguments.some(argument => argument.type === "SpreadElement")) return undefined;
     try {
-      const returned = node.body.body[0]!;
-      if (returned.type !== "ReturnStatement" || !returned.argument) return undefined;
-      checkSyntaxSize([returned.argument, ...call.arguments]);
+      checkSyntaxSize([node.body, ...call.arguments]);
+      const lower = (expression: Expression, from: OxcSource, active: readonly string[], collected: NativeCallExpansion[]) =>
+        nativeBodyExpression(expression, (inner, guards) => {
+          const child = expand(from, inner, active, budget);
+          if (!child) return undefined;
+          collected.push(substituteNativeCallExpansion(child, new Map(), guards));
+          assertNativeCallExpressionBudget(collected.flatMap(nativeCallExpansionExpressions));
+          return child.expression;
+        });
       const nested: NativeCallExpansion[] = [];
-      const body = nativeBodyExpression(returned.argument, (inner, guards) => {
-        const child = expand(target.source, inner, [...ancestors, identity], budget);
-        if (!child) return undefined;
-        nested.push(substituteNativeCallExpansion(child, new Map(), guards));
-        assertNativeCallExpressionBudget(nested.flatMap(nativeCallExpansionExpressions));
-        return child.expression;
-      });
+      const evaluations: NativeCallEvaluation[] = [];
+      const syntaxExpressions: LogicExpression[] = [];
+      const body = (() => {
+        const returned = node.body.body.length === 1 ? node.body.body[0] : undefined;
+        if (returned?.type === "ReturnStatement" && returned.argument) {
+          return lower(returned.argument, target.source, [...ancestors, identity], nested);
+        }
+        // CFG construction and fixed-point propagation revisit expressions. Resolve
+        // each syntax call once, then attach each distinct evaluation path separately.
+        const cache = new Map<Expression, { value: LogicExpression; calls: NativeCallExpansion[] }>();
+        const seen = new Set<string>();
+        try {
+          const paths = lowerNativeExpressionPaths(node.body, (expression, conditions, role) => {
+            let entry = cache.get(expression);
+            if (!entry) {
+              const calls: NativeCallExpansion[] = [];
+              entry = { value: lower(expression, target.source, [...ancestors, identity], calls), calls };
+              cache.set(expression, entry);
+              syntaxExpressions.push(entry.value, ...calls.flatMap(nativeCallExpansionExpressions));
+              evaluations.push({ expression: entry.value, conditions: [], requiresBoolean: role === "predicate", structureOnly: true },
+                ...calls.flatMap(child => [...child.arguments, ...child.requirements.map(item => ({ ...item, requiresBoolean: true }))])
+                  .map(item => ({ ...item, structureOnly: true })));
+              assertNativeCallExpressionBudget(syntaxExpressions);
+            }
+            if (conditions !== null) {
+              const key = JSON.stringify([expression.start, expression.end, role, conditions]);
+              if (!seen.has(key)) {
+                seen.add(key);
+                evaluations.push({ expression: entry.value, conditions, requiresBoolean: role === "predicate" });
+                nested.push(...entry.calls.map(child => substituteNativeCallExpansion(child, new Map(), conditions)));
+                assertNativeCallExpressionBudget([...evaluations.flatMap(item => [item.expression, ...item.conditions]),
+                  ...nested.flatMap(nativeCallExpansionExpressions)]);
+              }
+            }
+            return entry.value;
+          });
+          // The CFG has proved that no path falls through. The final return can
+          // therefore be the default arm; earlier paths guard every other result.
+          let value = paths.at(-1)!.result;
+          for (const path of paths.slice(0, -1).reverse()) {
+            const test = path.conditions.reduce<LogicExpression>((left, right) =>
+              left.kind === "boolean" && left.value ? right : { kind: "binary", operator: "and", left, right }, { kind: "boolean", value: true });
+            value = { kind: "conditional", test, consequent: path.result, alternate: value };
+          }
+          assertNativeCallExpressionBudget([value]);
+          return value;
+        } catch (error) {
+          if (error instanceof ExpansionLimit || error instanceof ExpansionFlowError) throw error;
+          throw new ExpansionFlowError(error instanceof Error ? error.message : String(error));
+        }
+      })();
       const names = node.params.map(parameter => parameter.type === "Identifier" ? parameter.name : "");
-      const localExpressions = [body, ...nested.flatMap(nativeCallExpansionExpressions)];
+      const localExpressions = [body, ...syntaxExpressions, ...nested.flatMap(nativeCallExpansionExpressions)];
       if (localExpressions.some(expression => variables(expression).some(name => !names.includes(name)))) return undefined;
-      const arguments_ = call.arguments.map(argument => nativeBodyExpression(argument as Expression));
+      // Arguments execute in the caller before the target's body. In particular,
+      // f(f(value)) is not recursion and cannot borrow conditions from f's body.
+      const argumentCalls: NativeCallExpansion[] = [];
+      const arguments_ = call.arguments.map(argument => lower(argument as Expression, source, ancestors, argumentCalls));
       const substitutions = new Map(names.map((name, index) => [name, arguments_[index]!]));
       const requirements: Array<NativeCallEvaluation & { source: string }> = [];
       for (const { value } of extractLocatedAnnotations(target.fn.comments, "requires")) {
@@ -171,16 +229,18 @@ export function createNativeContractCalls(frontend: CorsaCallableFrontend, sourc
         requirements.push({ source: value, expression: requirement, conditions: [] });
       }
       const projected = substituteNativeCallExpansion({ expression: body,
-        arguments: nested.flatMap(item => item.arguments),
+        arguments: [...evaluations, ...nested.flatMap(item => item.arguments)],
         requirements: [...requirements, ...nested.flatMap(item => item.requirements)] }, substitutions);
       // Actual arguments already belong to the caller namespace. Only the body
       // and nested evaluations are expressed in the target's parameter namespace.
       const result: NativeCallExpansion = { ...projected,
-        arguments: [...arguments_.map(expression => ({ expression, conditions: [] })), ...projected.arguments] };
+        arguments: [...argumentCalls.flatMap(item => item.arguments),
+          ...arguments_.map(expression => ({ expression, conditions: [] })), ...projected.arguments],
+        requirements: [...argumentCalls.flatMap(item => item.requirements), ...projected.requirements] };
       assertNativeCallExpressionBudget(nativeCallExpansionExpressions(result));
       return result;
     } catch (error) {
-      if (error instanceof ExpansionLimit) throw error;
+      if (error instanceof ExpansionLimit || error instanceof ExpansionFlowError) throw error;
       return undefined;
     }
   };
@@ -188,12 +248,18 @@ export function createNativeContractCalls(frontend: CorsaCallableFrontend, sourc
 }
 
 export function substituteLogic(expression: LogicExpression, substitutions: ReadonlyMap<string, LogicExpression>): LogicExpression {
+  if (expression.kind === "conditional") return { kind: "conditional", test: substituteLogic(expression.test, substitutions),
+    consequent: substituteLogic(expression.consequent, substitutions), alternate: substituteLogic(expression.alternate, substitutions) };
   if (expression.kind === "variable") return substitutions.get(expression.name) ?? expression;
   if (expression.kind === "unary") return { ...expression, operand: substituteLogic(expression.operand, substitutions) };
   if (expression.kind === "binary") return { ...expression, left: substituteLogic(expression.left, substitutions), right: substituteLogic(expression.right, substitutions) };
   return expression;
 }
 export function constantBoolean(expression: LogicExpression): boolean | undefined {
+  if (expression.kind === "conditional") {
+    const test = constantBoolean(expression.test);
+    return test === undefined ? undefined : constantBoolean(test ? expression.consequent : expression.alternate);
+  }
   if (expression.kind === "boolean") return expression.value;
   if (expression.kind === "unary" && expression.operator === "not") {
     const value = constantBoolean(expression.operand); return value === undefined ? undefined : !value;

@@ -29,8 +29,23 @@ export function forward(count: 0 | 1 | 2): number { return remaining(count) + 0;
 /* uneffect:ensures result === true */
 export function safeRetry(count: 0 | 1 | 2): boolean { return count === 2 || remaining(count) > 0; }
 /* uneffect:ensures result === (count < 2) */
-export function lateGuard(count: 0 | 1 | 2): boolean { return remaining(count) > 0 && count < 2; }`);
-  writeFileSync(join(consumer, "retry-client.mts"), `import { forward as retriesLeft, safeRetry, lateGuard } from "./retry-forward.mjs";
+export function lateGuard(count: 0 | 1 | 2): boolean { return remaining(count) > 0 && count < 2; }
+/* uneffect:ensures result === count */
+export function identity(count: 0 | 1 | 2): 0 | 1 | 2 { return count; }
+/* uneffect:ensures result === 0 */
+export function discard(unused: number): number { return 0; }
+/* uneffect:ensures result >= 0 */
+export function conditionalForward(count: 0 | 1 | 2): number { return count === 2 ? 0 : remaining(count); }
+/* uneffect:ensures result >= 0 */
+export function invalidConditionalForward(count: 0 | 1 | 2): number { return count === 2 ? remaining(count) : 0; }
+/* uneffect:ensures result >= 0 */
+export function branchForward(count: 0 | 1 | 2): number { if (count === 2) return 0; return remaining(count); }
+/* uneffect:ensures result >= 0 */
+export function invalidBranchForward(count: 0 | 1 | 2): number { if (count !== 2) return 0; return remaining(count); }
+/* uneffect:ensures result === 0 */
+export function ignoredPredicate(count: 0 | 1 | 2): number { if (remaining(count) > 0) {} return 0; }`);
+  writeFileSync(join(consumer, "retry-client.mts"), `import { forward as retriesLeft, safeRetry, lateGuard, identity, discard,
+  conditionalForward, invalidConditionalForward, branchForward, invalidBranchForward, ignoredPredicate } from "./retry-forward.mjs";
 /* uneffect:ensures result === 1 */
 export function budget(): number { return retriesLeft(1); }
 /* uneffect:ensures result > 0 */
@@ -38,14 +53,34 @@ export function exhausted(): number { return retriesLeft(2); }
 /* uneffect:ensures result >= 0 */
 export function guarded(attempts: 0 | 1 | 2): number {
   if (attempts === 2) return 0;
-  return retriesLeft(attempts);
+  return retriesLeft(identity(attempts));
 }
 /* uneffect:ensures result >= 0 */
 export function unguarded(attempts: 0 | 1 | 2): number { return retriesLeft(attempts); }
 /* uneffect:ensures result === true */
 export function shortCircuit(attempts: 0 | 1 | 2): boolean { return safeRetry(attempts); }
 /* uneffect:ensures result === (attempts < 2) */
-export function tooLate(attempts: 0 | 1 | 2): boolean { return lateGuard(attempts); }`);
+export function tooLate(attempts: 0 | 1 | 2): boolean { return lateGuard(attempts); }
+/* uneffect:ensures result === 0 */
+export function unusedBudget(attempts: 0 | 1 | 2): number { return discard(retriesLeft(attempts)); }
+/* uneffect:ensures result >= 0 */
+export function conditionalBudget(attempts: 0 | 1 | 2): number {
+  return attempts === 2 ? 0 : retriesLeft(identity(attempts));
+}
+/* uneffect:ensures result >= 0 */
+export function invalidConditionalBudget(attempts: 0 | 1 | 2): number {
+  return attempts === 2 ? retriesLeft(attempts) : 0;
+}
+/* uneffect:ensures result > 0 */
+export function composedConditional(attempts: 0 | 1 | 2): number { return conditionalForward(attempts) + 1; }
+/* uneffect:ensures result >= 0 */
+export function invalidComposedConditional(attempts: 0 | 1 | 2): number { return invalidConditionalForward(attempts); }
+/* uneffect:ensures result > 0 */
+export function composedBranch(attempts: 0 | 1 | 2): number { return branchForward(attempts) + 1; }
+/* uneffect:ensures result >= 0 */
+export function invalidComposedBranch(attempts: 0 | 1 | 2): number { return invalidBranchForward(attempts); }
+/* uneffect:ensures result === 0 */
+export function discardedPredicate(attempts: 0 | 1 | 2): number { return ignoredPredicate(attempts); }`);
   writeFileSync(join(consumer, "tsconfig.contracts.json"), JSON.stringify({ compilerOptions: {
     strict: true, target: "ES2024", module: "NodeNext", types: [],
   }, files: ["retry-policy.mts", "retry-forward.mts", "retry-client.mts"] }));
@@ -99,6 +134,22 @@ export function tooLate(attempts: 0 | 1 | 2): boolean { return lateGuard(attempt
     assert.deepEqual(statuses("shortCircuit", "ensures"), ["verified"]);
     assert.deepEqual(statuses("tooLate", "requires"), ["counterexample"]);
     assert.deepEqual(statuses("tooLate", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("unusedBudget", "requires"), ["counterexample", "counterexample"]);
+    assert.deepEqual(statuses("unusedBudget", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("conditionalBudget", "requires"), ["verified", "verified"]);
+    assert.deepEqual(statuses("conditionalBudget", "ensures"), ["verified", "verified"]);
+    assert.deepEqual(statuses("invalidConditionalBudget", "requires"), ["counterexample", "counterexample"]);
+    assert.deepEqual(statuses("invalidConditionalBudget", "ensures"), ["verified", "verified"]);
+    assert.deepEqual(statuses("composedConditional", "requires"), ["verified"]);
+    assert.deepEqual(statuses("composedConditional", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("invalidComposedConditional", "requires"), ["counterexample"]);
+    assert.deepEqual(statuses("invalidComposedConditional", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("composedBranch", "requires"), ["verified"]);
+    assert.deepEqual(statuses("composedBranch", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("invalidComposedBranch", "requires"), ["counterexample"]);
+    assert.deepEqual(statuses("invalidComposedBranch", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("discardedPredicate", "requires"), ["counterexample"]);
+    assert.deepEqual(statuses("discardedPredicate", "ensures"), ["verified"]);
     assert(contracts.diagnostics.some(item => item.domain === "contract" && item.functionName === "unguarded"));
     assert(contracts.errors > 0);
     assert(clientArtifacts.every(item => item.native.coverage === "safe-integer-arithmetic"));

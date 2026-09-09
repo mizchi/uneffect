@@ -32,6 +32,25 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
   }
   if (expression.kind === "boolean") return { kind: "boolean", expression };
   if (expression.kind === "integer" && /^-?\d+$/u.test(expression.value)) return nativeInteger(expression, BigInt(expression.value));
+  if (expression.kind === "conditional") {
+    if (checkNativeScalar(expression.test, variables, phase).kind !== "boolean") throw new Error("native contract conditions must be Boolean");
+    const literal = expression.test.kind === "boolean" ? expression.test.value : undefined;
+    const arm = (value: LogicExpression, truth: boolean) => checkNativeScalar(value,
+      phase === "proof" ? narrowNativeRanges(variables, [truth ? expression.test : { kind: "unary", operator: "not", operand: expression.test }]) : variables,
+      literal !== undefined && literal !== truth ? "structure" : phase);
+    const yes = arm(expression.consequent, true), no = arm(expression.alternate, false);
+    if (yes.kind !== no.kind) throw new Error("native conditional arms must have matching scalar sorts");
+    if (literal !== undefined) return { ...(literal ? yes : no), expression };
+    if (yes.kind === "number" && no.kind === "number") {
+      const minimum = yes.minimum < no.minimum ? yes.minimum : no.minimum;
+      const maximum = yes.maximum > no.maximum ? yes.maximum : no.maximum;
+      const finite = (value: typeof yes) => value.values ?? (value.minimum === value.maximum ? [value.minimum] : undefined);
+      const left = finite(yes), right = finite(no);
+      const values = left && right ? [...new Set([...left, ...right])] : undefined;
+      return { ...integer(minimum, maximum), ...(values && values.length <= 16 ? { values } : {}) };
+    }
+    return { kind: "boolean", expression };
+  }
   if (expression.kind === "unary") {
     const value = checkNativeScalar(expression.operand, variables, phase);
     if (expression.operator === "not" && value.kind === "boolean") return { kind: "boolean", expression };
@@ -80,6 +99,13 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
 /** No coercion, assertions, properties, or general division/remainder in this fragment. */
 export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extract<Expression, { type: "CallExpression" }>, conditions: readonly LogicExpression[]) => LogicExpression | undefined): LogicExpression {
   if (node.type === "ParenthesizedExpression") return nativeBodyExpression(node.expression, resolveCall);
+  if (node.type === "ConditionalExpression") {
+    const test = nativeBodyExpression(node.test, resolveCall);
+    const arm = (value: Expression, guard: LogicExpression) => nativeBodyExpression(value,
+      resolveCall ? (call, conditions) => resolveCall(call, [guard, ...conditions]) : undefined);
+    return { kind: "conditional", test, consequent: arm(node.consequent, test),
+      alternate: arm(node.alternate, { kind: "unary", operator: "not", operand: test }) };
+  }
   if (node.type === "Identifier") return { kind: "variable", name: node.name };
   if (node.type === "Literal") {
     if (typeof node.value === "boolean") return { kind: "boolean", value: node.value };
@@ -108,6 +134,7 @@ export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extr
 }
 
 export function hasNumericExpression(expression: LogicExpression): boolean {
+  if (expression.kind === "conditional") return [expression.test, expression.consequent, expression.alternate].some(hasNumericExpression);
   return expression.kind === "integer" || expression.kind === "real"
     || expression.kind === "unary" && hasNumericExpression(expression.operand)
     || expression.kind === "binary" && (hasNumericExpression(expression.left) || hasNumericExpression(expression.right));
