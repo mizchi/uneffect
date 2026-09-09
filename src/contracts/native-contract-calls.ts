@@ -49,9 +49,12 @@ export interface NativeCallExpansion {
   readonly requirements: readonly (NativeCallEvaluation & { readonly source: string })[];
 }
 
+function evaluationExpressions(values: readonly NativeCallEvaluation[]): LogicExpression[] {
+  return values.flatMap(item => [item.expression, ...item.conditions]);
+}
+
 export function nativeCallExpansionExpressions(expansion: NativeCallExpansion): LogicExpression[] {
-  return [expansion.expression, ...[...expansion.arguments, ...expansion.requirements]
-    .flatMap(item => [item.expression, ...item.conditions])];
+  return [expansion.expression, ...evaluationExpressions([...expansion.arguments, ...expansion.requirements])];
 }
 
 export function substituteNativeCallExpansion(expansion: NativeCallExpansion,
@@ -165,21 +168,73 @@ export function createNativeContractCalls(frontend: CorsaCallableFrontend, sourc
       const nested: NativeCallExpansion[] = [];
       const evaluations: NativeCallEvaluation[] = [];
       const syntaxExpressions: LogicExpression[] = [];
+      const locals = new Map<string, LogicExpression>();
+      const mutableLocals = new Set<string>();
+      const lowerBound = (expression: Expression, collected: NativeCallExpansion[]): LogicExpression => {
+        const calls: NativeCallExpansion[] = [];
+        const value = substituteLogic(lower(expression, target.source, [...ancestors, identity], calls), locals);
+        const projected = calls.map(child => substituteNativeCallExpansion(child, locals));
+        // Child return expressions are already embedded in value. Count their
+        // evaluations and requirements too, without counting the returns twice.
+        assertNativeCallExpressionBudget(nativeCallExpansionExpressions({ expression: value,
+          arguments: projected.flatMap(child => child.arguments), requirements: projected.flatMap(child => child.requirements) }));
+        collected.push(...projected);
+        return value;
+      };
+      const retainPrefixEvaluation = (value: LogicExpression): void => {
+        evaluations.push({ expression: value, conditions: [] });
+        syntaxExpressions.push(value);
+        assertNativeCallExpressionBudget([...syntaxExpressions,
+          ...nested.flatMap(child => evaluationExpressions([...child.arguments, ...child.requirements]))]);
+      };
+      // Freeze entry-prefix state before the CFG. Keep each evaluated value in
+      // the original parameter namespace, including values overwritten later.
+      let prefix = 0;
+      for (const statement of node.body.body) {
+        if (statement.type === "VariableDeclaration" && (statement.kind === "const" || statement.kind === "let")) {
+          for (const declaration of statement.declarations) {
+            const name = declaration.id.type === "Identifier" ? declaration.id.name : undefined;
+            if (!name || !declaration.init
+              || locals.has(name) || node.params.some(parameter => parameter.type === "Identifier" && parameter.name === name)) {
+              throw new ExpansionFlowError("native callee locals require distinct initialized identifiers");
+            }
+            const value = lowerBound(declaration.init, nested);
+            retainPrefixEvaluation(value);
+            locals.set(name, value);
+            if (statement.kind === "let") mutableLocals.add(name);
+          }
+        } else if (statement.type === "ExpressionStatement" && statement.expression.type === "AssignmentExpression") {
+          const assignment = statement.expression;
+          if (assignment.left.type !== "Identifier" || !mutableLocals.has(assignment.left.name)
+            || !["=", "+=", "-=", "*=", "/=", "%="].includes(assignment.operator)) {
+            throw new ExpansionFlowError("native callee assignments require a supported operator and an initialized local let binding");
+          }
+          const name = assignment.left.name;
+          const right = lowerBound(assignment.right, nested);
+          const value: LogicExpression = assignment.operator === "=" ? right : { kind: "binary",
+            operator: ({ "+=": "add", "-=": "sub", "*=": "mul", "/=": "div", "%=": "mod" } as Record<string, string>)[assignment.operator]!,
+            left: locals.get(name)!, right };
+          retainPrefixEvaluation(value);
+          locals.set(name, value);
+        } else break;
+        prefix++;
+      }
+      const remainingBody = { ...node.body, body: node.body.body.slice(prefix) };
       const body = (() => {
-        const returned = node.body.body.length === 1 ? node.body.body[0] : undefined;
+        const returned = remainingBody.body.length === 1 ? remainingBody.body[0] : undefined;
         if (returned?.type === "ReturnStatement" && returned.argument) {
-          return lower(returned.argument, target.source, [...ancestors, identity], nested);
+          return lowerBound(returned.argument, nested);
         }
         // CFG construction and fixed-point propagation revisit expressions. Resolve
         // each syntax call once, then attach each distinct evaluation path separately.
         const cache = new Map<Expression, { value: LogicExpression; calls: NativeCallExpansion[] }>();
         const seen = new Set<string>();
         try {
-          const paths = lowerNativeExpressionPaths(node.body, (expression, conditions, role) => {
+          const paths = lowerNativeExpressionPaths(remainingBody, (expression, conditions, role) => {
             let entry = cache.get(expression);
             if (!entry) {
               const calls: NativeCallExpansion[] = [];
-              entry = { value: lower(expression, target.source, [...ancestors, identity], calls), calls };
+              entry = { value: lowerBound(expression, calls), calls };
               cache.set(expression, entry);
               syntaxExpressions.push(entry.value, ...calls.flatMap(nativeCallExpansionExpressions));
               evaluations.push({ expression: entry.value, conditions: [], requiresBoolean: role === "predicate", structureOnly: true },

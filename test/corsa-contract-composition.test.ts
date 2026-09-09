@@ -25,6 +25,232 @@ async function verify(files: Record<string, string>) {
 const five = `/* uneffect:ensures result === 5 */
 export function value(): number { return 5; }`;
 
+describe("native callee const prefixes", () => {
+  it.each([
+    "const next = item + 1; return next;",
+    "const first = item, next = first + 1; return next;",
+    "const next = item + 1; if (item === 0) return next; return 2;",
+  ])("substitutes prefix constants in declaration order: %s", async body => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result === item + 1 */
+export function increment(item: 0 | 1): number { ${body} }`,
+      "entry.mts": `import { increment as next } from "./helper.mjs";
+/* uneffect:ensures result === value + 1 */
+export function caller(value: 0 | 1): number { return next(value); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["verified"]);
+  });
+
+  const positive = `/* uneffect:requires value > 0 */
+/* uneffect:ensures result === value */
+export function positive(value: 0 | 1): number { return value; }`;
+  it.each([
+    ["const next = positive(item); if (item === 0) return 0; return next;", "counterexample"],
+    ["const unused = positive(item); return 0;", "counterexample"],
+    ["const next = item; if (next === 0) return 0; return positive(next);", "verified"],
+    ["const ready = item > 0, unused = ready && positive(item) > 0; return 0;", "verified"],
+  ])("keeps each initializer's original evaluation conditions: %s", async (body, status) => {
+    const artifacts = await verify({ "leaf.mts": positive,
+      "wrapper.mts": `import { positive } from "./leaf.mjs";
+/* uneffect:ensures result >= 0 */
+export function wrapper(item: 0 | 1): number { ${body} }`,
+      "entry.mts": `import { wrapper } from "./wrapper.mjs";
+/* uneffect:ensures result >= 0 */
+export function caller(value: 0 | 1): number { return wrapper(value); }` });
+    expect(artifacts.map(item => item.status)).toEqual([status, "verified"]);
+  });
+
+  it("checks unused initializer arithmetic before a later guard", async () => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result === 0 */
+export function choose(item: 0 | 9007199254740991): number {
+  const unused = item + 1;
+  if (item === 9007199254740991) return 0;
+  return 0;
+}`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result === 0 */
+export function caller(value: 0 | 9007199254740991): number { return choose(value); }` });
+    expect(artifacts).toEqual([expect.objectContaining({ status: "unsupported", message: expect.stringMatching(/safe integer range/) })]);
+  });
+
+  it("does not capture caller names through an unused initializer", async () => {
+    const artifacts = await verify({ "helper.mts": `const captured = 9;
+/* uneffect:ensures result === 0 */
+export function choose(): number { const unused = captured; return 0; }`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result === 0 */
+export function caller(captured: 0): number { return choose(); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["unsupported"]);
+  });
+
+  it("keeps alias substitution simultaneous with colliding callee parameter names", async () => {
+    const artifacts = await verify({ "leaf.mts": `/* uneffect:requires next > 0 */
+/* uneffect:ensures result === next */
+export function positive(next: number): number { return next; }`,
+      "wrapper.mts": `import { positive } from "./leaf.mjs";
+/* uneffect:ensures result === item + 1 */
+export function wrapper(item: 0 | 1): number { const next = item + 1, resultValue = positive(next); return resultValue; }`,
+      "entry.mts": `import { wrapper } from "./wrapper.mjs";
+/* uneffect:ensures result === next + 1 */
+export function caller(next: 0 | 1): number { return wrapper(next); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["verified", "verified"]);
+  });
+
+  it.each([31, 32])("charges unused initializer calls to the shared budget: %i", async count => {
+    const artifacts = await verify({ "leaf.mts": `/* uneffect:ensures result === 0 */
+export function zero(): number { return 0; }`,
+      "wrapper.mts": `import { zero } from "./leaf.mjs";
+/* uneffect:ensures result === 0 */
+export function wrapper(): number { ${Array.from({ length: count }, (_, index) => `const v${index} = zero();`).join(" ")} return 0; }`,
+      "entry.mts": `import { wrapper } from "./wrapper.mjs";
+/* uneffect:ensures result === 0 */
+export function caller(): number { return wrapper(); }` });
+    if (count === 31) expect(artifacts.map(item => item.status)).toEqual(["verified"]);
+    else expect(artifacts).toEqual([expect.objectContaining({ status: "unsupported", message: expect.stringMatching(/call budget.*32/) })]);
+  });
+
+  it("bounds repeated substitution in a const chain", async () => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result >= 0 */
+export function choose(item: 0 | 1): number {
+  const v0 = item;
+  ${Array.from({ length: 13 }, (_, index) => `const v${index + 1} = v${index} + v${index};`).join("\n  ")}
+  return v13;
+}`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result >= 0 */
+export function caller(value: 0 | 1): number { return choose(value); }` });
+    expect(artifacts).toEqual([expect.objectContaining({ status: "unsupported", message: expect.stringMatching(/node budget/) })]);
+  });
+
+  it("does not resolve a forward reference using a later const binding", async () => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result === item */
+export function choose(item: 0 | 1): number {
+  // @ts-expect-error intentional access before initialization
+  const first = later;
+  const later = item;
+  return first;
+}`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result === value */
+export function caller(value: 0 | 1, later: 0): number { return choose(value); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["unsupported"]);
+  });
+
+  it("keeps a shadowing block const outside the shared prefix environment", async () => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result === item */
+export function choose(item: 0 | 1): number {
+  const current = item;
+  if (item === 0) { const current = 1; return current; }
+  return current;
+}`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result === value */
+export function caller(value: 0 | 1): number { return choose(value); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["unsupported"]);
+  });
+});
+
+describe("native callee mutable prefixes", () => {
+  it.each([
+    ["let current = item; current = current + 1; return current;", "value + 1"],
+    ["let current = item; current += 2; current -= 1; return current;", "value + 1"],
+    ["let current = item; current *= 2; return current;", "value * 2"],
+    ["let current = item; current /= 1; return current;", "value"],
+    ["let current = item; const saved = current; current = 0; return saved;", "value"],
+    ["let current = 5; current %= 2; return current;", "1"],
+    ["let current = item, saved = current; current += 1; saved += current; return saved;", "value * 2 + 1"],
+    ["let current = item; current += 1; if (current === 1) return current; return 2;", "value + 1"],
+  ])("preserves assignment-time values: %s", async (body, goal) => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result >= 0 */
+export function choose(item: 0 | 1): number { ${body} }`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result === ${goal} */
+export function caller(value: 0 | 1): number { return choose(value); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["verified"]);
+  });
+
+  it("preserves Boolean snapshots through reassignment", async () => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result === !flag */
+export function invert(flag: boolean): boolean { let current = flag; const saved = current; current = !current; return current && !saved; }`,
+      "entry.mts": `import { invert } from "./helper.mjs";
+/* uneffect:ensures result === !current */
+export function caller(current: boolean): boolean { return invert(current); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["verified"]);
+  });
+
+  const positive = `/* uneffect:requires value > 0 */
+/* uneffect:ensures result === value */
+export function positive(value: number): number { return value; }`;
+  it.each([
+    ["let current = item; current = item + 1; return positive(current);", "verified"],
+    ["let current = item; const saved = current; current = 1; return positive(saved);", "counterexample"],
+    ["let current = item, unused = positive(current); current = 1; return current;", "counterexample"],
+    ["let current = item, unused = 0; unused = positive(current); current = 1; return current;", "counterexample"],
+    ["let current: number = item; current = positive(current); if (current === 0) return 0; return current;", "counterexample"],
+    ["let current = item; current += 1; const unused = positive(current); current = 0; return current;", "verified"],
+    ["let current = item; current += positive(current); current = 1; return current;", "counterexample"],
+    ["let current = item; const ready = current > 0; current = 0; return ready ? positive(current) : 0;", "counterexample"],
+    ["let current = item; current = item + 1; return current > 0 ? positive(current) : 0;", "verified"],
+  ])("retains evaluation-time call arguments and guards: %s", async (body, status) => {
+    const artifacts = await verify({ "leaf.mts": positive,
+      "helper.mts": `import { positive } from "./leaf.mjs";
+/* uneffect:ensures result >= 0 */
+export function choose(item: 0 | 1): number { ${body} }`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result >= 0 */
+export function caller(current: 0 | 1): number { return choose(current); }` });
+    expect(artifacts.map(item => item.status)).toEqual([status, "verified"]);
+  });
+
+  it.each(["current = current + 1;", "current += 1;"])("checks overwritten intermediate arithmetic: %s", async assignment => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result === 0 */
+export function choose(item: 0 | 9007199254740991): number {
+  let current = item; ${assignment} current = 0; return current;
+}`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result === 0 */
+export function caller(value: 0 | 9007199254740991): number { return choose(value); }` });
+    expect(artifacts).toEqual([expect.objectContaining({ status: "unsupported", message: expect.stringMatching(/safe integer range/) })]);
+  });
+
+  it.each([31, 32])("bounds calls in overwritten assignments: %i", async count => {
+    const artifacts = await verify({ "leaf.mts": `/* uneffect:ensures result === 0 */
+export function zero(): number { return 0; }`,
+      "helper.mts": `import { zero } from "./leaf.mjs";
+/* uneffect:ensures result === 0 */
+export function choose(): number { let current = 0; ${"current = zero(); ".repeat(count)} return current; }`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result === 0 */
+export function caller(): number { return choose(); }` });
+    if (count === 31) expect(artifacts.map(item => item.status)).toEqual(["verified"]);
+    else expect(artifacts).toEqual([expect.objectContaining({ status: "unsupported", message: expect.stringMatching(/call budget.*32/) })]);
+  });
+
+  it("bounds repeated self-substitution in assignments", async () => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result >= 0 */
+export function choose(item: 0 | 1): number { let current = item; ${"current += current; ".repeat(13)} return current; }`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result >= 0 */
+export function caller(value: 0 | 1): number { return choose(value); }` });
+    expect(artifacts).toEqual([expect.objectContaining({ status: "unsupported", message: expect.stringMatching(/node budget/) })]);
+  });
+
+  it.each([
+    "let current = item; if (item === 0) current = 1; return current;",
+    "let current = item; item = 0; return current;",
+    "var current = item; current = 0; return current;",
+    "let current = item; current++; return current;",
+    "let current = item; current |= 1; return current;",
+    "let current = item; current /= 2; return current;",
+    "const current = item;\n// @ts-expect-error intentional const write\ncurrent = 0; return current;",
+  ])("rejects writes outside the bounded local prefix: %s", async body => {
+    const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result >= 0 */
+export function choose(item: 0 | 1): number { ${body} }`,
+      "entry.mts": `import { choose } from "./helper.mjs";
+/* uneffect:ensures result >= 0 */
+export function caller(value: 0 | 1): number { return choose(value); }` });
+    expect(artifacts.map(item => item.status)).toEqual(["unsupported"]);
+  });
+});
+
 describe("native branching callees", () => {
   it("composes Boolean early returns", async () => {
     const artifacts = await verify({ "helper.mts": `/* uneffect:ensures result === !flag */

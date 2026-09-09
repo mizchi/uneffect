@@ -39,13 +39,21 @@ export function conditionalForward(count: 0 | 1 | 2): number { return count === 
 /* uneffect:ensures result >= 0 */
 export function invalidConditionalForward(count: 0 | 1 | 2): number { return count === 2 ? remaining(count) : 0; }
 /* uneffect:ensures result >= 0 */
-export function branchForward(count: 0 | 1 | 2): number { if (count === 2) return 0; return remaining(count); }
+export function branchForward(count: 0 | 1 | 2): number { const current = count; if (current === 2) return 0; return remaining(current); }
 /* uneffect:ensures result >= 0 */
 export function invalidBranchForward(count: 0 | 1 | 2): number { if (count !== 2) return 0; return remaining(count); }
 /* uneffect:ensures result === 0 */
-export function ignoredPredicate(count: 0 | 1 | 2): number { if (remaining(count) > 0) {} return 0; }`);
+export function ignoredPredicate(count: 0 | 1 | 2): number { if (remaining(count) > 0) {} return 0; }
+/* uneffect:ensures result >= 0 */
+export function initializedTooSoon(count: 0 | 1 | 2): number { const budget = remaining(count); if (count === 2) return 0; return budget; }
+/* uneffect:ensures result > 0 */
+export function resetRetry(count: 0 | 1 | 2): number { let current = count; current = count === 2 ? 0 : count; return remaining(current); }
+/* uneffect:ensures result >= 0 */
+export function resetAfterCall(count: 0 | 1 | 2): number { let current = count; const budget = remaining(current); current = 0; return budget + current; }
+/* uneffect:ensures result >= 0 */
+export function capturedRetry(count: 0 | 1 | 2): number { let current = count; const saved = current; current = 0; return remaining(saved) + current; }`);
   writeFileSync(join(consumer, "retry-client.mts"), `import { forward as retriesLeft, safeRetry, lateGuard, identity, discard,
-  conditionalForward, invalidConditionalForward, branchForward, invalidBranchForward, ignoredPredicate } from "./retry-forward.mjs";
+  conditionalForward, invalidConditionalForward, branchForward, invalidBranchForward, ignoredPredicate, initializedTooSoon, resetRetry, resetAfterCall, capturedRetry } from "./retry-forward.mjs";
 /* uneffect:ensures result === 1 */
 export function budget(): number { return retriesLeft(1); }
 /* uneffect:ensures result > 0 */
@@ -80,7 +88,15 @@ export function composedBranch(attempts: 0 | 1 | 2): number { return branchForwa
 /* uneffect:ensures result >= 0 */
 export function invalidComposedBranch(attempts: 0 | 1 | 2): number { return invalidBranchForward(attempts); }
 /* uneffect:ensures result === 0 */
-export function discardedPredicate(attempts: 0 | 1 | 2): number { return ignoredPredicate(attempts); }`);
+export function discardedPredicate(attempts: 0 | 1 | 2): number { return ignoredPredicate(attempts); }
+/* uneffect:ensures result >= 0 */
+export function eagerBudget(attempts: 0 | 1 | 2): number { return initializedTooSoon(attempts); }
+/* uneffect:ensures result > 0 */
+export function resetBudget(attempts: 0 | 1 | 2): number { return resetRetry(attempts); }
+/* uneffect:ensures result >= 0 */
+export function resetTooLate(attempts: 0 | 1 | 2): number { return resetAfterCall(attempts); }
+/* uneffect:ensures result >= 0 */
+export function savedBudget(attempts: 0 | 1 | 2): number { return capturedRetry(attempts); }`);
   writeFileSync(join(consumer, "tsconfig.contracts.json"), JSON.stringify({ compilerOptions: {
     strict: true, target: "ES2024", module: "NodeNext", types: [],
   }, files: ["retry-policy.mts", "retry-forward.mts", "retry-client.mts"] }));
@@ -150,6 +166,14 @@ export function discardedPredicate(attempts: 0 | 1 | 2): number { return ignored
     assert.deepEqual(statuses("invalidComposedBranch", "ensures"), ["verified"]);
     assert.deepEqual(statuses("discardedPredicate", "requires"), ["counterexample"]);
     assert.deepEqual(statuses("discardedPredicate", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("eagerBudget", "requires"), ["counterexample"]);
+    assert.deepEqual(statuses("eagerBudget", "ensures"), ["verified"]);
+    assert.deepEqual(statuses("resetBudget", "requires"), ["verified"]);
+    assert.deepEqual(statuses("resetBudget", "ensures"), ["verified"]);
+    for (const name of ["resetTooLate", "savedBudget"]) {
+      assert.deepEqual(statuses(name, "requires"), ["counterexample"]);
+      assert.deepEqual(statuses(name, "ensures"), ["verified"]);
+    }
     assert(contracts.diagnostics.some(item => item.domain === "contract" && item.functionName === "unguarded"));
     assert(contracts.errors > 0);
     assert(clientArtifacts.every(item => item.native.coverage === "safe-integer-arithmetic"));

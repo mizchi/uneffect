@@ -56,6 +56,7 @@ export function guarded(value: 0 | 9007199254740991): number {
   分岐内部の局所宣言・代入による状態の合流は未対応。
 - 同一snapshot内の `ensures`付きcalleeを、0〜8個の必須引数で最大2段展開する。
   calleeの本体はreturn、block、if/else、空文から構成でき、ネストと早期returnを扱う。
+  callee冒頭に並ぶ、単純な識別子の初期化済みconst/let宣言と、local letへの代入も展開する。
   wrapperのreturn式では、呼出結果へのscalar演算、複数の呼出、`&&` / `||` による短絡、三項を扱う。
   引数内の呼出も先に評価して展開する。未使用引数の検査は省略しない。
   直接呼出と名前付きimport（import時の改名を含む）をCorsaの宣言identityで照合する。
@@ -221,7 +222,7 @@ callerのconst・代入結果を置換した後にも同じ上限を検査する
 calleeの分岐は、関数単独の検証と同じCFG固定点エンジンで経路を列挙する。
 すべての到達経路がreturnすることを確認した後、経路条件と返り値をconditional IRへまとめる。
 途中でreturnせず末尾へ到達するcalleeは、callerの型やrequiresにかかわらずunsupportedとする。
-callee内の局所宣言・代入、loop・switch・例外は、この呼出合成では未対応。
+callee内の冒頭prefix以外の局所宣言・代入、loop・switch・例外は、この呼出合成では未対応。
 
 返り値とは別に、各条件式とreturn式の評価地点・到達条件を保持する。
 `if (check(value)) {} return 0` のように条件が返り値に影響しなくても、checkのrequiresと
@@ -244,6 +245,32 @@ CFGの再訪で呼出解決を繰り返さないよう、構文ごとに式と�
 引数の呼出はcallee本体に入る前のcaller側の評価なので、`f(f(value))` は再帰ではない。
 一方、`f` の本体から引数式を通して `f` を呼べば再帰として拒否する。
 引数を解析するときも本体の深さ・32呼出・4,096ノードの予算は共有する。
+
+### Callee冒頭の局所変数と代入
+
+最初に並ぶconst/let宣言と代入を左から順に評価してから、残りの本体を展開する。
+`const current = input, next = current + 1` のような複数宣言・alias連鎖を扱う。
+各初期化式はその時点で成立しているbindingだけで置換し、その結果を後続の式へ渡す。
+内側のcalleeの引数名やcallerの変数名との衝突による二重置換を避ける。
+
+初期化式の値域検査と全呼出のrequiresは、変数の使用有無にかかわらず保持する。
+`const value = positive(input); if (input === 0) return 0; return value` では、
+後のguardで最初の呼出を正当化しない。一方、引数のaliasをconstに保存してから
+guardする場合や、初期化式自体の短絡条件は検証に使える。
+全初期化式・代入結果を自由変数・32呼出・4,096ノードの検査対象に含め、繰り返し使うaliasも
+使用回数に応じて数える。calleeのrequiresは引数のみを参照でき、局所変数は前提に使わない。
+
+local letへの `=` / `+=` / `-=` / `*=` / `/=` / `%=` を扱う。
+除算・剰余の値域制約は通常の式と同じで、一般の小数演算には広げない。
+右辺と複合代入の左辺は書換え前のbindingで評価し、結果を保存してから次の文へ進む。
+`let current = input; const saved = current; current = 0` のsavedは元のinputを保持する。
+上書きされる未使用の値にも演算の検査と呼出のrequiresを残し、後の書換えやguardで
+過去の呼出を正当化しない。分岐にはprefixの実行後の値を渡す。
+
+分割代入による宣言、var、未初期化宣言、引数・const・外部変数への代入、update式、
+分岐内部や分岐以降の宣言・代入は、この合成では未対応。
+関数単独の検証では、let/代入を含むprefixにif文が続く本体は引き続き未対応であり、
+呼出合成の結果とは別にunsupportedを返す。
 
 ## 実装と検証
 
