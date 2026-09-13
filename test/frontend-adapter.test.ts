@@ -49,7 +49,7 @@ describe("TypeChecker symbol adapter", () => {
     const fileName = join(directory, "input.ts");
     try {
       writeFileSync(fileName, `
-        /* uneffect:effect Dom<Create, typeof document> | Dom<PropertyWrite, typeof script> | Dom<NodeWrite, typeof document.head> | Mutate<typeof document.head> | InvokeUserCode | ScriptLoad<Classic, "https://cdn.example.com/sdk.js"> | ExecuteExternalCode<"https://cdn.example.com/sdk.js", "sha384-YWJj"> | Net<"cdn.example.com:443"> */
+        /* uneffect:effect Dom<Create, typeof document> | Dom<NodeRead, typeof document> | Dom<PropertyWrite, typeof script> | Dom<NodeWrite, typeof document.head> | Mutate<typeof document.head> | InvokeUserCode | Throw<DOMException> | ScriptLoad<Classic, "https://cdn.example.com/sdk.js"> | ExecuteExternalCode<"https://cdn.example.com/sdk.js", "sha384-YWJj"> | Net<"cdn.example.com:443"> */
         export function load() {
           const script = document.createElement("script");
           script.src = "https://cdn.example.com/sdk.js";
@@ -708,7 +708,7 @@ describe("TypeChecker symbol adapter", () => {
       /* uneffect:effect Dom<LayoutRead, typeof element> */
       function measure(element: HTMLElement) { return element.clientWidth + element.scrollHeight + element.offsetHeight }
       interface LocalMarkup { innerHTML: string; clientWidth: number }
-      /* uneffect:effect Mutate<typeof value> */
+      /* uneffect:effect Mutate<typeof value> | InvokeUserCode | Throw<TypeError> */
       function local(value: LocalMarkup) { value.innerHTML = String(value.clientWidth) }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });

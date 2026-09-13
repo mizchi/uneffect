@@ -4,12 +4,17 @@ import type { CorsaCheckResult } from "./corsa-check.js";
 import type { EffectBaselineAssessment } from "../../effects/effect-baseline.js";
 import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
 
+const publishedDiagnosticDomains = new Set<string>(["syntax", "contract"]);
+const publishedDiagnosticKinds = new Set<string>(["syntax", "contract"]);
+
 export interface CorsaCheckJsonReport {
   corsaBuiltinCalls?: CorsaCheckResult["corsaBuiltinCalls"];
   schema: "uneffect-check/v1";
   outcome: "passed" | "failed";
   counts: { errors: number; warnings: number };
-  diagnostics: Array<CorsaCheckResult["diagnostics"][number] & { code: string; notes: DiagnosticNote[] }>;
+  diagnostics: Array<Omit<CorsaCheckResult["diagnostics"][number], "domain" | "kind">
+    & Partial<Pick<CorsaCheckResult["diagnostics"][number], "domain" | "kind">>
+    & { code: string; notes: DiagnosticNote[] }>;
   effects: Array<{
     fileName?: string;
     span?: { start: number; end: number };
@@ -40,8 +45,16 @@ export function createCorsaCheckJsonReport(
     schema: "uneffect-check/v1",
     outcome: passed ? "passed" : "failed",
     counts: { errors: result.errors, warnings: result.warnings },
-    diagnostics: result.diagnostics.map(diagnostic => ({ ...diagnostic,
-      code: `${diagnostic.domain}/${diagnostic.kind}`, notes: diagnostic.notes ?? [] })),
+    diagnostics: result.diagnostics.map(diagnostic => {
+      // `domain` and `kind` carry the published v1 inventory, which does not change in place. A diagnostic
+      // family introduced after v1 is identified by `code` alone, so an older v1 validator still accepts it.
+      const published = publishedDiagnosticDomains.has(diagnostic.domain) && publishedDiagnosticKinds.has(diagnostic.kind);
+      const { domain, kind, ...rest } = diagnostic;
+      return {
+        ...(published ? { domain, kind } : {}), ...rest,
+        code: `${domain}/${kind}`, notes: diagnostic.notes ?? [],
+      };
+    }),
     effects: result.summaries.map((summary) => ({
       ...(summary.fileName === undefined ? {} : { fileName: summary.fileName }),
       ...(summary.span === undefined ? {} : { span: summary.span }),

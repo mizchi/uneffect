@@ -267,10 +267,16 @@ The experimental `collectSyntaxFacts` boundary emits
 boundaries and call/construct/property sites. `parseSyntaxFacts` rejects
 malformed or internally inconsistent artifacts. Syntax exclusions are
 fail-closed errors in the Corsa project checker, not evidence of an empty
-effect set. Anonymous callback boundaries remain source-scoped; computed or
-otherwise non-static calls/constructions, tagged templates, and dynamic imports
-are explicit exclusions. The artifact schema is published, but the traversal
-API remains on the experimental subpath while Corsa syntax traversal is out of
+effect set, except that the checker admits a computed member whose receiver
+Corsa resolves to a non-DOM, non-`any` type. Anonymous callback boundaries
+remain source-scoped, constructors are `method` boundaries named
+`Owner.constructor` that cover the class body so a field initializer and a
+static block have an owner, immediately invoked inline functions are `<iife>` call
+sites, `super(...)` is a `super` call site, and a call result used as a callee
+is a `<dynamic>` site with unknown callee evidence. Computed calls or
+constructions on other receivers, tagged templates, and dynamic imports are
+explicit exclusions. The artifact schema is published, but the traversal API
+remains on the experimental subpath while Corsa syntax traversal is out of
 band.
 
 Builtin `Object.freeze` recognition is compatibility support for existing

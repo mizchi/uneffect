@@ -23,6 +23,64 @@ same property is proved for arbitrary TypeScript.
 
 ## Capability effects
 
+- The default Corsa check composes evidence over the call graph instead of per
+  site: a function is `unknown` exactly when it reaches an unresolved site, so a
+  call to an analyzed body no longer forces `unknown` and a fully resolved
+  subgraph is a proof of its inferred upper bound. Callee resolution covers
+  function declarations and `const` bindings of inline functions at any depth and
+  across files; async and generator bodies, reassigned bindings, object members,
+  aliased bindings, and calls through values remain explicit non-claims. A
+  function that invokes one of its own plain-identifier parameters carries
+  `InvokeUserCode`, and every call of that boundary — a plain call, a
+  construction, `super`, or internal dispatch — owes an argument with an analyzed
+  boundary at that position or becomes unknown. `new C()` links to the
+  constructor the class declares and, when it declares none, to the inherited
+  one; `super(...)` and `super.m(...)` link to the base the `extends` clause
+  resolves to. `this.m()` links to the declared body when nothing in the analyzed
+  files can replace it: a `private` or `#` member always qualifies, and a public
+  one only when no subclass in the program declares that name, no assignment
+  writes a member of that type, the caller narrowed no file list, and every
+  statically imported binding is declared in a file the run read. A member call on
+  a receiver the caller supplies needs one condition more — the class must declare
+  a `private`, `protected` or `#` member, which is what makes its type nominal, so
+  that no object literal can stand in for an instance. Only a write whose value
+  could be a function counts as replacing a method, and a write through a receiver
+  the checker cannot name is tested for reach with an assignability query rather
+  than disabling every class at once; a computed write through an `any` receiver
+  still reaches everything, because it could install a function on any object. The
+  reviewed ECMAScript catalog is reachable, `throw` primitives render as
+  `Throw<Error>` upper bounds with no control-flow discharge, contracts that
+  invoke user code compose only with an inline argument, property writes select
+  the write side of their contract, and an uncontracted DOM member or an
+  unmodelled primitive fails closed. A reviewed contract is keyed by the interface
+  that declares the member and reached through the inheritance `lib.dom.d.ts`
+  itself declares, so `Node#ownerDocument` applies to an `HTMLElement` receiver
+  while a receiver that reaches no interface carrying that member stays unknown —
+  matching by member name alone would attach an unrelated capability.
+  Reviewed contracts were added for the standard-library members
+  whose specification completes without a user-observable effect and without
+  reaching user code; the ones that build a string throw `RangeError` and say so,
+  `Array.isArray` throws `TypeError` for a revoked proxy, and members that
+  delegate to a user symbol method, canonicalize a locale, or hang off an
+  instance interface a user class can extend are deliberately absent. A receiver
+  is typed at its last identifier token throughout, so a nested receiver selects
+  the same contract a direct one does; a class field initializer and a static
+  block are attributed to the construction boundary instead of being dropped;
+  and an accessor is unknown rather than a proof of effect freedom.
+
+- The default Corsa check reports `bounds/unchecked-index` when an `Array` or
+  `ReadonlyArray` element is dereferenced immediately without a recognized
+  length/element guard, early exit, or checker-resolved `String#split` first
+  element. This closes the gap where TypeScript without
+  `noUncheckedIndexedAccess` types such elements as present. The fragment is
+  syntactic and bounded: tuples, `RegExpMatchArray`, DOM collections,
+  index-signature records, and receiver reassignment between guard and access
+  are explicit non-claims. Computed members on checker-resolved non-DOM
+  receivers, class constructors, immediately invoked inline functions,
+  `super(...)`, and call-result callees are no longer syntax coverage errors;
+  the latter three keep their callers `unknown` rather than proving them
+  effect-free.
+
 - The versioned inferred-effect baseline provides an annotation-free regression
   ratchet. It records normalized effects and stable unknown-reason codes per
   source/function occurrence, ignores source-offset-only movement, and rejects

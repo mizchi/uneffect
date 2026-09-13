@@ -46,6 +46,31 @@ describe("versioned syntax facts", () => {
     expect(parseSyntaxFacts(JSON.parse(JSON.stringify(facts)))).toEqual(facts);
   });
 
+  it("treats constructors, immediately invoked functions, and super calls as ordinary boundaries and call sites", () => {
+    const source = `class Base { constructor(readonly label: string) { console.log(label) } }
+      class Box extends Base {
+        constructor(public value: number, label = "box") { super(label); console.log(value) }
+      }
+      export function wrap(): number { return (() => { console.log("iife"); return 1 })() }
+      const module = (function named() { console.log("module"); return 2 })();`;
+    const facts = collectSyntaxFacts("boundaries.ts", source);
+    expect(facts.coverage.every(entry => entry.status === "complete")).toBe(true);
+    expect(facts.functions.map(({ name, kind, parameters }) => ({ name, kind, parameters }))).toEqual([
+      { name: "Base.constructor", kind: "method", parameters: ["label"] },
+      { name: "Box.constructor", kind: "method", parameters: ["value", "label"] },
+      { name: "wrap", kind: "function", parameters: [] },
+      { name: "<anonymous>", kind: "arrow", parameters: [] },
+      { name: "named", kind: "function-expression", parameters: [] },
+    ]);
+    expect(facts.sites.filter(site => site.kind === "call").map(site => site.name))
+      .toEqual(["log", "super", "log", "<iife>", "log", "<iife>", "log"]);
+    const iifes = facts.sites.filter(site => site.name === "<iife>");
+    expect(iifes.map(site => source.slice(site.calleePosition, site.calleePosition + 2))).toEqual(["()", "fu"]);
+    expect(iifes.map(site => enclosingFunction(facts.functions, site.start)?.name)).toEqual(["wrap", undefined]);
+    expect(facts.sites.find(site => site.name === "super")?.receiverPosition).toBeUndefined();
+    expect(parseSyntaxFacts(JSON.parse(JSON.stringify(facts)))).toEqual(facts);
+  });
+
   it("does not admit dynamic object names or accessor invocation semantics", () => {
     const facts = collectSyntaxFacts("dynamic-handlers.ts", `const key = "run";
       const handlers = { [key]() { console.log("dynamic") }, get value() { console.log("getter"); return 1; } };`);
@@ -133,11 +158,12 @@ describe("versioned syntax facts", () => {
     const source = `
       export default function () { console.log("default") }
       function main(factory: () => () => void): void {
-        [1].map(() => console.log("callback"))
-        factory()()
-        new (factory())()
-        tag\`template\`
-        void import("module")
+        [1].map(() => console.log("callback"));
+        factory()();
+        new (factory())();
+        (factory as () => () => void)()!();
+        tag\`template\`;
+        void import("module");
       }
     `;
     const facts = collectSyntaxFacts("boundaries.ts", source);
@@ -149,19 +175,20 @@ describe("versioned syntax facts", () => {
     ]);
     const callbackLog = facts.sites.filter(({ name }) => name === "log")[1];
     expect(callbackLog && enclosingFunction(facts.functions, callbackLog.start)?.kind).toBe("arrow");
+    // A call result used as a callee is a visible site without a declaration; it is named synthetically, not dropped.
+    expect(facts.sites.filter(({ name }) => name === "<dynamic>").map(({ kind, calleePosition }) => [kind, source.slice(calleePosition, calleePosition + 9)]))
+      .toEqual([["call", "factory()"], ["construct", "factory()"], ["call", "(factory "]]);
+    expect(facts.sites.filter(({ name }) => name === "factory").length).toBe(3);
     expect(facts.coverage.find(({ domain }) => domain === "call-sites")).toEqual({
       domain: "call-sites",
       status: "partial",
       exclusions: [
-        expect.objectContaining({ reason: "unsupported-call-target" }),
         expect.objectContaining({ reason: "tagged-template" }),
         expect.objectContaining({ reason: "dynamic-import" }),
       ],
     });
     expect(facts.coverage.find(({ domain }) => domain === "construct-sites")).toEqual({
-      domain: "construct-sites",
-      status: "partial",
-      exclusions: [expect.objectContaining({ reason: "unsupported-construct-target" })],
+      domain: "construct-sites", status: "complete", exclusions: [],
     });
   });
 

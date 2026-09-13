@@ -48,6 +48,98 @@ npx quint run protocol.qnt
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 
+Evidence in the default check is a closure property, not a per-site observation.
+A function is `unknown` when one of its own sites resolves to no reviewed
+contract and no analyzed body, or when a callee it reaches transitively is
+`unknown`; otherwise its inferred set is an upper bound the analysis
+established. Calls link to an analyzed body through a function declaration or a
+`const` bound once to an inline function, in the same file or across the
+project. An `async` or generator body, a reassigned binding, an object member,
+an aliased binding, and a call through a value stay unresolved, so their callers
+stay `unknown`. The unknown reason names the sites that were not resolved, as
+`Owner#member` or the callee's spelling, so the missing contract is visible.
+
+Reviewed ECMAScript contracts are reachable on the default path: a member call
+resolves when both the receiver's type symbol and the member are declared by the
+standard library, a primitive receiver resolves through the standard wrapper the
+compiler's type flags identify, and a bare call or construction of a
+standard-library global resolves through the global table. A contract that
+declares a `throw` becomes a `Throw<Error>` effect; this path has no control-flow
+graph, so an enclosing `try`/`catch` does not discharge it and the effect stays
+an upper bound. A contract that invokes user code composes with an argument
+written inline as a function at the call site, and is otherwise `unknown`; a
+contract carrying any other primitive this path does not model is `unknown` as
+well, never a silent empty proof. A DOM property write selects the write side of
+its contract, so `document.cookie = value` is `CookieWrite`, not `CookieRead`; a compound
+assignment selects both sides, and a destructuring or `for…of` target selects the
+write side. A receiver is typed at its last identifier token, so `env.doc.cookie`
+selects the same contract as `document.cookie`. A member the DOM library declares
+but the catalog does not contract, and any accessor, make the function `unknown`,
+because reading or writing an accessor runs a body this path does not analyze; an
+ordinary data property of an object carries no host semantics and remains a proof
+of effect freedom. Reading a member performs only what its property contract
+describes, so referencing `Math.random` without calling it carries nothing.
+Effects, class initializers included: a field initializer and a static block run
+outside every method body, and their operations are attributed to the class's
+construction boundary rather than dropped.
+
+The published `uneffect-check/v1` inventory does not change in place, so a
+diagnostic family introduced after v1 — `bounds/unchecked-index` — is identified
+by `code` alone and omits the `domain` and `kind` fields an older v1 validator
+would reject. A reviewed contract is keyed by the interface that declares the
+member, and a receiver reaches it through the inheritance the standard library
+itself declares: `Node#ownerDocument` applies to an `HTMLElement` receiver
+because `lib.dom.d.ts` says `HTMLElement` extends `Node`. A receiver that
+reaches no interface carrying that member stays an explicit unknown rather than
+a contract matched by member name alone — `NodeList#length` never selects
+`Storage#length`. A few interfaces whose members cannot be enumerated
+(`CSSStyleDeclaration`, `DOMStringMap`, `DOMTokenList`) carry one reviewed
+whole-surface contract, consulted only after every member-specific key on the
+chain has missed.
+
+The default Corsa check also reports `bounds/unchecked-index`: an `Array`,
+`ReadonlyArray`, or `lib.dom` indexed collection element that is dereferenced
+immediately (`parts[1].trim()`, `handlers[i](event)`, `nodes[i].getAttribute(…)`)
+without a recognized guard. An indexed collection is recognized structurally, by
+a `length` and an `item` member the DOM library declares, not by its name.
+Recognized guards are a `for`/`while` bound on the receiver's `length`
+(including a loop-local snapshot of it and `length - 1` reverse iteration), a
+`for…of` over the receiver's `entries()`, an `if`/ternary/`&&`/`||` condition on
+the length or on the element itself, a preceding
+`if (…) return|throw|continue|break` early exit, and the first element of a
+`const` bound to a checker-resolved `String#split` with a non-empty string
+separator and no zero limit. A guard is discarded when the receiver's length is
+changed between the guard and the access, when a length snapshot is taken before
+such a change or its binding is assigned, when the index binding is assigned
+outside a `for` header, or when the split result is aliased, passed elsewhere, or
+mutated. Optional chaining and a non-null assertion are explicit opt-outs. The
+receiver type comes from Corsa, not from the receiver's name; a `const` alias of
+the receiver counts as the receiver. Tuples, `RegExpMatchArray`, index-signature
+records, an interprocedural predicate, and a guard in an enclosing function are
+outside this fragment and are not reported. The check exists because TypeScript
+types the element as present unless `noUncheckedIndexedAccess` is enabled.
+
+Computed member syntax is a coverage error only when the checker cannot rule out
+a DOM contract. A key the checker types as a number is always admitted, because
+no reviewed contract has a numerically named member. Otherwise `object[key]`
+reads, writes, and calls are admitted when Corsa resolves the receiver to a type
+that declares no reviewed DOM member at all (calls become `unknown` callee
+evidence, never an empty proof), while `document[key]`, `window[key]`, a user
+interface extending a DOM type, and `any` receivers still fail closed. A key
+whose checker type is one string literal (`const KEY = "cookie";
+document[KEY]`, or a parameter declared as `"cookie"`) is processed as the
+static member of that name, so it selects the same DOM contract as
+`document.cookie`; when no reviewed contract exists for that owner and member
+the site stays excluded rather than losing its effect. A cast such as
+`key as "cookie"` is not literal evidence. A receiver that is itself a computed
+member (`window[KEY]![unit]`) has no token carrying the element type and stays
+excluded. An unresolved import or type alias is an error type the compiler
+reports as `any` even though its display text is a name, so it also stays
+excluded. Class constructors are
+ordinary function boundaries named `Owner.constructor`; immediately invoked
+inline functions link the caller to the inline summary; `super(...)` and a call
+result used as a callee are unknown callees.
+
 `check` takes `--infer` (infer every selected function, including unannotated functions),
 `--write-effect-baseline <file>` (write a versioned, reviewable snapshot of
 inferred effects and unknown-reason codes),

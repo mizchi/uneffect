@@ -13,6 +13,18 @@ selected package APIs. All definitions use the same generic semantic primitives
 and are covered in bounded groups with positive, negative, and symbol-shadowing
 tests.
 
+The DOM side covers the legacy request object (`XMLHttpRequest`, including the
+event-handler properties, whose write side names the assigned function as the
+callback it registers), the document tree and the window surface, and the URI
+functions on the global side. Three interfaces whose named members the standard
+leaves open — `CSSStyleDeclarationBase`, `DOMStringMap`, `DOMTokenList` — carry a
+single whole-surface definition keyed `Owner#*`, consulted only after every
+member-specific key on the receiver's inheritance chain has missed; it states the
+write side conservatively for a call, because a call may read or write. A
+`PromiseLike` receiver is deliberately *not* given `Promise.prototype.then`
+semantics: it is a structural interface any value with a `then` method satisfies,
+so calling it is an ordinary synchronous call into caller-supplied code.
+
 The JavaScript catalog also owns Array callback/copy helpers, Promise
 combinators, `Math.random`, and `structuredClone`. Semantic axes are orthogonal:
 `Array#sort` has a generic synchronous `callback` plus `mutate(receiver)`, so

@@ -1,9 +1,9 @@
 {
   "files": {
     "src/support/diagnostic-quality.ts": { "syntaxErrors": 1 },
-    "src/support/environment.ts": { "syntaxErrors": 2 },
-    "src/evidence/model-replay.ts": { "syntaxErrors": 13 }
+    "src/support/environment.ts": { "syntaxErrors": 0 },
+    "src/evidence/model-replay.ts": { "syntaxErrors": 0 }
   },
   "minimumSummaries": 111,
-  "maximumUnknownSummaries": 64
+  "maximumUnknownSummaries": 88
 }

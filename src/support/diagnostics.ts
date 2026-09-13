@@ -163,6 +163,7 @@ const hints: Readonly<Record<string, string>> = {
   "react/unknown-hook-closure": "inline the Hook callback so its captures can be checked, or keep this function outside the checked React boundary",
   "react/unknown-hook-dependencies": "use a finite inline dependency array; computed arrays are not accepted as stale-closure evidence",
   "react/unstable-hook-dependency": "bind the value outside the dependency array and stabilize its identity, or depend on the primitive/member values it reads",
+  "bounds/unchecked-index": "check the array length or the element before dereferencing it, use optional chaining, or enable noUncheckedIndexedAccess so TypeScript reports the possibly undefined element",
   "typescript/syntax": "fix the TypeScript syntax error before relying on Uneffect evidence",
   "typescript/semantic": "fix the TypeScript type error or correct the project inputs before relying on TypeChecker-derived evidence",
   "typescript/options": "fix the TypeScript compiler configuration before running Uneffect assurance",
