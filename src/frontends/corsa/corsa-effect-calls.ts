@@ -160,10 +160,17 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       // path cannot identify therefore resets the scope to nothing rather than leaving the enclosing class's,
       // which would link `this.#m()` and `super()` inside it to the wrong body.
       current = symbolId;
-      const evaluatesStatically = node.body.body.some((member) =>
+      // Everything a class body evaluates when the DECLARATION is evaluated rather than when an instance is
+      // constructed: a static block, a static initializer, every decorator expression, and every computed
+      // member key. The construction boundary covers the whole class body once an instance initializer widens
+      // it, so it would absorb all of these; the scope that declares the class is unresolved instead.
+      const definitionTime = node.body.body.some((member) =>
         member.type === "StaticBlock"
-        || ((member.type === "PropertyDefinition" || member.type === "AccessorProperty") && member.static && member.value !== null));
-      if (evaluatesStatically) staticInitializers.push(node.start);
+        || ((member.type === "PropertyDefinition" || member.type === "AccessorProperty") && member.static && member.value !== null)
+        || ("decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0)
+        || ("computed" in member && member.computed === true));
+      const widened = constructionBoundarySpan(node.body as unknown as Parameters<typeof constructionBoundarySpan>[0]);
+      if (definitionTime && widened !== undefined && widened.start === node.body.start) staticInitializers.push(node.start);
       if (symbolId !== null) {
         const members = node.body.body;
         const decorated = (Array.isArray(node.decorators) && node.decorators.length > 0)

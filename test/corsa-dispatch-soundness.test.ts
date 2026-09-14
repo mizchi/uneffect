@@ -224,6 +224,27 @@ describe("dispatch soundness", () => {
     expect(summary(result, "declaresBoth")?.evidence).toBe("unknown");
   });
 
+  it("charges definition-time work to the declaring scope when the construction boundary widens over it", async () => {
+    const result = await check({ "main.ts": `
+      declare function key(): "p";
+      function decorate(): (value: undefined, context: ClassFieldDecoratorContext) => void {
+        console.log("decorator expression");
+        return () => {};
+      }
+      export function decoratedWithField() { class C { @decorate() x = 1; } return C; }
+      export function decoratedWithoutField() { class C { @decorate() x?: number; } return C; }
+      export function plainField() { class C { x = Math.random(); } return C; }
+    ` });
+    // A decorator expression runs when the declaration is evaluated, not at construction, and the boundary an
+    // instance initializer widens covers the whole class body — so the declaring scope is unresolved.
+    expect(summary(result, "decoratedWithField")?.evidence).toBe("unknown");
+    // Without an initializer there is no widened boundary and the expression is charged where it runs.
+    expect(names(result, "decoratedWithoutField")).toEqual(["Console"]);
+    // An ordinary instance initializer is construction-time work and stays on the construction boundary.
+    expect(names(result, "plainField")).toEqual([]);
+    expect(summary(result, "plainField")?.evidence).toBe("inferred");
+  });
+
   it("does not drop a handler registration through a receiver the checker cannot name", async () => {
     const result = await check({ "main.ts": `
       declare const loose: { onload: (() => void) | null } | null;
