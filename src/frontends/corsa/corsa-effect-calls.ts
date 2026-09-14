@@ -45,7 +45,11 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   methods: CorsaMethodFact[];
   /** Call-expression start offset of `super(...)`, to the class whose `extends` clause names the base. */
   superCalls: Map<number, string>;
-  /** Call-expression start offset of `this.#member(...)`, to that method's checker declaration identity. */
+  /**
+   * Position of the `#member` token of a `this.#member(...)` call, to that method's checker declaration
+   * identity. The call expression's own start is shared with every call chained onto it, so it cannot identify
+   * this site; the member token is the position a call site reports as its callee.
+   */
   privateCalls: Map<number, string>;
   /**
    * Start offsets of class declarations whose body has a static block or a static field initializer. Those run
@@ -194,7 +198,7 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       } else if (callee.type === "MemberExpression" && !callee.computed
         && callee.property.type === "PrivateIdentifier" && callee.object.type === "ThisExpression") {
         const declaration = current === null ? undefined : privateMethodDeclarations.get(`${current}#${callee.property.name}`);
-        if (declaration !== undefined) privateCalls.set(node.start, declaration);
+        if (declaration !== undefined) privateCalls.set(callee.property.start, declaration);
       }
     }
     for (const child of oxcChildren(node)) collectClasses(child, current);

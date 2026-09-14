@@ -658,7 +658,9 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         // method, one reached through `super.m()`, one reached through a receiver the caller supplies — can be
         // replaced by a subclass the run did not read or by a write the run cannot attribute, so it stays on the
         // ordinary unresolved path.
-        const privateCall = bindings.privateCalls.get(site.start);
+        // Keyed by the callee token, which is unique to this site: a call chained onto `this.#m()` shares the
+        // call expression's start offset but reports its own callee.
+        const privateCall = bindings.privateCalls.get(site.calleePosition);
         if (privateCall === undefined) return undefined;
         return { kind: "private-method", declaration: privateCall, label, args };
       };

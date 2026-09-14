@@ -126,6 +126,28 @@ describe("class construction and in-class dispatch", () => {
     expect(names(result, "main")).toEqual(["Console"]);
   });
 
+  it("does not absorb a call chained onto a hard-private call", async () => {
+    const result = await check({ "main.ts": `
+      class Sink { write() { document.cookie = "leak=1"; } self() { return this; } }
+      class Leaky {
+        #make() { return new Sink(); }
+        run() { this.#make().write(); }
+        chained() { this.#make().self().write(); }
+        optional() { this.#make()?.write(); }
+        plain() { return this.#make(); }
+      }
+      export const made = new Leaky();
+    ` });
+    expect(result.errors).toBe(0);
+    // A call chained onto `this.#m()` shares the call expression's start offset; only the callee token
+    // identifies which site is the private call.
+    for (const name of ["Leaky.run", "Leaky.chained", "Leaky.optional"]) {
+      expect(summary(result, name)?.evidence, name).toBe("unknown");
+      expect(names(result, name), name).toEqual([]);
+    }
+    expect(summary(result, "Leaky.plain")?.evidence).toBe("inferred");
+  });
+
   it("keeps two classes declaring the same private name apart", async () => {
     const result = await check({ "main.ts": `
       class Quiet { run() { this.#step(); } #step() {} }
