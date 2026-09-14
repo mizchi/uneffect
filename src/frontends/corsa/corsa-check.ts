@@ -393,6 +393,12 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       classCalls: PendingClassCall[];
       /** Resolved call targets with the arguments each supplied, for discharging invoked-parameter obligations. */
       discharges: Array<{ targets: readonly string[]; args: CallArgumentFacts | undefined; label: string }>;
+      /**
+       * Boundaries composed as a value rather than called here: a contract's callback argument, a handler
+       * assigned to a property, and an argument that discharges an invoked-parameter obligation. Whoever calls
+       * them supplies their arguments elsewhere, so one that owes an obligation of its own cannot be composed.
+       */
+      composedValues: Array<{ key: string; label: string }>;
     }>();
     /** Parameter symbol identity to the boundary that receives it and the argument position that supplies it. */
     const parameterOwners = new Map<string, { ownerKey: string; index: number }>();
@@ -522,13 +528,20 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           functionName: owner.name, fileName, span: { start: owner.start, end: owner.end },
           parameters: [...owner.parameters], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
           calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
-          invokesUserCode: false, argumentCalls: [], classCalls: [], discharges: [],
+          invokesUserCode: false, argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
         };
         byFunction.set(key, current);
         return current;
       };
       for (const call of [...admittedComputedCalls, ...unknownComputedMembers]) {
         const owner = enclosingFunction(syntax.functions, call.start);
+        if (owner) ensure(owner).unclassified = true;
+      }
+      // A static block and a static field initializer run where the class declaration is evaluated. The
+      // construction boundary a sibling instance initializer opens covers them by span, and nothing calls that
+      // boundary at the declaration, so the scope that declares the class is unresolved instead.
+      for (const at of bindings.staticInitializers) {
+        const owner = enclosingFunction(syntax.functions, at);
         if (owner) ensure(owner).unclassified = true;
       }
       const record = (site: SyntaxSite, contract: BuiltinContract | undefined): void => {
@@ -548,16 +561,22 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (rendered.callbackAssignedValue) {
           const assigned = indexAccess.assignedInlineFunctions.get(span);
           const handler = assigned === undefined ? undefined : syntax.functions.find((item) => item.start === assigned);
-          if (handler) caller.directCallees.add(`${fileName}:${handler.start}:${handler.name}`);
-          else caller.unclassified = true;
+          if (handler) {
+            const key = `${fileName}:${handler.start}:${handler.name}`;
+            caller.directCallees.add(key);
+            caller.composedValues.push({ key, label: `the handler assigned to ${site.name}` });
+          } else caller.unclassified = true;
         }
         for (const index of rendered.callbackArguments) {
           // An argument the call does not pass invokes nothing; only a passed one needs a boundary to compose with.
           if (args !== undefined && index >= args.length) continue;
           const inline = args?.[index];
           const callee = inline === undefined || inline === null ? undefined : syntax.functions.find((item) => item.start === inline);
-          if (callee) caller.directCallees.add(`${fileName}:${callee.start}:${callee.name}`);
-          else caller.unclassified = true;
+          if (callee) {
+            const key = `${fileName}:${callee.start}:${callee.name}`;
+            caller.directCallees.add(key);
+            caller.composedValues.push({ key, label: `the callback ${site.name} receives` });
+          } else caller.unclassified = true;
         }
       };
       /** How an unresolved callee is named in the unknown reason: its receiver type plus the member, when known. */
@@ -693,7 +712,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           functionName: fn.name, fileName, span: { start: fn.start, end: fn.end },
           parameters: [...fn.parameters], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
           calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
-          invokesUserCode: false, argumentCalls: [], classCalls: [], discharges: [],
+          invokesUserCode: false, argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
         });
       }
     }
@@ -821,12 +840,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
                 item.directCallees.add(inline);
                 settled = false;
               }
-              // The supplied boundary invokes a parameter of its own, and whatever fills that parameter is
-              // supplied inside the callee rather than here, so this call cannot discharge it.
-              if ((obligations.get(inline)?.size ?? 0) > 0) {
-                item.unclassified = true;
-                item.unresolved.add(`a callback argument of ${call.label}`);
-              }
+              item.composedValues.push({ key: inline, label: `a callback argument of ${call.label}` });
               continue;
             }
             const forwarded = forwardedParameter(call.args, index);
@@ -843,12 +857,22 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
                 item.directCallees.add(bound);
                 settled = false;
               }
+              item.composedValues.push({ key: bound, label: `a callback argument of ${call.label}` });
               continue;
             }
             item.unclassified = true;
             item.unresolved.add(`a callback argument of ${call.label}`);
           }
         }
+      }
+    }
+    // Composing a boundary as a value is not calling it: whatever fills its own invoked parameter is chosen by
+    // whoever does call it, so an obligation it still owes cannot be discharged here.
+    for (const item of byFunction.values()) {
+      for (const composed of item.composedValues) {
+        if ((obligations.get(composed.key)?.size ?? 0) === 0) continue;
+        item.unclassified = true;
+        item.unresolved.add(composed.label);
       }
     }
     // An unresolved site is carried through the same fixed point as effect names, so a caller that reaches one

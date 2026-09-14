@@ -181,6 +181,49 @@ describe("dispatch soundness", () => {
     expect(summary(result, "constructor")?.evidence).toBe("unknown");
   });
 
+  it("does not discharge an obligation with a named boundary that owes one of its own", async () => {
+    const result = await check({ "main.ts": `
+      function boom() { console.log("effect"); }
+      function forwarder(inner: () => void) { inner(); }
+      function apply(callback: () => void) { callback(); }
+      export function main() { apply(forwarder); }
+    ` });
+    // `forwarder` owes an argument of its own, and `apply` chooses it, not this call.
+    expect(summary(result, "main")?.evidence).toBe("unknown");
+  });
+
+  it("does not compose a contract callback or a handler that owes an obligation", async () => {
+    const result = await check({ "main.ts": `
+      declare const request: XMLHttpRequest;
+      function forwarder(inner: () => void) { inner(); }
+      export function each(values: Array<() => void>) { values.forEach(forwarder); }
+      export function register() { request.onload = forwarder; }
+    ` });
+    // A contract and an event both supply the callback's arguments themselves, so neither discharges its
+    // invoked-parameter obligation here.
+    expect(summary(result, "each")?.evidence).toBe("unknown");
+    expect(summary(result, "register")?.evidence).toBe("unknown");
+  });
+
+  it("charges a static initializer to the scope that evaluates the class declaration", async () => {
+    const result = await check({ "main.ts": `
+      export function declaresStaticOnly() {
+        class Counter { static { console.log("static block"); } }
+        return Counter.name;
+      }
+      export function declaresBoth() {
+        class Mixed { static { console.log("static block"); } value = 1; }
+        return Mixed.name;
+      }
+    ` });
+    expect(result.errors).toBe(0);
+    // A static block runs when the declaration is evaluated, not at construction.
+    expect(names(result, "declaresStaticOnly")).toEqual(["Console"]);
+    // With a sibling instance initializer the construction boundary covers the class body by span, so the
+    // declaring scope is unresolved rather than a proof of effect freedom.
+    expect(summary(result, "declaresBoth")?.evidence).toBe("unknown");
+  });
+
   it("does not drop a handler registration through a receiver the checker cannot name", async () => {
     const result = await check({ "main.ts": `
       declare const loose: { onload: (() => void) | null } | null;

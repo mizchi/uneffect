@@ -40,6 +40,12 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   superCalls: Map<number, string>;
   /** Call-expression start offset of `this.#member(...)`, to that method's checker declaration identity. */
   privateCalls: Map<number, string>;
+  /**
+   * Start offsets of class declarations whose body has a static block or a static field initializer. Those run
+   * when the declaration is evaluated, not at construction, and the construction boundary a sibling instance
+   * initializer opens would otherwise absorb them.
+   */
+  staticInitializers: number[];
 } {
   const parsed = parseSync(file, text, { lang: file.endsWith(".tsx") ? "tsx" : "ts" });
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
@@ -51,8 +57,9 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   const methods: CorsaMethodFact[] = [];
   const superCalls = new Map<number, string>();
   const privateCalls = new Map<number, string>();
+  const staticInitializers: number[] = [];
   const classFacts = () => ({
-    classes, methods, superCalls, privateCalls,
+    classes, methods, superCalls, privateCalls, staticInitializers,
   });
   if (parsed.errors.length) return { declarations, writes, ambiguousWrites, calls, parameters, ...classFacts() };
   const recordWrite = (node: Node, shorthand = false): void => {
@@ -142,6 +149,9 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       // path cannot identify therefore resets the scope to nothing rather than leaving the enclosing class's,
       // which would link `this.#m()` and `super()` inside it to the wrong body.
       current = symbolId;
+      const evaluatesStatically = node.body.body.some((member) =>
+        member.type === "StaticBlock" || (member.type === "PropertyDefinition" && member.static && member.value !== null));
+      if (evaluatesStatically) staticInitializers.push(node.start);
       if (symbolId !== null) {
         const members = node.body.body;
         const declared = members.find((member) => member.type === "MethodDefinition" && member.kind === "constructor");

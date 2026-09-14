@@ -302,13 +302,15 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
       });
     }
   });
-  // A field initializer and a static block run outside every method body but inside the class. Their operations
-  // belong to the construction boundary, so the constructor covers the class body; without this they would have
-  // no enclosing function and disappear. Attributing a static initializer here widens the bound; it never narrows it.
+  // An instance field initializer runs outside every method body but inside the class, at construction. Its
+  // operations belong to the construction boundary, so the constructor covers the class body; without this they
+  // would have no enclosing function and disappear. A static block and a static field initializer run when the
+  // class declaration is evaluated instead, which is the enclosing scope's work rather than a construction's, so
+  // they do not open this boundary — the scope that declares the class keeps them.
   walk(parsed.program, (node) => {
     if (node.type !== "ClassBody" || !Array.isArray(node.body) || typeof node.start !== "number" || typeof node.end !== "number") return;
     const initializes = node.body.some((member) => isNode(member)
-      && ((member.type === "PropertyDefinition" && isNode(member.value)) || member.type === "StaticBlock"));
+      && member.type === "PropertyDefinition" && isNode(member.value) && member.static !== true);
     if (!initializes) return;
     const owner = classBodyOwner(node, parents);
     const name = owner ? `${owner}.constructor` : "constructor";
