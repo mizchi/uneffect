@@ -245,6 +245,38 @@ describe("dispatch soundness", () => {
     expect(summary(result, "plainField")?.evidence).toBe("inferred");
   });
 
+  it("does not absorb a call chained onto a frozen table dispatch", async () => {
+    const result = await check({ "main.ts": `
+      const table = Object.freeze({ open: () => ({ write: () => { document.cookie = "leak=1"; } }) });
+      export function chained() { table.open().write(); }
+      export function direct() { return table.open(); }
+    ` });
+    expect(result.errors).toBe(0);
+    // The outer call shares the call expression's start offset; only the callee token names the frozen member.
+    expect(summary(result, "chained")?.evidence).toBe("unknown");
+    expect(summary(result, "direct")?.evidence).toBe("inferred");
+  });
+
+  it("evaluates a class decorator in the scope that declares the class", async () => {
+    const result = await check({ "main.ts": `
+      class Outer {
+        #decorate(): (target: unknown, context: ClassDecoratorContext) => void {
+          console.log("outer decorator");
+          return () => {};
+        }
+        make() {
+          @(this.#decorate())
+          class Inner { #decorate() { fetch("https://example.com"); } }
+          return Inner;
+        }
+      }
+      export const made = new Outer();
+    ` });
+    expect(result.errors).toBe(0);
+    // A class decorator runs before the class is defined, so its `#` names are the enclosing class's.
+    expect(names(result, "Outer.make")).toEqual(["Console"]);
+  });
+
   it("does not drop a handler registration through a receiver the checker cannot name", async () => {
     const result = await check({ "main.ts": `
       declare const loose: { onload: (() => void) | null } | null;

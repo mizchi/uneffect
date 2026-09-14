@@ -142,7 +142,8 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   const privateMethodDeclarations = new Map<string, string>();
   const collectClasses = (node: Node, enclosing: string | null): void => {
     let current = enclosing;
-    if ((node.type === "ClassDeclaration" || node.type === "ClassExpression") && !("declare" in node && node.declare === true)) {
+    const isClassNode = node.type === "ClassDeclaration" || node.type === "ClassExpression";
+    if (isClassNode && !("declare" in node && node.declare === true)) {
       const id = node.id;
       const symbol = id ? frontend.getSymbolAtPosition(file, id.start) : null;
       const symbolId = symbol?.declarations?.length === 1 ? symbol.id : null;
@@ -207,6 +208,16 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
         const declaration = current === null ? undefined : privateMethodDeclarations.get(`${current}#${callee.property.name}`);
         if (declaration !== undefined) privateCalls.set(callee.property.start, declaration);
       }
+    }
+    if (isClassNode && Array.isArray(node.decorators) && node.decorators.length > 0) {
+      // A class decorator is evaluated before the class is defined, in the scope that declares it: its `#`
+      // names and its `super` are the enclosing ones, not this class's.
+      for (const decorator of node.decorators) collectClasses(decorator, enclosing);
+      for (const child of oxcChildren(node)) {
+        if (node.decorators.some((decorator) => decorator === child)) continue;
+        collectClasses(child, current);
+      }
+      return;
     }
     for (const child of oxcChildren(node)) collectClasses(child, current);
   };

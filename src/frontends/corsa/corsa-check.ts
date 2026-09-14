@@ -622,7 +622,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         const caller = ensure(owner);
         const linkable = symbol !== null && site.kind === "call" && site.receiverPosition === undefined
           ? (frontend.getAliasedSymbol(symbol) ?? symbol).id : undefined;
-        const frozenTarget = site.kind === "call" ? bindings.calls.get(site.start) : undefined;
+        const frozenTarget = site.kind === "call" ? bindings.calls.get(site.calleePosition) : undefined;
         // A call whose callee symbol resolves is deferred: whether it is unknown depends on whether that
         // symbol reaches an analyzed body, which is only known once every root file has been read.
         if (linkable !== undefined) {
