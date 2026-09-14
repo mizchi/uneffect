@@ -2,6 +2,7 @@ import { parseSync, type Node } from "oxc-parser";
 import { oxcChildren } from "../oxc/source.js";
 import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
 import { collectFrozenEffectTables } from "./corsa-effect-tables.js";
+import { constructionBoundarySpan, declaredConstructor } from "../oxc-syntax.js";
 
 export interface CorsaClassFact {
   readonly symbolId: string;
@@ -9,9 +10,15 @@ export interface CorsaClassFact {
   readonly superSymbolId: string | null;
   /** `false` when an `extends` clause is present but names something other than a resolvable identifier. */
   readonly superResolvable: boolean;
-  /** Key position of the declared constructor, or `null` when the class declares none. */
-  readonly constructorPosition: number | null;
-  readonly bodyStart: number;
+  /** Span of the boundary a construction runs, or `null` when a construction runs nothing of this class's own. */
+  readonly constructionSpan: { readonly start: number; readonly end: number } | null;
+  /** The class declares its own constructor, which is what reaches the base through its own `super(...)`. */
+  readonly declaresConstructor: boolean;
+  /**
+   * `false` when a decorator on the class or on one of its members can replace what a construction runs, so the
+   * declared bodies are not the ones that run.
+   */
+  readonly linkable: boolean;
 }
 
 export interface CorsaMethodFact {
@@ -150,17 +157,21 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       // which would link `this.#m()` and `super()` inside it to the wrong body.
       current = symbolId;
       const evaluatesStatically = node.body.body.some((member) =>
-        member.type === "StaticBlock" || (member.type === "PropertyDefinition" && member.static && member.value !== null));
+        member.type === "StaticBlock"
+        || ((member.type === "PropertyDefinition" || member.type === "AccessorProperty") && member.static && member.value !== null));
       if (evaluatesStatically) staticInitializers.push(node.start);
       if (symbolId !== null) {
         const members = node.body.body;
-        const declared = members.find((member) => member.type === "MethodDefinition" && member.kind === "constructor");
+        const decorated = (Array.isArray(node.decorators) && node.decorators.length > 0)
+          || members.some((member) => "decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0);
+        const span = constructionBoundarySpan(node.body as unknown as Parameters<typeof constructionBoundarySpan>[0]);
         classes.push({
           symbolId,
           superSymbolId,
           superResolvable,
-          constructorPosition: declared && declared.type === "MethodDefinition" ? declared.key.start : null,
-          bodyStart: node.body.start,
+          constructionSpan: span === undefined ? null : span,
+          declaresConstructor: declaredConstructor(node.body as unknown as Parameters<typeof declaredConstructor>[0]) !== undefined,
+          linkable: !decorated,
         });
         for (const member of members) {
           if (member.type !== "MethodDefinition" || member.computed || member.kind !== "method" || member.static) continue;

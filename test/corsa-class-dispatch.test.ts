@@ -160,6 +160,43 @@ describe("class construction and in-class dispatch", () => {
     expect(summary(result, "main")?.evidence).toBe("unknown");
   });
 
+  it("locates the construction boundary by its span, not by a name or an offset", async () => {
+    const result = await check({ "main.ts": `
+      class Accessor { accessor stamp = Math.random(); }
+      class Shadowed {
+        tag = Math.random();
+        early() { class Shadowed { constructor() {} } return Shadowed; }
+        constructor() {}
+      }
+      class Abutting {tag() { return 1; }
+        seed = Math.random();
+      }
+      export function buildAccessor() { new Accessor(); }
+      export function buildShadowed() { new Shadowed(); }
+      export function buildAbutting() { new Abutting(); }
+    ` });
+    expect(result.errors).toBe(0);
+    // An `accessor` field runs at construction like a plain one; a nested class of the same name owns its own
+    // boundary; and a first member that abuts the opening brace does not displace the class body's boundary.
+    expect(names(result, "buildAccessor")).toEqual(["Random"]);
+    expect(names(result, "buildShadowed")).toEqual(["Random"]);
+    expect(names(result, "buildAbutting")).toEqual(["Random"]);
+  });
+
+  it("does not link a construction a decorator can replace", async () => {
+    const result = await check({ "main.ts": `
+      declare function swap<T extends new (...args: any[]) => object>(target: T, context: ClassDecoratorContext): T;
+      declare function stamp(value: undefined, context: ClassFieldDecoratorContext): (initial: number) => number;
+      @swap class Replaced { constructor() {} }
+      class Stamped { @stamp count = 1; }
+      export function buildReplaced() { new Replaced(); }
+      export function buildStamped() { new Stamped(); }
+    ` });
+    // A decorator's return value replaces what the construction runs, so the declared bodies are not it.
+    expect(summary(result, "buildReplaced")?.evidence).toBe("unknown");
+    expect(summary(result, "buildStamped")?.evidence).toBe("unknown");
+  });
+
   it("attributes a field initializer to the construction that runs it", async () => {
     const result = await check({ "main.ts": `
       class Widget { readonly token = Math.random(); }

@@ -406,7 +406,10 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       superSymbolId: string | null;
       superResolvable: boolean;
       constructorKey: string | null;
+      /** The class body runs something of its own at construction: a declared constructor or an initializer. */
+      runsOwnBody: boolean;
       declaresConstructor: boolean;
+      linkable: boolean;
     }>();
     /** Checker declaration identity of a class method to the boundary that holds its body. */
     const methodBodies = new Map<string, string>();
@@ -504,15 +507,19 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         }
       }
       for (const item of bindings.classes) {
-        // A class with no declared constructor still runs its field initializers, which the syntax pass covers
-        // with a boundary over the class body; a class with neither has nothing of its own to run.
-        const boundary = enclosingFunction(syntax.functions, item.constructorPosition ?? item.bodyStart + 1);
-        const constructorFact = boundary?.name.endsWith("constructor") === true ? boundary : undefined;
+        // The syntax pass and this one locate the same boundary through one rule, by its exact span: a class
+        // that runs an instance initializer widens the constructor over its whole body, and a class that runs
+        // nothing of its own has no span at all.
+        const span = item.constructionSpan;
+        const fact = span === null ? undefined
+          : syntax.functions.find((entry) => entry.start === span.start && entry.end === span.end);
         classes.set(item.symbolId, {
           superSymbolId: item.superSymbolId,
           superResolvable: item.superResolvable,
-          constructorKey: constructorFact ? byFunctionKey(constructorFact) : null,
-          declaresConstructor: item.constructorPosition !== null,
+          constructorKey: fact ? byFunctionKey(fact) : null,
+          runsOwnBody: span !== null,
+          declaresConstructor: item.declaresConstructor,
+          linkable: item.linkable,
         });
       }
       for (const method of bindings.methods) {
@@ -736,16 +743,14 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       if (seen.has(classSymbolId)) return [];
       seen.add(classSymbolId);
       const info = classes.get(classSymbolId);
-      if (info === undefined || !info.superResolvable) return undefined;
-      const targets: string[] = [];
-      if (info.declaresConstructor) {
-        if (info.constructorKey === null || !byFunction.has(info.constructorKey)) return undefined;
-        targets.push(info.constructorKey);
-        // A declared constructor of a derived class reaches its base through its own `super(...)` call.
-        return targets;
-      }
-      if (info.constructorKey !== null && byFunction.has(info.constructorKey)) targets.push(info.constructorKey);
-      if (info.superSymbolId === null) return targets;
+      if (info === undefined || !info.superResolvable || !info.linkable) return undefined;
+      // A body this run did not resolve to a boundary is never an empty target list: an empty list is a proof
+      // that construction performs nothing, and it is owed only when the class body runs nothing of its own.
+      if (info.runsOwnBody && (info.constructorKey === null || !byFunction.has(info.constructorKey))) return undefined;
+      const targets = info.constructorKey !== null && byFunction.has(info.constructorKey) ? [info.constructorKey] : [];
+      // A declared constructor of a derived class reaches its base through its own `super(...)` call; an
+      // implicit one runs the inherited constructor directly.
+      if (info.declaresConstructor || info.superSymbolId === null) return targets;
       const inherited = constructorTargets(info.superSymbolId, seen);
       return inherited === undefined ? undefined : [...targets, ...inherited];
     };

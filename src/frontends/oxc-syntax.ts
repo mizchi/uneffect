@@ -160,6 +160,34 @@ function functionFact(
   } };
 }
 
+/** The constructor member a class body declares, identified by its own node rather than by a rendered name. */
+export function declaredConstructor(body: EstreeNode): EstreeNode | undefined {
+  const members = Array.isArray(body.body) ? body.body : [];
+  for (const member of members) {
+    if (isNode(member) && member.type === "MethodDefinition" && member.kind === "constructor"
+      && typeof member.start === "number" && typeof member.end === "number") return member;
+  }
+  return undefined;
+}
+
+/**
+ * The span the boundary a construction runs occupies, or `undefined` when a construction of this class runs
+ * nothing of its own. An instance field — a plain one or an `accessor` one — runs at construction, so the
+ * boundary widens to the whole class body; otherwise it is exactly the declared constructor. Both the syntax
+ * pass and the checker locate the same fact through this one rule.
+ */
+export function constructionBoundarySpan(body: EstreeNode): { start: number; end: number } | undefined {
+  const members = Array.isArray(body.body) ? body.body : [];
+  const initializes = members.some((member) => isNode(member)
+    && (member.type === "PropertyDefinition" || member.type === "AccessorProperty")
+    && isNode(member.value) && member.static !== true);
+  if (initializes && typeof body.start === "number" && typeof body.end === "number") {
+    return { start: body.start, end: body.end };
+  }
+  const declared = declaredConstructor(body);
+  return declared === undefined ? undefined : { start: declared.start as number, end: declared.end as number };
+}
+
 function unwrapCallee(callee: EstreeNode): EstreeNode {
   let current = callee;
   while ((current.type === "TSNonNullExpression" || current.type === "ParenthesizedExpression" || current.type === "TSAsExpression"
@@ -308,18 +336,19 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
   // class declaration is evaluated instead, which is the enclosing scope's work rather than a construction's, so
   // they do not open this boundary — the scope that declares the class keeps them.
   walk(parsed.program, (node) => {
-    if (node.type !== "ClassBody" || !Array.isArray(node.body) || typeof node.start !== "number" || typeof node.end !== "number") return;
-    const initializes = node.body.some((member) => isNode(member)
-      && member.type === "PropertyDefinition" && isNode(member.value) && member.static !== true);
-    if (!initializes) return;
+    if (node.type !== "ClassBody" || !Array.isArray(node.body)) return;
+    const span = constructionBoundarySpan(node);
+    if (span === undefined || span.start !== node.start || span.end !== node.end) return;
+    const declared = declaredConstructor(node);
     const owner = classBodyOwner(node, parents);
     const name = owner ? `${owner}.constructor` : "constructor";
-    const existing = functions.find((item) => item.name === name && item.start >= node.start! && item.end <= node.end!);
-    if (existing) {
-      functions[functions.indexOf(existing)] = { ...existing, start: node.start, end: node.end };
+    if (declared) {
+      // The declared constructor's own span identifies it; a nested class may carry a fact of the same name.
+      const existing = functions.findIndex((item) => item.start === declared.start && item.end === declared.end);
+      if (existing >= 0) functions[existing] = { ...functions[existing]!, start: span.start, end: span.end };
       return;
     }
-    functions.push({ name, kind: "method", start: node.start, end: node.end, parameters: [] });
+    functions.push({ name, kind: "method", start: span.start, end: span.end, parameters: [] });
   });
   functions.sort((left, right) => left.start - right.start || left.end - right.end || left.kind.localeCompare(right.kind));
   sites.sort((left, right) => left.start - right.start || left.end - right.end || left.kind.localeCompare(right.kind));
