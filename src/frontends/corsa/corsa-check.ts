@@ -446,6 +446,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       });
       const admittedComputedCalls: Array<{ start: number }> = [];
       const unknownComputedMembers: Array<{ start: number }> = [];
+      const excludedSites: Array<{ start: number }> = [];
       for (const entry of syntax.coverage) for (const exclusion of entry.exclusions) {
         const spanKey = `${exclusion.span.start}:${exclusion.span.end}`;
         // A dynamic key on a checker-resolved non-DOM receiver is an ordinary read/write, not missing coverage.
@@ -464,6 +465,10 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         }
         const owner = enclosingFunction(syntax.functions, exclusion.span.start);
         const line = sourceText.slice(0, exclusion.span.start).split("\n").length;
+        // An exclusion is a construct this path could not see. A diagnostic reports it, but the summary must
+        // carry it too: a callee it never recorded reaches no site, so the boundary that contains it would
+        // otherwise stay a proof of effect freedom while the construct runs.
+        excludedSites.push({ start: exclusion.span.start });
         diagnostics.push({
           domain: "syntax", kind: "syntax", severity: "error", fileName, line,
           functionName: owner?.name ?? "<syntax>",
@@ -540,7 +545,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         byFunction.set(key, current);
         return current;
       };
-      for (const call of [...admittedComputedCalls, ...unknownComputedMembers]) {
+      for (const call of [...admittedComputedCalls, ...unknownComputedMembers, ...excludedSites]) {
         const owner = enclosingFunction(syntax.functions, call.start);
         if (owner) ensure(owner).unclassified = true;
       }
