@@ -603,7 +603,10 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           caller.calleeSymbols.add(linkable);
           caller.argumentCalls.push({ symbol: linkable, args: argumentFactsAt(site) });
         }
-        if (frozenTarget) caller.calleeSymbols.add(frozenTarget);
+        if (frozenTarget) {
+          caller.calleeSymbols.add(frozenTarget);
+          caller.argumentCalls.push({ symbol: frozenTarget, args: argumentFactsAt(site) });
+        }
         if (linkable === undefined && frozenTarget === undefined) {
           caller.unclassified = true;
           caller.unresolved.add(unresolvedLabel(site, symbol));
@@ -640,8 +643,12 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           const callee = syntax.functions.find((item) => item.start === site.calleePosition);
           const owner = callingFunction(syntax.functions, site.start, callee);
           const calleeKey = callee === undefined ? undefined : `${fileName}:${callee.start}:${callee.name}`;
-          if (owner && calleeKey && byFunctionKey(owner) !== calleeKey) ensure(owner).directCallees.add(calleeKey);
-          else if (owner) ensure(owner).unclassified = true;
+          if (owner && calleeKey && byFunctionKey(owner) !== calleeKey) {
+            const caller = ensure(owner);
+            caller.directCallees.add(calleeKey);
+            // The inline callee may invoke one of its own parameters, and this call is what supplies it.
+            caller.discharges.push({ targets: [calleeKey], args: argumentFactsAt(site), label: "an immediately invoked function" });
+          } else if (owner) ensure(owner).unclassified = true;
           continue;
         }
         if (site.name === "<dynamic>") { recordUnclassified(site); continue; }
@@ -813,6 +820,12 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
               if (!item.directCallees.has(inline)) {
                 item.directCallees.add(inline);
                 settled = false;
+              }
+              // The supplied boundary invokes a parameter of its own, and whatever fills that parameter is
+              // supplied inside the callee rather than here, so this call cannot discharge it.
+              if ((obligations.get(inline)?.size ?? 0) > 0) {
+                item.unclassified = true;
+                item.unresolved.add(`a callback argument of ${call.label}`);
               }
               continue;
             }

@@ -123,6 +123,64 @@ describe("dispatch soundness", () => {
     expect(summary(result, "opaque")?.evidence).toBe("unknown");
   });
 
+  it("discharges an obligation through a frozen effect table exactly as through a plain call", async () => {
+    const result = await check({ "main.ts": `
+      function boom() { console.log("effect"); }
+      declare const opaque: () => void;
+      const table = Object.freeze({ run: (callback: () => void) => { callback(); } });
+      export function plain() { table.run(boom); }
+      export function held() { table.run(opaque); }
+    ` });
+    expect(result.errors).toBe(0);
+    expect(names(result, "plain")).toEqual(["Console", "InvokeUserCode"]);
+    expect(summary(result, "held")?.evidence).toBe("unknown");
+  });
+
+  it("supplies the arguments an immediately invoked function receives", async () => {
+    const result = await check({ "main.ts": `
+      function boom() { console.log("effect"); }
+      export function main() { (function (callback: () => void) { callback(); })(boom); }
+    ` });
+    expect(result.errors).toBe(0);
+    expect(names(result, "main")).toEqual(["Console", "InvokeUserCode"]);
+  });
+
+  it("does not discharge an obligation with a boundary that owes one of its own", async () => {
+    const result = await check({ "main.ts": `
+      function boom() { console.log("effect"); }
+      function supplier(apply: (inner: () => void) => void) { apply(boom); }
+      export function main() { supplier((inner: () => void) => { inner(); }); }
+    ` });
+    // Whatever fills the supplied boundary's own parameter is chosen inside `supplier`, not at this call.
+    expect(summary(result, "main")?.evidence).toBe("unknown");
+  });
+
+  it("does not let a nested class body borrow the enclosing class's scope", async () => {
+    const result = await check({ "main.ts": `
+      class Quiet { constructor() {} }
+      class Loud { constructor() { console.log("loud"); } }
+      class Outer {
+        #step() { return 1; }
+        own() { return this.#step(); }
+        nest() {
+          const Inner = class { #step() { fetch("https://example.com"); return 2; } run() { return this.#step(); } };
+          return Inner;
+        }
+      }
+      class Host extends Quiet {
+        make() { return class extends Loud { constructor() { super(); } }; }
+      }
+      export const made = [new Outer(), new Host()];
+    ` });
+    expect(result.errors).toBe(0);
+    // A class this path cannot identify resets the scope, so neither `this.#step()` nor `super()` inside it
+    // reaches the enclosing class's declarations.
+    expect(names(result, "Outer.own")).toEqual([]);
+    expect(summary(result, "Outer.own")?.evidence).toBe("inferred");
+    expect(summary(result, "Inner.run")?.evidence).toBe("unknown");
+    expect(summary(result, "constructor")?.evidence).toBe("unknown");
+  });
+
   it("does not drop a handler registration through a receiver the checker cannot name", async () => {
     const result = await check({ "main.ts": `
       declare const loose: { onload: (() => void) | null } | null;

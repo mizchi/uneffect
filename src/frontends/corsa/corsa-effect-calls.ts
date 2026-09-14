@@ -138,6 +138,10 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
           superResolvable = true;
         }
       }
+      // Entering any class body changes which `#` names and which base constructor are in scope. A class this
+      // path cannot identify therefore resets the scope to nothing rather than leaving the enclosing class's,
+      // which would link `this.#m()` and `super()` inside it to the wrong body.
+      current = symbolId;
       if (symbolId !== null) {
         const members = node.body.body;
         const declared = members.find((member) => member.type === "MethodDefinition" && member.kind === "constructor");
@@ -148,7 +152,6 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
           constructorPosition: declared && declared.type === "MethodDefinition" ? declared.key.start : null,
           bodyStart: node.body.start,
         });
-        current = symbolId;
         for (const member of members) {
           if (member.type !== "MethodDefinition" || member.computed || member.kind !== "method" || member.static) continue;
           if (member.key.type !== "PrivateIdentifier") continue;
