@@ -1508,13 +1508,13 @@
         {
           "name": "CorsaCheckDiagnostic",
           "declarations": [
-            "export interface CorsaCheckDiagnostic {\n    domain: \"syntax\" | \"contract\";\n    kind: \"syntax\" | \"contract\";\n    severity: \"error\" | \"warning\";\n    fileName: string;\n    line: number;\n    functionName: string;\n    message: string;\n    notes?: DiagnosticNote[];\n}"
+            "export interface CorsaCheckDiagnostic {\n    domain: \"syntax\" | \"contract\" | \"bounds\";\n    kind: \"syntax\" | \"contract\" | \"unchecked-index\";\n    severity: \"error\" | \"warning\";\n    fileName: string;\n    line: number;\n    functionName: string;\n    message: string;\n    notes?: DiagnosticNote[];\n}"
           ]
         },
         {
           "name": "CorsaCheckJsonReport",
           "declarations": [
-            "export interface CorsaCheckJsonReport {\n    corsaBuiltinCalls?: CorsaCheckResult[\"corsaBuiltinCalls\"];\n    schema: \"uneffect-check/v1\";\n    outcome: \"passed\" | \"failed\";\n    counts: {\n        errors: number;\n        warnings: number;\n    };\n    diagnostics: Array<CorsaCheckResult[\"diagnostics\"][number] & {\n        code: string;\n        notes: DiagnosticNote[];\n    }>;\n    effects: Array<{\n        fileName?: string;\n        span?: {\n            start: number;\n            end: number;\n        };\n        functionName: string;\n        effects: string[];\n        evidence: CorsaCheckResult[\"summaries\"][number][\"evidence\"];\n        parameters?: string[];\n        unknownReasons?: CorsaCheckResult[\"summaries\"][number][\"unknownReasons\"];\n    }>;\n    contracts: CorsaCheckResult[\"artifacts\"];\n    assumptions: CorsaCheckResult[\"assumptions\"];\n    typedArrays: {\n        obligations: [];\n        windows: [];\n        statistics: {\n            solverQueries: number;\n        };\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    assurance: AssuranceAssessment | null;\n    project: CorsaCheckResult[\"project\"];\n    effectBaseline?: EffectBaselineAssessment;\n}"
+            "export interface CorsaCheckJsonReport {\n    corsaBuiltinCalls?: CorsaCheckResult[\"corsaBuiltinCalls\"];\n    schema: \"uneffect-check/v1\";\n    outcome: \"passed\" | \"failed\";\n    counts: {\n        errors: number;\n        warnings: number;\n    };\n    diagnostics: Array<Omit<CorsaCheckResult[\"diagnostics\"][number], \"domain\" | \"kind\"> & Partial<Pick<CorsaCheckResult[\"diagnostics\"][number], \"domain\" | \"kind\">> & {\n        code: string;\n        notes: DiagnosticNote[];\n    }>;\n    effects: Array<{\n        fileName?: string;\n        span?: {\n            start: number;\n            end: number;\n        };\n        functionName: string;\n        effects: string[];\n        evidence: CorsaCheckResult[\"summaries\"][number][\"evidence\"];\n        parameters?: string[];\n        unknownReasons?: CorsaCheckResult[\"summaries\"][number][\"unknownReasons\"];\n    }>;\n    contracts: CorsaCheckResult[\"artifacts\"];\n    assumptions: CorsaCheckResult[\"assumptions\"];\n    typedArrays: {\n        obligations: [];\n        windows: [];\n        statistics: {\n            solverQueries: number;\n        };\n    };\n    ownership: [];\n    asyncIterators: [];\n    resourceProtocols: [];\n    assurance: AssuranceAssessment | null;\n    project: CorsaCheckResult[\"project\"];\n    effectBaseline?: EffectBaselineAssessment;\n}"
           ]
         },
         {
@@ -1616,7 +1616,7 @@
         {
           "name": "CorsaApiTypeFact",
           "declarations": [
-            "export interface CorsaApiTypeFact {\n    id: string;\n    texts: string[];\n    symbol?: string;\n    value?: unknown;\n}"
+            "export interface CorsaApiTypeFact {\n    id: string;\n    texts: string[];\n    symbol?: string;\n    /** Literal value of a string/number literal type, when the checker reports one. */\n    value?: unknown;\n    /** Compiler `TypeFlags` bit set, when the checker reports one; an error type is flagged `Any` even when its display text is a name. */\n    flags?: number;\n}"
           ]
         },
         {

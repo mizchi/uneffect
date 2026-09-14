@@ -831,40 +831,41 @@ The handler reports the real defect plus `event.Records[0].cf`, which relies on
 the Lambda@Edge single-record invariant; the repaired version, which returns
 early when `parts.length < 2`, reports only the second.
 
-Over the ad tag's own `src` the inferred inventory is now `InvokeUserCode` 284,
-`Dom` 242, `Throw<DOMException>` 180, `Throw<TypeError>` 54, `Timer` 42,
-`LocalStorageRead` 30, `LocalStorageWrite` 26, `Throw<SyntaxError>` 25, `Random`
-20, `Net` 15, `Console` 12, `Throw<URIError>` 10, `CookieRead` 5, and
-`CookieWrite` 2, over 227 proofs of effect freedom and 106 trusted upper bounds.
-The native runtime reports `Net` 16 and `Dom` 111. None of
+Over the ad tag's own `src` the inferred inventory is now `InvokeUserCode` 250,
+`Dom` 211, `Throw<DOMException>` 158, `Throw<TypeError>` 47, `LocalStorageRead`
+20, `LocalStorageWrite` 16, `Net` 15, `Throw<SyntaxError>` 15, `Random` 14,
+`Timer` 12, `Console` 9, `Throw<URIError>` 9, `CookieRead` 4, and `CookieWrite`
+2, over 218 proofs of effect freedom and 92 trusted upper bounds. The native
+runtime reports `Net` 16 and `Dom` 111. None of
 `Throw`, `Random`, `Timer`, `Net`, or `CookieWrite` was observable before; cookie
 writes were previously reported as cookie reads, and a member reached through a
 nested receiver such as `env.doc.cookie` resolved nothing at all.
 
 Counting only the two projects' production sources — the ad tag's and the native
 runtime's own `src`, with their test and end-to-end files excluded — the summaries
-move from 1,094 unknown / 17 trusted / 299 inferred to 892 unknown / 175 trusted /
-350 inferred. Four mechanisms account for that: a function that invokes one of its
+move from 1,094 unknown / 17 trusted / 299 inferred to 954 unknown / 144 trusted /
+319 inferred. Four mechanisms account for that: a function that invokes one of its
 own parameters now carries `InvokeUserCode` and its callers compose the argument
 they supply; a reviewed contract is reached through the inheritance
-`lib.dom.d.ts` declares; a construction, a `super` call, and in-class dispatch
-link to the class body they run; and the reviewed catalog now covers the legacy
-request object, the style, dataset and class-list surfaces, the document tree, the
-URI functions, and the standard constructors and conversions. The remaining
-unknown summaries name what was not resolved — the global `window` (typed as an
-intersection the Corsa boundary exposes no constituent query for),
-namespace-imported functions, members of interfaces the catalog does not carry,
-and a member call whose receiver could have had that method replaced — rather than
-a single opaque reason.
+`lib.dom.d.ts` declares; a construction and a `super` call link to the constructor
+they run; and the reviewed catalog now covers the legacy request object, the
+style, dataset and class-list surfaces, the document tree, the URI functions, and
+the standard constructors and conversions. The remaining unknown summaries name
+what was not resolved — the global `window` (typed as an intersection the Corsa
+boundary exposes no constituent query for), namespace-imported functions, members
+of interfaces the catalog does not carry, and any method call that is not
+`this.#m()` — rather than a single opaque reason.
 
-One measurement is worth recording because it is a property of the codebase rather
-than of the checker. A member call on a receiver the caller supplies is linked only
-when the class is nominal and nothing in the analyzed files could have replaced the
-method; in the ad tag 576 such call sites are blocked by exactly one write, a deep
-merge helper whose `target` parameter is `any` and whose assignment is computed.
-That single write could install a function on any object, so every public method of
-every class stays replaceable. Typing that helper, or recording the assumption
-explicitly, is what would unblock those 576 sites — the checker cannot decide it.
+Method dispatch is where the honest limit sits, and it is worth recording why. An
+earlier version of this work linked a public `this.m()` and a call on a receiver
+whose class declares a `private` member, under a closed-world condition over the
+analyzed files. Adversarial review broke that condition five different ways — a
+barrel re-export, a bare side-effect import, a dynamic `import()`, a triple-slash
+reference and an ambient subclass declaration each leave a file unread — and broke
+the nominality argument as well, because an *optional* `private` member imposes
+nothing on an object literal. Only `this.#m()` survives without a whole-program
+assumption, so only that is linked. On the ad tag that costs roughly 60 summaries
+and most of the `Timer` attribution; the alternative was a proof that is wrong.
 
 Each of the four runs completes in seconds: all four together take about 5 s. Over
 this repository's own source the default check takes 29 s against 33 s before this

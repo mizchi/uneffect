@@ -35,19 +35,17 @@ same property is proved for arbitrary TypeScript.
   construction, `super`, or internal dispatch — owes an argument with an analyzed
   boundary at that position or becomes unknown. `new C()` links to the
   constructor the class declares and, when it declares none, to the inherited
-  one; `super(...)` and `super.m(...)` link to the base the `extends` clause
-  resolves to. `this.m()` links to the declared body when nothing in the analyzed
-  files can replace it: a `private` or `#` member always qualifies, and a public
-  one only when no subclass in the program declares that name, no assignment
-  writes a member of that type, the caller narrowed no file list, and every
-  statically imported binding is declared in a file the run read. A member call on
-  a receiver the caller supplies needs one condition more — the class must declare
-  a `private`, `protected` or `#` member, which is what makes its type nominal, so
-  that no object literal can stand in for an instance. Only a write whose value
-  could be a function counts as replacing a method, and a write through a receiver
-  the checker cannot name is tested for reach with an assignability query rather
-  than disabling every class at once; a computed write through an `any` receiver
-  still reaches everything, because it could install a function on any object. The
+  one; `super(...)` links to the base the `extends` clause resolves to. Both are
+  exact: `new C` runs `C`'s constructor and `super(...)` runs the named base's,
+  whatever else the program contains. In-class dispatch is linked for exactly one
+  member shape, `this.#m()`: a `#` name is not a property, so no subclass
+  redeclares it, no code outside the class body writes it, and `Object.assign`,
+  `Object.defineProperty` and `delete` cannot reach it either. A public or
+  TypeScript-`private` method, one reached through `super.m()`, and one reached
+  through a receiver the caller supplies are all explicit unknowns: each would
+  need the analyzed file set to be closed, and a barrel re-export, a side-effect
+  import, a dynamic `import()`, a triple-slash reference and an ambient
+  declaration each leave it open. The
   reviewed ECMAScript catalog is reachable, `throw` primitives render as
   `Throw<Error>` upper bounds with no control-flow discharge, contracts that
   invoke user code compose only with an inline argument, property writes select

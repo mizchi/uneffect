@@ -812,10 +812,11 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
         })),
         { kind: "protocol" as const, name: "promise-handler", transition: key.slice(key.indexOf("#") + 1) },
       ] },
-      // The entry already rests on the builtin promise machinery running — a subclass may override `then`
-      // itself — so the species constructor that same subclass would have to install, and the TypeError a
-      // receiver that is not a promise raises, are outside this claim rather than modelled halfway.
-      trustReason: `ECMAScript ${key.replace("#", ".")} schedules callable handlers as microtasks; a receiver that is not a builtin promise, including a subclass with its own Symbol.species, is outside this claim`,
+      // Known gap, unchanged from before this entry was reviewed: step 2 rejects a receiver that is not a
+      // promise and step 3 resolves the species constructor, reading and calling the receiver's own
+      // `constructor`. Declaring either needs the checker-fact exporter to discharge a synchronous throw across
+      // an `async` boundary the way the summary path already does, which is a separate change.
+      trustReason: `ECMAScript ${key.replace("#", ".")} schedules callable handlers as microtasks; a receiver that is not a builtin promise, or one whose constructor was replaced, is outside this claim`,
       trustOwner: "@mizchi/uneffect",
     })),
     ...(["all", "allSettled", "race", "any"] as const).map((combinator) => reviewed("javascript", {

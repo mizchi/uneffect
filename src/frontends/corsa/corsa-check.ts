@@ -92,9 +92,7 @@ function capabilityEffect(name: string): Effect {
 type PendingClassCall = { readonly args: CallArgumentFacts | undefined; readonly label: string } & (
   | { readonly kind: "construct"; readonly classSymbolId: string }
   | { readonly kind: "super"; readonly classSymbolId: string }
-  | { readonly kind: "super-method"; readonly classSymbolId: string; readonly name: string }
-  | { readonly kind: "this-method"; readonly classSymbolId: string; readonly declaration: string; readonly name: string }
-  | { readonly kind: "receiver-method"; readonly classSymbolId: string; readonly declaration: string; readonly name: string }
+  | { readonly kind: "private-method"; readonly declaration: string }
 );
 
 /** What one call supplies at each argument position, as far as this path can see it. */
@@ -164,16 +162,6 @@ function renderSemantics(
     visit(primitive, false);
   }
   return rendered;
-}
-
-/** Compiler `SyntaxKind` of a method declaration and `SymbolFlags.Class`, measured against the analyzing compiler. */
-const methodDeclarationKind = 175;
-const classSymbolFlag = 32;
-
-/** The syntax kind a checker declaration identity records, from its `"<node>.<kind>.<path>"` spelling. */
-function declarationKind(declaration: string): number | undefined {
-  const kind = /^\d+\.(\d+)\./u.exec(declaration)?.[1];
-  return kind === undefined ? undefined : Number(kind);
 }
 
 /** Whether the argument a projector reads was actually passed, when the call's arity is known. */
@@ -413,27 +401,18 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       superResolvable: boolean;
       constructorKey: string | null;
       declaresConstructor: boolean;
-      nominal: boolean;
     }>();
     /** Checker declaration identity of a class method to the boundary that holds its body. */
     const methodBodies = new Map<string, string>();
     /** Class identity to the methods it declares, by name, so a base or a subclass can be consulted. */
-    const classMethods = new Map<string, Map<string, string>>();
-    const subclasses = new Map<string, Set<string>>();
-    /** Declarations of members no subclass may redeclare and no outside code may write. */
-    const restrictedMethods = new Set<string>();
+    /**
+     * Declarations of `#`-private methods. A `#` name is not a property: no subclass can redeclare it, no code
+     * outside the class body can write it, and neither `Object.assign`, `Object.defineProperty` nor `delete`
+     * reaches it. It is the one member shape whose body is fixed without reasoning about the whole program.
+     */
+    const privateMethods = new Set<string>();
     /** Parameter names a shorthand pattern may have written, which the position query cannot attribute. */
     const parameterNames = new Map<string, string>();
-    /** Receiver type identity to the member names written through it anywhere in the analyzed files. */
-    const assignedMembers = new Map<string, Set<string>>();
-    const computedMemberOwners = new Set<string>();
-    const importedDeclarationFiles = new Set<string>();
-    const opaquelyAssignedNames = new Set<string>();
-    const opaqueComputedWriteTypes = new Map<string, CorsaApiTypeFact>();
-    /** One receiver type per class the checker resolved, to decide whether an opaque write could reach it. */
-    const classInstanceTypes = new Map<string, CorsaApiTypeFact>();
-    let untypedMemberWrite = false;
-    let opaqueSubclass = false;
     for (const fileName of rootFiles) {
       const sourceText = readFileSync(fileName, "utf8");
       sources.set(fileName, sourceText);
@@ -518,17 +497,6 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           parameterNames.set(parameter.symbolId, parameter.name);
         }
       }
-      for (const [owner, written] of bindings.assignedMembers) {
-        const known = assignedMembers.get(owner) ?? new Set<string>();
-        for (const name of written) known.add(name);
-        assignedMembers.set(owner, known);
-      }
-      for (const owner of bindings.computedMemberOwners) computedMemberOwners.add(owner);
-      for (const file of bindings.importedDeclarationFiles) importedDeclarationFiles.add(file);
-      for (const name of bindings.opaquelyAssignedNames) opaquelyAssignedNames.add(name);
-      for (const type of bindings.opaqueComputedWriteTypes) opaqueComputedWriteTypes.set(type.id, type);
-      if (bindings.untypedMemberWrite) untypedMemberWrite = true;
-      if (bindings.opaqueSubclass) opaqueSubclass = true;
       for (const item of bindings.classes) {
         // A class with no declared constructor still runs its field initializers, which the syntax pass covers
         // with a boundary over the class body; a class with neither has nothing of its own to run.
@@ -539,22 +507,14 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           superResolvable: item.superResolvable,
           constructorKey: constructorFact ? byFunctionKey(constructorFact) : null,
           declaresConstructor: item.constructorPosition !== null,
-          nominal: item.nominal,
         });
-        if (item.superSymbolId !== null) {
-          const known = subclasses.get(item.superSymbolId) ?? new Set<string>();
-          known.add(item.symbolId);
-          subclasses.set(item.superSymbolId, known);
-        }
       }
       for (const method of bindings.methods) {
         const boundary = enclosingFunction(syntax.functions, method.position);
         if (!boundary) continue;
+        if (!method.hardPrivate) continue;
         methodBodies.set(method.declaration, byFunctionKey(boundary));
-        if (method.restricted) restrictedMethods.add(method.declaration);
-        const declared = classMethods.get(method.classSymbolId) ?? new Map<string, string>();
-        declared.set(method.name, method.declaration);
-        classMethods.set(method.classSymbolId, declared);
+        privateMethods.add(method.declaration);
       }
       const ensure = (owner: { name: string; start: number; end: number; parameters: readonly string[] }) => {
         const key = `${fileName}:${owner.start}:${owner.name}`;
@@ -665,26 +625,13 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (site.kind !== "call") return undefined;
         const superCall = bindings.superCalls.get(site.start);
         if (superCall !== undefined && site.name === "super") return { kind: "super", classSymbolId: superCall, label: "super", args };
-        const superMember = bindings.superMemberCalls.get(site.start);
-        if (superMember !== undefined && superMember.name === site.name) {
-          return { kind: "super-method", classSymbolId: superMember.classSymbolId, name: site.name, label: `super.${site.name}`, args };
-        }
-        if (site.receiverPosition === undefined) return undefined;
-        const receiverType = queries.getTypeAtPosition(fileName, site.receiverPosition);
-        const owner = receiverType ? queries.getSymbolOfType(receiverType) : null;
-        const member = receiverType ? queries.getPropertyOfType(receiverType, site.name) : null;
-        const declaration = member?.declarations?.length === 1 ? member.declarations[0]! : undefined;
-        if (!owner || declaration === undefined) return undefined;
-        if (((owner.flags ?? 0) & classSymbolFlag) !== 0 && receiverType) classInstanceTypes.set(owner.id, receiverType);
-        if (bindings.thisCalls.has(site.start)) {
-          return { kind: "this-method", classSymbolId: owner.id, declaration, name: site.name, label, args };
-        }
-        // A receiver the caller supplies is an instance only when the class type admits no object literal; a
-        // class with no `private`, `protected` or `#` member is structural and anything of that shape satisfies
-        // it. Only a receiver the checker types by a class declaration is a candidate at all: an object literal,
-        // an interface, and a frozen table stay on the ordinary unresolved path, where their own linking runs.
-        if (((owner.flags ?? 0) & classSymbolFlag) === 0 || declarationKind(declaration) !== methodDeclarationKind) return undefined;
-        return { kind: "receiver-method", classSymbolId: owner.id, declaration, name: site.name, label, args };
+        // Only a `#` name is fixed by its declaration alone. Every other member — a public or TypeScript-private
+        // method, one reached through `super.m()`, one reached through a receiver the caller supplies — can be
+        // replaced by a subclass the run did not read or by a write the run cannot attribute, so it stays on the
+        // ordinary unresolved path.
+        const privateCall = bindings.privateCalls.get(site.start);
+        if (privateCall === undefined) return undefined;
+        return { kind: "private-method", declaration: privateCall, label, args };
       };
       for (const [index, site] of callSites.entries()) {
         if (site.name === "<iife>" && site.receiverPosition === undefined) {
@@ -722,11 +669,13 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
             ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals);
           if (contract) record(site, contract);
           // A member the DOM library declares carries host semantics this check did not model, and an accessor
-          // runs a body this path does not analyze; both are unknown, not proofs of effect freedom. An ordinary
-          // data property of an object carries neither and stays effect-free.
+          // runs a body this path does not analyze; both are unknown, not proofs of effect freedom. A member the
+          // checker resolves to no declaration at all — reached through a nullable or union receiver, an `any`,
+          // or an index signature — is unknown for the same reason: nothing says what it is. An ordinary data
+          // property of an object resolves to its own declaration and stays effect-free.
           else if (site.receiverPosition !== undefined) {
             const member = memberSymbolAt(site);
-            if (declaredByDomLibrary(member) || isAccessorSymbol(member)) recordUnclassified(site);
+            if (member === null || declaredByDomLibrary(member) || isAccessorSymbol(member)) recordUnclassified(site);
           }
         }
       }
@@ -753,16 +702,6 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       return owner === undefined || (name !== undefined && ambiguousWrites.has(name)) ? undefined : owner;
     };
     /**
-     * `this` reaches an instance of the class or of any subclass, so a body is fixed only when every file that
-     * could declare one was read: the caller narrowed no file list, and every statically imported binding this
-     * run saw is declared in a file it analyzed. A declaration file declares no body and cannot override one.
-     */
-    const analyzedFiles = new Set(rootFiles.map((file) => file.toLowerCase()));
-    const closedImports = [...importedDeclarationFiles].every((declaration) => {
-      const path = /^\d+\.\d+\.(.*)$/u.exec(declaration)?.[1];
-      return path === undefined || path.endsWith(".d.ts") || analyzedFiles.has(path) || analyzedFiles.has(path.toLowerCase());
-    });
-    /**
      * The boundaries `new C()` runs: the class's own constructor, and — when it declares none — the inherited
      * one. A class this run did not analyze, an `extends` clause that names an expression, and a declared
      * constructor with no analyzed body each make the construction unresolved rather than effect-free.
@@ -784,53 +723,6 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       const inherited = constructorTargets(info.superSymbolId, seen);
       return inherited === undefined ? undefined : [...targets, ...inherited];
     };
-    // A base this run cannot match to an analyzed class declaration — an alias binding, an ambient class, a
-    // class from a module it did not read — leaves the hierarchy open, so no class keeps a fixed method body.
-    const unknownBase = [...classes.values()].some((item) => item.superSymbolId !== null && !classes.has(item.superSymbolId));
-    /**
-     * Whether a computed write whose receiver the checker could not attribute could have reached an instance of
-     * this class. A value of the class only flows into such a receiver when the class is assignable to it, so a
-     * receiver no instance is assignable to cannot have had one of its methods replaced. An assignability answer
-     * the boundary declines to give is treated as reachable.
-     */
-    const opaqueWriteReach = new Map<string, boolean>();
-    const reachedByOpaqueWrite = (classSymbolId: string): boolean => {
-      const cached = opaqueWriteReach.get(classSymbolId);
-      if (cached !== undefined) return cached;
-      const instance = classInstanceTypes.get(classSymbolId);
-      const reached = instance === undefined
-        ? opaqueComputedWriteTypes.size > 0
-        : [...opaqueComputedWriteTypes.values()].some((target) => frontend.isTypeAssignableTo(instance, target) !== false);
-      opaqueWriteReach.set(classSymbolId, reached);
-      return reached;
-    };
-    /** Whether a member of this exact type was written through an assignment, which replaces a declared body. */
-    const writtenMember = (classSymbolId: string, name: string): boolean =>
-      computedMemberOwners.has(classSymbolId) || assignedMembers.get(classSymbolId)?.has(name) === true;
-    /** Whether any class below this one replaces the named method, which is what `this` dispatch may reach. */
-    const overriddenBelow = (classSymbolId: string, name: string, seen: Set<string> = new Set()): boolean => {
-      // A class body with no identity, an `extends` clause naming something other than an analyzed class, a
-      // decorator, an assignment to a member of that name, and a computed member write each put a body outside
-      // the class declaration's reach.
-      if (opaqueSubclass || unknownBase || untypedMemberWrite || opaquelyAssignedNames.has(name)) return true;
-      if (reachedByOpaqueWrite(classSymbolId)) return true;
-      if (writtenMember(classSymbolId, name)) return true;
-      for (const sub of subclasses.get(classSymbolId) ?? []) {
-        if (seen.has(sub)) continue;
-        seen.add(sub);
-        if (classMethods.get(sub)?.has(name) === true) return true;
-        if (overriddenBelow(sub, name, seen)) return true;
-      }
-      return false;
-    };
-    /** The declaration of a method reached through a base chain, nearest declaring class first. */
-    const inheritedMethod = (classSymbolId: string | null, name: string, seen: Set<string> = new Set()): string | undefined => {
-      if (classSymbolId === null || seen.has(classSymbolId)) return undefined;
-      seen.add(classSymbolId);
-      const own = classMethods.get(classSymbolId)?.get(name);
-      if (own !== undefined) return own;
-      return inheritedMethod(classes.get(classSymbolId)?.superSymbolId ?? null, name, seen);
-    };
     /** The analyzed boundary a callee symbol names, or `undefined` when no unique immutable body backs it. */
     const resolveTarget = (symbol: string): string | undefined => {
       const target = writes.has(symbol) ? undefined : declarations.get(symbol);
@@ -844,17 +736,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
             const base = classes.get(call.classSymbolId)?.superSymbolId ?? null;
             return base === null ? undefined : constructorTargets(base);
           }
-          // A restricted member is fixed by its own declaration: no subclass may redeclare it and no code
-          // outside the class body may write it, so no file this run did not read can change which body runs.
-          const restricted = call.kind === "this-method" && restrictedMethods.has(call.declaration);
-          if (call.kind === "receiver-method" && classes.get(call.classSymbolId)?.nominal !== true) return undefined;
-          if (call.kind !== "super-method" && !restricted && (requested !== undefined || !closedImports)) return undefined;
-          const declaration = call.kind === "super-method"
-            ? inheritedMethod(classes.get(call.classSymbolId)?.superSymbolId ?? null, call.name)
-            : restricted
-              ? (writtenMember(call.classSymbolId, call.name) ? undefined : call.declaration)
-              : overriddenBelow(call.classSymbolId, call.name) ? undefined : call.declaration;
-          const body = declaration === undefined ? undefined : methodBodies.get(declaration);
+          if (!privateMethods.has(call.declaration)) return undefined;
+          const body = methodBodies.get(call.declaration);
           return body === undefined || !byFunction.has(body) ? undefined : [body];
         })();
         if (targets === undefined) {

@@ -11,10 +11,7 @@ async function check(files: Record<string, string>, rootFiles = Object.keys(file
     for (const [file, text] of Object.entries(files)) writeFileSync(join(directory, file), text);
     const configFile = join(directory, "tsconfig.json");
     writeFileSync(configFile, JSON.stringify({
-      compilerOptions: {
-        strict: true, target: "ES2024", module: "NodeNext", lib: ["ES2024", "DOM"], types: [],
-        experimentalDecorators: false,
-      },
+      compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", lib: ["ES2024", "DOM"], types: [] },
       files: rootFiles,
     }));
     return await checkCorsaProject({ configFile });
@@ -42,17 +39,12 @@ describe("dispatch soundness", () => {
     expect(names(result, "main")).toEqual(["Console", "InvokeUserCode"]);
   });
 
-  it("discharges an invoked-parameter obligation at a construction and at internal dispatch", async () => {
+  it("discharges an invoked-parameter obligation at a construction", async () => {
     const result = await check({ "main.ts": `
-      class Runner {
-        constructor(callback: () => void) { callback(); }
-        apply(callback: () => void) { callback(); }
-        boot(callback: () => void) { this.apply(callback); }
-      }
+      class Runner { constructor(callback: () => void) { callback(); } }
       declare const handler: () => void;
       export function supplied() { new Runner(() => { console.log("built"); }); }
       export function opaque() { new Runner(handler); }
-      export function internal(runner: Runner) { return runner; }
     ` });
     expect(result.errors).toBe(0);
     expect(names(result, "supplied")).toEqual(["Console", "InvokeUserCode"]);
@@ -70,74 +62,13 @@ describe("dispatch soundness", () => {
     expect(names(result, "apply")).toEqual([]);
   });
 
-  it.each([
-    'const Sub = class extends Base { override helper() { console.log("sub"); } };',
-    'const Alias = Base; class Sub extends Alias { override helper() { console.log("sub"); } }',
-    'declare function mixin(base: typeof Base): typeof Base; class Sub extends mixin(Base) { override helper() { console.log("sub"); } }',
-  ])("keeps this dispatch unresolved when a subclass is not identifiable: %s", async (subclass) => {
-    const result = await check({ "main.ts": `
-      class Base { run() { this.helper(); } helper() {} }
-      ${subclass}
-      export function main(base: Base) { return base; }
-    ` });
-    expect(summary(result, "Base.run")?.evidence).toBe("unknown");
-    expect(names(result, "Base.run")).toEqual([]);
-  });
-
-  it("does not let a static method stand in for the instance method a super call names", async () => {
-    const result = await check({ "main.ts": `
-      class Base { greet() { console.log("instance"); } static greet() {} }
-      class Sub extends Base { override greet() { super.greet(); } }
-      export function main(sub: Sub) { return sub; }
-    ` });
-    expect(result.errors).toBe(0);
-    expect(names(result, "Sub.greet")).toEqual(["Console"]);
-  });
-
-  it("does not trust a method whose name is assigned anywhere in the analyzed files", async () => {
-    const result = await check({ "main.ts": `
-      class Base { run() { this.helper(); } helper() {} }
-      Base.prototype.helper = function () { console.log("patched"); };
-      export function main() { return new Base(); }
-    ` });
-    expect(summary(result, "Base.run")?.evidence).toBe("unknown");
-  });
-
-  it("does not resolve this dispatch outside a class body", async () => {
-    const result = await check({ "main.ts": `
-      class Shape { area() { return 0; } render() { return this.area(); } }
-      export const impostor: Shape = {
-        area() { console.log("side effect"); return 0; },
-        render() { return this.area(); },
-      };
-    ` });
-    // The object literal's `render` is not the class's, and its receiver is not an instance of the class.
-    const literal = result.summaries.filter((item) => item.functionName === "render");
-    expect(literal.some((item) => item.evidence === "unknown")).toBe(true);
-  });
-
-  it("keeps this dispatch unresolved when a file the project imports was not analyzed", async () => {
-    const result = await check({
-      "main.ts": `
-        import { Sub } from "./sub.js";
-        export class Base { run() { this.helper(); } helper() {} }
-        export function drive() { return new Sub(); }
-      `,
-      "sub.ts": `
-        import { Base } from "./main.js";
-        export class Sub extends Base { override helper() { console.log("sub"); } }
-      `,
-    }, ["main.ts"]);
-    expect(summary(result, "Base.run")?.evidence).toBe("unknown");
-  });
-
-  it("resolves a private method regardless of what a file it did not read could declare", async () => {
+  it("resolves a hard-private method regardless of what an unread file could declare", async () => {
     const result = await check({
       "main.ts": `
         import { Sub } from "./sub.js";
         export class Base {
-          run() { return this.helper(); }
-          private helper() { console.log("private"); }
+          run() { return this.#helper(); }
+          #helper() { console.log("private"); }
         }
         export function drive() { return new Sub(); }
       `,
@@ -147,64 +78,60 @@ describe("dispatch soundness", () => {
       `,
     }, ["main.ts"]);
     expect(result.errors).toBe(0);
-    // TypeScript forbids a subclass from redeclaring a private member and forbids writing it from outside the
-    // class body, so no unread file can change which body runs.
+    // A `#` name is not a property, so no file this run did not read can redeclare or overwrite it.
     expect(names(result, "Base.run")).toEqual(["Console"]);
     expect(summary(result, "Base.run")?.evidence).toBe("trusted");
   });
 
-  it("does not trust a private method its own class overwrites", async () => {
+  it.each([
+    'class Sub extends Base { override helper() { console.log("sub"); } }',
+    'const Sub = class extends Base { override helper() { console.log("sub"); } };',
+    'Base.prototype.helper = function () { console.log("patched"); };',
+    'Object.assign(Base.prototype, { helper() { console.log("assigned"); } });',
+  ])("does not resolve a public method whatever could replace it: %s", async (replacement) => {
     const result = await check({ "main.ts": `
-      declare function replacement(): void;
-      export class Base {
-        run() { return this.helper(); }
-        private helper() { console.log("private"); }
-        swap() { this.helper = replacement; }
-      }
+      class Base { run() { this.helper(); } helper() {} }
+      ${replacement}
+      export function main() { return new Base(); }
     ` });
     expect(summary(result, "Base.run")?.evidence).toBe("unknown");
+    expect(names(result, "Base.run")).toEqual([]);
   });
 
-  it("only counts a member write that could install a function", async () => {
+  it("does not resolve a this call written outside a class body", async () => {
     const result = await check({ "main.ts": `
-      export class Widget {
-        private readonly tag = 1;
-        run() { console.log(this.tag); }
-      }
-      declare const flags: Record<string, boolean>;
-      export function mark(key: string) { flags[key] = true; }
-      export function main(widget: Widget) { widget.run(); }
+      class Shape { area() { return 0; } render() { return this.area(); } }
+      export const impostor: Shape = {
+        area() { console.log("side effect"); return 0; },
+        render() { return this.area(); },
+      };
+    ` });
+    // The object literal's `render` is not the class's, and its receiver is not an instance of the class.
+    const literal = result.summaries.filter((item) => item.functionName === "render");
+    expect(literal.every((item) => item.evidence === "unknown")).toBe(true);
+  });
+
+  it("composes an inline handler assigned to an event handler property", async () => {
+    const result = await check({ "main.ts": `
+      declare const request: XMLHttpRequest;
+      declare const handler: () => void;
+      export function inline() { request.onload = () => { console.log("done"); }; }
+      export function opaque() { request.onerror = handler; }
     ` });
     expect(result.errors).toBe(0);
-    // A boolean cannot stand in for a method, so the write leaves the class declaration standing.
-    expect(names(result, "main")).toEqual(["Console"]);
+    expect(names(result, "inline")).toEqual(["Console", "Dom"]);
+    expect(summary(result, "opaque")?.evidence).toBe("unknown");
   });
 
-  it("does not resolve a member call once a computed write could reach the class", async () => {
+  it("does not drop a handler registration through a receiver the checker cannot name", async () => {
     const result = await check({ "main.ts": `
-      export class Widget {
-        private readonly tag = 1;
-        run() { console.log(this.tag); }
-      }
-      export function merge(target: any, key: string, value: unknown) { target[key] = value; }
-      export function main(widget: Widget) { widget.run(); }
+      declare const loose: { onload: (() => void) | null } | null;
+      export function opaque() { if (loose) { loose.onload = () => { document.cookie = "a=b"; }; } }
+      declare const anything: any;
+      export function untyped() { anything.onload = () => { document.cookie = "a=b"; }; }
     ` });
-    // A computed write through an `any` receiver could install a function on any object, this class included.
-    // (The dynamic key on an `any` receiver is also reported as unsupported syntax, which is a separate finding.)
-    expect(summary(result, "main")?.evidence).toBe("unknown");
-    expect(names(result, "main")).toEqual([]);
-  });
-
-  it("resolves this dispatch when the imported modules were analyzed too", async () => {
-    const result = await check({
-      "main.ts": `
-        import { helper } from "./util.js";
-        export class Base { run() { this.log(); } log() { helper(); } }
-        export function drive() { return new Base(); }
-      `,
-      "util.ts": `export function helper() { console.log("shared"); }`,
-    });
-    expect(result.errors).toBe(0);
-    expect(names(result, "Base.run")).toEqual(["Console"]);
+    // A member the checker resolves to no declaration is unknown, never a proof that the assignment did nothing.
+    expect(summary(result, "untyped")?.evidence).toBe("unknown");
+    expect(names(result, "untyped")).toEqual([]);
   });
 });
