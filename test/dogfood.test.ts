@@ -2983,11 +2983,11 @@ describe("Uneffect dogfood", () => {
     expect(run).toMatchObject({ evidence: "verified" });
     expect(run?.effects.map((effect) => formatEffect(effect))).toEqual([
       "FsRead",
+      "InvokeUserCode",
       'Env<"UNEFFECT_Z3_BACKEND">',
       'Env<"UNEFFECT_Z3_PATH">',
       'Env<"UNEFFECT_SOLVER_EVIDENCE_DIR">',
       "FsWrite",
-      "InvokeUserCode",
       "Mutate<typeof nativeDrivers>",
       'Run<"java">',
     ]);
