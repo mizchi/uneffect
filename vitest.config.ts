@@ -11,7 +11,9 @@ export default defineConfig({
     // default. The TypeScript sources are authoritative; testing dist as a
     // second stale suite doubles solver load and can execute old schemas.
     include: tierIncludes ? [...tierIncludes] : ["**/*.test.ts"],
-    exclude: ["dist/**", "node_modules/**"],
+    // A spawned task runs in a git worktree under `.claude/worktrees`, whose test files match the same glob.
+    // Collecting them runs every suite twice and reports another branch's failures as this run's.
+    exclude: ["dist/**", "node_modules/**", ".claude/**"],
     // Several integration tests spawn Quint/Z3. Bounding workers avoids CPU
     // oversubscription turning the default 5s timeout into nondeterministic CI failures.
     maxWorkers: process.env.CI ? 2 : 4,
