@@ -82,6 +82,61 @@ describe("Corsa contract control flow", () => {
         compound: true, broad: true, anyValue: true, unknownType: true, textValue: true, caught: true, finalizer: false, loop: false, asserted: false, comparison: false, indexed: false, boolCall: false, ternary: true, coalesce: false, optionalMember: true, negated: true, sequence: false, assigned: false });
     });
   });
+  it("ends a switch that covers every constituent of a finite literal union", async () => {
+    const text = `type Color = "red" | "green" | "blue";
+declare const other: string;
+export function covered(color: Color): string | undefined {
+  switch (color) { case "red": return "r"; case "green": return "g"; case "blue": return "b"; }
+}
+export function partial(color: Color): string | undefined {
+  switch (color) { case "red": return "r"; case "green": return "g"; }
+}
+export function widenedCase(color: Color): string | undefined {
+  switch (color) { case "red": return "r"; case "green": return "g"; case other: return "o"; }
+}
+export function numeric(value: 0 | 1): string | undefined {
+  switch (value) { case 0: return "z"; case 1: return "o"; }
+}
+export function flagged(value: boolean): string | undefined {
+  switch (value) { case true: return "t"; case false: return "f"; }
+}
+export function broad(value: string): string | undefined {
+  switch (value) { case "red": return "r"; }
+}
+export function coveredButOpen(color: Color): string | undefined {
+  switch (color) { case "red": case "green": return "g"; case "blue": break; }
+}
+export function withDefault(color: Color): string | undefined {
+  switch (color) { case "red": return "r"; default: return "?"; }
+}
+`;
+    await project(async (file, configFile) => {
+      const results = await analyzeCorsaContractControlFlow({ configFile, files: { [file]: text } });
+      const refined = Object.fromEntries(results.map(result => [result.name, result.mayFallThrough]));
+      expect(refined).toEqual({ covered: false, partial: true, widenedCase: true, numeric: false, flagged: false,
+        broad: true, coveredButOpen: true, withDefault: false });
+      // Without checker types the same bodies are all open, which is what makes this a semantic fact.
+      const structural = Object.fromEntries(results.map(result => [result.name, result.structural.mayFallThrough]));
+      expect(structural).toMatchObject({ covered: true, numeric: true, flagged: true, withDefault: false });
+
+      const program = ts.createProgram([file], { strict: true, target: ts.ScriptTarget.ES2024, types: [] });
+      const checker = program.getTypeChecker(), ast = program.getSourceFile(file)!;
+      const options = {
+        exhaustiveSwitch: (condition: ts.Expression, tests: readonly ts.Expression[]) => {
+          const discriminant = checker.getTypeAtLocation(condition);
+          const members = discriminant.isUnion() ? discriminant.types : [discriminant];
+          if (members.some(member => member === checker.getBaseTypeOfLiteralType(member))) return false;
+          const covered = new Set(tests.map(test => checker.getTypeAtLocation(test)));
+          return members.every(member => covered.has(member));
+        },
+      };
+      for (const declaration of ast.statements.filter(ts.isFunctionDeclaration)) {
+        const name = declaration.name!.text;
+        expect(functionMayFallThrough(declaration.body!, options), name).toBe(refined[name]);
+      }
+    }, text);
+  });
+
   it("authenticates complete expression ranges and keeps primitive facts snapshot-owned", async () => {
     await project(async (file, configFile) => {
       const frontend = await openCorsaCallableFrontend({ configFile });

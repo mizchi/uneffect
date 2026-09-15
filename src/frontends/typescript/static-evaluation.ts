@@ -14,7 +14,7 @@ export interface StaticEvaluationOptions {
 }
 
 /** A deliberately finite evaluator for proof-directed TypeScript control flow. */
-/* uneffect:effect none */
+/* uneffect:effect InvokeUserCode | Throw<TypeError> */
 export function evaluateStaticPrimitive(
   expression: ts.Expression,
   options: StaticEvaluationOptions,
@@ -60,7 +60,7 @@ export function evaluateStaticPrimitive(
     : undefined;
 }
 
-/* uneffect:effect none */
+/* uneffect:effect InvokeUserCode | Throw<TypeError> */
 export function evaluateStaticBoolean(expression: ts.Expression, options: StaticEvaluationOptions): boolean | undefined {
   const value = evaluateStaticPrimitive(expression, options);
   return typeof value === "boolean" ? value : undefined;

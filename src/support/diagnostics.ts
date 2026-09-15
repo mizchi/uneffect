@@ -85,7 +85,7 @@ function diagnosticLine(text: string, position: number): number {
 }
 
 /** Convert compiler failures into the same source-attributed diagnostic contract used by every frontend. */
-/* uneffect:effect none */
+/* uneffect:effect Throw<RangeError> */
 export function fromTypeScriptDiagnostic(
   diagnostic: CompilerDiagnosticInput,
   kind: TypeScriptCheckerDiagnostic["kind"],
@@ -226,7 +226,7 @@ function relative(fileName: string, cwd: string | undefined): string {
   return fileName.startsWith(prefix) ? fileName.slice(prefix.length) : fileName;
 }
 
-/* uneffect:effect none */
+/* uneffect:effect InvokeUserCode | Throw<TypeError> | Throw<RangeError> */
 function frame(source: string | undefined, line: number): string[] {
   const text = source?.split(/\r?\n/u)[line - 1];
   if (text === undefined) return [];
@@ -235,7 +235,7 @@ function frame(source: string | undefined, line: number): string[] {
 }
 
 /** Render one diagnostic as a stable text block: header, source frame, then explanation notes. */
-/* uneffect:effect none */
+/* uneffect:effect InvokeUserCode | Throw<TypeError> | Throw<RangeError> */
 export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: DiagnosticFormatOptions = {}): string {
   const reported = reportDiagnostic(diagnostic);
   const source = options.sources?.get(diagnostic.fileName);
@@ -244,7 +244,7 @@ export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: Diagnos
 }
 
 /** Render a whole run: every diagnostic block plus a counted summary line. */
-/* uneffect:effect none */
+/* uneffect:effect InvokeUserCode | Throw<TypeError> | Throw<RangeError> */
 export function formatDiagnostics(diagnostics: readonly CheckerDiagnostic[], options: DiagnosticFormatOptions = {}): string {
   const reported = diagnostics.map(reportDiagnostic);
   const errors = reported.filter((item) => item.severity === "error").length;

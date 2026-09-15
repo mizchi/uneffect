@@ -35,6 +35,11 @@ export interface CorsaCallableFrontend {
   getBooleanLiteralValue(type: CorsaApiTypeFact): boolean | undefined;
   /** Snapshot-authenticated safe integer literal or union (at most 16 values); no text inference. */
   getFiniteNumberValues(type: CorsaApiTypeFact): readonly number[] | null;
+  /**
+   * Whether the supplied types cover every constituent of a finite literal union. The comparison is the
+   * checker's own literal-type identity within this snapshot; no value, name, or display text is read.
+   */
+  coversFiniteLiteralType(type: CorsaApiTypeFact, covering: readonly CorsaApiTypeFact[]): boolean;
   assertSource(file: string, source: string): void;
   getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;
   getAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
@@ -291,6 +296,22 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
           values.push(value);
         }
         return Object.freeze([...new Set(values)].sort((a, b) => a - b));
+      },
+      coversFiniteLiteralType(type, covering) {
+        const id = ownedTypeId(type);
+        const covered = new Set(covering.map(item => numericHandle(ownedTypeId(item))));
+        const raw = rpc.constituents(id);
+        const members = Array.isArray(raw) && raw.length
+          ? raw.map(item => numericHandle(record(item).id))
+          : [numericHandle(id)];
+        if (members.length > 64) return false;
+        for (const member of members) {
+          // A literal type is exactly one whose base type is a wider, different type. `string`, `undefined`,
+          // an interface and a type parameter all report themselves, so only finite values reach the domain.
+          if (numericHandle(record(rpc.literalBase(String(member))).id) === member) return false;
+          if (!covered.has(member)) return false;
+        }
+        return true;
       },
       assertSource(file, text) {
         if (sourceIndex(file).text !== text) throw new Error(`${file}: source does not match the Corsa snapshot`);

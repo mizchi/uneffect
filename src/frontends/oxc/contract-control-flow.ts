@@ -6,6 +6,7 @@ import { parseOxcSource, topLevelOxcFunctions } from "./source.js";
 export interface OxcContractControlFlowOptions {
   readonly isNeverCall?: (call: CallExpression) => boolean;
   readonly constantBoolean?: (expression: Node) => boolean | undefined;
+  readonly exhaustiveSwitch?: (condition: Node, tests: readonly Node[]) => boolean | undefined;
 }
 
 /** The whole unparenthesized chain can skip later calls and computed keys. */
@@ -39,7 +40,7 @@ const syntax: ControlFlowSyntax<Node, Node> = {
       case "BreakStatement": case "ContinueStatement": return { kind: node.type === "BreakStatement" ? "break" : "continue", label: node.label?.name };
       case "BlockStatement": return { kind: "block", statements: node.body };
       case "IfStatement": return { kind: "if", condition: node.test, consequent: node.consequent, alternate: node.alternate ?? undefined };
-      case "SwitchStatement": return { kind: "switch", condition: node.discriminant, clauses: node.cases.map(clause => ({ isDefault: clause.test === null, statements: clause.consequent })) };
+      case "SwitchStatement": return { kind: "switch", condition: node.discriminant, clauses: node.cases.map(clause => ({ isDefault: clause.test === null, ...(clause.test === null ? {} : { test: clause.test }), statements: clause.consequent })) };
       case "TryStatement": return { kind: "try", body: node.block, handler: node.handler?.body, finalizer: node.finalizer ?? undefined };
       case "LabeledStatement": return { kind: "label", label: node.label.name, body: node.body };
       case "WhileStatement": case "DoWhileStatement": return { kind: "loop", condition: node.test, body: node.body, unconditional: false, postTest: node.type === "DoWhileStatement" };
@@ -56,6 +57,7 @@ function controlFlow(options: OxcContractControlFlowOptions) {
   return createContractControlFlow(syntax, {
     constantBoolean: options.constantBoolean,
     isNeverCall: call => call.type === "CallExpression" && options.isNeverCall?.(call) === true,
+    ...(options.exhaustiveSwitch === undefined ? {} : { exhaustiveSwitch: options.exhaustiveSwitch }),
   });
 }
 export function oxcStatementExit(statement: Node, options: OxcContractControlFlowOptions = {}): Set<ContractExit> {

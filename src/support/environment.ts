@@ -66,13 +66,13 @@ function commandVersion(command: string, args: readonly string[]): string | unde
   }
 }
 
-/* uneffect:effect none */
+/* uneffect:effect InvokeUserCode | Throw<TypeError> */
 function minimumMajor(range: string | undefined): number | undefined {
   const match = range ? /(\d+)/u.exec(range) : null;
   return match ? Number(match[1]) : undefined;
 }
 
-/* uneffect:effect none */
+/* uneffect:effect InvokeUserCode | Throw<TypeError> */
 function nodeCheck(manifest: PackageManifest): EnvironmentCheck {
   const required = manifest.engines?.node, minimum = minimumMajor(required);
   const major = Number(process.versions.node.split(".")[0]);
@@ -203,7 +203,7 @@ export function environmentSummary(checks: readonly EnvironmentCheck[]): { error
 const label: Readonly<Record<EnvironmentStatus, string>> = { ok: "ok", warning: "warn", error: "missing" };
 
 /** Render the report: one aligned line per check, then the reason and remedy for anything unmet. */
-/* uneffect:effect none */
+/* uneffect:effect Throw<RangeError> */
 export function formatEnvironmentReport(checks: readonly EnvironmentCheck[]): string {
   const statusWidth = Math.max(...checks.map((check) => label[check.status].length));
   const nameWidth = Math.max(...checks.map((check) => check.name.length));

@@ -6,6 +6,7 @@ export type { ContractExit } from "../../contracts/control-flow-contracts.js";
 export interface ContractControlFlowOptions {
   readonly isNeverCall?: (call: ts.CallExpression) => boolean;
   readonly constantBoolean?: (expression: ts.Expression) => boolean | undefined;
+  readonly exhaustiveSwitch?: (condition: ts.Expression, tests: readonly ts.Expression[]) => boolean | undefined;
 }
 
 /** Read original Program nodes so checker callbacks retain object identity. */
@@ -31,7 +32,7 @@ const syntax: ControlFlowSyntax<ts.Statement, ts.Expression> = {
     if (ts.isBreakStatement(node) || ts.isContinueStatement(node)) return { kind: ts.isBreakStatement(node) ? "break" : "continue", label: node.label?.text };
     if (ts.isBlock(node)) return { kind: "block", statements: node.statements };
     if (ts.isIfStatement(node)) return { kind: "if", condition: node.expression, consequent: node.thenStatement, alternate: node.elseStatement };
-    if (ts.isSwitchStatement(node)) return { kind: "switch", condition: node.expression, clauses: node.caseBlock.clauses.map(clause => ({ isDefault: ts.isDefaultClause(clause), statements: clause.statements })) };
+    if (ts.isSwitchStatement(node)) return { kind: "switch", condition: node.expression, clauses: node.caseBlock.clauses.map(clause => ({ isDefault: ts.isDefaultClause(clause), ...(ts.isCaseClause(clause) ? { test: clause.expression } : {}), statements: clause.statements })) };
     if (ts.isTryStatement(node)) return { kind: "try", body: node.tryBlock, handler: node.catchClause?.block, finalizer: node.finallyBlock };
     if (ts.isLabeledStatement(node)) return { kind: "label", label: node.label.text, body: node.statement };
     if (ts.isIterationStatement(node, false)) {
@@ -48,6 +49,7 @@ function controlFlow(options: ContractControlFlowOptions) {
   return createContractControlFlow(syntax, {
     constantBoolean: options.constantBoolean,
     isNeverCall: call => ts.isCallExpression(call) && options.isNeverCall?.(call) === true,
+    ...(options.exhaustiveSwitch === undefined ? {} : { exhaustiveSwitch: options.exhaustiveSwitch }),
   });
 }
 export function statementExit(statement: ts.Statement, options: ContractControlFlowOptions = {}): Set<ContractExit> {

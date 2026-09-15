@@ -13,7 +13,7 @@ export type ControlFlowStatement<S, E> =
   | { readonly kind: "break" | "continue"; readonly label?: string }
   | { readonly kind: "block"; readonly statements: readonly S[] }
   | { readonly kind: "if"; readonly condition: E; readonly consequent: S; readonly alternate?: S }
-  | { readonly kind: "switch"; readonly condition: E; readonly clauses: readonly { readonly isDefault: boolean; readonly statements: readonly S[] }[] }
+  | { readonly kind: "switch"; readonly condition: E; readonly clauses: readonly { readonly isDefault: boolean; readonly test?: E; readonly statements: readonly S[] }[] }
   | { readonly kind: "try"; readonly body: S; readonly handler?: S; readonly finalizer?: S }
   | { readonly kind: "loop"; readonly body: S; readonly condition?: E; readonly unconditional: boolean; readonly postTest: boolean }
   | { readonly kind: "label"; readonly label: string; readonly body: S }
@@ -28,6 +28,12 @@ export interface ControlFlowSyntax<S, E> {
 export interface ControlFlowSemantics<E> {
   readonly isNeverCall?: (call: E) => boolean;
   readonly constantBoolean?: (expression: E) => boolean | undefined;
+  /**
+   * Whether the supplied case tests cover every value the discriminant can take, so a `default`-less switch
+   * cannot complete normally. Only a frontend holding checker types can answer it; `undefined` keeps the
+   * structural answer, which is that the switch may complete normally.
+   */
+  readonly exhaustiveSwitch?: (condition: E, tests: readonly E[]) => boolean | undefined;
 }
 
 export type ContractExit = "normal" | "return" | "throw" | `break:${string}` | `continue:${string}`;
