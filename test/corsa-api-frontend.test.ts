@@ -216,7 +216,10 @@ describe("Corsa API frontend", () => {
     ]) {
       expect(source, method).not.toMatch(new RegExp(String.raw`callJson\(\s*"${method}"`));
     }
-    expect(source).not.toMatch(/callJson\(/);
+    // One relation has no named counterpart at all: both `getTypeAtPosition` and `getTypeAtSourceRange`
+    // resolve by start position, which cannot type a call result, a coalesced value or an element. Everything
+    // else must stay on a named method, so the exception is pinned to exactly that one name.
+    expect([...source.matchAll(/callJson\(\s*"([A-Za-z]+)"/gu)].map((match) => match[1])).toEqual(["getTypeAtLocation"]);
   });
 
   it("resolves properties and assignability through typed Corsa adapters", async () => {

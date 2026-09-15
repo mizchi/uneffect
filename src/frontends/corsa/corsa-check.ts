@@ -202,13 +202,14 @@ function uniqueEffects(names: readonly string[]): Effect[] {
  * the unknown reason all ask about the same receiver position, so without this each site pays for the same
  * answer several times; the compiler's cost per query grows with file size.
  */
-export type CorsaCheckQueries = Pick<CorsaApiFrontend, "getTypeAtPosition" | "getSymbolOfType" | "getPropertyOfType" | "getSymbolAtPosition">;
+export type CorsaCheckQueries = Pick<CorsaApiFrontend, "getTypeAtPosition" | "getTypeAtRange" | "getSymbolOfType" | "getPropertyOfType" | "getSymbolAtPosition">;
 
 function memoizeQueries(frontend: CorsaApiFrontend, fileName: string): CorsaCheckQueries {
   const types = new Map<number, CorsaApiTypeFact | null>();
   const typeSymbols = new Map<string, CorsaApiSymbolFact | null>();
   const properties = new Map<string, CorsaApiSymbolFact | null>();
   const positionSymbols = new Map<number, CorsaApiSymbolFact | null>();
+  const ranges = new Map<string, CorsaApiTypeFact | null>();
   const remember = <K, V>(cache: Map<K, V>, key: K, compute: () => V): V => {
     if (cache.has(key)) return cache.get(key)!;
     const value = compute();
@@ -219,6 +220,9 @@ function memoizeQueries(frontend: CorsaApiFrontend, fileName: string): CorsaChec
     getTypeAtPosition: (file, position) => file !== fileName
       ? frontend.getTypeAtPosition(file, position)
       : remember(types, position, () => frontend.getTypeAtPosition(file, position)),
+    getTypeAtRange: (file, span, nativeKind) => file !== fileName
+      ? frontend.getTypeAtRange(file, span, nativeKind)
+      : remember(ranges, `${span.start}:${span.end}:${nativeKind}`, () => frontend.getTypeAtRange(file, span, nativeKind)),
     getSymbolOfType: (type) => remember(typeSymbols, type.id, () => frontend.getSymbolOfType(type)),
     getPropertyOfType: (type, name) => remember(properties, `${type.id}#${name}`, () => frontend.getPropertyOfType(type, name)),
     getSymbolAtPosition: (file, position) => file !== fileName
@@ -229,16 +233,12 @@ function memoizeQueries(frontend: CorsaApiFrontend, fileName: string): CorsaChec
 
 function resolveDomContract(
   corsa: CorsaCheckQueries,
-  file: string,
+  receiverType: CorsaApiTypeFact | null,
   site: SyntaxSite,
   domMethods: Map<string, BuiltinContract>,
   graph: DomInterfaceGraph,
 ): BuiltinContract | undefined {
-  if (site.receiverPosition === undefined || !corsa.getTypeAtPosition || !corsa.getSymbolOfType || !corsa.getPropertyOfType) {
-    return undefined;
-  }
-  const receiverType = corsa.getTypeAtPosition(file, site.receiverPosition);
-  if (!receiverType) return undefined;
+  if (!receiverType || !corsa.getSymbolOfType || !corsa.getPropertyOfType) return undefined;
   const owner = corsa.getSymbolOfType(receiverType);
   if (!declaredByDomLibrary(owner)) return undefined;
   const member = corsa.getPropertyOfType(receiverType, site.name);
@@ -298,7 +298,7 @@ function domSurfaceFor(
  */
 function resolveEcmaScriptContract(
   corsa: CorsaCheckQueries,
-  file: string,
+  receiverType: CorsaApiTypeFact | null,
   site: SyntaxSite,
   members: Map<string, BuiltinContract>,
   globals: Map<string, BuiltinContract>,
@@ -310,11 +310,9 @@ function resolveEcmaScriptContract(
   // written at the site only: unlike the TypeScript path, this one has no cross-file symbol resolution to
   // follow a `const` binding back to its initializer with, so a named literal stays unknown here.
   if (arrayLiteralReceivers.has(site.calleePosition)) return members.get(`Array#${site.name}`);
-  if (site.receiverPosition === undefined || !corsa.getTypeAtPosition || !corsa.getSymbolOfType || !corsa.getPropertyOfType) {
-    return undefined;
-  }
-  const receiverType = corsa.getTypeAtPosition(file, site.receiverPosition);
-  if (!receiverType) return undefined;
+  // The receiver's type is read from its own RANGE by the caller, not from a position: a position query
+  // resolves the innermost token, which for a computed member is the key rather than the receiver.
+  if (!receiverType || !corsa.getSymbolOfType || !corsa.getPropertyOfType) return undefined;
   const owner = corsa.getSymbolOfType(receiverType);
   const member = corsa.getPropertyOfType(receiverType, site.name);
   if (!declaredByEcmaScriptLibrary(member)) return undefined;
@@ -632,7 +630,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
        */
       const unresolvedLabel = (site: SyntaxSite, symbol: CorsaApiSymbolFact | null): string => {
         if (site.receiverPosition === undefined) return site.name;
-        const receiverType = queries.getTypeAtPosition(fileName, site.receiverPosition);
+        const receiverType = receiverTypeAt(site);
         // The member has to be declared on the type that was read, or the receiver that was typed is not the
         // one this call runs on: `Object.entries(v).map(...)` types `Object`, which declares no `map`.
         const member = receiverType ? queries.getPropertyOfType?.(receiverType, site.name) : null;
@@ -645,6 +643,17 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         return ownerName ? `${ownerName}#${site.name}` : (symbol ? site.name : `<unresolved>.${site.name}`);
       };
 
+      /**
+       * The receiver's own type. A receiver the last identifier token describes is typed at that token; every
+       * other receiver was typed at its exact range by the source facts, because the token that begins it
+       * belongs to a different expression.
+       */
+      const receiverTypeAt = (site: SyntaxSite): CorsaApiTypeFact | null => {
+        if (site.receiverPosition === undefined) return null;
+        return indexAccess.receiverTypes.get(`${site.start}:${site.end}`)
+          ?? queries.getTypeAtPosition(fileName, site.receiverPosition);
+      };
+
       /** A bare call or construction of a standard-library global, such as `structuredClone` or `new Map`. */
       const standardGlobalContract = (site: SyntaxSite): BuiltinContract | undefined => {
         const symbol = queries.getSymbolAtPosition(fileName, site.calleePosition);
@@ -652,8 +661,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         return globals.get(symbol!.name);
       };
       const memberSymbolAt = (site: SyntaxSite): CorsaApiSymbolFact | null => {
-        if (site.receiverPosition === undefined) return null;
-        const receiverType = queries.getTypeAtPosition(fileName, site.receiverPosition);
+        const receiverType = receiverTypeAt(site);
         return receiverType ? queries.getPropertyOfType(receiverType, site.name) : null;
       };
       const recordClassCall = (site: SyntaxSite): boolean => {
@@ -740,8 +748,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         const contract = classifiedContract
           ?? (site.receiverPosition === undefined
             ? standardGlobalContract(site)
-            : resolveDomContract(queries, fileName, site, domMethods, domGraph)
-              ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts));
+            : resolveDomContract(queries, receiverTypeAt(site), site, domMethods, domGraph)
+              ?? resolveEcmaScriptContract(queries, receiverTypeAt(site), site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts));
         if (contract) record(site, contract);
         else if (!recordClassCall(site)) recordUnclassified(site);
       }
@@ -751,8 +759,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           if (contract) record(site, contract);
           else if (!recordClassCall(site)) recordUnclassified(site);
         } else if (site.kind === "property") {
-          const contract = resolveDomContract(queries, fileName, site, domMethods, domGraph)
-            ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts);
+          const contract = resolveDomContract(queries, receiverTypeAt(site), site, domMethods, domGraph)
+            ?? resolveEcmaScriptContract(queries, receiverTypeAt(site), site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts);
           if (contract) record(site, contract);
           // A member the DOM library declares carries host semantics this check did not model, and an accessor
           // runs a body this path does not analyze; both are unknown, not proofs of effect freedom. A member the

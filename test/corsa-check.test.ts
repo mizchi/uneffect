@@ -110,6 +110,28 @@ export function counted(node: string): boolean { return children(node).some((ite
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("types a receiver the checker cannot resolve from a single token", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-chained-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `declare function children(node: string): string[];
+export function ordered(value: Record<string, string>): string[] { return Object.entries(value).map(([key]) => key); }
+export function counted(node: string): number { return children(node).filter((item) => item.length > 0).length; }
+export function defaulted(value: string[] | undefined): string[] { return (value ?? []).map((item) => item); }
+export function head(value: string): string { return value.split(",")[0]!.trim(); }
+`);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const result = await checkCorsaProject({ configFile: temporaryConfig });
+      const reasons = Object.fromEntries(result.summaries.map((summary) =>
+        [summary.functionName, (summary.unknownReasons ?? []).map((reason) => reason.message).join(" | ")]));
+      // The receiver of each of these is a call result, a coalesced value or an element, none of which the
+      // last identifier token of the expression describes.
+      for (const [name, member] of [["ordered", "map"], ["counted", "filter"], ["defaulted", "map"], ["head", "trim"]] as const) {
+        expect(reasons[name] ?? "", name).not.toContain(`no reviewed contract for ${member}`);
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("claims nothing when no admitted builtin contract is reached", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-no-assumptions-"));
     try {

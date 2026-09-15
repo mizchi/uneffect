@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import type { SemanticPositionFact, SemanticQueryFrontend } from "../semantic-query.js";
+import { decodeNativeSourceIndex, type NativeSourceIndex } from "./native-source-index.js";
 
 export type { SemanticPositionFact, SemanticQueryFrontend } from "../semantic-query.js";
 
@@ -152,6 +153,13 @@ export interface CorsaApiFrontend extends SemanticQueryFrontend {
   getImmediateAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
   getExportsOfModule(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact[];
   getTypeAtPosition(file: string, position: number): CorsaApiTypeFact | null;
+  /**
+   * The type of the expression occupying an exact source range, authenticated against the native syntax tree.
+   * A position query resolves the innermost token, which for a call result, a coalesced value or an element is
+   * a different expression; this asks about the expression itself. `null` when the native tree holds no node of
+   * that kind at that range, so a caller that cannot name the kind resolves nothing rather than guessing.
+   */
+  getTypeAtRange(file: string, span: { start: number; end: number }, nativeKind: number): CorsaApiTypeFact | null;
   getTypesAtPositions(file: string, positions: readonly number[]): Array<CorsaApiTypeFact | null>;
   getPropertyOfType(type: CorsaApiTypeFact, name: string): CorsaApiSymbolFact | null;
   getSymbolOfType(type: CorsaApiTypeFact): CorsaApiSymbolFact | null;
@@ -273,6 +281,18 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
     const assertOpen = (): void => {
       if (closed) throw new Error("Corsa API frontend is closed");
     };
+    const indexes = new Map<string, NativeSourceIndex>();
+    const sourceIndexOf = (file: string): NativeSourceIndex => {
+      const path = projectFile(file);
+      const cached = indexes.get(path);
+      if (cached) return cached;
+      const data = client.getSourceFile(snapshot!.snapshot, project.id, path);
+      if (!data) throw new Error(`${path} is not part of the Corsa project`);
+      const index = decodeNativeSourceIndex(data);
+      indexes.set(path, index);
+      indexes.set(index.path, index);
+      return index;
+    };
     const classify = (
       symbol: CorsaApiSymbolFact | null, receiver: CorsaApiSymbolFact | null | undefined,
       typeSymbol: CorsaApiSymbolFact | null = null,
@@ -340,6 +360,18 @@ export async function openCorsaApiFrontend(options: CorsaApiFrontendOptions): Pr
       getTypeAtPosition(file, position) {
         assertOpen();
         return normalizeType(client.getTypeAtPosition(snapshot!.snapshot, project.id, projectFile(file), position) as CorsaApiTypeFact | null);
+      },
+      getTypeAtRange(file, span, nativeKind) {
+        assertOpen();
+        if (!Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) || span.start < 0 || span.end <= span.start) {
+          throw new Error("invalid native source range");
+        }
+        const node = sourceIndexOf(file).find(nativeKind, span);
+        if (!node) return null;
+        const result = client.callJson("getTypeAtLocation", {
+          snapshot: Number(snapshot!.snapshot), project: project.id, location: node.handle,
+        });
+        return normalizeType(result as CorsaApiTypeFact | null);
       },
       getTypesAtPositions(file, positions) {
         assertOpen();

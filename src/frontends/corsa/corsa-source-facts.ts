@@ -4,6 +4,7 @@ import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
 import { enclosingFunction, receiverTokenPosition } from "../oxc-syntax.js";
 import type { SyntaxFunction, SyntaxSite } from "../syntax-facts-contract.js";
 import type { CorsaApiFrontend, CorsaApiSymbolFact, CorsaApiTypeFact } from "./corsa-api-frontend.js";
+import { nativeExpressionKind } from "./native-expression-kind.js";
 
 /**
  * Checker-backed element-access analysis for the default Corsa check.
@@ -29,7 +30,7 @@ import type { CorsaApiFrontend, CorsaApiSymbolFact, CorsaApiTypeFact } from "./c
  * `for` header. Interprocedural predicates, guards in an enclosing function, and
  * receiver reassignment remain explicit non-claims.
  */
-export type CorsaSourceFactsFrontend = Pick<CorsaApiFrontend, "getTypeAtPosition" | "getSymbolOfType" | "getPropertyOfType">;
+export type CorsaSourceFactsFrontend = Pick<CorsaApiFrontend, "getTypeAtPosition" | "getTypeAtRange" | "getSymbolOfType" | "getPropertyOfType">;
 
 export interface CorsaSourceFactsOptions {
   /** `Owner#member` keys of the reviewed `lib.dom` contracts the check can select. */
@@ -70,6 +71,13 @@ export interface CorsaSourceFacts {
   readonly assignmentTargets: ReadonlySet<string>;
   /** `${start}:${end}` keys of member expressions both read and written, such as a compound assignment. */
   readonly readWriteTargets: ReadonlySet<string>;
+  /**
+   * The receiver type of a call or member site whose receiver is not one the last identifier token describes —
+   * a call result, a coalesced value, an element, a parenthesized expression. Keyed by the site's own
+   * `${start}:${end}`. A receiver the native tree cannot place at that exact range is absent, so the consumer
+   * resolves nothing rather than reading the type of a different expression.
+   */
+  readonly receiverTypes: ReadonlyMap<string, CorsaApiTypeFact>;
   /**
    * Call-expression start offset to the start offset of each argument that is written inline as a function,
    * or `null` for an argument this path cannot see into. A reviewed callback contract can be composed only
@@ -711,7 +719,32 @@ export function analyzeCorsaSourceFacts(
   const inlineFunctionArguments = new Map<string, readonly (number | null)[]>();
   const callArgumentIdentifiers = new Map<string, readonly (number | null)[]>();
   const assignedInlineFunctions = new Map<string, number>();
+  const receiverTypes = new Map<string, CorsaApiTypeFact>();
+  /**
+   * A receiver the last identifier token already describes needs no range query. Everything else — a call
+   * result, a coalesced value, an element, a parenthesized expression — is typed at its own exact range, which
+   * the native tree authenticates. A kind the tree does not carry yields nothing rather than a nearby token.
+   */
+  const recordReceiverType = (site: EstreeNode, receiver: EstreeNode | undefined): void => {
+    if (!receiver || !frontend.getTypeAtRange) return;
+    if (typeof site.start !== "number" || typeof site.end !== "number") return;
+    if (typeof receiver.start !== "number" || typeof receiver.end !== "number") return;
+    if (receiverTokenPosition(receiver) !== undefined) return;
+    const kind = nativeExpressionKind(receiver as never);
+    if (kind === undefined) return;
+    // A range the native tree cannot place unambiguously is one this path does not type. It is an ordinary
+    // absence of evidence, so it must not end the whole check.
+    let type: CorsaApiTypeFact | null = null;
+    try { type = frontend.getTypeAtRange(fileName, { start: receiver.start, end: receiver.end }, kind); }
+    catch { return; }
+    if (type) receiverTypes.set(`${site.start}:${site.end}`, type);
+  };
   walk(program, (node) => {
+    if (node.type === "MemberExpression" && isNode(node.object)) recordReceiverType(node, node.object);
+    if ((node.type === "CallExpression" || node.type === "NewExpression") && isNode(node.callee)) {
+      const callee = unwrap(node.callee);
+      if (callee.type === "MemberExpression" && isNode(callee.object)) recordReceiverType(node, callee.object);
+    }
     if ((node.type === "CallExpression" || node.type === "NewExpression")
       && typeof node.start === "number" && typeof node.end === "number") {
       const args = (Array.isArray(node.arguments) ? node.arguments : []).filter(isNode);
@@ -906,7 +939,7 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {

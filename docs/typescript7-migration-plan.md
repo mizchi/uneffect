@@ -115,6 +115,12 @@ virtual source の扱いを明示する。state とクエリ・解析ロジッ�
   member access は Oxc の syntax facts に接続済み。`just dogfood-native` で実コード
   3 ファイルの未対応構文を 50 → 16 件に削減し、意図的な Console 挿入も検出する。
   残る動的キー、object accessor は未移行。
+- receiver の型を token ではなく **式の範囲** で引くようにした。`getTypeAtRange` が native AST の
+  同一 span の node を照合して `getTypeAtLocation` を引く。call 結果・`??` の結果・要素・括弧付き式は
+  最左トークンが別の式なので、従来は contract を取り落とし（`String#trim` / `Array#map` / `Array#join` /
+  `Array#some` が registry にあるのに未解決）、`m.get(k)!.forEach(cb)` のように別 receiver の contract を
+  誤って選ぶこともあった。native tree にその kind の node が無ければ何も解決しない。
+  検証: `test/corsa-check.test.ts`。
 - 共通 `parseOxcSource` の TSX mode を揃えた。`oxcLanguage(fileName)` が全 Oxc 入口の言語を決め、
   file 指定 check の一時 project も JSX を受け付ける。`.tsx` を含む project は解析前に構文エラーで
   全体が失敗していた。検証: `test/oxc-source-language.test.ts`、`test/corsa-contract-check.test.ts`。
