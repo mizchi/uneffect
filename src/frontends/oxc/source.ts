@@ -10,9 +10,18 @@ export interface OxcSource {
   positionAt(offset: number): { line: number; character: number };
 }
 
+/**
+ * The Oxc grammar a file name selects. `.tsx` and `.ts` are different languages, not a formatting choice:
+ * `<T>value` is a type assertion in one and an unterminated element in the other, so reading a file under the
+ * wrong one either rejects valid source or attributes the wrong spans to it.
+ */
+export function oxcLanguage(fileName: string): "ts" | "tsx" {
+  return fileName.endsWith(".tsx") ? "tsx" : "ts";
+}
+
 /** Reject parser recovery before consumers can issue a positive analysis result. */
 export function parseOxcSource(fileName: string, text: string): OxcSource {
-  const parsed = parseSync(fileName, text, { lang: "ts" });
+  const parsed = parseSync(fileName, text, { lang: oxcLanguage(fileName) });
   if (parsed.errors.length) throw new Error(`${fileName}: invalid TypeScript syntax: ${parsed.errors.map(error => error.message).join("; ")}`);
   const starts = [0];
   for (let index = 0; index < text.length; index++) {

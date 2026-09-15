@@ -1,5 +1,5 @@
 import { parseSync, type Node } from "oxc-parser";
-import { oxcChildren } from "../oxc/source.js";
+import { oxcChildren, oxcLanguage } from "../oxc/source.js";
 import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
 import { collectFrozenEffectTables } from "./corsa-effect-tables.js";
 import { constructionBoundarySpan, declaredConstructor } from "../oxc-syntax.js";
@@ -58,7 +58,7 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
    */
   staticInitializers: number[];
 } {
-  const parsed = parseSync(file, text, { lang: file.endsWith(".tsx") ? "tsx" : "ts" });
+  const parsed = parseSync(file, text, { lang: oxcLanguage(file) });
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
   const writes = new Set<string>();
   const ambiguousWrites = new Set<string>();

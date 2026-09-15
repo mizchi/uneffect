@@ -1,5 +1,5 @@
 import { parseSync, type Node } from "oxc-parser";
-import { oxcChildren } from "../frontends/oxc/source.js";
+import { oxcChildren, oxcLanguage } from "../frontends/oxc/source.js";
 import type { CorsaApiFrontend } from "../frontends/corsa/corsa-api-frontend.js";
 import type { RegistryReadRuleOptions, RuleCfg, RuleEvent, SourceRuleLowering } from "./contracts.js";
 import { lowerRegistryStatements } from "./registry-control-flow.js";
@@ -11,7 +11,7 @@ class Unsupported extends Error { constructor(readonly node: Node, message: stri
 export function lowerRegistryReadCfg(source: string, frontend: CorsaApiFrontend, options: RegistryReadRuleOptions): SourceRuleLowering {
   const location = (node: Node) => ({ fileName: options.fileName, start: node.start, end: node.end });
   try {
-    const parsed = parseSync(options.fileName, source, { lang: options.fileName.endsWith(".tsx") ? "tsx" : "ts" });
+    const parsed = parseSync(options.fileName, source, { lang: oxcLanguage(options.fileName) });
     if (parsed.errors.length) throw new Unsupported(parsed.program, "invalid Oxc syntax");
     const fn = parsed.program.body.flatMap(statement => {
       const node = statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration" ? statement.declaration : statement;

@@ -112,7 +112,9 @@ virtual source の扱いを明示する。state とクエリ・解析ロジッ�
   member access は Oxc の syntax facts に接続済み。`just dogfood-native` で実コード
   3 ファイルの未対応構文を 50 → 16 件に削減し、意図的な Console 挿入も検出する。
   残る動的キー、object accessor は未移行。
-- 共通 `parseOxcSource` の TSX mode を揃える。Oxc 自体は TSX を解析できる。
+- 共通 `parseOxcSource` の TSX mode を揃えた。`oxcLanguage(fileName)` が全 Oxc 入口の言語を決め、
+  file 指定 check の一時 project も JSX を受け付ける。`.tsx` を含む project は解析前に構文エラーで
+  全体が失敗していた。検証: `test/oxc-source-language.test.ts`、`test/corsa-contract-check.test.ts`。
 - 網羅的 union switch の終端判定を移す。現状の安全側の `mayFallThrough` だけでは
   旧経路で成立した契約を証明できない。非網羅・fallthrough・default も比較する。
 - 任意型に対する awaited 型取得を実証する。実在する `AwaitExpression` の取得は実装済み。

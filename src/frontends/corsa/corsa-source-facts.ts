@@ -1,4 +1,5 @@
 import { parseSync } from "oxc-parser";
+import { oxcLanguage } from "../oxc/source.js";
 import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
 import { enclosingFunction, receiverTokenPosition } from "../oxc-syntax.js";
 import type { SyntaxFunction, SyntaxSite } from "../syntax-facts-contract.js";
@@ -235,7 +236,20 @@ interface FunctionContext {
    * block and by the access's receiver and index. Built once per key, then binary-searched: scanning the
    * preceding statements at every access is quadratic in a function with many guards and many accesses.
    */
-  readonly guardIndex: Map<string, number[]>;
+
+}
+
+/** Follow `const alias = receiver` bindings to the name they ultimately stand for, without revisiting one. */
+function canonicalName(aliases: ReadonlyMap<string, string>, name: string): string {
+  const seen = new Set<string>();
+  let current = name;
+  while (!seen.has(current)) {
+    seen.add(current);
+    const next = aliases.get(current);
+    if (next === undefined) break;
+    current = next;
+  }
+  return current;
 }
 
 class FunctionFacts {
@@ -248,8 +262,6 @@ class FunctionFacts {
   private readonly splitCandidates = new Map<string, { init: EstreeNode; end: number }>();
   private readonly declarationCounts = new Map<string, number>();
 
-  constructor(private readonly text: (node: EstreeNode) => string) {}
-
   private note(receiver: string, position: number): void {
     const list = this.lengthChanges.get(receiver);
     if (list) list.push(position); else this.lengthChanges.set(receiver, [position]);
@@ -257,18 +269,14 @@ class FunctionFacts {
 
   /** Resolve an alias chain to the binding the guard and the access must agree on. */
   canonical(name: string): string {
-    const seen = new Set<string>();
-    let current = name;
-    while (!seen.has(current)) {
-      seen.add(current);
-      const next = this.receiverAliases.get(current);
-      if (next === undefined) break;
-      current = next;
-    }
-    return current;
+    return canonicalName(this.receiverAliases, name);
   }
 
-  collect(root: EstreeNode, parents: ReadonlyMap<EstreeNode, EstreeNode>): FunctionContext {
+  collect(
+    root: EstreeNode,
+    parents: ReadonlyMap<EstreeNode, EstreeNode>,
+    text: (node: EstreeNode) => string,
+  ): FunctionContext {
     const forHeaderBindings = new Set<EstreeNode>();
     walk(root, (node) => {
       if (node.type === "ForStatement") {
@@ -296,7 +304,7 @@ class FunctionFacts {
           else if (init.type === "MemberExpression" && init.computed !== true && isNode(init.property)
             && init.property.name === "length" && isNode(init.object)) {
             // A `for` header counter bound is not `const`, but it is still a snapshot while nothing assigns it.
-            this.lengthSnapshots.set(name, { receiver: this.text(init.object), from: node.end });
+            this.lengthSnapshots.set(name, { receiver: text(init.object), from: node.end });
           } else if (isConst && init.type === "CallExpression") this.splitCandidates.set(name, { init, end: node.end });
         }
       }
@@ -308,7 +316,7 @@ class FunctionFacts {
         }
         if (target.type === "MemberExpression" && isNode(target.object) && isNode(target.property)
           && target.computed !== true && target.property.name === "length" && typeof node.start === "number") {
-          this.note(this.text(target.object), node.start);
+          this.note(text(target.object), node.start);
         }
       }
       if (node.type === "UpdateExpression" && isNode(node.argument)) {
@@ -320,14 +328,14 @@ class FunctionFacts {
       }
       if (node.type === "UnaryExpression" && node.operator === "delete" && isNode(node.argument)) {
         const target = unwrap(node.argument);
-        if (target.type === "MemberExpression" && isNode(target.object)) this.escaped.add(this.text(target.object));
+        if (target.type === "MemberExpression" && isNode(target.object)) this.escaped.add(text(target.object));
       }
       if (node.type === "CallExpression") {
         const callee = isNode(node.callee) ? unwrap(node.callee) : undefined;
         if (callee?.type === "MemberExpression" && callee.computed !== true && isNode(callee.object) && isNode(callee.property)
           && typeof callee.property.name === "string" && typeof node.start === "number"
           && lengthReducingMethods.has(callee.property.name)) {
-          this.note(this.text(callee.object), node.start);
+          this.note(text(callee.object), node.start);
         }
         // An array handed to code outside this fragment can be mutated or aliased there.
         for (const argument of Array.isArray(node.arguments) ? node.arguments : []) {
@@ -335,7 +343,7 @@ class FunctionFacts {
           const value = unwrap(argument);
           if (value.type === "Identifier" && typeof value.name === "string") this.escaped.add(value.name);
           if (value.type === "SpreadElement" && isNode(value.argument) && unwrap(value.argument).type === "Identifier") {
-            this.escaped.add(this.text(unwrap(value.argument)));
+            this.escaped.add(text(unwrap(value.argument)));
           }
         }
       }
@@ -354,15 +362,15 @@ class FunctionFacts {
       const minimum = this.splitMinimum(candidate.init);
       if (minimum > 0) splitMinimums.set(name, minimum);
     }
+    // Copies, so the collected context owns its data and the collector does not escape through it.
     return {
-      receiverAliases: this.receiverAliases,
-      lengthSnapshots: this.lengthSnapshots,
-      lengthChanges: this.lengthChanges,
-      escaped: this.escaped,
-      reassigned: this.reassigned,
-      everAssigned: this.everAssigned,
+      receiverAliases: new Map(this.receiverAliases),
+      lengthSnapshots: new Map(this.lengthSnapshots),
+      lengthChanges: new Map([...this.lengthChanges].map(([name, positions]) => [name, [...positions]])),
+      escaped: new Set(this.escaped),
+      reassigned: new Set(this.reassigned),
+      everAssigned: new Set(this.everAssigned),
       splitMinimums,
-      guardIndex: new Map<string, number[]>(),
     };
   }
 
@@ -403,6 +411,8 @@ class AccessContext {
     readonly facts: FunctionContext,
     readonly canonicalReceiver: string,
     readonly canonicalize: (name: string) => string,
+    /** Memo of the early-exit guards each statement list ends before, shared across the whole file. */
+    readonly guardIndex: Map<string, number[]>,
   ) {}
 
   text(node: EstreeNode): string {
@@ -634,7 +644,7 @@ function guarded(access: EstreeNode, context: AccessContext, parents: ReadonlyMa
         const siblings = statementList(ancestor);
         if (!siblings) break;
         const key = `${ancestor.start}:${context.canonicalReceiver}:${context.index.text}`;
-        let ends = context.facts.guardIndex.get(key);
+        let ends = context.guardIndex.get(key);
         if (ends === undefined) {
           ends = [];
           for (const statement of siblings) {
@@ -644,7 +654,7 @@ function guarded(access: EstreeNode, context: AccessContext, parents: ReadonlyMa
             // over the block answers it for every access that indexes the same binding the same way.
             if (context.impliedByOutOfRange(statement.test, statement.end!)) ends.push(statement.end!);
           }
-          context.facts.guardIndex.set(key, ends);
+          context.guardIndex.set(key, ends);
         }
         // The nearest preceding guard has the smallest window, so if a length change falls inside it, it falls
         // inside every earlier guard's window too; checking that one is enough.
@@ -665,7 +675,7 @@ export function analyzeCorsaSourceFacts(
   functions: readonly SyntaxFunction[],
   options: CorsaSourceFactsOptions,
 ): CorsaSourceFacts {
-  const parsed = parseSync(fileName, sourceText, { lang: fileName.endsWith(".tsx") ? "tsx" : "ts" });
+  const parsed = parseSync(fileName, sourceText, { lang: oxcLanguage(fileName) });
   const program = parsed.program as unknown as EstreeNode;
   const parents = new Map<EstreeNode, EstreeNode>();
   const computedMembers: EstreeNode[] = [];
@@ -786,15 +796,19 @@ export function analyzeCorsaSourceFacts(
     return selectable;
   };
 
-  const factsCache = new Map<EstreeNode, { context: FunctionContext; canonicalize: (name: string) => string }>();
-  const factsOf = (root: EstreeNode) => {
-    const cached = factsCache.get(root);
+  // The cache holds the collected context only. Returning a closure over the collector would let the collector
+  // escape through it, and the whole-source effect analysis cannot reduce an escaping alias to one root; the
+  // context already carries the alias map the canonical resolution reads.
+  // Keyed by the function root's start offset: a syntax node is not reducible to one addressable root, and a
+  // cache keyed by one is an alias the whole-source effect analysis cannot name.
+  const contextCache = new Map<number, FunctionContext>();
+  const guardIndex = new Map<string, number[]>();
+  const factsOf = (root: EstreeNode, cache: Map<number, FunctionContext>): FunctionContext => {
+    const cached = cache.get(root.start ?? -1);
     if (cached) return cached;
-    const facts = new FunctionFacts(text);
-    const context = facts.collect(root, parents);
-    const entry = { context, canonicalize: (name: string) => facts.canonical(name) };
-    factsCache.set(root, entry);
-    return entry;
+    const context = new FunctionFacts().collect(root, parents, text);
+    cache.set(root.start ?? -1, context);
+    return context;
   };
   const functionRootOf = (node: EstreeNode): EstreeNode | undefined => {
     let current: EstreeNode | undefined = node;
@@ -848,10 +862,11 @@ export function analyzeCorsaSourceFacts(
     if (!index) continue;
     const functionRoot = functionRootOf(member);
     if (!functionRoot) continue;
-    const { context: facts, canonicalize } = factsOf(functionRoot);
+    const facts = factsOf(functionRoot, contextCache);
+    const canonicalize = (name: string): string => canonicalName(facts.receiverAliases, name);
     const receiverText = text(receiver);
     const canonicalReceiver = unwrap(receiver).type === "Identifier" ? canonicalize(text(unwrap(receiver))) : receiverText;
-    const context = new AccessContext(sourceText, receiverText, text(member), index, facts, canonicalReceiver, canonicalize);
+    const context = new AccessContext(sourceText, receiverText, text(member), index, facts, canonicalReceiver, canonicalize, guardIndex);
     if (guarded(member, context, parents)) continue;
     if (index.kind === "literal") {
       const minimum = facts.splitMinimums.get(canonicalReceiver) ?? 0;

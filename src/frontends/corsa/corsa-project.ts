@@ -42,6 +42,9 @@ export function writeEphemeralCorsaProject(fileNames: readonly string[]): { conf
       module: "NodeNext",
       moduleResolution: "NodeNext",
       lib: ["ES2022", "DOM"],
+      // A `.tsx` file is JSX source by its name alone, and without this the compiler rejects every one of them
+      // before the check reads a single fact. `preserve` type-checks the elements without choosing a runtime.
+      jsx: "preserve",
     },
     files: fileNames.map((file) => resolve(file)),
   }, null, 2)}\n`);

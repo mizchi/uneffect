@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { parseSync } from "oxc-parser";
+import { oxcLanguage } from "./oxc/source.js";
 import oxcParserMetadata from "oxc-parser/package.json" with { type: "json" };
 import { syntaxFactsSchema } from "./syntax-facts-contract.js";
 import type {
@@ -267,8 +268,9 @@ function isCallTarget(node: EstreeNode, parents: ReadonlyMap<EstreeNode, EstreeN
 
 /** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */
 export function collectSyntaxFacts(fileName: string, sourceText: string): SyntaxFacts {
-  const language = fileName.endsWith(".tsx") ? "tsx" as const : "typescript" as const;
-  const parsed = parseSync(fileName, sourceText, { lang: language === "tsx" ? "tsx" : "ts" });
+  const lang = oxcLanguage(fileName);
+  const language = lang === "tsx" ? "tsx" as const : "typescript" as const;
+  const parsed = parseSync(fileName, sourceText, { lang });
   const functions: SyntaxFunction[] = [], sites: SyntaxSite[] = [];
   const parents = new Map<EstreeNode, EstreeNode>();
   const exclusions = new Map<SyntaxFactsCoverageDomain, SyntaxFactExclusion[]>([

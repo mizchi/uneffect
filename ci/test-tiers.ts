@@ -77,6 +77,7 @@ export const ciTestTiers = {
     "test/registry-dogfood.test.ts",
     "test/registry-source-bugs.test.ts",
     "test/temporal-expressions.test.ts",
+    "test/oxc-source-language.test.ts",
     "test/oxc-spec-migration.test.ts",
     "test/oxc-property-tests.test.ts",
     "test/oxc-dsl-migration.test.ts",
