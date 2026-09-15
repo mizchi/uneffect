@@ -732,12 +732,13 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: `ECMAScript ${owner}.${name} completes without a user-observable side effect and reaches no user code for the arguments a checked program can pass`,
       trustOwner: "@mizchi/uneffect",
     }))),
-    // These build a new string and throw when the result would exceed the implementation's string limit, or
-    // when the argument is outside the range the specification admits.
-    ...(["normalize", "repeat", "padStart", "padEnd", "concat"] as const).map((name) => reviewed("javascript", {
+    // Only the members the specification makes throw on an out-of-range ARGUMENT are listed. Exhausting the
+    // implementation's string limit is not modelled here: `+`, a template literal and `padEnd` all reach it,
+    // and charging three of them while the operators stay silent would describe the language inconsistently.
+    ...(["normalize", "repeat"] as const).map((name) => reviewed("javascript", {
       symbol: { module: "lib.es", export: `String#${name}` },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "RangeError" }] },
-      trustReason: `ECMAScript String.${name} reaches no user code but throws RangeError for an out-of-range argument or an over-long result`,
+      trustReason: `ECMAScript String.${name} reaches no user code but throws RangeError for an argument outside the range the specification admits`,
       trustOwner: "@mizchi/uneffect",
     })),
     reviewed("javascript", {

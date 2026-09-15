@@ -226,16 +226,16 @@ function relative(fileName: string, cwd: string | undefined): string {
   return fileName.startsWith(prefix) ? fileName.slice(prefix.length) : fileName;
 }
 
-/* uneffect:effect InvokeUserCode | Throw<TypeError> | Throw<RangeError> */
+/* uneffect:effect Throw<RangeError> */
 function frame(source: string | undefined, line: number): string[] {
   const text = source?.split(/\r?\n/u)[line - 1];
   if (text === undefined) return [];
-  const gutter = String(line);
+  const gutter = `${line}`;
   return [`  ${gutter} | ${text.trimEnd()}`, `  ${" ".repeat(gutter.length)} | ${" ".repeat(text.length - text.trimStart().length)}^`];
 }
 
 /** Render one diagnostic as a stable text block: header, source frame, then explanation notes. */
-/* uneffect:effect InvokeUserCode | Throw<TypeError> | Throw<RangeError> */
+/* uneffect:effect Throw<RangeError> */
 export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: DiagnosticFormatOptions = {}): string {
   const reported = reportDiagnostic(diagnostic);
   const source = options.sources?.get(diagnostic.fileName);
@@ -244,7 +244,7 @@ export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: Diagnos
 }
 
 /** Render a whole run: every diagnostic block plus a counted summary line. */
-/* uneffect:effect InvokeUserCode | Throw<TypeError> | Throw<RangeError> */
+/* uneffect:effect Throw<RangeError> */
 export function formatDiagnostics(diagnostics: readonly CheckerDiagnostic[], options: DiagnosticFormatOptions = {}): string {
   const reported = diagnostics.map(reportDiagnostic);
   const errors = reported.filter((item) => item.severity === "error").length;

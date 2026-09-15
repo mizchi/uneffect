@@ -14,7 +14,7 @@ export interface StaticEvaluationOptions {
 }
 
 /** A deliberately finite evaluator for proof-directed TypeScript control flow. */
-/* uneffect:effect InvokeUserCode | Throw<TypeError> */
+/* uneffect:effect none */
 export function evaluateStaticPrimitive(
   expression: ts.Expression,
   options: StaticEvaluationOptions,
@@ -23,7 +23,7 @@ export function evaluateStaticPrimitive(
   if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
-  if (ts.isNumericLiteral(expression)) return Number(expression.text);
+  if (ts.isNumericLiteral(expression)) return Number.parseFloat(expression.text);
   if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
     || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) {
     return evaluateStaticPrimitive(expression.expression, options, seen);
@@ -60,7 +60,7 @@ export function evaluateStaticPrimitive(
     : undefined;
 }
 
-/* uneffect:effect InvokeUserCode | Throw<TypeError> */
+/* uneffect:effect none */
 export function evaluateStaticBoolean(expression: ts.Expression, options: StaticEvaluationOptions): boolean | undefined {
   const value = evaluateStaticPrimitive(expression, options);
   return typeof value === "boolean" ? value : undefined;

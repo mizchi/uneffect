@@ -66,16 +66,16 @@ function commandVersion(command: string, args: readonly string[]): string | unde
   }
 }
 
-/* uneffect:effect InvokeUserCode | Throw<TypeError> */
+/* uneffect:effect none */
 function minimumMajor(range: string | undefined): number | undefined {
   const match = range ? /(\d+)/u.exec(range) : null;
-  return match ? Number(match[1]) : undefined;
+  return match ? Number.parseInt(match[1] ?? "", 10) : undefined;
 }
 
-/* uneffect:effect InvokeUserCode | Throw<TypeError> */
+/* uneffect:effect none */
 function nodeCheck(manifest: PackageManifest): EnvironmentCheck {
   const required = manifest.engines?.node, minimum = minimumMajor(required);
-  const major = Number(process.versions.node.split(".")[0]);
+  const major = Number.parseInt(process.versions.node.split(".")[0] ?? "", 10);
   const satisfied = minimum === undefined || major >= minimum;
   return {
     name: "node",

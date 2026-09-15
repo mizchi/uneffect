@@ -77,7 +77,7 @@ export async function cliVersion(): Promise<string> {
   return (await readPackageManifest()).version ?? "unknown";
 }
 
-/* uneffect:effect Throw<RangeError> */
+/* uneffect:effect none */
 export function formatCliHelp(): string {
   const width = Math.max(...commandLoaders.map((command) => command.name.length));
   return [

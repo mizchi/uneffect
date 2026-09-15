@@ -217,7 +217,8 @@ describe("Corsa-native project check", () => {
         export function textWork(value: string): string {
           return value.trim().toLowerCase().slice(1).substring(0, 2);
         }
-        export function textBuild(value: string, other: string): string { return value.concat(other); }
+        export function textBuild(value: string, count: number): string { return value.repeat(count); }
+        export function textJoin(value: string, other: string): string { return value.concat(other); }
         export function textSplit(value: string): string[] { return value.split(","); }
         export function textQuery(value: string, needle: string): boolean {
           return value.startsWith(needle) && value.includes(needle) && value.indexOf(needle) >= 0;
@@ -234,8 +235,11 @@ describe("Corsa-native project check", () => {
       const evidence = Object.fromEntries(checked.summaries.map(item => [item.functionName, item.evidence]));
       const formatted = Object.fromEntries(checked.summaries.map(item => [item.functionName, item.effects.map(formatEffect)]));
       for (const name of ["textWork", "textQuery"]) expect(evidence[name], name).toBe("inferred");
-      // Building a string can exceed the implementation's length limit, which is an effect, not purity.
+      // `repeat` rejects a negative count by specification, so the throw is part of its contract.
       expect(formatted.textBuild).toEqual(["Throw<RangeError>"]);
+      // Exhausting the implementation's string length limit is not modelled: `+` and a template literal reach
+      // it too, so charging `concat` alone would describe the language inconsistently.
+      expect(formatted.textJoin).toEqual([]);
       // A regular expression carries `lastIndex` state, which no reviewed contract describes.
       expect(evidence.pattern).toBe("unknown");
       // A conversion of an unconstrained value runs that value's own coercion method and can reject its result;

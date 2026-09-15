@@ -2829,14 +2829,19 @@ describe("Uneffect dogfood", () => {
     const fileNames = ["src/support/diagnostics.ts", "src/support/diagnostic-quality.ts"];
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
-    const selectedNames = new Set([
-      "fromTypeScriptDiagnostic", "reportDiagnostic", "formatDiagnostic", "formatDiagnostics", "formatCheckEvidence",
-      "scoreDiagnostic", "evaluateQuality", "formatQualityReport",
+    const pureNames = new Set([
+      "reportDiagnostic", "formatCheckEvidence", "scoreDiagnostic", "evaluateQuality", "formatQualityReport",
     ]);
+    // `String.repeat` throws RangeError for a negative count, and every one of these renders an indent whose
+    // width is computed from the source line rather than written down, so the throw is part of their contract.
+    const throwingNames = new Set(["fromTypeScriptDiagnostic", "formatDiagnostic", "formatDiagnostics"]);
+    const selectedNames = new Set([...pureNames, ...throwingNames]);
     const selected = result.summaries.filter((summary) => fileNames.includes(summary.fileName ?? "") && selectedNames.has(summary.functionName));
     expect(selected).toHaveLength(selectedNames.size);
     expect(selected.map((summary) => ({ name: summary.functionName, evidence: summary.evidence, effects: summary.effects })))
-      .toEqual(expect.arrayContaining([...selectedNames].map((name) => ({ name, evidence: "verified", effects: [] }))));
+      .toEqual(expect.arrayContaining([...pureNames].map((name) => ({ name, evidence: "verified", effects: [] }))));
+    for (const name of throwingNames) expect(selected.find((summary) => summary.functionName === name))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("rejects an unused Console allowance on diagnostic quality scoring", () => {
@@ -2878,9 +2883,13 @@ describe("Uneffect dogfood", () => {
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) =>
       files.some((file) => (summary.fileName ?? "").endsWith(file)));
-    for (const name of ["minimumMajor", "nodeCheck", "environmentSummary", "formatEnvironmentReport"]) {
+    for (const name of ["minimumMajor", "nodeCheck", "environmentSummary"]) {
       expect(selected.find((summary) => summary.functionName === name)).toMatchObject({ evidence: "verified", effects: [] });
     }
+    // `String.repeat` throws RangeError for a negative count, and the report's indent width is computed from
+    // the widest check rather than written down, so the throw belongs in the formatter's contract.
+    expect(selected.find((summary) => summary.functionName === "formatEnvironmentReport"))
+      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
     expect(selected.find((summary) => summary.functionName === "readPackageManifest"))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
     for (const name of ["commandVersion", "javaCheck"]) expect(selected.find((summary) => summary.functionName === name))

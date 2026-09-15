@@ -40,13 +40,13 @@ export interface CliCommand {
 type OptionConfig = NonNullable<ParseArgsConfig["options"]>;
 
 /** Strict parsing: an unknown or malformed option is a usage error, never a silently ignored word. */
-/* uneffect:effect Throw<CliUsageError> | InvokeUserCode | Throw<TypeError> */
+/* uneffect:effect Throw<CliUsageError> */
 export function parseCommandArgs(args: readonly string[], options: OptionConfig): { values: Record<string, unknown>; positionals: string[] } {
   try {
     const parsed = parseArgs({ args: [...args], options: { help: { type: "boolean" }, ...options }, allowPositionals: true, strict: true });
     return { values: parsed.values as Record<string, unknown>, positionals: parsed.positionals };
   } catch (cause) {
-    throw new CliUsageError(cause instanceof Error ? cause.message : String(cause));
+    throw new CliUsageError(cause instanceof Error ? cause.message : "invalid command-line arguments");
   }
 }
 
