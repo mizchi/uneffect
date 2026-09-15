@@ -58,6 +58,29 @@ export function plain(value: string): string { return value; }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("names an unresolved member only when the receiver it typed is the standard library's", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-labels-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `declare function children(node: string): string[];
+export function separated(value: string, separator: string): string[] { return value.split(separator); }
+export function ordered(value: Record<string, string>): string[] { return Object.entries(value).map(([key]) => key); }
+export function counted(node: string): boolean { return children(node).some((item) => item.length > 0); }
+`);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const result = await checkCorsaProject({ configFile: temporaryConfig });
+      const reasons = Object.fromEntries(result.summaries.map((summary) =>
+        [summary.functionName, (summary.unknownReasons ?? []).map((reason) => reason.message).join(" | ")]));
+      // A primitive receiver has no type symbol, but the resolver already knows which wrapper interface it is.
+      // The separator is dynamic: a single literal string separator is proved fresh and is not unresolved.
+      expect(reasons.separated).toContain("String#split");
+      // The receiver position is the leftmost token of a call-result receiver, so the symbol found there names
+      // an expression the call never reaches. It must not be presented as the member's owner.
+      expect(reasons.ordered).not.toContain("ObjectConstructor#");
+      expect(reasons.counted).not.toContain("children#");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("claims nothing when no admitted builtin contract is reached", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-no-assumptions-"));
     try {

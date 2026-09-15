@@ -624,12 +624,25 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           } else caller.unclassified = true;
         }
       };
-      /** How an unresolved callee is named in the unknown reason: its receiver type plus the member, when known. */
+      /**
+       * How an unresolved callee is named in the unknown reason: its receiver type plus the member, when known.
+       * Only a standard-library owner is named, by the same rule the resolver applies. The receiver position is
+       * the last identifier token of the receiver, which for a call result or a computed member belongs to a
+       * different expression, so a user symbol found there would name something this call never reaches.
+       */
       const unresolvedLabel = (site: SyntaxSite, symbol: CorsaApiSymbolFact | null): string => {
         if (site.receiverPosition === undefined) return site.name;
         const receiverType = queries.getTypeAtPosition(fileName, site.receiverPosition);
-        const owner = receiverType ? queries.getSymbolOfType(receiverType) : null;
-        return owner ? `${owner.name}#${site.name}` : (symbol ? site.name : `<unresolved>.${site.name}`);
+        // The member has to be declared on the type that was read, or the receiver that was typed is not the
+        // one this call runs on: `Object.entries(v).map(...)` types `Object`, which declares no `map`.
+        const member = receiverType ? queries.getPropertyOfType?.(receiverType, site.name) : null;
+        if (!declaredByEcmaScriptLibrary(member) && !declaredByDomLibrary(member)) {
+          return symbol ? site.name : `<unresolved>.${site.name}`;
+        }
+        const owner = queries.getSymbolOfType(receiverType!);
+        const ownerName = declaredByEcmaScriptLibrary(owner) || declaredByDomLibrary(owner)
+          ? owner!.name : primitiveOwnerName(receiverType!);
+        return ownerName ? `${ownerName}#${site.name}` : (symbol ? site.name : `<unresolved>.${site.name}`);
       };
 
       /** A bare call or construction of a standard-library global, such as `structuredClone` or `new Map`. */
