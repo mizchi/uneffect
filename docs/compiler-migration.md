@@ -92,9 +92,10 @@ the JavaScript compiler is absent.
 The next domains are:
 
 1. Freeze feature acceptance and define the replacement for public Program APIs.
-2. Close the remaining arbitrary-awaited-type gap and expose the neutral native
-   facts existing analyzers still need. The TSX grammar and the exhaustive-switch
-   termination fact are closed; contract-body lowering still rejects `switch`.
+2. Expose the neutral native facts existing analyzers still need. The TSX
+   grammar, the exhaustive-switch termination fact, and the awaited type of an
+   arbitrary type are closed; contract-body lowering still rejects `switch`, and
+   the awaited query has no consumer among the migrated analyzers yet.
 3. Move contract body lowering and effect/call-graph propagation, followed by
    ownership/resources, async, typed arrays, refinement, and proof consumers.
 4. Integrate native proof producers and consumers with workspace module
@@ -381,6 +382,17 @@ NodeNext package metadata, and a referenced producer's declaration tampering.
 AwaitExpression range. It compares with the old checker's `getAwaitedType` for
 plain values, Promise/PromiseLike, nested promises, unions, any/unknown/never,
 non-callable then members, disposable resources, and generic/constrained inputs.
+
+`getAwaitedTypes` answers the same question for a type that no `await` expression
+in the source produces. The pinned binding publishes no `getAwaitedType`, so the
+query follows the specification's own route: the `then` member the checker
+resolves, the first parameter of its call signature, and the value parameter of
+that callback, repeated for a nested thenable and applied to each constituent of
+a union. It returns the constituents rather than one type, because the boundary
+cannot construct a union, and `null` for any step the checker did not resolve or
+a budget it exhausted — never an assumption that the type is already settled. A
+type whose `then` is absent or not callable is not a thenable and is its own
+awaited type, which is the rule `PromiseResolve` applies.
 A missing await range returns no fact. Project diagnostics must be checked before
 using a returned type: invalid thenables may otherwise produce recovery types.
 This does not add the unavailable native `getAwaitedType(type)` RPC.

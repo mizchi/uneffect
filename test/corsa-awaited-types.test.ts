@@ -57,6 +57,48 @@ describe("native awaited expression gate", () => {
       finally { frontend.close(); }
     });
   });
+  it("derives the awaited type of an arbitrary type from the then signature the checker resolves", async () => {
+    const declaration = `export declare function probe(
+  plain: number,
+  promise: Promise<number>,
+  nested: Promise<Promise<string>>,
+  thenable: { then(done: (value: string) => unknown): void },
+  either: Promise<number> | Promise<string>,
+  maybe: Promise<number> | number,
+  nonCallable: { then: number },
+  settled: { size: number },
+): void;
+`;
+    await project(declaration, async (file, configFile) => {
+      const frontend = await openCorsaCallableFrontend({ configFile });
+      const other = await openCorsaCallableFrontend({ configFile });
+      try {
+        expect(frontend.getProjectDiagnostics()).toEqual([]);
+        const parameters = frontend.getSignaturesOfTypeAtPosition(file, declaration.indexOf("probe("))[0]!.parameters;
+        const program = ts.createProgram([file], { strict: true, target: ts.ScriptTarget.ESNext, types: [] });
+        const checker = program.getTypeChecker();
+        const signature = checker.getSignaturesOfType(
+          checker.getTypeAtLocation(program.getSourceFile(file)!.statements[0] as ts.FunctionDeclaration), ts.SignatureKind.Call)[0]!;
+        expect(parameters.map(parameter => parameter.name)).toEqual(signature.parameters.map(parameter => parameter.name));
+        for (const [index, parameter] of parameters.entries()) {
+          const settled = frontend.getAwaitedTypes(parameter.type);
+          expect(settled, parameter.name).not.toBeNull();
+          const oracle = checker.getAwaitedType(checker.getTypeOfSymbol(signature.parameters[index]!));
+          expect([...new Set(settled!.map(item => item.texts[0]))].sort(), parameter.name)
+            .toEqual([...new Set(checker.typeToString(oracle!).split(" | "))].sort());
+        }
+        // Display text is never the input: the result is the checker's own parameter types.
+        const promise = parameters[1]!.type;
+        promise.texts = ["never"];
+        expect(frontend.getAwaitedTypes(promise)!.map(item => item.texts[0])).toEqual(["number"]);
+        const foreign = other.getSignaturesOfTypeAtPosition(file, declaration.indexOf("probe("))[0]!.parameters[1]!.type;
+        expect(() => frontend.getAwaitedTypes(foreign)).toThrow(/owning snapshot/);
+        frontend.close();
+        expect(() => frontend.getAwaitedTypes(promise)).toThrow(/closed/);
+      } finally { frontend.close(); other.close(); }
+    });
+  });
+
   it("rejects ordinary expressions and mismatched sources rather than pretending to unwrap arbitrary types", async () => {
     await project(text, async (file, configFile) => {
       const frontend = await openCorsaCallableFrontend({ configFile });

@@ -48,7 +48,7 @@ TS7.0 の公式発表では新しい programmatic API を 7.1 に向けた別 AP
 | CFG / workflow / impact | 言語非依存 API | 集約入口の依存整理 |
 | spec / DSL / SMT・Quint / property test | Oxc の独立入口、native contract / refinement linking | DSL と実装本体の適合性証明は別 |
 | CFG lint / module-order | native CLI、公開 `/module-order` の非同期 v1/v2 API | workspace checker への統合 |
-| callable / type / 到達性 | native signature・型同一性・実在する await 式の型・never/boolean refinement・有限 literal union の網羅判定 | 任意型の awaited 化、契約本体 lowering の switch |
+| callable / type / 到達性 | native signature・型同一性・実在する await 式の型・任意型の awaited 化・never/boolean refinement・有限 literal union の網羅判定 | 契約本体 lowering の switch、消費側の解析への接続 |
 | build outputs | 単一 project と references の依存順 JS/d.ts 照合 | freshness、map、対応する emit 設定、既存 assurance flags への統合 |
 | workspace summary | native 宣言・入力・出力と直接 import 呼出の結び付け | 主張は `trusted`。本体証明、呼出側の事前条件、効果の合成は未実装 |
 | default check | 限定された builtin / callable facts | 本体の proof artifacts、ownership、typed arrays、resource 等は未移行 |
@@ -124,8 +124,13 @@ virtual source の扱いを明示する。state とクエリ・解析ロジッ�
   非網羅・widen した case・fallthrough・default・boolean・数値 union を Program oracle と比較する。
   検証: `test/corsa-contract-control-flow.test.ts`、`test/corsa-callable-frontend.test.ts`。
   契約本体 lowering (`corsa-contract-flow.ts`) の switch 対応は別で、M2 に残る。
-- 任意型に対する awaited 型取得を実証する。実在する `AwaitExpression` の取得は実装済み。
-  `getAwaitedType(type)` RPC は固定版で未提供であり、先頭型引数で代用しない。
+- 任意型に対する awaited 型取得を、同等クエリで実証した。`getAwaitedType(type)` RPC は固定版に無いため、
+  `getAwaitedTypes(type)` は仕様と同じ経路を辿る: checker が解決する `then` member →
+  その call signature の第 1 引数 → その callback の値引数 → ネストした thenable で反復。
+  union は構成要素ごとに解き、boundary が union 型を作れないため構成要素の配列を返す。
+  解けない段階・予算超過は `null` であり、「もう settled である」とは仮定しない。
+  `then` が無い / callable でない型は thenable ではなく自分自身が awaited 型（`PromiseResolve` の規則）。
+  Program の `checker.getAwaitedType` を oracle にして 8 型で照合。検証: `test/corsa-awaited-types.test.ts`。
 - properties、index signature、constraint、well-known symbol の facts を解析器の必要量で
   中立 API にする。`getIndexInfosOfType` 等は native RPC が既にあり、全て upstream 待ちではない。
 

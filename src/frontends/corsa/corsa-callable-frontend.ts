@@ -40,6 +40,16 @@ export interface CorsaCallableFrontend {
    * checker's own literal-type identity within this snapshot; no value, name, or display text is read.
    */
   coversFiniteLiteralType(type: CorsaApiTypeFact, covering: readonly CorsaApiTypeFact[]): boolean;
+  /**
+   * The constituents of `Awaited<T>` for an arbitrary type. The pinned binding publishes no `getAwaitedType`,
+   * so this follows the same route the specification does: the `then` member the checker resolves, the first
+   * parameter of its call signature, and the value parameter of that callback, repeated for a nested thenable.
+   * The boundary cannot construct a union type, so the constituents are returned rather than one type.
+   * `null` means a step the checker did not resolve or a budget was exhausted — never an assumption that the
+   * type is already settled. A type whose `then` is absent or not callable is not a thenable and is its own
+   * awaited type, which is the rule `PromiseResolve` applies.
+   */
+  getAwaitedTypes(type: CorsaApiTypeFact): readonly CorsaApiTypeFact[] | null;
   assertSource(file: string, source: string): void;
   getSymbolAtPosition(file: string, position: number): CorsaApiSymbolFact | null;
   getAliasedSymbol(symbol: CorsaApiSymbolFact): CorsaApiSymbolFact | null;
@@ -109,6 +119,8 @@ function callableQueries(client: CorsaApiClient, snapshot: string, project: stri
       // This method is implemented by the binding and accepts its string handles.
       return client.callJson<unknown>("getSignaturesOfType", { snapshot, project, type, kind });
     },
+    symbolType(symbol: string): unknown { return client.getTypeOfSymbol(snapshot, project, symbol); },
+    property(type: string, name: string): unknown { return client.getPropertyOfType(snapshot, project, type, name); },
   };
 }
 
@@ -312,6 +324,69 @@ export async function openCorsaCallableFrontend(options: CorsaApiFrontendOptions
           if (!covered.has(member)) return false;
         }
         return true;
+      },
+      getAwaitedTypes(type) {
+        ownedTypeId(type);
+        const budget = { types: 64 };
+        const seen = new Set<string>();
+        /** A union reports its members; every other type reports itself, so this needs no flag test. */
+        const constituentsOf = (fact: CorsaApiTypeFact): CorsaApiTypeFact[] => {
+          const raw = rpc.constituents(ownedTypeId(fact));
+          if (!Array.isArray(raw) || !raw.length) return [fact];
+          const parts = raw.map(typeFact);
+          return parts.length === 1 && ownedTypeId(parts[0]!) === ownedTypeId(fact) ? [fact] : parts;
+        };
+        const callSignatures = (fact: CorsaApiTypeFact): unknown[] => {
+          const raw = rpc.overloads(ownedTypeId(fact), 0);
+          return Array.isArray(raw) ? raw : [];
+        };
+        // The declared `onfulfilled` is optional, so its type is the callback in a union with null and
+        // undefined. Only the callable members carry the value this awaits; the nullish ones carry none.
+        const callableParts = (fact: CorsaApiTypeFact): CorsaApiTypeFact[] =>
+          callSignatures(fact).length ? [fact]
+            : constituentsOf(fact).filter((part) => callSignatures(part).length > 0);
+        const settle = (fact: CorsaApiTypeFact, depth: number): CorsaApiTypeFact[] | null => {
+          if (depth > 8 || budget.types-- <= 0) return null;
+          const id = ownedTypeId(fact);
+          if (seen.has(id)) return null;
+          seen.add(id);
+          try {
+            const then = symbolFact(rpc.property(id, "then"));
+            if (!then) return [fact];
+            const thenType = typeFact(rpc.symbolType(then.id));
+            const signature = callSignatures(thenType)[0];
+            if (signature === undefined) return [fact];
+            const parameters = rpc.parameters(record(signature).id);
+            if (!Array.isArray(parameters) || !parameters.length) return null;
+            const onFulfilled = typeFact(rpc.symbolType(String(numericHandle(record(parameters[0]).id))));
+            const callbacks = callableParts(onFulfilled);
+            if (!callbacks.length) return null;
+            const settled: CorsaApiTypeFact[] = [];
+            for (const callback of callbacks) {
+              const callbackSignature = callSignatures(callback)[0];
+              if (callbackSignature === undefined) return null;
+              const callbackParameters = rpc.parameters(record(callbackSignature).id);
+              if (!Array.isArray(callbackParameters) || !callbackParameters.length) return null;
+              const value = typeFact(rpc.symbolType(String(numericHandle(record(callbackParameters[0]).id))));
+              const nested = awaitedOf(value, depth + 1);
+              if (nested === null) return null;
+              settled.push(...nested);
+            }
+            return settled;
+          } finally { seen.delete(id); }
+        };
+        const awaitedOf = (fact: CorsaApiTypeFact, depth: number): CorsaApiTypeFact[] | null => {
+          const settled: CorsaApiTypeFact[] = [];
+          for (const part of constituentsOf(fact)) {
+            const result = settle(part, depth);
+            if (result === null) return null;
+            settled.push(...result);
+          }
+          const unique = new Map(settled.map((item) => [ownedTypeId(item), item]));
+          return [...unique.values()];
+        };
+        const result = awaitedOf(type, 0);
+        return result === null ? null : Object.freeze(result);
       },
       assertSource(file, text) {
         if (sourceIndex(file).text !== text) throw new Error(`${file}: source does not match the Corsa snapshot`);
