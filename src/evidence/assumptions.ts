@@ -7,52 +7,11 @@ import { collectBuiltinCallRefinements } from "../frontends/frontend-adapter.js"
 import { isRuntimeModuleDependency } from "../modules/module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "../analysis/typed-array-safety.js";
 import { resolveAssumptionRecord, type AssumptionRegistry } from "./assumption-registry.js";
+import { assumptionEntry, type AssumptionDomain, type AssumptionEntry, type AssumptionLedger, type AssumptionPolicy, type AssumptionScope, type AssumptionViolation } from "./assumption-contracts.js";
 
-export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-contract" | "dispatch-sealing" | "resource-callable" | "package-contract";
-
-export interface AssumptionScope {
-  fileName: string;
-  functionName?: string;
-  span: { start: number; end: number };
-}
-
-export interface AssumptionEntry {
-  id: string;
-  evidence: "trusted";
-  domain: AssumptionDomain;
-  reason: string;
-  scope: AssumptionScope;
-  owner?: string;
-  expiresOn?: string;
-  reviewDigest?: string;
-  dependency?: {
-    module: string;
-    packageVersion?: string;
-    nodeMajor?: number;
-  };
-}
-
-export interface AssumptionPolicy {
-  requireOwner?: boolean;
-  requireExpiration?: boolean;
-  denyExpired?: boolean;
-  allowUnboundedDomains?: AssumptionDomain[];
-  asOf?: string;
-}
-
-export interface AssumptionViolation {
-  assumptionId: string;
-  domain: AssumptionDomain;
-  rule: "owner-required" | "expiration-required" | "invalid-expiration" | "expired";
-  message: string;
-  scope: AssumptionScope;
-}
-
-export interface AssumptionLedger {
-  schema: "uneffect-assumptions/v1";
-  entries: AssumptionEntry[];
-  violations: AssumptionViolation[];
-}
+export type {
+  AssumptionDomain, AssumptionScope, AssumptionEntry, AssumptionPolicy, AssumptionViolation, AssumptionLedger,
+} from "./assumption-contracts.js";
 
 export interface AssumptionPolicyDiagnostic extends AssumptionViolation {
   fileName: string;
@@ -79,9 +38,7 @@ function metadata(source: ts.SourceFile, node: ts.Node, domain: AssumptionDomain
   return {};
 }
 
-function entry(input: Omit<AssumptionEntry, "id" | "evidence">, id?: string): AssumptionEntry {
-  return { ...input, id: id ?? digest(JSON.stringify(input)), evidence: "trusted" };
-}
+const entry = assumptionEntry;
 
 function temporalSummary(node: ts.FunctionDeclaration, source: ts.SourceFile): boolean {
   const leading = source.text.slice(node.getFullStart(), node.getStart(source));

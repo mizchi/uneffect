@@ -28,6 +28,47 @@ function capabilityNames(result: Awaited<ReturnType<typeof checkCorsaProject>>):
 }
 
 describe("Corsa-native project check", () => {
+  it("records the reviewed contract each admitted builtin call rests on", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-assumptions-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      const text = `export function read(input: string): unknown { return JSON.parse(input); }
+export function write(value: unknown): string { return JSON.stringify(value); }
+export function plain(value: string): string { return value; }
+`;
+      writeFileSync(join(directory, "index.ts"), text);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const result = await checkCorsaProject({ configFile: temporaryConfig });
+      const ledger = result.assumptions;
+      expect(ledger.schema).toBe("uneffect-assumptions/v1");
+      expect(ledger.violations).toEqual([]);
+      expect(ledger.entries).toHaveLength(2);
+      for (const entry of ledger.entries) {
+        expect(entry.evidence).toBe("trusted");
+        expect(entry.domain).toBe("builtin");
+        expect(entry.owner).toBe("@mizchi/uneffect");
+        expect(entry.id).toMatch(/^[a-f0-9]{64}$/);
+        expect(entry.scope.fileName).toBe(resolve(directory, "index.ts"));
+        expect(text.slice(entry.scope.span.start, entry.scope.span.end)).toMatch(/^JSON\.(parse|stringify)\(/);
+      }
+      // Each site is its own entry, and the reason is the contract's own review, not a generic placeholder.
+      expect(new Set(ledger.entries.map((entry) => entry.id)).size).toBe(2);
+      expect(ledger.entries.map((entry) => entry.scope.functionName).sort()).toEqual(["read", "write"]);
+      expect(ledger.entries.every((entry) => /JSON\.(parse|stringify)/.test(entry.reason))).toBe(true);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("claims nothing when no admitted builtin contract is reached", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-no-assumptions-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), "export function plain(value: string): string { return value; }\n");
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const result = await checkCorsaProject({ configFile: temporaryConfig });
+      expect(result.assumptions).toEqual({ schema: "uneffect-assumptions/v1", entries: [], violations: [] });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("authenticates literal member calls and isolates object handlers", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-handlers-"));
     try {

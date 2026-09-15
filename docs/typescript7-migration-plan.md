@@ -53,8 +53,11 @@ TS7.0 の公式発表では新しい programmatic API を 7.1 に向けた別 AP
 | workspace summary | native 宣言・入力・出力と直接 import 呼出の結び付け | 主張は `trusted`。本体証明、呼出側の事前条件、効果の合成は未実装 |
 | default check | 限定された builtin / callable facts | 本体の proof artifacts、ownership、typed arrays、resource 等は未移行 |
 
-`checkCorsaProject` の結果型は `artifacts` / `ownership` / `asyncIterators` /
-`resourceProtocols` を空配列に限定し、typed-array obligation も生成しない。
+`checkCorsaProject` の結果型は `ownership` / `asyncIterators` / `resourceProtocols` を
+空配列に限定し、typed-array obligation も生成しない。`artifacts` は限定本体証明を返す。
+`assumptions` は、admit した reviewed builtin contract の呼出位置ごとに entry を記録する
+(Program 経路と同じ `builtin` domain・同じ id 規則)。`--assurance verified` は
+その ledger が空であることを要求するため、builtin contract に依存する check は正しく落ちる。
 ソースに未移行の注釈を書くだけで旧経路へ自動切替されるわけではない。
 
 `check` が現時点で旧経路を選ぶ条件は次のとおり。

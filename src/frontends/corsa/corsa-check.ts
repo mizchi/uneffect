@@ -14,6 +14,7 @@ import { collectCorsaEffectBindings } from "./corsa-effect-calls.js";
 import { propagateEffectNames } from "../../effects/effect-propagation.js";
 import { analyzeCorsaSourceFacts, isAccessorSymbol } from "./corsa-source-facts.js";
 import { loadDomInterfaceGraph, type DomInterfaceGraph } from "./dom-inheritance.js";
+import { assumptionEntry, type AssumptionEntry, type AssumptionLedger } from "../../evidence/assumption-contracts.js";
 
 export interface CorsaCheckOptions {
   includeBuiltinCalls?: boolean;
@@ -55,7 +56,11 @@ export interface CorsaCheckResult {
   sources: Map<string, string>;
   artifacts: VerificationArtifact[];
   summaries: EffectSummary[];
-  assumptions: { schema: "uneffect-assumptions/v1"; entries: []; violations: [] };
+  /**
+   * Every admitted builtin contract is a reviewed claim about a body this run did not read, so each call site
+   * that rests on one is recorded here rather than disappearing into the summary that used it.
+   */
+  assumptions: AssumptionLedger;
   typedArrays: { obligations: []; diagnostics: []; windows: []; statistics: { solverQueries: 0 }; files: Record<string, never> };
   ownership: [];
   asyncIterators: [];
@@ -382,6 +387,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     }
     const sources = new Map<string, string>();
     const diagnostics: CorsaCheckDiagnostic[] = [];
+    const assumptions: AssumptionEntry[] = [];
     const declarations = new Map<string, { key: string; name: string } | null>();
     const writes = new Set<string>();
     const ambiguousWrites = new Set<string>();
@@ -576,6 +582,17 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (!contract) return;
         const owner = enclosingFunction(syntax.functions, site.start);
         if (!owner) return;
+        assumptions.push(assumptionEntry({
+          domain: "builtin",
+          reason: contract.trustReason ?? "reviewed builtin semantic overlay",
+          owner: contract.trustOwner ?? "@mizchi/uneffect",
+          ...(contract.trustExpiresOn ? { expiresOn: contract.trustExpiresOn } : {}),
+          ...(contract.runtime ? { dependency: {
+            module: contract.symbol.module,
+            ...(contract.runtime.kind === "package" ? { packageVersion: contract.runtime.version } : { nodeMajor: contract.runtime.major }),
+          } } : {}),
+          scope: { fileName, functionName: owner.name, span: { start: site.start, end: site.end } },
+        }));
         const span = `${site.start}:${site.end}`;
         const readWrite = indexAccess.readWriteTargets.has(span);
         const access = readWrite || indexAccess.assignmentTargets.has(span) ? "write" as const : "read" as const;
@@ -964,7 +981,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       sources,
       artifacts,
       summaries,
-      assumptions: { schema: "uneffect-assumptions/v1", entries: [], violations: [] },
+      assumptions: { schema: "uneffect-assumptions/v1", entries: assumptions, violations: [] },
       typedArrays: { obligations: [], diagnostics: [], windows: [], statistics: { solverQueries: 0 }, files: {} },
       ownership: [],
       asyncIterators: [],
