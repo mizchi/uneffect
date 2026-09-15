@@ -25,6 +25,23 @@ not treated as this builtin.
 
 Default `check` (project or file-specified) classifies admitted catalog builtins through Corsa identity and Oxc syntax, not a JavaScript TypeScript 6 Program. The `--typescript-program` path and the standalone `checkFiles` analyzer still construct a TypeScript Program. Neither path falls back to callee source text. Array/Map/Set/WeakMap/WeakSet mutation methods are declaration-symbol overlays, so a user-defined method named `push`, `set`, or `add` is not classified as a collection mutation. Standard `Map` and `Set` `forEach` callbacks are synchronous `0..n` callback edges; a same-spelled local method does not receive that timing. The catalog registers no member of `ReadonlyArray`, `ReadonlyMap`, or `ReadonlySet`, because ECMA-262 defines no such object: they are structural TypeScript interfaces with no constructor and no prototype, so `class Index<T> implements ReadonlyMap<string, T>` inhabits one with an arbitrary `forEach`, and a contract keyed on the owner would describe a body the program wrote. A receiver written as an array literal is narrowed syntactically instead: it allocates a genuine Array, so `Array#` applies to it under `as const`, `satisfies`, a type assertion, parentheses, and `!`.
 
+## Members admitted under a recorded assumption
+
+A member whose receiver is an instance interface a user class can extend is not fixed by its declared type: a
+subclass may redeclare it, and a write to the standard prototype may replace it for every instance. The reviewed
+keyed-lookup, membership, size, iterator, and indexed-search members of `Map`, `Set`, `WeakMap`, `WeakSet`, and
+`Array` are admitted anyway, and each entry's `trustReason` names the condition its claim rests on. Every admitted
+call site records one `builtin` assumption-ledger entry carrying that reason, so `--assurance verified`, which
+requires an empty ledger, fails wherever one of these contracts was used. Indexed searches (`includes`,
+`indexOf`, `lastIndexOf`, `at`) name a wider condition, because an index the array does not hold is read through
+the whole prototype chain, `Object.prototype` included.
+
+`ReadonlyMap`, `ReadonlySet`, and `ReadonlyArray` are excluded from that batch. ECMAScript defines no such object;
+they are structural interfaces, so a value satisfying one may be an ordinary object whose members are arbitrary
+user code, and the assumption would name a prototype that does not exist. `RegExp` matching is excluded for a
+different reason: it writes `lastIndex` back, and the native summary does not yet render a `mutate` primitive as a
+`Mutate<region>` effect, so admitting it would replace an honest unresolved call with an empty effect list.
+
 A builtin contract may carry more than one semantic projection. In the current
 Node slice, reviewed one-shot completion APIs in `node:fs` still emit
 `FsRead`/`FsWrite`, while their final callback argument also becomes a

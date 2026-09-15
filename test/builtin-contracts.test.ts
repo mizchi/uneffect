@@ -80,8 +80,11 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "structuredClone" }, semantics: expect.objectContaining({ primitives: [{ kind: "clone", target: { kind: "argument", index: 0 } }, expect.objectContaining({ kind: "transfer", optional: true }), { kind: "throw", error: "DOMException" }] }) }),
       ...["Map#forEach", "Set#forEach"].map((exportName) =>
         expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: exportName }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync", cardinality: "0..n" })] }) })),
-      ...["WeakMap#set", "WeakMap#delete", "WeakSet#add", "WeakSet#delete"].map((exportName) =>
+      ...["WeakMap#delete", "WeakSet#delete"].map((exportName) =>
         expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: exportName }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "mutate", target: { kind: "receiver" } })] }) })),
+      // `WeakKey` admits a symbol, and a registered one cannot be held weakly, so storing it throws.
+      ...["WeakMap#set", "WeakSet#add"].map((exportName) =>
+        expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: exportName }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "mutate", target: { kind: "receiver" } }, ), { kind: "throw", error: "TypeError" }] }) })),
       expect.objectContaining({ platform: "dom", symbol: { module: "lib.dom", export: "ReadableStream#getReader" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "acquire", resource: "stream-reader" }), expect.objectContaining({ kind: "protocol", name: "stream", transition: "lock-readable" })]) }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "DisposableStack#defer" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "deferred" }), expect.objectContaining({ kind: "protocol", name: "disposal-stack", transition: "register" })]) }) }),
       expect.objectContaining({ platform: "node", symbol: { module: "node:fs", export: "readFile" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "effect", capability: "FsRead" }), expect.objectContaining({ kind: "callback", queue: "poll" })]) }) }),

@@ -58,6 +58,35 @@ export function plain(value: string): string { return value; }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("classifies the standard collection and matching members under a recorded assumption", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-prototypes-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `export function lookup(table: Map<string, number>, key: string): number | undefined { return table.get(key); }
+export function member(seen: Set<string>, key: string): boolean { return seen.has(key); }
+export function counted(seen: Set<string>): number { return seen.size; }
+export function listed(table: Map<string, number>): string[] { return [...table.keys()]; }
+export function found(values: string[], value: string): boolean { return values.includes(value); }
+export function shadowed(table: { get(key: string): number | undefined }, key: string): number | undefined { return table.get(key); }
+export function structural(table: ReadonlyMap<string, number>, key: string): number | undefined { return table.get(key); }
+export function frozen(values: readonly string[], value: string): boolean { return values.includes(value); }
+`);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const result = await checkCorsaProject({ configFile: temporaryConfig });
+      const evidence = Object.fromEntries(result.summaries.map((summary) => [summary.functionName, summary.evidence]));
+      expect(evidence).toMatchObject({ lookup: "inferred", member: "inferred", counted: "inferred", listed: "inferred", found: "inferred" });
+      // A structurally identical user object is not the standard member, so it stays unresolved.
+      expect(evidence.shadowed).toBe("unknown");
+      // `ReadonlyMap` and `readonly T[]` name no ECMAScript object: any value structurally assignable to them
+      // satisfies the type, so the assumption this batch records names a prototype that does not exist.
+      expect(evidence.structural).toBe("unknown");
+      expect(evidence.frozen).toBe("unknown");
+      const reasons = result.assumptions.entries.map((entry) => entry.reason);
+      expect(reasons.some((reason) => /Map\.prototype\.get .*subclass redeclaring it or a write to Map\.prototype/.test(reason))).toBe(true);
+      expect(result.assumptions.entries.every((entry) => entry.domain === "builtin" && entry.evidence === "trusted")).toBe(true);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("names an unresolved member only when the receiver it typed is the standard library's", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-labels-"));
     try {
@@ -317,8 +346,13 @@ export function counted(node: string): boolean { return children(node).some((ite
       expect(evidence.textSplitPattern).toBe("unknown");
       expect(evidence.textSplitDynamic).toBe("unknown");
       expect(evidence.textSplitBoxed).toBe("unknown");
-      // A collection member can run an overridden body, which no reviewed contract describes.
-      expect(evidence.collections).toBe("unknown");
+      // A collection member can run an overridden body. The contract is admitted on the assumption that the
+      // standard member is in place, and the ledger records that assumption at each of these call sites; the
+      // remaining effect is `Array.isArray`'s own throw, which is what makes this summary trusted.
+      expect(evidence.collections).toBe("trusted");
+      expect(formatted.collections).toEqual(["Throw<TypeError>"]);
+      expect(checked.assumptions.entries.filter((entry) => entry.scope.functionName === "collections"))
+        .toHaveLength(4);
       // An error construction with a string message builds the object and performs nothing else.
       expect(formatted.failure).toEqual([]);
       expect(evidence.failure).toBe("inferred");

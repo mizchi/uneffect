@@ -175,6 +175,13 @@ async / generator、builtin の完全性、注釈の検証は引き続き M2 の
 通常のnumber、数値brand、除算・剰余、代入・loop・
 呼出先requiresの検証と複数段のensures合成は引き続き未移行であり、M2全体の完了ではない。
 
+**未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
+`Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を
+ownership 用の事実として扱い、capability 名に描画しない。そのため受け手を書き換える
+builtin (`Array#push`、`Map#set` 等) の呼出は effect なしの summary になる。
+この差が埋まるまで、受け手の書込みだけが観測できる member (`RegExp#test` / `exec` の
+`lastIndex`) は catalog に入れない。正直な unresolved を無音の空 effect に置き換えるため。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

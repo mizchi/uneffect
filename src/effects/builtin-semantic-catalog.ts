@@ -495,6 +495,88 @@ function browserPlatformDefinitions(): ReviewedBuiltinSemantic[] {
   ];
 }
 
+/**
+ * Members whose receiver is an instance interface a user class can extend. The declared type alone does not
+ * establish which body runs: a subclass may redeclare the member, and a write to the standard prototype may
+ * replace it for every instance. Each entry therefore says so in its `trustReason`, and the check records one
+ * assumption-ledger entry per admitted call site, so the claim travels with the result instead of hiding in it.
+ * Within that assumption these are the specification's own semantics; where the specification reaches user code
+ * or mutates the receiver, the entry says that too rather than claiming an empty contract.
+ */
+function standardPrototypeDefinitions(): ReviewedBuiltinSemantic[] {
+  const dispatch = (owner: string, member: string, behaviour: string): string =>
+    `ECMAScript ${owner}.prototype.${member} ${behaviour}; the claim holds for the standard member, which a subclass redeclaring it or a write to ${owner}.prototype would replace`;
+  const fresh: SemanticPrimitive = { kind: "result", refinement: { kind: "fresh" } };
+  const typeError: SemanticPrimitive = { kind: "throw", error: "TypeError" };
+  const method = (owner: string, member: string, primitives: SemanticPrimitive[], behaviour: string): ReviewedBuiltinSemantic =>
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: `${owner}#${member}` },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives },
+      trustReason: dispatch(owner, member, behaviour), trustOwner: "@mizchi/uneffect",
+    });
+  const readonlyMember = (owner: string, member: string, behaviour: string): ReviewedBuiltinSemantic =>
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: `${owner}#${member}` },
+      // The accessor has no setter, so an assignment a checked program cannot write would throw rather than
+      // store. Saying nothing on the write side would claim that assigning to it completes silently.
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "property", read: [], write: [typeError] }] },
+      trustReason: dispatch(owner, member, behaviour), trustOwner: "@mizchi/uneffect",
+    });
+  /**
+   * `ReadonlyMap`, `ReadonlySet` and `ReadonlyArray` are absent from this batch. ECMAScript defines no such
+   * object: they are structural TypeScript interfaces with no constructor, no prototype and no nominal tie to
+   * `Map` or `Set`, so a value of that type may be an ordinary object whose members are arbitrary user code.
+   * The assumption this batch records — that the standard member is in place — names a prototype that does not
+   * exist for them, and cannot be discharged. This is the rule the `PromiseLike#then` entry already states.
+   */
+  const keyedLookups = (["Map", "WeakMap"] as const).flatMap((owner) => [
+    method(owner, "get", [], "compares keys with SameValueZero over its own internal data and reaches no user code"),
+    method(owner, "has", [], "compares keys with SameValueZero over its own internal data and reaches no user code"),
+  ]);
+  const memberships = (["Set", "WeakSet"] as const).map((owner) =>
+    method(owner, "has", [], "compares elements with SameValueZero over its own internal data and reaches no user code"));
+  const iterators = (["Map", "Set", "Array"] as const)
+    .flatMap((owner) => (["keys", "values", "entries"] as const).map((member) =>
+      method(owner, member, [fresh], "allocates a new iterator without stepping it, so no element is read and no user code runs")));
+  const sizes = (["Map", "Set"] as const)
+    .map((owner) => readonlyMember(owner, "size", "reads a count held in its own internal data"));
+  /**
+   * Searching an array performs an ordinary `Get` for each index, and an index the array does not hold walks
+   * its whole prototype chain. A sparse array is writable in a checked program, and an indexed accessor can be
+   * installed on `Object.prototype` as easily as on `Array.prototype`, so the empty list is honest only while
+   * neither carries one. The reason names that, because it is a wider condition than the standard member.
+   */
+  const indexedRead = (member: string, behaviour: string): string =>
+    `ECMAScript Array.prototype.${member} ${behaviour}; the claim holds while no indexed accessor sits anywhere on the array's prototype chain, including Object.prototype, and while a subclass or a write to Array.prototype has not replaced the member`;
+  const searches = (["Array"] as const).flatMap((owner) => [
+    ...(["includes", "indexOf", "lastIndexOf"] as const).map((member) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: `${owner}#${member}` },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+      trustReason: indexedRead(member, "compares each index it reads without coercing it"), trustOwner: "@mizchi/uneffect",
+    })),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: `${owner}#at` },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+      trustReason: indexedRead("at", "reads one index after a relative offset the declared number argument cannot coerce"),
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: `${owner}#length` },
+      // `length` is a writable own property of an array whatever the declared type says, and storing a shorter
+      // value deletes elements. A value that is not an array index is a RangeError.
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{
+        kind: "property", read: [], write: [{ kind: "mutate", target: { kind: "receiver" } }, { kind: "throw", error: "RangeError" }],
+      }] },
+      trustReason: `ECMAScript array length is an own data property; reading it observes nothing and writing it truncates the array or throws RangeError`,
+      trustOwner: "@mizchi/uneffect",
+    }),
+  ]);
+  // `RegExp#test` and `RegExp#exec` are deliberately absent. Matching writes `lastIndex` back for a global or
+  // sticky pattern, and the native check does not yet render a `mutate` primitive as a `Mutate<region>` effect,
+  // so admitting them would replace an honest unresolved call with a summary that reports no effect at all.
+  return [...keyedLookups, ...memberships, ...iterators, ...sizes, ...searches];
+}
+
 export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
   schema: "uneffect-builtin-semantics/v1",
   definitions: [
@@ -526,6 +608,7 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
         [runtimeValue("array-accumulator"), runtimeValue("array-element"), runtimeValue("array-index"), receiverValue]),
       trustReason: `ECMAScript Array.${name} invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
     })),
+    ...standardPrototypeDefinitions(),
     ...(["Map", "Set"] as const).map((owner) => reviewed("javascript", {
       symbol: { module: "lib.es", export: `${owner}#forEach` },
       semantics: inlineCallbackSemantics(0, false,
@@ -542,10 +625,6 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       symbol: { module: "lib.es", export: "Array#slice" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
       trustReason: "ECMAScript Array.slice returns a fresh Array", trustOwner: "@mizchi/uneffect",
-    }),
-    reviewed("javascript", {
-      symbol: { module: "lib.es", export: "Array#at" },
-      trustReason: "ECMAScript Array.at reads an indexed element without publishing the array", trustOwner: "@mizchi/uneffect",
     }),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "Array#join" },
@@ -732,9 +811,9 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     // primitive string or the standard constructor object, so no override or subclass can intercept them.
     // `split` is admitted below only for one literal string separator; other splitters can define Symbol.split.
     // `localeCompare` is deliberately absent because locale lists may read through user accessors.
-    // Members whose receiver is an instance interface a user class can extend
-    // (`Map`, `Set`, and their weak and readonly forms) are absent for the same reason: the declared type does
-    // not establish which body runs. `RegExp` matching updates `lastIndex` and is absent as an observable write.
+    // Members whose receiver is an instance interface a user class can extend are handled separately, below,
+    // because their claim rests on an assumption the ledger has to carry. `RegExp` matching updates
+    // `lastIndex` and is absent as an observable write.
     ...([
       ["String", ["trim", "trimStart", "trimEnd", "toLowerCase", "toUpperCase", "charAt", "charCodeAt",
         "codePointAt", "at", "startsWith", "endsWith", "includes", "indexOf", "lastIndexOf", "slice", "substring"]],
@@ -1285,9 +1364,19 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
         { kind: "protocol", name: "disposal-stack", transition: "dispose", inputs: { stack: { kind: "receiver" } } },
       ] } }),
     ]),
-    ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete", "WeakMap#delete", "WeakMap#set", "WeakSet#add", "WeakSet#delete"].map((name) => reviewed("javascript", {
+    ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete", "WeakMap#delete", "WeakSet#delete"].map((name) => reviewed("javascript", {
       symbol: { module: "lib.es", export: name },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "mutate", target: { kind: "receiver" } }] },
+    })),
+    // `WeakKey` is `object | symbol`, and a registered symbol cannot be held weakly, so a well-typed
+    // `weak.set(Symbol.for("a"), value)` reaches the specification's TypeError rather than storing.
+    ...["WeakMap#set", "WeakSet#add"].map((name) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "mutate", target: { kind: "receiver" } }, { kind: "throw", error: "TypeError" },
+      ] },
+      trustReason: `ECMAScript ${name.replace("#", ".prototype.")} stores into its own internal data and throws TypeError for a key that cannot be held weakly`,
+      trustOwner: "@mizchi/uneffect",
     })),
     reviewed("package", {
       symbol: { module: "corsa-oxlint", export: "OxlintUtils#RuleCreator" },
