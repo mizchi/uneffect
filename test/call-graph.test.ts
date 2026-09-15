@@ -540,11 +540,11 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function mutateOpaqueArrayElement(values: Array<{ count: number }>) { values.forEach(mutateValue) }
         /* uneffect:effect Console */
         export function caught(values: Map<string, number>) { try { values.forEach(inspect) } catch {} }
-        /* uneffect:effect Mutate<typeof values> */
+        /* uneffect:effect Mutate<typeof values> | Throw<TypeError> */
         export function weakMapSet(values: WeakMap<object, number>, key: object) { values.set(key, 1) }
         /* uneffect:effect Mutate<typeof values> */
         export function weakMapDelete(values: WeakMap<object, number>, key: object) { values.delete(key) }
-        /* uneffect:effect Mutate<typeof values> */
+        /* uneffect:effect Mutate<typeof values> | Throw<TypeError> */
         export function weakSetAdd(values: WeakSet<object>, key: object) { values.add(key) }
         /* uneffect:effect Mutate<typeof values> */
         export function weakSetDelete(values: WeakSet<object>, key: object) { values.delete(key) }
