@@ -2,7 +2,7 @@ import type { Node, Program } from "oxc-parser";
 import { oxcChildren } from "../oxc/source.js";
 import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
 
-/** Stable receiver identity plus a literal member name authenticates frozen dispatch. */
+/** Stable receiver identity plus a literal member name authenticates frozen dispatch; calls are keyed by callee token. */
 export function collectFrozenEffectTables(frontend: CorsaApiFrontend, file: string, program: Program) {
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
   const calls = new Map<number, string>();
@@ -52,7 +52,9 @@ export function collectFrozenEffectTables(frontend: CorsaApiFrontend, file: stri
       const callee = node.callee;
       const name = member(callee.property, callee.computed);
       const receiver = callee.object.type === "Identifier" ? identity(callee.object) : undefined;
-      if (receiver && name) calls.set(node.start, id(receiver, name));
+      // Keyed by the callee token: a call chained onto this one shares the call expression's start offset but
+      // reports its own callee, and only this site dispatches through the frozen member.
+      if (receiver && name) calls.set(callee.property.start, id(receiver, name));
     }
     for (const child of oxcChildren(node)) visit(child);
   };

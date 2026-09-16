@@ -91,7 +91,7 @@ function compilerProvenance(projectFile: string): TypeScriptCompilerProvenance {
     return {
       analyzerVersion: ts.version, analyzerPackageFile,
       consumerVersion: null, consumerPackageFile: null, consumerModuleFile: null, parity: "unknown",
-      reason: `cannot resolve the consumer TypeScript package from ${dirname(projectFile)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      reason: `cannot resolve the consumer TypeScript package from ${dirname(projectFile)}${cause instanceof Error ? `: ${cause.message}` : ""}`,
     };
   }
 }
@@ -141,7 +141,7 @@ export function loadTypeScriptWorkspace(projectFile: string): TypeScriptWorkspac
     let parsed: ReturnType<typeof parseTypeScriptProject>;
     try { parsed = parseTypeScriptProject(fileName, true); }
     catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = cause instanceof Error ? cause.message : `TypeScript project ${fileName} could not be read`;
       if (fileName === rootProjectFile) throw new Error(message, { cause });
       blockers.push({
         kind: cause instanceof TypeScriptProjectConfigError && cause.kind === "missing" ? "missing-reference" : "invalid-reference",

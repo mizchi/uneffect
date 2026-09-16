@@ -413,7 +413,7 @@ try {
     throw new Error(`compiler-independent contract CLI failed: ${bodyResult.stderr || bodyResult.error || bodyResult.status}`);
   }
   const effectEntry = join(consumer, "native-effect-calls.ts");
-  writeFileSync(effectEntry, 'const handlers = Object.freeze({ log() { console["log"]("leaf"); } }); function leaf() { handlers.log(); } function middle() { leaf(); } export function main() { middle(); } export function shadowed(leaf: () => void) { leaf(); }');
+  writeFileSync(effectEntry, 'const handlers = Object.freeze({ log() { console["log"]("leaf"); } }); function leaf() { handlers.log(); } function middle() { leaf(); } export function main() { middle(); } export function shadowed(leaf: () => void) { leaf(); } declare function external(): void; export function opaque() { external(); }');
   const effectResult = spawnSync(process.execPath, ["--import", noTsHook, cliEntry, "check", effectEntry, "--infer", "--assurance", "no-unknown", "--json"], {
     cwd: consumer, encoding: "utf8", timeout: 30_000,
   });
@@ -421,7 +421,13 @@ try {
   const effectReport = JSON.parse(effectResult.stdout);
   const caller = effectReport.effects.find(item => item.functionName === "main");
   const shadowed = effectReport.effects.find(item => item.functionName === "shadowed");
-  if (!caller?.effects.includes("Console") || caller.evidence !== "unknown" || shadowed?.effects.length !== 0 || shadowed.evidence !== "unknown") {
+  const opaque = effectReport.effects.find(item => item.functionName === "opaque");
+  // The frozen table and the whole call chain resolve, so the composed set is a proof; a parameter the caller
+  // supplies is named rather than borrowed from the same-named declaration; and a body outside the analyzed
+  // files is what keeps the no-unknown profile failing.
+  if (!caller?.effects.includes("Console") || caller.evidence !== "trusted"
+    || shadowed?.effects.join() !== "InvokeUserCode" || shadowed.evidence !== "trusted"
+    || opaque?.evidence !== "unknown") {
     throw new Error("packed native effects lost propagation, shadowing, or incomplete evidence");
   }
   writeFileSync(instrumentEntry, '/* uneffect:assert value: Nat */ export function check(value: number) { return value }');

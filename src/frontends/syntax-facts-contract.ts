@@ -11,6 +11,7 @@ export type SyntaxFactsCoverageDomain = typeof syntaxFactsCoverageDomains[number
 export type SyntaxFunctionKind = "function" | "method" | "getter" | "setter" | "arrow" | "function-expression";
 export type SyntaxFactExclusionReason =
   | "computed-function-name"
+  /** Retained for v1 compatibility: constructors are ordinary `method` boundaries and no longer excluded. */
   | "constructor-boundary"
   | "object-member-function"
   | "computed-call-target"

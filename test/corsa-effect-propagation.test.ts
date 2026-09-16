@@ -28,7 +28,9 @@ describe("native direct-call effect propagation", () => {
     expect(result.errors).toBe(0);
     for (const name of ["middle", "main"]) {
       expect(names(result, name)?.sort()).toEqual(["Console", "Fetch", "Net"]);
-      expect(result.summaries.find(item => item.functionName === name)?.evidence).toBe("unknown");
+      // Every site in the reachable subgraph resolves to an analyzed body or a reviewed contract, so the
+      // composed set is an upper bound the analysis established rather than a partial observation.
+      expect(result.summaries.find(item => item.functionName === name)?.evidence).toBe("trusted");
     }
   });
 
@@ -88,11 +90,13 @@ describe("native direct-call effect propagation", () => {
       export function shadowed(left: () => void) { left(); }
     ` });
     for (const name of ["left", "right", "main"]) expect(names(result, name)?.sort()).toEqual(["Console", "Fetch", "Net"]);
-    expect(names(result, "shadowed")).toEqual([]);
-    expect(result.summaries.find(item => item.functionName === "shadowed")?.evidence).toBe("unknown");
+    // The parameter shadows the analyzed declaration, so none of its effects are borrowed; invoking the value
+    // the caller supplied is what this body establishes.
+    expect(names(result, "shadowed")).toEqual(["InvokeUserCode"]);
+    expect(result.summaries.find(item => item.functionName === "shadowed")?.evidence).toBe("trusted");
   });
 
-  it("keeps mutable aliases, methods, generators, and pure call cycles unverified", async () => {
+  it("keeps mutable aliases, methods, and generators unverified while proving a resolved pure cycle", async () => {
     const result = await check({ "main.ts": `
       function leaf() { console.log("leaf"); }
       const alias = leaf;
@@ -102,7 +106,10 @@ describe("native direct-call effect propagation", () => {
       function a() { b(); } function b() { a(); }
     ` });
     expect(names(result, "indirect")).toEqual([]);
-    for (const name of ["indirect", "a", "b"]) expect(result.summaries.find(item => item.functionName === name)?.evidence).toBe("unknown");
+    // An aliased binding, an object member, and a generator body are outside the direct-call model.
+    expect(result.summaries.find(item => item.functionName === "indirect")?.evidence).toBe("unknown");
+    // A cycle whose every edge resolves to an analyzed body reaches a fixed point with no unresolved site in it.
+    for (const name of ["a", "b"]) expect(result.summaries.find(item => item.functionName === name)?.evidence).toBe("inferred");
   });
 
   it.each(["leaf = replacement;", "({ leaf } = { leaf: replacement });", "[leaf] = [replacement];"])("does not link a reassigned declaration to its stale body: %s", async assignment => {
@@ -126,7 +133,9 @@ describe("native direct-call effect propagation", () => {
     });
     expect(names(result, "loud")).toEqual(["Console"]);
     expect(names(result, "quiet")).toEqual([]);
-    expect(result.summaries.find(item => item.functionName === "quiet")?.evidence).toBe("unknown");
+    // The same-named export resolves to the analyzed body in its own module, not to the louder one.
+    expect(result.summaries.find(item => item.functionName === "quiet")?.evidence).toBe("inferred");
+    expect(result.summaries.find(item => item.functionName === "loud")?.evidence).toBe("trusted");
   });
 
   it.each(["deferred();", "eval(code); leaf();"])("keeps async invocation and dynamic scope outside the direct-call model: %s", async invocation => {

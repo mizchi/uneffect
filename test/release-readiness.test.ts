@@ -59,10 +59,25 @@ describe("0.3.0 release metadata", () => {
       title: "Uneffect temporal model v1",
       properties: { schema: { const: "uneffect-temporal-model/v1" } },
     });
-    expect(JSON.parse(readFileSync("schemas/uneffect-syntax-facts-v1.schema.json", "utf8"))).toMatchObject({
+    const syntaxFacts = JSON.parse(readFileSync("schemas/uneffect-syntax-facts-v1.schema.json", "utf8"));
+    expect(syntaxFacts).toMatchObject({
       title: "Uneffect syntax facts v1",
       properties: { schema: { const: "uneffect-syntax-facts/v1" } },
     });
+    // A published v1 inventory does not change in place: neither direction of enum drift may pass CI.
+    expect(syntaxFacts.$defs.function.properties.kind.enum)
+      .toEqual(["function", "method", "getter", "setter", "arrow", "function-expression"]);
+    expect(syntaxFacts.$defs.exclusion.properties.reason.enum).toEqual([
+      "computed-function-name", "constructor-boundary", "object-member-function",
+      "computed-call-target", "unsupported-call-target", "tagged-template", "dynamic-import",
+      "computed-construct-target", "unsupported-construct-target", "computed-property",
+    ]);
+    expect(syntaxFacts.$defs.coverage.properties.domain.enum)
+      .toEqual(["function-boundaries", "call-sites", "construct-sites", "property-sites"]);
+    expect(syntaxFacts.$defs.site.properties.kind.enum).toEqual(["call", "construct", "property"]);
+    const checkSchema = JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8"));
+    expect(checkSchema.$defs.diagnostic.properties.domain.enum).toEqual(["syntax", "contract"]);
+    expect(checkSchema.$defs.diagnostic.properties.kind.enum).toEqual(["syntax", "contract"]);
     expect(JSON.parse(readFileSync("schemas/uneffect-typescript-control-flow-v1.schema.json", "utf8"))).toMatchObject({
       title: "Uneffect TypeScript control-flow analysis v1",
       properties: { schema: { const: "uneffect-typescript-control-flow/v1" } },

@@ -46,7 +46,7 @@ export function parseCommandArgs(args: readonly string[], options: OptionConfig)
     const parsed = parseArgs({ args: [...args], options: { help: { type: "boolean" }, ...options }, allowPositionals: true, strict: true });
     return { values: parsed.values as Record<string, unknown>, positionals: parsed.positionals };
   } catch (cause) {
-    throw new CliUsageError(cause instanceof Error ? cause.message : String(cause));
+    throw new CliUsageError(cause instanceof Error ? cause.message : "invalid command-line arguments");
   }
 }
 

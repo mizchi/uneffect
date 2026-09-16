@@ -60,6 +60,42 @@ export function numeric(a: Choices, b: 4, c: Counterfeit, d: 0.5 | 1, e: 9007199
       } finally { frontend.close(); }
     });
   });
+  it("covers a finite literal union only when every constituent is named by the checker's own type identity", async () => {
+    await project(async (initial, file, configFile) => {
+      initial.close();
+      const text = `type Color = "red" | "green" | "blue";
+export function domain(a: Color, b: "red", c: "green", d: "blue", e: string, f: Color | undefined, g: boolean, h: true, i: false, j: 0 | 1, k: 0, l: 1) { return a; }`;
+      writeFileSync(file, text);
+      const frontend = await openCorsaCallableFrontend({ configFile });
+      try {
+        expect(frontend.getProjectDiagnostics()).toEqual([]);
+        const parameters = frontend.getSignaturesOfTypeAtPosition(file, text.indexOf("domain("))[0]!.parameters;
+        const type = (name: string) => parameters.find(parameter => parameter.name === name)!.type;
+        const color = type("a");
+        color.texts = ["any"];
+        color.id = "not-a-native-handle";
+        expect(frontend.coversFiniteLiteralType(color, [type("b"), type("c"), type("d")])).toBe(true);
+        expect(frontend.coversFiniteLiteralType(color, [type("d"), type("c"), type("b"), type("b")])).toBe(true);
+        expect(frontend.coversFiniteLiteralType(color, [type("b"), type("c")])).toBe(false);
+        // The widened base type of a constituent is not one of its values.
+        expect(frontend.coversFiniteLiteralType(color, [type("b"), type("c"), type("e")])).toBe(false);
+        // `undefined` is not a literal, so no finite domain exists to cover.
+        expect(frontend.coversFiniteLiteralType(type("f"), [type("b"), type("c"), type("d")])).toBe(false);
+        expect(frontend.coversFiniteLiteralType(type("e"), [type("b")])).toBe(false);
+        expect(frontend.coversFiniteLiteralType(type("g"), [type("h"), type("i")])).toBe(true);
+        expect(frontend.coversFiniteLiteralType(type("g"), [type("h")])).toBe(false);
+        expect(frontend.coversFiniteLiteralType(type("j"), [type("k"), type("l")])).toBe(true);
+        // A single literal is its own domain, and an empty covering set never discharges one.
+        expect(frontend.coversFiniteLiteralType(type("b"), [type("b")])).toBe(true);
+        expect(frontend.coversFiniteLiteralType(type("b"), [])).toBe(false);
+        expect(() => frontend.coversFiniteLiteralType({ ...color }, [type("b")])).toThrow(/owning snapshot/);
+        expect(() => frontend.coversFiniteLiteralType(color, [{ ...type("b") }])).toThrow(/owning snapshot/);
+        frontend.close();
+        expect(() => frontend.coversFiniteLiteralType(color, [])).toThrow(/closed/);
+      } finally { frontend.close(); }
+    });
+  });
+
   it("matches TypeScript overload selection, generic substitution, async, constructor, and shadowed calls", async () => {
     await project((frontend, file) => {
       const program = ts.createProgram([file], { strict: true, target: ts.ScriptTarget.ES2024, types: [] });

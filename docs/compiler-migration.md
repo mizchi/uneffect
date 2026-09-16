@@ -92,8 +92,9 @@ the JavaScript compiler is absent.
 The next domains are:
 
 1. Freeze feature acceptance and define the replacement for public Program APIs.
-2. Close known TSX, exhaustive-switch, and arbitrary-awaited-type gaps; expose
-   the neutral native facts required by existing analyzers.
+2. Close the remaining arbitrary-awaited-type gap and expose the neutral native
+   facts existing analyzers still need. The TSX grammar and the exhaustive-switch
+   termination fact are closed; contract-body lowering still rejects `switch`.
 3. Move contract body lowering and effect/call-graph propagation, followed by
    ownership/resources, async, typed arrays, refinement, and proof consumers.
 4. Integrate native proof producers and consumers with workspace module

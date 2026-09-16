@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { parseSync } from "oxc-parser";
+import { oxcLanguage } from "./oxc/source.js";
 import oxcParserMetadata from "oxc-parser/package.json" with { type: "json" };
 import { syntaxFactsSchema } from "./syntax-facts-contract.js";
 import type {
@@ -63,6 +64,7 @@ function staticName(node: EstreeNode | undefined, computed = false): string | un
 
 function parameterName(node: EstreeNode): string | undefined {
   if (node.type === "Identifier") return identifierName(node);
+  if (node.type === "TSParameterProperty" && isNode(node.parameter)) return parameterName(node.parameter);
   if (node.type === "AssignmentPattern" && isNode(node.left)) return parameterName(node.left);
   if (node.type === "RestElement" && isNode(node.argument)) return parameterName(node.argument);
   return undefined;
@@ -75,6 +77,15 @@ function functionParameters(node: EstreeNode): string[] {
     const name = parameterName(parameter);
     return name ? [name] : [];
   });
+}
+
+function classBodyOwner(body: EstreeNode, parents: Map<EstreeNode, EstreeNode>): string | undefined {
+  const declaration = parents.get(body);
+  if (!declaration || (declaration.type !== "ClassDeclaration" && declaration.type !== "ClassExpression")) return undefined;
+  const direct = identifierName(isNode(declaration.id) ? declaration.id : undefined);
+  if (direct) return direct;
+  const parent = parents.get(declaration);
+  return parent?.type === "VariableDeclarator" ? identifierName(isNode(parent.id) ? parent.id : undefined) : undefined;
 }
 
 function classOwner(method: EstreeNode, parents: Map<EstreeNode, EstreeNode>): string | undefined {
@@ -113,10 +124,8 @@ function functionFact(
   if (parent?.type === "MethodDefinition") {
     const methodStart = typeof parent.start === "number" ? parent.start : node.start;
     const methodEnd = typeof parent.end === "number" ? parent.end : node.end;
-    if (parent.kind === "constructor") return {
-      exclusion: { reason: "constructor-boundary", span: { start: methodStart, end: methodEnd } },
-    };
-    const key = staticName(isNode(parent.key) ? parent.key : undefined, parent.computed === true);
+    // A constructor is a named class member boundary; the published v1 kind inventory has no separate member.
+    const key = parent.kind === "constructor" ? "constructor" : staticName(isNode(parent.key) ? parent.key : undefined, parent.computed === true);
     if (!key) return { exclusion: { reason: "computed-function-name", span: { start: methodStart, end: methodEnd } } };
     const owner = classOwner(parent, parents);
     const kind: SyntaxFunctionKind = parent.kind === "get" ? "getter" : parent.kind === "set" ? "setter" : "method";
@@ -152,13 +161,81 @@ function functionFact(
   } };
 }
 
+/** The constructor member a class body declares, identified by its own node rather than by a rendered name. */
+export function declaredConstructor(body: EstreeNode): EstreeNode | undefined {
+  const members = Array.isArray(body.body) ? body.body : [];
+  for (const member of members) {
+    if (isNode(member) && member.type === "MethodDefinition" && member.kind === "constructor"
+      && typeof member.start === "number" && typeof member.end === "number") return member;
+  }
+  return undefined;
+}
+
+/**
+ * The span the boundary a construction runs occupies, or `undefined` when a construction of this class runs
+ * nothing of its own. An instance field — a plain one or an `accessor` one — runs at construction, so the
+ * boundary widens to the whole class body; otherwise it is exactly the declared constructor. Both the syntax
+ * pass and the checker locate the same fact through this one rule.
+ */
+export function constructionBoundarySpan(body: EstreeNode): { start: number; end: number } | undefined {
+  const members = Array.isArray(body.body) ? body.body : [];
+  const initializes = members.some((member) => isNode(member)
+    && (member.type === "PropertyDefinition" || member.type === "AccessorProperty")
+    && isNode(member.value) && member.static !== true);
+  if (initializes && typeof body.start === "number" && typeof body.end === "number") {
+    return { start: body.start, end: body.end };
+  }
+  const declared = declaredConstructor(body);
+  return declared === undefined ? undefined : { start: declared.start as number, end: declared.end as number };
+}
+
+function unwrapCallee(callee: EstreeNode): EstreeNode {
+  let current = callee;
+  while ((current.type === "TSNonNullExpression" || current.type === "ParenthesizedExpression" || current.type === "TSAsExpression"
+    || current.type === "TSSatisfiesExpression") && isNode(current.expression)) current = current.expression;
+  return current;
+}
+
+/**
+ * The offset whose type is the receiver's own type: the last identifier token of a member chain, or the
+ * identifier itself. `env.doc.cookie` must be typed at `doc`, not at `env`. A receiver with no such token
+ * (a call result, a computed member) falls back to its start, which types a chained primitive correctly and
+ * otherwise resolves no contract.
+ */
+export function receiverTokenPosition(receiver: EstreeNode | undefined): number | undefined {
+  if (!receiver) return undefined;
+  let node = receiver;
+  while ((node.type === "TSNonNullExpression" || node.type === "TSAsExpression" || node.type === "TSSatisfiesExpression"
+    || node.type === "TSTypeAssertion" || node.type === "ParenthesizedExpression") && isNode(node.expression)) {
+    node = node.expression;
+  }
+  if (node.type === "Identifier" || node.type === "ThisExpression") return node.start;
+  if (node.type === "MemberExpression" && node.computed !== true && isNode(node.property)
+    && (node.property.type === "Identifier" || node.property.type === "PrivateIdentifier")) return node.property.start;
+  return undefined;
+}
+
 function callSite(node: EstreeNode): SyntaxSite | undefined {
-  const callee = isNode(node.callee) ? node.callee : undefined;
-  if (!callee || typeof node.start !== "number" || typeof node.end !== "number") return undefined;
+  const rawCallee = isNode(node.callee) ? node.callee : undefined;
+  if (!rawCallee || typeof node.start !== "number" || typeof node.end !== "number") return undefined;
+  const callee = unwrapCallee(rawCallee);
   if (callee.type === "Identifier" && typeof callee.start === "number") {
     const name = identifierName(callee);
     if (!name) return undefined;
     return { kind: node.type === "NewExpression" ? "construct" : "call", start: node.start, end: node.end, calleePosition: callee.start, name };
+  }
+  // A call result used as a callee has no declaration to resolve; the site is kept so its caller becomes unknown evidence.
+  if (callee.type === "CallExpression" && typeof callee.start === "number") {
+    return { kind: node.type === "NewExpression" ? "construct" : "call", start: node.start, end: node.end, calleePosition: callee.start, name: "<dynamic>" };
+  }
+  // `super(...)` resolves to no symbol at its keyword and therefore stays an unknown call rather than missing coverage.
+  if (callee.type === "Super" && typeof callee.start === "number" && node.type === "CallExpression") {
+    return { kind: "call", start: node.start, end: node.end, calleePosition: callee.start, name: "super" };
+  }
+  const inline = inlineFunctionCallee(callee);
+  if (inline && node.type === "CallExpression") {
+    // The callee is its own function boundary; its position links the call to that boundary's summary.
+    return { kind: "call", start: node.start, end: node.end, calleePosition: inline.start!, name: "<iife>" };
   }
   const unwrapped = callee.type === "TSNonNullExpression" && isNode(callee.expression) ? callee.expression : callee;
   if (unwrapped.type !== "MemberExpression" || !isNode(unwrapped.object) || !isNode(unwrapped.property)) return undefined;
@@ -170,9 +247,15 @@ function callSite(node: EstreeNode): SyntaxSite | undefined {
     start: node.start,
     end: node.end,
     calleePosition: unwrapped.property.start,
-    receiverPosition: unwrapped.object.start,
+    receiverPosition: receiverTokenPosition(unwrapped.object) ?? unwrapped.object.start,
     name,
   };
+}
+
+function inlineFunctionCallee(callee: EstreeNode): EstreeNode | undefined {
+  let current = callee;
+  while (current.type === "ParenthesizedExpression" && isNode(current.expression)) current = current.expression;
+  return (current.type === "ArrowFunctionExpression" || current.type === "FunctionExpression") && typeof current.start === "number" ? current : undefined;
 }
 
 /** A member used as an argument is still a read, even when its parent is a call. */
@@ -185,8 +268,9 @@ function isCallTarget(node: EstreeNode, parents: ReadonlyMap<EstreeNode, EstreeN
 
 /** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */
 export function collectSyntaxFacts(fileName: string, sourceText: string): SyntaxFacts {
-  const language = fileName.endsWith(".tsx") ? "tsx" as const : "typescript" as const;
-  const parsed = parseSync(fileName, sourceText, { lang: language === "tsx" ? "tsx" : "ts" });
+  const lang = oxcLanguage(fileName);
+  const language = lang === "tsx" ? "tsx" as const : "typescript" as const;
+  const parsed = parseSync(fileName, sourceText, { lang });
   const functions: SyntaxFunction[] = [], sites: SyntaxSite[] = [];
   const parents = new Map<EstreeNode, EstreeNode>();
   const exclusions = new Map<SyntaxFactsCoverageDomain, SyntaxFactExclusion[]>([
@@ -242,9 +326,31 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
       const name = staticName(node.property, node.computed === true);
       if (name) sites.push({
         kind: "property", start: node.start, end: node.end,
-        calleePosition: node.property.start, receiverPosition: node.object.start, name,
+        calleePosition: node.property.start,
+        receiverPosition: receiverTokenPosition(node.object) ?? node.object.start,
+        name,
       });
     }
+  });
+  // An instance field initializer runs outside every method body but inside the class, at construction. Its
+  // operations belong to the construction boundary, so the constructor covers the class body; without this they
+  // would have no enclosing function and disappear. A static block and a static field initializer run when the
+  // class declaration is evaluated instead, which is the enclosing scope's work rather than a construction's, so
+  // they do not open this boundary — the scope that declares the class keeps them.
+  walk(parsed.program, (node) => {
+    if (node.type !== "ClassBody" || !Array.isArray(node.body)) return;
+    const span = constructionBoundarySpan(node);
+    if (span === undefined || span.start !== node.start || span.end !== node.end) return;
+    const declared = declaredConstructor(node);
+    const owner = classBodyOwner(node, parents);
+    const name = owner ? `${owner}.constructor` : "constructor";
+    if (declared) {
+      // The declared constructor's own span identifies it; a nested class may carry a fact of the same name.
+      const existing = functions.findIndex((item) => item.start === declared.start && item.end === declared.end);
+      if (existing >= 0) functions[existing] = { ...functions[existing]!, start: span.start, end: span.end };
+      return;
+    }
+    functions.push({ name, kind: "method", start: span.start, end: span.end, parameters: [] });
   });
   functions.sort((left, right) => left.start - right.start || left.end - right.end || left.kind.localeCompare(right.kind));
   sites.sort((left, right) => left.start - right.start || left.end - right.end || left.kind.localeCompare(right.kind));
@@ -267,6 +373,22 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
     sites,
     errors,
   };
+}
+
+/**
+ * The function a call at `position` belongs to, skipping an inline callee that starts at the same
+ * position. An unparenthesized immediately invoked function shares its call's start offset, so the
+ * plain enclosing-function lookup would name the callee as its own caller.
+ */
+export function callingFunction(
+  functions: readonly SyntaxFunction[],
+  position: number,
+  callee: SyntaxFunction | undefined,
+): SyntaxFunction | undefined {
+  const candidates = callee === undefined
+    ? functions
+    : functions.filter((item) => item.start !== callee.start || item.end !== callee.end);
+  return enclosingFunction(candidates, position);
 }
 
 export function enclosingFunction(functions: readonly SyntaxFunction[], position: number): SyntaxFunction | undefined {

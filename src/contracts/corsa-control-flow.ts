@@ -43,6 +43,22 @@ export async function analyzeCorsaContractControlFlow(options: AnalyzeCorsaContr
           }
           return calls.get(node)!;
         },
+        /**
+         * The discriminant's own literal constituents, compared against the case tests by the checker's type
+         * identity. A test the frontend cannot type, or a constituent that is not a literal, leaves the switch
+         * open rather than claiming coverage.
+         */
+        exhaustiveSwitch(condition, tests) {
+          const discriminant = frontend.getExpressionType(absolute, condition, text);
+          if (!discriminant) return undefined;
+          const covering = [];
+          for (const test of tests) {
+            const type = frontend.getExpressionType(absolute, test, text);
+            if (!type) return undefined;
+            covering.push(type);
+          }
+          return frontend.coversFiniteLiteralType(discriminant, covering);
+        },
       };
       const sourceDigest = createHash("sha256").update(text).digest("hex");
       return topLevelOxcFunctions(source).map(({ node, start, end }) => {

@@ -31,6 +31,19 @@ export function createContractControlFlow<S, E>(syntax: ControlFlowSyntax<S, E>,
     if (expression.operator === "!=" || expression.operator === "!==") return left !== right;
     return undefined;
   }
+  /**
+   * A `default`-less switch still runs to its end for a value no clause tests, unless the frontend can show
+   * the tests cover the discriminant. A clause whose test the syntax view omits leaves the question open.
+   */
+  function switchIsExhaustive(statement: Extract<ControlFlowStatement<S, E>, { kind: "switch" }>): boolean {
+    if (options.exhaustiveSwitch === undefined) return false;
+    const tests: E[] = [];
+    for (const clause of statement.clauses) {
+      if (clause.test === undefined) return false;
+      tests.push(clause.test);
+    }
+    return tests.length > 0 && options.exhaustiveSwitch(statement.condition, tests) === true;
+  }
   function expressionNeverCompletes(node: E): boolean {
     const expression = syntax.expression(node);
     switch (expression.kind) {
@@ -94,7 +107,7 @@ export function createContractControlFlow<S, E>(syntax: ControlFlowSyntax<S, E>,
           }
           completions = union(completions, path);
         }
-        if (!statement.clauses.some(clause => clause.isDefault)) completions = union(completions, NORMAL);
+        if (!statement.clauses.some(clause => clause.isDefault) && !switchIsExhaustive(statement)) completions = union(completions, NORMAL);
         return consumeBreaks(completions);
       }
       case "try": {

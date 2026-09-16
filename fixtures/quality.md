@@ -13,7 +13,7 @@ regress; the remaining ones move the score and point at the next message to impr
 | action | yes | does a hint say what to change next? |
 | plain-language | yes | is the message free of raw solver verdicts and SMT jargon? |
 
-Score: **1.000** (132/132 criteria over 22 diagnostics, threshold 1.000)
+Score: **1.000** (138/138 criteria over 23 diagnostics, threshold 1.000)
 
 | fixture | diagnostic | line | missing |
 | --- | --- | --- | --- |
@@ -33,6 +33,7 @@ Score: **1.000** (132/132 criteria over 22 diagnostics, threshold 1.000)
 | fixtures/effects/scoped-fetch.ts | effect/missing | 8 | — |
 | fixtures/effects/scoped-fetch.ts | effect/unused | 8 | — |
 | fixtures/effects/scoped-fetch.ts | effect/unused | 8 | — |
+| fixtures/effects/throw-effect.ts | effect/missing | 3 | — |
 | fixtures/effects/throw-effect.ts | effect/missing | 3 | — |
 | fixtures/effects/transitive-console.ts | effect/missing | 7 | — |
 | fixtures/effects/unknown-effect.ts | effect/unknown | 3 | — |

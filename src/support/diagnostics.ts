@@ -85,7 +85,7 @@ function diagnosticLine(text: string, position: number): number {
 }
 
 /** Convert compiler failures into the same source-attributed diagnostic contract used by every frontend. */
-/* uneffect:effect none */
+/* uneffect:effect Throw<RangeError> */
 export function fromTypeScriptDiagnostic(
   diagnostic: CompilerDiagnosticInput,
   kind: TypeScriptCheckerDiagnostic["kind"],
@@ -163,6 +163,7 @@ const hints: Readonly<Record<string, string>> = {
   "react/unknown-hook-closure": "inline the Hook callback so its captures can be checked, or keep this function outside the checked React boundary",
   "react/unknown-hook-dependencies": "use a finite inline dependency array; computed arrays are not accepted as stale-closure evidence",
   "react/unstable-hook-dependency": "bind the value outside the dependency array and stabilize its identity, or depend on the primitive/member values it reads",
+  "bounds/unchecked-index": "check the array length or the element before dereferencing it, use optional chaining, or enable noUncheckedIndexedAccess so TypeScript reports the possibly undefined element",
   "typescript/syntax": "fix the TypeScript syntax error before relying on Uneffect evidence",
   "typescript/semantic": "fix the TypeScript type error or correct the project inputs before relying on TypeChecker-derived evidence",
   "typescript/options": "fix the TypeScript compiler configuration before running Uneffect assurance",
@@ -225,16 +226,16 @@ function relative(fileName: string, cwd: string | undefined): string {
   return fileName.startsWith(prefix) ? fileName.slice(prefix.length) : fileName;
 }
 
-/* uneffect:effect none */
+/* uneffect:effect Throw<RangeError> */
 function frame(source: string | undefined, line: number): string[] {
   const text = source?.split(/\r?\n/u)[line - 1];
   if (text === undefined) return [];
-  const gutter = String(line);
+  const gutter = `${line}`;
   return [`  ${gutter} | ${text.trimEnd()}`, `  ${" ".repeat(gutter.length)} | ${" ".repeat(text.length - text.trimStart().length)}^`];
 }
 
 /** Render one diagnostic as a stable text block: header, source frame, then explanation notes. */
-/* uneffect:effect none */
+/* uneffect:effect Throw<RangeError> */
 export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: DiagnosticFormatOptions = {}): string {
   const reported = reportDiagnostic(diagnostic);
   const source = options.sources?.get(diagnostic.fileName);
@@ -243,7 +244,7 @@ export function formatDiagnostic(diagnostic: CheckerDiagnostic, options: Diagnos
 }
 
 /** Render a whole run: every diagnostic block plus a counted summary line. */
-/* uneffect:effect none */
+/* uneffect:effect Throw<RangeError> */
 export function formatDiagnostics(diagnostics: readonly CheckerDiagnostic[], options: DiagnosticFormatOptions = {}): string {
   const reported = diagnostics.map(reportDiagnostic);
   const errors = reported.filter((item) => item.severity === "error").length;

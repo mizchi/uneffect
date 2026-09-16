@@ -790,3 +790,93 @@ Unknown loop cardinality is represented in generated Quint by a
 nondeterministic repeat-or-exit choice; this is not a termination or fairness
 proof. Dynamic loops containing `using`/`await using`, unresolved labels, and
 resource-generation joins remain explicit unsupported cases.
+
+## Ad-delivery tag and edge origin-request handler
+
+Observed on 2026-09-13 against a private ad-delivery repository at its default
+branch: a browser ad tag (about 17,000 lines of ES3-targeted TypeScript with
+class-based command queues, `for (i < list.length)` loops, and module-level
+IIFEs), a second browser runtime for native ads, a build CLI, and a Lambda@Edge
+origin-request handler that parses the `Cookie` header. Nothing in that
+repository was changed: its working tree stayed byte-identical throughout, and
+the handler, which ships no `tsconfig.json`, was analyzed through a
+configuration file kept outside it that lists the absolute source path and the
+compiler options its Makefile passes. Corsa opens a project whose configuration
+directory is not an ancestor of the sources, and module resolution still walks
+up from the importing file, so the handler's own installed type packages
+resolve.
+
+```sh
+uneffect check --project /path/to/script/tsconfig.json --infer --json
+uneffect check --project /path/outside/the/target/handler.tsconfig.json --infer --json
+```
+
+The first observation produced 230 syntax coverage errors on the ad tag and no
+other finding: 137 `computed-property` exclusions for ordinary `list[i]` reads,
+58 `constructor-boundary` exclusions, 31 `unsupported-call-target` exclusions
+for immediately invoked functions and call-result callees, and 4
+`computed-call-target` exclusions. The handler's known production defect,
+`parts[1].trim()` on the result of `pair.split("=")` that throws for a cookie
+pair without `=`, was itself classified as unsupported syntax.
+
+After the work recorded in `implementation-status.md`, all four projects
+analyze. The ad tag reports 6 errors: 4 syntax exclusions that are genuinely
+outside the fragment — a dynamic method name on an optional-chain receiver and
+three keys whose receiver is itself a computed member — and 2
+`bounds/unchecked-index` findings. The native runtime reports 8 syntax
+exclusions, every one of them a receiver the compiler resolves to an error type
+because that project's own configuration does not type-check under the analyzer
+compiler, plus 9 bounds findings. The build CLI reports one dynamic `import()`.
+The handler reports the real defect plus `event.Records[0].cf`, which relies on
+the Lambda@Edge single-record invariant; the repaired version, which returns
+early when `parts.length < 2`, reports only the second.
+
+Over the ad tag's own `src` the inferred inventory is now `InvokeUserCode` 250,
+`Dom` 211, `Throw<DOMException>` 158, `Throw<TypeError>` 47, `LocalStorageRead`
+20, `LocalStorageWrite` 16, `Net` 15, `Throw<SyntaxError>` 15, `Random` 14,
+`Timer` 12, `Console` 9, `Throw<URIError>` 9, `CookieRead` 4, and `CookieWrite`
+2, over 218 proofs of effect freedom and 92 trusted upper bounds. The native
+runtime reports `Net` 16 and `Dom` 111. None of
+`Throw`, `Random`, `Timer`, `Net`, or `CookieWrite` was observable before; cookie
+writes were previously reported as cookie reads, and a member reached through a
+nested receiver such as `env.doc.cookie` resolved nothing at all.
+
+Counting only the two projects' production sources — the ad tag's and the native
+runtime's own `src`, with their test and end-to-end files excluded — the summaries
+move from 1,094 unknown / 17 trusted / 299 inferred to 954 unknown / 144 trusted /
+319 inferred. Four mechanisms account for that: a function that invokes one of its
+own parameters now carries `InvokeUserCode` and its callers compose the argument
+they supply; a reviewed contract is reached through the inheritance
+`lib.dom.d.ts` declares; a construction and a `super` call link to the constructor
+they run; and the reviewed catalog now covers the legacy request object, the
+style, dataset and class-list surfaces, the document tree, the URI functions, and
+the standard constructors and conversions. The remaining unknown summaries name
+what was not resolved — the global `window` (typed as an intersection the Corsa
+boundary exposes no constituent query for), namespace-imported functions, members
+of interfaces the catalog does not carry, and any method call that is not
+`this.#m()` — rather than a single opaque reason.
+
+Method dispatch is where the honest limit sits, and it is worth recording why. An
+earlier version of this work linked a public `this.m()` and a call on a receiver
+whose class declares a `private` member, under a closed-world condition over the
+analyzed files. Adversarial review broke that condition five different ways — a
+barrel re-export, a bare side-effect import, a dynamic `import()`, a triple-slash
+reference and an ambient subclass declaration each leave a file unread — and broke
+the nominality argument as well, because an *optional* `private` member imposes
+nothing on an object literal. Only `this.#m()` survives without a whole-program
+assumption, so only that is linked. On the ad tag that costs roughly 60 summaries
+and most of the `Timer` attribution; the alternative was a proof that is wrong.
+
+Each of the four runs completes in seconds: all four together take about 5 s. Over
+this repository's own source the default check takes 29 s against 33 s before this
+work, while reporting 75 syntax errors where the earlier build reported 1,024.
+
+These findings are honest non-proofs rather than confirmed defects: one
+`parts[0]` access follows `shift()` calls whose count the fragment does not
+track, one `mountpoints[0]` access relies on a caller invariant, and the
+`Records[0]` finding is the same kind of caller-invariant claim. The regression
+lock for the detection, the repair, the guard fragment, the admitted syntax, the
+catalog reachability, and the closure evidence rule is
+`test/corsa-source-facts.test.ts` together with the boundary, callback, and
+contract-selection cases in `test/syntax-facts.test.ts` and
+`test/corsa-check.test.ts`.

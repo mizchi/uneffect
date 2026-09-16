@@ -26,7 +26,7 @@
 | `./module-order` | 非同期 Oxc/Corsa API。設定診断を含む v1/v2 解析 | `module-order-api.test.ts`, `module-order-corsa.test.ts` | workspace checker への統合 |
 | `./experimental/lint` | 中立 CFG 上の prerequisite 解析 | `cfg-lint.test.ts` | 既存契約維持 |
 | `./experimental/lint/corsa` | Oxc / native 型・symbol | `cfg-lint-corsa.test.ts`, `registry-read-rule.test.ts`, `registry-dogfood.test.ts` | M1、登録表の式内/文間ガードを検査。例外・別名・helper の証明は対象外 |
-| `./experimental/spec` | Oxc 解析・生成、native DSL linking / completion | `oxc-spec-migration.test.ts`, `corsa-contract-dsl.test.ts`, `corsa-contract-control-flow.test.ts` | M1 / M2、生成と本体証明を区別 |
+| `./experimental/spec` | Oxc 解析・生成、native DSL linking / completion、有限 literal union の網羅 switch 終端判定 | `oxc-spec-migration.test.ts`, `corsa-contract-dsl.test.ts`, `corsa-contract-control-flow.test.ts` | M1 / M2、生成と本体証明を区別 |
 | `./experimental/instrument` | Oxc の限定 assertion 挿入 | `oxc-instrument.test.ts` | M3 の証拠消費 |
 | `./experimental/corsa/callables` | native signature / type facts | `corsa-callable-frontend.test.ts`, `corsa-awaited-types.test.ts` | M1 の不足 facts |
 | `./experimental/build/corsa` | native 再出力比較、references の依存順検査 | `corsa-build-output.test.ts`, `corsa-workspace-build-output.test.ts` | M4 の assurance 統合 |

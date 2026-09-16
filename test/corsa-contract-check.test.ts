@@ -15,9 +15,9 @@ import { nativeInteger } from "../src/contracts/native-scalars.js";
 const coverageSchema = JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8")).$defs.contract.properties.native.properties.coverage;
 const publishedCoverage: string[] = coverageSchema.enum ?? [coverageSchema.const];
 
-async function project(text: string, run: (file: string, configFile: string) => Promise<void>, options = {}) {
+async function project(text: string, run: (file: string, configFile: string) => Promise<void>, options = {}, sourceName = "input.ts") {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-native-body-"));
-  const file = join(directory, "input.ts"), configFile = join(directory, "tsconfig.json");
+  const file = join(directory, sourceName), configFile = join(directory, "tsconfig.json");
   writeFileSync(file, text);
   writeFileSync(configFile, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", types: [], ...options }, files: [file] }));
   try { await run(file, configFile); } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -137,6 +137,28 @@ export function checked(enabled: boolean): number { return true ? 0 : Math.rando
 });
 
 describe("native contract bodies through check", () => {
+  /**
+   * `.tsx` and `.ts` are different grammars, so a project holding one JSX file used to fail to parse before any
+   * contract in it could be read. The proof itself is ordinary; what this pins is that the file is reachable.
+   */
+  it("proves a contract declared beside JSX in a .tsx source", async () => {
+    await project(`declare global {
+  namespace JSX {
+    interface IntrinsicElements { div: { className?: string; children?: unknown } }
+    interface Element { readonly rendered: unique symbol }
+  }
+}
+/* uneffect:requires enabled */
+/* uneffect:ensures result === false */
+export function invert(enabled: boolean): boolean { return !enabled; }
+export function view(label: string): JSX.Element { return <div className="row">{label}</div>; }`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.map(item => item.status)).toEqual(["verified"]);
+      expect(result.diagnostics.filter(item => item.domain === "syntax")).toEqual([]);
+      expect(result.summaries.map(item => item.functionName).sort()).toEqual(["invert", "view"]);
+    }, { jsx: "preserve" }, "input.tsx");
+  });
+
   it("composes an authenticated one-argument affine callee", async () => {
     await project(`/* uneffect:ensures result === value + 1 */
 export function inc(value: 0 | 1): number { return value + 1; }

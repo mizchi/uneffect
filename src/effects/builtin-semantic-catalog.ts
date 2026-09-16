@@ -201,7 +201,8 @@ function domMethodDefinitions(): ReviewedBuiltinSemantic[] {
     ["Element#matches", dom("NodeRead", { invokesUserCode: true, queryArgument: 0 })],
     ["Element#closest", dom("NodeRead", { invokesUserCode: true, queryArgument: 0 })],
     ["Element#getBoundingClientRect", dom("LayoutRead")],
-    ["Document#createElement", dom("Create")],
+    // `Document#createElement` is published by `browserPlatformDefinitions` with the custom-element constructor
+    // it runs and the names it rejects; `createTextNode` validates nothing and reaches no user code.
     ["Document#createTextNode", dom("Create")],
     ["Element#setAttribute", dom("AttributeWrite", { mutatesReceiver: true, invokesUserCode: true })],
     ...["Element#removeAttribute", "Element#removeAttributeNS", "Element#setAttributeNS", "Element#toggleAttribute"]
@@ -304,6 +305,193 @@ function domPropertyDefinitions(): ReviewedBuiltinSemantic[] {
     property("HTMLInputElement#value", [dom("PropertyRead")], [dom("PropertyWrite"), { kind: "mutate", target: receiver }]),
     ...["src", "integrity", "crossOrigin", "type", "async", "defer", "referrerPolicy", "nonce"]
       .map((name) => property(`HTMLScriptElement#${name}`, [dom("PropertyRead")], [dom("PropertyWrite"), { kind: "mutate", target: receiver }])),
+  ];
+}
+
+/**
+ * Browser platform surfaces whose members the analysis meets constantly in page code. Each entry states what
+ * the relevant specification requires of the member, not what an implementation happens to do.
+ */
+function browserPlatformDefinitions(): ReviewedBuiltinSemantic[] {
+  const receiver: ValueProjector = { kind: "receiver" };
+  const dom = (member: DomOperation, target: ValueProjector = receiver): SemanticPrimitive => ({
+    kind: "effect", capability: "Dom", scope: { kind: "region", member, target },
+  });
+  const throws = (error: string): SemanticPrimitive => ({ kind: "throw", error });
+  const entry = (key: string, primitives: readonly SemanticPrimitive[], reason: string): ReviewedBuiltinSemantic => reviewed("dom", {
+    symbol: { module: "lib.dom", export: key },
+    semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [...primitives] },
+    trustReason: reason, trustOwner: "@mizchi/uneffect",
+  });
+  const property = (
+    key: string,
+    read: readonly SemanticPrimitive[],
+    write: readonly SemanticPrimitive[],
+    reason: string,
+  ): ReviewedBuiltinSemantic => entry(key, [{ kind: "property", read: [...read], write: [...write] }], reason);
+  /**
+   * A surface every member of which reads or writes the same region, where enumerating members is not possible
+   * because the interface's named properties are open-ended. Reading is a plain region read; writing runs the
+   * element's custom-element reactions and validates its input, and a call may do either, so a call carries the
+   * write side. The claim must stay an upper bound for members a later library revision adds.
+   */
+  const wholeSurface = (owner: string, read: DomOperation, write: DomOperation, reason: string): ReviewedBuiltinSemantic => entry(
+    `${owner}#*`,
+    [
+      // A call may read or write, so it carries the write side's capability but claims no mutation: a pure
+      // query such as `contains` or `getPropertyValue` writes through nothing.
+      dom(write), { kind: "invoke-user-code" }, throws("DOMException"),
+      { kind: "property", read: [dom(read)], write: [dom(write), { kind: "mutate", target: receiver }, { kind: "invoke-user-code" }, throws("DOMException")] },
+    ],
+    reason,
+  );
+  const handlerProperties = [
+    ["XMLHttpRequest", "onreadystatechange"],
+    ...["onabort", "onerror", "onload", "onloadend", "onloadstart", "onprogress", "ontimeout"]
+      .map((name) => ["XMLHttpRequestEventTarget", name] as const),
+  ] as const;
+  return [
+    // --- XMLHttpRequest (XHR Living Standard) --------------------------------------------------------------
+    entry("XMLHttpRequest#open", [
+      { kind: "effect", capability: "Net" }, { kind: "invoke-user-code" },
+      { kind: "mutate", target: receiver }, throws("DOMException"),
+    ],
+      "XHR open() terminates the fetch controller of a reused request, resets it, and fires readystatechange at the end, which runs registered handlers before it returns; it throws SyntaxError, SecurityError, InvalidStateError or InvalidAccessError"),
+    entry("XMLHttpRequest#send", [
+      { kind: "effect", capability: "Net" }, { kind: "invoke-user-code" },
+      { kind: "mutate", target: receiver }, throws("DOMException"),
+    ],
+      "XHR send() runs the fetch the request describes and fires loadstart before returning; it throws InvalidStateError before open(), and in synchronous mode it throws TimeoutError, AbortError or NetworkError for an ordinary request failure"),
+    entry("XMLHttpRequest#abort", [
+      { kind: "effect", capability: "Net" }, { kind: "invoke-user-code" }, { kind: "mutate", target: receiver },
+    ],
+      "XHR abort() terminates the fetch controller, which is a no-op with none in flight, and fires abort and loadend events"),
+    entry("XMLHttpRequest#setRequestHeader", [{ kind: "mutate", target: receiver }, throws("DOMException"), throws("TypeError")],
+      "XHR setRequestHeader() throws InvalidStateError outside the opened state, SyntaxError on a name or value the standard rejects, and TypeError when either argument leaves the ByteString range Web IDL requires"),
+    entry("XMLHttpRequest#overrideMimeType", [{ kind: "mutate", target: receiver }, throws("DOMException")],
+      "XHR overrideMimeType() throws InvalidStateError in the loading or done state; an unparsable type is replaced with application/octet-stream rather than rejected"),
+    entry("XMLHttpRequest#getResponseHeader", [throws("TypeError")],
+      "XHR getResponseHeader() reads headers already received; Web IDL throws TypeError when the name leaves the ByteString range"),
+    entry("XMLHttpRequest#getAllResponseHeaders", [],
+      "XHR getAllResponseHeaders() takes no argument and reads headers already received"),
+    property("XMLHttpRequest#responseText", [throws("DOMException")], [throws("TypeError")],
+      "XHR responseText throws InvalidStateError unless the response type selects it; the attribute is readonly, so an assignment throws"),
+    property("XMLHttpRequest#responseXML", [dom("Parse"), dom("Create"), throws("DOMException")], [throws("TypeError")],
+      "XHR responseXML parses the received bytes into a new Document with scripting disabled, and throws InvalidStateError unless the response type selects it"),
+    property("XMLHttpRequest#response", [dom("Parse"), dom("Create")], [throws("TypeError")],
+      "XHR response deserialises the received bytes into a fresh ArrayBuffer, Blob, Document or JSON value; a failure is reported as the failure state rather than thrown"),
+    ...["status", "statusText", "readyState", "responseURL"].map((name) => property(`XMLHttpRequest#${name}`, [], [throws("TypeError")],
+      `XHR ${name} reports request state already held in the process; the attribute is readonly, so an assignment throws`)),
+    property("XMLHttpRequest#upload", [{ kind: "result", refinement: { kind: "alias", target: receiver } }], [throws("TypeError")],
+      "XHR upload is a SameObject attribute returning the request's own upload target; the attribute is readonly, so an assignment throws"),
+    property("XMLHttpRequest#withCredentials", [], [throws("DOMException"), { kind: "mutate", target: receiver }],
+      "XHR withCredentials throws InvalidStateError when set outside the unsent and opened states or after send()"),
+    property("XMLHttpRequest#timeout", [], [throws("DOMException"), { kind: "mutate", target: receiver }],
+      "XHR timeout throws InvalidAccessError when set on a synchronous request in a Window"),
+    property("XMLHttpRequest#responseType", [], [throws("DOMException"), { kind: "mutate", target: receiver }],
+      "XHR responseType throws InvalidStateError in the loading or done state and InvalidAccessError on a synchronous request in a Window"),
+    ...handlerProperties.map(([owner, name]) => property(`${owner}#${name}`, [],
+      [dom("Listen"), { kind: "mutate", target: receiver }, {
+        kind: "callback", target: { kind: "assigned-value" }, timing: "deferred", queue: "external",
+        cardinality: "0..n", callable: "optional", invocationArguments: [runtimeValue("event")], thisArgument: receiver,
+      }],
+      `Assigning ${name} registers the event handler the target runs later, so the assigned function's own effects are the assignment's`)),
+    // --- style, dataset and class list ---------------------------------------------------------------------
+    property("ElementCSSInlineStyle#style", [dom("PropertyRead")], [],
+      "The style attribute exposes the element's inline declaration block; the reference itself is a read"),
+    property("HTMLElement#dataset", [dom("AttributeRead")], [],
+      "dataset exposes the element's data-* attributes; the reference itself is a read"),
+    property("Element#classList", [dom("AttributeRead")], [],
+      "classList exposes the element's class attribute; the reference itself is a read"),
+    // Keyed on the base the shipped library actually declares: `CSSStyleDeclaration` extends `CSSStyleProperties`
+    // extends `CSSStyleDeclarationBase` there, and the descriptor blocks extend the same base.
+    wholeSurface("CSSStyleDeclarationBase", "PropertyRead", "PropertyWrite",
+      "Every member of a CSS declaration block reads or writes that block. Writing through cssText, setProperty, removeProperty or any named property is [CEReactions] and throws NoModificationAllowedError when the block is read-only, which is how getComputedStyle returns it"),
+    wholeSurface("DOMStringMap", "AttributeRead", "AttributeWrite",
+      "Every member of a DOMStringMap is a data-* attribute of the owning element; the setter is [CEReactions] and throws SyntaxError or InvalidCharacterError on a name the standard rejects"),
+    wholeSurface("DOMTokenList", "AttributeRead", "AttributeWrite",
+      "Every member of a DOMTokenList reads or writes the reflected attribute it is bound to; add, remove, toggle and replace are [CEReactions] and throw SyntaxError on an empty token and InvalidCharacterError on whitespace"),
+    // The iteration member the standard's `iterable<DOMString>` declaration generates runs its callback once per
+    // token, synchronously; a member contract is selected before the whole-surface one.
+    entry("DOMTokenList#forEach", [dom("AttributeRead"), ...inlineCallbackSemantics(0, false,
+      [runtimeValue("token"), runtimeValue("token-index"), receiverValue], optionalArgument(1)).primitives],
+      "DOMTokenList.forEach invokes its callback synchronously for each token"),
+    entry("CSSStyleDeclarationBase#parentRule", [dom("PropertyRead")],
+      "parentRule returns the owning CSS rule, a read that reaches the stylesheet the rule belongs to rather than this block"),
+    // --- Document -------------------------------------------------------------------------------------------
+    ...["head", "documentElement", "currentScript", "activeElement", "forms", "images", "scripts", "links"]
+      .map((name) => property(`Document#${name}`, [dom("NodeRead")], [],
+        `document.${name} reads the tree the document holds; a collection it returns is live, and its own members are not contracted here`)),
+    property("Document#body", [dom("NodeRead")],
+      [dom("NodeWrite"), { kind: "mutate", target: receiver }, { kind: "invoke-user-code" }, throws("DOMException")],
+      "Assigning document.body replaces the existing body element or appends to the document element, runs custom element reactions before returning, and throws HierarchyRequestError for a value that is not a body or frameset"),
+    // `scrollingElement` depends on the body's computed overflow in quirks mode, which is a layout question.
+    property("Document#scrollingElement", [dom("LayoutRead")], [],
+      "document.scrollingElement resolves against the body's box and computed overflow in quirks mode"),
+    ...["readyState", "referrer", "URL", "characterSet", "contentType", "compatMode", "visibilityState", "hidden"]
+      .map((name) => property(`Document#${name}`, [dom("PropertyRead")], [],
+        `document.${name} reads document state the host maintains`)),
+    property("Document#title", [dom("TextRead")],
+      [dom("TextWrite"), dom("Create"), dom("NodeWrite"), { kind: "mutate", target: receiver }, { kind: "invoke-user-code" }],
+      "Assigning document.title creates and inserts a title element when the document has none, and runs custom element reactions before returning"),
+    ...["getElementsByTagName", "getElementsByTagNameNS", "getElementsByClassName", "getElementsByName"]
+      .map((name) => entry(`Document#${name}`, [dom("NodeRead")],
+        `document.${name}() returns a live collection over the tree the document holds; the collection's own members are not contracted here`)),
+    ...["createDocumentFragment", "createComment", "createRange"]
+      .map((name) => entry(`Document#${name}`, [dom("Create")],
+        `document.${name}() creates a node the document owns, with no name to validate and no constructor to run`)),
+    ...["createElement", "createElementNS"].map((name) => entry(`Document#${name}`,
+      [dom("Create"), { kind: "invoke-user-code" }, throws("DOMException")],
+      `document.${name}() constructs a registered custom element synchronously and throws InvalidCharacterError, NotSupportedError or NamespaceError for a name the standard rejects`)),
+    ...["createEvent", "createAttribute"].map((name) => entry(`Document#${name}`, [dom("Create"), throws("DOMException")],
+      `document.${name}() creates the object and throws for an argument the standard rejects`)),
+    entry("Document#importNode", [dom("Create"), dom("NodeRead"), { kind: "invoke-user-code" }, throws("DOMException")],
+      "document.importNode() reads the source tree, creates a copy the document owns, runs the copy's upgrade reactions before returning, and throws NotSupportedError for a document or shadow root"),
+    ...["write", "writeln"].map((name) => entry(`Document#${name}`,
+      [dom("Parse"), dom("NodeWrite"), { kind: "mutate", target: receiver }, { kind: "invoke-user-code" }, throws("DOMException"), throws("TypeError")],
+      `document.${name}() parses its argument into the document and executes the scripts it inserts; with no insertion point it first reopens the document, destroying the tree and its listeners. It throws InvalidStateError on an XML document or during custom element construction, and TypeError when a Trusted Types policy rejects the string`)),
+    ...["elementFromPoint", "elementsFromPoint"].map((name) => entry(`Document#${name}`, [dom("LayoutRead")],
+      `document.${name}() resolves a hit test, which requires up-to-date layout`)),
+    entry("Document#hasFocus", [dom("PropertyRead")], "document.hasFocus() reads focus state the host maintains"),
+    // --- Window and its mixins --------------------------------------------------------------------------------
+    // A `Window` reference may be a cross-origin window proxy. Only the names the standard safelists are
+    // readable there; every other one throws SecurityError before the getter is entered.
+    ...["parent", "top", "self", "window", "frames", "frameElement"]
+      .map((name) => property(`Window#${name}`, [dom("PropertyRead")], [],
+        `window.${name} is safelisted for a cross-origin window proxy and reads a host object the browsing context holds`)),
+    ...["document", "navigator", "screen", "history", "customElements"]
+      .map((name) => property(`Window#${name}`, [dom("PropertyRead"), throws("DOMException")], [],
+        `window.${name} reads a host object the browsing context holds and throws SecurityError on a cross-origin window proxy`)),
+    property("Window#opener", [dom("PropertyRead")],
+      [dom("PropertyWrite"), { kind: "mutate", target: receiver }],
+      "window.opener is safelisted cross-origin; assigning null severs the opener permanently and any other value replaces the accessor with an own data property"),
+    property("Window#visualViewport", [dom("PropertyRead"), throws("DOMException")], [],
+      "window.visualViewport returns the document's viewport object without computing geometry, and throws SecurityError on a cross-origin window proxy"),
+    ...["innerWidth", "innerHeight", "outerWidth", "outerHeight", "scrollX", "scrollY", "pageXOffset", "pageYOffset", "devicePixelRatio", "screenX", "screenY"]
+      .map((name) => property(`Window#${name}`, [dom("LayoutRead"), throws("DOMException")], [],
+        `window.${name} reads viewport geometry, which requires up-to-date layout, and throws SecurityError on a cross-origin window proxy`)),
+    entry("Window#getComputedStyle", [dom("LayoutRead"), throws("DOMException")],
+      "window.getComputedStyle() resolves used values against current layout and throws SecurityError on a cross-origin window proxy"),
+    // --- navigator and measured geometry -----------------------------------------------------------------
+    // Keyed by the mixin each member is declared on, which is what a receiver's interface chain reaches.
+    ...([
+      ["NavigatorID", "userAgent"], ["NavigatorID", "platform"], ["NavigatorID", "vendor"],
+      ["NavigatorLanguage", "language"], ["NavigatorLanguage", "languages"],
+      ["NavigatorCookies", "cookieEnabled"], ["NavigatorConcurrentHardware", "hardwareConcurrency"],
+      ["NavigatorOnLine", "onLine"], ["NavigatorAutomationInformation", "webdriver"],
+      ["Navigator", "maxTouchPoints"], ["Navigator", "doNotTrack"],
+    ] as const).map(([owner, name]) => property(`${owner}#${name}`, [dom("PropertyRead")], [throws("TypeError")],
+      `navigator.${name} reads host-environment state the user agent maintains, not the document tree; the attribute is readonly, so an assignment throws`)),
+    ...["x", "y", "width", "height", "top", "right", "bottom", "left"]
+      .map((name) => property(`DOMRectReadOnly#${name}`, [], [throws("TypeError")],
+        `A rectangle is the snapshot the measuring call already produced, so reading ${name} performs no further layout; on the read-only interface the attribute has no setter and an assignment throws`)),
+    // `DOMRect` redeclares the four geometry members as writable, and `getBoundingClientRect` returns one.
+    ...["x", "y", "width", "height"].map((name) => property(`DOMRect#${name}`, [], [{ kind: "mutate", target: receiver }],
+      `DOMRect redeclares ${name} as a writable attribute, so an assignment mutates the rectangle rather than throwing`)),
+    property("WindowLocalStorage#localStorage", [{ kind: "throw", error: "DOMException" }], [],
+      "Reading localStorage throws SecurityError when the origin is denied storage access"),
+    property("WindowSessionStorage#sessionStorage", [{ kind: "throw", error: "DOMException" }], [],
+      "Reading sessionStorage throws SecurityError when the origin is denied storage access"),
   ];
 }
 
@@ -526,6 +714,39 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: "ECMAScript Array.fromAsync awaits iterator values and mapping results while constructing its Promise result",
       trustOwner: "@mizchi/uneffect",
     }),
+    // Members reviewed against the ECMAScript specification as completing without any user-observable side
+    // effect and without reaching user code, for every argument a checked program can pass. Their receiver is a
+    // primitive string or the standard constructor object, so no override or subclass can intercept them.
+    // `split` and `localeCompare` are deliberately absent: `split` delegates to a `Symbol.split` method a
+    // well-typed splitter object may define, and the locale-sensitive members canonicalize a locale list they
+    // may read through user accessors. Members whose receiver is an instance interface a user class can extend
+    // (`Map`, `Set`, and their weak and readonly forms) are absent for the same reason: the declared type does
+    // not establish which body runs. `RegExp` matching updates `lastIndex` and is absent as an observable write.
+    ...([
+      ["String", ["trim", "trimStart", "trimEnd", "toLowerCase", "toUpperCase", "charAt", "charCodeAt",
+        "codePointAt", "at", "startsWith", "endsWith", "includes", "indexOf", "lastIndexOf", "slice", "substring"]],
+      ["NumberConstructor", ["isFinite", "isInteger", "isNaN", "isSafeInteger"]],
+    ] as const).flatMap(([owner, names]) => names.map((name) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: `${owner}#${name}` },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+      trustReason: `ECMAScript ${owner}.${name} completes without a user-observable side effect and reaches no user code for the arguments a checked program can pass`,
+      trustOwner: "@mizchi/uneffect",
+    }))),
+    // Only the members the specification makes throw on an out-of-range ARGUMENT are listed. Exhausting the
+    // implementation's string limit is not modelled here: `+`, a template literal and `padEnd` all reach it,
+    // and charging three of them while the operators stay silent would describe the language inconsistently.
+    ...(["normalize", "repeat"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: `String#${name}` },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "RangeError" }] },
+      trustReason: `ECMAScript String.${name} reaches no user code but throws RangeError for an argument outside the range the specification admits`,
+      trustOwner: "@mizchi/uneffect",
+    })),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "ArrayConstructor#isArray" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "TypeError" }] },
+      trustReason: "ECMAScript Array.isArray reaches no user code but throws TypeError for a revoked Proxy argument",
+      trustOwner: "@mizchi/uneffect",
+    }),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "JSON#parse" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
@@ -560,19 +781,44 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       ] },
       trustReason: `ECMAScript ${owner}.groupBy consumes its iterable and invokes its classifier synchronously`, trustOwner: "@mizchi/uneffect",
     })),
-    ...(["then", "catch", "finally"] as const).map((name) => reviewed("javascript", {
-      symbol: { module: "lib.es", export: `Promise#${name}` },
+    /**
+     * `PromiseLike` is a structural interface, not a specification object: any value with a `then` method is
+     * assignable to it, and calling that method is an ordinary call into code the caller supplied. None of the
+     * deferral, the at-most-once settlement, or the absence of a synchronous throw that `Promise.prototype.then`
+     * guarantees applies, because every one of those comes from the promise machinery the value need not be.
+     */
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "PromiseLike#then" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
-        ...(name === "then" ? [0, 1] : [0]).map((index) => ({
+        { kind: "invoke-user-code" },
+        { kind: "throw", error: "unknown" },
+        ...([0, 1] as const).map((index) => ({
+          kind: "callback" as const, target: { kind: "argument" as const, index }, timing: "sync" as const,
+          queue: "current" as const, cardinality: "0..n" as const, callable: "optional" as const,
+          invocationArguments: [runtimeValue(index === 0 ? "promise-fulfillment" : "promise-rejection")],
+        })),
+      ] },
+      trustReason: "A PromiseLike value's own `then` is user code: ECMAScript constrains a thenable's `then` only inside PromiseResolveThenableJob, which a direct call does not reach",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    ...(["Promise#then", "Promise#catch", "Promise#finally"] as const).map((key) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: key },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        ...(key.endsWith("#then") ? [0, 1] : [0]).map((index) => ({
           kind: "callback" as const, target: { kind: "argument" as const, index }, timing: "deferred" as const,
           queue: "microtask" as const, cardinality: "0..1" as const, callable: "optional" as const,
-          invocationArguments: name === "finally" ? [] : [runtimeValue(
-            name === "then" && index === 0 ? "promise-fulfillment" : "promise-rejection",
+          invocationArguments: key.endsWith("#finally") ? [] : [runtimeValue(
+            key.endsWith("#then") && index === 0 ? "promise-fulfillment" : "promise-rejection",
           )],
         })),
-        { kind: "protocol" as const, name: "promise-handler", transition: name },
+        { kind: "protocol" as const, name: "promise-handler", transition: key.slice(key.indexOf("#") + 1) },
       ] },
-      trustReason: `ECMAScript Promise.${name} schedules callable handlers as microtasks`, trustOwner: "@mizchi/uneffect",
+      // Known gap, unchanged from before this entry was reviewed: step 2 rejects a receiver that is not a
+      // promise and step 3 resolves the species constructor, reading and calling the receiver's own
+      // `constructor`. Declaring either needs the checker-fact exporter to discharge a synchronous throw across
+      // an `async` boundary the way the summary path already does, which is a separate change.
+      trustReason: `ECMAScript ${key.replace("#", ".")} schedules callable handlers as microtasks; a receiver that is not a builtin promise, or one whose constructor was replaced, is outside this claim`,
+      trustOwner: "@mizchi/uneffect",
     })),
     ...(["all", "allSettled", "race", "any"] as const).map((combinator) => reviewed("javascript", {
       symbol: { module: "lib.es", export: `PromiseConstructor#${combinator}` },
@@ -762,6 +1008,13 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: `reviewed Console ${name} semantic overlay`, trustOwner: "@mizchi/uneffect",
     })),
     reviewed("dom", { symbol: { module: "global", export: "setTimeout" }, semantics: timerSemantics("timer", false, 1, [], 2) }),
+    // The same operations reached as members of the global object: `window.setTimeout` resolves to the mixin
+    // that declares them, so the reviewed semantics are published under that interface as well.
+    reviewed("dom", { symbol: { module: "lib.dom", export: "WindowOrWorkerGlobalScope#setTimeout" }, semantics: timerSemantics("timer", false, 1, [], 2) }),
+    reviewed("dom", { symbol: { module: "lib.dom", export: "WindowOrWorkerGlobalScope#setInterval" }, semantics: timerSemantics("timer", true, 1, [], 2) }),
+    reviewed("dom", { symbol: { module: "lib.dom", export: "WindowOrWorkerGlobalScope#queueMicrotask" }, semantics: timerSemantics("microtask", false, undefined, []) }),
+    reviewed("dom", { symbol: { module: "lib.dom", export: "AnimationFrameProvider#requestAnimationFrame" },
+      semantics: timerSemantics("animation-frame", false, undefined, [runtimeValue("animation-frame-timestamp")]) }),
     reviewed("dom", { symbol: { module: "global", export: "setInterval" }, semantics: timerSemantics("timer", true, 1, [], 2) }),
     reviewed("dom", { symbol: { module: "global", export: "queueMicrotask" }, semantics: timerSemantics("microtask", false, undefined, []) }),
     reviewed("node", { symbol: { module: "global", export: "setImmediate" }, semantics: timerSemantics("check", false, undefined, [], 1) }),
@@ -769,6 +1022,109 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     reviewed("dom", { symbol: { module: "global", export: "cancelAnimationFrame" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
       { kind: "effect", capability: "Timer" }, { kind: "protocol", name: "animation-frame", transition: "cancel", inputs: { handle: { kind: "argument", index: 0 } } },
     ] } }),
+    ...(["WindowOrWorkerGlobalScope#clearTimeout", "WindowOrWorkerGlobalScope#clearInterval", "AnimationFrameProvider#cancelAnimationFrame"] as const)
+      .map((name) => reviewed("dom", { symbol: { module: "lib.dom", export: name }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "effect", capability: "Timer" },
+        { kind: "protocol", name: "timer", transition: "cancel", inputs: { handle: { kind: "argument", index: 0 } } },
+      ] } })),
+    /**
+     * Standard global constructors and conversions. The dividing line is what the TypeScript signature admits:
+     * a parameter the checker constrains to a primitive is coerced without reaching user code, while one typed
+     * `any` or `unknown` reaches the value's own `toString`, `valueOf` or `Symbol.toPrimitive`.
+     */
+    ...(["Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "global", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: `ECMAScript ${name} declares a string message, so its ToString step is total, and it installs message and cause without any other observable step; an options object whose \`cause\` is an accessor rather than a data property is outside this claim`,
+      trustOwner: "@mizchi/uneffect",
+    })),
+    ...(["String", "Number"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "global", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "invoke-user-code" }, { kind: "throw", error: "TypeError" },
+        { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: `ECMAScript ${name} accepts an unconstrained value, so its coercion runs the value's own Symbol.toPrimitive, valueOf or toString and throws TypeError when that yields no primitive; the construct form allocates a wrapper object`,
+      trustOwner: "@mizchi/uneffect",
+    })),
+    reviewed("javascript", {
+      symbol: { module: "global", export: "Boolean" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+      trustReason: "ECMAScript ToBoolean reads no property of its argument and has no abrupt completion",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    ...(["parseInt", "parseFloat"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "global", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+      trustReason: `ECMAScript ${name} declares a string parameter, and parseInt's radix a number, so both of its coercion steps are total and reach no user method; an argument the type system did not constrain is outside this claim`,
+      trustOwner: "@mizchi/uneffect",
+    })),
+    ...(["isNaN", "isFinite"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "global", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+      trustReason: `ECMAScript ${name} declares a number parameter, so its ToNumber step is total and reaches no user method; an argument the type system did not constrain is outside this claim, because ToNumber runs the value's own coercion and throws TypeError for a Symbol or a BigInt`,
+      trustOwner: "@mizchi/uneffect",
+    })),
+    // Every one of these takes a number and returns a number; ToNumber of a number is the identity.
+    ...(["abs", "ceil", "floor", "round", "trunc", "sign", "sqrt", "cbrt", "exp", "log", "log2", "log10",
+      "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "pow", "max", "min", "hypot", "fround"] as const)
+      .map((name) => reviewed("javascript", {
+        symbol: { module: "global", export: `Math.${name}` },
+        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [] },
+        trustReason: `ECMAScript Math.${name} declares number parameters, so its ToNumber steps are total and the arithmetic that follows has no abrupt completion; an argument the type system did not constrain is outside this claim, because ToNumber runs the value's own coercion and throws TypeError for a Symbol or a BigInt`,
+        trustOwner: "@mizchi/uneffect",
+      })),
+    reviewed("javascript", {
+      symbol: { module: "global", export: "Promise" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        {
+          kind: "callback", target: { kind: "argument", index: 0 }, timing: "sync", queue: "current",
+          cardinality: "1", callable: "required",
+          invocationArguments: [runtimeValue("promise-resolve"), runtimeValue("promise-reject")],
+        },
+        { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: "ECMAScript new Promise calls its executor once, synchronously, before the constructor returns; the executor is declared callable and construction is the only call form, so neither TypeError of 27.5.3.1 is reachable, and an executor that throws is routed to the rejection rather than rethrown",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("dom", {
+      symbol: { module: "global", export: "XMLHttpRequest" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+      trustReason: "The XHR constructor sets the object's initial state and starts no fetch",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("dom", {
+      symbol: { module: "global", export: "URL" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "invoke-user-code" }, { kind: "throw", error: "TypeError" },
+        { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: "The URL constructor accepts a URL object as well as a string at both positions, so Web IDL's USVString conversion runs the argument's own toString before parsing, and it throws TypeError when the result does not parse",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    ...(["Event", "CustomEvent"] as const).map((name) => reviewed("dom", {
+      symbol: { module: "global", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+      trustReason: `The ${name} constructor has no step of its own that throws, and its init dictionary is optional: omitted, Web IDL performs no Get at all, and every member it declares is a boolean or an untyped detail that no conversion rejects. An init object whose members are accessors rather than data properties, or one that is neither an object nor nullish, is outside this claim`,
+      trustOwner: "@mizchi/uneffect",
+    })),
+    reviewed("dom", {
+      symbol: { module: "global", export: "MessageEvent" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
+        { kind: "invoke-user-code" }, { kind: "result", refinement: { kind: "fresh" } },
+      ] },
+      trustReason: "The MessageEvent init dictionary declares a `ports` sequence, whose Web IDL conversion runs the argument's own iterator protocol",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    // ECMAScript URI handling: each function throws URIError on a malformed sequence and performs nothing else.
+    ...(["encodeURI", "encodeURIComponent", "decodeURI", "decodeURIComponent"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "global", export: name },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "throw", error: "URIError" }] },
+      trustReason: `ECMAScript ${name} throws URIError on a malformed URI sequence, and performs nothing else for the string, number and boolean arguments a checked program can pass; its ToString step reaches user code only for a value the type system did not constrain`,
+      trustOwner: "@mizchi/uneffect",
+    })),
     ...(["clearTimeout", "clearInterval"] as const).map((name) => reviewed("dom", { symbol: { module: "global", export: name }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
       { kind: "effect", capability: "Timer" }, { kind: "protocol", name: "timeout", transition: "cancel", inputs: { handle: { kind: "argument", index: 0 } } },
     ] } })),
@@ -805,6 +1161,7 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       { kind: "transfer", target: { kind: "argument", index: 1 }, optional: true },
     ] } })),
     ...domMethodDefinitions(),
+    ...browserPlatformDefinitions(),
     ...domPropertyDefinitions(),
     reviewed("dom", { symbol: { module: "lib.dom", export: "Document#cookie" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "property", read: [{ kind: "effect", capability: "CookieRead" }], write: [{ kind: "effect", capability: "CookieWrite", scope: { kind: "literal-key", target: { kind: "assigned-value" }, format: "cookie-assignment" } }] }] } }),
     reviewed("dom", { symbol: { module: "lib.dom", export: "Storage#length" }, semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "property", read: [{ kind: "effect", capability: "LocalStorageRead" }], write: [] }] } }),

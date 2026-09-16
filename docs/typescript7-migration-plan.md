@@ -48,7 +48,7 @@ TS7.0 の公式発表では新しい programmatic API を 7.1 に向けた別 AP
 | CFG / workflow / impact | 言語非依存 API | 集約入口の依存整理 |
 | spec / DSL / SMT・Quint / property test | Oxc の独立入口、native contract / refinement linking | DSL と実装本体の適合性証明は別 |
 | CFG lint / module-order | native CLI、公開 `/module-order` の非同期 v1/v2 API | workspace checker への統合 |
-| callable / type / 到達性 | native signature・型同一性・実在する await 式の型・never/boolean refinement | 任意型の awaited 化、網羅的 switch 等の機能差 |
+| callable / type / 到達性 | native signature・型同一性・実在する await 式の型・never/boolean refinement・有限 literal union の網羅判定 | 任意型の awaited 化、契約本体 lowering の switch |
 | build outputs | 単一 project と references の依存順 JS/d.ts 照合 | freshness、map、対応する emit 設定、既存 assurance flags への統合 |
 | workspace summary | native 宣言・入力・出力と直接 import 呼出の結び付け | 主張は `trusted`。本体証明、呼出側の事前条件、効果の合成は未実装 |
 | default check | 限定された builtin / callable facts | 本体の proof artifacts、ownership、typed arrays、resource 等は未移行 |
@@ -112,9 +112,15 @@ virtual source の扱いを明示する。state とクエリ・解析ロジッ�
   member access は Oxc の syntax facts に接続済み。`just dogfood-native` で実コード
   3 ファイルの未対応構文を 50 → 16 件に削減し、意図的な Console 挿入も検出する。
   残る動的キー、object accessor は未移行。
-- 共通 `parseOxcSource` の TSX mode を揃える。Oxc 自体は TSX を解析できる。
-- 網羅的 union switch の終端判定を移す。現状の安全側の `mayFallThrough` だけでは
-  旧経路で成立した契約を証明できない。非網羅・fallthrough・default も比較する。
+- 共通 `parseOxcSource` の TSX mode を揃えた。`oxcLanguage(fileName)` が全 Oxc 入口の言語を決め、
+  file 指定 check の一時 project も JSX を受け付ける。`.tsx` を含む project は解析前に構文エラーで
+  全体が失敗していた。検証: `test/oxc-source-language.test.ts`、`test/corsa-contract-check.test.ts`。
+- 網羅的 union switch の終端判定を中立 CFG へ移した。`ControlFlowSemantics.exhaustiveSwitch` が
+  判定を frontend へ委ね、Corsa 側は discriminant の literal 構成要素を checker の型 identity で
+  case と照合する（`coversFiniteLiteralType`）。値・表示文字列・名前は読まない。
+  非網羅・widen した case・fallthrough・default・boolean・数値 union を Program oracle と比較する。
+  検証: `test/corsa-contract-control-flow.test.ts`、`test/corsa-callable-frontend.test.ts`。
+  契約本体 lowering (`corsa-contract-flow.ts`) の switch 対応は別で、M2 に残る。
 - 任意型に対する awaited 型取得を実証する。実在する `AwaitExpression` の取得は実装済み。
   `getAwaitedType(type)` RPC は固定版で未提供であり、先頭型引数で代用しない。
 - properties、index signature、constraint、well-known symbol の facts を解析器の必要量で

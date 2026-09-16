@@ -23,7 +23,7 @@ export function evaluateStaticPrimitive(
   if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
-  if (ts.isNumericLiteral(expression)) return Number(expression.text);
+  if (ts.isNumericLiteral(expression)) return Number.parseFloat(expression.text);
   if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
     || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) {
     return evaluateStaticPrimitive(expression.expression, options, seen);

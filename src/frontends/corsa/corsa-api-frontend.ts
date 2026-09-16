@@ -23,7 +23,10 @@ export interface CorsaApiTypeFact {
   id: string;
   texts: string[];
   symbol?: string;
+  /** Literal value of a string/number literal type, when the checker reports one. */
   value?: unknown;
+  /** Compiler `TypeFlags` bit set, when the checker reports one; an error type is flagged `Any` even when its display text is a name. */
+  flags?: number;
 }
 
 export const corsaApiFrontendSchema = "uneffect-corsa-api-frontend/v1" as const;
