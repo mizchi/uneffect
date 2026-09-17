@@ -72,6 +72,7 @@ export const ciTestTiers = {
     "test/static-evaluation.test.ts",
     "test/syntax-facts.test.ts",
     "test/corsa-syntax-dogfood.test.ts",
+    "test/corsa-throw-effects.test.ts",
     "test/corsa-effect-propagation.test.ts",
     "test/registry-read-rule.test.ts",
     "test/registry-dogfood.test.ts",

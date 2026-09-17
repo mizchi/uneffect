@@ -72,6 +72,16 @@ export interface CorsaSourceFacts {
   /** `${start}:${end}` keys of member expressions both read and written, such as a compound assignment. */
   readonly readWriteTargets: ReadonlySet<string>;
   /**
+   * Every `throw` no enclosing `catch` can reach, with the construction each one throws. `start` is the throw
+   * statement's own offset, so the consumer attributes it with the same rule it uses for every other site.
+   * The operand is decomposed syntactically first: the checker reduces `flag ? new RangeError() : new TypeError()`
+   * to one constituent, and which one survives is arbitrary, so each result branch is reported separately.
+   * `calleePosition` is the offset of a `new X(...)` callee identifier, or `null` when the operand is anything
+   * else — a value, a call result, a user class. The consumer names only what the reviewed catalog already
+   * resolved there.
+   */
+  readonly throws: ReadonlyArray<{ readonly start: number; readonly calleePosition: number | null }>;
+  /**
    * The receiver type of a call or member site whose receiver is not one the last identifier token describes —
    * a call result, a coalesced value, an element, a parenthesized expression. Keyed by the site's own
    * `${start}:${end}`. A receiver the native tree cannot place at that exact range is absent, so the consumer
@@ -720,6 +730,37 @@ export function analyzeCorsaSourceFacts(
   const callArgumentIdentifiers = new Map<string, readonly (number | null)[]>();
   const assignedInlineFunctions = new Map<string, number>();
   const receiverTypes = new Map<string, CorsaApiTypeFact>();
+  const throws: Array<{ start: number; calleePosition: number | null }> = [];
+  /**
+   * A throw escapes unless a `try` whose `catch` clause encloses it sits between it and the boundary that runs
+   * it. The walk stops at the first function-like ancestor: a `catch` outside a callback cannot catch what that
+   * callback throws when it later runs.
+   */
+  const caught = (node: EstreeNode): boolean => {
+    for (let child = node, parent = parents.get(child); parent; child = parent, parent = parents.get(parent)) {
+      if (parent.type === undefined || functionTypes.has(parent.type) || parent.type === "StaticBlock") return false;
+      if (parent.type === "TryStatement" && parent.block === child && isNode(parent.handler)) return true;
+    }
+    return false;
+  };
+  /** The values a throw operand can actually produce. A reduced union would lose one of them. */
+  const thrownOperands = (node: EstreeNode): EstreeNode[] => {
+    if ((node.type === "ParenthesizedExpression" || node.type === "TSAsExpression" || node.type === "TSNonNullExpression"
+      || node.type === "TSSatisfiesExpression" || node.type === "TSTypeAssertion") && isNode(node.expression)) {
+      return thrownOperands(node.expression);
+    }
+    if (node.type === "ConditionalExpression" && isNode(node.consequent) && isNode(node.alternate)) {
+      return [...thrownOperands(node.consequent), ...thrownOperands(node.alternate)];
+    }
+    if (node.type === "LogicalExpression" && isNode(node.left) && isNode(node.right)) {
+      return [...thrownOperands(node.left), ...thrownOperands(node.right)];
+    }
+    if (node.type === "SequenceExpression" && Array.isArray(node.expressions)) {
+      const last = node.expressions.filter(isNode).at(-1);
+      return last ? thrownOperands(last) : [node];
+    }
+    return [node];
+  };
   /**
    * A receiver the last identifier token already describes needs no range query. Everything else — a call
    * result, a coalesced value, an element, a parenthesized expression — is typed at its own exact range, which
@@ -740,6 +781,13 @@ export function analyzeCorsaSourceFacts(
     if (type) receiverTypes.set(`${site.start}:${site.end}`, type);
   };
   walk(program, (node) => {
+    if (node.type === "ThrowStatement" && isNode(node.argument) && typeof node.start === "number" && !caught(node)) {
+      for (const operand of thrownOperands(node.argument)) {
+        const callee = operand.type === "NewExpression" && isNode(operand.callee) && operand.callee.type === "Identifier"
+          && typeof operand.callee.start === "number" ? operand.callee.start : null;
+        throws.push({ start: node.start, calleePosition: callee });
+      }
+    }
     if (node.type === "MemberExpression" && isNode(node.object)) recordReceiverType(node, node.object);
     if ((node.type === "CallExpression" || node.type === "NewExpression") && isNode(node.callee)) {
       const callee = unwrap(node.callee);
@@ -939,7 +987,7 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, throws, inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {

@@ -35,11 +35,12 @@ describe("standard global constructors and conversions", () => {
       export function typed(reason: string): never { throw new TypeError(reason); }
     `);
     expect(result.errors).toBe(0);
-    // The constructor declares a string message, so its coercion is total and reaches no user method; throwing
-    // the result is the caller's control flow, not an effect of the construction.
-    expect(names(result, "fail")).toEqual([]);
+    // The constructor declares a string message, so its coercion is total and reaches no user method: the
+    // construction itself contributes nothing. Throwing the result is a separate fact, read from the `throw`
+    // statement rather than from the constructor's contract, which is why the evidence stays inferred.
+    expect(names(result, "fail")).toEqual(["Throw<Error>"]);
     expect(summary(result, "fail")?.evidence).toBe("inferred");
-    expect(names(result, "typed")).toEqual([]);
+    expect(names(result, "typed")).toEqual(["Throw<TypeError>"]);
   });
 
   it("separates the total numeric conversions from the ones that reach a user method", async () => {

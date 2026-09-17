@@ -93,7 +93,8 @@ describe("native direct-call effect propagation", () => {
     // The parameter shadows the analyzed declaration, so none of its effects are borrowed; invoking the value
     // the caller supplied is what this body establishes.
     expect(names(result, "shadowed")).toEqual(["InvokeUserCode"]);
-    expect(result.summaries.find(item => item.functionName === "shadowed")?.evidence).toBe("trusted");
+    // Read out of this body rather than supplied by a reviewed contract, so the evidence is inferred.
+    expect(result.summaries.find(item => item.functionName === "shadowed")?.evidence).toBe("inferred");
   });
 
   it("keeps mutable aliases, methods, and generators unverified while proving a resolved pure cycle", async () => {

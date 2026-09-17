@@ -70,6 +70,19 @@ export interface CorsaCheckResult {
   project: CorsaProjectProvenance;
 }
 
+/**
+ * The error constructors the reviewed catalog carries. A throw is named only from one of these, resolved at its
+ * construction: the effect language compares `Throw<E>` by text, so naming a user class would let one that
+ * shadows a standard constructor satisfy a declaration written against the standard one, and there is no
+ * subtype lattice that could tell them apart.
+ */
+/** Marks a boundary whose effects rest on a reviewed contract, so the ladder can tell that from inference. */
+const contractToken = "\u0000contract";
+
+const reviewedErrorConstructors = new Set([
+  "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError",
+]);
+
 function declaredByDomLibrary(symbol: CorsaApiSymbolFact | null | undefined): symbol is CorsaApiSymbolFact {
   return symbol !== null && symbol !== undefined
     && (symbol.declarations ?? []).some((item) => /(?:^|[/\\])lib\.dom\.d\.ts$/.test(item));
@@ -592,6 +605,14 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           sites.some((site) => site.start >= region.start && site.end <= region.end));
         if (evaluates) ensure(owningBoundary(item.declaration)).unclassified = true;
       }
+      // A `throw` the enclosing boundary cannot catch is an effect of that boundary. Naming it is a separate
+      // question from seeing it: an operand the reviewed catalog did not resolve is `Throw<unknown>`, which the
+      // effect language deliberately leaves uncovered by a declared `Throw<Error>`.
+      for (const item of indexAccess.throws) {
+        const symbol = item.calleePosition === null ? null : queries.getSymbolAtPosition(fileName, item.calleePosition);
+        const named = declaredByEcmaScriptLibrary(symbol) && reviewedErrorConstructors.has(symbol!.name);
+        ensure(owningBoundary(item.start)).names.push(`Throw<${named ? symbol!.name : "unknown"}>`);
+      }
       const record = (site: SyntaxSite, contract: BuiltinContract | undefined): void => {
         if (!contract) return;
         const owner = owningBoundary(site.start);
@@ -613,6 +634,9 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         const rendered = renderSemantics(contract.semantics, site.kind, access, args?.length);
         const caller = ensure(owner);
         caller.names.push(...rendered.names);
+        // `trusted` names an effect a reviewed contract supplied. An effect read out of the analyzed source is
+        // not one, and a contract that supplies no effect leaves the boundary's own evidence unchanged.
+        if (rendered.names.length > 0) caller.names.push(contractToken);
         // A compound assignment or an update reads the member before writing it.
         if (readWrite) caller.names.push(...renderSemantics(contract.semantics, site.kind, "read", args?.length).names);
         if (rendered.unrenderable) caller.unclassified = true;
@@ -974,8 +998,10 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       .map(([id, item]) => {
         const names = [...propagated.get(id)!];
         const reachesUnresolved = names.includes(unresolvedToken);
-        const effects = uniqueEffects(names.filter((name) => name !== unresolvedToken));
-        const evidence: EvidenceStatus = reachesUnresolved ? "unknown" : effects.length > 0 ? "trusted" : "inferred";
+        const restsOnContract = names.includes(contractToken);
+        const effects = uniqueEffects(names.filter((name) => name !== unresolvedToken && name !== contractToken));
+        const evidence: EvidenceStatus = reachesUnresolved ? "unknown"
+          : restsOnContract && effects.length > 0 ? "trusted" : "inferred";
         return {
           functionName: item.functionName,
           effects,

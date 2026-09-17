@@ -36,7 +36,8 @@ describe("user-defined higher-order effect composition", () => {
     // Calling a parameter is not an unresolved site: the value is supplied by whoever calls this function,
     // and that obligation is what the capability names.
     expect(names(result, "apply")).toEqual(["InvokeUserCode"]);
-    expect(summary(result, "apply")?.evidence).toBe("trusted");
+    // The capability was read out of this body, not supplied by a reviewed contract, so it is inferred.
+    expect(summary(result, "apply")?.evidence).toBe("inferred");
   });
 
   it("composes the inline argument a caller supplies for the invoked parameter", async () => {

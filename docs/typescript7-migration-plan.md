@@ -186,6 +186,29 @@ async / generator、builtin の完全性、注釈の検証は引き続き M2 の
 通常のnumber、数値brand、除算・剰余、代入・loop・
 呼出先requiresの検証と複数段のensures合成は引き続き未移行であり、M2全体の完了ではない。
 
+**閉じた既知差: `throw` 文。** native 経路は `throw` を一切モデル化しておらず、必ず throw する関数に
+`effects: [], evidence: "inferred"` — 積極的な effect 自由の主張 — を返していた。宣言した
+`/* uneffect:effect Throw<Error> */` も尊重されず unused 診断も出なかった。`corsa-source-facts.ts` が既に
+行っている Oxc パースから throw 文を観測する。公開 v1 syntax-facts スキーマと固定 enum には触らない。
+
+規則は Program 経路の模倣ではなく native 独自として定める:
+- オペランドは構文的に分解してから型付けする。checker に `flag ? new RangeError() : new TypeError()` を
+  畳ませると片方が恣意的に消える。
+- 命名は construct サイトが reviewed な ECMAScript error contract を解決したときだけ。それ以外は
+  `Throw<unknown>`。effect 言語の subtyping は文字列一致 + 「`Throw<Error>` は名前付き error を覆う」の
+  一本だけなので、checker の型テキストから命名すると lib の `RangeError` を隠すユーザクラスが、lib 型に
+  対して書かれた宣言を満たしてしまう。
+- catch の打ち消しは最初の関数境界で止まる祖先 walk。callback の外の catch は、その callback が後で
+  走るときに throw するものを捕まえられない。
+- `async` でも落とさない。Program 経路の `async` ドロップは同じ silent empty proof であり移植しない。
+- evidence 梯子に「reviewed contract が effect を供給したか」を足した。`trusted` はその場合だけで、
+  解析したソースから読んだ effect は `inferred`。
+
+実測: この repo の src/ には 1147 の throw があり 560 summary が項を得るが、**511 は既に unknown**、
+7 は既に trusted で、**現在の積極的な主張の撤回は 42 件**。得られる項の 510/560 は `Throw<Error>`。
+残る非主張: `try { throw } finally { return }` は over-approximate（Program 経路も同じ）、
+呼び出し辺を跨いだ catch の打ち消しは `propagateEffectNames` の構造上不可能。
+
 **閉じた既知差: module 境界。** native 経路には `<module>` 境界が無く、`record` /
 `recordUnclassified` / `recordClassCall` と 2 つのループがいずれも「囲む関数が無ければ return」
 していたため、module top-level の効果が全て黙って消えていた（`console.log` を top-level で呼ぶ
