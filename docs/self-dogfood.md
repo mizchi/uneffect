@@ -74,6 +74,18 @@ rather than an absence. On the same three files the count moved from 111 to 113
 summaries and from 81 to 82 unknown, both inside
 `dogfood/native-syntax-baseline.json`.
 
+`dogfood/effect-baseline.json` has drifted from the source it describes, and it
+cannot currently be refreshed. Measured over the eleven files it covers, the
+check now reports 186 summaries against its 184, with unknown entries down from
+145 to 136 and effect-carrying entries up from 69 to 76 — a net improvement that
+the ratchet still reports as 44 regressions, because its rule is that no entry
+may gain a term. Only two of those eleven files are reached by
+`just dogfood-leaf`, which is why the drift accumulated unnoticed.
+`--write-effect-baseline` writes only when the check passes, and two of the
+eleven carry a `computed-property` syntax exclusion, so the ratchet cannot be
+regenerated until that exclusion is closed. That guard is right — a failing run
+must not freeze a baseline — but it means this ratchet rots silently.
+
 This step preserves unknown evidence for local calls, including pure-looking
 cycles. It accumulates known effects without claiming a complete upper bound;
 the three-file unknown baseline remains 64. Mutable aliases, object dispatch,
