@@ -5,6 +5,7 @@ import { enclosingFunction, receiverTokenPosition } from "../oxc-syntax.js";
 import type { SyntaxFunction, SyntaxSite } from "../syntax-facts-contract.js";
 import type { CorsaApiFrontend, CorsaApiSymbolFact, CorsaApiTypeFact } from "./corsa-api-frontend.js";
 import { nativeExpressionKind } from "./native-expression-kind.js";
+import { runtimeModuleDependencies, type RuntimeModuleDependency } from "../../modules/runtime-dependencies.js";
 
 /**
  * Checker-backed element-access analysis for the default Corsa check.
@@ -81,6 +82,8 @@ export interface CorsaSourceFacts {
    * resolved there.
    */
   readonly throws: ReadonlyArray<{ readonly start: number; readonly calleePosition: number | null }>;
+  /** The static imports and export-froms whose evaluation runs another module. */
+  readonly dependencies: readonly RuntimeModuleDependency[];
   /**
    * The receiver type of a call or member site whose receiver is not one the last identifier token describes —
    * a call result, a coalesced value, an element, a parenthesized expression. Keyed by the site's own
@@ -854,9 +857,9 @@ export function analyzeCorsaSourceFacts(
     const position = receiverTypePosition(receiver);
     let at = position;
     let type = position === undefined ? null : frontend.getTypeAtPosition(fileName, position);
-    // A receiver the last identifier token does not describe — a call result, a coalesced value, a computed
-    // member — is typed at its own range instead, which the native tree authenticates. Without this an
-    // ordinary `text.split(sep)[index]` stays an unsupported construct although every part of it resolves.
+    // A receiver the last identifier token does not describe — a call result, a coalesced value — is typed at
+    // its own range instead, which the native tree authenticates. Without this an ordinary
+    // `text.split(sep)[index]` stays an unsupported construct although every part of it is resolvable.
     if (type === null && typeof receiver.start === "number" && typeof receiver.end === "number") {
       const kind = nativeExpressionKind(receiver as never);
       if (kind !== undefined) {
@@ -999,7 +1002,8 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, throws, inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, throws,
+    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {

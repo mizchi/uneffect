@@ -221,9 +221,23 @@ module に空の行を立てるのは、不在ではなく主張になる。
 同時に、定義時に評価される class 領域（static block / static field 初期化子 / decorator /
 computed key）のスパンを publish し、その中に実際にサイトがあるときだけ宣言スコープを unresolved に
 する。リテラルだけの静的フィールドで囲みスコープが unknown になる既存の誤警報も消える。
-残る差: 追跡していない runtime import（side-effect import・barrel・`export *`）は `<module>` の
-evidence に反映されない。lazy なので偽の証明にはならないが、Program 経路は import 先の `<module>`
-効果を固定点で継承する。
+module を import することはそれを実行することなので、実行時 import / export-from を持つファイルには
+`<module>` 境界を作り、依存を解決する。解析済みファイルへのエッジは呼出と同じ固定点に入り、import の
+循環も追加なしで収束する。追跡しなかった依存は明示的な不在として名前付きで報告する
+(`unknown-dependency` / `unreviewed-external-module`)。unknown を出す前に reviewed な
+module-initialization contract を引き、通った依存は assumption ledger に記録する。
+
+条件（いずれも敵対レビューの実測で確定）:
+- 「追跡した」は **実際に解析を完了した集合**で判定する。`--project X file.ts` の選択時、`rootFiles` には
+  開いていないファイルが入る。
+- `.d.ts` は追跡対象にしない。宣言ファイルは別の成果物が実行するものを宣言しているだけで、辿っても
+  実行について何も証明しない。
+- 依存先の `<module>` 境界を必ず実体化する。`propagateEffectNames` は宙に浮いた callee キーで throw する
+  ため `corsa-check.ts` が事前に落としており、そのままだと「追跡していない」が「追跡してクリーン」に化ける。
+- import 由来の unknown は `unresolved-call` に混ぜない。混ぜると 5 件表示上限に押し出されて実際の
+  呼び出し箇所が隠れる。
+- 残る非主張: `verbatimModuleSyntax` 下では `import {} from` と全要素 type-only の名前付きリストも
+  実行時依存になる。共有している module-initialization 解析と同じ既知の under-approximation。
 
 **未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
 `Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を

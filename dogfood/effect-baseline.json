@@ -4,41 +4,14 @@
   "entries": [
     {
       "fileName": "src/cli/cli-support.ts",
-      "functionName": "<anonymous>",
+      "functionName": "<module>",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
       "fileName": "src/cli/cli-support.ts",
-      "functionName": "CliUsageError.constructor",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/cli/cli-support.ts",
-      "functionName": "formatCommandHelp",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/cli/cli-support.ts",
-      "functionName": "parseCommandArgs",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/cli/cli-support.ts",
-      "functionName": "singleFileArgument",
+      "functionName": "writeStdout",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -56,7 +29,61 @@
     },
     {
       "fileName": "src/cli/cli-support.ts",
-      "functionName": "writeStdout",
+      "functionName": "CliUsageError.constructor",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/cli/cli-support.ts",
+      "functionName": "parseCommandArgs",
+      "occurrence": 0,
+      "effects": [
+        "Throw<unknown>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/cli/cli-support.ts",
+      "functionName": "formatCommandHelp",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/cli/cli-support.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/cli/cli-support.ts",
+      "functionName": "singleFileArgument",
+      "occurrence": 0,
+      "effects": [
+        "Throw<unknown>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "<module>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "orderedObject",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -68,6 +95,17 @@
       "functionName": "<anonymous>",
       "occurrence": 0,
       "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "stable",
+      "occurrence": 0,
+      "effects": [
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -85,9 +123,68 @@
     },
     {
       "fileName": "src/evidence/model-replay.ts",
+      "functionName": "digest",
+      "occurrence": 0,
+      "effects": [
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "clone",
+      "occurrence": 0,
+      "effects": [
+        "Clone",
+        "Throw<DOMException>"
+      ],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "same",
+      "occurrence": 0,
+      "effects": [
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "assertModelValue",
+      "occurrence": 0,
+      "effects": [
+        "Throw<Error>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "<anonymous>",
       "occurrence": 2,
       "effects": [
+        "Throw<Error>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "createModelCounterexample",
+      "occurrence": 0,
+      "effects": [
+        "Clone",
+        "Throw<DOMException>",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -99,6 +196,51 @@
       "functionName": "<anonymous>",
       "occurrence": 3,
       "effects": [
+        "Throw<Error>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "writeModelCounterexample",
+      "occurrence": 0,
+      "effects": [
+        "Clone",
+        "Throw<DOMException>",
+        "Throw<Error>",
+        "Throw<TypeError>",
+        "Throw<unknown>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "readModelCounterexample",
+      "occurrence": 0,
+      "effects": [
+        "Clone",
+        "InvokeUserCode",
+        "Throw<DOMException>",
+        "Throw<Error>",
+        "Throw<SyntaxError>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "normalizeItfValue",
+      "occurrence": 0,
+      "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -110,6 +252,24 @@
       "functionName": "<anonymous>",
       "occurrence": 4,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "parseQuintItfCounterexample",
+      "occurrence": 0,
+      "effects": [
+        "Clone",
+        "InvokeUserCode",
+        "Throw<DOMException>",
+        "Throw<Error>",
+        "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -121,6 +281,8 @@
       "functionName": "<anonymous>",
       "occurrence": 5,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -139,6 +301,8 @@
       "functionName": "<anonymous>",
       "occurrence": 7,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -149,7 +313,20 @@
       "fileName": "src/evidence/model-replay.ts",
       "functionName": "<anonymous>",
       "occurrence": 8,
-      "effects": [],
+      "effects": [
+        "Throw<Error>"
+      ],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "evaluateTemporalExpression",
+      "occurrence": 0,
+      "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -159,6 +336,8 @@
       "functionName": "<anonymous>",
       "occurrence": 9,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -170,6 +349,8 @@
       "functionName": "<anonymous>",
       "occurrence": 10,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -181,6 +362,8 @@
       "functionName": "<anonymous>",
       "occurrence": 11,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -287,14 +470,18 @@
       "functionName": "<anonymous>",
       "occurrence": 21,
       "effects": [],
-      "unknownReasons": []
+      "unknownReasons": [
+        "unresolved-call"
+      ]
     },
     {
       "fileName": "src/evidence/model-replay.ts",
       "functionName": "<anonymous>",
       "occurrence": 22,
       "effects": [],
-      "unknownReasons": []
+      "unknownReasons": [
+        "unresolved-call"
+      ]
     },
     {
       "fileName": "src/evidence/model-replay.ts",
@@ -323,6 +510,8 @@
       "functionName": "<anonymous>",
       "occurrence": 25,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -378,6 +567,43 @@
       "functionName": "<anonymous>",
       "occurrence": 30,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "parseTlcScalar",
+      "occurrence": 0,
+      "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
+        "Throw<SyntaxError>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "splitTlcItems",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "parseTlcValue",
+      "occurrence": 0,
+      "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
+        "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -389,6 +615,8 @@
       "functionName": "<anonymous>",
       "occurrence": 31,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
@@ -411,16 +639,18 @@
       "fileName": "src/evidence/model-replay.ts",
       "functionName": "<anonymous>",
       "occurrence": 33,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
+      "effects": [
+        "Throw<Error>"
+      ],
+      "unknownReasons": []
     },
     {
       "fileName": "src/evidence/model-replay.ts",
       "functionName": "<anonymous>",
       "occurrence": 34,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
@@ -433,6 +663,8 @@
       "functionName": "<anonymous>",
       "occurrence": 35,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
@@ -453,9 +685,47 @@
     },
     {
       "fileName": "src/evidence/model-replay.ts",
+      "functionName": "parseTlcAssignments",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "flush",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "complete",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
+      "functionName": "recoverTemporalAction",
+      "occurrence": 0,
+      "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "<anonymous>",
       "occurrence": 37,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -474,6 +744,8 @@
       "functionName": "<anonymous>",
       "occurrence": 39,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -489,9 +761,27 @@
     },
     {
       "fileName": "src/evidence/model-replay.ts",
+      "functionName": "parseTlcCounterexample",
+      "occurrence": 0,
+      "effects": [
+        "Clone",
+        "InvokeUserCode",
+        "Throw<DOMException>",
+        "Throw<Error>",
+        "Throw<SyntaxError>",
+        "Throw<TypeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/evidence/model-replay.ts",
       "functionName": "<anonymous>",
       "occurrence": 41,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
@@ -504,6 +794,8 @@
       "functionName": "<anonymous>",
       "occurrence": 42,
       "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
@@ -516,202 +808,8 @@
       "functionName": "<anonymous>",
       "occurrence": 43,
       "effects": [
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "assertModelValue",
-      "occurrence": 0,
-      "effects": [
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "checkInvariants",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "clone",
-      "occurrence": 0,
-      "effects": [
-        "Throw<DOMException>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "complete",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "createModelCounterexample",
-      "occurrence": 0,
-      "effects": [
-        "Throw<DOMException>",
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "digest",
-      "occurrence": 0,
-      "effects": [
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "evaluateTemporalExpression",
-      "occurrence": 0,
-      "effects": [
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "flush",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "normalizeItfValue",
-      "occurrence": 0,
-      "effects": [
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "observe",
-      "occurrence": 0,
-      "effects": [
-        "Throw<DOMException>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "orderedObject",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "parseQuintItfCounterexample",
-      "occurrence": 0,
-      "effects": [
-        "Throw<DOMException>",
-        "Throw<SyntaxError>",
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "parseTlcAssignments",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "parseTlcCounterexample",
-      "occurrence": 0,
-      "effects": [
-        "Throw<DOMException>",
-        "Throw<SyntaxError>",
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "parseTlcScalar",
-      "occurrence": 0,
-      "effects": [
-        "Throw<SyntaxError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "parseTlcValue",
-      "occurrence": 0,
-      "effects": [
-        "Throw<SyntaxError>",
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "readModelCounterexample",
-      "occurrence": 0,
-      "effects": [
-        "Throw<DOMException>",
-        "Throw<SyntaxError>",
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "recoverTemporalAction",
-      "occurrence": 0,
-      "effects": [
+        "InvokeUserCode",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -723,7 +821,10 @@
       "functionName": "replayModelCounterexample",
       "occurrence": 0,
       "effects": [
+        "Clone",
+        "InvokeUserCode",
         "Throw<DOMException>",
+        "Throw<Error>",
         "Throw<TypeError>"
       ],
       "unknownReasons": [
@@ -732,10 +833,11 @@
     },
     {
       "fileName": "src/evidence/model-replay.ts",
-      "functionName": "same",
+      "functionName": "observe",
       "occurrence": 0,
       "effects": [
-        "Throw<TypeError>"
+        "Clone",
+        "Throw<DOMException>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -743,48 +845,7 @@
     },
     {
       "fileName": "src/evidence/model-replay.ts",
-      "functionName": "splitTlcItems",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "stable",
-      "occurrence": 0,
-      "effects": [
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/evidence/model-replay.ts",
-      "functionName": "writeModelCounterexample",
-      "occurrence": 0,
-      "effects": [
-        "Throw<DOMException>",
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/frontends/typescript/project-coordinates.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/frontends/typescript/project-coordinates.ts",
-      "functionName": "base",
+      "functionName": "checkInvariants",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -802,7 +863,7 @@
     },
     {
       "fileName": "src/frontends/typescript/project-coordinates.ts",
-      "functionName": "offset",
+      "functionName": "<anonymous>",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -811,7 +872,45 @@
     },
     {
       "fileName": "src/frontends/typescript/project-coordinates.ts",
+      "functionName": "base",
+      "occurrence": 0,
+      "effects": [
+        "Throw<Error>"
+      ],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/frontends/typescript/project-coordinates.ts",
+      "functionName": "offset",
+      "occurrence": 0,
+      "effects": [
+        "Throw<Error>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/frontends/typescript/project-coordinates.ts",
       "functionName": "projectFunctionDisplayName",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/frontends/typescript/static-evaluation.ts",
+      "functionName": "<module>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unknown-dependency"
+      ]
+    },
+    {
+      "fileName": "src/frontends/typescript/static-evaluation.ts",
+      "functionName": "evaluateStaticPrimitive",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -828,22 +927,11 @@
       ]
     },
     {
-      "fileName": "src/frontends/typescript/static-evaluation.ts",
-      "functionName": "evaluateStaticPrimitive",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
       "fileName": "src/optimizer/ownership-evidence-cache.ts",
-      "functionName": "<anonymous>",
+      "functionName": "<module>",
       "occurrence": 0,
       "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
+      "unknownReasons": []
     },
     {
       "fileName": "src/optimizer/ownership-evidence-cache.ts",
@@ -866,7 +954,41 @@
     },
     {
       "fileName": "src/optimizer/ownership-evidence-cache.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/optimizer/ownership-evidence-cache.ts",
       "functionName": "writeOwnershipEvidenceCache",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "<module>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unknown-dependency"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "digest",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "dependenciesOf",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -886,6 +1008,51 @@
       "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "<anonymous>",
       "occurrence": 1,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "stableReadProofs",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "ownerOf",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "recordBinding",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "visit",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "isLocalPlainDataRoot",
+      "occurrence": 0,
       "effects": [],
       "unknownReasons": [
         "unresolved-call"
@@ -920,62 +1087,7 @@
     },
     {
       "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 5,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 6,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "dependenciesOf",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "digest",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "isLocalPlainDataRoot",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "optimizeUneffectProject",
-      "occurrence": 0,
-      "effects": [
-        "Throw<SyntaxError>",
-        "Throw<TypeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "ownerOf",
+      "functionName": "scan",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -996,52 +1108,44 @@
     },
     {
       "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "recordBinding",
+      "functionName": "optimizeUneffectProject",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "Throw<SyntaxError>",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
     },
     {
       "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "scan",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "stableReadProofs",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/optimizer/project-optimizer.ts",
-      "functionName": "visit",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/resources/disposal-symbols.ts",
       "functionName": "<anonymous>",
-      "occurrence": 0,
+      "occurrence": 5,
       "effects": [],
       "unknownReasons": [
         "unresolved-call"
       ]
     },
     {
+      "fileName": "src/optimizer/project-optimizer.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 6,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
       "fileName": "src/resources/disposal-symbols.ts",
-      "functionName": "resolveDisposalProtocol",
+      "functionName": "<module>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unknown-dependency"
+      ]
+    },
+    {
+      "fileName": "src/resources/disposal-symbols.ts",
+      "functionName": "targetSymbol",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -1059,6 +1163,15 @@
     },
     {
       "fileName": "src/resources/disposal-symbols.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/resources/disposal-symbols.ts",
       "functionName": "standardProtocolKind",
       "occurrence": 0,
       "effects": [],
@@ -1068,7 +1181,7 @@
     },
     {
       "fileName": "src/resources/disposal-symbols.ts",
-      "functionName": "targetSymbol",
+      "functionName": "resolveDisposalProtocol",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -1077,7 +1190,46 @@
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "<module>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "location",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "subject",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "cause",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "<anonymous>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "evidence",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -1095,6 +1247,13 @@
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "action",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "<anonymous>",
       "occurrence": 2,
       "effects": [],
@@ -1102,8 +1261,53 @@
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "plain-language",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "quotesSource",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "<anonymous>",
       "occurrence": 3,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "criterionSatisfied",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "scoreDiagnostic",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostic-quality.ts",
+      "functionName": "evaluateQuality",
+      "occurrence": 0,
       "effects": [],
       "unknownReasons": [
         "unresolved-call"
@@ -1135,18 +1339,14 @@
       "functionName": "<anonymous>",
       "occurrence": 7,
       "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
+      "unknownReasons": []
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "<anonymous>",
       "occurrence": 8,
       "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
+      "unknownReasons": []
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
@@ -1157,55 +1357,7 @@
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 10,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 11,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "action",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "cause",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "criterionSatisfied",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "evaluateQuality",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "evidence",
+      "functionName": "round",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -1223,54 +1375,34 @@
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "location",
-      "occurrence": 0,
+      "functionName": "<anonymous>",
+      "occurrence": 10,
       "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
+      "unknownReasons": []
     },
     {
       "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "plain-language",
+      "functionName": "<anonymous>",
+      "occurrence": 11,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "<module>",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
-        "unresolved-call"
+        "unknown-dependency"
       ]
     },
     {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "quotesSource",
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "diagnosticMessageText",
       "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "round",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "scoreDiagnostic",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostic-quality.ts",
-      "functionName": "subject",
-      "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "Throw<RangeError>"
+      ],
       "unknownReasons": []
     },
     {
@@ -1280,6 +1412,56 @@
       "effects": [
         "Throw<RangeError>"
       ],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "diagnosticLine",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "fromTypeScriptDiagnostic",
+      "occurrence": 0,
+      "effects": [
+        "Throw<RangeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "diagnosticHint",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "severityOf",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "codeOf",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "reportDiagnostic",
+      "occurrence": 0,
+      "effects": [],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1293,10 +1475,50 @@
     },
     {
       "fileName": "src/support/diagnostics.ts",
+      "functionName": "relative",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "frame",
+      "occurrence": 0,
+      "effects": [
+        "Throw<RangeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "formatDiagnostic",
+      "occurrence": 0,
+      "effects": [
+        "Throw<RangeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "<anonymous>",
       "occurrence": 2,
       "effects": [],
       "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
+      "functionName": "formatDiagnostics",
+      "occurrence": 0,
+      "effects": [
+        "Throw<RangeError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
     },
     {
       "fileName": "src/support/diagnostics.ts",
@@ -1318,6 +1540,15 @@
     },
     {
       "fileName": "src/support/diagnostics.ts",
+      "functionName": "formatCheckEvidence",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/diagnostics.ts",
       "functionName": "<anonymous>",
       "occurrence": 5,
       "effects": [],
@@ -1328,7 +1559,9 @@
       "functionName": "<anonymous>",
       "occurrence": 6,
       "effects": [],
-      "unknownReasons": []
+      "unknownReasons": [
+        "unresolved-call"
+      ]
     },
     {
       "fileName": "src/support/diagnostics.ts",
@@ -1375,165 +1608,12 @@
       "unknownReasons": []
     },
     {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "codeOf",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "diagnosticHint",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "diagnosticLine",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "diagnosticMessageText",
-      "occurrence": 0,
-      "effects": [
-        "Throw<RangeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "formatCheckEvidence",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "formatDiagnostic",
-      "occurrence": 0,
-      "effects": [
-        "Throw<RangeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "formatDiagnostics",
-      "occurrence": 0,
-      "effects": [
-        "Throw<RangeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "frame",
-      "occurrence": 0,
-      "effects": [
-        "Throw<RangeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "fromTypeScriptDiagnostic",
-      "occurrence": 0,
-      "effects": [
-        "Throw<RangeError>"
-      ],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "relative",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "reportDiagnostic",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/diagnostics.ts",
-      "functionName": "severityOf",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
       "fileName": "src/support/environment.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 1,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 2,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 3,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 4,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "<anonymous>",
-      "occurrence": 5,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "commandVersion",
+      "functionName": "<module>",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
+        "unknown-dependency",
         "unresolved-call"
       ]
     },
@@ -1548,17 +1628,10 @@
     },
     {
       "fileName": "src/support/environment.ts",
-      "functionName": "environmentSummary",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": []
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "formatEnvironmentReport",
+      "functionName": "resolvePackage",
       "occurrence": 0,
       "effects": [
-        "Throw<RangeError>"
+        "Throw<SyntaxError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -1566,12 +1639,26 @@
     },
     {
       "fileName": "src/support/environment.ts",
-      "functionName": "javaCheck",
+      "functionName": "commandVersion",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
         "unresolved-call"
       ]
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 1,
+      "effects": [],
+      "unknownReasons": []
     },
     {
       "fileName": "src/support/environment.ts",
@@ -1593,10 +1680,42 @@
     },
     {
       "fileName": "src/support/environment.ts",
+      "functionName": "typescript7NativePackage",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "typescriptCheck",
+      "occurrence": 0,
+      "effects": [
+        "Throw<SyntaxError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/environment.ts",
       "functionName": "nodeTypesCheck",
       "occurrence": 0,
       "effects": [
         "Throw<SyntaxError>"
+      ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "solverCheck",
+      "occurrence": 0,
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -1615,11 +1734,9 @@
     },
     {
       "fileName": "src/support/environment.ts",
-      "functionName": "resolvePackage",
+      "functionName": "javaCheck",
       "occurrence": 0,
-      "effects": [
-        "Throw<SyntaxError>"
-      ],
+      "effects": [],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1637,27 +1754,64 @@
     },
     {
       "fileName": "src/support/environment.ts",
-      "functionName": "solverCheck",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/environment.ts",
-      "functionName": "typescript7NativePackage",
+      "functionName": "environmentSummary",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": []
     },
     {
       "fileName": "src/support/environment.ts",
-      "functionName": "typescriptCheck",
+      "functionName": "<anonymous>",
+      "occurrence": 2,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 3,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "formatEnvironmentReport",
       "occurrence": 0,
       "effects": [
-        "Throw<SyntaxError>"
+        "Throw<RangeError>"
       ],
+      "unknownReasons": [
+        "unresolved-call"
+      ]
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 4,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/environment.ts",
+      "functionName": "<anonymous>",
+      "occurrence": 5,
+      "effects": [],
+      "unknownReasons": []
+    },
+    {
+      "fileName": "src/support/fixtures.ts",
+      "functionName": "<module>",
+      "occurrence": 0,
+      "effects": [],
+      "unknownReasons": [
+        "unknown-dependency"
+      ]
+    },
+    {
+      "fileName": "src/support/fixtures.ts",
+      "functionName": "sourceFiles",
+      "occurrence": 0,
+      "effects": [],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1673,7 +1827,7 @@
     },
     {
       "fileName": "src/support/fixtures.ts",
-      "functionName": "listFixtures",
+      "functionName": "summaryOf",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -1682,7 +1836,7 @@
     },
     {
       "fileName": "src/support/fixtures.ts",
-      "functionName": "readFixtureReport",
+      "functionName": "listFixtures",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [
@@ -1711,16 +1865,7 @@
     },
     {
       "fileName": "src/support/fixtures.ts",
-      "functionName": "sourceFiles",
-      "occurrence": 0,
-      "effects": [],
-      "unknownReasons": [
-        "unresolved-call"
-      ]
-    },
-    {
-      "fileName": "src/support/fixtures.ts",
-      "functionName": "summaryOf",
+      "functionName": "readFixtureReport",
       "occurrence": 0,
       "effects": [],
       "unknownReasons": [

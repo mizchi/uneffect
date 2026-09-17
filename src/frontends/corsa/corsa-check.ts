@@ -1,7 +1,8 @@
 import { analyzeCorsaBuiltinCalls, type CorsaBuiltinCallsResult } from "./corsa-builtin-calls.js";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry } from "../../effects/builtin-contracts.js";
+import { builtinContractRegistry, findModuleInitializationContract, type BuiltinContract, type BuiltinContractRegistry } from "../../effects/builtin-contracts.js";
 import { effectSchema, parseEffectExpression, type Effect } from "../../effects/capabilities.js";
 import { openCorsaApiFrontend, type CorsaApiFrontend, type CorsaApiSymbolFact, type CorsaApiTypeFact } from "./corsa-api-frontend.js";
 import type { EffectSummary, EvidenceStatus } from "../../effects/effects.js";
@@ -76,6 +77,25 @@ export interface CorsaCheckResult {
  * shadows a standard constructor satisfy a declaration written against the standard one, and there is no
  * subtype lattice that could tell them apart.
  */
+/** The package a specifier names, so a deep import is reviewed against the package that runs, not the file. */
+function packageName(specifier: string): string {
+  return specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!;
+}
+
+/**
+ * The runtime a reviewed module-initialization contract has to match. A `node:` builtin is answered by the
+ * running Node; a package is answered by the manifest that resolves from the importing file, so a project that
+ * installed a different version does not inherit another one's review.
+ */
+function moduleRuntime(fromFile: string, specifier: string): { nodeMajor?: number; packageVersion?: string } {
+  if (specifier.startsWith("node:")) return { nodeMajor: Number.parseInt(process.versions.node, 10) };
+  try {
+    const manifest = createRequire(fromFile).resolve(`${packageName(specifier)}/package.json`);
+    const version = (JSON.parse(readFileSync(manifest, "utf8")) as { version?: unknown }).version;
+    return typeof version === "string" ? { packageVersion: version } : {};
+  } catch { return {}; }
+}
+
 /** Marks a boundary whose effects rest on a reviewed contract, so the ladder can tell that from inference. */
 const contractToken = "\u0000contract";
 
@@ -420,6 +440,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       resolvedSymbols: Set<string>;
       /** This body invokes a value one of its own parameters carries. */
       invokesUserCode: boolean;
+      /** Named reasons a module could not account for what importing it evaluates. */
+      moduleReasons: Array<{ code: "unknown-dependency" | "unreviewed-external-module"; message: string }>;
       /** Calls to a resolvable binding with the argument shape each supplies, for invoked-parameter obligations. */
       argumentCalls: Array<{ symbol: string; args: CallArgumentFacts | undefined }>;
       /** Constructions and in-class dispatch, resolved once every file has contributed its class declarations. */
@@ -433,6 +455,13 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
        */
       composedValues: Array<{ key: string; label: string }>;
     }>();
+    type Boundary = NonNullable<ReturnType<typeof byFunction.get>>;
+    /**
+     * A static import or export-from and where it leads. `target` is the analyzed file it evaluates, and
+     * `followable` says whether the specifier named a TypeScript implementation at all — a package and a
+     * declaration file are different absences and the reader is told which.
+     */
+    const moduleEdges: Array<{ importer: Boundary; fromFile: string; specifier: string; target: string | undefined; followable: boolean }> = [];
     /** Parameter symbol identity to the boundary that receives it and the argument position that supplies it. */
     const parameterOwners = new Map<string, { ownerKey: string; index: number }>();
     const classes = new Map<string, {
@@ -573,7 +602,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           functionName: owner.name, fileName, span: { start: owner.start, end: owner.end },
           parameters: [...owner.parameters], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
           calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
-          invokesUserCode: false, argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
+          invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
         };
         byFunction.set(key, current);
         return current;
@@ -612,6 +641,20 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         const symbol = item.calleePosition === null ? null : queries.getSymbolAtPosition(fileName, item.calleePosition);
         const named = declaredByEcmaScriptLibrary(symbol) && reviewedErrorConstructors.has(symbol!.name);
         ensure(owningBoundary(item.start)).names.push(`Throw<${named ? symbol!.name : "unknown"}>`);
+      }
+      // Importing a module runs it. An importer therefore has a boundary of its own even when it evaluates
+      // nothing else, because the answer for it is either the dependency's own effects or an explicit absence.
+      for (const dependency of indexAccess.dependencies) {
+        const symbol = queries.getSymbolAtPosition(fileName, dependency.position);
+        const declarations = symbol?.declarations ?? [];
+        const implementations = rootFiles.filter((file) => !/\.d\.[cm]?ts$/u.test(file)
+          && declarations.some((item) => item.endsWith(file) || item.toLowerCase().endsWith(file.toLowerCase())));
+        // A declaration file declares what another artifact runs, so following it proves nothing about the run.
+        const followable = declarations.some((item) => /\.[cm]?tsx?$/u.test(item) && !/\.d\.[cm]?ts$/u.test(item));
+        moduleEdges.push({
+          importer: ensure(moduleBoundary), fromFile: fileName, specifier: dependency.specifier,
+          target: implementations.length === 1 ? implementations[0] : undefined, followable,
+        });
       }
       const record = (site: SyntaxSite, contract: BuiltinContract | undefined): void => {
         if (!contract) return;
@@ -816,7 +859,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           functionName: fn.name, fileName, span: { start: fn.start, end: fn.end },
           parameters: [...fn.parameters], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
           calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
-          invokesUserCode: false, argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
+          invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
         });
       }
     }
@@ -977,6 +1020,49 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         item.unresolved.add(composed.label);
       }
     }
+    // Every file has now been read, so which dependencies this run actually followed is settled. An edge to an
+    // analyzed module joins the same fixed point as a call, which converges over import cycles for free; one
+    // that was not followed is an explicit absence, named so it is not mistaken for a call this check could not
+    // resolve. The target's boundary is materialized here because the propagation filter drops a dangling
+    // callee, which would turn "not followed" into "followed and clean".
+    for (const edge of moduleEdges) {
+      if (edge.target !== undefined) {
+        const key = `${edge.target}:0:<module>`;
+        if (!byFunction.has(key)) {
+          byFunction.set(key, {
+            functionName: "<module>", fileName: edge.target, span: { start: 0, end: (sources.get(edge.target) ?? "").length },
+            parameters: [], names: [], unclassified: false, unresolved: new Set<string>(), deferred: new Map<string, string>(),
+            calleeSymbols: new Set<string>(), directCallees: new Set<string>(), resolvedSymbols: new Set<string>(),
+            invokesUserCode: false, moduleReasons: [], argumentCalls: [], classCalls: [], discharges: [], composedValues: [],
+          });
+        }
+        edge.importer.directCallees.add(key);
+        continue;
+      }
+      const contract = findModuleInitializationContract(registry, packageName(edge.specifier), moduleRuntime(edge.fromFile, edge.specifier));
+      if (contract) {
+        edge.importer.names.push(...contract.effects);
+        if (contract.effects.length > 0) edge.importer.names.push(contractToken);
+        // What this import evaluates is a reviewed claim about an artifact the run never read, so the ledger
+        // carries it the same way it carries a builtin contract.
+        assumptions.push(assumptionEntry({
+          domain: "module-initialization",
+          reason: contract.trustReason,
+          owner: contract.trustOwner,
+          ...(contract.trustExpiresOn === undefined ? {} : { expiresOn: contract.trustExpiresOn }),
+          dependency: {
+            module: edge.specifier,
+            ...(contract.runtime.kind === "package" ? { packageVersion: contract.runtime.version } : { nodeMajor: contract.runtime.major }),
+          },
+          scope: { fileName: edge.fromFile, functionName: "<module>", span: { start: 0, end: (sources.get(edge.fromFile) ?? "").length } },
+        }));
+        continue;
+      }
+      edge.importer.unclassified = true;
+      edge.importer.moduleReasons.push(edge.followable
+        ? { code: "unknown-dependency", message: `importing ${edge.specifier} evaluates a module this run did not analyze` }
+        : { code: "unreviewed-external-module", message: `importing ${edge.specifier} has no reviewed module initialization contract` });
+    }
     // An unresolved site is carried through the same fixed point as effect names, so a caller that reaches one
     // transitively is unknown too. The token cannot collide with an effect term.
     const unresolvedToken = "\u0000unresolved";
@@ -1010,14 +1096,14 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           span: item.span,
           parameters: item.parameters,
           ...(reachesUnresolved ? {
-            unknownReasons: [{
+            unknownReasons: [...(item.unresolved.size > 0 || item.moduleReasons.length === 0 ? [{
               code: "unresolved-call" as const,
               message: item.unresolved.size === 0
                 ? "a callee reaches a site outside the complete Corsa effect model; known callee effects may be retained"
                 : `no reviewed contract for ${[...item.unresolved].sort().slice(0, 5).join(", ")}`
                   + (item.unresolved.size > 5 ? ` and ${item.unresolved.size - 5} more` : "")
                   + "; known callee effects may be retained",
-            }],
+            }] : []), ...item.moduleReasons],
           } : {}),
         };
       })
