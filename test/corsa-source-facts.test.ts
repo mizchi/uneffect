@@ -218,9 +218,10 @@ export function declaredKey(d: Document, key: "cookie"): string { return d[key];
 `, (result) => {
       const effects = Object.fromEntries(result.summaries.map(item => [item.functionName, item.effects.map(effect => effect.kind === "capability" ? effect.name : effect.kind)]));
       expect(effects).toMatchObject({ readCookie: ["CookieRead"], flag: [], nested: [], globalFlag: [], globalDocument: [], second: [], loose: [], dynamicKey: [], declaredKey: ["CookieRead"] });
-      // A receiver that is itself a computed member has no token whose type is the element type, and a DOM member of the
-      // intersection-typed global `window` has no owner for contract selection; both stay excluded.
-      expect(syntax(result).map(item => item.functionName)).toEqual(["nested", "globalDocument", "loose", "dynamicKey"]);
+      // A receiver that is itself a computed member is typed at its own range, so `w[FLAG]![unit]` resolves.
+      // A DOM member of the intersection-typed global `window` still has no owner for contract selection, an
+      // `any` receiver names nothing, and a cast key is not the key the checker saw; those stay excluded.
+      expect(syntax(result).map(item => item.functionName)).toEqual(["globalDocument", "loose", "dynamicKey"]);
       expect(bounds(result).map(item => [item.functionName, /`([^`]+)`/.exec(item.message)?.[1]])).toEqual([["second", "list[SECOND]"]]);
     }, ["es2018", "dom"]);
   });

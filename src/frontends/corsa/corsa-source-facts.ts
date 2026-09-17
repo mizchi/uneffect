@@ -852,9 +852,21 @@ export function analyzeCorsaSourceFacts(
   const resolveReceiver = (receiver: EstreeNode): ResolvedReceiver | undefined => {
     if (receiverCache.has(receiver)) return receiverCache.get(receiver);
     const position = receiverTypePosition(receiver);
-    const type = position === undefined ? null : frontend.getTypeAtPosition(fileName, position);
-    const resolved = type === null || position === undefined
-      ? undefined : { type, symbol: frontend.getSymbolOfType(type), position };
+    let at = position;
+    let type = position === undefined ? null : frontend.getTypeAtPosition(fileName, position);
+    // A receiver the last identifier token does not describe — a call result, a coalesced value, a computed
+    // member — is typed at its own range instead, which the native tree authenticates. Without this an
+    // ordinary `text.split(sep)[index]` stays an unsupported construct although every part of it resolves.
+    if (type === null && typeof receiver.start === "number" && typeof receiver.end === "number") {
+      const kind = nativeExpressionKind(receiver as never);
+      if (kind !== undefined) {
+        try { type = frontend.getTypeAtRange(fileName, { start: receiver.start, end: receiver.end }, kind); }
+        catch { type = null; }
+        if (type !== null) at = receiver.start;
+      }
+    }
+    const resolved = type === null || at === undefined
+      ? undefined : { type, symbol: frontend.getSymbolOfType(type), position: at };
     receiverCache.set(receiver, resolved);
     return resolved;
   };
