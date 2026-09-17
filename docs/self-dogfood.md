@@ -64,6 +64,16 @@ now reaches both `nodeCheck` and `runEnvironmentChecks` (previously only the
 helper carried it). The packed CLI repeats a direct-call and shadowing check
 with JavaScript compiler imports blocked.
 
+A later step gave the native check the `<module>` boundary it never had. Every
+site with no enclosing function was discarded, so a file whose top level called
+`console.log` produced no summary, no diagnostic, and `outcome: passed`, while
+the Program path reported `<module>` with `Console`. Module-scope sites are now
+charged to the module that evaluates them; a file that evaluates nothing at
+module scope still gets no boundary, because an empty row there would be a claim
+rather than an absence. On the same three files the count moved from 111 to 113
+summaries and from 81 to 82 unknown, both inside
+`dogfood/native-syntax-baseline.json`.
+
 This step preserves unknown evidence for local calls, including pure-looking
 cycles. It accumulates known effects without claiming a complete upper bound;
 the three-file unknown baseline remains 64. Mutable aliases, object dispatch,

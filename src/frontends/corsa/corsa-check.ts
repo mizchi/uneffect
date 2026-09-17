@@ -491,7 +491,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         excludedSites.push({ start: exclusion.span.start });
         diagnostics.push({
           domain: "syntax", kind: "syntax", severity: "error", fileName, line,
-          functionName: owner?.name ?? "<syntax>",
+          functionName: owner?.name ?? "<module>",
           message: `unsupported ${entry.domain} syntax (${exclusion.reason}); Corsa effect inference is incomplete for this source`,
         });
       }
@@ -565,9 +565,21 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         byFunction.set(key, current);
         return current;
       };
+      /**
+       * The boundary that runs a site. Module-scope code runs when the module is evaluated, so a site with no
+       * enclosing function belongs to the module rather than to nothing at all: dropping it left every function
+       * in the file looking complete while the work the module itself performs went unrecorded.
+       *
+       * The boundary is built here rather than published as a syntax fact. `enclosingFunction` answers with the
+       * smallest enclosing entry, so a whole-file entry would also start answering the lookups that are
+       * deliberately restricted to a real function — a parameter's owner, a class method's body, and the caller
+       * of an immediately invoked function.
+       */
+      const moduleBoundary: { name: string; start: number; end: number; parameters: readonly string[] } =
+        { name: "<module>", start: 0, end: sourceText.length, parameters: [] };
+      const owningBoundary = (position: number) => enclosingFunction(syntax.functions, position) ?? moduleBoundary;
       for (const call of [...admittedComputedCalls, ...unknownComputedMembers, ...excludedSites]) {
-        const owner = enclosingFunction(syntax.functions, call.start);
-        if (owner) ensure(owner).unclassified = true;
+        ensure(owningBoundary(call.start)).unclassified = true;
       }
       // A static block and a static field initializer run where the class declaration is evaluated. The
       // construction boundary a sibling instance initializer opens covers them by span, and nothing calls that
@@ -578,14 +590,11 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         // that does not exist.
         const evaluates = item.regions.some((region) =>
           sites.some((site) => site.start >= region.start && site.end <= region.end));
-        if (!evaluates) continue;
-        const owner = enclosingFunction(syntax.functions, item.declaration);
-        if (owner) ensure(owner).unclassified = true;
+        if (evaluates) ensure(owningBoundary(item.declaration)).unclassified = true;
       }
       const record = (site: SyntaxSite, contract: BuiltinContract | undefined): void => {
         if (!contract) return;
-        const owner = enclosingFunction(syntax.functions, site.start);
-        if (!owner) return;
+        const owner = owningBoundary(site.start);
         assumptions.push(assumptionEntry({
           domain: "builtin",
           reason: contract.trustReason ?? "reviewed builtin semantic overlay",
@@ -673,14 +682,11 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       const recordClassCall = (site: SyntaxSite): boolean => {
         const pending = classCallAt(site);
         if (pending === undefined) return false;
-        const owner = enclosingFunction(syntax.functions, site.start);
-        if (!owner) return false;
-        ensure(owner).classCalls.push(pending);
+        ensure(owningBoundary(site.start)).classCalls.push(pending);
         return true;
       };
       const recordUnclassified = (site: SyntaxSite): void => {
-        const owner = enclosingFunction(syntax.functions, site.start);
-        if (!owner) return;
+        const owner = owningBoundary(site.start);
         // A synthetic callee (`<dynamic>`) has no declaration position; it is unknown without symbol linking.
         if (site.name === "<dynamic>") { ensure(owner).unclassified = true; return; }
         const symbol = queries.getSymbolAtPosition(fileName, site.calleePosition);
@@ -734,7 +740,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           // An unparenthesized IIFE starts where its callee starts, so the caller is the smallest
           // enclosing function that is not the callee itself. Failing to link falls back to unknown.
           const callee = syntax.functions.find((item) => item.start === site.calleePosition);
-          const owner = callingFunction(syntax.functions, site.start, callee);
+          const owner = callingFunction(syntax.functions, site.start, callee) ?? moduleBoundary;
           const calleeKey = callee === undefined ? undefined : `${fileName}:${callee.start}:${callee.name}`;
           if (owner && calleeKey && byFunctionKey(owner) !== calleeKey) {
             const caller = ensure(owner);

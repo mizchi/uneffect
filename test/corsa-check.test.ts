@@ -132,6 +132,77 @@ export function head(value: string): string { return value.split(",")[0]!.trim()
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("charges module-scope work to the module that runs it", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-module-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `declare function opaque(): number;
+export function announced(): void { console.log("from a function"); }
+console.log("module scope runs at import time");
+announced();
+const socket = new WebSocket("wss://example.com");
+export const opened = socket;
+export const started = opaque();
+`);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", lib: ["ES2022", "DOM"] }, files: ["index.ts"] }));
+      const result = await checkCorsaProject({ configFile: temporaryConfig });
+      const names = capabilityNames(result);
+      const summary = result.summaries.find((item) => item.functionName === "<module>");
+      expect(summary, "a module-scope call belongs to the module that runs it").toBeDefined();
+      expect(summary!.span).toEqual({ start: 0, end: readFileSync(join(directory, "index.ts"), "utf8").length });
+      expect(summary!.parameters).toEqual([]);
+      // The module reaches its own `console.log`, the effects of the function it calls, and the socket it opens.
+      expect(names["<module>"]!.sort()).toEqual(["Console", "Net"]);
+      // `opaque` resolves to no analyzed body, so the module is unknown rather than a proof of what it does.
+      expect(summary!.evidence).toBe("unknown");
+      expect(summary!.unknownReasons?.length).toBeGreaterThan(0);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("leaves a module that runs nothing without a boundary of its own", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-quiet-module-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `export interface Shape { size: number }
+export const factory = (value: number): Shape => ({ size: value });
+export function plain(value: string): string { return value; }
+`);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const result = await checkCorsaProject({ configFile: temporaryConfig });
+      // Declaring a function is not running one. A module with no site of its own has nothing to report, and
+      // inventing an empty boundary for it would be a claim rather than an absence.
+      expect(result.summaries.map((item) => item.functionName).sort()).toEqual(["factory", "plain"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("charges a class's definition-time work to the scope that declares it, and only when it runs something", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-static-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `export class Quiet {
+  static readonly kind = "quiet";
+  size = 1;
+}
+`);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      const quiet = await checkCorsaProject({ configFile: temporaryConfig });
+      // A static field whose initializer is a literal evaluates nothing. The construction boundary absorbs no
+      // site from it, so the scope that declares the class has nothing to be unresolved about.
+      expect(quiet.summaries.map((item) => item.functionName).sort()).toEqual(["Quiet.constructor"]);
+
+      writeFileSync(join(directory, "index.ts"), `export class Loud {
+  static readonly banner = String(1);
+  size = 1;
+}
+`);
+      const loud = await checkCorsaProject({ configFile: temporaryConfig });
+      // This one does evaluate a call at declaration time, and the widened construction boundary absorbs it, so
+      // the declaring scope carries the unresolved work rather than the constructor claiming it.
+      const module = loud.summaries.find((item) => item.functionName === "<module>");
+      expect(module?.evidence).toBe("unknown");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("charges a class's definition-time work to its declaring scope only when it evaluates something", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-static-"));
     try {

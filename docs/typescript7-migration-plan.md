@@ -186,6 +186,22 @@ async / generator、builtin の完全性、注釈の検証は引き続き M2 の
 通常のnumber、数値brand、除算・剰余、代入・loop・
 呼出先requiresの検証と複数段のensures合成は引き続き未移行であり、M2全体の完了ではない。
 
+**閉じた既知差: module 境界。** native 経路には `<module>` 境界が無く、`record` /
+`recordUnclassified` / `recordClassCall` と 2 つのループがいずれも「囲む関数が無ければ return」
+していたため、module top-level の効果が全て黙って消えていた（`console.log` を top-level で呼ぶ
+ファイルが summary ゼロ・診断ゼロ・`outcome: passed`）。囲む関数が無いサイトは、module 評価時に
+走るのだから module に属する。境界は **lazy** に作り、`byFunction` の中だけに持つ。
+`collectSyntaxFacts().functions` に synthetic entry を入れると、`enclosingFunction` が
+「最小の囲み」を返す性質上、parameter の所有者・class method の本体・IIFE の caller という
+意図的に関数限定の照合まで奪う。sites を持たないファイルには境界を作らない — 走らせるものが無い
+module に空の行を立てるのは、不在ではなく主張になる。
+同時に、定義時に評価される class 領域（static block / static field 初期化子 / decorator /
+computed key）のスパンを publish し、その中に実際にサイトがあるときだけ宣言スコープを unresolved に
+する。リテラルだけの静的フィールドで囲みスコープが unknown になる既存の誤警報も消える。
+残る差: 追跡していない runtime import（side-effect import・barrel・`export *`）は `<module>` の
+evidence に反映されない。lazy なので偽の証明にはならないが、Program 経路は import 先の `<module>`
+効果を固定点で継承する。
+
 **未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
 `Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を
 ownership 用の事実として扱い、capability 名に描画しない。そのため受け手を書き換える
