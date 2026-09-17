@@ -572,8 +572,14 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // A static block and a static field initializer run where the class declaration is evaluated. The
       // construction boundary a sibling instance initializer opens covers them by span, and nothing calls that
       // boundary at the declaration, so the scope that declares the class is unresolved instead.
-      for (const at of bindings.staticInitializers) {
-        const owner = enclosingFunction(syntax.functions, at);
+      for (const item of bindings.staticInitializers) {
+        // Only a region that actually evaluates something is absorbed. A static field initialized with a
+        // literal reaches no site, so charging its declaring scope with an unresolved callee would name work
+        // that does not exist.
+        const evaluates = item.regions.some((region) =>
+          sites.some((site) => site.start >= region.start && site.end <= region.end));
+        if (!evaluates) continue;
+        const owner = enclosingFunction(syntax.functions, item.declaration);
         if (owner) ensure(owner).unclassified = true;
       }
       const record = (site: SyntaxSite, contract: BuiltinContract | undefined): void => {

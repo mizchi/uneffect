@@ -132,6 +132,35 @@ export function head(value: string): string { return value.split(",")[0]!.trim()
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("charges a class's definition-time work to its declaring scope only when it evaluates something", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-static-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", types: [] }, files: ["index.ts"] }));
+      writeFileSync(join(directory, "index.ts"), `export function quiet(): unknown {
+  class Widget { static readonly kind = "widget"; size = 1; }
+  return new Widget();
+}
+`);
+      // A static field initialized with a literal evaluates nothing, so the construction boundary absorbs no
+      // site from it and the scope that declares the class has nothing to be unresolved about.
+      const summaries = (await checkCorsaProject({ configFile: temporaryConfig })).summaries;
+      expect(Object.fromEntries(summaries.map((item) => [item.functionName, item.evidence])))
+        .toMatchObject({ quiet: "inferred" });
+
+      writeFileSync(join(directory, "index.ts"), `export function loud(): unknown {
+  class Widget { static readonly banner = String(1); size = 1; }
+  return new Widget();
+}
+`);
+      // This one evaluates a call when the declaration is evaluated, and the widened construction boundary
+      // absorbs it, so the declaring scope carries the unresolved work.
+      const evaluated = (await checkCorsaProject({ configFile: temporaryConfig })).summaries;
+      expect(Object.fromEntries(evaluated.map((item) => [item.functionName, item.evidence])))
+        .toMatchObject({ loud: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("claims nothing when no admitted builtin contract is reached", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-no-assumptions-"));
     try {

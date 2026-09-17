@@ -52,11 +52,13 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
    */
   privateCalls: Map<number, string>;
   /**
-   * Start offsets of class declarations whose body has a static block or a static field initializer. Those run
-   * when the declaration is evaluated, not at construction, and the construction boundary a sibling instance
-   * initializer opens would otherwise absorb them.
+   * Class declarations whose body evaluates something when the DECLARATION is evaluated rather than when an
+   * instance is constructed, and the exact spans of that work. The construction boundary a sibling instance
+   * initializer opens covers the whole body, so it would otherwise absorb every site inside those spans. The
+   * spans are published rather than the class alone, because a declaration that evaluates only a literal
+   * absorbs no site and leaves its declaring scope with nothing to be unresolved about.
    */
-  staticInitializers: number[];
+  staticInitializers: Array<{ declaration: number; regions: Array<{ start: number; end: number }> }>;
 } {
   const parsed = parseSync(file, text, { lang: oxcLanguage(file) });
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
@@ -68,7 +70,7 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   const methods: CorsaMethodFact[] = [];
   const superCalls = new Map<number, string>();
   const privateCalls = new Map<number, string>();
-  const staticInitializers: number[] = [];
+  const staticInitializers: Array<{ declaration: number; regions: Array<{ start: number; end: number }> }> = [];
   const classFacts = () => ({
     classes, methods, superCalls, privateCalls, staticInitializers,
   });
@@ -165,13 +167,22 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       // constructed: a static block, a static initializer, every decorator expression, and every computed
       // member key. The construction boundary covers the whole class body once an instance initializer widens
       // it, so it would absorb all of these; the scope that declares the class is unresolved instead.
-      const definitionTime = node.body.body.some((member) =>
-        member.type === "StaticBlock"
-        || ((member.type === "PropertyDefinition" || member.type === "AccessorProperty") && member.static && member.value !== null)
-        || ("decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0)
-        || ("computed" in member && member.computed === true));
+      const definitionTimeRegions: Array<{ start: number; end: number }> = [];
+      const region = (value: unknown): void => {
+        const item = value as { start?: unknown; end?: unknown } | null | undefined;
+        if (!item || typeof item.start !== "number" || typeof item.end !== "number") return;
+        definitionTimeRegions.push({ start: item.start, end: item.end });
+      };
+      for (const member of node.body.body) {
+        if (member.type === "StaticBlock") region(member);
+        if ((member.type === "PropertyDefinition" || member.type === "AccessorProperty") && member.static && member.value !== null) region(member.value);
+        if ("decorators" in member && Array.isArray(member.decorators)) for (const decorator of member.decorators) region(decorator);
+        if ("computed" in member && member.computed === true && "key" in member) region(member.key);
+      }
       const widened = constructionBoundarySpan(node.body as unknown as Parameters<typeof constructionBoundarySpan>[0]);
-      if (definitionTime && widened !== undefined && widened.start === node.body.start) staticInitializers.push(node.start);
+      if (definitionTimeRegions.length && widened !== undefined && widened.start === node.body.start) {
+        staticInitializers.push({ declaration: node.start, regions: definitionTimeRegions });
+      }
       if (symbolId !== null) {
         const members = node.body.body;
         const decorated = (Array.isArray(node.decorators) && node.decorators.length > 0)
