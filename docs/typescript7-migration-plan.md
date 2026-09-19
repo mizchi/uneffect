@@ -437,15 +437,20 @@ native 経路はこれを lowering で完全に落としていたため、`toStr
 - **フラグで確定するもの。** undefined / null / void / string / number / bigint / 各リテラル / enum リテラル /
   テンプレートリテラル型。`symbol` は意図的に外す — Symbol の ToString は TypeError を投げる。`object` も
   外す。それこそがここで探している user method だから。
-- **union はテキストで読む。** union のフラグは `Union` と、boolean と enum についてはメンバの種類しか
-  持たず、構成要素は入っていない。printed text が唯一の在庫なので分解して照合し、認識できない項が 1 つでも
-  あれば union ごと不採用にする。
+- **union は、まずテキスト、次にメンバで読む。** union のフラグは `Union` と、boolean と enum については
+  メンバの種類しか持たず、構成要素は入っていない。printed text を分解して照合し、認識できない項が 1 つでも
+  あれば次に進む。**名前付き型エイリアスはそのエイリアス名を印字する**（`ReactDiagnosticKind`）ので、
+  テキストからは何も分からない。そこで構成要素を*訊く*: union のプロパティは全構成要素に存在しなければ
+  解決しないので、`charCodeAt` / `toFixed` が ECMAScript library 由来で解決すれば、全構成要素が文字列か
+  数値である。`String` ラッパーオブジェクトは同じ答えを返すが union ではないので、union gate が弾く。
+  実測でこれが src/ の 140 行から過剰な `InvokeUserCode, Throw<TypeError>` を外した。
 
 対象演算子は `+ - * / % ** < > <= >= << >> >>> & | ^ == !=` とその代入形、およびテンプレート補間。
 tagged template は除く — tag は substitution を変換せずに受け取る。
 
 実測: src/ 227 ファイルで 160 行が変化し、そのうち **14 が積極的な主張の撤回**（残りは既に unknown だった
 行が項を得ただけ）。`dogfood/effect-baseline.json` は 11 ファイル全体で再生成し、28 エントリが項を得た。
+エイリアス union の解決を足した後は、そこから 140 行が過剰な項を落としている。
 
 残る非主張: オペランドの型を native が解決できないときは保守側に倒れる。`process.arch` のような Node の
 グローバルは `<unresolved>.arch` になるし、9 段の絞り込みを経た大きな union は printer が省略した text しか

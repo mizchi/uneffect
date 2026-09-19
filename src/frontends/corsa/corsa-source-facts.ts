@@ -187,18 +187,31 @@ const totalConversionFlags = undefinedTypeFlag | nullTypeFlag | voidTypeFlag | s
 const primitiveTypeTexts = new Set(["string", "number", "boolean", "bigint", "undefined", "null", "void", "true", "false"]);
 const literalTypeText = /^(?:"[^"]*"|'[^']*'|-?\d+(?:\.\d+)?n?)$/;
 /**
+ * The members that identify what every constituent of a union is. A union's property access has to resolve on
+ * all of them, so a `String.prototype` member declared by the ECMAScript library answers only for a union of
+ * strings — which is what a named alias of a string-literal union prints as, and what its text does not say.
+ */
+const primitiveWitnessMembers = ["charCodeAt", "toFixed"] as const;
+/**
  * Whether a value of this type converts to a primitive without running anything the source wrote. Absence of a
  * type is not admission: an operand this path could not type may be an object carrying its own
  * `Symbol.toPrimitive`, `valueOf` or `toString`.
  */
-function convertsWithoutUserCode(type: CorsaApiTypeFact | null): boolean {
+function convertsWithoutUserCode(
+  type: CorsaApiTypeFact | null,
+  standardMemberOf: (type: CorsaApiTypeFact, name: string) => boolean,
+): boolean {
   if (!type || typeof type.flags !== "number" || (type.flags & opaqueTypeFlags) !== 0) return false;
   if ((type.flags & totalConversionFlags) !== 0) return true;
-  if ((type.flags & unionTypeFlag) === 0 || type.texts.length !== 1) return false;
-  return type.texts[0]!.split("|").every((term) => {
+  if ((type.flags & unionTypeFlag) === 0) return false;
+  const admittedByText = type.texts.length === 1 && type.texts[0]!.split("|").every((term) => {
     const text = term.trim();
     return primitiveTypeTexts.has(text) || literalTypeText.test(text);
   });
+  if (admittedByText) return true;
+  // A named alias prints as its own name, so the constituents are asked about instead of read. The union gate
+  // above is what keeps a `String` wrapper object — which answers the same way — out of this branch.
+  return primitiveWitnessMembers.some((name) => standardMemberOf(type, name));
 }
 
 function isNode(value: unknown): value is EstreeNode {
@@ -938,9 +951,15 @@ export function analyzeCorsaSourceFacts(
     if (node.type === "TemplateLiteral") return parents.get(node)?.type !== "TaggedTemplateExpression";
     return node.type === "Literal" && !("regex" in node);
   };
+  /** Whether the type carries this member as the ECMAScript library declares it, rather than one of its own. */
+  const standardMemberOf = (type: CorsaApiTypeFact, name: string): boolean => {
+    const member = frontend.getPropertyOfType(type, name);
+    return member !== null && declaredBy(member, ecmaScriptLibrary);
+  };
   const recordCoercion = (site: EstreeNode, operands: readonly EstreeNode[]): void => {
     if (typeof site.start !== "number") return;
-    if (operands.every((operand) => isPrimitiveLiteral(operand) || convertsWithoutUserCode(typeOfExpression(operand)))) return;
+    if (operands.every((operand) => isPrimitiveLiteral(operand)
+      || convertsWithoutUserCode(typeOfExpression(operand), standardMemberOf))) return;
     coercions.push({ start: site.start });
   };
   walk(program, (node) => {

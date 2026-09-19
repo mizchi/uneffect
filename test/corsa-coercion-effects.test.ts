@@ -43,14 +43,19 @@ export function concat(): string { return "a" + loud; }
 export function fromNumber(n: number): string { return \`n=\${n}\`; }
 export function fromUnion(v: string | number | boolean | null | undefined): string { return \`v=\${v}\`; }
 export function fromLiteralUnion(v: "a" | "b"): string { return \`v=\${v}\`; }
+type Kind = "a" | "b" | "c";
+type Level = 1 | 2 | 3;
+export function fromAliasedStrings(v: Kind): string { return \`v=\${v}\`; }
+export function fromAliasedNumbers(v: Level): string { return \`v=\${v}\`; }
 export function fromEnum(k: Kind): string { return \`k=\${k}\`; }
 export function fromBigInt(a: bigint, b: bigint): bigint { return a % b; }
 export function fromLiterals(): string { return \`n=\${1}\` + "x"; }
 export function comparison(a: number, b: number): boolean { return a < b; }
 export function strings(a: string, b: string): string { return a + b; }
 `, (result) => {
-      for (const name of ["fromNumber", "fromUnion", "fromLiteralUnion", "fromEnum",
-        "fromBigInt", "fromLiterals", "comparison", "strings"]) {
+      // A named alias prints as its own name, so its constituents are asked about rather than read.
+      for (const name of ["fromNumber", "fromUnion", "fromLiteralUnion", "fromAliasedStrings",
+        "fromAliasedNumbers", "fromEnum", "fromBigInt", "fromLiterals", "comparison", "strings"]) {
         expect([name, effectsOf(result, name)]).toEqual([name, []]);
       }
     });
@@ -61,11 +66,16 @@ export function strings(a: string, b: string): string { return a + b; }
 export function fromUnknown(v: unknown): string { return \`v=\${v}\`; }
 export function fromObject(v: { a: number }): string { return \`v=\${v}\`; }
 export function fromArray(v: readonly string[]): string { return \`v=\${v}\`; }
+type Objs = { a: number } | { b: number };
+type Mixed = string | { a: number };
+export function fromAliasedObjects(v: Objs): string { return \`v=\${v}\`; }
+export function fromAliasedMixed(v: Mixed): string { return \`v=\${v}\`; }
 export function fromSymbol(v: symbol): string { return \`v=\${String(v)}\`; }
 `, (result) => {
       // Not knowing what a value is cannot admit it: an unconstrained operand may carry its own
       // `Symbol.toPrimitive`, `valueOf` or `toString`, and ToString of a Symbol throws.
-      for (const name of ["fromAny", "fromUnknown", "fromObject", "fromArray", "fromSymbol"]) {
+      for (const name of ["fromAny", "fromUnknown", "fromObject", "fromArray", "fromSymbol",
+        "fromAliasedObjects", "fromAliasedMixed"]) {
         expect([name, effectsOf(result, name)]).toEqual([name, conversion]);
       }
     });
