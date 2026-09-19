@@ -405,12 +405,41 @@ tagged template は除く — tag は substitution を変換せずに受け取�
 グローバルは `<unresolved>.arch` になるし、9 段の絞り込みを経た大きな union は printer が省略した text しか
 返さない。どちらも「値が何か分からない」ので変換を認めないのが正しいが、精度の穴ではある。
 
-**未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
-`Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を
-ownership 用の事実として扱い、capability 名に描画しない。そのため受け手を書き換える
-builtin (`Array#push`、`Map#set` 等) の呼出は effect なしの summary になる。
-この差が埋まるまで、受け手の書込みだけが観測できる member (`RegExp#test` / `exec` の
-`lastIndex`) は catalog に入れない。正直な unresolved を無音の空 effect に置き換えるため。
+**閉じた既知差の半分: 名前を付けられない receiver 書き換え。** native 経路は `mutate` primitive を
+ownership 用の事実として扱い capability 名に描画しないので、受け手を書き換える builtin
+(`Array#push`、`Map#set`、`Array#sort` 等) の呼出は**何も寄与せず**、`values.push(1)` だけの関数が
+`[] inferred` — 積極的な effect 自由の証明 — になっていた。呼び手の配列は実際に変わる。
+
+観測可能なものが receiver 書き換えだけで、かつ contract が capability 名を 1 つも出さなかった呼出は、
+boundary を unresolved にする。理由も専用の文言にして「a callee reaches a site outside the complete
+Corsa effect model」という総称ではなく `the value push writes through` と言う。contract が別に名前を出す
+呼出（`el.classList.add` は `Dom` / `InvokeUserCode` / `Throw<DOMException>` を出す）は無変更。
+
+実測: src/ 227 ファイルで 96 行が変化し、**74 が空の積極的証明の撤回**、7 が `trusted` → `unknown`
+（名前は保持）、15 がその他の完全性の撤回。unknown 4592 → 4820。native-syntax ratchet は 83 → 85
+（予算 89、**余裕 6 → 4**）。effect baseline は 2 エントリが unknown 理由を得た。落ちたテストは 1 つだけで、
+それは不健全性を pin していた `test/corsa-dom-inheritance.test.ts` の
+"reads a receiver mutation as an ownership fact rather than an unmodelled primitive"。
+
+**リージョン命名は作らない。** 敵対レビューの実測で決まった。symbol 根拠の設計を健全に仕上げるには
+escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェーンの根、凍結性、top 要素をすべて解く必要が
+あり、その結果 7691 summary のうち**名前が表示されるのは 23 個**。一方、偽の証明の撤回は名前を一切
+必要としない。Program 経路の設計も移植しない: `observableMutation` は領域の先頭**識別子テキスト**が
+`localBindings(scope)` にあれば effect を捨てるので `const alias = values; alias.push(x)` が純粋になり、
+`moduleLocals` は export チェックが無いので `export const registry` への push も落ちる。両方ランタイムで
+確認済み。保つ価値があるのは `effectPermits` の Mutate 判定が文字列一致ではなく**前方包含**である点だけ。
+
+残る非主張（いずれも実測で規模を確定済み）:
+- **argument を書き換える builtin。** `Object.assign(target, ...)` は receiver ではなく argument 0 を
+  書き換えるので、この規則は発火しない。`Object.freeze({...})` が生きているのも同じ理由（新規リテラルを
+  書き換えるので撤回すべきでない）。両者を分けるには freshness が要る。
+- **contract を持たない素の書き込み。** `this.n++` や `obj.x = 1` は reviewed contract を通らないので
+  この規則が届かない。src/ で 209 サイト（`=` 189 / 複合 15 / `++` 3 / 分割代入 2）。
+  `corsa-source-facts.ts` の `assignmentTargets` / `readWriteTargets` は既にスパンを集めており、
+  今は property contract の write 側選択にしか使われていない。
+- **`delete` と分割代入の代入先**はどちらの経路でも一切サイトにならない。
+- `RegExp#test` / `exec` の holdback はこの規則とは独立だった。src/ の 252 呼出に `g` / `y` フラグの
+  receiver は 0 件で、non-global なら `lastIndex` は書かれない。別途判断する。
 
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →

@@ -110,9 +110,13 @@ describe("standard global constructors and conversions", () => {
       export function pin(entry: ResizeObserverEntry) { return entry.contentRect.x; }
     `);
     expect(result.errors).toBe(0);
-    // `getBoundingClientRect` hands back a `DOMRect`, which redeclares the geometry members as writable.
+    // `getBoundingClientRect` hands back a `DOMRect`, which redeclares the geometry members as writable. The
+    // write renders no capability and freshness is not modeled, so it leaves the boundary unresolved by name
+    // rather than reading as an absence of effect; the layout read it follows is still named.
     expect(names(result, "move")).toEqual(["Dom"]);
-    expect(summary(result, "move")?.evidence).toBe("trusted");
+    expect(summary(result, "move")).toMatchObject({ evidence: "unknown", unknownReasons: [
+      expect.objectContaining({ code: "unresolved-call", message: expect.stringContaining("the value x writes through") }),
+    ] });
     expect(names(result, "pin")).toEqual([]);
   });
 });

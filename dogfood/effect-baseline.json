@@ -595,7 +595,9 @@
       "functionName": "splitTlcItems",
       "occurrence": 0,
       "effects": [],
-      "unknownReasons": []
+      "unknownReasons": [
+        "unresolved-call"
+      ]
     },
     {
       "fileName": "src/evidence/model-replay.ts",
@@ -698,7 +700,9 @@
       "functionName": "flush",
       "occurrence": 0,
       "effects": [],
-      "unknownReasons": []
+      "unknownReasons": [
+        "unresolved-call"
+      ]
     },
     {
       "fileName": "src/evidence/model-replay.ts",

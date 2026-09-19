@@ -151,6 +151,11 @@ interface RenderedSemantics {
   readonly callbackArguments: number[];
   /** The contract invokes the value assigned to this member, such as an event handler property. */
   callbackAssignedValue: boolean;
+  /**
+   * The contract's only observable is a write through the receiver. This path does not render a mutation as a
+   * capability, so such a call would otherwise contribute nothing at all and leave the boundary a proof.
+   */
+  writesThroughReceiver: boolean;
 }
 
 /**
@@ -164,7 +169,9 @@ function renderSemantics(
   access: "read" | "write" = "read",
   argumentCount?: number,
 ): RenderedSemantics {
-  const rendered: RenderedSemantics = { names: [], unrenderable: false, callbackArguments: [], callbackAssignedValue: false };
+  const rendered: RenderedSemantics = {
+    names: [], unrenderable: false, callbackArguments: [], callbackAssignedValue: false, writesThroughReceiver: false,
+  };
   if (!semantics) return rendered;
   const visit = (primitive: SemanticPrimitive, nested: boolean): void => {
     switch (primitive.kind) {
@@ -176,9 +183,18 @@ function renderSemantics(
         if (suppliedArgument(primitive.target, argumentCount)) rendered.names.push(primitive.kind === "clone" ? "Clone" : "Transfer");
         return;
       }
-      // `result` and `protocol` are refinement and temporal facts, and `mutate` records which value a call
-      // writes through; the ownership analysis reads that, and no capability claim here depends on it.
-      case "result": case "protocol": case "mutate": return;
+      // `result` and `protocol` are refinement and temporal facts that no capability claim here depends on.
+      case "result": case "protocol": return;
+      /**
+       * `mutate` records which value a call writes through. This path does not render a region, so the write
+       * itself carries no name — but a contract whose ONLY observable is a receiver write would then render
+       * nothing, and `values.push(x)` would read as a proof that the call performs nothing. Noted here and
+       * settled after every primitive is visited, because another primitive may still supply a name.
+       */
+      case "mutate": {
+        if (primitive.target.kind === "receiver") rendered.writesThroughReceiver = true;
+        return;
+      }
       case "callback": {
         if (primitive.target.kind === "argument") rendered.callbackArguments.push(primitive.target.index);
         else if (primitive.target.kind === "assigned-value") rendered.callbackAssignedValue = true;
@@ -754,6 +770,13 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         // A compound assignment or an update reads the member before writing it.
         if (readWrite) caller.names.push(...renderSemantics(contract.semantics, site.kind, "read", args?.length).names);
         if (rendered.unrenderable) caller.unclassified = true;
+        // A receiver write is the whole observable of this call and this path cannot name what was written. Only
+        // when nothing else was rendered: a contract that also reports a capability already leaves the boundary
+        // something to say, and `Object.freeze(literal)` writes through an argument rather than a receiver.
+        if (rendered.writesThroughReceiver && rendered.names.length === 0) {
+          caller.unclassified = true;
+          caller.unresolved.add(`the value ${site.name} writes through`);
+        }
         if (rendered.callbackAssignedValue) {
           const assigned = indexAccess.assignedInlineFunctions.get(span);
           const handler = assigned === undefined ? undefined : syntax.functions.find((item) => item.start === assigned);

@@ -86,17 +86,19 @@ describe("standard DOM interface inheritance", () => {
     expect(summary(result, "focus")?.evidence).toBe("unknown");
   });
 
-  it("reads a receiver mutation as an ownership fact rather than an unmodelled primitive", async () => {
+  it("does not read a receiver mutation it cannot name as an absence of effect", async () => {
     const result = await check(`
       export function collect(values: number[]) { values.push(1); }
       declare const host: HTMLDivElement;
       export function attach() { host.setAttribute("data-state", "ready"); }
     `);
     expect(result.errors).toBe(0);
-    // `Array#push` mutates its receiver and performs nothing else; mutation is what the ownership analysis
-    // reads, not a capability this summary can claim.
+    // `Array#push` mutates its receiver and performs nothing else. This path renders no region, so the call
+    // would contribute nothing at all and the caller's array would change under a proof that it does not.
     expect(names(result, "collect")).toEqual([]);
-    expect(summary(result, "collect")?.evidence).toBe("inferred");
+    expect(summary(result, "collect")?.evidence).toBe("unknown");
+    // A contract that also reports a capability already leaves the boundary something to say.
     expect(names(result, "attach")).toEqual(["Dom", "InvokeUserCode"]);
+    expect(summary(result, "attach")?.evidence).toBe("trusted");
   });
 });
