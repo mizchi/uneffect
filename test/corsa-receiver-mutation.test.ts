@@ -35,9 +35,11 @@ export function writeNested(b: Bag): void { b.deep.m = 1; }
 export function bump(b: Bag): void { b.n++; }
 export function compound(b: Bag): void { b.n += 1; }
 export function destructureInto(b: Bag): void { ({ n: b.n } = { n: 5 }); }
+export function deleteProp(b: { opt?: number }): void { delete b.opt; }
 export function caller(b: Bag): void { writeProp(b); }
 `, (result) => {
-      for (const name of ["writeProp", "writeNested", "bump", "compound", "destructureInto"]) {
+      // Removing a property changes the object exactly as assigning one does.
+      for (const name of ["writeProp", "writeNested", "bump", "compound", "destructureInto", "deleteProp"]) {
         expect([name, row(result, name)?.evidence]).toEqual([name, "unknown"]);
       }
       expect(reasonText(result, "writeProp")).toContain("the object whose n is written");
@@ -60,6 +62,40 @@ export function localOnly(): number { let x = 0; x = 2; return x; }
       expect(row(result, "localOnly")?.evidence).toBe("inferred");
       // A method writing the same field writes an object its caller already holds.
       expect(row(result, "Counter.bump")?.evidence).toBe("unknown");
+    });
+  });
+});
+
+describe("a write to a binding this boundary does not own", () => {
+  it("does not let a write to an outer binding read as a proof", async () => {
+    await check(`export let moduleCounter = 0;
+export function writeModuleLet(): void { moduleCounter = 1; }
+export function closureWrite(): () => void { let n = 0; return () => { n = 1; }; }
+`, (result) => {
+      expect(row(result, "writeModuleLet")?.evidence).toBe("unknown");
+      expect(reasonText(result, "writeModuleLet")).toContain("the binding moduleCounter this boundary does not own");
+      // The factory only creates the closure; the closure's own body is what writes the captured binding.
+      expect(row(result, "closureWrite")?.evidence).toBe("inferred");
+      expect(row(result, "<anonymous>")?.evidence).toBe("unknown");
+    });
+  });
+
+  it("leaves a write to a binding the boundary owns alone, through every pattern", async () => {
+    await check(`export function localOnly(): number { let x = 0; x = 2; return x; }
+export function paramWrite(a: number): number { a = 1; return a; }
+export function swapParams(a: number, b: number): number { [a, b] = [b, a]; return a - b; }
+export function swapLocals(): number { let a = 1, b = 2; [a, b] = [b, a]; return a + b; }
+export function objectPattern(): number { let n = 0; ({ n } = { n: 5 }); return n; }
+export function shadowing(): number { let x = 0; x = 5; return x; }
+export function hoistedVar(c: boolean): number { if (c) { var v = 1; } v = 2; return v ?? 0; }
+export function caught(): number { let r = 0; try { r = 1; } catch { r = 2; } return r; }
+`, (result) => {
+      // A name the scope chain declares at or inside this boundary is private to the call. The scope walk has
+      // to start at the assignment target, because a name nested in a pattern has no parent recorded yet.
+      for (const name of ["localOnly", "paramWrite", "swapParams", "swapLocals",
+        "objectPattern", "shadowing", "hoistedVar", "caught"]) {
+        expect([name, row(result, name)?.evidence]).toEqual([name, "inferred"]);
+      }
     });
   });
 });

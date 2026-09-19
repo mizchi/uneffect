@@ -952,15 +952,17 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           }
         }
       }
-      // Writing a member of an object the boundary did not create is observable to whoever else holds it, and
-      // this path renders no region naming what changed. A write a reviewed contract accounted for is already
-      // carried by that contract's own terms; every other one leaves the boundary unresolved, because an empty
-      // summary for `b.n = 1` is a proof that the caller's object is unchanged when it is not.
-      for (const write of indexAccess.memberWrites) {
+      // A write someone other than this boundary can see, and no region naming what changed. One a reviewed
+      // contract accounted for is already carried by that contract's own terms; every other one leaves the
+      // boundary unresolved, because an empty summary for `b.n = 1` is a proof that the caller's object is
+      // unchanged when it is not.
+      for (const write of indexAccess.observableWrites) {
         if (reviewedWriteSpans.has(`${write.start}:${write.end}`)) continue;
         const owner = ensure(owningBoundary(write.start));
         owner.unclassified = true;
-        owner.unresolved.add(`the object whose ${write.name} is written`);
+        owner.unresolved.add(write.kind === "member"
+          ? `the object whose ${write.name} is written`
+          : `the binding ${write.name} this boundary does not own`);
       }
       for (const fn of syntax.functions) {
         const key = `${fileName}:${fn.start}:${fn.name}`;

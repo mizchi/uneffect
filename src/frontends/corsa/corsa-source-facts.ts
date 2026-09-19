@@ -73,12 +73,15 @@ export interface CorsaSourceFacts {
   /** `${start}:${end}` keys of member expressions both read and written, such as a compound assignment. */
   readonly readWriteTargets: ReadonlySet<string>;
   /**
-   * Every member the source writes, with the member name. A write is observable to whoever else holds the
-   * object, and this path renders no region for it, so a write no reviewed contract accounts for leaves the
-   * boundary unresolved rather than a proof. A write to `this` inside a constructor or a field initializer is
-   * excluded: the object did not exist before the call, so no caller can observe its previous state.
+   * Every write the source performs whose result someone other than this boundary can see: a member of an
+   * object the boundary did not create, or a binding declared outside it. This path renders no region for
+   * either, so one no reviewed contract accounts for leaves the boundary unresolved rather than a proof. A
+   * write to `this` inside a constructor or a field initializer is excluded, because the object did not exist
+   * before the call and no caller holds its previous state.
    */
-  readonly memberWrites: ReadonlyArray<{ readonly start: number; readonly end: number; readonly name: string }>;
+  readonly observableWrites: ReadonlyArray<{
+    readonly start: number; readonly end: number; readonly name: string; readonly kind: "member" | "binding";
+  }>;
   /**
    * Every `throw` no enclosing `catch` can reach, with the construction each one throws. `start` is the throw
    * statement's own offset, so the consumer attributes it with the same rule it uses for every other site.
@@ -757,46 +760,100 @@ export function analyzeCorsaSourceFacts(
   const arrayLiteralReceivers = new Set<number>();
   const assignmentTargets = new Set<string>();
   const readWriteTargets = new Set<string>();
-  const memberWrites: Array<{ start: number; end: number; name: string }> = [];
+  const observableWrites: Array<{ start: number; end: number; name: string; kind: "member" | "binding" }> = [];
   /** Every member expression a binding pattern or loop header writes, at any nesting depth. */
+  /** Names a scope introduces directly: its own declarations, parameters, and a catch binding. */
+  const scopeNames = (scope: EstreeNode): Set<string> => {
+    const names = new Set<string>();
+    const fromPattern = (pattern: unknown): void => {
+      const node = pattern as EstreeNode | null | undefined;
+      if (!node || typeof node.type !== "string") return;
+      if (node.type === "Identifier" && typeof node.name === "string") { names.add(node.name); return; }
+      for (const child of children(node)) fromPattern(child);
+    };
+    const fromStatement = (statement: EstreeNode): void => {
+      if (statement.type === "VariableDeclaration" && Array.isArray(statement.declarations)) {
+        for (const declarator of statement.declarations) if (isNode(declarator)) fromPattern(declarator.id);
+      }
+      if ((statement.type === "FunctionDeclaration" || statement.type === "ClassDeclaration") && isNode(statement.id)) {
+        fromPattern(statement.id);
+      }
+    };
+    if (functionTypes.has(scope.type ?? "")) {
+      for (const parameter of (Array.isArray(scope.params) ? scope.params : [])) fromPattern(parameter);
+      if (isNode(scope.id)) fromPattern(scope.id);
+      // A `var` is hoisted to the whole function, so a block below the write still declares it here.
+      walk(scope, (node) => { if (node.type === "VariableDeclaration" && node.kind === "var") fromStatement(node); });
+      return names;
+    }
+    if (scope.type === "CatchClause") { fromPattern(scope.param); return names; }
+    if (scope.type === "ForStatement" && isNode(scope.init)) fromStatement(scope.init);
+    if ((scope.type === "ForOfStatement" || scope.type === "ForInStatement") && isNode(scope.left)) fromStatement(scope.left);
+    for (const statement of (Array.isArray(scope.body) ? scope.body : [])) if (isNode(statement)) fromStatement(statement);
+    return names;
+  };
+  /**
+   * Whether an assignment to a bare name reaches a binding declared outside the boundary that runs it — a
+   * module-scope variable, or an upvalue of an enclosing function. Either is visible to someone other than
+   * this boundary once it returns, so the write is not private to the call.
+   */
+  const writesOuterBinding = (origin: EstreeNode, name: string): boolean => {
+    for (let child = origin, parent = parents.get(child); parent; child = parent, parent = parents.get(parent)) {
+      if (scopeNames(parent).has(name)) return false;
+      if (functionTypes.has(parent.type ?? "")) return true;
+    }
+    // Reaching the program without a declaration means the name is a global or an import, and a write to
+    // either is observable everywhere; module scope itself is the boundary that owns its own variables.
+    return true;
+  };
   /** Whether a write through `this` reaches an object that already existed when the boundary was entered. */
-  const writesEstablishedObject = (node: EstreeNode): boolean => {
+  const writesEstablishedObject = (node: EstreeNode, origin: EstreeNode): boolean => {
     let root = node;
     while (root.type === "MemberExpression" && isNode(root.object)) root = unwrap(root.object);
     if (root.type !== "ThisExpression") return true;
-    for (let child = node, parent = parents.get(child); parent; child = parent, parent = parents.get(parent)) {
+    for (let child = origin, parent = parents.get(child); parent; child = parent, parent = parents.get(parent)) {
       if (parent.type === "MethodDefinition") return parent.kind !== "constructor";
       if (parent.type === "PropertyDefinition" || parent.type === "AccessorProperty") return false;
       if (parent.type === "StaticBlock") return true;
     }
     return true;
   };
-  const collectWriteTargets = (target: EstreeNode, into: Set<string>): void => {
+  /**
+   * `origin` is the node this collection started from. The walk records a node's children when it visits that
+   * node, so only the target handed in has an entry in `parents`; a name nested inside a pattern does not, and
+   * the scope walk has to start from the target. They share a scope, so the answer is the same.
+   */
+  const collectWriteTargets = (target: EstreeNode, into: Set<string>, origin: EstreeNode = target): void => {
     const node = unwrap(target);
     if (node.type === "MemberExpression") {
       into.add(`${node.start}:${node.end}`);
       const property = isNode(node.property) ? node.property : undefined;
       const name = node.computed !== true && property?.type === "Identifier" && typeof property.name === "string"
         ? property.name : "a computed member";
-      if (writesEstablishedObject(node) && typeof node.start === "number" && typeof node.end === "number") {
-        memberWrites.push({ start: node.start, end: node.end, name });
+      if (writesEstablishedObject(node, origin) && typeof node.start === "number" && typeof node.end === "number") {
+        observableWrites.push({ start: node.start, end: node.end, name, kind: "member" });
       }
+      return;
+    }
+    if (node.type === "Identifier" && typeof node.name === "string"
+      && typeof node.start === "number" && typeof node.end === "number" && writesOuterBinding(origin, node.name)) {
+      observableWrites.push({ start: node.start, end: node.end, name: node.name, kind: "binding" });
       return;
     }
     if (node.type === "ObjectPattern" && Array.isArray(node.properties)) {
       for (const property of node.properties) {
         if (!isNode(property)) continue;
         const value = property.type === "Property" ? property.value : property.type === "RestElement" ? property.argument : undefined;
-        if (isNode(value)) collectWriteTargets(value, into);
+        if (isNode(value)) collectWriteTargets(value, into, origin);
       }
       return;
     }
     if (node.type === "ArrayPattern" && Array.isArray(node.elements)) {
-      for (const element of node.elements) if (isNode(element)) collectWriteTargets(element, into);
+      for (const element of node.elements) if (isNode(element)) collectWriteTargets(element, into, origin);
       return;
     }
     if ((node.type === "RestElement" || node.type === "AssignmentPattern") && isNode(node.left ?? node.argument)) {
-      collectWriteTargets((node.left ?? node.argument) as EstreeNode, into);
+      collectWriteTargets((node.left ?? node.argument) as EstreeNode, into, origin);
     }
   };
   const inlineFunctionArguments = new Map<string, readonly (number | null)[]>();
@@ -939,6 +996,10 @@ export function analyzeCorsaSourceFacts(
       }
     }
     if (node.type === "UpdateExpression" && isNode(node.argument)) collectWriteTargets(node.argument, readWriteTargets);
+    // Removing a property changes the object exactly as assigning one does; neither path recorded it at all.
+    if (node.type === "UnaryExpression" && node.operator === "delete" && isNode(node.argument)) {
+      collectWriteTargets(node.argument, assignmentTargets);
+    }
     if ((node.type === "ForOfStatement" || node.type === "ForInStatement") && isNode(node.left)
       && node.left.type !== "VariableDeclaration") collectWriteTargets(node.left, assignmentTargets);
   });
@@ -1109,7 +1170,7 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, memberWrites, receiverTypes, throws, coercions,
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
     dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
 }
 
