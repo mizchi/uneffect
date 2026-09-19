@@ -46,13 +46,14 @@ export class Widget { constructor(@inject dep: number) { void dep; } }
 export function pure(a: number): number { return a + 1; }
 `,
     }, (result) => {
-      // Importing dep.ts applies the decorator once, so neither module may claim to have run nothing.
-      expect(row(result, "dep.ts", "<module>")?.evidence).toBe("unknown");
-      expect(row(result, "index.ts", "<module>")?.evidence).toBe("unknown");
+      // Importing dep.ts applies the decorator once. A bare `@inject` applies the named function itself, so
+      // the declaring scope is linked to that body and carries what it does — and so does the importer.
+      expect(effectsOf(result, "dep.ts", "<module>")).toEqual(["Console"]);
+      expect(effectsOf(result, "index.ts", "<module>")).toEqual(["Console"]);
     }, { legacy: true });
   });
 
-  it("does not reach trusted while a parameter decorator's capabilities stay unseen", async () => {
+  it("carries a parameter decorator's own capabilities on the scope that applies it", async () => {
     await check({
       "index.ts": `function inject(target: unknown, key: string | symbol | undefined, index: number): void {
   void fetch("https://example.com/register");
@@ -65,9 +66,17 @@ export class Widget {
 }
 `,
     }, (result) => {
-      // One reviewed builtin call inside the class body must not promote the module to the top of the ladder
-      // while the decorator's own Fetch and Net are absent from the same row.
-      expect(effectsOf(result, "index.ts", "<module>")).toEqual(["Console"]);
+      // The static block's Console and the decorator's own Fetch and Net all belong to the same scope, so the
+      // row cannot report one and omit the others.
+      expect(effectsOf(result, "index.ts", "<module>")).toEqual(["Console", "Fetch", "Net"]);
+    }, { legacy: true });
+
+    // A form whose applied value is not the named function stays undecided: nothing in the source names it.
+    await check({
+      "index.ts": `function inject(): ParameterDecorator { void fetch("https://example.com/register"); return () => {}; }
+export class Widget { constructor(@inject() dep: number) { void dep; } }
+`,
+    }, (result) => {
       expect(row(result, "index.ts", "<module>")?.evidence).toBe("unknown");
     }, { legacy: true });
   });

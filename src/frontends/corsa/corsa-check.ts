@@ -703,8 +703,14 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // rather than an unresolved marker standing in for it. A decorator is the exception: applying one invokes
       // it, that invocation is spelled nowhere, and partial modelling of a class body would otherwise let the
       // declaring scope reach `trusted` while the decorator's own work stayed invisible.
-      for (const declaration of bindings.decoratedDeclarations) {
-        ensure(owningBoundary(declaration)).unclassified = true;
+      for (const application of bindings.decoratorApplications) {
+        const scope = ensure(owningBoundary(application.declaration));
+        // A bare `@deco` applies the named function itself, so the ordinary symbol resolution decides: a unique
+        // immutable body links and carries its own effects, and anything else falls to unresolved below. A
+        // factory call applies the value it returned, which no name in the source stands for.
+        if (application.symbolId === null) { scope.unclassified = true; continue; }
+        scope.calleeSymbols.add(application.symbolId);
+        scope.deferred.set(application.symbolId, "a decorator applied to a declaration");
       }
       // The decorated member's own row is a claim about the DECLARED body, and the decorator's return value may
       // have replaced it. Resolved by `enclosingFunction` rather than `owningBoundary`: the member's boundary

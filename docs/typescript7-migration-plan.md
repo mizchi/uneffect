@@ -311,13 +311,19 @@ public メソッド非 link で `unknown` にしており、ここは既に Prog
   なっていた。この行は `enclosingFunction` で解決する — member の境界は `@` から始まるので、
   `owningBoundary` に通すと宣言が評価するサイトと読み違える。
 
-残る非主張 1: **解決済みの decorator でも宣言スコープは unknown になる。** 効果が空だと証明できた
-`@Entity` でも `decoratedDeclarations` の marker は無条件に立つため、その module を import しただけの
-ファイル（barrel 経由の app entry を含む）まで `<module>` が unknown に伝播する。実測で 5 module chain の
-4/4、barrel 構成では entity / index / app が unknown、無関係な 8 leaf は clean。function の行は劣化せず、
-診断も 0 件なので `<module>` 行だけの伝播。正直ではあるが、`@deco` に call expression が無く識別子が
-解析済みの body に解決する場合は、その body の effect を宣言スコープに付けて marker を落とせる。
-factory 形は対象外 — 解決できるのは factory の呼出であって、その戻り値の適用ではない。
+**解決済みの decorator は marker ではなく link にした。** 当初は `decoratedDeclarations` の marker を
+無条件に立てていたため、効果が空だと*証明できた* `@Entity` でもその module を import しただけのファイル
+（barrel 経由の app entry を含む）まで `<module>` が unknown に伝播していた。実測で 5 module chain の 4/4。
+
+裸の `@deco` が適用するのは**名前が指す関数そのもの**なので、その symbol を `calleeSymbols` に入れて
+通常の呼出解決に委ねる。一意で再代入されない body があれば link されてその effect を宣言スコープが運び、
+そうでなければ既存の経路で unresolved になる。factory 形 `@deco()` と member expression 形は対象外 —
+適用されるのは戻り値であって、ソースのどの名前もそれを指していない。再代入される `let deco` は
+`writes` に載るので link されない。
+
+これは騒音を消すだけでなく、以前は失われていた効果を**帰属させる**: `@trace` が console に書くなら
+`<module>` は `[trusted] {Console}` になる。legacy のパラメータデコレータも同じで、
+`{Console, Fetch, Net}` が宣言スコープに乗り、import 先にも伝播する。
 
 残る非主張 2: **Program 経路の decorator モデルは移植しない。** 実測で 3 つの cardinal-rule 違反がある。
 (a) 置換が一切モデル化されておらず、`@instrument() run()` の caller が `[] inferred`、module が

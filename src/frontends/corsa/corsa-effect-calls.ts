@@ -60,11 +60,16 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
    */
   staticInitializers: Array<{ declaration: number; regions: Array<{ start: number; end: number }> }>;
   /**
-   * Classes carrying a decorator, by declaration offset. Applying one invokes it, and no call expression spells
-   * that invocation: `@deco m() {}` records nothing at all, and `@deco()` records the factory rather than the
-   * application of what it returns. The scope that declares the class performs it, so that scope is unresolved.
+   * One entry per decorator, keyed by the declaration offset of the class that carries it. Applying a decorator
+   * invokes it, and no call expression spells that invocation: `@deco m() {}` records nothing at all, and
+   * `@deco()` records the factory rather than the application of what it returns. The scope that declares the
+   * class performs the application, so it is charged there.
+   *
+   * `symbolId` is the decorator's own symbol, and only a bare identifier has one — that is the form where the
+   * value being applied IS the named function, so the scope can be linked to its body. Any other form (a
+   * factory call, a member expression) applies a value this path cannot name, and the scope is unresolved.
    */
-  decoratedDeclarations: number[];
+  decoratorApplications: Array<{ declaration: number; symbolId: string | null }>;
   /**
    * Members carrying a decorator, by the offset their syntax boundary starts at. A decorator's return value
    * replaces the member, so the declared body is not necessarily the one that runs — its own summary is a claim
@@ -83,10 +88,10 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   const superCalls = new Map<number, string>();
   const privateCalls = new Map<number, string>();
   const staticInitializers: Array<{ declaration: number; regions: Array<{ start: number; end: number }> }> = [];
-  const decoratedDeclarations: number[] = [];
+  const decoratorApplications: Array<{ declaration: number; symbolId: string | null }> = [];
   const decoratedMembers: number[] = [];
   const classFacts = () => ({
-    classes, methods, superCalls, privateCalls, staticInitializers, decoratedDeclarations, decoratedMembers,
+    classes, methods, superCalls, privateCalls, staticInitializers, decoratorApplications, decoratedMembers,
   });
   if (parsed.errors.length) return { declarations, writes, ambiguousWrites, calls, parameters, ...classFacts() };
   const recordWrite = (node: Node, shorthand = false): void => {
@@ -200,6 +205,14 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
         return params.flatMap((param: { decorators?: unknown }) =>
           Array.isArray(param?.decorators) ? param.decorators : []);
       };
+      const applied = (decorator: unknown): void => {
+        const expression = (decorator as { expression?: { type?: string; start?: number } } | null)?.expression;
+        const symbol = expression?.type === "Identifier" && typeof expression.start === "number"
+          ? frontend.getSymbolAtPosition(file, expression.start) : null;
+        const resolved = symbol === null ? null : frontend.getAliasedSymbol(symbol) ?? symbol;
+        decoratorApplications.push({ declaration: node.start, symbolId: resolved?.id ?? null });
+      };
+      for (const decorator of (Array.isArray(node.decorators) ? node.decorators : [])) applied(decorator);
       let decorated = Array.isArray(node.decorators) && node.decorators.length > 0;
       for (const member of node.body.body) {
         if (member.type === "StaticBlock") region(member);
@@ -210,6 +223,10 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
         const decoratedMember = ("decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0)
           || parameterDecorators(member).length > 0;
         if (decoratedMember) decoratedMembers.push(member.start);
+        if (decoratedMember) {
+          for (const decorator of ("decorators" in member && Array.isArray(member.decorators) ? member.decorators : [])) applied(decorator);
+          for (const decorator of parameterDecorators(member)) applied(decorator);
+        }
         decorated ||= decoratedMember;
       }
       // Published whenever the body evaluates anything, not only when an instance initializer widens the
@@ -218,7 +235,6 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       if (definitionTimeRegions.length > 0) {
         staticInitializers.push({ declaration: node.start, regions: definitionTimeRegions });
       }
-      if (decorated) decoratedDeclarations.push(node.start);
       if (symbolId !== null) {
         const members = node.body.body;
         const span = constructionBoundarySpan(node.body as unknown as Parameters<typeof constructionBoundarySpan>[0]);

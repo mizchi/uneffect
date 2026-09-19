@@ -178,7 +178,7 @@ export function build(): Outer { return new Outer(); }
     });
   });
 
-  it("does not claim a declaring scope it modelled only in part", async () => {
+  it("charges an applied decorator to the scope that declares the class", async () => {
     await check(`export function trace<T>(value: T, _context: unknown): T {
   console.log("applied");
   return value;
@@ -191,8 +191,24 @@ export class Widget {
 }
 export function build(): Widget { return new Widget(); }
 `, (result) => {
-      // Applying the decorator invokes it when the class is declared, and no call expression spells that.
-      // Naming the region's other work while that stays invisible would be a proof the source does not support.
+      // No call expression spells the application, but a bare `@trace` applies the named function itself, so
+      // the declaring scope links to that body and carries what it does alongside the region's other work.
+      expect(named(result)["<module>"]).toEqual(["Console"]);
+      expect(evidenceOf(result, "<module>")).toBe("trusted");
+    });
+  });
+
+  it("does not claim a declaring scope whose decorator applies a value nothing names", async () => {
+    await check(`export function make(): <T>(value: T, context: unknown) => T {
+  return (value) => { console.log("applied"); return value; };
+}
+export class Widget {
+  @make()
+  run(): number { return 1; }
+  size = 1;
+}
+`, (result) => {
+      // A factory's call is modelled; the application of what it returned is not, and no name stands for it.
       expect(evidenceOf(result, "<module>")).toBe("unknown");
     });
   });
