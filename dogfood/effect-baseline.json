@@ -209,6 +209,7 @@
       "occurrence": 0,
       "effects": [
         "Clone",
+        "InvokeUserCode",
         "Throw<DOMException>",
         "Throw<Error>",
         "Throw<TypeError>",
@@ -856,7 +857,10 @@
       "fileName": "src/frontends/typescript/project-coordinates.ts",
       "functionName": "createProjectByteCoordinates",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -884,7 +888,9 @@
       "functionName": "offset",
       "occurrence": 0,
       "effects": [
-        "Throw<Error>"
+        "InvokeUserCode",
+        "Throw<Error>",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -963,7 +969,10 @@
       "fileName": "src/optimizer/ownership-evidence-cache.ts",
       "functionName": "writeOwnershipEvidenceCache",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1017,7 +1026,10 @@
       "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "stableReadProofs",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1044,7 +1056,10 @@
       "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "visit",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1111,6 +1126,7 @@
       "functionName": "optimizeUneffectProject",
       "occurrence": 0,
       "effects": [
+        "InvokeUserCode",
         "Throw<SyntaxError>",
         "Throw<TypeError>"
       ],
@@ -1122,7 +1138,10 @@
       "fileName": "src/optimizer/project-optimizer.ts",
       "functionName": "<anonymous>",
       "occurrence": 5,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1299,7 +1318,10 @@
       "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "scoreDiagnostic",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1308,7 +1330,10 @@
       "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "evaluateQuality",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1368,7 +1393,10 @@
       "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "formatQualityReport",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1377,7 +1405,10 @@
       "fileName": "src/support/diagnostic-quality.ts",
       "functionName": "<anonymous>",
       "occurrence": 10,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": []
     },
     {
@@ -1454,14 +1485,20 @@
       "fileName": "src/support/diagnostics.ts",
       "functionName": "codeOf",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": []
     },
     {
       "fileName": "src/support/diagnostics.ts",
       "functionName": "reportDiagnostic",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1496,7 +1533,9 @@
       "functionName": "formatDiagnostic",
       "occurrence": 0,
       "effects": [
-        "Throw<RangeError>"
+        "InvokeUserCode",
+        "Throw<RangeError>",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -1514,7 +1553,9 @@
       "functionName": "formatDiagnostics",
       "occurrence": 0,
       "effects": [
-        "Throw<RangeError>"
+        "InvokeUserCode",
+        "Throw<RangeError>",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -1532,7 +1573,9 @@
       "functionName": "<anonymous>",
       "occurrence": 4,
       "effects": [
-        "Throw<RangeError>"
+        "InvokeUserCode",
+        "Throw<RangeError>",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -1542,7 +1585,10 @@
       "fileName": "src/support/diagnostics.ts",
       "functionName": "formatCheckEvidence",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1567,7 +1613,10 @@
       "fileName": "src/support/diagnostics.ts",
       "functionName": "<anonymous>",
       "occurrence": 7,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1590,7 +1639,10 @@
       "fileName": "src/support/diagnostics.ts",
       "functionName": "<anonymous>",
       "occurrence": 10,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": []
     },
     {
@@ -1641,7 +1693,10 @@
       "fileName": "src/support/environment.ts",
       "functionName": "commandVersion",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1673,7 +1728,10 @@
       "fileName": "src/support/environment.ts",
       "functionName": "nodeCheck",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1682,7 +1740,10 @@
       "fileName": "src/support/environment.ts",
       "functionName": "typescript7NativePackage",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1692,7 +1753,9 @@
       "functionName": "typescriptCheck",
       "occurrence": 0,
       "effects": [
-        "Throw<SyntaxError>"
+        "InvokeUserCode",
+        "Throw<SyntaxError>",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -1736,7 +1799,10 @@
       "fileName": "src/support/environment.ts",
       "functionName": "javaCheck",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1746,7 +1812,9 @@
       "functionName": "runEnvironmentChecks",
       "occurrence": 0,
       "effects": [
-        "Throw<SyntaxError>"
+        "InvokeUserCode",
+        "Throw<SyntaxError>",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -1811,7 +1879,10 @@
       "fileName": "src/support/fixtures.ts",
       "functionName": "sourceFiles",
       "occurrence": 0,
-      "effects": [],
+      "effects": [
+        "InvokeUserCode",
+        "Throw<TypeError>"
+      ],
       "unknownReasons": [
         "unresolved-call"
       ]
@@ -1848,7 +1919,9 @@
       "functionName": "runFixture",
       "occurrence": 0,
       "effects": [
-        "Throw<RangeError>"
+        "InvokeUserCode",
+        "Throw<RangeError>",
+        "Throw<TypeError>"
       ],
       "unknownReasons": [
         "unresolved-call"

@@ -75,6 +75,7 @@ export const ciTestTiers = {
     "test/corsa-definition-time.test.ts",
     "test/corsa-decorator-timing.test.ts",
     "test/corsa-effect-annotations.test.ts",
+    "test/corsa-coercion-effects.test.ts",
     "test/corsa-module-dependencies.test.ts",
     "test/corsa-throw-effects.test.ts",
     "test/corsa-effect-propagation.test.ts",

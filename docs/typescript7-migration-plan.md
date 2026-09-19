@@ -377,6 +377,34 @@ requireAnnotations が false なので無関係。`api/public-api-v0.3.json` は
 `declare function`、class プロパティに書かれた注釈が次の実関数に付き、本物の違反を黙らせる。ファイル単位の
 degrade はこの規則を必要としないので、第一段階では使っていない。
 
+**閉じた既知差: 暗黙の ToPrimitive 変換。** `return `${value}`` と `"a" + value` は、value 自身の
+`Symbol.toPrimitive` / `valueOf` / `toString` を走らせ、どれもプリミティブを返さなければ TypeError を投げる。
+native 経路はこれを lowering で完全に落としていたため、`toString` が `console.log` する値を補間するだけの
+関数が `[] inferred` — 積極的な effect 自由の証明 — になっていた。`String(v)` は reviewed contract が
+`invoke-user-code` + `throw TypeError` を正しく付けるのに、同じ変換の暗黙形だけが無音だった。
+
+サイトの条件は型に依存する。`parseInt` の contract が「string 引数を宣言しているので coercion は total」と
+言っているのと同じ論法で、オペランドがプリミティブだと確定できるときは何も付けない。判定は 3 段:
+- **構文で確定するもの。** リテラルと（tagged でない）テンプレートリテラルは、型クエリを引くまでもなく
+  プリミティブ。BigInt リテラルには `nativeExpressionKind` が無く型クエリが何も答えないので、この段が無いと
+  `0n` を含む bigint 演算がすべて誤警報になる。
+- **フラグで確定するもの。** undefined / null / void / string / number / bigint / 各リテラル / enum リテラル /
+  テンプレートリテラル型。`symbol` は意図的に外す — Symbol の ToString は TypeError を投げる。`object` も
+  外す。それこそがここで探している user method だから。
+- **union はテキストで読む。** union のフラグは `Union` と、boolean と enum についてはメンバの種類しか
+  持たず、構成要素は入っていない。printed text が唯一の在庫なので分解して照合し、認識できない項が 1 つでも
+  あれば union ごと不採用にする。
+
+対象演算子は `+ - * / % ** < > <= >= << >> >>> & | ^ == !=` とその代入形、およびテンプレート補間。
+tagged template は除く — tag は substitution を変換せずに受け取る。
+
+実測: src/ 227 ファイルで 160 行が変化し、そのうち **14 が積極的な主張の撤回**（残りは既に unknown だった
+行が項を得ただけ）。`dogfood/effect-baseline.json` は 11 ファイル全体で再生成し、28 エントリが項を得た。
+
+残る非主張: オペランドの型を native が解決できないときは保守側に倒れる。`process.arch` のような Node の
+グローバルは `<unresolved>.arch` になるし、9 段の絞り込みを経た大きな union は printer が省略した text しか
+返さない。どちらも「値が何か分からない」ので変換を認めないのが正しいが、精度の穴ではある。
+
 **未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
 `Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を
 ownership 用の事実として扱い、capability 名に描画しない。そのため受け手を書き換える

@@ -82,6 +82,14 @@ export interface CorsaSourceFacts {
    * resolved there.
    */
   readonly throws: ReadonlyArray<{ readonly start: number; readonly calleePosition: number | null }>;
+  /**
+   * Every implicit ToPrimitive conversion whose operand this path could not prove already primitive — a
+   * template substitution, a `+` or an arithmetic, relational or loose-equality operand. The conversion runs
+   * the value's own `Symbol.toPrimitive`, `valueOf` or `toString` and throws TypeError when none yields a
+   * primitive, which is exactly the reviewed contract `String` and `Number` already carry. `start` is the
+   * enclosing expression's offset, attributed by the same rule as every other site.
+   */
+  readonly coercions: ReadonlyArray<{ readonly start: number }>;
   /** The static imports and export-froms whose evaluation runs another module. */
   readonly dependencies: readonly RuntimeModuleDependency[];
   /**
@@ -143,6 +151,39 @@ const opaqueTypeFlags = anyTypeFlag | unknownTypeFlag | neverTypeFlag;
 const numericTypeFlags = numberTypeFlag | numberLiteralTypeFlag;
 /** Compiler `SymbolFlags.GetAccessor | SymbolFlags.SetAccessor`; reading or writing one runs its body. */
 export const accessorSymbolFlags = 32768 | 65536;
+/**
+ * Corsa `TypeFlags` for the types whose ToPrimitive conversion reaches no user method and cannot throw, as
+ * observed from the compiler and pinned by `test/corsa-source-facts.test.ts`. `symbol` is deliberately absent:
+ * ToString of a Symbol throws TypeError. So is `object`, whose conversion is exactly the user method this is
+ * here to find, and `any` / `unknown`, which say nothing about what the value is.
+ */
+const undefinedTypeFlag = 4, nullTypeFlag = 8, voidTypeFlag = 16, stringTypeFlag = 32, bigintTypeFlag = 128;
+const stringLiteralTypeFlag = 1024, bigintLiteralTypeFlag = 4096, booleanLiteralTypeFlag = 8192;
+const enumLiteralTypeFlag = 32768, unionTypeFlag = 134217728, templateLiteralTypeFlag = 4194304;
+const totalConversionFlags = undefinedTypeFlag | nullTypeFlag | voidTypeFlag | stringTypeFlag | numberTypeFlag
+  | bigintTypeFlag | stringLiteralTypeFlag | numberLiteralTypeFlag | bigintLiteralTypeFlag
+  | booleanLiteralTypeFlag | enumLiteralTypeFlag | templateLiteralTypeFlag;
+/**
+ * A union reports only `Union` plus, for `boolean` and for an enum, the kind of its members — its constituents
+ * are not in the flags. The printed text is the only inventory of them this frontend exposes, so a union is
+ * admitted by reading that text, and a term the list does not recognize keeps the whole union out.
+ */
+const primitiveTypeTexts = new Set(["string", "number", "boolean", "bigint", "undefined", "null", "void", "true", "false"]);
+const literalTypeText = /^(?:"[^"]*"|'[^']*'|-?\d+(?:\.\d+)?n?)$/;
+/**
+ * Whether a value of this type converts to a primitive without running anything the source wrote. Absence of a
+ * type is not admission: an operand this path could not type may be an object carrying its own
+ * `Symbol.toPrimitive`, `valueOf` or `toString`.
+ */
+function convertsWithoutUserCode(type: CorsaApiTypeFact | null): boolean {
+  if (!type || typeof type.flags !== "number" || (type.flags & opaqueTypeFlags) !== 0) return false;
+  if ((type.flags & totalConversionFlags) !== 0) return true;
+  if ((type.flags & unionTypeFlag) === 0 || type.texts.length !== 1) return false;
+  return type.texts[0]!.split("|").every((term) => {
+    const text = term.trim();
+    return primitiveTypeTexts.has(text) || literalTypeText.test(text);
+  });
+}
 
 function isNode(value: unknown): value is EstreeNode {
   return Boolean(value && typeof value === "object" && typeof (value as EstreeNode).type === "string");
@@ -734,6 +775,7 @@ export function analyzeCorsaSourceFacts(
   const assignedInlineFunctions = new Map<string, number>();
   const receiverTypes = new Map<string, CorsaApiTypeFact>();
   const throws: Array<{ start: number; calleePosition: number | null }> = [];
+  const coercions: Array<{ start: number }> = [];
   /**
    * A throw escapes unless a `try` whose `catch` clause encloses it sits between it and the boundary that runs
    * it. The walk stops at the first function-like ancestor: a `catch` outside a callback cannot catch what that
@@ -783,7 +825,43 @@ export function analyzeCorsaSourceFacts(
     catch { return; }
     if (type) receiverTypes.set(`${site.start}:${site.end}`, type);
   };
+  /** The operators that convert an operand before they compute; `+` also admits a string, which is the point. */
+  const coercingOperators = new Set(["+", "-", "*", "/", "%", "**", "<", ">", "<=", ">=", "<<", ">>", ">>>", "&", "|", "^", "==", "!="]);
+  /** The type of an expression, or `null` when the native tree holds no node this path can name at that range. */
+  const typeOfExpression = (node: EstreeNode): CorsaApiTypeFact | null => {
+    if (typeof node.start !== "number" || typeof node.end !== "number") return null;
+    const kind = nativeExpressionKind(node as never);
+    if (kind === undefined) return null;
+    try { return frontend.getTypeAtRange(fileName, { start: node.start, end: node.end }, kind); } catch { return null; }
+  };
+  /**
+   * A literal is a primitive by syntax, which is more than any type query can establish: a BigInt literal has
+   * no native expression kind at all, so asking about `0n` answers nothing and the operand would be admitted
+   * as unresolved. A regular expression literal is an object and is not one of these.
+   */
+  const isPrimitiveLiteral = (node: EstreeNode): boolean => {
+    // An untagged template produces a string whatever it substitutes; the substitutions' own conversions are
+    // recorded when the template itself is visited, so the enclosing operator has nothing more to charge.
+    if (node.type === "TemplateLiteral") return parents.get(node)?.type !== "TaggedTemplateExpression";
+    return node.type === "Literal" && !("regex" in node);
+  };
+  const recordCoercion = (site: EstreeNode, operands: readonly EstreeNode[]): void => {
+    if (typeof site.start !== "number") return;
+    if (operands.every((operand) => isPrimitiveLiteral(operand) || convertsWithoutUserCode(typeOfExpression(operand)))) return;
+    coercions.push({ start: site.start });
+  };
   walk(program, (node) => {
+    // A tagged template hands its substitutions to the tag unconverted, so no ToPrimitive step runs here.
+    if (node.type === "TemplateLiteral" && parents.get(node)?.type !== "TaggedTemplateExpression") {
+      const expressions = (Array.isArray(node.expressions) ? node.expressions : []).filter(isNode);
+      if (expressions.length > 0) recordCoercion(node, expressions);
+    }
+    if ((node.type === "BinaryExpression" || node.type === "AssignmentExpression")
+      && typeof node.operator === "string" && isNode(node.left) && isNode(node.right)) {
+      const operator = node.type === "AssignmentExpression" ? node.operator.replace(/=$/, "") : node.operator;
+      // An assignment's own `=` is not a conversion, and `+=` converts both sides exactly as `+` does.
+      if (operator.length > 0 && coercingOperators.has(operator)) recordCoercion(node, [node.left, node.right]);
+    }
     if (node.type === "ThrowStatement" && isNode(node.argument) && typeof node.start === "number" && !caught(node)) {
       for (const operand of thrownOperands(node.argument)) {
         const callee = operand.type === "NewExpression" && isNode(operand.callee) && operand.callee.type === "Identifier"
@@ -1002,7 +1080,7 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, throws,
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, throws, coercions,
     dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
 }
 

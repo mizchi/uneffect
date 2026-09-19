@@ -699,6 +699,15 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // A `throw` the enclosing boundary cannot catch is an effect of that boundary. Naming it is a separate
       // question from seeing it: an operand the reviewed catalog did not resolve is `Throw<unknown>`, which the
       // effect language deliberately leaves uncovered by a declared `Throw<Error>`.
+      // An implicit ToPrimitive runs the value's own `Symbol.toPrimitive`, `valueOf` or `toString` and throws
+      // TypeError when none of them yields a primitive. That is the same reviewed claim `String` and `Number`
+      // already carry, and leaving it unmodelled made `return `${value}`` a positive proof of effect freedom
+      // for a body that prints.
+      for (const item of indexAccess.coercions) {
+        const owner = ensure(owningBoundary(item.start));
+        owner.invokesUserCode = true;
+        owner.names.push("Throw<TypeError>");
+      }
       for (const item of indexAccess.throws) {
         const symbol = item.calleePosition === null ? null : queries.getSymbolAtPosition(fileName, item.calleePosition);
         const named = declaredByEcmaScriptLibrary(symbol) && reviewedErrorConstructors.has(symbol!.name);
