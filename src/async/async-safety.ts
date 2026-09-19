@@ -1,5 +1,5 @@
 import ts from "../support/typescript-compiler.js";
-import { bindingIdentity, type BindingIdentity } from "../frontends/typescript/binding-identity.js";
+import { bindingIdentity, isArrayLiteralReceiver, type BindingIdentity } from "../frontends/typescript/binding-identity.js";
 import { extractAnnotations, extractLocatedAnnotations } from "../support/annotations.js";
 import type { DiagnosticNote } from "../support/diagnostics.js";
 import { resolveDisposalProtocol } from "../resources/disposal-symbols.js";
@@ -577,7 +577,15 @@ function isPromiseReturningCallback(checker: ts.TypeChecker, expression: ts.Expr
     Boolean(checker.getPropertyOfType(signature.getReturnType(), "then")));
 }
 
-const standardArrayOwners = new Set(["Array", "ReadonlyArray"]);
+/**
+ * `ReadonlyArray` names no ECMA-262 object. It is a structural interface, so `map` on a receiver the
+ * checker types by it resolves to a declaration the program may have written itself, and such a body need
+ * not return an array that holds the promises its callback created. A receiver written as an array
+ * literal — including one frozen by `as const`, which the checker types as a readonly tuple — allocates a
+ * genuine Array, so the specification's `map` is the one that runs whatever interface names its type.
+ */
+const standardArrayOwners = new Set(["Array"]);
+const literalArrayOwners = new Set(["Array", "ReadonlyArray"]);
 const standardMapMethods = new Set(["map"]);
 const standardPromiseConstructorOwners = new Set(["PromiseConstructor"]);
 const standardPromiseAggregateMethods = new Set(["all", "allSettled", "race", "any"]);
@@ -601,8 +609,10 @@ function callbackRejectionTransferredToPromiseAggregate(
   call: ts.CallExpression,
   callbackIndex: number,
 ): boolean {
+  const mapReceiver = ts.isPropertyAccessExpression(call.expression) ? call.expression.expression : undefined;
+  const owners = mapReceiver && isArrayLiteralReceiver(mapReceiver, checker) ? literalArrayOwners : standardArrayOwners;
   if (callbackIndex !== 0 || !isStandardLibraryMethodCall(
-    checker, call, standardArrayOwners, standardMapMethods,
+    checker, call, owners, standardMapMethods,
   )) return false;
   let result: ts.Expression = call;
   while (ts.isParenthesizedExpression(result.parent) || ts.isAsExpression(result.parent)

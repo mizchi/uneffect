@@ -158,15 +158,26 @@ this also works for named async callback arguments. Conditional wrappers do not
 inherit it, because consuming on only one path cannot satisfy a must-consume
 obligation.
 
-A standard `Array` or `ReadonlyArray` `map` with a Promise-returning callback is
-also accepted when its result is the direct first argument of the standard
-`Promise.all`, `Promise.allSettled`, `Promise.race`, or `Promise.any`. The
-TypeScript declarations of both calls must resolve to the standard library.
-This recognizes the direct rejection-observing pipeline without treating an
-arbitrary collector as an owner. An intermediate binding, a detached `map`, or
-a user-defined aggregate remains `floating-callback-promise`. Exotic array
-iteration behavior through proxies and accessors is outside this source-level
-builtin contract.
+A standard `Array` `map` with a Promise-returning callback is also accepted when
+its result is the direct first argument of the standard `Promise.all`,
+`Promise.allSettled`, `Promise.race`, or `Promise.any`. The TypeScript
+declarations of both calls must resolve to the standard library. This recognizes
+the direct rejection-observing pipeline without treating an arbitrary collector
+as an owner. An intermediate binding, a detached `map`, or a user-defined
+aggregate remains `floating-callback-promise`. Exotic array iteration behavior
+through proxies and accessors is outside this source-level builtin contract.
+
+`ReadonlyArray` is not accepted as the owner. It names no ECMA-262 object: it is
+a structural TypeScript interface, so `map` on a receiver the checker types by it
+resolves to a declaration the program may have written itself, and such a body
+need not return an array that holds the promises its callback created. A receiver
+written as an array literal is accepted whatever interface names its type,
+including under `as const`, `satisfies`, a type assertion, parentheses, and `!`,
+because the expression allocates a genuine Array. A reassignment-free `const`
+binding whose initializer is such a literal, and a conditional that selects
+between two of them, carry the same claim, because neither can denote anything
+else. A `readonly T[]` parameter, a `let`, a destructured binding, and an
+initializer this cannot see through remain `floating-callback-promise`.
 
 Thenable assimilation also resolves direct local factory calls when every
 explicit return is an analyzable object-literal thenable. Getter failure and

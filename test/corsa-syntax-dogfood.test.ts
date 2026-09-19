@@ -49,6 +49,9 @@ describe("native syntax self dogfood", () => {
 
   it("ratchets coverage on actual diagnostic, environment, and replay implementations", () => {
     const report = check(Object.keys(baseline.files));
+    // The unknown budget rose by one when the catalog stopped registering members of `ReadonlyArray`:
+    // `environmentSummary` filters a `readonly EnvironmentCheck[]`, and no ECMA-262 body answers for that
+    // call. Raising this budget withdraws a claim; it is not licence to absorb an unexplained regression.
     expect(report.effects.length).toBeGreaterThanOrEqual(baseline.minimumSummaries);
     expect(report.effects.filter(item => item.evidence === "unknown").length).toBeLessThanOrEqual(baseline.maximumUnknownSummaries);
     expect(report.diagnostics.every(item => item.domain === "syntax"

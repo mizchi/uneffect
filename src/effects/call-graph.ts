@@ -372,9 +372,13 @@ export function buildProgramCallGraph(
         const name = (declaration as ts.NamedDeclaration).name;
         return Boolean(name && ts.isPropertyName(name) && isGlobalSymbolMemberName(name, member));
       }));
+  // `ReadonlyMap` and `ReadonlySet` are absent, and so is `ReadonlyArray`. ECMA-262 defines no such
+  // object: they are structural TypeScript interfaces reached by implementing their members rather than by
+  // construction, so `[Symbol.iterator]` on a receiver the checker types by one of them may be a body the
+  // program wrote. `Array`, `Map` and `Set` name specification objects with a prototype the engine owns.
   const reviewedBuiltinIterable = (expression: ts.Expression): boolean => {
     const reviewed = new Set([
-      "Array", "ReadonlyArray", "Map", "ReadonlyMap", "Set", "ReadonlySet",
+      "Array", "Map", "Set",
       "ArrayIterator", "MapIterator", "SetIterator", "StringIterator",
       "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
       "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",

@@ -5,6 +5,7 @@ import { builtinContractRegistry, type BuiltinContract, type BuiltinContractRegi
 import type { SourceSpan } from "../support/annotations.js";
 import type { BuiltinSemantics } from "../effects/builtin-semantic-schema.js";
 import { hasStableRootPath } from "./typescript/stable-callable.js";
+import { isArrayLiteralReceiver } from "./typescript/binding-identity.js";
 
 export interface ResolvedCallSite {
   symbol: BuiltinSymbolKey;
@@ -373,6 +374,13 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
     const symbol = targetSymbol(this.#checker, lookup);
     let contract = symbol ? this.#resolveMemberContract(lookup) : undefined;
+    // No contract is keyed on `ReadonlyArray`, so a receiver the checker types by it — which `as const` gives
+    // an array literal — resolves nothing above. The literal itself allocates a genuine Array, so the member
+    // that runs is the one `Array#` describes, and that is a property of how the receiver is written.
+    if (!contract && ts.isPropertyAccessExpression(call.expression)
+      && isArrayLiteralReceiver(call.expression.expression, this.#checker)) {
+      contract = this.#memberContracts.get(`Array#${call.expression.name.text}`);
+    }
     if (!contract) {
       const rooted = [...this.#rootedContracts.values()].flat().filter(({ root, path }) =>
         hasStableRootPath(this.#checker, call.expression, new Set([root]), path));

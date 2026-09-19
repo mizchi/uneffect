@@ -2699,9 +2699,14 @@ describe("Uneffect dogfood", () => {
     expect(unknown.length).toBeGreaterThan(0);
     expect(unknown.every((summary) => (summary.unknownReasons?.length ?? 0) > 0)).toBe(true);
     const codes = [...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))].sort();
+    // `unknown-generator-*` entered this list with the structural-collection rule: iterating a receiver the
+    // checker types as `ReadonlyMap` or `ReadonlySet` runs a `[Symbol.iterator]` that any implementing
+    // declaration supplies, so the consumption is user code rather than an engine-owned traversal.
     expect(codes).toEqual([
       "unknown-callback-timing",
       "unknown-dependency",
+      "unknown-generator-consumption",
+      "unknown-generator-parameter",
       "unresolved-call",
     ]);
     // An unknown module effect propagates to every importer, so the transitive set churns with any import
@@ -2850,14 +2855,19 @@ describe("Uneffect dogfood", () => {
     ]);
     // `String.repeat` throws RangeError for a negative count, and every one of these renders an indent whose
     // width is computed from the source line rather than written down, so the throw is part of their contract.
-    const throwingNames = new Set(["fromTypeScriptDiagnostic", "formatDiagnostic", "formatDiagnostics"]);
-    const selectedNames = new Set([...pureNames, ...throwingNames]);
+    const throwingNames = new Set(["fromTypeScriptDiagnostic", "formatDiagnostic"]);
+    const selectedNames = new Set([...pureNames, ...throwingNames, "formatDiagnostics"]);
     const selected = result.summaries.filter((summary) => fileNames.includes(summary.fileName ?? "") && selectedNames.has(summary.functionName));
     expect(selected).toHaveLength(selectedNames.size);
     expect(selected.map((summary) => ({ name: summary.functionName, evidence: summary.evidence, effects: summary.effects })))
       .toEqual(expect.arrayContaining([...pureNames].map((name) => ({ name, evidence: "verified", effects: [] }))));
     for (const name of throwingNames) expect(selected.find((summary) => summary.functionName === name))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
+    // `formatDiagnostics` maps its `readonly CheckerDiagnostic[]` parameter. `ReadonlyArray` names no ECMA-262
+    // object, so no contract describes that `map` and the callback's timing is no longer claimed. The throw it
+    // already reaches survives; the proof does not, and a retained effect is not one.
+    expect(selected.find((summary) => summary.functionName === "formatDiagnostics"))
+      .toMatchObject({ evidence: "unknown", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("rejects an unused Console allowance on diagnostic quality scoring", () => {
@@ -2876,8 +2886,10 @@ describe("Uneffect dogfood", () => {
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    // `formatCommandHelp` maps its `readonly` option parameter, whose `map` no contract describes: a value
+    // the checker types by `ReadonlyArray` reaches a body any implementing declaration can supply.
     expect(selected.find((summary) => summary.functionName === "formatCommandHelp"))
-      .toMatchObject({ evidence: "verified", effects: [] });
+      .toMatchObject({ evidence: "unknown", effects: [] });
     for (const name of ["writeStdout", "writeStderr"]) expect(selected.find((summary) => summary.functionName === name))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
     for (const name of ["parseCommandArgs", "singleFileArgument"]) expect(selected.find((summary) => summary.functionName === name))
@@ -2899,13 +2911,19 @@ describe("Uneffect dogfood", () => {
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) =>
       files.some((file) => (summary.fileName ?? "").endsWith(file)));
-    for (const name of ["minimumMajor", "nodeCheck", "environmentSummary"]) {
+    for (const name of ["minimumMajor", "nodeCheck"]) {
       expect(selected.find((summary) => summary.functionName === name)).toMatchObject({ evidence: "verified", effects: [] });
     }
+    // `environmentSummary` filters a `readonly EnvironmentCheck[]`, and `ReadonlyArray#filter` names no
+    // ECMA-262 body, so the predicate it runs is no longer a reviewed synchronous callback.
+    expect(selected.find((summary) => summary.functionName === "environmentSummary"))
+      .toMatchObject({ evidence: "unknown", effects: [] });
     // `String.repeat` throws RangeError for a negative count, and the report's indent width is computed from
-    // the widest check rather than written down, so the throw belongs in the formatter's contract.
+    // the widest check rather than written down, so the throw belongs in the formatter's contract. Its
+    // `readonly EnvironmentCheck[]` parameter leaves the surrounding `map` unclaimed, so the throw is
+    // retained without the evidence that nothing else happens.
     expect(selected.find((summary) => summary.functionName === "formatEnvironmentReport"))
-      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
+      .toMatchObject({ evidence: "unknown", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
     expect(selected.find((summary) => summary.functionName === "readPackageManifest"))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
     for (const name of ["commandVersion", "javaCheck"]) expect(selected.find((summary) => summary.functionName === name))
