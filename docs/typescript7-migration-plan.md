@@ -475,7 +475,7 @@ tagged template は除く — tag は substitution を変換せずに受け取�
 グローバルは `<unresolved>.arch` になるし、9 段の絞り込みを経た大きな union は printer が省略した text しか
 返さない。どちらも「値が何か分からない」ので変換を認めないのが正しいが、精度の穴ではある。
 
-**閉じた既知差の半分: 名前を付けられない receiver 書き換え。** native 経路は `mutate` primitive を
+**閉じた既知差: 観測される書き込み。命名は意図的に作らない。** native 経路は `mutate` primitive を
 ownership 用の事実として扱い capability 名に描画しないので、受け手を書き換える builtin
 (`Array#push`、`Map#set`、`Array#sort` 等) の呼出は**何も寄与せず**、`values.push(1)` だけの関数が
 `[] inferred` — 積極的な effect 自由の証明 — になっていた。呼び手の配列は実際に変わる。
