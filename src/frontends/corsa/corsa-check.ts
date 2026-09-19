@@ -156,6 +156,8 @@ interface RenderedSemantics {
    * capability, so such a call would otherwise contribute nothing at all and leave the boundary a proof.
    */
   writesThroughReceiver: boolean;
+  /** Argument indices the contract writes through, which the call site decides the observability of. */
+  readonly writesThroughArguments: number[];
 }
 
 /**
@@ -170,7 +172,8 @@ function renderSemantics(
   argumentCount?: number,
 ): RenderedSemantics {
   const rendered: RenderedSemantics = {
-    names: [], unrenderable: false, callbackArguments: [], callbackAssignedValue: false, writesThroughReceiver: false,
+    names: [], unrenderable: false, callbackArguments: [], callbackAssignedValue: false,
+    writesThroughReceiver: false, writesThroughArguments: [],
   };
   if (!semantics) return rendered;
   const visit = (primitive: SemanticPrimitive, nested: boolean): void => {
@@ -193,6 +196,7 @@ function renderSemantics(
        */
       case "mutate": {
         if (primitive.target.kind === "receiver") rendered.writesThroughReceiver = true;
+        else if (primitive.target.kind === "argument") rendered.writesThroughArguments.push(primitive.target.index);
         return;
       }
       case "callback": {
@@ -777,6 +781,14 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         // when nothing else was rendered: a contract that also reports a capability already leaves the boundary
         // something to say, and `Object.freeze(literal)` writes through an argument rather than a receiver.
         if (rendered.writesThroughReceiver && rendered.names.length === 0) {
+          caller.unclassified = true;
+          caller.unresolved.add(`the value ${site.name} writes through`);
+        }
+        // An argument the call allocates itself is held by nothing else yet, so writing it is private to the
+        // call — `Object.freeze({ ... })`. Any other argument, and an arity this path could not read, is not.
+        const fresh = indexAccess.freshArguments.get(span);
+        for (const index of rendered.writesThroughArguments) {
+          if (fresh?.[index] === true) continue;
           caller.unclassified = true;
           caller.unresolved.add(`the value ${site.name} writes through`);
         }

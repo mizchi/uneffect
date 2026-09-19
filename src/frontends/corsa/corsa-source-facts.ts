@@ -122,6 +122,12 @@ export interface CorsaSourceFacts {
    */
   readonly callArgumentIdentifiers: ReadonlyMap<string, readonly (number | null)[]>;
   /**
+   * Per call, whether each argument is an allocation written at the call itself. Only the call site's own
+   * syntax is read, so this answers "nothing else can be holding this yet", not "this value never escapes" —
+   * which is what tells `Object.freeze({ ... })` from `Object.assign(target, ... )`.
+   */
+  readonly freshArguments: ReadonlyMap<string, readonly boolean[]>;
+  /**
    * `${start}:${end}` of a member expression assigned an inline function, to that function's start offset. A
    * contract whose callback target is the assigned value composes with it, exactly as an argument callback does.
    */
@@ -858,6 +864,7 @@ export function analyzeCorsaSourceFacts(
   };
   const inlineFunctionArguments = new Map<string, readonly (number | null)[]>();
   const callArgumentIdentifiers = new Map<string, readonly (number | null)[]>();
+  const freshArguments = new Map<string, readonly boolean[]>();
   const assignedInlineFunctions = new Map<string, number>();
   const receiverTypes = new Map<string, CorsaApiTypeFact>();
   const throws: Array<{ start: number; calleePosition: number | null }> = [];
@@ -975,6 +982,11 @@ export function analyzeCorsaSourceFacts(
         callArgumentIdentifiers.set(`${node.start}:${node.end}`, args.map((argument) => {
           const value = unwrap(argument);
           return value.type === "Identifier" && typeof value.start === "number" ? value.start : null;
+        }));
+        freshArguments.set(`${node.start}:${node.end}`, args.map((argument) => {
+          const value = unwrap(argument);
+          // A literal with a spread copies out of something else, but the object it produces is still new.
+          return value.type === "ObjectExpression" || value.type === "ArrayExpression";
         }));
       }
     }
@@ -1171,7 +1183,7 @@ export function analyzeCorsaSourceFacts(
     });
   }
   return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
-    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
+    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {

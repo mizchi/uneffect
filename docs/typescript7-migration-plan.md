@@ -462,9 +462,13 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
 確認済み。保つ価値があるのは `effectPermits` の Mutate 判定が文字列一致ではなく**前方包含**である点だけ。
 
 残る非主張（いずれも実測で規模を確定済み）:
-- **argument を書き換える builtin。** `Object.assign(target, ...)` は receiver ではなく argument 0 を
-  書き換えるので、この規則は発火しない。`Object.freeze({...})` が生きているのも同じ理由（新規リテラルを
-  書き換えるので撤回すべきでない）。両者を分けるには freshness が要る。
+- ~~argument を書き換える builtin~~ — 閉じた。`{ kind: "mutate", target: { kind: "argument", index } }` は
+  **呼出自身が確保した引数**（その場に書かれたオブジェクト/配列リテラル）のときだけ見逃す。他の誰もまだ
+  握っていないので書き込みは呼出に閉じている。それ以外の引数、および arity が読めなかった場合は
+  unresolved。`Object.freeze({...})` / `Object.assign({}, ...)` は無変更、`Object.freeze(o)` /
+  `Object.assign(target, ...)` / `Object.defineProperty(o, ...)` は unresolved。読むのは呼出地点の構文
+  だけなので、これは「この値はまだ誰も持っていない」であって「この値は決して外に出ない」ではない。
+  src/ では 0 行動かない（この repo の `Object.freeze` はすべて新規リテラル）。
 - **argument 書き換えと freshness** は上に記した通り未解決。
 - `RegExp#test` / `exec` の holdback はこの規則とは独立だった。src/ の 252 呼出に `g` / `y` フラグの
   receiver は 0 件で、non-global なら `lastIndex` は書かれない。別途判断する。

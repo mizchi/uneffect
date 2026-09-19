@@ -126,14 +126,24 @@ export function caller(values: number[]): void { collect(values); }
     });
   });
 
-  it("leaves a write through an argument alone, which is where a fresh allocation is written", async () => {
+  it("decides a write through an argument by whether the call allocated it", async () => {
     await check(`export function freezeFresh(): object { return Object.freeze({ a: 1 }); }
+export function freezeArrayFresh(): readonly number[] { return Object.freeze([1, 2]); }
+export function assignFresh(): { a: number } { return Object.assign({}, { a: 2 }); }
+export function freezeHeld(o: { a: number }): object { return Object.freeze(o); }
+export function assignInto(target: { a: number }): void { Object.assign(target, { a: 2 }); }
+export function defineOnHeld(o: object): void { Object.defineProperty(o, "x", { value: 1 }); }
 export function readOnly(values: readonly number[]): number { return values.length; }
 `, (result) => {
-      // `Object.freeze` writes through argument 0, not a receiver, and the object it writes did not exist
-      // before the call. Argument-targeted mutators are a separate question this rule does not answer.
-      expect(row(result, "freezeFresh")?.evidence).toBe("inferred");
-      expect(row(result, "readOnly")?.evidence).toBe("inferred");
+      // An argument written at the call itself is held by nothing else yet, so writing it is private.
+      for (const name of ["freezeFresh", "freezeArrayFresh", "assignFresh", "readOnly"]) {
+        expect([name, row(result, name)?.evidence]).toEqual([name, "inferred"]);
+      }
+      // Anything the caller could also be holding is not.
+      for (const name of ["freezeHeld", "assignInto", "defineOnHeld"]) {
+        expect([name, row(result, name)?.evidence]).toEqual([name, "unknown"]);
+      }
+      expect(reasonText(result, "assignInto")).toContain("the value assign writes through");
     });
   });
 });
