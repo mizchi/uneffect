@@ -278,6 +278,18 @@ class が 1 つも無く、decorator も 0 件なので、ratchet は動かな�
 `unknown`。暗黙の `valueOf` 強制や user iterable の spread も定義時に走るがサイトにならない（Program
 経路も同じ）。
 
+**未移行の既知差: 宣言した effect の照合（`requireAnnotations`）。** `checkCorsaProject` の options 型は
+`requireAnnotations?: boolean` を宣言しているが、`corsa-check.ts` 内でその名前が現れるのは**その宣言 1 箇所
+だけ**で、値は一度も読まれていない。`src/cli/check-command.ts` は
+`!values.infer && effect-baseline 未指定` として計算して渡しているので、`uneffect check <file>` は
+`--infer` 無しでも宣言された effect を一切照合していない。native 経路の診断 domain は
+`bounds` / `builtin` / `contract` / `module-initialization` / `syntax` の 5 つで、`effect` は存在しない —
+`effect/missing`（宣言していない effect を持つ）も `effect/unused`（宣言したが持たない）も出ない。
+
+これは「機能が無い」よりも悪い。option が受理されるので、呼び出し側は照合されたと信じる。Program 経路の
+`analyzeProgramEffects` は同じ option で `effect/missing` / `effect/unused` を出すため、`--typescript-program`
+を外した瞬間に検査が静かに消える。default 経路を native に切り替える前に閉じる必要がある。
+
 **未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
 `Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を
 ownership 用の事実として扱い、capability 名に描画しない。そのため受け手を書き換える
