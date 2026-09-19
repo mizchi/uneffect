@@ -196,10 +196,10 @@ export function plain(value: string): string { return value; }
 }
 `);
       const loud = await checkCorsaProject({ configFile: temporaryConfig });
-      // This one does evaluate a call at declaration time, and the widened construction boundary absorbs it, so
-      // the declaring scope carries the unresolved work rather than the constructor claiming it.
+      // This one does evaluate a call at declaration time, so the module carries the work rather than the
+      // constructor claiming it.
       const module = loud.summaries.find((item) => item.functionName === "<module>");
-      expect(module?.evidence).toBe("unknown");
+      expect(module?.evidence).toBe("trusted");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -224,11 +224,10 @@ export function plain(value: string): string { return value; }
   return new Widget();
 }
 `);
-      // This one evaluates a call when the declaration is evaluated, and the widened construction boundary
-      // absorbs it, so the declaring scope carries the unresolved work.
+      // This one evaluates a call when the declaration is evaluated, so the declaring scope carries it.
       const evaluated = (await checkCorsaProject({ configFile: temporaryConfig })).summaries;
       expect(Object.fromEntries(evaluated.map((item) => [item.functionName, item.evidence])))
-        .toMatchObject({ loud: "unknown" });
+        .toMatchObject({ loud: "trusted" });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

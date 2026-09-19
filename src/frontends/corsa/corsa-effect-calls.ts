@@ -55,10 +55,16 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
    * Class declarations whose body evaluates something when the DECLARATION is evaluated rather than when an
    * instance is constructed, and the exact spans of that work. The construction boundary a sibling instance
    * initializer opens covers the whole body, so it would otherwise absorb every site inside those spans. The
-   * spans are published rather than the class alone, because a declaration that evaluates only a literal
-   * absorbs no site and leaves its declaring scope with nothing to be unresolved about.
+   * spans are published rather than the class alone, because they are what distinguishes a site the region
+   * evaluates from a function body merely written inside it, which runs only when it is called.
    */
   staticInitializers: Array<{ declaration: number; regions: Array<{ start: number; end: number }> }>;
+  /**
+   * Classes carrying a decorator, by declaration offset. Applying one invokes it, and no call expression spells
+   * that invocation: `@deco m() {}` records nothing at all, and `@deco()` records the factory rather than the
+   * application of what it returns. The scope that declares the class performs it, so that scope is unresolved.
+   */
+  decoratedDeclarations: number[];
 } {
   const parsed = parseSync(file, text, { lang: oxcLanguage(file) });
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
@@ -71,8 +77,9 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   const superCalls = new Map<number, string>();
   const privateCalls = new Map<number, string>();
   const staticInitializers: Array<{ declaration: number; regions: Array<{ start: number; end: number }> }> = [];
+  const decoratedDeclarations: number[] = [];
   const classFacts = () => ({
-    classes, methods, superCalls, privateCalls, staticInitializers,
+    classes, methods, superCalls, privateCalls, staticInitializers, decoratedDeclarations,
   });
   if (parsed.errors.length) return { declarations, writes, ambiguousWrites, calls, parameters, ...classFacts() };
   const recordWrite = (node: Node, shorthand = false): void => {
@@ -183,10 +190,11 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       if (definitionTimeRegions.length && widened !== undefined && widened.start === node.body.start) {
         staticInitializers.push({ declaration: node.start, regions: definitionTimeRegions });
       }
+      const decorated = (Array.isArray(node.decorators) && node.decorators.length > 0)
+        || node.body.body.some((member) => "decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0);
+      if (decorated) decoratedDeclarations.push(node.start);
       if (symbolId !== null) {
         const members = node.body.body;
-        const decorated = (Array.isArray(node.decorators) && node.decorators.length > 0)
-          || members.some((member) => "decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0);
         const span = constructionBoundarySpan(node.body as unknown as Parameters<typeof constructionBoundarySpan>[0]);
         classes.push({
           symbolId,

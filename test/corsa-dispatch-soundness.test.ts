@@ -219,9 +219,10 @@ describe("dispatch soundness", () => {
     expect(result.errors).toBe(0);
     // A static block runs when the declaration is evaluated, not at construction.
     expect(names(result, "declaresStaticOnly")).toEqual(["Console"]);
-    // With a sibling instance initializer the construction boundary covers the class body by span, so the
-    // declaring scope is unresolved rather than a proof of effect freedom.
-    expect(summary(result, "declaresBoth")?.evidence).toBe("unknown");
+    // A sibling instance initializer widens the construction boundary over the class body, but the static
+    // block still runs at the declaration, so the declaring scope carries the work rather than a marker.
+    expect(names(result, "declaresBoth")).toEqual(["Console"]);
+    expect(summary(result, "declaresBoth")?.evidence).toBe("trusted");
   });
 
   it("charges definition-time work to the declaring scope when the construction boundary widens over it", async () => {
@@ -235,11 +236,15 @@ describe("dispatch soundness", () => {
       export function decoratedWithoutField() { class C { @decorate() x?: number; } return C; }
       export function plainField() { class C { x = Math.random(); } return C; }
     ` });
-    // A decorator expression runs when the declaration is evaluated, not at construction, and the boundary an
-    // instance initializer widens covers the whole class body — so the declaring scope is unresolved.
-    expect(summary(result, "decoratedWithField")?.evidence).toBe("unknown");
+    // A decorator expression runs when the declaration is evaluated, not at construction, and the widened
+    // boundary no longer absorbs it: the declaring scope carries it whether or not a field initializer exists.
+    expect(names(result, "decoratedWithField")).toEqual(["Console"]);
     // Without an initializer there is no widened boundary and the expression is charged where it runs.
     expect(names(result, "decoratedWithoutField")).toEqual(["Console"]);
+    // Naming the factory call is not the whole story: applying what it returns is a call the source does not
+    // spell, so neither declaring scope may claim to have accounted for the declaration.
+    expect(summary(result, "decoratedWithField")?.evidence).toBe("unknown");
+    expect(summary(result, "decoratedWithoutField")?.evidence).toBe("unknown");
     // An ordinary instance initializer is construction-time work and stays on the construction boundary.
     expect(names(result, "plainField")).toEqual([]);
     expect(summary(result, "plainField")?.evidence).toBe("inferred");

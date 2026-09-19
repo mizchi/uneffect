@@ -509,6 +509,52 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       const admittedComputedCalls: Array<{ start: number }> = [];
       const unknownComputedMembers: Array<{ start: number }> = [];
       const excludedSites: Array<{ start: number }> = [];
+      /**
+       * The boundary that runs a site. Module-scope code runs when the module is evaluated, so a site with no
+       * enclosing function belongs to the module rather than to nothing at all: dropping it left every function
+       * in the file looking complete while the work the module itself performs went unrecorded.
+       *
+       * The boundary is built here rather than published as a syntax fact. `enclosingFunction` answers with the
+       * smallest enclosing entry, so a whole-file entry would also start answering the lookups that are
+       * deliberately restricted to a real function — a parameter's owner, a class method's body, and the caller
+       * of an immediately invoked function.
+       */
+      type Boundary = { name: string; start: number; end: number; parameters: readonly string[] };
+      const moduleBoundary: Boundary = { name: "<module>", start: 0, end: sourceText.length, parameters: [] };
+      /**
+       * A class body evaluates its static blocks, static field initializers, decorators and computed keys when
+       * the DECLARATION is evaluated, not when an instance is constructed. A sibling instance initializer
+       * widens the construction boundary over the whole body, so `enclosingFunction` answers with the
+       * constructor for those spans — which both hides the work from the scope that really performs it and
+       * charges every `new C()` for something it does not do.
+       *
+       * `witness` supplies the enclosing boundary when the caller already resolved it by another rule, which
+       * the immediately invoked call below does.
+       */
+      const declaringScope = (position: number, witness?: { start: number; end: number }, given = false): Boundary | undefined => {
+        const inner = given ? witness : enclosingFunction(syntax.functions, position);
+        for (const item of bindings.staticInitializers) {
+          // A class is declared before anything its own body evaluates, so this also bounds the recursion below.
+          if (item.declaration >= position) continue;
+          for (const region of item.regions) {
+            if (position < region.start || position >= region.end) continue;
+            // Creating a function at declaration time is not calling it. Only the widened construction boundary
+            // covers the whole class body and therefore STRICTLY contains the region, so only it is the one to
+            // correct: an arrow stored in a static field, a class expression written inside the region, or a
+            // callback in a static block is merely built there and keeps its own body. Skipping to the next
+            // region rather than abandoning the search is what lets a class nested in another class's region
+            // still find its own entry.
+            if (inner !== undefined && !(inner.start <= region.start && region.end <= inner.end
+              && (inner.start < region.start || region.end < inner.end))) continue;
+            // The declaration may itself sit inside another class's definition-time region, so it is resolved by
+            // the same rule rather than by span alone.
+            return owningBoundary(item.declaration);
+          }
+        }
+        return undefined;
+      };
+      const owningBoundary = (position: number): Boundary =>
+        declaringScope(position) ?? enclosingFunction(syntax.functions, position) ?? moduleBoundary;
       for (const entry of syntax.coverage) for (const exclusion of entry.exclusions) {
         const spanKey = `${exclusion.span.start}:${exclusion.span.end}`;
         // A dynamic key on a checker-resolved non-DOM receiver is an ordinary read/write, not missing coverage.
@@ -525,7 +571,9 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           unknownComputedMembers.push({ start: exclusion.span.start });
           continue;
         }
-        const owner = enclosingFunction(syntax.functions, exclusion.span.start);
+        // Named by the same rule that decides which summary carries the exclusion, so a reader chasing the
+        // diagnostic is not sent to a boundary the report certifies as clean.
+        const owner = owningBoundary(exclusion.span.start);
         const line = sourceText.slice(0, exclusion.span.start).split("\n").length;
         // An exclusion is a construct this path could not see. A diagnostic reports it, but the summary must
         // carry it too: a callee it never recorded reaches no site, so the boundary that contains it would
@@ -533,7 +581,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         excludedSites.push({ start: exclusion.span.start });
         diagnostics.push({
           domain: "syntax", kind: "syntax", severity: "error", fileName, line,
-          functionName: owner?.name ?? "<module>",
+          functionName: owner.name,
           message: `unsupported ${entry.domain} syntax (${exclusion.reason}); Corsa effect inference is incomplete for this source`,
         });
       }
@@ -607,32 +655,15 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         byFunction.set(key, current);
         return current;
       };
-      /**
-       * The boundary that runs a site. Module-scope code runs when the module is evaluated, so a site with no
-       * enclosing function belongs to the module rather than to nothing at all: dropping it left every function
-       * in the file looking complete while the work the module itself performs went unrecorded.
-       *
-       * The boundary is built here rather than published as a syntax fact. `enclosingFunction` answers with the
-       * smallest enclosing entry, so a whole-file entry would also start answering the lookups that are
-       * deliberately restricted to a real function — a parameter's owner, a class method's body, and the caller
-       * of an immediately invoked function.
-       */
-      const moduleBoundary: { name: string; start: number; end: number; parameters: readonly string[] } =
-        { name: "<module>", start: 0, end: sourceText.length, parameters: [] };
-      const owningBoundary = (position: number) => enclosingFunction(syntax.functions, position) ?? moduleBoundary;
       for (const call of [...admittedComputedCalls, ...unknownComputedMembers, ...excludedSites]) {
         ensure(owningBoundary(call.start)).unclassified = true;
       }
-      // A static block and a static field initializer run where the class declaration is evaluated. The
-      // construction boundary a sibling instance initializer opens covers them by span, and nothing calls that
-      // boundary at the declaration, so the scope that declares the class is unresolved instead.
-      for (const item of bindings.staticInitializers) {
-        // Only a region that actually evaluates something is absorbed. A static field initialized with a
-        // literal reaches no site, so charging its declaring scope with an unresolved callee would name work
-        // that does not exist.
-        const evaluates = item.regions.some((region) =>
-          sites.some((site) => site.start >= region.start && site.end <= region.end));
-        if (evaluates) ensure(owningBoundary(item.declaration)).unclassified = true;
+      // The sites inside those regions are attributed above, so the declaring scope carries the work itself
+      // rather than an unresolved marker standing in for it. A decorator is the exception: applying one invokes
+      // it, that invocation is spelled nowhere, and partial modelling of a class body would otherwise let the
+      // declaring scope reach `trusted` while the decorator's own work stayed invisible.
+      for (const declaration of bindings.decoratedDeclarations) {
+        ensure(owningBoundary(declaration)).unclassified = true;
       }
       // A `throw` the enclosing boundary cannot catch is an effect of that boundary. Naming it is a separate
       // question from seeing it: an operand the reviewed catalog did not resolve is `Throw<unknown>`, which the
@@ -807,7 +838,10 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           // An unparenthesized IIFE starts where its callee starts, so the caller is the smallest
           // enclosing function that is not the callee itself. Failing to link falls back to unknown.
           const callee = syntax.functions.find((item) => item.start === site.calleePosition);
-          const owner = callingFunction(syntax.functions, site.start, callee) ?? moduleBoundary;
+          // An IIFE written in a static block or a static field initializer runs when the declaration is
+          // evaluated, so the declaring scope claims it here too; `callingFunction` is the witness.
+          const enclosing = callingFunction(syntax.functions, site.start, callee);
+          const owner = declaringScope(site.start, enclosing, true) ?? enclosing ?? moduleBoundary;
           const calleeKey = callee === undefined ? undefined : `${fileName}:${callee.start}:${callee.name}`;
           if (owner && calleeKey && byFunctionKey(owner) !== calleeKey) {
             const caller = ensure(owner);

@@ -218,9 +218,6 @@ async / generator、builtin の完全性、注釈の検証は引き続き M2 の
 「最小の囲み」を返す性質上、parameter の所有者・class method の本体・IIFE の caller という
 意図的に関数限定の照合まで奪う。sites を持たないファイルには境界を作らない — 走らせるものが無い
 module に空の行を立てるのは、不在ではなく主張になる。
-同時に、定義時に評価される class 領域（static block / static field 初期化子 / decorator /
-computed key）のスパンを publish し、その中に実際にサイトがあるときだけ宣言スコープを unresolved に
-する。リテラルだけの静的フィールドで囲みスコープが unknown になる既存の誤警報も消える。
 module を import することはそれを実行することなので、実行時 import / export-from を持つファイルには
 `<module>` 境界を作り、依存を解決する。解析済みファイルへのエッジは呼出と同じ固定点に入り、import の
 循環も追加なしで収束する。追跡しなかった依存は明示的な不在として名前付きで報告する
@@ -238,6 +235,48 @@ module-initialization contract を引き、通った依存は assumption ledger 
   呼び出し箇所が隠れる。
 - 残る非主張: `verbatimModuleSyntax` 下では `import {} from` と全要素 type-only の名前付きリストも
   実行時依存になる。共有している module-initialization 解析と同じ既知の under-approximation。
+
+**閉じた既知差: 定義時に走る class 領域の帰属。** class body の static block / static field 初期化子 /
+decorator / computed key は、**宣言が評価されるとき**に走る。ところが instance field 初期化子が 1 つでも
+あると construction boundary が body 全体に広がるため、`enclosingFunction` はそれらのスパンに対して
+constructor を答えていた。結果、`new C()` が持たない効果を得て、実際に走らせる宣言スコープからは
+その仕事が消えていた。これらのサイトは宣言スコープに帰属させる。
+
+帰属の規則は 3 つで、いずれも敵対レビューの実測（`--typescript-program` とランタイム双方を oracle に）
+から確定した。位置が領域に入っているだけでは足りない:
+- **領域を厳密に包む境界だけを訂正する。** 定義時に *生成されるだけ* の関数やクラス — static field に
+  入れた arrow、static block 内の callback、static field の class 式 — は自分の本体を持ち続ける。
+  body 全体を覆う widened construction boundary だけが領域を厳密に包むので、それだけが訂正対象になる。
+  「領域内の全オフセットを宣言スコープへ」では、本当にログする本体が `[] inferred` に化ける。
+- **一致しなければ次の領域へ進む（探索を打ち切らない）。** 他の class の領域の中で宣言された class は、
+  外側で一致してから自分の entry に辿り着く必要がある。打ち切ると元の誤帰属がそのまま残る。
+- **宣言位置は同じ規則で再帰的に解決する。** `enclosingFunction(item.declaration)` だと、入れ子の class が
+  外側の widened construction boundary に着地する — 訂正したいはずの境界そのものである。class は自分の
+  body が評価するどのサイトよりも前に宣言されるので、位置は単調に減って停止する。
+
+即時実行関数（`static { (function start() { ... })(); }`）は caller を `callingFunction` で別途解決するため、
+その結果を包含の witness として同じ規則に通す。通さないと、宣言スコープは `[] inferred` — 走るものが
+何も無いという積極的な証明 — になり、それが import 先にも伝播する。
+
+decorator は例外として宣言スコープを unresolved にする。適用は decorator の呼出だが、その呼出は
+ソースのどこにも書かれていない: `@deco m() {}` は call expression を 1 つも作らず、`@deco()` が作るのは
+factory の呼出であって、その戻り値の適用ではない。class body を部分的にモデル化したうえで `trusted` を
+名乗ると、`<module>` が「console に書かない」と最強の evidence で主張しながらランタイムが書く、という
+状態が import 境界を越えて伝播する。見えていない定義時呼出がある間は `unknown` が正しい答えになる。
+
+除外診断の boundary 名も `owningBoundary` で解決する。そうしないと、診断が `Widget.constructor` を
+指しているのに同じレポートの summary はその constructor を `[] inferred` と証明する、という矛盾が出る。
+
+Program 経路は oracle にしない。plain な class 宣言に直接書かれていない instance field 初期化子
+（class 式、継承した基底）を取り落とすため、mixin factory に実在しない仕事を付け、本当に走らせる
+construction を clean にする。parity ではなくランタイムに合わせた。
+
+実測: src/ 227 ファイルの summary 出力は HEAD と（編集したファイル自身を除いて）同一 — 7681 summary /
+4583 unknown / 97 trusted、診断 33 件も boundary 名まで一致。この repo の src/ には定義時領域を持つ
+class が 1 つも無く、decorator も 0 件なので、ratchet は動かない。買っているのは downstream の正しさ。
+残る非主張: static property 経由の呼出・構築（`Outer.factory()` / `new Outer.Inner()`）は link しないので
+`unknown`。暗黙の `valueOf` 強制や user iterable の spread も定義時に走るがサイトにならない（Program
+経路も同じ）。
 
 **未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
 `Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を
