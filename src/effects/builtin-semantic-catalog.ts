@@ -571,9 +571,10 @@ function standardPrototypeDefinitions(): ReviewedBuiltinSemantic[] {
       trustOwner: "@mizchi/uneffect",
     }),
   ]);
-  // `RegExp#test` and `RegExp#exec` are deliberately absent. Matching writes `lastIndex` back for a global or
-  // sticky pattern, and the native check does not yet render a `mutate` primitive as a `Mutate<region>` effect,
-  // so admitting them would replace an honest unresolved call with a summary that reports no effect at all.
+  // `RegExp#test` and `RegExp#exec` are deliberately absent because what they observe depends on the receiver's
+  // flags: `lastIndex` is written back only by a global or sticky pattern, so an unconditional empty list is a
+  // false proof for a `/g` receiver while an unconditional `mutate` over-claims every other call. Admitting them
+  // soundly needs per-site receiver narrowing, not a contract.
   return [...keyedLookups, ...memberships, ...iterators, ...sizes, ...searches];
 }
 

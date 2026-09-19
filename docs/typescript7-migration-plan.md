@@ -484,8 +484,21 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
   だけなので、これは「この値はまだ誰も持っていない」であって「この値は決して外に出ない」ではない。
   src/ では 0 行動かない（この repo の `Object.freeze` はすべて新規リテラル）。
 - **argument 書き換えと freshness** は上に記した通り未解決。
-- `RegExp#test` / `exec` の holdback はこの規則とは独立だった。src/ の 252 呼出に `g` / `y` フラグの
-  receiver は 0 件で、non-global なら `lastIndex` は書かれない。別途判断する。
+- **`RegExp#test` / `exec` の holdback は理由を書き直した。** catalog がこの 2 member を外していた理由は
+  「native summary が `mutate` を描画できないので、admit すると正直な unresolved が無音の空 effect になる」
+  だった。receiver 書き換えが fail-closed になった今、その理由は成立しない。
+
+  新しい理由は別にある。**観測可能なものが receiver のフラグに依存する。** 標準 receiver を前提にすれば
+  `RegExpExec` が `R.exec` を呼ぶ経路は仮定台帳で覆えるが、`lastIndex` を書くのは `global` か `sticky` の
+  receiver だけで、非 global の `test` は何も観測させない。無条件の空リストは `/g` receiver に対する偽の
+  証明であり、無条件の `mutate` は圧倒的多数の非 global 呼出に対する過剰主張。正しく admit するには
+  receiver のフラグを見る site 単位の narrowing（`ReadonlyArray` の項で「本当の修正」と書いたのと同じ形）が
+  要る。
+
+  実測でその narrowing の価値はこの repo では 0。src/ の summary のうち unknown 理由に `test` / `exec` を
+  含むものは 207 あるが、**それだけで unresolved になっているものは 0 件** — どの境界にも別の未解決要因が
+  ある。src/ の regex リテラルで `g` / `y` を持つのは 2 件だけで、どちらも `.test` / `.exec` の receiver では
+  ない。downstream に価値が出るまで保留する。
 
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →

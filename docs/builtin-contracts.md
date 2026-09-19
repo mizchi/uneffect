@@ -39,8 +39,12 @@ the whole prototype chain, `Object.prototype` included.
 `ReadonlyMap`, `ReadonlySet`, and `ReadonlyArray` are excluded from that batch. ECMAScript defines no such object;
 they are structural interfaces, so a value satisfying one may be an ordinary object whose members are arbitrary
 user code, and the assumption would name a prototype that does not exist. `RegExp` matching is excluded for a
-different reason: it writes `lastIndex` back, and the native summary does not yet render a `mutate` primitive as a
-`Mutate<region>` effect, so admitting it would replace an honest unresolved call with an empty effect list.
+different reason: what it observes depends on the receiver's flags. `lastIndex` is written back only by a `global`
+or `sticky` receiver, so an unconditional empty list is a false proof for a `/g` receiver while an unconditional
+`mutate` over-claims every other call; admitting them soundly needs the per-site receiver narrowing, not a
+contract. (Until 2026-09-20 the stated reason was that the native summary rendered no `mutate` primitive, so
+admitting one would replace an honest unresolved call with an empty effect list. A call whose only observable is
+a receiver write now leaves the boundary unresolved, so that reason no longer holds.)
 
 A builtin contract may carry more than one semantic projection. In the current
 Node slice, reviewed one-shot completion APIs in `node:fs` still emit
