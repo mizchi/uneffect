@@ -48,6 +48,7 @@ export type EffectUnknownReasonCode =
   | "possible-user-code"
   | "unresolved-dynamic-import"
   | "unresolved-call"
+  | "unchecked-declaration"
   | "unresolved-callback"
   | "unresolved-effect-scope"
   | "unknown-dependency";

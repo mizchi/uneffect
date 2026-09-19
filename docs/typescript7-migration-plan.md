@@ -327,17 +327,55 @@ module walker（top-level statement のみを回る）にも per-function walker
 (c) `context.addInitializer` の仕事は構築ごとに走るのに宣言時として報告される — 宣言時帰属が*間違っている*
 唯一の測定例。native 経路は (a)(b) いずれも `unknown` で正しい。
 
-**未移行の既知差: 宣言した effect の照合（`requireAnnotations`）。** `checkCorsaProject` の options 型は
-`requireAnnotations?: boolean` を宣言しているが、`corsa-check.ts` 内でその名前が現れるのは**その宣言 1 箇所
-だけ**で、値は一度も読まれていない。`src/cli/check-command.ts` は
+**部分的に閉じた既知差: 宣言した effect の照合（`requireAnnotations`）。** `checkCorsaProject` の options 型は
+`requireAnnotations?: boolean` を宣言していたが、`corsa-check.ts` 内でその名前が現れるのは**その宣言 1 箇所
+だけ**で、値は一度も読まれていなかった。`src/cli/check-command.ts` は
 `!values.infer && effect-baseline 未指定` として計算して渡しているので、`uneffect check <file>` は
-`--infer` 無しでも宣言された effect を一切照合していない。native 経路の診断 domain は
-`bounds` / `builtin` / `contract` / `module-initialization` / `syntax` の 5 つで、`effect` は存在しない —
-`effect/missing`（宣言していない effect を持つ）も `effect/unused`（宣言したが持たない）も出ない。
+`--infer` 無しでも宣言された effect を一切照合せず、しかも `outcome: passed` を返していた。option が受理
+される分「機能が無い」より悪い。`docs/assurance-boundaries.md:62,75-77` が約束している
+「`/* uneffect:effect none */` は検査された空の上界を作る」「不正な directive はエラー診断で、その source の
+全 summary は unknown になる」のどちらも native では守られていなかった。
 
-これは「機能が無い」よりも悪い。option が受理されるので、呼び出し側は照合されたと信じる。Program 経路の
-`analyzeProgramEffects` は同じ option で `effect/missing` / `effect/unused` を出すため、`--typescript-program`
-を外した瞬間に検査が静かに消える。default 経路を native に切り替える前に閉じる必要がある。
+**照合そのものは移植しない。** 敵対レビューの実測でそう決まった。完全性で gate すると、この repo 自身の
+61 個の付着可能な注釈に対する診断は **0 件**（注釈と完全な summary の両方を持つ境界が 61 中 6 しか無く、
+その 6 つは既に一致している）。gate せずに出すと **50 件**で、真陽性は **0 件** — `effect/unused` 35 件は
+すべて Program 経路の `verified` summary に否定され、`cli-support.ts:writeStdout` の正しい `Console` を
+「消せ」と言う。理由は 2 つあり、どちらも照合の前に閉じる必要がある:
+- **`effect/unused` には完全性が要る。** src/ の native summary 7682 中 4584 が unknown。しかも
+  `evidence !== "unknown"` では足りない: `InvokeUserCode` は不完全性のマーカーではなく普通の effect 名なので
+  `trusted [InvokeUserCode, Throw<TypeError>]` は「完全」と判定される。
+- **`effect/missing` も健全な下界ではない。** native は名前付き throw を `Throw<unknown>` に広げる
+  （src/ で 365 summary）。`Throw<unknown>` は `effectPermits` の `Throw<Error>` 広域化から意図的に除外されて
+  いるため、正しい `Throw<DomainError>` 宣言が `missing Throw<unknown>` を引く。**両経路を同時に満たす注釈が
+  存在しない**（`Throw<DomainError>` / `Throw<Error>` は Program を通り native で落ち、`Throw<unknown>` は逆）。
+  これは移行のハードブロッカーで、照合より先に throw の語彙を合わせる必要がある。
+
+代わりに閉じたのは cardinal rule の側、2 点:
+- **不正な directive は `effect/invalid` エラー。** 未知の dialect、未知の effect 名、読めない effect 式。
+- **宣言を持つ source の summary は `unchecked-declaration` で unknown に落ちる。** `requireAnnotations === true`
+  のときだけ。照合されていない宣言を持つ境界が `trusted` を名乗るのが、この欠陥の本体だった。
+  `--assurance declared` は既に境界ごとに `effect summary is <evidence>, not declaration-checked` と言う
+  仕組みを持っているので、情報は新しい診断ではなくその機構に流す。`module_effect` 宣言を持つファイルには
+  `<module>` 行を実体化する — 走らせるものが無くても、主張はしているので。
+
+**directive はファイルテキストではなく Oxc の comment トークンから読む。** 生テキストを走査すると、この
+project 自身が文字列リテラルの中に書いた directive を拾う（checker の診断メッセージが提案文として directive を
+埋め込んでいる。src/ だけで 97 件の偽診断）。Oxc は既にこれらのファイルを parse しており、comment レンジは
+そうした出現をすべて除外する。実測で偽診断 0 件。
+
+polarity は Program 経路と逆にした。Program の `requireAnnotations !== false` は到達可能な全関数に宣言を
+要求するため、src/ の 2 ファイルで 6345 件の `effect/missing` が出る。native は `=== true` で、注釈を持つ
+source にしか作用しない。既存の 16 個の `checkCorsaProject` 呼び出しは option を渡していないので無変化。
+
+実測: fast tier 100 files、`examples-check` の native smoke 4 本はいずれも exit 0（unknown は
+`--assurance` 下でしかエラーにならない）、effect baseline は `--infer` と `--effect-baseline` の二重で
+requireAnnotations が false なので無関係。`api/public-api-v0.3.json` は additive な contract 変更として
+`node ci/check-public-api.mjs --update` で更新した。
+
+残る非主張: 照合そのもの（`effect/missing` / `effect/unused`）と、注釈を境界に結びつける規則。後者は敵対
+レビューで 4 つの「宣言の横取り」形状が実測されている — テンプレートリテラル、先行する `const`、ambient
+`declare function`、class プロパティに書かれた注釈が次の実関数に付き、本物の違反を黙らせる。ファイル単位の
+degrade はこの規則を必要としないので、第一段階では使っていない。
 
 **未移行の既知差: `Mutate<region>` の描画。** Program 経路は `values.push(x)` を
 `Mutate<typeof values>` として summary に出すが、native 経路は `mutate` primitive を
