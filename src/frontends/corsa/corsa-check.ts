@@ -715,6 +715,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // A `throw` the enclosing boundary cannot catch is an effect of that boundary. Naming it is a separate
       // question from seeing it: an operand the reviewed catalog did not resolve is `Throw<unknown>`, which the
       // effect language deliberately leaves uncovered by a declared `Throw<Error>`.
+      // Member writes a reviewed contract accounted for. Everything else the source writes is settled below.
+      const reviewedWriteSpans = new Set<string>();
       // An implicit ToPrimitive runs the value's own `Symbol.toPrimitive`, `valueOf` or `toString` and throws
       // TypeError when none of them yields a primitive. That is the same reviewed claim `String` and `Number`
       // already carry, and leaving it unmodelled made `return `${value}`` a positive proof of effect freedom
@@ -758,6 +760,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           scope: { fileName, functionName: owner.name, span: { start: site.start, end: site.end } },
         }));
         const span = `${site.start}:${site.end}`;
+        reviewedWriteSpans.add(span);
         const readWrite = indexAccess.readWriteTargets.has(span);
         const access = readWrite || indexAccess.assignmentTargets.has(span) ? "write" as const : "read" as const;
         const args = indexAccess.inlineFunctionArguments.get(span);
@@ -948,6 +951,16 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
             if (member === null || declaredByDomLibrary(member) || isAccessorSymbol(member)) recordUnclassified(site);
           }
         }
+      }
+      // Writing a member of an object the boundary did not create is observable to whoever else holds it, and
+      // this path renders no region naming what changed. A write a reviewed contract accounted for is already
+      // carried by that contract's own terms; every other one leaves the boundary unresolved, because an empty
+      // summary for `b.n = 1` is a proof that the caller's object is unchanged when it is not.
+      for (const write of indexAccess.memberWrites) {
+        if (reviewedWriteSpans.has(`${write.start}:${write.end}`)) continue;
+        const owner = ensure(owningBoundary(write.start));
+        owner.unclassified = true;
+        owner.unresolved.add(`the object whose ${write.name} is written`);
       }
       for (const fn of syntax.functions) {
         const key = `${fileName}:${fn.start}:${fn.name}`;

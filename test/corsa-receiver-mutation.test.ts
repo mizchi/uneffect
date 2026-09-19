@@ -27,6 +27,43 @@ const effectsOf = (result: Result, functionName: string) =>
 const reasonText = (result: Result, functionName: string) =>
   (row(result, functionName)?.unknownReasons ?? []).map((item) => item.message).join(" ");
 
+describe("a member write this path cannot name", () => {
+  it("does not let a write to an object the boundary did not create read as a proof", async () => {
+    await check(`interface Bag { n: number; deep: { m: number } }
+export function writeProp(b: Bag): void { b.n = 1; }
+export function writeNested(b: Bag): void { b.deep.m = 1; }
+export function bump(b: Bag): void { b.n++; }
+export function compound(b: Bag): void { b.n += 1; }
+export function destructureInto(b: Bag): void { ({ n: b.n } = { n: 5 }); }
+export function caller(b: Bag): void { writeProp(b); }
+`, (result) => {
+      for (const name of ["writeProp", "writeNested", "bump", "compound", "destructureInto"]) {
+        expect([name, row(result, name)?.evidence]).toEqual([name, "unknown"]);
+      }
+      expect(reasonText(result, "writeProp")).toContain("the object whose n is written");
+      expect(row(result, "caller")?.evidence).toBe("unknown");
+    });
+  });
+
+  it("leaves a write to an object that did not exist before the call alone", async () => {
+    await check(`export class Counter {
+  calls = 0;
+  ready = false;
+  constructor(seed: number) { this.calls = seed; }
+  bump(): void { this.calls++; }
+}
+export function localOnly(): number { let x = 0; x = 2; return x; }
+`, (result) => {
+      // A constructor and a field initializer write the instance being made, whose previous state no caller
+      // can hold. A local binding is not a member of anything.
+      expect(row(result, "Counter.constructor")?.evidence).toBe("inferred");
+      expect(row(result, "localOnly")?.evidence).toBe("inferred");
+      // A method writing the same field writes an object its caller already holds.
+      expect(row(result, "Counter.bump")?.evidence).toBe("unknown");
+    });
+  });
+});
+
 describe("a receiver write this path cannot name", () => {
   it("does not let a call whose only observable is a receiver write read as a proof", async () => {
     await check(`export function collect(values: number[]): void { values.push(1); }

@@ -377,6 +377,23 @@ requireAnnotations が false なので無関係。`api/public-api-v0.3.json` は
 `declare function`、class プロパティに書かれた注釈が次の実関数に付き、本物の違反を黙らせる。ファイル単位の
 degrade はこの規則を必要としないので、第一段階では使っていない。
 
+**閉じた既知差: contract を持たない member 書き込み。** 上の規則は reviewed contract を通る呼出にしか
+届かない。`b.n = 1` / `b.n++` / `b.n += 1` / `({ n: b.n } = ...)` は contract を 1 つも通らないので、
+`writeParamProp(b) { b.n = 1 }` は `[] inferred` のままだった — 呼び手のオブジェクトは実際に変わる。
+Program 経路も同じ穴を持ち、そちらは分割代入の代入先を**サイトとして収集すらしない**。
+
+境界が作っていないオブジェクトの member への書き込みは、reviewed contract がその span を説明していない
+限り boundary を unresolved にする。理由は `the object whose n is written`。
+
+除外は 1 つだけ、実測に基づく: **constructor と field 初期化子の中の `this` 根の書き込み**。その時点で
+オブジェクトは呼出前に存在しておらず、以前の状態を持つ呼び手が居ない。同じフィールドをメソッドが書けば
+`Counter.bump` は unresolved になる — そちらは呼び手が既に握っているオブジェクトだから。ローカル束縛への
+代入は member 書き込みではないので対象外。
+
+実測: src/ では 3 行しか動かない（うち 2 つが空の積極的証明の撤回）。書き込みを含む boundary の大半が
+別の理由で既に unknown だったため。ratchet は 85 のまま、effect baseline も 0 regression。
+この規則の価値は自分の src/ ではなく downstream にある。
+
 **閉じた既知差: 暗黙の ToPrimitive 変換。** `return `${value}`` と `"a" + value` は、value 自身の
 `Symbol.toPrimitive` / `valueOf` / `toString` を走らせ、どれもプリミティブを返さなければ TypeError を投げる。
 native 経路はこれを lowering で完全に落としていたため、`toString` が `console.log` する値を補間するだけの
@@ -433,11 +450,7 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
 - **argument を書き換える builtin。** `Object.assign(target, ...)` は receiver ではなく argument 0 を
   書き換えるので、この規則は発火しない。`Object.freeze({...})` が生きているのも同じ理由（新規リテラルを
   書き換えるので撤回すべきでない）。両者を分けるには freshness が要る。
-- **contract を持たない素の書き込み。** `this.n++` や `obj.x = 1` は reviewed contract を通らないので
-  この規則が届かない。src/ で 209 サイト（`=` 189 / 複合 15 / `++` 3 / 分割代入 2）。
-  `corsa-source-facts.ts` の `assignmentTargets` / `readWriteTargets` は既にスパンを集めており、
-  今は property contract の write 側選択にしか使われていない。
-- **`delete` と分割代入の代入先**はどちらの経路でも一切サイトにならない。
+- **`delete`** はどちらの経路でも一切サイトにならない。
 - `RegExp#test` / `exec` の holdback はこの規則とは独立だった。src/ の 252 呼出に `g` / `y` フラグの
   receiver は 0 件で、non-global なら `lastIndex` は書かれない。別途判断する。
 

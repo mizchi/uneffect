@@ -73,6 +73,13 @@ export interface CorsaSourceFacts {
   /** `${start}:${end}` keys of member expressions both read and written, such as a compound assignment. */
   readonly readWriteTargets: ReadonlySet<string>;
   /**
+   * Every member the source writes, with the member name. A write is observable to whoever else holds the
+   * object, and this path renders no region for it, so a write no reviewed contract accounts for leaves the
+   * boundary unresolved rather than a proof. A write to `this` inside a constructor or a field initializer is
+   * excluded: the object did not exist before the call, so no caller can observe its previous state.
+   */
+  readonly memberWrites: ReadonlyArray<{ readonly start: number; readonly end: number; readonly name: string }>;
+  /**
    * Every `throw` no enclosing `catch` can reach, with the construction each one throws. `start` is the throw
    * statement's own offset, so the consumer attributes it with the same rule it uses for every other site.
    * The operand is decomposed syntactically first: the checker reduces `flag ? new RangeError() : new TypeError()`
@@ -750,10 +757,32 @@ export function analyzeCorsaSourceFacts(
   const arrayLiteralReceivers = new Set<number>();
   const assignmentTargets = new Set<string>();
   const readWriteTargets = new Set<string>();
+  const memberWrites: Array<{ start: number; end: number; name: string }> = [];
   /** Every member expression a binding pattern or loop header writes, at any nesting depth. */
+  /** Whether a write through `this` reaches an object that already existed when the boundary was entered. */
+  const writesEstablishedObject = (node: EstreeNode): boolean => {
+    let root = node;
+    while (root.type === "MemberExpression" && isNode(root.object)) root = unwrap(root.object);
+    if (root.type !== "ThisExpression") return true;
+    for (let child = node, parent = parents.get(child); parent; child = parent, parent = parents.get(parent)) {
+      if (parent.type === "MethodDefinition") return parent.kind !== "constructor";
+      if (parent.type === "PropertyDefinition" || parent.type === "AccessorProperty") return false;
+      if (parent.type === "StaticBlock") return true;
+    }
+    return true;
+  };
   const collectWriteTargets = (target: EstreeNode, into: Set<string>): void => {
     const node = unwrap(target);
-    if (node.type === "MemberExpression") { into.add(`${node.start}:${node.end}`); return; }
+    if (node.type === "MemberExpression") {
+      into.add(`${node.start}:${node.end}`);
+      const property = isNode(node.property) ? node.property : undefined;
+      const name = node.computed !== true && property?.type === "Identifier" && typeof property.name === "string"
+        ? property.name : "a computed member";
+      if (writesEstablishedObject(node) && typeof node.start === "number" && typeof node.end === "number") {
+        memberWrites.push({ start: node.start, end: node.end, name });
+      }
+      return;
+    }
     if (node.type === "ObjectPattern" && Array.isArray(node.properties)) {
       for (const property of node.properties) {
         if (!isNode(property)) continue;
@@ -1080,7 +1109,7 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, receiverTypes, throws, coercions,
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, memberWrites, receiverTypes, throws, coercions,
     dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
 }
 
