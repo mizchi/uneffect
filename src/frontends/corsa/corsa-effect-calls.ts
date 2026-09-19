@@ -65,6 +65,12 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
    * application of what it returns. The scope that declares the class performs it, so that scope is unresolved.
    */
   decoratedDeclarations: number[];
+  /**
+   * Members carrying a decorator, by the offset their syntax boundary starts at. A decorator's return value
+   * replaces the member, so the declared body is not necessarily the one that runs — its own summary is a claim
+   * about a name whose behaviour at runtime this path did not read.
+   */
+  decoratedMembers: number[];
 } {
   const parsed = parseSync(file, text, { lang: oxcLanguage(file) });
   const declarations: Array<{ symbolId: string; start: number; name: string }> = [];
@@ -78,8 +84,9 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
   const privateCalls = new Map<number, string>();
   const staticInitializers: Array<{ declaration: number; regions: Array<{ start: number; end: number }> }> = [];
   const decoratedDeclarations: number[] = [];
+  const decoratedMembers: number[] = [];
   const classFacts = () => ({
-    classes, methods, superCalls, privateCalls, staticInitializers, decoratedDeclarations,
+    classes, methods, superCalls, privateCalls, staticInitializers, decoratedDeclarations, decoratedMembers,
   });
   if (parsed.errors.length) return { declarations, writes, ambiguousWrites, calls, parameters, ...classFacts() };
   const recordWrite = (node: Node, shorthand = false): void => {
@@ -180,18 +187,37 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
         if (!item || typeof item.start !== "number" || typeof item.end !== "number") return;
         definitionTimeRegions.push({ start: item.start, end: item.end });
       };
+      /**
+       * A parameter decorator is applied when the declaration is evaluated like any other, but it is written on
+       * the parameter rather than on the member, so reading `member.decorators` alone misses it entirely. The
+       * span is inside the method's own boundary, which would otherwise charge the application to every call of
+       * that method — and to every construction, for a constructor parameter.
+       */
+      const parameterDecorators = (member: unknown): readonly unknown[] => {
+        const params = ((member as { value?: { params?: unknown } }).value)?.params;
+        if (!Array.isArray(params)) return [];
+        // A `private dep` parameter property carries its decorators on the property node, not on the name it wraps.
+        return params.flatMap((param: { decorators?: unknown }) =>
+          Array.isArray(param?.decorators) ? param.decorators : []);
+      };
+      let decorated = Array.isArray(node.decorators) && node.decorators.length > 0;
       for (const member of node.body.body) {
         if (member.type === "StaticBlock") region(member);
         if ((member.type === "PropertyDefinition" || member.type === "AccessorProperty") && member.static && member.value !== null) region(member.value);
         if ("decorators" in member && Array.isArray(member.decorators)) for (const decorator of member.decorators) region(decorator);
+        for (const decorator of parameterDecorators(member)) region(decorator);
         if ("computed" in member && member.computed === true && "key" in member) region(member.key);
+        const decoratedMember = ("decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0)
+          || parameterDecorators(member).length > 0;
+        if (decoratedMember) decoratedMembers.push(member.start);
+        decorated ||= decoratedMember;
       }
-      const widened = constructionBoundarySpan(node.body as unknown as Parameters<typeof constructionBoundarySpan>[0]);
-      if (definitionTimeRegions.length && widened !== undefined && widened.start === node.body.start) {
+      // Published whenever the body evaluates anything, not only when an instance initializer widens the
+      // construction boundary over it. A decorated member's own boundary starts at its `@` token, so a
+      // decorator factory's call already sits inside a boundary that runs per call without any widening.
+      if (definitionTimeRegions.length > 0) {
         staticInitializers.push({ declaration: node.start, regions: definitionTimeRegions });
       }
-      const decorated = (Array.isArray(node.decorators) && node.decorators.length > 0)
-        || node.body.body.some((member) => "decorators" in member && Array.isArray(member.decorators) && member.decorators.length > 0);
       if (decorated) decoratedDeclarations.push(node.start);
       if (symbolId !== null) {
         const members = node.body.body;

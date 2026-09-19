@@ -278,6 +278,55 @@ class が 1 つも無く、decorator も 0 件なので、ratchet は動かな�
 `unknown`。暗黙の `valueOf` 強制や user iterable の spread も定義時に走るがサイトにならない（Program
 経路も同じ）。
 
+**閉じた既知差: decorator が走る時点。** 当初の見立て（「メソッドデコレータの effect が呼び出しごとに
+なる」）は、一般形としては**間違っていた**。ランタイムを oracle にすると、decorator には時点の違う 2 つの
+仕事がある:
+
+- decorator 式そのものの評価と適用 — **宣言時に 1 回**
+- decorator が*設置する*もの — ラッパーメソッド（呼び出しごと）、ラッパーサブクラス（構築ごと）、
+  フィールド初期化子（構築ごと）、`context.addInitializer`（構築ごと）、getter 置換（読み取りごと）
+
+後者は 5 形状すべて実測で「宣言時 0 回 / 3 回の使用で 3 回」。つまり「decorator の effect を宣言スコープへ
+移す」という素朴な方針は、後者に対しては的を外している。native 経路は後者を `linkable: !decorated` と
+public メソッド非 link で `unknown` にしており、ここは既に Program 経路より正直。
+
+閉じたのは前者、3 点:
+- **パラメータデコレータが完全に不可視だった。** `member.decorators` しか読んでおらず、
+  `member.value.params[i].decorators` を見ていなかった。結果 `constructor(@inject dep)` は region も
+  `decorated` フラグも立てず、`dep.ts:<module> [inferred] {}` — import するだけで console に書き、
+  あるいは fetch するモジュールに対する**積極的な effect-free の証明**を出していた。さらに悪い形として、
+  class body に reviewed builtin 呼出が 1 つでもあると `<module> [trusted] {Console}` に昇格し、
+  decorator の `Fetch` / `Net` が unknown 理由すら無しに消える。読み手には欠落の合図が一切無い。
+  factory 形 `@inject()` では逆向きの誤りが同時に起きる: 呼出が constructor 境界の中にあるため
+  `Widget.constructor [trusted] {Console}` と `build [trusted] {Console}` という「構築ごと」の主張になり、
+  caller へ `trusted` のまま伝播していた。パラメータデコレータを region と `decorated` の両方に入れると、
+  この 2 方向が 1 つの変更で閉じる。
+- **定義時領域を widening gate 無しで publish する。** decorated member の syntax 境界は Oxc では `@`
+  トークンから始まるので、decorator factory の呼出は最初から「呼び出しごとに走る境界」の内側にある。
+  instance field 初期化子による widening は関係ない。gate は「widening が無ければ訂正すべき境界も無い」
+  という前提だったが、その前提が decorator では成り立たない。
+- **decorated member 自身の行を unresolved にする。** decorator の戻り値が member を置き換えるので、
+  宣言された本体は走る本体とは限らない。`linkable: !decorated` は construction と caller を守るが、
+  `Widget.run [inferred] {}` という行自体が、ランタイムでは実際に仕事をする名前についての積極的な主張に
+  なっていた。この行は `enclosingFunction` で解決する — member の境界は `@` から始まるので、
+  `owningBoundary` に通すと宣言が評価するサイトと読み違える。
+
+残る非主張 1: **解決済みの decorator でも宣言スコープは unknown になる。** 効果が空だと証明できた
+`@Entity` でも `decoratedDeclarations` の marker は無条件に立つため、その module を import しただけの
+ファイル（barrel 経由の app entry を含む）まで `<module>` が unknown に伝播する。実測で 5 module chain の
+4/4、barrel 構成では entity / index / app が unknown、無関係な 8 leaf は clean。function の行は劣化せず、
+診断も 0 件なので `<module>` 行だけの伝播。正直ではあるが、`@deco` に call expression が無く識別子が
+解析済みの body に解決する場合は、その body の effect を宣言スコープに付けて marker を落とせる。
+factory 形は対象外 — 解決できるのは factory の呼出であって、その戻り値の適用ではない。
+
+残る非主張 2: **Program 経路の decorator モデルは移植しない。** 実測で 3 つの cardinal-rule 違反がある。
+(a) 置換が一切モデル化されておらず、`@instrument() run()` の caller が `[] inferred`、module が
+`[] verified` — import でログするモジュールに対する最強の主張。(b) 関数 1 段内側の class の decorator は
+module walker（top-level statement のみを回る）にも per-function walker（function-like child で打ち切る）
+にも見えず、その関数を load 時に呼ぶ module が `[] verified` になり importer へ伝播する。
+(c) `context.addInitializer` の仕事は構築ごとに走るのに宣言時として報告される — 宣言時帰属が*間違っている*
+唯一の測定例。native 経路は (a)(b) いずれも `unknown` で正しい。
+
 **未移行の既知差: 宣言した effect の照合（`requireAnnotations`）。** `checkCorsaProject` の options 型は
 `requireAnnotations?: boolean` を宣言しているが、`corsa-check.ts` 内でその名前が現れるのは**その宣言 1 箇所
 だけ**で、値は一度も読まれていない。`src/cli/check-command.ts` は

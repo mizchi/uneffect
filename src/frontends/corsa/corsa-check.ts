@@ -665,6 +665,13 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       for (const declaration of bindings.decoratedDeclarations) {
         ensure(owningBoundary(declaration)).unclassified = true;
       }
+      // The decorated member's own row is a claim about the DECLARED body, and the decorator's return value may
+      // have replaced it. Resolved by `enclosingFunction` rather than `owningBoundary`: the member's boundary
+      // starts at its `@` token, which the redirect above would read as a site the declaration evaluates.
+      for (const position of bindings.decoratedMembers) {
+        const member = enclosingFunction(syntax.functions, position);
+        if (member !== undefined) ensure(member).unclassified = true;
+      }
       // A `throw` the enclosing boundary cannot catch is an effect of that boundary. Naming it is a separate
       // question from seeing it: an operand the reviewed catalog did not resolve is `Throw<unknown>`, which the
       // effect language deliberately leaves uncovered by a declared `Throw<Error>`.
