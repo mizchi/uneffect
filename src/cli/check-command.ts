@@ -188,8 +188,12 @@ export const checkCommand: CliCommand = {
     else {
       if (result.diagnostics.length === 0 && !values.evidence && !baselineAssessment) io.err("no diagnostics\n");
       else {
+        // Named the way the Program path names one: the code carries the family, and a warning is not an error.
         for (const diagnostic of result.diagnostics) {
-          io.err(`error ${diagnostic.domain} ${diagnostic.fileName}\n  message: ${diagnostic.message}\n`);
+          const notes = (diagnostic.notes ?? []).map((note) => `  ${note.label}: ${note.detail}\n`).join("");
+          io.err(`${diagnostic.severity} ${diagnostic.domain}/${diagnostic.kind} `
+            + `${diagnostic.fileName}:${diagnostic.line} in ${diagnostic.functionName}\n`
+            + `  message: ${diagnostic.message}\n${notes}`);
         }
       }
       if (values.evidence) io.err(formatCorsaCheckEvidence(result));

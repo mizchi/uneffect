@@ -20,8 +20,10 @@ async function check(source: string, run: (result: Result) => void): Promise<voi
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }
 
-const effectsOf = (result: Result, functionName: string) => (result.summaries
-  .find((item) => item.functionName === functionName)?.effects ?? []).map(formatEffect).sort();
+const row = (result: Result, functionName: string) =>
+  result.summaries.find((item) => item.functionName === functionName);
+const effectsOf = (result: Result, functionName: string) =>
+  (row(result, functionName)?.effects ?? []).map(formatEffect).sort();
 
 /** The pair a conversion that reaches a user method carries, the same one `String` and `Number` are reviewed for. */
 const conversion = ["InvokeUserCode", "Throw<TypeError>"];
@@ -61,7 +63,7 @@ export function strings(a: string, b: string): string { return a + b; }
     });
   });
 
-  it("charges an operand the type system did not constrain", async () => {
+  it("charges an operand whose type the checker gave and which is not a primitive", async () => {
     await check(`export function fromAny(v: any): string { return \`v=\${v}\`; }
 export function fromUnknown(v: unknown): string { return \`v=\${v}\`; }
 export function fromObject(v: { a: number }): string { return \`v=\${v}\`; }
@@ -72,11 +74,15 @@ export function fromAliasedObjects(v: Objs): string { return \`v=\${v}\`; }
 export function fromAliasedMixed(v: Mixed): string { return \`v=\${v}\`; }
 export function fromSymbol(v: symbol): string { return \`v=\${String(v)}\`; }
 `, (result) => {
-      // Not knowing what a value is cannot admit it: an unconstrained operand may carry its own
-      // `Symbol.toPrimitive`, `valueOf` or `toString`, and ToString of a Symbol throws.
-      for (const name of ["fromAny", "fromUnknown", "fromObject", "fromArray", "fromSymbol",
-        "fromAliasedObjects", "fromAliasedMixed"]) {
+      // The conversion is KNOWN to reach a user method here: the checker gave a type and it is an object, a
+      // symbol, or a union containing one.
+      for (const name of ["fromObject", "fromArray", "fromSymbol", "fromAliasedObjects", "fromAliasedMixed"]) {
         expect([name, effectsOf(result, name)]).toEqual([name, conversion]);
+      }
+      // `any` and `unknown` say nothing either way. Naming an effect on that basis would be a claim about a
+      // construct the path did not analyze, so the boundary is unresolved instead.
+      for (const name of ["fromAny", "fromUnknown"]) {
+        expect([name, effectsOf(result, name), row(result, name)?.evidence]).toEqual([name, [], "unknown"]);
       }
     });
   });

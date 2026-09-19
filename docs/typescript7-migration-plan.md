@@ -341,7 +341,7 @@ module walker（top-level statement のみを回る）にも per-function walker
 (c) `context.addInitializer` の仕事は構築ごとに走るのに宣言時として報告される — 宣言時帰属が*間違っている*
 唯一の測定例。native 経路は (a)(b) いずれも `unknown` で正しい。
 
-**部分的に閉じた既知差: 宣言した effect の照合（`requireAnnotations`）。** `checkCorsaProject` の options 型は
+**閉じた既知差: 宣言した effect の照合（`requireAnnotations`）。** `checkCorsaProject` の options 型は
 `requireAnnotations?: boolean` を宣言していたが、`corsa-check.ts` 内でその名前が現れるのは**その宣言 1 箇所
 だけ**で、値は一度も読まれていなかった。`src/cli/check-command.ts` は
 `!values.infer && effect-baseline 未指定` として計算して渡しているので、`uneffect check <file>` は
@@ -350,27 +350,46 @@ module walker（top-level statement のみを回る）にも per-function walker
 「`/* uneffect:effect none */` は検査された空の上界を作る」「不正な directive はエラー診断で、その source の
 全 summary は unknown になる」のどちらも native では守られていなかった。
 
-**照合そのものは移植しない。** 敵対レビューの実測でそう決まった。完全性で gate すると、この repo 自身の
-61 個の付着可能な注釈に対する診断は **0 件**（注釈と完全な summary の両方を持つ境界が 61 中 6 しか無く、
-その 6 つは既に一致している）。gate せずに出すと **50 件**で、真陽性は **0 件** — `effect/unused` 35 件は
-すべて Program 経路の `verified` summary に否定され、`cli-support.ts:writeStdout` の正しい `Console` を
-「消せ」と言う。理由は 2 つあり、どちらも照合の前に閉じる必要がある:
-- **`effect/unused` には完全性が要る。** src/ の native summary 7682 中 4584 が unknown。しかも
-  `evidence !== "unknown"` では足りない: `InvokeUserCode` は不完全性のマーカーではなく普通の effect 名なので
-  `trusted [InvokeUserCode, Throw<TypeError>]` は「完全」と判定される。
-- **`effect/missing` も健全な下界ではない。** native は名前付き throw を `Throw<unknown>` に広げる
-  （src/ で 365 summary）。`Throw<unknown>` は `effectPermits` の `Throw<Error>` 広域化から意図的に除外されて
-  いるため、正しい `Throw<DomainError>` 宣言が `missing Throw<unknown>` を引く。**両経路を同時に満たす注釈が
-  存在しない**（`Throw<DomainError>` / `Throw<Error>` は Program を通り native で落ち、`Throw<unknown>` は逆）。
-  これは移行のハードブロッカーで、照合より先に throw の語彙を合わせる必要がある。
+**`effect/missing` は照合する。`effect/unused` は照合しない。** 当初の敵対レビューでは両方とも出せないと
+測定されたが、その 2 つの理由のうち 1 つはその後閉じた。
 
-代わりに閉じたのは cardinal rule の側、2 点:
+- **`effect/missing` を阻んでいたのは throw の語彙だった。** native が名前付き throw を `Throw<unknown>` に
+  広げるため、正しい `Throw<DomainError>` 宣言が `missing Throw<unknown>` を引き、両経路を同時に満たす
+  注釈が存在しなかった。ユーザ定義 error クラスの命名（上記）でこれが解消し、この repo 自身の 61 注釈に
+  対する一致は 6 → 39、missing 候補は 29 項 → 12 項に下がった。宣言は上界であり、推論集合は下界なので、
+  **見えた効果が宣言の外にあれば不完全な解析でも違反**である。
+- **`effect/unused` には完全性が要る。** src/ の native summary は 7711 中 4846 が unknown。実測で
+  `unused` 候補 33 項はすべて偽陽性 — `cli-support.ts:writeStdout` の正しい `Console` を「消せ」と言う。
+  完全性で gate すると発火しうる境界が 0 になるので、開かない gate ではなく**実装しない**。
+  宣言を超過して書くことは安全性の問題ではなく、使わない権限を書いただけである。
+
+**「分からないから付けた」項は違反の証拠にしない。** 2 種類ある。`Throw<unknown>` は class を解決できな
+かった throw で、`effectPermits` はこれを何にも覆わせないので、宣言が誤っている証拠ではなく**宣言を判定
+できなかった証拠**として `unchecked-declaration` にする。暗黙変換も同じで、オペランドの型が `any` /
+`unknown` / 解決不能なら `InvokeUserCode | Throw<TypeError>` を名乗らず boundary を unresolved にする。
+これを入れる前後で src/ の missing は 12 件中 6 件が偽陽性だったのが、**16 件中 0 件**になった。
+
+**付着規則は AST で決める。** 注釈の直後に始まる**最初のノード**が、その関数自身の宣言でなければならない
+（`export` / 変数宣言 / class member / object literal member の各ラッパーは通す）。テキストの隙間を見る
+ヒューリスティクスは、敵対レビューの実測で 4 形状の「宣言の横取り」を起こした — テンプレートリテラル、
+先行する `const`、ambient `declare function`、class プロパティに書かれた注釈が次の実関数に付き、本物の
+違反を黙らせる。1 つの境界に複数のブロックがあれば**和を取る**。片方が書いている効果をもう片方の欠落として
+報告するのは、最も信用を失う診断になる。
+
+束縛できなかった宣言は `effect/unchecked` の**警告**で、エラーではない。interface のプロパティ署名のように
+この経路が summary を publish しない位置は、ソースの誤りではなくこちら側の限界である。
+
+実測: src/ 全体で `effect/missing` 10 件（すべて本物の過少宣言。8 件は `JSON.parse` の `SyntaxError`、
+2 件は `doctor-command.ts` の `throw new CliUsageError`）、`effect/unchecked` 6 件（すべて interface の
+プロパティ署名）。`examples/dogfood/node-cli.ts` は native が捕まえた過少宣言を反映して注釈を修正した —
+`main` は async で、**Program 経路は async の throw を落とす**ため、この違反は Program には見えない。
+
+同時に閉じた cardinal rule 側、2 点:
 - **不正な directive は `effect/invalid` エラー。** 未知の dialect、未知の effect 名、読めない effect 式。
-- **宣言を持つ source の summary は `unchecked-declaration` で unknown に落ちる。** `requireAnnotations === true`
-  のときだけ。照合されていない宣言を持つ境界が `trusted` を名乗るのが、この欠陥の本体だった。
-  `--assurance declared` は既に境界ごとに `effect summary is <evidence>, not declaration-checked` と言う
-  仕組みを持っているので、情報は新しい診断ではなくその機構に流す。`module_effect` 宣言を持つファイルには
-  `<module>` 行を実体化する — 走らせるものが無くても、主張はしているので。
+- **判定できなかった宣言は `unchecked-declaration` で unknown に落ちる。** `requireAnnotations === true`
+  のときだけ。当初はファイル単位で落としていたが、付着規則が入った今は境界単位で、しかも「比較が成立
+  しなかった」場合に限る。`module_effect` 宣言を持つファイルには `<module>` 行を実体化する — 走らせる
+  ものが無くても、主張はしているので。
 
 **directive はファイルテキストではなく Oxc の comment トークンから読む。** 生テキストを走査すると、この
 project 自身が文字列リテラルの中に書いた directive を拾う（checker の診断メッセージが提案文として directive を

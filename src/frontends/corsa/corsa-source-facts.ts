@@ -99,7 +99,7 @@ export interface CorsaSourceFacts {
    * primitive, which is exactly the reviewed contract `String` and `Number` already carry. `start` is the
    * enclosing expression's offset, attributed by the same rule as every other site.
    */
-  readonly coercions: ReadonlyArray<{ readonly start: number }>;
+  readonly coercions: ReadonlyArray<{ readonly start: number; readonly established: boolean }>;
   /** The static imports and export-froms whose evaluation runs another module. */
   readonly dependencies: readonly RuntimeModuleDependency[];
   /**
@@ -881,7 +881,7 @@ export function analyzeCorsaSourceFacts(
   const assignedInlineFunctions = new Map<string, number>();
   const receiverTypes = new Map<string, CorsaApiTypeFact>();
   const throws: Array<{ start: number; calleePosition: number | null }> = [];
-  const coercions: Array<{ start: number }> = [];
+  const coercions: Array<{ start: number; established: boolean }> = [];
   /**
    * A throw escapes unless a `try` whose `catch` clause encloses it sits between it and the boundary that runs
    * it. The walk stops at the first function-like ancestor: a `catch` outside a callback cannot catch what that
@@ -958,9 +958,20 @@ export function analyzeCorsaSourceFacts(
   };
   const recordCoercion = (site: EstreeNode, operands: readonly EstreeNode[]): void => {
     if (typeof site.start !== "number") return;
-    if (operands.every((operand) => isPrimitiveLiteral(operand)
-      || convertsWithoutUserCode(typeOfExpression(operand), standardMemberOf))) return;
-    coercions.push({ start: site.start });
+    const open = operands.filter((operand) => !isPrimitiveLiteral(operand)
+      && !convertsWithoutUserCode(typeOfExpression(operand), standardMemberOf));
+    if (open.length === 0) return;
+    /**
+     * Whether the conversion is known to reach a user method, as opposed to not being known to avoid one. A
+     * type the checker gave is an object, a symbol or a union containing one, and its ToPrimitive really does
+     * run what the value carries. A type this path could not read says nothing either way, and naming an
+     * effect on that basis is a claim about a construct it did not analyze.
+     */
+    const established = open.every((operand) => {
+      const type = typeOfExpression(operand);
+      return type !== null && typeof type.flags === "number" && (type.flags & opaqueTypeFlags) === 0;
+    });
+    coercions.push({ start: site.start, established });
   };
   walk(program, (node) => {
     // A tagged template hands its substitutions to the tag unconverted, so no ToPrimitive step runs here.

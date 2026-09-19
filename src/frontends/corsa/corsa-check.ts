@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { builtinContractRegistry, findModuleInitializationContract, type BuiltinContract, type BuiltinContractRegistry } from "../../effects/builtin-contracts.js";
-import { effectSchema, parseEffectExpression, type Effect } from "../../effects/capabilities.js";
+import { effectPermits, effectSchema, formatEffect, parseEffectExpression, type Effect } from "../../effects/capabilities.js";
 import { openCorsaApiFrontend, type CorsaApiFrontend, type CorsaApiSymbolFact, type CorsaApiTypeFact } from "./corsa-api-frontend.js";
 import type { EffectSummary, EvidenceStatus } from "../../effects/effects.js";
 import type { BuiltinSemantics, SemanticPrimitive } from "../../effects/builtin-semantic-schema.js";
@@ -30,7 +30,7 @@ export interface CorsaCheckOptions {
 
 export interface CorsaCheckDiagnostic {
   domain: "syntax" | "contract" | "bounds" | "effect";
-  kind: "syntax" | "contract" | "unchecked-index" | "invalid";
+  kind: "syntax" | "contract" | "unchecked-index" | "invalid" | "missing" | "unchecked";
   severity: "error" | "warning";
   fileName: string;
   line: number;
@@ -439,11 +439,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     }
     const sources = new Map<string, string>();
     const diagnostics: CorsaCheckDiagnostic[] = [];
-    /**
-     * Sources whose declared effects this run did not check. A declaration is a claim, and a run that accepts
-     * `requireAnnotations` and then compares nothing must not leave that file's summaries reading as a proof.
-     */
-    const uncheckedDeclarations = new Set<string>();
+    /** Declared effect upper bounds, unioned per boundary, for the boundaries that carry one. */
+    const declaredEffects = new Map<string, { effects: Effect[]; fileName: string; line: number; directive: "effect" | "module_effect" }>();
     const assumptions: AssumptionEntry[] = [];
     const declarations = new Map<string, { key: string; name: string } | null>();
     const writes = new Set<string>();
@@ -544,9 +541,16 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           message: problem.message,
         });
       }
-      // The declaration check itself is not implemented on this path. Saying so per boundary is the difference
-      // between an unimplemented check and a passing one: the option is accepted, so silence reads as a pass.
-      if (options.requireAnnotations === true && annotations.declaresEffects) uncheckedDeclarations.add(fileName);
+      // A position this path publishes no summary for is its own limit, not the source's mistake, so it warns.
+      if (options.requireAnnotations === true) for (const problem of annotations.unchecked) {
+        diagnostics.push({
+          domain: "effect", kind: "unchecked", severity: "warning", fileName,
+          line: sourceText.slice(0, problem.span.start).split("\n").length,
+          functionName: enclosingFunction(syntax.functions, problem.span.start)?.name ?? "<module>",
+          message: problem.message,
+        });
+      }
+
       const indexAccess = analyzeCorsaSourceFacts(queries, fileName, sourceText, syntax.functions, {
         domContractKeys: new Set(domMethods.keys()),
         selectsDomContractKey: (ownerName, memberName) => domContractFor(domMethods, domGraph, ownerName, memberName) !== undefined,
@@ -726,8 +730,25 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (member !== undefined) ensure(member).unclassified = true;
       }
       // A module-evaluation declaration is a claim about a boundary this path builds only when the module
-      // evaluates something. The file makes the claim either way, so the row exists to say it was not checked.
+      // evaluates something. The file makes the claim either way, so the row exists to be compared against.
       if (options.requireAnnotations === true && annotations.declaresModuleEffects) ensure(moduleBoundary);
+      if (options.requireAnnotations === true) for (const declaration of annotations.declarations) {
+        const boundary = declaration.bodyStart === null
+          ? moduleBoundary : enclosingFunction(syntax.functions, declaration.bodyStart);
+        if (boundary === undefined) continue;
+        const key = byFunctionKey(boundary);
+        ensure(boundary);
+        // Two blocks on one boundary are one declaration: comparing them separately would report the effect
+        // each one omits as missing while the other spells it out one line above.
+        const current = declaredEffects.get(key);
+        if (current === undefined) {
+          declaredEffects.set(key, {
+            effects: [...declaration.effects], fileName,
+            line: sourceText.slice(0, declaration.span.start).split("\n").length,
+            directive: declaration.bodyStart === null ? "module_effect" : "effect",
+          });
+        } else current.effects.push(...declaration.effects);
+      }
       // A `throw` the enclosing boundary cannot catch is an effect of that boundary. Naming it is a separate
       // question from seeing it: an operand the reviewed catalog did not resolve is `Throw<unknown>`, which the
       // effect language deliberately leaves uncovered by a declared `Throw<Error>`.
@@ -739,6 +760,13 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // for a body that prints.
       for (const item of indexAccess.coercions) {
         const owner = ensure(owningBoundary(item.start));
+        // An operand this path could not type is a construct it did not analyze, and the cardinal rule makes
+        // that an explicit unknown. Naming the conversion's effects there would be a claim resting on absence.
+        if (!item.established) {
+          owner.unclassified = true;
+          owner.unresolved.add("the value an implicit conversion reads");
+          continue;
+        }
         owner.invokesUserCode = true;
         owner.names.push("Throw<TypeError>");
       }
@@ -1242,14 +1270,41 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     const summaries: EffectSummary[] = [...byFunction]
       .map(([id, item]) => {
         const names = [...propagated.get(id)!];
-        // A declared effect this run did not compare against anything leaves the boundary undecided, whatever
-        // the analysis of its body concluded.
-        const declarationUnchecked = uncheckedDeclarations.has(item.fileName);
-        const reachesUnresolved = names.includes(unresolvedToken) || declarationUnchecked;
+        /**
+         * A declaration is an upper bound, and an effect outside it is a violation whether or not the analysis
+         * saw everything — the inferred set is a lower bound, so a term in it really occurs. The exception is a
+         * term this path could not name: `Throw<unknown>` stands for a throw whose class went unresolved, and
+         * `effectPermits` leaves it uncovered by anything, so it is evidence the declaration could not be
+         * checked rather than evidence of a missing one.
+         */
+        const declaration = declaredEffects.get(id);
+        const unnameable = declaration !== undefined && names.includes("Throw<unknown>");
+        const reachesUnresolved = names.includes(unresolvedToken) || unnameable;
         const restsOnContract = names.includes(contractToken);
         const effects = uniqueEffects(names.filter((name) => name !== unresolvedToken && name !== contractToken));
         const evidence: EvidenceStatus = reachesUnresolved ? "unknown"
           : restsOnContract && effects.length > 0 ? "trusted" : "inferred";
+        if (declaration !== undefined && !unnameable) for (const effect of effects) {
+          if (declaration.effects.some((allowed) => effectPermits(allowed, effect))) continue;
+          diagnostics.push({
+            domain: "effect", kind: "missing", severity: "error",
+            fileName: declaration.fileName, line: declaration.line, functionName: item.functionName,
+            // Each dialect is spelled out: the TypeScript annotation scanner reads this file's text, and an
+            // interpolated dialect name inside the comment marker reads as an unknown dialect to it.
+            message: declaration.directive === "module_effect"
+              ? `${item.functionName} requires /* uneffect:module_effect ${formatEffect(effect)} */`
+              : `${item.functionName} requires /* uneffect:effect ${formatEffect(effect)} */`,
+            notes: [
+              { label: "declared", detail: declaration.effects.map(formatEffect).join(" | ") || "none" },
+              { label: "inferred", detail: effects.map(formatEffect).join(" | ") || "none" },
+              // An upper bound is not established by an incomplete analysis, but a term the analysis DID see
+              // and the declaration does not permit is a violation either way.
+              ...(evidence === "unknown"
+                ? [{ label: "note", detail: "this summary is incomplete; an effect it did see is still outside the declaration" }]
+                : []),
+            ],
+          });
+        }
         return {
           functionName: item.functionName,
           effects,
@@ -1258,9 +1313,9 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           span: item.span,
           parameters: item.parameters,
           ...(reachesUnresolved ? {
-            unknownReasons: [...(declarationUnchecked ? [{
+            unknownReasons: [...(unnameable ? [{
               code: "unchecked-declaration" as const,
-              message: "this source declares effects and this run did not check them; declared effects are checked by --typescript-program",
+              message: "this boundary declares effects and throws a value this path could not name, so the declaration was not decided",
             }] : []), ...(names.includes(unresolvedToken) && (item.unresolved.size > 0 || item.moduleReasons.length === 0) ? [{
               code: "unresolved-call" as const,
               message: item.unresolved.size === 0

@@ -1508,7 +1508,7 @@
         {
           "name": "CorsaCheckDiagnostic",
           "declarations": [
-            "export interface CorsaCheckDiagnostic {\n    domain: \"syntax\" | \"contract\" | \"bounds\" | \"effect\";\n    kind: \"syntax\" | \"contract\" | \"unchecked-index\" | \"invalid\";\n    severity: \"error\" | \"warning\";\n    fileName: string;\n    line: number;\n    functionName: string;\n    message: string;\n    notes?: DiagnosticNote[];\n}"
+            "export interface CorsaCheckDiagnostic {\n    domain: \"syntax\" | \"contract\" | \"bounds\" | \"effect\";\n    kind: \"syntax\" | \"contract\" | \"unchecked-index\" | \"invalid\" | \"missing\" | \"unchecked\";\n    severity: \"error\" | \"warning\";\n    fileName: string;\n    line: number;\n    functionName: string;\n    message: string;\n    notes?: DiagnosticNote[];\n}"
           ]
         },
         {
