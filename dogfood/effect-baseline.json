@@ -41,7 +41,7 @@
       "functionName": "parseCommandArgs",
       "occurrence": 0,
       "effects": [
-        "Throw<unknown>"
+        "Throw<CliUsageError>"
       ],
       "unknownReasons": [
         "unresolved-call"
@@ -68,7 +68,7 @@
       "functionName": "singleFileArgument",
       "occurrence": 0,
       "effects": [
-        "Throw<unknown>"
+        "Throw<CliUsageError>"
       ],
       "unknownReasons": [
         "unresolved-call"

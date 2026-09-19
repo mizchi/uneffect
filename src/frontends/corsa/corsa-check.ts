@@ -490,6 +490,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     const moduleEdges: Array<{ importer: Boundary; fromFile: string; specifier: string; target: string | undefined; followable: boolean }> = [];
     /** Parameter symbol identity to the boundary that receives it and the argument position that supplies it. */
     const parameterOwners = new Map<string, { ownerKey: string; index: number }>();
+    /** Throw sites awaiting a name, held until every class this run reads is in `classes`. */
+    const thrown: Array<{ owner: { names: string[] }; symbol: CorsaApiSymbolFact | null }> = [];
     const classes = new Map<string, {
       superSymbolId: string | null;
       superResolvable: boolean;
@@ -498,6 +500,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       runsOwnBody: boolean;
       declaresConstructor: boolean;
       linkable: boolean;
+      name: string | null;
+      extendsEcmaScriptError: boolean;
     }>();
     /** Checker declaration identity of a class method to the boundary that holds its body. */
     const methodBodies = new Map<string, string>();
@@ -676,6 +680,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           runsOwnBody: span !== null,
           declaresConstructor: item.declaresConstructor,
           linkable: item.linkable,
+          name: item.name,
+          extendsEcmaScriptError: item.extendsEcmaScriptError,
         });
       }
       for (const method of bindings.methods) {
@@ -738,8 +744,8 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       }
       for (const item of indexAccess.throws) {
         const symbol = item.calleePosition === null ? null : queries.getSymbolAtPosition(fileName, item.calleePosition);
-        const named = declaredByEcmaScriptLibrary(symbol) && reviewedErrorConstructors.has(symbol!.name);
-        ensure(owningBoundary(item.start)).names.push(`Throw<${named ? symbol!.name : "unknown"}>`);
+        // Named after the whole run: a user error class may be declared in a file this loop has not reached.
+        thrown.push({ owner: ensure(owningBoundary(item.start)), symbol: symbol === null ? null : frontend.getAliasedSymbol(symbol) ?? symbol });
       }
       // Importing a module runs it. An importer therefore has a boundary of its own even when it evaluates
       // nothing else, because the answer for it is either the dependency's own effects or an explicit absence.
@@ -1195,6 +1201,29 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
     }
     // An unresolved site is carried through the same fixed point as effect names, so a caller that reaches one
     // transitively is unknown too. The token cannot collide with an effect term.
+    /**
+     * A thrown value is named when the effect language can carry the name soundly. That is one of the seven
+     * reviewed ECMAScript error constructors, or a class this run read whose heritage reaches one of them —
+     * `effectPermits` lets a declared `Throw<Error>` cover any named error, so naming a value that is not one
+     * would make that declaration cover a throw it does not describe.
+     *
+     * A user class whose name collides with a reviewed one stays `Throw<unknown>`: the two spell the same
+     * term, so a declaration written against the library type would be satisfied by a different class.
+     */
+    const derivesFromEcmaScriptError = (symbolId: string, seen: Set<string> = new Set()): boolean => {
+      if (seen.has(symbolId)) return false;
+      seen.add(symbolId);
+      const info = classes.get(symbolId);
+      if (info === undefined) return false;
+      if (info.extendsEcmaScriptError) return true;
+      return info.superSymbolId !== null && derivesFromEcmaScriptError(info.superSymbolId, seen);
+    };
+    for (const item of thrown) {
+      const reviewed = declaredByEcmaScriptLibrary(item.symbol) && reviewedErrorConstructors.has(item.symbol!.name);
+      const declared = item.symbol !== null && !reviewedErrorConstructors.has(item.symbol.name)
+        && classes.get(item.symbol.id)?.name === item.symbol.name && derivesFromEcmaScriptError(item.symbol.id);
+      item.owner.names.push(`Throw<${reviewed || declared ? item.symbol!.name : "unknown"}>`);
+    }
     const unresolvedToken = "\u0000unresolved";
     const propagated = propagateEffectNames([...byFunction].map(([id, item]) => {
       const callees = [...item.directCallees].filter(key => byFunction.has(key));

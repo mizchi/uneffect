@@ -1,5 +1,11 @@
 import { parseSync, type Node } from "oxc-parser";
 import { oxcChildren, oxcLanguage } from "../oxc/source.js";
+
+/** The seven error constructors the effect language names; anything else is spelled `Throw<unknown>`. */
+const ecmaScriptErrorConstructors = new Set([
+  "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError",
+]);
+const ecmaScriptLibraryFile = /(?:^|[/\\])lib\.es[\w.]*\.d\.ts$/i;
 import type { CorsaApiFrontend } from "./corsa-api-frontend.js";
 import { collectFrozenEffectTables } from "./corsa-effect-tables.js";
 import { constructionBoundarySpan, declaredConstructor } from "../oxc-syntax.js";
@@ -19,6 +25,13 @@ export interface CorsaClassFact {
    * declared bodies are not the ones that run.
    */
   readonly linkable: boolean;
+  /** The class's own name, which is the term a `Throw<E>` of it is spelled with. */
+  readonly name: string | null;
+  /**
+   * The class extends one of the seven ECMAScript error constructors directly. A chain of user classes is
+   * resolved by the consumer, which holds every class this run read rather than only this file's.
+   */
+  readonly extendsEcmaScriptError: boolean;
 }
 
 export interface CorsaMethodFact {
@@ -171,11 +184,15 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
       const heritage = node.superClass;
       let superSymbolId: string | null = null;
       let superResolvable = !heritage;
+      let extendsEcmaScriptError = false;
       if (heritage && heritage.type === "Identifier") {
         const base = frontend.getSymbolAtPosition(file, heritage.start);
         if (base) {
-          superSymbolId = (frontend.getAliasedSymbol(base) ?? base).id;
+          const resolved = frontend.getAliasedSymbol(base) ?? base;
+          superSymbolId = resolved.id;
           superResolvable = true;
+          extendsEcmaScriptError = ecmaScriptErrorConstructors.has(resolved.name)
+            && (resolved.declarations ?? []).some((item) => ecmaScriptLibraryFile.test(item));
         }
       }
       // Entering any class body changes which `#` names and which base constructor are in scope. A class this
@@ -245,6 +262,8 @@ export function collectCorsaEffectBindings(frontend: CorsaApiFrontend, file: str
           constructionSpan: span === undefined ? null : span,
           declaresConstructor: declaredConstructor(node.body as unknown as Parameters<typeof declaredConstructor>[0]) !== undefined,
           linkable: !decorated,
+          name: id?.type === "Identifier" && typeof id.name === "string" ? id.name : null,
+          extendsEcmaScriptError,
         });
         for (const member of members) {
           if (member.type !== "MethodDefinition" || member.computed || member.kind !== "method" || member.static) continue;

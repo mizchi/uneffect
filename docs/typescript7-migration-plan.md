@@ -194,10 +194,18 @@ async / generator、builtin の完全性、注釈の検証は引き続き M2 の
 規則は Program 経路の模倣ではなく native 独自として定める:
 - オペランドは構文的に分解してから型付けする。checker に `flag ? new RangeError() : new TypeError()` を
   畳ませると片方が恣意的に消える。
-- 命名は construct サイトが reviewed な ECMAScript error contract を解決したときだけ。それ以外は
-  `Throw<unknown>`。effect 言語の subtyping は文字列一致 + 「`Throw<Error>` は名前付き error を覆う」の
-  一本だけなので、checker の型テキストから命名すると lib の `RangeError` を隠すユーザクラスが、lib 型に
-  対して書かれた宣言を満たしてしまう。
+- 命名の条件は 2 つ。reviewed な ECMAScript error constructor を construct サイトが解決したとき、または
+  **この run が読んだクラスで、継承鎖が 7 つの標準 error constructor のいずれかに届くとき**。後者はその
+  クラス自身の名前で綴る。`Throw<Error>` は名前付き error を覆うので、error でない値に名前を付けると
+  その宣言が説明していない throw まで覆ってしまう — 継承の確認はそのための条件。
+  鎖は run 全体で辿る（`classes` は全ファイル分を持つ）ので、throw より後に読まれるファイルで宣言された
+  クラスも名前を得る。命名は全ファイル読み込み後に遅延させている。
+- ただし**予約名と衝突するユーザクラスは `Throw<unknown>` のまま**。effect 言語の subtyping は文字列一致 +
+  「`Throw<Error>` は名前付き error を覆う」の一本だけなので、lib の `RangeError` を隠すユーザクラスを
+  `Throw<RangeError>` と綴ると、lib 型に対して書かれた宣言を満たしてしまう。
+- 実測: src/ の `Throw<unknown>` は 366 → 207、168 行が実名を得た。これは注釈照合の前提条件だった —
+  敵対レビューが「`Throw<DomainError>` は Program を通り native で落ち、`Throw<unknown>` は逆で、
+  両経路を同時に満たす注釈が存在しない」とハードブロッカーに指定した件。
 - catch の打ち消しは最初の関数境界で止まる祖先 walk。callback の外の catch は、その callback が後で
   走るときに throw するものを捕まえられない。
 - `async` でも落とさない。Program 経路の `async` ドロップは同じ silent empty proof であり移植しない。

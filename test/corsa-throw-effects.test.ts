@@ -80,18 +80,30 @@ fails();
     });
   });
 
-  it("names only an error the reviewed catalog already resolved at its construction", async () => {
+  it("names a user error class this run read, by its own name", async () => {
     await check(`export class AppError extends Error {}
+export class Deeper extends AppError {}
 export class Bag {}
 export function app(): never { throw new AppError("x"); }
+export function deep(): never { throw new Deeper("x"); }
 export function bag(): never { throw new Bag() as never; }
 `, (result) => {
-      // Naming from the checker's type text would let a user class shadowing a standard constructor satisfy a
-      // declaration written against the standard one, and the effect language cannot tell them apart: its
-      // subtyping is string equality plus the single rule that `Throw<Error>` covers any named error. A user
-      // class is therefore an error this check declines to name, which `Throw<Error>` deliberately does not cover.
-      expect(named(result).app).toEqual(["Throw<unknown>"]);
+      // `Throw<Error>` covers any NAMED error, so a name may only be spelled for a value that really is one.
+      // The heritage is followed across the whole run, not only the file the throw is in.
+      expect(named(result).app).toEqual(["Throw<AppError>"]);
+      expect(named(result).deep).toEqual(["Throw<Deeper>"]);
+      // A class that derives from nothing is not an error, and naming it would let `Throw<Error>` cover it.
       expect(named(result).bag).toEqual(["Throw<unknown>"]);
+    });
+  });
+
+  it("declines to name a user class whose name a standard constructor already spells", async () => {
+    await check(`export class RangeError extends Error {}
+export function app(): never { throw new RangeError("x"); }
+`, (result) => {
+      // The effect language's subtyping is string equality plus the one `Throw<Error>` rule, so the two spell
+      // the same term and a declaration written against the standard type would be satisfied by this one.
+      expect(named(result).app).toEqual(["Throw<unknown>"]);
     });
   });
 
