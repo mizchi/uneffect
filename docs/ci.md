@@ -79,8 +79,9 @@ keeps those selectors synchronized with every declared test. GitHub still runs
 independent capability-tier jobs in parallel, so this bounds memory without
 collapsing CI-level parallelism.
 
-The dedicated `z3` and solver-heavy integration jobs install and force native
-Z3. The bundled WASM backend remains available and its selection and fallback
+The dedicated `z3` job installs the checksum-pinned native Z3 4.16.0 release;
+solver-heavy integration jobs use the native Z3 package from Ubuntu. Both force
+the native backend. The bundled WASM backend remains available and its selection and fallback
 behavior are covered by `test/z3-backend.test.ts`. The native/WASM common layer
 covers Hoare contracts, ownership evidence, temporal semantic/reachability lint, named-observation
 counterexample decoding, property model enumeration, and typed-array
@@ -91,6 +92,8 @@ Locally the file passed 88 cases, then Z3 reported that its WASM memory could
 not grow beyond roughly 2 GiB; Vitest remained alive after the abort. The
 same 159-case file completed under native Z3. The job uses file isolation with
 native Z3 so a file can reuse its test process without retaining a WASM heap.
+Ubuntu's Z3 4.8.12 package rejected a contract-summary proof that passed with
+Z3 4.16.0, so the `z3` job pins the version and verifies it before running tests.
 
 The upstream Z3 WASM worker can still fail nondeterministically in an otherwise
 fresh process with `memory access out of bounds` from `z3-built.wasm` in local

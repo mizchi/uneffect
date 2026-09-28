@@ -164,7 +164,11 @@ describe("CI test tier manifest", () => {
     const z3Job = workflow.match(/  z3:\n([\s\S]*?)\n  quint-simulation:/u)?.[1];
     expect(z3Job).toContain("UNEFFECT_Z3_BACKEND: native");
     expect(z3Job).toContain("UNEFFECT_TEST_ISOLATION: file");
-    expect(z3Job).toContain("apt-get install --yes z3");
+    expect(z3Job).toContain("Install checksum-pinned native Z3");
+    expect(z3Job).toContain("$Z3_SHA256");
+    expect(z3Job).toContain("z3 --version");
+    expect(z3Job).not.toContain("apt-get install --yes z3");
+    expect(workflow).toContain("Z3_VERSION: 4.16.0");
     expect(workflow).toContain("Install native Z3 for solver-heavy integration proofs");
     expect(workflow).toContain("apt-get install --yes z3");
     expect(workflow).toContain("matrix.integration-shard");
