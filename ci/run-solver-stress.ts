@@ -49,7 +49,7 @@ export function runSolverStress(): string {
       env: {
         ...process.env,
         UNEFFECT_CI_TIER: "z3",
-        UNEFFECT_Z3_BACKEND: "wasm",
+        UNEFFECT_Z3_BACKEND: "native",
         UNEFFECT_SOLVER_EVIDENCE_DIR: directory,
       },
       encoding: "utf8",
@@ -85,14 +85,14 @@ export function runSolverStress(): string {
     schema: "uneffect.solver-stress-evidence/v1",
     source,
     testName,
-    backend: "wasm",
+    backend: "native",
     repetitions,
     status: failure ? "failed" : "passed",
     failure,
     attempts,
   }, null, 2)}\n`, "utf8");
   if (failure) throw new Error(`${failure}; evidence: ${manifest}`);
-  process.stdout.write(`solver stress passed ${repetitions} fresh WASM processes; evidence: ${manifest}\n`);
+  process.stdout.write(`solver stress passed ${repetitions} fresh native Z3 processes; evidence: ${manifest}\n`);
   return manifest;
 }
 
