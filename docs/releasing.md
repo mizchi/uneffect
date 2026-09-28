@@ -1,7 +1,8 @@
 # Releasing
 
-The npm package is released from GitHub Actions through npm Trusted Publishing.
-No npm token is stored in this repository.
+The normal npm release path uses GitHub Actions and npm Trusted Publishing.
+Version 0.5.0 uses the manual procedure below. No npm token is stored in this
+repository.
 
 ## One-time external setup
 
@@ -60,18 +61,33 @@ still read 0.3.0. There is no `v0.4.0` Git tag or GitHub Release. Do not create
 a retroactive GitHub Release for 0.4.0, because the publish workflow would try
 to publish that already-used version again.
 
-The 0.5.0 release PR synchronizes the package, manifest, and runtime constants,
-and records the 0.4.0 release in the changelog. For this release only, after
-merging that PR and verifying CI on its exact `main` commit, publish a GitHub
-Release tagged `v0.5.0` at that commit with notes from the 0.5.0 changelog
-section. The `release: published` event runs `publish.yml`, whose tag guard
-must pass before `npm publish`. Confirm that npm `latest` becomes 0.5.0 and
-retain the package evidence artifact. Do not dispatch `release-please.yml` for
-0.5.0: the version files are already prepared in the release PR.
+The 0.5.0 release PR synchronized the package, manifest, and runtime constants
+and recorded the 0.4.0 release in the changelog. Its merged `main` commit is
+`49ade21254b457f9ae33f4ebefd1f0a420d45151`; the PR CI and local
+`just release-check` passed. For this release only, publish from that exact
+commit with the maintainer's npm login:
 
-The resulting `v0.5.0` tag and manifest establish the baseline for the normal
-release-please flow above. `include-component-in-tag: false` keeps future tags
-in the `v<version>` format required by the publish guard.
+```sh
+git fetch origin main
+git switch --detach 49ade21254b457f9ae33f4ebefd1f0a420d45151
+npm whoami
+npm publish --dry-run --provenance=false --access public
+npm publish --provenance=false --access public
+npm view @mizchi/uneffect version dist-tags --json
+git tag -a v0.5.0 49ade21254b457f9ae33f4ebefd1f0a420d45151 -m 'v0.5.0'
+git push origin v0.5.0
+```
+
+The local publish has no GitHub Actions OIDC provenance, so it overrides the
+package's `publishConfig.provenance`. Tag only after npm confirms 0.5.0 was
+published. Do not publish a GitHub Release for `v0.5.0` while `publish.yml`
+listens for `release: published`: that event would run a second `npm publish`
+for an already-used version. Do not dispatch `release-please.yml` for 0.5.0;
+the version files are already prepared.
+
+The `v0.5.0` tag and manifest establish the baseline for subsequent
+release-please releases. `include-component-in-tag: false` keeps their tags in
+the `v<version>` format required by the publish guard.
 
 ## 0.3.0 bootstrap record
 
