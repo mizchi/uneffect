@@ -6,6 +6,7 @@ import { isAuthenticatedProxyExpression, standardLibraryOperation, TypeScriptFro
 import { resolveStableRegion } from "./region-alias.js";
 import { interpretBuiltinCallSemantics, projectBuiltinCallbacks } from "./builtin-semantic-interpreter.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
+import { isArrayLiteralReceiver } from "../frontends/typescript/binding-identity.js";
 
 export type CallableKind = "function" | "method" | "getter" | "setter" | "constructor" | "arrow" | "function-expression";
 export type InvocationTiming = "inline" | "deferred" | "unknown";
@@ -384,8 +385,12 @@ export function buildProgramCallGraph(
       "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",
     ]);
     const accepts = (type: ts.Type): boolean => {
-      if ((type.flags & ts.TypeFlags.StringLike) !== 0 || checker.isArrayType(type) || checker.isTupleType(type)) return true;
+      if ((type.flags & ts.TypeFlags.StringLike) !== 0) return true;
       if (type.isUnion()) return type.types.every(accepts);
+      // Both TypeChecker predicates also accept readonly forms. A readonly tuple written as a literal is
+      // admitted above; a tuple supplied from elsewhere may implement its own iterator.
+      if (checker.isArrayType(type)) return type.getSymbol()?.getName() === "Array";
+      if (checker.isTupleType(type)) return (type as ts.TypeReference & { target: { readonly?: boolean } }).target.readonly === false;
       const symbol = type.aliasSymbol ?? type.getSymbol();
       if (symbol?.getName() === "NodeArray" && symbol.declarations?.some((item) =>
         /(?:^|[/\\])node_modules[/\\]typescript[/\\]lib[/\\]typescript\.d\.ts$/u.test(item.getSourceFile().fileName))) return true;
@@ -397,7 +402,7 @@ export function buildProgramCallGraph(
             && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/u.test(source.fileName);
         }));
     };
-    return accepts(checker.getTypeAtLocation(expression));
+    return isArrayLiteralReceiver(expression, checker) || accepts(checker.getTypeAtLocation(expression));
   };
   const definitelyPrimitive = (expression: ts.Expression): boolean => {
     const type = checker.getTypeAtLocation(expression);

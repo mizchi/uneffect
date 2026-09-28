@@ -3,8 +3,10 @@ export interface TelemetryRecord {
   readonly bytes: number;
 }
 
+// The example proves a lazy effect budget, so its input uses the concrete Array interface. A readonly
+// collection could supply a user-defined iterator whose effects this example has not bounded.
 /* uneffect:effect Console | Throw<RangeError> */
-export function* buildTelemetryBatches(records: readonly TelemetryRecord[]): Generator<string> {
+export function* buildTelemetryBatches(records: TelemetryRecord[]): Generator<string> {
   for (const record of records) {
     console.log(`queueing ${record.name}`)
     if (record.bytes > 64 * 1024) throw new RangeError("telemetry batch exceeds 64 KiB")
@@ -20,6 +22,6 @@ export function drainTelemetryBatches(batches: IteratorObject<unknown>): void {
 }
 
 /* uneffect:effect Console | Throw<RangeError> */
-export function flushTelemetry(records: readonly TelemetryRecord[]): void {
+export function flushTelemetry(records: TelemetryRecord[]): void {
   drainTelemetryBatches(buildTelemetryBatches(records))
 }

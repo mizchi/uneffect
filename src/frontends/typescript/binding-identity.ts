@@ -41,12 +41,11 @@ export function isArrayLiteralReceiver(
   if (!checker || !ts.isIdentifier(receiver)) return false;
   const symbol = resolvedSymbol(checker, receiver);
   if (!symbol || seen.has(symbol)) return false;
-  seen.add(symbol);
   const declaration = symbol.valueDeclaration;
   return Boolean(declaration && ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)
     && ts.isVariableDeclarationList(declaration.parent)
     && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
-    && declaration.initializer && isArrayLiteralReceiver(declaration.initializer, checker, seen));
+    && declaration.initializer && isArrayLiteralReceiver(declaration.initializer, checker, new Set(seen).add(symbol)));
 }
 
 export function bindingIdentity(symbol: ts.Symbol | undefined): BindingIdentity | undefined {

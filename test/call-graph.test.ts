@@ -248,12 +248,20 @@ describe("multi-file call graph and effect polymorphism", () => {
         declare const map: Map<string, number>
         declare const readonlySet: ReadonlySet<number>
         declare const readonlyMap: ReadonlyMap<string, number>
+        declare const tuple: [number, number]
+        declare const readonlyArray: readonly number[]
+        declare const readonlyTuple: readonly [number, number]
+        const literalBinding = [1, 2] as const
         export function fromSet() { return [...set] }
         export function fromMap() { return [...map] }
+        export function fromTuple() { return [...tuple] }
         export function fromReadonlySet() { return [...readonlySet] }
         export function fromReadonlyMap() { return [...readonlyMap] }
+        export function fromReadonlyArray() { return [...readonlyArray] }
+        export function fromReadonlyTuple() { return [...readonlyTuple] }
         export function fromLiteral() { return [...[1, 2]] }
         export function fromFrozenLiteral() { return [...([1, 2] as const)] }
+        export function fromLiteralBinding() { return [...literalBinding] }
       `);
       const program = ts.createProgram([entry], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
@@ -262,11 +270,10 @@ describe("multi-file call graph and effect polymorphism", () => {
       const result = analyzeProgramEffects(program, { requireAnnotations: false });
       const reasons = (name: string) =>
         result.summaries.find(({ functionName }) => functionName === name)?.unknownReasons ?? [];
-      // `Map` and `Set` are ECMA-262 objects reached by construction, and an array literal allocates one.
-      for (const name of ["fromSet", "fromMap", "fromLiteral", "fromFrozenLiteral"]) expect(reasons(name)).toEqual([]);
-      // `ReadonlyMap` and `ReadonlySet` name no such object: any declaration whose members match inhabits
-      // one, so `[Symbol.iterator]` on a receiver typed by them may be a body the program wrote.
-      for (const name of ["fromReadonlySet", "fromReadonlyMap"]) {
+      // The mutable collections retain their reviewed contracts; a literal allocates a genuine Array.
+      for (const name of ["fromSet", "fromMap", "fromTuple", "fromLiteral", "fromFrozenLiteral", "fromLiteralBinding"]) expect(reasons(name)).toEqual([]);
+      // Each readonly collection is structural, so its iterator may be a body the program wrote.
+      for (const name of ["fromReadonlySet", "fromReadonlyMap", "fromReadonlyArray", "fromReadonlyTuple"]) {
         expect(reasons(name)).toContainEqual(expect.objectContaining({ code: "unknown-generator-consumption" }));
       }
     } finally {
