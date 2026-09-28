@@ -118,7 +118,7 @@ package-check:
     node ci/smoke-package.mjs
 
 # Full local gate before creating a release tag. Native Z3 permits solver-dense
-# suites to use one fresh process per file; CI keeps per-test WASM isolation.
+# suites to use one fresh process per file; CI also uses native Z3.
 release-check:
     UNEFFECT_Z3_BACKEND=native UNEFFECT_TEST_ISOLATION=file pnpm check
     just examples-check

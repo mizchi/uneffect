@@ -269,7 +269,7 @@ Function-typed parameters are effect parameters. Direct invocation is inline; kn
 
 ## Published surfaces
 
-The implementation version is `0.3.0`, recorded as `uneffectVersion`; CLI, evidence, builtin, Corsa JSON, and optimizer contracts retain their documented schema identities. `just package-check` executes the real npm lifecycle, installs and probes its tarball from fresh consumers, and retains an exact contents/checksum manifest. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
+The implementation version is `0.5.0`, recorded as `uneffectVersion`; CLI, evidence, builtin, Corsa JSON, and optimizer contracts retain their documented schema identities. `just package-check` executes the real npm lifecycle, installs and probes its tarball from fresh consumers, and retains an exact contents/checksum manifest. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
 
 ## CI tiers
 

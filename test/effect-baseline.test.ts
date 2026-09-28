@@ -76,6 +76,6 @@ describe("effect regression baseline", () => {
     const baseline = createEffectBaseline([summary()], { cwd: "/repo" });
     baseline.uneffectVersion = "0.2.1";
     expect(compareEffectBaseline(baseline, [summary()], { cwd: "/repo" }).regressions)
-      .toContainEqual(expect.objectContaining({ kind: "tool-version-mismatch", added: ["0.3.0"] }));
+      .toContainEqual(expect.objectContaining({ kind: "tool-version-mismatch", added: ["0.5.0"] }));
   });
 });

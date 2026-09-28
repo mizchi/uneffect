@@ -4,6 +4,24 @@ All notable changes to Uneffect are documented in this file.
 
 ## Unreleased
 
+## 0.5.0
+
+### Changed
+
+- Treat methods and iteration reached only through structural `ReadonlyArray`,
+  `ReadonlyMap`, or `ReadonlySet` types as unresolved user code. For arrays,
+  literals and immutable bindings to those literals retain their known origin.
+  This narrows inferred claims and may increase `unknown` results for readonly
+  collection parameters and properties.
+
+### Fixed
+
+- Run the Z3 CI tier with checksum-pinned native Z3 4.16.0. The WASM tier
+  exhausted its fixed memory during contract composition, and Ubuntu's older
+  Z3 4.8.12 rejected one proof input.
+
+## 0.4.0 - 2026-09-17
+
 ### Changed
 
 - Add a native migration gate for real awaited expressions and isolated build
