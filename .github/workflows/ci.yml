@@ -18,6 +18,8 @@ env:
   QUINT_EVALUATOR_SHA256: 61755a09d5052d93a4e75e840059edfd0d3674aeda164b9d2464be3d6e21b1c2
   JUST_VERSION: 1.58.0
   JUST_SHA256: 4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d
+  Z3_VERSION: 4.16.0
+  Z3_SHA256: 7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e
 
 jobs:
   unit:
@@ -55,13 +57,22 @@ jobs:
   z3:
     runs-on: ubuntu-latest
     env:
-      UNEFFECT_Z3_BACKEND: wasm
+      UNEFFECT_Z3_BACKEND: native
+      UNEFFECT_TEST_ISOLATION: file
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with: { version: 10.15.0 }
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with: { node-version: 24, cache: pnpm }
+      - name: Install checksum-pinned native Z3
+        run: |
+          archive="$RUNNER_TEMP/z3.zip"
+          curl --fail --location --retry 3 --retry-all-errors --retry-delay 2 --output "$archive" "https://github.com/Z3Prover/z3/releases/download/z3-$Z3_VERSION/z3-$Z3_VERSION-x64-glibc-2.39.zip"
+          echo "$Z3_SHA256  $archive" | sha256sum --check
+          unzip -q "$archive" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/z3-$Z3_VERSION-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      - run: test "$(z3 --version)" = "Z3 version $Z3_VERSION - 64 bit"
       - *install-just
       - run: pnpm install --frozen-lockfile
       - run: just formal-z3

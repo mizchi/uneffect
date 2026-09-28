@@ -12,19 +12,19 @@ metadata, local reference links, and removed CLI command names. The
 solver-heavy dogfood behavior remains in its dedicated integration shard.
 
 Solver-heavy files that can retain a large WASM heap are listed in
-`ciIsolatedTestFiles`. Their individual Vitest cases run in fresh processes so
-a successful earlier proof cannot exhaust the fixed two-GiB Z3/WASM heap for a
-later proof. The runner retains bounded retry evidence only for classified
-infrastructure failures; a counterexample or ordinary assertion failure is not
-retried.
+`ciIsolatedTestFiles`. With test isolation, their individual Vitest cases run
+in fresh processes so a successful earlier proof cannot exhaust the fixed
+two-GiB Z3/WASM heap for a later proof. The runner retains bounded retry
+evidence only for classified infrastructure failures; a counterexample or
+ordinary assertion failure is not retried.
 
 `just release-check` requires the native Z3 executable and sets
 `UNEFFECT_TEST_ISOLATION=file`. Native solver invocations do not retain the
 bundled WASM heap in the Vitest process, so solver-dense suites run once per
 file instead of starting hundreds of duplicate Vitest processes. The full tier
 manifest still runs, including dogfood; the release recipe does not run that
-same dogfood suite a second time. CI leaves `UNEFFECT_TEST_ISOLATION` unset and
-therefore preserves per-test isolation for the WASM job.
+same dogfood suite a second time. The native Z3 CI job also sets
+`UNEFFECT_TEST_ISOLATION=file` so a solver-dense suite runs in one process.
 
 The CI test split is a capability partition, not a coverage reduction. The
 authoritative manifest is `ci/test-tiers.ts`; `test/ci-tiers.test.ts` fails when
@@ -39,7 +39,7 @@ older SHA cannot cancel proof evidence already running for a newer commit.
 | Tier | Runtime dependencies | Purpose |
 | --- | --- | --- |
 | `fast` | Node.js | Type checking, parser/analyzer unit tests, Corsa fact validation and parity, build, and package checks |
-| `z3` | none beyond Node; native Z3 is optional and WASM is bundled | Hoare, ownership, property generation, and typed-array obligations |
+| `z3` | native Z3 | Hoare, ownership, property generation, and typed-array obligations |
 | `quint` | Quint evaluator | Promise, resource, event-loop, temporal-composition, and ownership models |
 | `integration` | native Z3, Quint, and Java/TLC | Three complete shards (`core`, `applications`, and `dogfood`) cover end-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
 | `exhaustive` | Java/TLC through Quint | The bounded exhaustive invalidation model |
@@ -71,27 +71,35 @@ Every solver-bearing file runs in its own Vitest child process in both local
 full checks and individual CI jobs. Z3's process-local WASM heap can approach
 2 GiB; merely scheduling files serially in one process still allowed an early
 suite to corrupt the heap and make later Node Lease checks time out with
-`memory access out of bounds`. Per-file process isolation releases the WASM
-heap after every suite. A solver-dense file can opt into per-test process
+`memory access out of bounds`. Per-file process isolation releases that heap
+after every suite. A solver-dense file can opt into per-test process
 isolation; `node-lease.test.ts` does so because several independent bounded Z3
 queries were enough to exhaust one file process on GitHub. A manifest test
 keeps those selectors synchronized with every declared test. GitHub still runs
 independent capability-tier jobs in parallel, so this bounds memory without
 collapsing CI-level parallelism.
 
-The dedicated `z3` CI job forces the bundled WASM backend, continuously proving
-that native Z3 remains optional. The solver-heavy integration job installs and
-forces native Z3 so large telemetry proofs do not consume the WASM runtime's
-2 GiB memory ceiling. `test/z3-backend.test.ts` always exercises an
-absent-native fallback. The native/WASM common layer covers Hoare contracts,
-ownership evidence, temporal semantic/reachability lint, named-observation
+The dedicated `z3` job installs the checksum-pinned native Z3 4.16.0 release;
+solver-heavy integration jobs use the native Z3 package from Ubuntu. Both force
+the native backend. The bundled WASM backend remains available and its selection and fallback
+behavior are covered by `test/z3-backend.test.ts`. The native/WASM common layer
+covers Hoare contracts, ownership evidence, temporal semantic/reachability lint, named-observation
 counterexample decoding, property model enumeration, and typed-array
 obligations.
 
+On PR #73, the WASM `z3` job spent hours in `corsa-contract-composition.test.ts`.
+Locally the file passed 88 cases, then Z3 reported that its WASM memory could
+not grow beyond roughly 2 GiB; Vitest remained alive after the abort. The
+same 159-case file completed under native Z3. The job uses file isolation with
+native Z3 so a file can reuse its test process without retaining a WASM heap.
+Ubuntu's Z3 4.8.12 package rejected a contract-summary proof that passed with
+Z3 4.16.0, so the `z3` job pins the version and verifies it before running tests.
+
 The upstream Z3 WASM worker can still fail nondeterministically in an otherwise
-fresh process with `memory access out of bounds` from `z3-built.wasm`. The tier
-runner captures each explicitly isolated test and permits at most three process
-attempts only when a recognized crash signature is present. One Node Lease strengthening
+fresh process with `memory access out of bounds` from `z3-built.wasm` in local
+WASM runs. The tier runner captures each explicitly isolated test and permits
+at most three process attempts only when a recognized crash signature is
+present. One Node Lease strengthening
 query has also twice taken Z3 from its usual roughly one-second runtime to the
 60-second Vitest limit in a fresh process. That exact file, test name, and
 timeout signature receives the same one-process retry. Because synchronous Z3
@@ -217,7 +225,7 @@ heap-corruption, or memory-fault signatures are
 `reproducible-external-process-failure`. These classifications describe process
 execution only. A passed retry is never serialized as an ordinary clean pass.
 
-The WASM job separately runs the telemetry-routing conservation dogfood three
+The native Z3 job separately runs the telemetry-routing conservation dogfood three
 times in fresh processes. It requires identical digest sets and solver-call
 counts, caps the combined positive/negative-control run at 64 executions, and
 uploads per-run duration/RSS evidence. This is a bounded repeat regression for

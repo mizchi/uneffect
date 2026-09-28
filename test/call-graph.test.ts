@@ -159,7 +159,13 @@ describe("multi-file call graph and effect polymorphism", () => {
     try {
       const entry = join(directory, "entry.ts");
       writeFileSync(entry, `
-        export function index(values: readonly string[]) {
+        export function index(values: string[]) {
+          return values.reduce((table, value, at) => {
+            table.set(value, at)
+            return table
+          }, new Map<string, number>())
+        }
+        export function indexStructural(values: readonly string[]) {
           return values.reduce((table, value, at) => {
             table.set(value, at)
             return table
@@ -174,6 +180,11 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.diagnostics).toEqual([]);
       expect(result.summaries.find(({ functionName }) => functionName === "index"))
         .toMatchObject({ effects: [], evidence: "inferred" });
+      // The same body over a `readonly string[]` loses both halves of the claim: `ReadonlyArray` names no
+      // ECMA-262 object, so nothing says the `reduce` that runs supplies the fresh seed to its callback, and
+      // the accumulator's mutation escapes with the freshness that was resting on that contract.
+      expect(result.summaries.find(({ functionName }) => functionName === "indexStructural"))
+        .toMatchObject({ evidence: "unknown", effects: [{ kind: "mutate", region: "table" }] });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -223,6 +234,48 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find(({ functionName }) => functionName === "collect")?.unknownReasons ?? []).toEqual([]);
       expect(result.summaries.find(({ functionName }) => functionName === "collectLookalike")?.unknownReasons)
         .toContainEqual(expect.objectContaining({ code: "unknown-generator-consumption" }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("iterates a structural collection interface as unreviewed user code", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-structural-iterables-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        declare const set: Set<number>
+        declare const map: Map<string, number>
+        declare const readonlySet: ReadonlySet<number>
+        declare const readonlyMap: ReadonlyMap<string, number>
+        declare const tuple: [number, number]
+        declare const readonlyArray: readonly number[]
+        declare const readonlyTuple: readonly [number, number]
+        const literalBinding = [1, 2] as const
+        export function fromSet() { return [...set] }
+        export function fromMap() { return [...map] }
+        export function fromTuple() { return [...tuple] }
+        export function fromReadonlySet() { return [...readonlySet] }
+        export function fromReadonlyMap() { return [...readonlyMap] }
+        export function fromReadonlyArray() { return [...readonlyArray] }
+        export function fromReadonlyTuple() { return [...readonlyTuple] }
+        export function fromLiteral() { return [...[1, 2]] }
+        export function fromFrozenLiteral() { return [...([1, 2] as const)] }
+        export function fromLiteralBinding() { return [...literalBinding] }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      const reasons = (name: string) =>
+        result.summaries.find(({ functionName }) => functionName === name)?.unknownReasons ?? [];
+      // The mutable collections retain their reviewed contracts; a literal allocates a genuine Array.
+      for (const name of ["fromSet", "fromMap", "fromTuple", "fromLiteral", "fromFrozenLiteral", "fromLiteralBinding"]) expect(reasons(name)).toEqual([]);
+      // Each readonly collection is structural, so its iterator may be a body the program wrote.
+      for (const name of ["fromReadonlySet", "fromReadonlyMap", "fromReadonlyArray", "fromReadonlyTuple"]) {
+        expect(reasons(name)).toContainEqual(expect.objectContaining({ code: "unknown-generator-consumption" }));
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

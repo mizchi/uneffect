@@ -284,13 +284,26 @@ function domSurfaceFor(
  * declared by the standard library, so a same-named user method never selects a builtin contract. Dotted
  * globals such as `Math.random` are published under the `global` module and are consulted with their own key.
  */
+/**
+ * The catalog registers no member of `ReadonlyArray`, `ReadonlyMap` or `ReadonlySet`, because those name no
+ * ECMA-262 object and any declaration whose members match inhabits one. A receiver written as an array
+ * literal is the narrower, syntactic admission: the expression allocates a genuine Array, so the `Array#`
+ * contract describes the body that runs however the checker names the type — including the readonly tuple
+ * `as const` produces, which carries no type symbol of its own to name an owner with.
+ */
 function resolveEcmaScriptContract(
   corsa: CorsaCheckQueries,
   file: string,
   site: SyntaxSite,
   members: Map<string, BuiltinContract>,
   globals: Map<string, BuiltinContract>,
+  arrayLiteralReceivers: ReadonlySet<number>,
 ): BuiltinContract | undefined {
+  // The literal's own members are the ones the catalog registers, so this needs no type at the receiver —
+  // which an `as const` literal does not carry an owner symbol for anyway. This narrows on the literal
+  // written at the site only: unlike the TypeScript path, this one has no cross-file symbol resolution to
+  // follow a `const` binding back to its initializer with, so a named literal stays unknown here.
+  if (arrayLiteralReceivers.has(site.calleePosition)) return members.get(`Array#${site.name}`);
   if (site.receiverPosition === undefined || !corsa.getTypeAtPosition || !corsa.getSymbolOfType || !corsa.getPropertyOfType) {
     return undefined;
   }
@@ -695,7 +708,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           ?? (site.receiverPosition === undefined
             ? standardGlobalContract(site)
             : resolveDomContract(queries, fileName, site, domMethods, domGraph)
-              ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals));
+              ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers));
         if (contract) record(site, contract);
         else if (!recordClassCall(site)) recordUnclassified(site);
       }
@@ -706,7 +719,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           else if (!recordClassCall(site)) recordUnclassified(site);
         } else if (site.kind === "property") {
           const contract = resolveDomContract(queries, fileName, site, domMethods, domGraph)
-            ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals);
+            ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers);
           if (contract) record(site, contract);
           // A member the DOM library declares carries host semantics this check did not model, and an accessor
           // runs a body this path does not analyze; both are unknown, not proofs of effect freedom. A member the

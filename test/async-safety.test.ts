@@ -208,6 +208,50 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("transfers a mapped aggregate only from an Array or a literal receiver", () => {
+    const result = analyzeAsyncSafety("structural-map-ownership.ts", `
+      async function read(value: number) { return value }
+      async function fromArray(values: number[]) {
+        return Promise.all(values.map(async (value) => read(value)))
+      }
+      async function fromLiteral() {
+        return Promise.all([1, 2].map(async (value) => read(value)))
+      }
+      async function fromFrozenLiteral() {
+        return Promise.all(([1, 2] as const).map(async (value) => read(value)))
+      }
+      async function fromStructural(values: readonly number[]) {
+        return Promise.all(values.map(async (value) => read(value)))
+      }
+      async function fromStructuralTuple(values: readonly [number, number]) {
+        return Promise.all(values.map(async (value) => read(value)))
+      }
+      const constantLiteral = [1, 2] as const
+      async function fromConstantBinding() {
+        return Promise.all(constantLiteral.map(async (value) => read(value)))
+      }
+      declare const flag: boolean
+      const conditionalLiteral = flag ? [1, 2] : [3]
+      async function fromConditionalLiterals() {
+        return Promise.all(conditionalLiteral.map(async (value) => read(value)))
+      }
+      declare const opaque: readonly number[]
+      const aliasedOpaque = opaque
+      async function fromAliasedOpaque() {
+        return Promise.all(aliasedOpaque.map(async (value) => read(value)))
+      }
+    `);
+    // `ReadonlyArray` names no ECMA-262 object, so `map` on a receiver the checker types by it may be a
+    // body the program wrote, which need not return an array holding the promises the callback created.
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-callback-promise")).toEqual([
+      expect.objectContaining({ functionName: "fromStructural", message: expect.stringContaining("values.map") }),
+      expect.objectContaining({ functionName: "fromStructuralTuple", message: expect.stringContaining("values.map") }),
+      // A `const` binding fixes the receiver's identity, so an array-literal initializer still allocates the
+      // Array that runs `map`. An alias to an opaque `readonly number[]` proves nothing about its body.
+      expect.objectContaining({ functionName: "fromAliasedOpaque", message: expect.stringContaining("aliasedOpaque.map") }),
+    ]);
+  });
+
   it("discharges conditional ownership only when the call proves its guard", async () => {
     const result = analyzeAsyncSafety("conditional-ownership.ts", `
       declare const flag: boolean

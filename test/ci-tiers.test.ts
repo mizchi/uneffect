@@ -154,14 +154,21 @@ describe("CI test tier manifest", () => {
     }
   });
 
-  it("keeps native Z3 optional, tests WASM explicitly, and reserves native Z3 for solver-heavy integration", () => {
+  it("uses native Z3 in the solver-heavy CI jobs while retaining explicit WASM backend coverage", () => {
     const backend = readFileSync(join(process.cwd(), "src/backends/z3.ts"), "utf8");
     expect(backend).toContain('process.env.UNEFFECT_Z3_BACKEND');
     expect(backend).toContain('process.env.UNEFFECT_Z3_PATH');
     expect(backend).toContain('wasmDriver');
     expect(backend).toContain('attempt(drivers.wasm)');
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
-    expect(workflow).toContain("UNEFFECT_Z3_BACKEND: wasm");
+    const z3Job = workflow.match(/  z3:\n([\s\S]*?)\n  quint-simulation:/u)?.[1];
+    expect(z3Job).toContain("UNEFFECT_Z3_BACKEND: native");
+    expect(z3Job).toContain("UNEFFECT_TEST_ISOLATION: file");
+    expect(z3Job).toContain("Install checksum-pinned native Z3");
+    expect(z3Job).toContain("$Z3_SHA256");
+    expect(z3Job).toContain("z3 --version");
+    expect(z3Job).not.toContain("apt-get install --yes z3");
+    expect(workflow).toContain("Z3_VERSION: 4.16.0");
     expect(workflow).toContain("Install native Z3 for solver-heavy integration proofs");
     expect(workflow).toContain("apt-get install --yes z3");
     expect(workflow).toContain("matrix.integration-shard");
@@ -169,7 +176,7 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain(".uneffect/ci-timing");
   });
 
-  it("keeps solver-heavy test files serial to bound Z3 WASM memory", () => {
+  it("keeps solver-heavy test files serial to bound verifier memory", () => {
     const config = readFileSync(join(process.cwd(), "vitest.config.ts"), "utf8");
     expect(config).toContain('fileParallelism: requestedTier === "fast"');
     const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { scripts: Record<string, string> };
@@ -208,7 +215,7 @@ describe("CI test tier manifest", () => {
     expect(workflow.match(/name: verifier-retry-evidence-/gu)).toHaveLength(3);
   });
 
-  it("repeats the telemetry accounting proof in fresh WASM processes", () => {
+  it("repeats the telemetry accounting proof in fresh native Z3 processes", () => {
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
     const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
     const runner = readFileSync(join(process.cwd(), "ci/run-solver-stress.ts"), "utf8");
@@ -216,7 +223,8 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain("just formal-z3-stress");
     expect(workflow).toContain(".uneffect/solver-stress-evidence");
     expect(runner).toContain('const repetitions = boundedRepetitions(process.env.UNEFFECT_SOLVER_STRESS_REPETITIONS);');
-    expect(runner).toContain('UNEFFECT_Z3_BACKEND: "wasm"');
+    expect(runner).toContain('UNEFFECT_Z3_BACKEND: "native"');
+    expect(runner).toContain('backend: "native"');
     expect(runner).toContain("programDigests");
     expect(runner).toContain("solverExecutions > 64");
     expect(boundedRepetitions(undefined)).toBe(3);

@@ -2699,9 +2699,14 @@ describe("Uneffect dogfood", () => {
     expect(unknown.length).toBeGreaterThan(0);
     expect(unknown.every((summary) => (summary.unknownReasons?.length ?? 0) > 0)).toBe(true);
     const codes = [...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))].sort();
+    // Structural readonly collections can supply their own iterator. When a function consumes one, its
+    // iterator effect parameter may also need an explicit upper bound.
     expect(codes).toEqual([
+      "unbounded-iterator-effect-parameter",
       "unknown-callback-timing",
       "unknown-dependency",
+      "unknown-generator-consumption",
+      "unknown-generator-parameter",
       "unresolved-call",
     ]);
     // An unknown module effect propagates to every importer, so the transitive set churns with any import
@@ -2807,7 +2812,8 @@ describe("Uneffect dogfood", () => {
     expect(result.diagnostics).toEqual([]);
     expect(result.summaries.find((summary) => summary.fileName === fileName
       && summary.functionName === "solveBasicBlockFixedPoint")).toMatchObject({
-      evidence: "verified",
+      evidence: "unknown",
+      unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unknown-generator-consumption" })]),
       effects: expect.arrayContaining([
         expect.objectContaining({ kind: "capability", name: "InvokeUserCode" }),
         expect.objectContaining({ kind: "throw", errorType: "Error" }),
@@ -2846,18 +2852,28 @@ describe("Uneffect dogfood", () => {
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const pureNames = new Set([
-      "reportDiagnostic", "formatCheckEvidence", "scoreDiagnostic", "evaluateQuality", "formatQualityReport",
+      "reportDiagnostic", "formatCheckEvidence", "scoreDiagnostic", "formatQualityReport",
     ]);
     // `String.repeat` throws RangeError for a negative count, and every one of these renders an indent whose
     // width is computed from the source line rather than written down, so the throw is part of their contract.
-    const throwingNames = new Set(["fromTypeScriptDiagnostic", "formatDiagnostic", "formatDiagnostics"]);
-    const selectedNames = new Set([...pureNames, ...throwingNames]);
+    const throwingNames = new Set(["fromTypeScriptDiagnostic", "formatDiagnostic"]);
+    const selectedNames = new Set([...pureNames, ...throwingNames, "evaluateQuality", "formatDiagnostics"]);
     const selected = result.summaries.filter((summary) => fileNames.includes(summary.fileName ?? "") && selectedNames.has(summary.functionName));
     expect(selected).toHaveLength(selectedNames.size);
     expect(selected.map((summary) => ({ name: summary.functionName, evidence: summary.evidence, effects: summary.effects })))
       .toEqual(expect.arrayContaining([...pureNames].map((name) => ({ name, evidence: "verified", effects: [] }))));
+    // `evaluateQuality` iterates readonly diagnostic entries supplied by its caller.
+    expect(selected.find((summary) => summary.functionName === "evaluateQuality"))
+      .toMatchObject({ evidence: "unknown", effects: [], unknownReasons: expect.arrayContaining([
+        expect.objectContaining({ code: "unknown-generator-consumption" }),
+      ]) });
     for (const name of throwingNames) expect(selected.find((summary) => summary.functionName === name))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
+    // `formatDiagnostics` maps its `readonly CheckerDiagnostic[]` parameter. `ReadonlyArray` names no ECMA-262
+    // object, so no contract describes that `map` and the callback's timing is no longer claimed. The throw it
+    // already reaches survives; the proof does not, and a retained effect is not one.
+    expect(selected.find((summary) => summary.functionName === "formatDiagnostics"))
+      .toMatchObject({ evidence: "unknown", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
   }, Math.max(120_000, externalCheckerTestTimeoutMs()));
 
   it("rejects an unused Console allowance on diagnostic quality scoring", () => {
@@ -2876,11 +2892,16 @@ describe("Uneffect dogfood", () => {
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) => summary.fileName === fileName);
+    // `formatCommandHelp` maps its `readonly` option parameter, whose `map` no contract describes: a value
+    // the checker types by `ReadonlyArray` reaches a body any implementing declaration can supply.
     expect(selected.find((summary) => summary.functionName === "formatCommandHelp"))
-      .toMatchObject({ evidence: "verified", effects: [] });
+      .toMatchObject({ evidence: "unknown", effects: [] });
     for (const name of ["writeStdout", "writeStderr"]) expect(selected.find((summary) => summary.functionName === name))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
-    for (const name of ["parseCommandArgs", "singleFileArgument"]) expect(selected.find((summary) => summary.functionName === name))
+    expect(selected.find((summary) => summary.functionName === "parseCommandArgs"))
+      .toMatchObject({ evidence: "unknown", effects: [expect.objectContaining({ kind: "throw", errorType: "CliUsageError" })],
+        unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unbounded-iterator-effect-parameter" })]) });
+    expect(selected.find((summary) => summary.functionName === "singleFileArgument"))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "CliUsageError" })] });
 
     expect(analyzeEffects(fileName, source.replace(
@@ -2899,16 +2920,25 @@ describe("Uneffect dogfood", () => {
     expect(result.diagnostics).toEqual([]);
     const selected = result.summaries.filter((summary) =>
       files.some((file) => (summary.fileName ?? "").endsWith(file)));
-    for (const name of ["minimumMajor", "nodeCheck", "environmentSummary"]) {
+    for (const name of ["minimumMajor", "nodeCheck"]) {
       expect(selected.find((summary) => summary.functionName === name)).toMatchObject({ evidence: "verified", effects: [] });
     }
+    // `environmentSummary` filters a `readonly EnvironmentCheck[]`, and `ReadonlyArray#filter` names no
+    // ECMA-262 body, so the predicate it runs is no longer a reviewed synchronous callback.
+    expect(selected.find((summary) => summary.functionName === "environmentSummary"))
+      .toMatchObject({ evidence: "unknown", effects: [] });
     // `String.repeat` throws RangeError for a negative count, and the report's indent width is computed from
-    // the widest check rather than written down, so the throw belongs in the formatter's contract.
+    // the widest check rather than written down, so the throw belongs in the formatter's contract. Its
+    // `readonly EnvironmentCheck[]` parameter leaves the surrounding `map` unclaimed, so the throw is
+    // retained without the evidence that nothing else happens.
     expect(selected.find((summary) => summary.functionName === "formatEnvironmentReport"))
-      .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
+      .toMatchObject({ evidence: "unknown", effects: [expect.objectContaining({ kind: "throw", errorType: "RangeError" })] });
     expect(selected.find((summary) => summary.functionName === "readPackageManifest"))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
-    for (const name of ["commandVersion", "javaCheck"]) expect(selected.find((summary) => summary.functionName === name))
+    expect(selected.find((summary) => summary.functionName === "commandVersion"))
+      .toMatchObject({ evidence: "unknown", effects: [expect.objectContaining({ kind: "capability", name: "Run" })],
+        unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unbounded-iterator-effect-parameter" })]) });
+    expect(selected.find((summary) => summary.functionName === "javaCheck"))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Run" })] });
     expect(selected.find((summary) => summary.functionName === "resolvePackage"))
       .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "FsRead" })] });
@@ -2952,7 +2982,9 @@ describe("Uneffect dogfood", () => {
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const runCli = result.summaries.find((summary) => summary.fileName === fileName && summary.functionName === "runCli");
-    expect(runCli).toMatchObject({ evidence: "verified" });
+    expect(runCli).toMatchObject({ evidence: "unknown", unknownReasons: expect.arrayContaining([
+      expect.objectContaining({ code: "unbounded-iterator-effect-parameter" }),
+    ]) });
     expect(runCli?.effects.map((effect) => formatEffect(effect)).sort()).toEqual([
       "Env<\"UNEFFECT_DEBUG\">", "FsRead", "InvokeUserCode",
     ]);
@@ -2996,7 +3028,9 @@ describe("Uneffect dogfood", () => {
     const result = analyzeSourceTreeEffects();
     expect(result.diagnostics).toEqual([]);
     const run = result.summaries.find((summary) => summary.fileName === fileName && summary.functionName === "run");
-    expect(run).toMatchObject({ evidence: "verified" });
+    expect(run).toMatchObject({ evidence: "unknown", unknownReasons: expect.arrayContaining([
+      expect.objectContaining({ code: "unbounded-iterator-effect-parameter" }),
+    ]) });
     expect(run?.effects.map((effect) => formatEffect(effect))).toEqual([
       "FsRead",
       "InvokeUserCode",

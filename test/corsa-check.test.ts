@@ -317,6 +317,32 @@ describe("Corsa-native project check", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("applies the Array contract to a receiver written as an array literal", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-array-literal-"));
+    try {
+      const temporaryConfig = join(directory, "tsconfig.json");
+      writeFileSync(join(directory, "index.ts"), `
+        export function fromLiteral(): void { [1, 2].forEach((value) => { console.log(value); }); }
+        export function fromFrozenLiteral(): void { ([1, 2] as const).forEach((value) => { console.log(value); }); }
+        export function fromNestedLiteral(): void { (([1, 2] as const)!).forEach((value) => { console.log(value); }); }
+        export function fromStructural(values: readonly number[]): void { values.forEach((value) => { console.log(value); }); }
+      `);
+      writeFileSync(temporaryConfig, JSON.stringify({ compilerOptions: { strict: true, target: "ES2024", module: "NodeNext", lib: ["ES2024", "DOM"], types: [] }, files: ["index.ts"] }));
+      const checked = await checkCorsaProject({ configFile: temporaryConfig });
+      const evidence = Object.fromEntries(checked.summaries.map((item) => [item.functionName, item.evidence]));
+      const names = capabilityNames(checked);
+      // An array literal allocates a genuine Array whatever interface the checker names for its type, so the
+      // `Array#forEach` contract links the inline callback even where `as const` gives the expression a
+      // readonly tuple type, which carries no type symbol of its own to name an owner with.
+      for (const name of ["fromLiteral", "fromFrozenLiteral", "fromNestedLiteral"]) {
+        expect(evidence[name]).toBe("trusted");
+        expect(names[name]).toEqual(["Console"]);
+      }
+      // `readonly number[]` names a structural interface, so the body behind `forEach` is not the specification's.
+      expect(evidence.fromStructural).toBe("unknown");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("does not give a referenced builtin the effects of calling it", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-corsa-reference-"));
     try {

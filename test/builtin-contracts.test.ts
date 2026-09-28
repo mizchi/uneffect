@@ -17,10 +17,10 @@ describe("builtin semantic overlays", () => {
     expect(builtinContractRegistry.contracts).toHaveLength(contracts.length);
     expect(builtinSemanticCatalog.definitions).toEqual(expect.arrayContaining([
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#map" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "result", refinement: { kind: "fresh" } }]) }) }),
-      ...["Array#concat", "ReadonlyArray#concat"].map((exportName) => expect.objectContaining({
-        platform: "javascript", symbol: { module: "lib.es", export: exportName },
+      expect.objectContaining({
+        platform: "javascript", symbol: { module: "lib.es", export: "Array#concat" },
         semantics: expect.objectContaining({ primitives: [{ kind: "result", refinement: { kind: "fresh" } }] }),
-      })),
+      }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Array#sort" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([{ kind: "mutate", target: { kind: "receiver" } }, expect.objectContaining({ kind: "callback", timing: "sync" })]) }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "Uint8Array#forEach" }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync", thisArgument: { kind: "argument", index: 1, optional: true } })] }) }),
       expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: "BigInt64Array#sort" }, semantics: expect.objectContaining({ primitives: expect.arrayContaining([expect.objectContaining({ kind: "callback", timing: "sync" }), { kind: "mutate", target: { kind: "receiver" } }]) }) }),
@@ -78,7 +78,7 @@ describe("builtin semantic overlays", () => {
       })),
       expect.objectContaining({ platform: "javascript", symbol: { module: "global", export: "Math.random" }, semantics: expect.objectContaining({ primitives: [{ kind: "effect", capability: "Random" }] }) }),
       expect.objectContaining({ platform: "dom", symbol: { module: "global", export: "structuredClone" }, semantics: expect.objectContaining({ primitives: [{ kind: "clone", target: { kind: "argument", index: 0 } }, expect.objectContaining({ kind: "transfer", optional: true }), { kind: "throw", error: "DOMException" }] }) }),
-      ...["Map#forEach", "ReadonlyMap#forEach", "Set#forEach", "ReadonlySet#forEach"].map((exportName) =>
+      ...["Map#forEach", "Set#forEach"].map((exportName) =>
         expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: exportName }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "callback", timing: "sync", cardinality: "0..n" })] }) })),
       ...["WeakMap#set", "WeakMap#delete", "WeakSet#add", "WeakSet#delete"].map((exportName) =>
         expect.objectContaining({ platform: "javascript", symbol: { module: "lib.es", export: exportName }, semantics: expect.objectContaining({ primitives: [expect.objectContaining({ kind: "mutate", target: { kind: "receiver" } })] }) })),
@@ -143,6 +143,17 @@ describe("builtin semantic overlays", () => {
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "mutate", target: { kind: "argument", index: -1 } }] },
     }] })).toThrow("non-negative integer");
   });
+  it("registers no member of a structural collection interface", () => {
+    // `ReadonlyArray`, `ReadonlyMap` and `ReadonlySet` name no ECMA-262 object. They are structural
+    // TypeScript interfaces, so `class Index<T> implements ReadonlyMap<string, T>` inhabits one with an
+    // arbitrary `forEach`, and a contract keyed on the owner would describe a body the program wrote.
+    const structural = ["ReadonlyArray", "ReadonlyMap", "ReadonlySet"];
+    expect(builtinSemanticCatalog.definitions.filter((definition) =>
+      structural.includes(definition.symbol.export.split("#")[0]!))).toEqual([]);
+    expect(builtinContractRegistry.contracts.filter((contract) =>
+      structural.includes(contract.symbol.export.split("#")[0]!))).toEqual([]);
+  });
+
   it("binds reviewed module initialization to the observed runtime version", () => {
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.22.1" }))
       .toMatchObject({ module: "effect", runtime: { kind: "package", version: "3.22.1" } });

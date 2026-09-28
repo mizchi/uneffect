@@ -498,57 +498,66 @@ function browserPlatformDefinitions(): ReviewedBuiltinSemantic[] {
 export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
   schema: "uneffect-builtin-semantics/v1",
   definitions: [
+    /**
+     * No owner below is `ReadonlyArray`, `ReadonlyMap` or `ReadonlySet`. ECMA-262 defines no such object:
+     * they are structural TypeScript interfaces with no constructor and no prototype, so any declaration
+     * whose members match inhabits one — `class Index<T> implements ReadonlyMap<string, T>` type-checks with
+     * an arbitrary `forEach`. A contract keyed on one of those owners would therefore describe a body the
+     * program wrote, and none of the specification's semantics survives it: not the synchronous callback, not
+     * the freshly allocated result, not the absence of a throw. What remains true — the member reaches user
+     * code and may complete abruptly — is what the absence of a contract already reports, as a named
+     * `unresolved-call`. A receiver written as an array literal is a separate, syntactic admission: it
+     * allocates a genuine Array, so `Array#` applies to it whatever interface its declared type names.
+     */
     ...(["map", "flatMap", "filter", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex"] as const)
-      .flatMap((name) => ["Array", "ReadonlyArray"].map((owner) => reviewed("javascript", {
-        symbol: { module: "lib.es", export: `${owner}#${name}` },
+      .map((name) => reviewed("javascript", {
+        symbol: { module: "lib.es", export: `Array#${name}` },
         semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [
           ...inlineCallbackSemantics(0, false,
             [runtimeValue("array-element"), runtimeValue("array-index"), receiverValue], optionalArgument(1)).primitives,
           ...((name === "map" || name === "flatMap" || name === "filter")
             ? [{ kind: "result" as const, refinement: { kind: "fresh" as const } }] : []),
         ] },
-        trustReason: `ECMAScript ${owner}.${name} invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
-      }))),
-    ...(["reduce", "reduceRight"] as const).flatMap((name) => ["Array", "ReadonlyArray"].map((owner) => reviewed("javascript", {
-      symbol: { module: "lib.es", export: `${owner}#${name}` },
+        trustReason: `ECMAScript Array.${name} invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
+      })),
+    ...(["reduce", "reduceRight"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: `Array#${name}` },
       semantics: inlineCallbackSemantics(0, false,
         [runtimeValue("array-accumulator"), runtimeValue("array-element"), runtimeValue("array-index"), receiverValue]),
-      trustReason: `ECMAScript ${owner}.${name} invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
-    }))),
-    ...(["Map", "ReadonlyMap", "Set", "ReadonlySet"] as const).map((owner) => reviewed("javascript", {
+      trustReason: `ECMAScript Array.${name} invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
+    })),
+    ...(["Map", "Set"] as const).map((owner) => reviewed("javascript", {
       symbol: { module: "lib.es", export: `${owner}#forEach` },
       semantics: inlineCallbackSemantics(0, false,
         [runtimeValue(`${owner}-value`), runtimeValue(`${owner}-key`), receiverValue], optionalArgument(1)),
       trustReason: `ECMAScript ${owner}.forEach invokes its callback synchronously`, trustOwner: "@mizchi/uneffect",
     })),
-    ...(["Array", "ReadonlyArray"] as const).flatMap((owner) => [
-      reviewed("javascript", {
-        symbol: { module: "lib.es", export: `${owner}#concat` },
-        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
-        trustReason: `ECMAScript ${owner}.concat returns a fresh Array; explicit spreadability and indexed accessors are inspected separately`,
-        trustOwner: "@mizchi/uneffect",
-      }),
-      reviewed("javascript", {
-        symbol: { module: "lib.es", export: `${owner}#slice` },
-        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
-        trustReason: `ECMAScript ${owner}.slice returns a fresh Array`, trustOwner: "@mizchi/uneffect",
-      }),
-      reviewed("javascript", {
-        symbol: { module: "lib.es", export: `${owner}#join` },
-        trustReason: `ECMAScript ${owner}.join has no callback or host authority`, trustOwner: "@mizchi/uneffect",
-      }),
-      ...(["flat", "toReversed", "toSpliced", "with"] as const).map((name) => reviewed("javascript", {
-        symbol: { module: "lib.es", export: `${owner}#${name}` },
-        semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
-        trustReason: `ECMAScript ${owner}.${name} returns a fresh Array`, trustOwner: "@mizchi/uneffect",
-      })),
-    ]),
-    ...(["Array", "ReadonlyArray"] as const).map((owner) => reviewed("javascript", {
-      symbol: { module: "lib.es", export: `${owner}#toSorted` },
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "Array#concat" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+      trustReason: "ECMAScript Array.concat returns a fresh Array; explicit spreadability and indexed accessors are inspected separately",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "Array#slice" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+      trustReason: "ECMAScript Array.slice returns a fresh Array", trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "Array#join" },
+      trustReason: "ECMAScript Array.join has no callback or host authority", trustOwner: "@mizchi/uneffect",
+    }),
+    ...(["flat", "toReversed", "toSpliced", "with"] as const).map((name) => reviewed("javascript", {
+      symbol: { module: "lib.es", export: `Array#${name}` },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+      trustReason: `ECMAScript Array.${name} returns a fresh Array`, trustOwner: "@mizchi/uneffect",
+    })),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "Array#toSorted" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [...inlineCallbackSemantics(0, true,
         [runtimeValue("sort-left"), runtimeValue("sort-right")]).primitives, { kind: "result", refinement: { kind: "fresh" } }] },
-      trustReason: `ECMAScript ${owner}.toSorted returns a fresh Array and invokes its optional comparator synchronously`, trustOwner: "@mizchi/uneffect",
-    })),
+      trustReason: "ECMAScript Array.toSorted returns a fresh Array and invokes its optional comparator synchronously", trustOwner: "@mizchi/uneffect",
+    }),
     reviewed("javascript", {
       symbol: { module: "lib.es", export: "Array#sort" },
       semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [

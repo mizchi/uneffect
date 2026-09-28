@@ -60,6 +60,12 @@ export interface CorsaSourceFacts {
   /** Exclusion span keys whose literal-typed key is republished in `constantKeySites`. */
   readonly constantKeyExclusions: ReadonlySet<string>;
   readonly constantKeySites: readonly SyntaxSite[];
+  /**
+   * Property-token offsets of members whose receiver is written as an array literal, under the wrappers that
+   * preserve its identity. Such a receiver allocates a genuine Array, so the `Array#` contract describes the
+   * body that runs however the checker names its type — including the readonly tuple `as const` produces.
+   */
+  readonly arrayLiteralReceivers: ReadonlySet<number>;
   /** `${start}:${end}` keys of member expressions written but not read, so the site selects the write semantics. */
   readonly assignmentTargets: ReadonlySet<string>;
   /** `${start}:${end}` keys of member expressions both read and written, such as a compound assignment. */
@@ -679,6 +685,7 @@ export function analyzeCorsaSourceFacts(
   const program = parsed.program as unknown as EstreeNode;
   const parents = new Map<EstreeNode, EstreeNode>();
   const computedMembers: EstreeNode[] = [];
+  const arrayLiteralReceivers = new Set<number>();
   const assignmentTargets = new Set<string>();
   const readWriteTargets = new Set<string>();
   /** Every member expression a binding pattern or loop header writes, at any nesting depth. */
@@ -725,6 +732,10 @@ export function analyzeCorsaSourceFacts(
     }
     for (const child of children(node)) parents.set(child, node);
     if (node.type === "MemberExpression" && node.computed === true && isNode(node.object) && isNode(node.property)) computedMembers.push(node);
+    if (node.type === "MemberExpression" && node.computed !== true && isNode(node.object) && isNode(node.property)
+      && unwrap(node.object).type === "ArrayExpression" && typeof node.property.start === "number") {
+      arrayLiteralReceivers.add(node.property.start);
+    }
     // A plain assignment and a binding-pattern or loop target only write; a compound assignment and an update
     // read the member before writing it, so both halves of the contract apply.
     if (node.type === "AssignmentExpression" && isNode(node.left)) {
@@ -895,7 +906,7 @@ export function analyzeCorsaSourceFacts(
       ],
     });
   }
-  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, assignmentTargets, readWriteTargets, inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
+  return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, inlineFunctionArguments, callArgumentIdentifiers, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {
