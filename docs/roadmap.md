@@ -31,7 +31,7 @@ The bounded release queue is:
    optional-dependency probes.
 4. [#62](https://github.com/mizchi/uneffect/issues/62) is complete: the supported
    boundary is reconciled, exact-tree local and remote gates are Green, and
-   npm records `@mizchi/uneffect@0.3.0` as `latest`.
+   npm recorded `@mizchi/uneffect@0.3.0` as `latest` at publication.
 
 General CFG, alias, Corsa parity, host scheduling, and DSL breadth remain in the
 phase roadmap and are not 0.3.0 release blockers.

@@ -1,6 +1,6 @@
 # Stability and safe adoption
 
-Uneffect 0.3.0 is an experimental release. The documented 0.3 public API
+Uneffect 0.5.0 is an experimental release. The documented 0.3 public API
 snapshot, v1 authoring subset, and versioned artifact schemas retain their
 compatibility boundaries; experimental entrypoints and semantics outside the
 supported fragment may change before 1.0. A supported semantic claim may still

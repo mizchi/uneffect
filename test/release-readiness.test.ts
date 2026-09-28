@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { uneffectVersion } from "../src/evidence/evidence.js";
 import { effectBaselineToolVersion } from "../src/effects/effect-baseline.js";
 
-describe("0.3.0 release metadata", () => {
+describe("0.5.0 release metadata", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
     name: string; version: string; main?: string; types?: string;
     exports: Record<string, unknown>; files: string[]; publishConfig: { access: string; provenance?: boolean };
@@ -17,7 +17,7 @@ describe("0.3.0 release metadata", () => {
 
   it("keeps package and evidence versions synchronized", () => {
     expect(manifest.name).toBe("@mizchi/uneffect");
-    expect(manifest.version).toBe("0.3.0");
+    expect(manifest.version).toBe("0.5.0");
     expect(uneffectVersion).toBe(manifest.version);
     expect(effectBaselineToolVersion).toBe(manifest.version);
   });
@@ -134,11 +134,13 @@ describe("0.3.0 release metadata", () => {
     expect(changelog).toContain("Promoted the high-level temporal/Promise/resource facade contract");
   });
 
-  it("documents the experimental 0.3 release without claiming general verification", () => {
+  it("documents the experimental 0.5 release without claiming general verification", () => {
     const changelog = readFileSync("CHANGELOG.md", "utf8"), readme = readFileSync("README.md", "utf8");
     const overview = readFileSync("docs/overview.md", "utf8");
     expect(changelog).toContain("## 0.3.0");
-    expect(readme).toContain("0.3 is an experimental release");
+    expect(changelog).toContain("## 0.4.0");
+    expect(changelog).toContain("## 0.5.0");
+    expect(readme).toContain("0.5 is an experimental release");
     expect(readme).toContain("not a verifier for all of JavaScript");
     expect(readme).toContain("[Public API and compatibility](./docs/public-api.md)");
     expect(readme).toContain("[Feature overview](./docs/overview.md)");
@@ -150,10 +152,11 @@ describe("0.3.0 release metadata", () => {
     expect(overview).toContain("Unsupported or unknown");
   });
 
-  it("publishes 0.3 through a version-guarded OIDC workflow", () => {
+  it("publishes 0.5 through a version-guarded OIDC workflow", () => {
     const release = readFileSync(".github/workflows/release-please.yml", "utf8");
     const publish = readFileSync(".github/workflows/publish.yml", "utf8");
     const config = JSON.parse(readFileSync("release-please-config.json", "utf8")) as {
+      "include-component-in-tag": boolean;
       packages: Record<string, { "extra-files": Array<{ path: string }> }>;
     };
     const releaseState = JSON.parse(readFileSync(".release-please-manifest.json", "utf8")) as Record<string, string>;
@@ -164,6 +167,7 @@ describe("0.3.0 release metadata", () => {
     expect(publish).toContain("node ci/verify-release-tag.mjs");
     expect(publish).toContain("npm publish");
     expect(publish).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/u);
+    expect(config["include-component-in-tag"]).toBe(false);
     expect(config.packages["."]?.["extra-files"].map(({ path }) => path)).toEqual(expect.arrayContaining([
       "src/evidence/evidence.ts", "src/effects/effect-baseline.ts",
     ]));
