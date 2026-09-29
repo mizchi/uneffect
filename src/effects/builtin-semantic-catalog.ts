@@ -544,6 +544,10 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: "ECMAScript Array.slice returns a fresh Array", trustOwner: "@mizchi/uneffect",
     }),
     reviewed("javascript", {
+      symbol: { module: "lib.es", export: "Array#at" },
+      trustReason: "ECMAScript Array.at reads an indexed element without publishing the array", trustOwner: "@mizchi/uneffect",
+    }),
+    reviewed("javascript", {
       symbol: { module: "lib.es", export: "Array#join" },
       trustReason: "ECMAScript Array.join has no callback or host authority", trustOwner: "@mizchi/uneffect",
     }),

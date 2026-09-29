@@ -22,6 +22,8 @@ All notable changes to Uneffect are documented in this file.
 ### Fixed
 
 - Preserve the published syntax facts v1 shape while checking literal `split`.
+- Keep recursive mutation-region propagation bounded and recognize non-escaping
+  array reads and copies during local construction.
 
 ## 0.5.0
 

@@ -335,6 +335,15 @@ function regionRoot(region: string): string {
   return /^[A-Za-z_$][\w$]*/u.exec(region)?.[0] ?? region;
 }
 
+/** A recursive call can keep appending the same member path; the root conservatively covers deeper writes. */
+function boundedMutationRegion(effect: Effect): Effect {
+  if (effect.kind !== "mutate") return effect;
+  const root = regionRoot(effect.region);
+  if (root === effect.region) return effect;
+  const depth = (effect.region.slice(root.length).match(/\.[A-Za-z_$][\w$]*|\[[^\]]*\]/gu) ?? []).length;
+  return depth > 4 ? { kind: "mutate", region: root } : effect;
+}
+
 const localArrayMethods = new Set(["copyWithin", "fill", "pop", "push", "reverse", "shift", "sort", "splice", "unshift"]);
 
 function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecker, adapter: FrontendSymbolAdapter): Set<string> {
@@ -343,36 +352,6 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
     ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)
       || ts.isNonNullExpression(expression) || ts.isSatisfiesExpression(expression)
       ? unwrapInitializer(expression.expression) : expression;
-  const primitiveOnly = (type: ts.Type): boolean => {
-    if (type.isUnionOrIntersection()) return type.types.every(primitiveOnly);
-    return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Object
-      | ts.TypeFlags.TypeParameter | ts.TypeFlags.NonPrimitive)) === 0;
-  };
-  const primitiveArray = (type: ts.Type): boolean => {
-    const element = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
-    return element !== undefined && primitiveOnly(element);
-  };
-  const freshArrayLiteral = (literal: ts.ArrayLiteralExpression): boolean => literal.elements.every((element) =>
-    ts.isSpreadElement(element) ? primitiveArray(checker.getTypeAtLocation(element.expression))
-      : ts.isOmittedExpression(element) || primitiveOnly(checker.getTypeAtLocation(element)));
-  const freshObjectValue = (expression: ts.Expression): boolean => {
-    const value = unwrapInitializer(expression);
-    if (primitiveOnly(checker.getTypeAtLocation(value))) return true;
-    if (!ts.isCallExpression(value) || !ts.isPropertyAccessExpression(value.expression)) return false;
-    const receiver = unwrapInitializer(value.expression.expression);
-    if (!ts.isArrayLiteralExpression(receiver)) return false;
-    const method = checker.getSymbolAtLocation(value.expression.name);
-    return value.arguments.length === 0
-      && value.expression.name.text === "values"
-      && freshArrayLiteral(receiver)
-      && (method?.declarations ?? []).some((declaration) =>
-        ts.isMethodSignature(declaration) && ts.isInterfaceDeclaration(declaration.parent)
-        && declaration.parent.name.text === "Array"
-        && declaration.getSourceFile().isDeclarationFile
-        && /[/\\]lib\.es\d+\.iterable\.d\.ts$/u.test(declaration.getSourceFile().fileName));
-  };
-  const freshObjectLiteral = (literal: ts.ObjectLiteralExpression): boolean => literal.properties.every((property) =>
-    ts.isPropertyAssignment(property) && freshObjectValue(property.initializer));
   type Candidate = { name: string; kind: "array" | "object"; escapes: number[]; mutations: number[]; unsafe: boolean };
   const candidates = new Map<ts.Symbol, Candidate>();
   const visit = (node: ts.Node): void => {
@@ -382,16 +361,17 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
       const isArray = checker.isArrayType(type) || checker.isTupleType(type);
       const isObject = (type.flags & ts.TypeFlags.Object) !== 0;
       const initializer = node.initializer && unwrapInitializer(node.initializer);
+      if (!initializer || !ts.isIdentifier(initializer)) names.add(node.name.text);
       if (isArray || (isObject && initializer !== undefined && ts.isObjectLiteralExpression(initializer))) {
-        const fresh = initializer && (ts.isArrayLiteralExpression(initializer) && freshArrayLiteral(initializer)
-          || ts.isObjectLiteralExpression(initializer) && freshObjectLiteral(initializer)
-          || isArray && primitiveArray(type) && ts.isCallExpression(initializer) && adapter.resolveCall(initializer)?.result?.kind === "fresh"
-          || isArray && primitiveArray(type) && ts.isNewExpression(initializer) && adapter.resolveConstruct(initializer)?.result?.kind === "fresh");
+        const fresh = initializer && (ts.isArrayLiteralExpression(initializer)
+          || ts.isObjectLiteralExpression(initializer)
+          || isArray && ts.isCallExpression(initializer) && adapter.resolveCall(initializer)?.result?.kind === "fresh"
+          || isArray && ts.isNewExpression(initializer) && adapter.resolveConstruct(initializer)?.result?.kind === "fresh");
         if (fresh && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
           const symbol = checker.getSymbolAtLocation(node.name);
           if (symbol) candidates.set(symbol, { name: node.name.text, kind: isArray ? "array" : "object", escapes: [], mutations: [], unsafe: false });
         }
-      } else if (!(isObject && initializer && ts.isIdentifier(initializer))) names.add(node.name.text);
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -416,8 +396,7 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
     ts.forEachChild(node, collectAliases);
   };
   if (scope.body) collectAliases(scope.body);
-  const classify = (node: ts.Node, nested = false, repeated = false): void => {
-    const insideNested = nested || (node !== scope && ts.isFunctionLike(node));
+  const classify = (node: ts.Node, repeated = false): void => {
     const insideRepeated = repeated || ts.isIterationStatement(node, false);
     if (ts.isIdentifier(node)) {
       const symbol = checker.getSymbolAtLocation(node);
@@ -428,20 +407,28 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
         const parent = node.parent;
         const access = (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent)) && parent.expression === node ? parent : undefined;
         const call = access && ts.isCallExpression(access.parent) && access.parent.expression === access ? access.parent : undefined;
-        if (insideNested) candidate.unsafe = true;
-        else if (access && (ts.isPropertyAccessExpression(access.parent) || ts.isElementAccessExpression(access.parent))) {
+        const copiedIntoSet = ts.isNewExpression(parent) && parent.arguments?.[0] === node
+          && adapter.resolveConstruct(parent)?.symbol.export === "Set";
+        let outer: ts.Node | undefined = access?.parent;
+        while (outer && (ts.isParenthesizedExpression(outer) || ts.isNonNullExpression(outer)
+          || ts.isAsExpression(outer) || ts.isTypeAssertionExpression(outer))) outer = outer.parent;
+        if (access && outer && (ts.isPropertyAccessExpression(outer) || ts.isElementAccessExpression(outer))) {
           // A write through a child may affect a borrowed value, even when the root is fresh.
           candidate.unsafe = true;
         } else if (candidate.kind === "array" && call && access && ts.isPropertyAccessExpression(access) && localArrayMethods.has(access.name.text)
           && adapter.resolveCall(call)?.evidence === "trusted") {
           candidate.mutations.push(node.getStart());
-          const stored = access.name.text === "push" || access.name.text === "unshift" ? call.arguments
-            : access.name.text === "splice" ? call.arguments.slice(2)
-            : access.name.text === "fill" ? call.arguments.slice(0, 1) : [];
-          if (stored.some((argument) => !primitiveOnly(checker.getTypeAtLocation(argument)))) candidate.unsafe = true;
           if (["copyWithin", "fill", "reverse", "sort"].includes(access.name.text)
             && !ts.isExpressionStatement(call.parent)) candidate.escapes.push(call.getStart());
-        } else if (access && !call && !(ts.isBinaryExpression(access.parent) && access.parent.left === access)
+        } else if (candidate.kind === "array" && call && access && ts.isPropertyAccessExpression(access)
+          && adapter.resolveCall(call)?.evidence === "trusted"
+          && (access.name.text === "at" || (access.name.text === "some"
+            && ts.isArrowFunction(call.arguments[0]) && call.arguments[0].parameters.length < 3))) {
+          // These calls inspect the receiver without publishing its identity.
+        } else if (candidate.kind === "array" && copiedIntoSet) {
+          // The built-in Set constructor consumes the array before returning its own collection.
+        } else if (access && !call && !(ts.isBinaryExpression(access.parent) && access.parent.left === access
+          && isAssignmentOperator(access.parent.operatorToken.kind))
           && !((ts.isPrefixUnaryExpression(access.parent) || ts.isPostfixUnaryExpression(access.parent)) && access.parent.operand === access)) {
           // Reading a member does not publish the container reference.
         } else if (access && ((ts.isBinaryExpression(access.parent) && access.parent.left === access
@@ -456,11 +443,11 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
         }
       }
     }
-    ts.forEachChild(node, (child) => classify(child, insideNested, insideRepeated));
+    ts.forEachChild(node, (child) => classify(child, insideRepeated));
   };
   if (scope.body) classify(scope.body);
   for (const candidate of candidates.values()) {
-    if (!candidate.unsafe && !candidate.mutations.some((position) => candidate.escapes.some((escape) => escape < position))) names.add(candidate.name);
+    if (candidate.unsafe || candidate.mutations.some((position) => candidate.escapes.some((escape) => escape < position))) names.delete(candidate.name);
   }
   return names;
 }
@@ -2326,7 +2313,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           return raw;
         })() : raw;
         if (effect === undefined) continue;
-        const closedEffect = closeCapabilityScope(effect, declared.get(edge.caller) ?? []);
+        const closedEffect = boundedMutationRegion(closeCapabilityScope(effect, declared.get(edge.caller) ?? []));
         if (!observableMutation(closedEffect, localsById.get(edge.caller) ?? new Set())) continue;
         const own = inferred.get(edge.caller)!, key = formatEffect(closedEffect);
         if (!own.some((item) => formatEffect(item) === key)) {

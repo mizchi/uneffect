@@ -528,6 +528,21 @@ describe("effect checker", () => {
     expect(analyzeEffects("array-build.ts", source)).toEqual([]);
   });
 
+  it("does not publish a local array through length, at, some, or a Set copy", () => {
+    const source = `
+      /* uneffect:effect none */
+      function build(): readonly string[] {
+        const values: string[] = ["first"]
+        const seen = new Set(values)
+        if (values.length > 0 && values.at(-1) === "first" && values.some((value) => seen.has(value))) {
+          values.push("second")
+        }
+        return values
+      }
+    `;
+    expect(analyzeEffects("array-read-build.ts", source)).toEqual([]);
+  });
+
   it("does not hide mutation through a local alias of an input array", () => {
     const source = `
       /* uneffect:effect none */
