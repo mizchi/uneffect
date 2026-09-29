@@ -11,6 +11,22 @@ const bodyOperators = new Map([
   ["+", "add"], ["-", "sub"], ["*", "mul"], ["/", "div"], ["%", "mod"], ["<", "lt"], ["<=", "lte"], [">", "gt"], [">=", "gte"],
 ]);
 
+/** SMT `mod` is nonnegative for a positive divisor; JavaScript `%` keeps the dividend's sign. */
+export function nativeSignedRemainder(left: LogicExpression, right: LogicExpression): LogicExpression {
+  const signed = right.kind === "integer" ? BigInt(right.value)
+    : right.kind === "unary" && right.operator === "negate" && right.operand.kind === "integer"
+      ? -BigInt(right.operand.value) : undefined;
+  if (signed === undefined || signed === 0n || signed < -maximumSafe || signed > maximumSafe) {
+    throw new Error("native remainder requires a direct nonzero safe-integer literal divisor");
+  }
+  const divisor: LogicExpression = { kind: "integer", value: String(signed < 0n ? -signed : signed) };
+  const zero: LogicExpression = { kind: "integer", value: "0" };
+  return { kind: "conditional", test: { kind: "binary", operator: "gte", left, right: zero },
+    consequent: { kind: "binary", operator: "mod", left, right: divisor },
+    alternate: { kind: "unary", operator: "negate", operand: { kind: "binary", operator: "mod",
+      left: { kind: "unary", operator: "negate", operand: left }, right: divisor } } };
+}
+
 /** Bounds use BigInt so the check itself cannot round an overflowing intermediate. */
 export function nativeInteger(expression: LogicExpression, minimum: bigint, maximum = minimum): NativeScalar {
   if (minimum < -maximumSafe || maximum > maximumSafe || minimum > maximum) {
@@ -80,16 +96,21 @@ export function checkNativeScalar(expression: LogicExpression, variables: Readon
         return integer(products.reduce((a, b) => a < b ? a : b), products.reduce((a, b) => a > b ? a : b));
       }
       if (expression.operator === "div" || expression.operator === "mod") {
-        const values = left.values ?? (left.minimum === left.maximum ? [left.minimum] : undefined);
+        const boundedRange = expression.operator === "mod" && left.maximum - left.minimum <= 15n
+          ? Array.from({ length: Number(left.maximum - left.minimum + 1n) }, (_, index) => left.minimum + BigInt(index)) : undefined;
+        const values = left.values ?? (expression.operator === "mod" ? boundedRange
+          : left.minimum === left.maximum ? [left.minimum] : undefined);
         const divisors = right.values ?? (right.minimum === right.maximum ? [right.minimum] : undefined);
         if (!values || !divisors) throw new Error("native division requires finite domains");
-        if (expression.operator === "mod" && values.length !== 1) throw new Error("native remainder requires a singleton numerator");
         if (divisors.some(value => value === 0n)) throw new Error("native division by zero");
         if (expression.operator === "div" && values.some(value => divisors.some(divisor => value % divisor !== 0n))) {
           throw new Error("native division requires an exact integer result");
         }
         const results = values.flatMap(value => divisors.map(divisor => expression.operator === "div" ? value / divisor : value % divisor));
-        return integer(results.reduce((a, b) => a < b ? a : b), results.reduce((a, b) => a > b ? a : b));
+        const minimum = results.reduce((a, b) => a < b ? a : b), maximum = results.reduce((a, b) => a > b ? a : b);
+        if (expression.operator === "div") return integer(minimum, maximum);
+        integer(minimum, maximum);
+        return { kind: "number", expression, minimum, maximum, values: [...new Set(results)] };
       }
     }
   }
@@ -127,7 +148,7 @@ export function nativeBodyExpression(node: Expression, resolveCall?: (node: Extr
         : operator === "or" ? { kind: "unary", operator: "not", operand: left } : undefined;
       const right = nativeBodyExpression(node.right, guard && resolveCall
         ? (call, conditions) => resolveCall(call, [guard, ...conditions]) : resolveCall);
-      return { kind: "binary", operator, left, right };
+      return operator === "mod" ? nativeSignedRemainder(left, right) : { kind: "binary", operator, left, right };
     }
   }
   throw new Error(`native contract body does not support ${node.type}`);

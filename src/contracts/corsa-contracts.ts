@@ -13,7 +13,7 @@ import { solveContractObligations } from "./contract-solver.js";
 import { createNativeContractCalls, substituteLogic, constantBoolean, assertNativeCallExpressionBudget, nativeCallExpansionExpressions, substituteNativeCallExpansion, type NativeCallExpansion } from "./native-contract-calls.js";
 import { lowerNativeReturnPaths, nativeReturnConditional } from "./corsa-contract-flow.js";
 import { narrowNativeRanges } from "./native-ranges.js";
-import { checkNativeScalar, nativeBodyExpression, nativeInteger, hasNumericExpression, type NativeScalar } from "./native-scalars.js";
+import { checkNativeScalar, nativeBodyExpression, nativeInteger, nativeSignedRemainder, hasNumericExpression, type NativeScalar } from "./native-scalars.js";
 import type { InvariantObligation, LogicExpression, ObligationVariable } from "./logic-contracts.js";
 import type { ContractVerificationResult, VerificationArtifact } from "./verification-contracts.js";
 
@@ -122,7 +122,8 @@ function lowerBody(frontend: CorsaCallableFrontend, source: OxcSource, fn: OxcFu
         const assignment = statement.expression, name = statement.expression.left.name;
         if (!bindings.has(name) && !parameters.has(name)) throw new Error("native assignment requires a local binding");
         const right = evaluate(assignment.right, [], bindings).expression;
-        const value: LogicExpression = assignment.operator === "=" ? right : { kind: "binary",
+        const value: LogicExpression = assignment.operator === "=" ? right : assignment.operator === "%="
+          ? nativeSignedRemainder(bindings.get(name) ?? { kind: "variable", name }, right) : { kind: "binary",
           operator: ({ "+=": "add", "-=": "sub", "*=": "mul", "/=": "div", "%=": "mod" } as Record<string, string>)[assignment.operator]!,
           left: bindings.get(name) ?? { kind: "variable", name }, right };
         bindings.set(name, checkNativeScalar(value, requiredParameters).expression);

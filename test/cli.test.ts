@@ -8,7 +8,7 @@ import { cliVersion, formatCliHelp, loadCliCommands, runCli } from "../src/cli/c
 import { exitCode, type CliStreams } from "../src/cli/cli-support.js";
 import { builtinContractRegistry } from "../src/effects/builtin-contracts.js";
 import { builtinContractDigest } from "../src/evidence/evidence.js";
-import type { CheckWorkspaceJsonReport } from "../src/cli/check-report.js";
+import type { CheckJsonReport, CheckWorkspaceJsonReport } from "../src/cli/check-report.js";
 import { createContractSummaryBundle } from "../src/contracts/contract-summary.js";
 import { verifyContractObligations } from "../src/contracts/contracts.js";
 import { createResourceCallableContractArtifact } from "../src/resources/resource-callable-artifact.js";
@@ -24,6 +24,27 @@ function capture(): CliStreams & { stdout: string; stderr: string } {
 }
 
 describe("uneffect command line", () => {
+  it("verifies bounded signed remainder through both check frontends", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-remainder-"));
+    try {
+      const file = join(directory, "remainder.ts"), config = join(directory, "tsconfig.json");
+      writeFileSync(file, `/* uneffect:ensures result >= 0 && result < 2 */
+export function normalizedRemainder(value: -2 | -1 | 0 | 1 | 2): number {
+  return ((value % 2) + 2) % 2;
+}`);
+      writeFileSync(config, JSON.stringify({ compilerOptions: { target: "ES2024", module: "NodeNext",
+        moduleResolution: "NodeNext", strict: true, noEmit: true, skipLibCheck: true }, files: [file] }));
+      for (const frontend of [[], ["--typescript-program"]]) {
+        const io = capture();
+        expect(await runCli(["check", ...frontend, "--project", config, "--json", file], io), io.stderr).toBe(exitCode.success);
+        const report = JSON.parse(io.stdout) as CheckJsonReport;
+        expect(report.outcome).toBe("passed");
+        expect(report.contracts.length).toBeGreaterThan(0);
+        expect(report.contracts.every(item => item.status === "verified")).toBe(true);
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("publishes exactly one binary that points at the built entry", () => {
     const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { bin: Record<string, string> };
     expect(manifest.bin).toEqual({ uneffect:"dist/src/cli/index.js" });

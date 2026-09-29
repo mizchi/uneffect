@@ -1279,6 +1279,49 @@ describe("Hoare contract checker", () => {
     expect(result.artifacts.every(({ status }) => status === "verified")).toBe(true);
   });
 
+  it("proves normalized remainder over a finite safe-integer parameter domain", async () => {
+    const fileName = "/finite-signed-remainder.ts";
+    const source = `
+      /* uneffect:ensures result >= 0 && result < 2 */
+      export function normalizedRemainder(value: -2 | -1 | 0 | 1 | 2): number {
+        return ((value % 2) + 2) % 2;
+      }
+      /* uneffect:ensures result === 0 */
+      export function incorrect(value: -2 | -1 | 0 | 1 | 2): number {
+        return ((value % 2) + 2) % 2;
+      }
+    `;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    const normalized = result.artifacts.filter(item => item.obligation?.functionName === "normalizedRemainder");
+    const incorrect = result.artifacts.filter(item => item.obligation?.functionName === "incorrect");
+    expect(normalized.length).toBeGreaterThan(0);
+    expect(normalized.every(item => item.status === "verified")).toBe(true);
+    expect(incorrect.some(item => item.status === "counterexample")).toBe(true);
+    expect(incorrect.every(item => item.status === "verified" || item.status === "counterexample")).toBe(true);
+  });
+
+  it.each([
+    "number",
+    "-2 | 0.5 | 2",
+    "-2 | 9007199254740992",
+  ])("keeps normalized remainder unsupported for %s", async (type) => {
+    const fileName = "/unsupported-normalized-remainder.ts";
+    const source = `/* uneffect:ensures result >= 0 && result < 2 */
+      function normalized(value: ${type}): number { return ((value % 2) + 2) % 2; }`;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.artifacts).toEqual([expect.objectContaining({ status: "unsupported", evidence: "unknown" })]);
+  });
+
+  it("rejects an unsafe intermediate before a nested remainder", async () => {
+    const fileName = "/overflow-normalized-remainder.ts";
+    const source = `/* uneffect:ensures result >= 0 && result < 2 */
+      function normalized(value: 0 | 9007199254740991): number {
+        return (((value + 2) % 2) + 2) % 2;
+      }`;
+    const result = await verifyContractObligations(fileName, source, undefined, programFor(fileName, source));
+    expect(result.artifacts).toEqual([expect.objectContaining({ status: "unsupported", evidence: "unknown" })]);
+  });
+
   it("updates an integer with JavaScript signed remainder for a nonzero literal divisor", async () => {
     const fileName = "/signed-remainder-assignment.ts";
     const source = `

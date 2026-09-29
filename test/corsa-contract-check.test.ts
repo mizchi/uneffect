@@ -299,6 +299,23 @@ export function caller(): number { return inc(1); }`, async (_file, configFile) 
     });
   });
 
+  it("proves normalized signed remainder over a finite safe-integer domain", async () => {
+    await project(`/* uneffect:ensures result >= 0 && result < 2 */
+export function normalizedRemainder(value: -2 | -1 | 0 | 1 | 2): number {
+  return ((value % 2) + 2) % 2;
+}
+/* uneffect:ensures result === 0 */
+export function incorrect(value: -2 | -1 | 0 | 1 | 2): number {
+  return ((value % 2) + 2) % 2;
+}`, async (_file, configFile) => {
+      const result = await checkCorsaProject({ configFile });
+      expect(result.artifacts.filter(item => item.obligation?.functionName === "normalizedRemainder")
+        .map(item => item.status)).toEqual(["verified"]);
+      expect(result.artifacts.filter(item => item.obligation?.functionName === "incorrect")
+        .map(item => item.status)).toEqual(["counterexample"]);
+    });
+  });
+
   it("lowers multiple declarators in one const statement", async () => {
     await project(`/* uneffect:ensures result === 3 */\nexport function checked(): number { const first = 1, second = 2; return first + second; }`, async (_file, configFile) => {
       const result = await checkCorsaProject({ configFile });
@@ -643,6 +660,9 @@ export function lower(value: -9007199254740991 | 0, middle: -9007199254740991 | 
     ['value: 1 | 2 | 3', 'return value * value;', 'result >= 1 && result <= 9', ["verified"]],
     ['left: 1 | 2 | 3, right: 0 | 1', 'return left - right;', 'result >= 0', ["verified"]],
     ['value: 0 | 1 | 2', 'return value + 1;', 'result >= 2', ["counterexample"]],
+    ['value: 1 | 2', 'return value % 2;', 'result >= 0 && result < 2', ["verified"]],
+    ['value: -2 | -1 | 0', 'return value % -2;', 'result <= 0 && result > -2', ["verified"]],
+    ['value: -2 | -1 | 0', 'return value % 2;', 'result >= 0', ["counterexample"]],
     ['', 'return 2 + 3 * 4;', 'result === 14', ["verified"]],
     ['', 'return -0;', 'result === 0', ["verified"]],
   ] as const)("proves bounded numeric bodies: %s / %s", async (parameters, body, clause, statuses) => {
@@ -650,7 +670,12 @@ export function lower(value: -9007199254740991 | 0, middle: -9007199254740991 | 
       const result = await checkCorsaProject({ configFile });
       expect(result.artifacts.map(item => item.status)).toEqual(statuses);
       expect(result.artifacts.every(item => item.native?.coverage === "safe-integer-arithmetic")).toBe(true);
-      if (statuses[0] === "counterexample") expect(result.artifacts[0]!.counterexample?.assignments.value).toBe("0");
+      if (body === "return value + 1;" && statuses[0] === "counterexample") {
+        expect(result.artifacts[0]!.counterexample?.assignments.value).toBe("0");
+      }
+      if (body === "return value % 2;" && statuses[0] === "counterexample") {
+        expect(result.artifacts[0]!.counterexample?.assignments.value).toBe("(- 1)");
+      }
     });
   });
 
@@ -659,10 +684,15 @@ export function lower(value: -9007199254740991 | 0, middle: -9007199254740991 | 
     ['value: 0.5 | 1', 'return value + 1;', 'result > value'],
     ['value: 9007199254740992', 'return value;', 'result > 0'],
     ['value: 9007199254740991', 'return (value + 2) - 2;', 'result === value'],
+    ['value: 9007199254740991', 'return ((value + 2) % 2 + 2) % 2;', 'result >= 0'],
     ['value: 9007199254740991', 'return value * 2;', 'result > value'],
     ['value: 9007199254740991', 'return value;', 'result + 1 > result'],
     ['value: 1 | 2', 'return value / 2;', 'result >= 0'],
-    ['value: 1 | 2', 'return value % 2;', 'result >= 0'],
+    ['value: number', 'return value % 2;', 'result >= 0'],
+    ['value: -2 | 0.5 | 2', 'return value % 2;', 'result >= -1'],
+    ['value: -2 | 9007199254740992', 'return value % 2;', 'result >= -1'],
+    ['value: -2 | -1 | 0', 'return value % 0;', 'result >= 0'],
+    ['value: -2 | -1 | 0, divisor: 1 | 2', 'return value % divisor;', 'result >= -1'],
     ['', 'return 1e999;', 'result > 0'],
   ])("does not replace unsafe Number semantics by mathematical integers: %s / %s", async (parameters, body, clause) => {
     await project(`/* uneffect:ensures ${clause} */\nexport function checked(${parameters}) { ${body} }`, async (_file, configFile) => {

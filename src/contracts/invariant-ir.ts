@@ -867,31 +867,77 @@ function signedNonzeroIntegerLiteral(expression: ts.Expression): number | undefi
   return Number.isSafeInteger(value) && value !== 0 ? value : undefined;
 }
 
-function typeCheckerConstantIntegerRemainders(program: ts.Program | undefined, fileName: string, text: string): Map<string, number> {
+function typeCheckerConstantIntegerRemainders(program: ts.Program | undefined, fileName: string, text: string): {
+  remainders: Map<string, number>; boundedRemainderArithmetic: Set<string>;
+} {
   const remainders = new Map<string, number>();
-  if (!program) return remainders;
+  const boundedRemainderArithmetic = new Set<string>();
+  const result = { remainders, boundedRemainderArithmetic };
+  if (!program) return result;
   const source = program.getSourceFile(fileName);
-  if (!source || source.text !== text) return remainders;
+  if (!source || source.text !== text) return result;
   const errors = [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)]
     .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
-  if (errors.length > 0) return remainders;
+  if (errors.length > 0) return result;
   const checker = program.getTypeChecker();
   const numeric = (type: ts.Type): boolean => {
     const members = type.isUnion() ? type.types : [type];
     return members.length > 0 && members.every((member) => (member.flags & ts.TypeFlags.NumberLike) !== 0);
   };
+  const containsRemainder = (node: ts.Node): boolean => ts.isBinaryExpression(node)
+    && (node.operatorToken.kind === ts.SyntaxKind.PercentToken
+      || containsRemainder(node.left) || containsRemainder(node.right))
+    || ts.isParenthesizedExpression(node) && containsRemainder(node.expression);
+  const finiteValues = (expression: ts.Expression): number[] | undefined => {
+    if (ts.isParenthesizedExpression(expression)) return finiteValues(expression.expression);
+    if (ts.isNumericLiteral(expression)) {
+      const value = Number(expression.text);
+      return Number.isSafeInteger(value) ? [value] : undefined;
+    }
+    if (ts.isIdentifier(expression)) {
+      const type = checker.getTypeAtLocation(expression);
+      const members = type.isUnion() ? type.types : [type];
+      const values = members.map(member => member.isNumberLiteral() ? member.value : undefined);
+      return values.length > 0 && values.length <= 16 && values.every(value => value !== undefined && Number.isSafeInteger(value))
+        ? values as number[] : undefined;
+    }
+    if (ts.isPrefixUnaryExpression(expression)
+      && (expression.operator === ts.SyntaxKind.MinusToken || expression.operator === ts.SyntaxKind.PlusToken)) {
+      const values = finiteValues(expression.operand);
+      return values?.map(value => expression.operator === ts.SyntaxKind.MinusToken ? -value : value);
+    }
+    if (!ts.isBinaryExpression(expression)) return undefined;
+    const left = finiteValues(expression.left), right = finiteValues(expression.right);
+    if (!left || !right || left.length * right.length > 256) return undefined;
+    const values: number[] = [];
+    for (const a of left) for (const b of right) {
+      const value = expression.operatorToken.kind === ts.SyntaxKind.PlusToken ? a + b
+        : expression.operatorToken.kind === ts.SyntaxKind.MinusToken ? a - b
+        : expression.operatorToken.kind === ts.SyntaxKind.AsteriskToken ? a * b
+        : expression.operatorToken.kind === ts.SyntaxKind.PercentToken && b !== 0 ? a % b : NaN;
+      if (!Number.isSafeInteger(value)) return undefined;
+      values.push(value);
+    }
+    const distinct = [...new Set(values)];
+    return distinct.length <= 16 ? distinct : undefined;
+  };
   const visit = (node: ts.Node): void => {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind !== ts.SyntaxKind.PercentToken
+      && containsRemainder(node) && finiteValues(node)) {
+      boundedRemainderArithmetic.add(`${node.getStart(source)}:${node.getEnd()}`);
+    }
     if (ts.isBinaryExpression(node) && (node.operatorToken.kind === ts.SyntaxKind.PercentToken
       || node.operatorToken.kind === ts.SyntaxKind.PercentEqualsToken)) {
       const divisor = signedNonzeroIntegerLiteral(node.right);
-      if (divisor !== undefined && numeric(checker.getTypeAtLocation(node.left)) && numeric(checker.getTypeAtLocation(node.right))) {
+      if (divisor !== undefined && numeric(checker.getTypeAtLocation(node.left)) && numeric(checker.getTypeAtLocation(node.right))
+        && (!containsRemainder(node.left) || finiteValues(node.left))) {
         remainders.set(`${node.getStart(source)}:${node.getEnd()}`, divisor);
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return remainders;
+  return result;
 }
 
 const programEffectCache = new WeakMap<ts.Program, Map<string, EffectSummary>>();
@@ -1939,7 +1985,7 @@ export function lowerInvariantProgram(
   const presentObjectExpressions = typeCheckerPresentObjectExpressions(program, fileName, text);
   const delayedScalars = typeCheckerDelayedScalarDeclarations(program, fileName, text);
   const boundedPowerExpressions = typeCheckerBoundedPowerExpressions(program, fileName, text);
-  const constantIntegerRemainders = typeCheckerConstantIntegerRemainders(program, fileName, text);
+  const { remainders: constantIntegerRemainders, boundedRemainderArithmetic } = typeCheckerConstantIntegerRemainders(program, fileName, text);
   const mathScalarCalls = typeCheckerMathScalarCalls(program, fileName, text);
   const callableScalarWrites = typeCheckerCallableScalarWrites(program, fileName, text);
   const effectCallFacts = new Map<string, { throws: string[]; mutates: boolean }>();
@@ -2410,7 +2456,8 @@ export function lowerInvariantProgram(
           [ts.SyntaxKind.ExclamationEqualsToken, "neq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "neq"],
         ]);
         const operator = operators.get(unwrapped.operatorToken.kind);
-        if (operator && containsTrackedCompletion(unwrapped)) {
+        if (operator && (containsTrackedCompletion(unwrapped)
+          || boundedRemainderArithmetic.has(`${unwrapped.getStart(source)}:${unwrapped.getEnd()}`))) {
           return evaluateScalar(unwrapped.left, path).flatMap((left) => {
             if (left.path.completion !== "normal") return [left];
             return evaluateScalar(unwrapped.right, left.path).map((right) => right.path.completion !== "normal"

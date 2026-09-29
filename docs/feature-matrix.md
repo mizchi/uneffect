@@ -657,6 +657,10 @@ an Int-valued dividend modulo a direct nonzero safe-integer literal: the CFG
 splits by dividend sign and emits JavaScript-compatible signed remainder. This
 closes a demonstrated false proof for negative remainder while dynamic/zero/
 Real divisors await explicit finite and truncation-toward-zero obligations.
+Nested `%` in `+`, `-`, or `*` also follows that CFG path when an error-free
+TypeScript Program establishes at most 16 finite safe-integer values for every
+intermediate expression. Unbounded or fractional input does not enter this
+additional fragment.
 
 ## Verification confidence
 
