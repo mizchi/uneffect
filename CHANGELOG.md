@@ -4,6 +4,27 @@ All notable changes to Uneffect are documented in this file.
 
 ## Unreleased
 
+## [0.5.1](https://github.com/mizchi/uneffect/compare/v0.5.0...v0.5.1) (2026-09-29)
+
+### Changed
+
+- Bundle the legacy TypeScript 6 compiler into the published JavaScript so
+  consumers no longer need to install it as a peer dependency.
+
+### Added
+
+- Support `%` in bounded signed remainder contract proofs.
+- Keep writes to freshly constructed local arrays and objects private until
+  their identity escapes, including local aliases of objects.
+- Prove a primitive string's `split` result fresh when the separator is a
+  string literal.
+
+### Fixed
+
+- Preserve the published syntax facts v1 shape while checking literal `split`.
+- Keep recursive mutation-region propagation bounded and recognize non-escaping
+  array reads and copies during local construction.
+
 ## 0.5.0
 
 ### Changed
