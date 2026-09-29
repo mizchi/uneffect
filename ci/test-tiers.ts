@@ -268,6 +268,8 @@ export const ciDogfoodProcessTimeoutMs = 10 * 60_000;
 export const ciDogfoodPartitionStarts = [
   "checks the fixed URL and SRI boundary of a static CDN script loader",
   "refines Node Lease authority Set/Map mutations",
+  "derives executable aligned shard and finite deployment boundaries from realistic contracts",
+  "requires shutdown work to become and remain drained",
   "proves telemetry routing conservation and rejects an unbalanced action",
   "classifies every unknown summary while analyzing its own implementation",
   "tracks persisted optimizer evidence reads independently from regeneration writes",

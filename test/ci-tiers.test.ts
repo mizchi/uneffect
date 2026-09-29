@@ -97,7 +97,7 @@ describe("CI test tier manifest", () => {
 
   it("partitions native dogfood while retaining 20 percent overall deadline headroom", () => {
     expect(ciDogfoodProcessTimeoutMs).toBe(10 * 60_000);
-    expect(ciDogfoodPartitionCount).toBe(5);
+    expect(ciDogfoodPartitionCount).toBe(7);
     expect(ciDogfoodPartitionStarts).toHaveLength(ciDogfoodPartitionCount);
     expect(ciDogfoodPartitionTimeoutMs).toBe(5 * 60_000);
     expect(ciDogfoodBudgetMs).toBe(ciDogfoodProcessTimeoutMs * 0.8);
@@ -120,7 +120,7 @@ describe("CI test tier manifest", () => {
     const dogfoodNames = [...dogfoodSource.matchAll(/^  it\("([^"]+)"/gm)].map((match) => match[1]!);
     const dogfoodPartitions = partitionVitestTestNames(dogfoodNames, ciDogfoodPartitionStarts);
     expect(dogfoodPartitions.flat()).toEqual(dogfoodNames);
-    expect(dogfoodPartitions.map(({ length }) => length)).toEqual([67, 12, 8, 16, 31]);
+    expect(dogfoodPartitions.map(({ length }) => length)).toEqual([67, 4, 4, 4, 8, 16, 31]);
     expect(dogfoodSource).toContain("let sourceTreeEffectAnalysis");
     expect(dogfoodSource).toContain("function analyzeSourceTreeEffects");
     expect(dogfoodSource.match(/const result = analyzeSourceTreeEffects\(\);/g)).toHaveLength(16);
