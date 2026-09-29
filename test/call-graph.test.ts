@@ -27,6 +27,8 @@ describe("multi-file call graph and effect polymorphism", () => {
           return result
         }
         /* uneffect:effect none */
+        export function lastSegment(source: string) { return source.split("/").pop() ?? "" }
+        /* uneffect:effect none */
         export function alias(input: { count: number }) {
           const result = input
           result.count++
@@ -38,7 +40,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       expect(program.getSemanticDiagnostics()).toEqual([]);
       const result = analyzeProgramEffects(program);
-      for (const functionName of ["arrayFactory", "objectFactory"]) {
+      for (const functionName of ["arrayFactory", "objectFactory", "lastSegment"]) {
         expect(result.summaries.find((item) => item.functionName === functionName))
           .toMatchObject({ effects: [], evidence: "verified" });
       }

@@ -220,6 +220,9 @@ describe("Corsa-native project check", () => {
         export function textBuild(value: string, count: number): string { return value.repeat(count); }
         export function textJoin(value: string, other: string): string { return value.concat(other); }
         export function textSplit(value: string): string[] { return value.split(","); }
+        export function textSplitPattern(value: string, separator: RegExp): string[] { return value.split(separator); }
+        export function textSplitDynamic(value: string, separator: string): string[] { return value.split(separator); }
+        export function textSplitBoxed(value: String): string[] { return value.split(","); }
         export function textQuery(value: string, needle: string): boolean {
           return value.startsWith(needle) && value.includes(needle) && value.indexOf(needle) >= 0;
         }
@@ -245,8 +248,11 @@ describe("Corsa-native project check", () => {
       // A conversion of an unconstrained value runs that value's own coercion method and can reject its result;
       // that is named rather than proved pure.
       expect(formatted.coerced).toEqual(["InvokeUserCode", "Throw<TypeError>"]);
-      // `split` delegates to a `Symbol.split` method a well-typed splitter may define, so it is not claimed pure.
-      expect(evidence.textSplit).toBe("unknown");
+      expect(evidence.textSplit).toBe("inferred");
+      // A RegExp can supply a custom Symbol.split method, so its result has no fresh-array proof.
+      expect(evidence.textSplitPattern).toBe("unknown");
+      expect(evidence.textSplitDynamic).toBe("unknown");
+      expect(evidence.textSplitBoxed).toBe("unknown");
       // A collection member can run an overridden body, which no reviewed contract describes.
       expect(evidence.collections).toBe("unknown");
       // An error construction with a string message builds the object and performs nothing else.

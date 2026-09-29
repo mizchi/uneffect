@@ -445,6 +445,13 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         ...(capturedCallbacks?.length ? { capturedCallbacks } : {}),
       };
     }
+    if (contract.symbol.module === "lib.es" && contract.symbol.export === "String#split") {
+      if (!ts.isPropertyAccessExpression(call.expression) || call.arguments.length !== 1
+        || !ts.isStringLiteralLike(call.arguments[0]!)) return undefined;
+      const primitiveString = (type: ts.Type): boolean => type.isUnionOrIntersection()
+        ? type.types.every(primitiveString) : (type.flags & ts.TypeFlags.StringLike) !== 0;
+      if (!primitiveString(this.#checker.getTypeAtLocation(call.expression.expression))) return undefined;
+    }
     return {
       symbol: contract.symbol,
       span: { start: call.getStart(), end: call.getEnd() },

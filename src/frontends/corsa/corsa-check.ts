@@ -314,6 +314,8 @@ function resolveEcmaScriptContract(
   if (!declaredByEcmaScriptLibrary(member)) return undefined;
   const ownerName = declaredByEcmaScriptLibrary(owner) ? owner!.name : primitiveOwnerName(receiverType);
   if (ownerName === undefined) return undefined;
+  if (ownerName === "String" && site.name === "split"
+    && (site.singleStringLiteralArgument !== true || primitiveOwnerName(receiverType) !== "String")) return undefined;
   return members.get(`${ownerName}#${member!.name}`) ?? globals.get(`${ownerName}.${member!.name}`);
 }
 

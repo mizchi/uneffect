@@ -247,6 +247,7 @@ identity. RegExp protocol hooks and capture-shape proofs remain outside this
 exact string-pattern fragment.
 `Array.from`, `Array.of`, `Array.prototype.concat`, `Object.fromEntries`, and standard
 `Array`/`Map`/`Set`/`WeakMap`/`WeakSet` construction also expose fresh results.
+`String#split` exposes a fresh result when its receiver is a primitive string and its sole separator is a string literal; a RegExp, boxed string receiver, or dynamic separator remains unreviewed because `Symbol.split` may run user code.
 That refinement affects only aliasing: iterable consumption and optional
 `Array.from` mapper effects still compose normally, so freshness never implies
 that construction is pure.

@@ -726,9 +726,9 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
     // Members reviewed against the ECMAScript specification as completing without any user-observable side
     // effect and without reaching user code, for every argument a checked program can pass. Their receiver is a
     // primitive string or the standard constructor object, so no override or subclass can intercept them.
-    // `split` and `localeCompare` are deliberately absent: `split` delegates to a `Symbol.split` method a
-    // well-typed splitter object may define, and the locale-sensitive members canonicalize a locale list they
-    // may read through user accessors. Members whose receiver is an instance interface a user class can extend
+    // `split` is admitted below only for one literal string separator; other splitters can define Symbol.split.
+    // `localeCompare` is deliberately absent because locale lists may read through user accessors.
+    // Members whose receiver is an instance interface a user class can extend
     // (`Map`, `Set`, and their weak and readonly forms) are absent for the same reason: the declared type does
     // not establish which body runs. `RegExp` matching updates `lastIndex` and is absent as an observable write.
     ...([
@@ -741,6 +741,12 @@ export const builtinSemanticCatalog: BuiltinSemanticCatalog = {
       trustReason: `ECMAScript ${owner}.${name} completes without a user-observable side effect and reaches no user code for the arguments a checked program can pass`,
       trustOwner: "@mizchi/uneffect",
     }))),
+    reviewed("javascript", {
+      symbol: { module: "lib.es", export: "String#split" },
+      semantics: { schema: "uneffect-semantic-primitives/v1", primitives: [{ kind: "result", refinement: { kind: "fresh" } }] },
+      trustReason: "With a primitive string receiver and one literal string separator, ECMAScript String.split constructs a fresh Array without invoking a custom Symbol.split method; frontends must enforce both conditions",
+      trustOwner: "@mizchi/uneffect",
+    }),
     // Only the members the specification makes throw on an out-of-range ARGUMENT are listed. Exhausting the
     // implementation's string limit is not modelled here: `+`, a template literal and `padEnd` all reach it,
     // and charging three of them while the operators stay silent would describe the language inconsistently.

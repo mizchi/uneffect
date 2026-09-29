@@ -242,12 +242,18 @@ function callSite(node: EstreeNode): SyntaxSite | undefined {
   if (typeof unwrapped.property.start !== "number" || typeof unwrapped.object.start !== "number") return undefined;
   const name = staticName(unwrapped.property, unwrapped.computed === true);
   if (!name) return undefined;
+  const arguments_ = Array.isArray(node.arguments) ? node.arguments : [];
+  const singleArgument = arguments_.length === 1 && isNode(arguments_[0]) ? arguments_[0] : undefined;
+  const singleStringLiteralArgument = node.type === "CallExpression" && singleArgument
+    && (singleArgument.type === "StringLiteral"
+      || singleArgument.type === "Literal" && typeof singleArgument.value === "string");
   return {
     kind: node.type === "NewExpression" ? "construct" : "call",
     start: node.start,
     end: node.end,
     calleePosition: unwrapped.property.start,
     receiverPosition: receiverTokenPosition(unwrapped.object) ?? unwrapped.object.start,
+    ...(singleStringLiteralArgument ? { singleStringLiteralArgument: true as const } : {}),
     name,
   };
 }

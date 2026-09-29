@@ -9,6 +9,15 @@ import {
 } from "../src/frontends/oxc-syntax.js";
 
 describe("versioned syntax facts", () => {
+  it("marks exactly one direct string literal argument for guarded builtin semantics", () => {
+    const facts = collectSyntaxFacts("split-sites.ts", `function split(value: string, pattern: RegExp) {
+      value.split("/"); value.split(pattern); value.split("/", 2); value.split(...["/"]);
+    }`);
+    expect(facts.sites.filter((site) => site.name === "split").map((site) => site.singleStringLiteralArgument))
+      .toEqual([true, undefined, undefined, undefined]);
+    expect(parseSyntaxFacts(JSON.parse(JSON.stringify(facts)))).toEqual(facts);
+  });
+
   it("keeps object handler bodies separate from their enclosing factory", () => {
     const source = `function factory() { return {
       run() { console.log("method") },

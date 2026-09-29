@@ -660,6 +660,29 @@ describe("effect checker", () => {
     expect(analyzeEffects("fresh-result.ts", source)).toEqual([]);
   });
 
+  it("localizes pop on a string split by one literal separator", () => {
+    const source = `
+      /* uneffect:effect none */
+      function lastSegment(source: string) { return source.split("/").pop() ?? "" }
+      /* uneffect:effect none */
+      function splitByPattern(source: string, separator: RegExp) { return source.split(separator).pop() ?? "" }
+      /* uneffect:effect none */
+      function boxed(source: String) { return source.split("/").pop() ?? "" }
+      /* uneffect:effect none */
+      function lookalike(source: { split(separator: string): string[] }) { return source.split("/").pop() ?? "" }
+      /* uneffect:effect Mutate<typeof parts> */
+      function popInput(parts: string[]) { return parts.pop() ?? "" }
+    `;
+    const diagnostics = analyzeEffects("split-freshness.ts", source);
+    expect(diagnostics.filter((item) => item.functionName === "lastSegment" || item.functionName === "popInput")).toEqual([]);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "splitByPattern", kind: "missing", effect: 'Mutate<typeof source.split(separator)>',
+    }));
+    for (const functionName of ["boxed", "lookalike"]) {
+      expect(diagnostics).toContainEqual(expect.objectContaining({ functionName, kind: "missing" }));
+    }
+  });
+
   it("treats toSorted as a non-mutating fresh copy while keeping sort destructive", () => {
     const source = `
       /* uneffect:effect none */
