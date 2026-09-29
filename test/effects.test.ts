@@ -503,6 +503,153 @@ describe("effect checker", () => {
     expect(analyzeEffects("locals.ts", source)).toEqual([]);
   });
 
+  it("keeps array construction local before returning a readonly view", () => {
+    const source = `
+      /* uneffect:effect none */
+      function build(): readonly string[] {
+        const values: string[] = []
+        values.push("one")
+        values.push("two")
+        return values
+      }
+      /* uneffect:effect none */
+      function copy(input: readonly string[]): readonly string[] {
+        const values = [...input]
+        values.push("three")
+        return values
+      }
+      /* uneffect:effect none */
+      function frozen(): readonly string[] {
+        const values: string[] = []
+        values.push("one")
+        return Object.freeze(values)
+      }
+    `;
+    expect(analyzeEffects("array-build.ts", source)).toEqual([]);
+  });
+
+  it("does not hide mutation through a local alias of an input array", () => {
+    const source = `
+      /* uneffect:effect none */
+      function mutateInput(input: string[]) {
+        const values = input
+        values.push("visible")
+      }
+    `;
+    expect(analyzeEffects("array-alias.ts", source)).toContainEqual(expect.objectContaining({
+      functionName: "mutateInput", kind: "missing", effect: "Mutate<typeof input>",
+    }));
+  });
+
+  it("ends local array construction when an alias escapes before the next write", () => {
+    const source = `
+      let published: readonly string[] | undefined
+      /* uneffect:effect none */
+      function build() {
+        const values: string[] = []
+        published = values
+        values.push("visible")
+      }
+    `;
+    expect(analyzeEffects("array-escape.ts", source)).toContainEqual(expect.objectContaining({
+      functionName: "build", kind: "missing", effect: "Mutate<typeof values>",
+    }));
+  });
+
+  it("tracks an array returned by a mutating method as an escape", () => {
+    const source = `
+      let published: readonly string[] | undefined
+      /* uneffect:effect none */
+      function build() {
+        const values: string[] = []
+        published = values.sort()
+        values.push("visible")
+      }
+    `;
+    expect(analyzeEffects("array-method-escape.ts", source)).toContainEqual(expect.objectContaining({
+      functionName: "build", kind: "missing", effect: "Mutate<typeof values>",
+    }));
+  });
+
+  it("keeps object construction local before returning a readonly shape", () => {
+    const source = `
+      /* uneffect:effect none */
+      function build(): Readonly<{ one: number; two: number }> {
+        const result: { one: number; two: number } = { one: 0, two: 0 }
+        result.one = 1
+        result.two = 2
+        return result
+      }
+      /* uneffect:effect none */
+      function frozen(): Readonly<{ count: number }> {
+        const result = { count: 0 }
+        result.count++
+        return Object.freeze(result)
+      }
+    `;
+    expect(analyzeEffects("object-build.ts", source)).toEqual([]);
+  });
+
+  it("does not hide mutation through a local alias of an input object", () => {
+    const source = `
+      /* uneffect:effect none */
+      function mutateInput(input: { count: number }) {
+        const result = input as { count: number }
+        result.count++
+      }
+    `;
+    expect(analyzeEffects("object-alias.ts", source)).toContainEqual(expect.objectContaining({
+      functionName: "mutateInput", kind: "missing", effect: "Mutate<typeof input.count>",
+    }));
+  });
+
+  it("ends local object construction when it escapes before a write", () => {
+    const source = `
+      let published: Readonly<{ count: number }> | undefined
+      /* uneffect:effect none */
+      function build() {
+        const result = { count: 0 }
+        published = result
+        result.count++
+      }
+    `;
+    expect(analyzeEffects("object-escape.ts", source)).toContainEqual(expect.objectContaining({
+      functionName: "build", kind: "missing", effect: "Mutate<typeof result.count>",
+    }));
+  });
+
+  it("does not localize writes through object and array elements borrowed from inputs", () => {
+    const source = `
+      /* uneffect:effect none */
+      function objectChild(input: { count: number }) {
+        const result = { child: input }
+        result.child.count++
+      }
+      /* uneffect:effect none */
+      function arrayElement(input: { count: number }) {
+        const values = [input]
+        values[0]!.count++
+      }
+    `;
+    const diagnostics = analyzeEffects("borrowed-elements.ts", source);
+    for (const functionName of ["objectChild", "arrayElement"]) {
+      expect(diagnostics).toContainEqual(expect.objectContaining({ functionName, kind: "missing" }));
+    }
+  });
+
+  it("allows reading fields while building a local object", () => {
+    const source = `
+      /* uneffect:effect none */
+      function build(): Readonly<{ count: number }> {
+        const result = { count: 0 }
+        const previous = result.count
+        result.count = previous + 1
+        return result
+      }
+    `;
+    expect(analyzeEffects("object-read-build.ts", source)).toEqual([]);
+  });
+
   it("does not leak mutation of a reviewed fresh builtin result", () => {
     const source = `
       /* uneffect:effect none */

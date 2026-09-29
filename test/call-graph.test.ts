@@ -9,6 +9,47 @@ import { formatEffect, parseEffectExpression } from "../src/effects/capabilities
 import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/effects/builtin-contracts.js";
 
 describe("multi-file call graph and effect polymorphism", () => {
+  it("keeps fresh array and object factory writes local in Program summaries", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-fresh-container-factory-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect:effect none */
+        export function arrayFactory(): readonly number[] {
+          const values: number[] = []
+          values.push(1)
+          return values
+        }
+        /* uneffect:effect none */
+        export function objectFactory(): Readonly<{ count: number }> {
+          const result = { count: 0 }
+          result.count++
+          return result
+        }
+        /* uneffect:effect none */
+        export function alias(input: { count: number }) {
+          const result = input
+          result.count++
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      expect(program.getSemanticDiagnostics()).toEqual([]);
+      const result = analyzeProgramEffects(program);
+      for (const functionName of ["arrayFactory", "objectFactory"]) {
+        expect(result.summaries.find((item) => item.functionName === functionName))
+          .toMatchObject({ effects: [], evidence: "verified" });
+      }
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "alias", kind: "missing", effect: "Mutate<typeof input.count>",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not expose receiver mutation performed on a proven fresh local instance", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-fresh-receiver-"));
     try {

@@ -9,6 +9,7 @@ import { overlayCorsaBuiltinCatalog } from "../frontends/corsa/corsa-builtin-cat
 import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { buildProgramCallGraph, expressionAtExclusiveConstArgumentPath, reviewedOpaqueCallablePropertyEffects, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "../resources/disposal-symbols.js";
+import { resolveRegionIdentity } from "./region-alias.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "../async/promise-chains.js";
 import { isRuntimeModuleDependency } from "../modules/module-initialization.js";
 import type { SameRealmGlobalThisIdentity } from "../evidence/runtime-identities.js";
@@ -323,8 +324,9 @@ function mutationRegion(expression: ts.Expression): string {
   }
   return expression.getText();
 }
-function mutateEffect(expression: ts.Expression): Effect {
-  return { kind: "mutate", region: mutationRegion(expression) };
+function mutateEffect(expression: ts.Expression, checker?: ts.TypeChecker): Effect {
+  const alias = checker ? resolveRegionIdentity(checker, expression) : undefined;
+  return { kind: "mutate", region: alias?.status === "resolved" ? alias.region : mutationRegion(expression) };
 }
 function mutateRegionEffect(region: string): Effect { return { kind: "mutate", region }; }
 
@@ -333,14 +335,93 @@ function regionRoot(region: string): string {
   return /^[A-Za-z_$][\w$]*/u.exec(region)?.[0] ?? region;
 }
 
-function localBindings(scope: ts.FunctionLikeDeclaration): Set<string> {
+const localArrayMethods = new Set(["copyWithin", "fill", "pop", "push", "reverse", "shift", "sort", "splice", "unshift"]);
+
+function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecker, adapter: FrontendSymbolAdapter): Set<string> {
   const names = new Set<string>();
+  const unwrapInitializer = (expression: ts.Expression): ts.Expression =>
+    ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)
+      || ts.isNonNullExpression(expression) || ts.isSatisfiesExpression(expression)
+      ? unwrapInitializer(expression.expression) : expression;
+  const primitiveOnly = (type: ts.Type): boolean => {
+    if (type.isUnionOrIntersection()) return type.types.every(primitiveOnly);
+    return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Object
+      | ts.TypeFlags.TypeParameter | ts.TypeFlags.NonPrimitive)) === 0;
+  };
+  const primitiveArray = (type: ts.Type): boolean => {
+    const element = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
+    return element !== undefined && primitiveOnly(element);
+  };
+  const freshArrayLiteral = (literal: ts.ArrayLiteralExpression): boolean => literal.elements.every((element) =>
+    ts.isSpreadElement(element) ? primitiveArray(checker.getTypeAtLocation(element.expression))
+      : ts.isOmittedExpression(element) || primitiveOnly(checker.getTypeAtLocation(element)));
+  const freshObjectLiteral = (literal: ts.ObjectLiteralExpression): boolean => literal.properties.every((property) =>
+    ts.isPropertyAssignment(property) && primitiveOnly(checker.getTypeAtLocation(property.initializer)));
+  const candidates = new Map<ts.Symbol, { name: string; kind: "array" | "object"; escapes: number[]; mutations: number[]; unsafe: boolean }>();
   const visit = (node: ts.Node): void => {
     if (node !== scope && ts.isFunctionLike(node)) return;
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) names.add(node.name.text);
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      const type = checker.getTypeAtLocation(node.name);
+      const isArray = checker.isArrayType(type) || checker.isTupleType(type);
+      const isObject = (type.flags & ts.TypeFlags.Object) !== 0;
+      const initializer = node.initializer && unwrapInitializer(node.initializer);
+      if (isArray || (isObject && initializer !== undefined && ts.isObjectLiteralExpression(initializer))) {
+        const fresh = initializer && (ts.isArrayLiteralExpression(initializer) && freshArrayLiteral(initializer)
+          || ts.isObjectLiteralExpression(initializer) && freshObjectLiteral(initializer)
+          || isArray && primitiveArray(type) && ts.isCallExpression(initializer) && adapter.resolveCall(initializer)?.result?.kind === "fresh"
+          || isArray && primitiveArray(type) && ts.isNewExpression(initializer) && adapter.resolveConstruct(initializer)?.result?.kind === "fresh");
+        if (fresh && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
+          const symbol = checker.getSymbolAtLocation(node.name);
+          if (symbol) candidates.set(symbol, { name: node.name.text, kind: isArray ? "array" : "object", escapes: [], mutations: [], unsafe: false });
+        }
+      } else if (!(isObject && initializer && ts.isIdentifier(initializer))) names.add(node.name.text);
+    }
     ts.forEachChild(node, visit);
   };
   if (scope.body) visit(scope.body);
+  const classify = (node: ts.Node, nested = false, repeated = false): void => {
+    const insideNested = nested || (node !== scope && ts.isFunctionLike(node));
+    const insideRepeated = repeated || ts.isIterationStatement(node, false);
+    if (ts.isIdentifier(node)) {
+      const symbol = checker.getSymbolAtLocation(node);
+      const candidate = symbol && candidates.get(symbol);
+      const declaration = symbol?.valueDeclaration;
+      if (candidate && !(declaration && ts.isVariableDeclaration(declaration) && node === declaration.name)) {
+        const parent = node.parent;
+        const access = (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent)) && parent.expression === node ? parent : undefined;
+        const call = access && ts.isCallExpression(access.parent) && access.parent.expression === access ? access.parent : undefined;
+        if (insideNested) candidate.unsafe = true;
+        else if (candidate.kind === "array" && call && access && ts.isPropertyAccessExpression(access) && localArrayMethods.has(access.name.text)
+          && adapter.resolveCall(call)?.evidence === "trusted") {
+          candidate.mutations.push(node.getStart());
+          const stored = access.name.text === "push" || access.name.text === "unshift" ? call.arguments
+            : access.name.text === "splice" ? call.arguments.slice(2)
+            : access.name.text === "fill" ? call.arguments.slice(0, 1) : [];
+          if (stored.some((argument) => !primitiveOnly(checker.getTypeAtLocation(argument)))) candidate.unsafe = true;
+          if (["copyWithin", "fill", "reverse", "sort"].includes(access.name.text)
+            && !ts.isExpressionStatement(call.parent)) candidate.escapes.push(call.getStart());
+        } else if (access && !call && !(ts.isBinaryExpression(access.parent) && access.parent.left === access)
+          && !((ts.isPrefixUnaryExpression(access.parent) || ts.isPostfixUnaryExpression(access.parent)) && access.parent.operand === access)) {
+          // Reading a member does not publish the container reference.
+        } else if (access && ((ts.isBinaryExpression(access.parent) && access.parent.left === access
+          && isAssignmentOperator(access.parent.operatorToken.kind))
+          || ((ts.isPrefixUnaryExpression(access.parent) || ts.isPostfixUnaryExpression(access.parent))
+            && access.parent.operand === access
+            && (access.parent.operator === ts.SyntaxKind.PlusPlusToken || access.parent.operator === ts.SyntaxKind.MinusMinusToken)))) {
+          candidate.mutations.push(node.getStart());
+          if (ts.isBinaryExpression(access.parent) && !primitiveOnly(checker.getTypeAtLocation(access.parent.right))) candidate.unsafe = true;
+        } else {
+          candidate.escapes.push(node.getStart());
+          if (insideRepeated) candidate.unsafe = true;
+        }
+      }
+    }
+    ts.forEachChild(node, (child) => classify(child, insideNested, insideRepeated));
+  };
+  if (scope.body) classify(scope.body);
+  for (const candidate of candidates.values()) {
+    if (!candidate.unsafe && !candidate.mutations.some((position) => candidate.escapes.some((escape) => escape < position))) names.add(candidate.name);
+  }
   return names;
 }
 function observableMutation(effect: Effect, locals: ReadonlySet<string>): boolean {
@@ -536,11 +617,12 @@ function widenDiagnosticCapability(effect: Effect): Effect {
   return changed ? { ...effect, arguments: arguments_ } : effect;
 }
 
-function projectedMutationEffect(target: ProjectedValue, adapter?: FrontendSymbolAdapter): Effect | undefined {
+function projectedMutationEffect(target: ProjectedValue, adapter?: FrontendSymbolAdapter, checker?: ts.TypeChecker): Effect | undefined {
   if (target.status !== "resolved") return undefined;
   const expression = adapter?.resolveDomReceiverRegion(target.expression) ?? target.expression;
   const suffix = target.path.map((part) => plainMember.test(part) ? `.${part}` : `[${JSON.stringify(part)}]`).join("");
-  return mutateRegionEffect(`${mutationRegion(expression)}${suffix}`);
+  const alias = checker && ts.isIdentifier(expression) ? resolveRegionIdentity(checker, expression) : undefined;
+  return mutateRegionEffect(`${alias?.status === "resolved" ? alias.region : mutationRegion(expression)}${suffix}`);
 }
 
 function projectedRegionText(target: ProjectedValue, adapter?: FrontendSymbolAdapter): string | undefined {
@@ -687,7 +769,7 @@ function effectsForGenericSemantics(
       }
     } else if (event.kind === "mutate") {
       if (event.target.status === "absent") continue;
-      const mutation = projectedMutationEffect(event.target, domRegionSemantics ? adapter : undefined);
+      const mutation = projectedMutationEffect(event.target, domRegionSemantics ? adapter : undefined, checker);
       if (!mutation) return undefined;
       if (event.target.status === "resolved"
         && ((ts.isCallExpression(event.target.expression)
@@ -1566,7 +1648,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       declarationProblems: declared.problems,
       direct: [],
       calls: [],
-      locals: localBindings(node),
+      locals: localBindings(node, checker!, adapter),
       });
     }
   });
@@ -1678,8 +1760,8 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
         && processEnvEffects(checker, node.left) === undefined
         && globalVariableEffects(checker, node.left) === undefined
-        && effectsForDomProperty(node.left, adapter, checker) === undefined) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
-      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand)) && globalVariableEffects(checker, node.operand) === undefined) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
+        && effectsForDomProperty(node.left, adapter, checker) === undefined) { const effect = mutateEffect(node.left, checker); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
+      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand)) && globalVariableEffects(checker, node.operand) === undefined) { const effect = mutateEffect(node.operand, checker); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if (ts.isCallExpression(node)) {
         const resolvedBuiltin = adapter.resolveCall(node);
         for (const effect of primitiveEffects(node, adapter, checker)) {
@@ -1931,7 +2013,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   for (const graphNode of graph.nodes) {
     const node = nodes.get(graphNode.id)! as ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
     if (isAsyncFunction(node)) asyncOwners.add(graphNode.id);
-    const locals = localBindings(node);
+    const locals = localBindings(node, checker, adapter);
     localsById.set(graphNode.id, locals);
     freshDefaultParameters.set(graphNode.id, new Set(node.parameters.flatMap((parameter, index) =>
       parameter.initializer && freshDefaultParameter(parameter.initializer, checker) ? [index] : [])));
@@ -2037,8 +2119,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))
         && processEnvEffects(checker, child.left) === undefined
         && globalVariableEffects(checker, child.left) === undefined
-        && effectsForDomProperty(child.left, adapter, checker) === undefined) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
-      if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand)) && globalVariableEffects(checker, child.operand) === undefined) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
+        && effectsForDomProperty(child.left, adapter, checker) === undefined) { const effect = mutateEffect(child.left, checker); if (observableMutation(effect, locals)) observe(effect, child); }
+      if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand)) && globalVariableEffects(checker, child.operand) === undefined) { const effect = mutateEffect(child.operand, checker); if (observableMutation(effect, locals)) observe(effect, child); }
       if (ts.isCallExpression(child)) {
         const resolvedBuiltin = adapter.resolveCall(child);
         if (resolvedBuiltin?.evidence === "unknown") unknownExternalEvidence.add(graphNode.id);
