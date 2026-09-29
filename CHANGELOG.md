@@ -4,6 +4,13 @@ All notable changes to Uneffect are documented in this file.
 
 ## Unreleased
 
+## [0.5.1](https://github.com/mizchi/uneffect/compare/v0.5.0...v0.5.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* preserve syntax facts v1 while proving literal split ([0a61f72](https://github.com/mizchi/uneffect/commit/0a61f72f108248fc13cdd4d2b926671a69aa7bb0))
+
 ## 0.5.0
 
 ### Changed
