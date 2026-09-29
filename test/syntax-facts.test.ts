@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeTypeScriptControlFlow } from "../src/frontends/typescript/typescript-control-flow.js";
 import {
   collectSyntaxFacts,
+  collectSyntaxFactsWithInternal,
   enclosingFunction,
   parseSyntaxFacts,
   syntaxFactsCoverageDomains,
@@ -10,11 +11,12 @@ import {
 
 describe("versioned syntax facts", () => {
   it("marks exactly one direct string literal argument for guarded builtin semantics", () => {
-    const facts = collectSyntaxFacts("split-sites.ts", `function split(value: string, pattern: RegExp) {
+    const { syntax: facts, singleStringLiteralCallStarts } = collectSyntaxFactsWithInternal("split-sites.ts", `function split(value: string, pattern: RegExp) {
       value.split("/"); value.split(pattern); value.split("/", 2); value.split(...["/"]);
     }`);
-    expect(facts.sites.filter((site) => site.name === "split").map((site) => site.singleStringLiteralArgument))
-      .toEqual([true, undefined, undefined, undefined]);
+    expect(facts.sites.filter((site) => site.name === "split").map((site) => singleStringLiteralCallStarts.has(site.start)))
+      .toEqual([true, false, false, false]);
+    expect(facts.sites.every((site) => !("singleStringLiteralArgument" in site))).toBe(true);
     expect(parseSyntaxFacts(JSON.parse(JSON.stringify(facts)))).toEqual(facts);
   });
 

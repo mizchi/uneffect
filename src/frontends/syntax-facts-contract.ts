@@ -47,8 +47,6 @@ export interface SyntaxSite {
   readonly end: number;
   readonly calleePosition: number;
   readonly receiverPosition?: number;
-  /** A direct call with exactly one string literal argument (no spread or coercion). */
-  readonly singleStringLiteralArgument?: true;
   readonly name: string;
 }
 
@@ -195,9 +193,9 @@ export function parseSyntaxFacts(input: unknown): SyntaxFacts {
   if (!Array.isArray(input.sites)) throw new Error("syntax facts sites must be an array");
   const sites = input.sites.map((raw, index): SyntaxSite => {
     if (!isRecord(raw)) throw new Error(`syntax facts site ${index} must be an object`);
-    const expectedKeys = ["kind", "start", "end", "calleePosition",
-      ...(raw.receiverPosition === undefined ? [] : ["receiverPosition"]),
-      ...(raw.singleStringLiteralArgument === undefined ? [] : ["singleStringLiteralArgument"]), "name"];
+    const expectedKeys = raw.receiverPosition === undefined
+      ? ["kind", "start", "end", "calleePosition", "name"]
+      : ["kind", "start", "end", "calleePosition", "receiverPosition", "name"];
     exactKeys(raw, expectedKeys, `syntax facts site ${index}`);
     const bounds = span({ start: raw.start, end: raw.end }, sourceLength, `syntax facts site ${index} span`);
     const calleePosition = integer(raw.calleePosition, `syntax facts site ${index} calleePosition`);
@@ -207,15 +205,11 @@ export function parseSyntaxFacts(input: unknown): SyntaxFacts {
     if (receiverPosition !== undefined && (receiverPosition < bounds.start || receiverPosition >= bounds.end)) {
       throw new Error(`syntax facts site ${index} receiverPosition is outside its span`);
     }
-    if (raw.singleStringLiteralArgument !== undefined && (raw.kind !== "call" || raw.singleStringLiteralArgument !== true)) {
-      throw new Error(`syntax facts site ${index} singleStringLiteralArgument must be true on a call`);
-    }
     return {
       kind: enumValue(raw.kind, siteKinds, `syntax facts site ${index} kind`),
       ...bounds,
       calleePosition,
       ...(receiverPosition === undefined ? {} : { receiverPosition }),
-      ...(raw.singleStringLiteralArgument === true ? { singleStringLiteralArgument: true as const } : {}),
       name: text(raw.name, `syntax facts site ${index} name`),
     };
   });

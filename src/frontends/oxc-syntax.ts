@@ -242,20 +242,21 @@ function callSite(node: EstreeNode): SyntaxSite | undefined {
   if (typeof unwrapped.property.start !== "number" || typeof unwrapped.object.start !== "number") return undefined;
   const name = staticName(unwrapped.property, unwrapped.computed === true);
   if (!name) return undefined;
-  const arguments_ = Array.isArray(node.arguments) ? node.arguments : [];
-  const singleArgument = arguments_.length === 1 && isNode(arguments_[0]) ? arguments_[0] : undefined;
-  const singleStringLiteralArgument = node.type === "CallExpression" && singleArgument
-    && (singleArgument.type === "StringLiteral"
-      || singleArgument.type === "Literal" && typeof singleArgument.value === "string");
   return {
     kind: node.type === "NewExpression" ? "construct" : "call",
     start: node.start,
     end: node.end,
     calleePosition: unwrapped.property.start,
     receiverPosition: receiverTokenPosition(unwrapped.object) ?? unwrapped.object.start,
-    ...(singleStringLiteralArgument ? { singleStringLiteralArgument: true as const } : {}),
     name,
   };
+}
+
+function hasSingleStringLiteralArgument(node: EstreeNode): boolean {
+  const arguments_ = Array.isArray(node.arguments) ? node.arguments : [];
+  if (arguments_.length !== 1 || !isNode(arguments_[0])) return false;
+  const argument = arguments_[0];
+  return argument.type === "StringLiteral" || argument.type === "Literal" && typeof argument.value === "string";
 }
 
 function inlineFunctionCallee(callee: EstreeNode): EstreeNode | undefined {
@@ -272,12 +273,16 @@ function isCallTarget(node: EstreeNode, parents: ReadonlyMap<EstreeNode, EstreeN
   return (call?.type === "CallExpression" || call?.type === "NewExpression") && call.callee === target;
 }
 
-/** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */
-export function collectSyntaxFacts(fileName: string, sourceText: string): SyntaxFacts {
+/** Parse once, retaining a private syntax fact used by guarded builtin semantics. */
+export function collectSyntaxFactsWithInternal(fileName: string, sourceText: string): {
+  syntax: SyntaxFacts;
+  singleStringLiteralCallStarts: ReadonlySet<number>;
+} {
   const lang = oxcLanguage(fileName);
   const language = lang === "tsx" ? "tsx" as const : "typescript" as const;
   const parsed = parseSync(fileName, sourceText, { lang });
   const functions: SyntaxFunction[] = [], sites: SyntaxSite[] = [];
+  const singleStringLiteralCallStarts = new Set<number>();
   const parents = new Map<EstreeNode, EstreeNode>();
   const exclusions = new Map<SyntaxFactsCoverageDomain, SyntaxFactExclusion[]>([
     ["function-boundaries", []], ["call-sites", []], ["construct-sites", []], ["property-sites", []],
@@ -304,7 +309,10 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
         });
       } else {
         const site = callSite(node);
-        if (site) sites.push(site);
+        if (site) {
+          sites.push(site);
+          if (site.kind === "call" && hasSingleStringLiteralArgument(node)) singleStringLiteralCallStarts.add(site.start);
+        }
         else if (typeof node.start === "number" && typeof node.end === "number") {
           exclusions.get(node.type === "NewExpression" ? "construct-sites" : "call-sites")!.push({
             reason: node.type === "NewExpression" ? "unsupported-construct-target" : "unsupported-call-target",
@@ -367,7 +375,7 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
     status: errors.length > 0 ? "invalid" as const : domainExclusions.length > 0 ? "partial" as const : "complete" as const,
     exclusions: domainExclusions,
   }));
-  return {
+  return { syntax: {
     schema: syntaxFactsSchema,
     source: {
       fileName, language, length: sourceText.length,
@@ -378,7 +386,12 @@ export function collectSyntaxFacts(fileName: string, sourceText: string): Syntax
     functions,
     sites,
     errors,
-  };
+  }, singleStringLiteralCallStarts };
+}
+
+/** Parse TypeScript with Oxc into the versioned, compiler-neutral syntax observation contract. */
+export function collectSyntaxFacts(fileName: string, sourceText: string): SyntaxFacts {
+  return collectSyntaxFactsWithInternal(fileName, sourceText).syntax;
 }
 
 /**

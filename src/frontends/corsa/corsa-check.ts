@@ -6,7 +6,7 @@ import { effectSchema, parseEffectExpression, type Effect } from "../../effects/
 import { openCorsaApiFrontend, type CorsaApiFrontend, type CorsaApiSymbolFact, type CorsaApiTypeFact } from "./corsa-api-frontend.js";
 import type { EffectSummary, EvidenceStatus } from "../../effects/effects.js";
 import type { BuiltinSemantics, SemanticPrimitive } from "../../effects/builtin-semantic-schema.js";
-import { callingFunction, collectSyntaxFacts, enclosingFunction, type SyntaxSite } from "../oxc-syntax.js";
+import { callingFunction, collectSyntaxFactsWithInternal, enclosingFunction, type SyntaxSite } from "../oxc-syntax.js";
 import type { VerificationArtifact } from "../../contracts/verification-contracts.js";
 import { hasNativeContractCandidates } from "../../contracts/contract-annotations.js";
 import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
@@ -298,6 +298,7 @@ function resolveEcmaScriptContract(
   members: Map<string, BuiltinContract>,
   globals: Map<string, BuiltinContract>,
   arrayLiteralReceivers: ReadonlySet<number>,
+  singleStringLiteralCallStarts: ReadonlySet<number>,
 ): BuiltinContract | undefined {
   // The literal's own members are the ones the catalog registers, so this needs no type at the receiver —
   // which an `as const` literal does not carry an owner symbol for anyway. This narrows on the literal
@@ -315,7 +316,7 @@ function resolveEcmaScriptContract(
   const ownerName = declaredByEcmaScriptLibrary(owner) ? owner!.name : primitiveOwnerName(receiverType);
   if (ownerName === undefined) return undefined;
   if (ownerName === "String" && site.name === "split"
-    && (site.singleStringLiteralArgument !== true || primitiveOwnerName(receiverType) !== "String")) return undefined;
+    && (!singleStringLiteralCallStarts.has(site.start) || primitiveOwnerName(receiverType) !== "String")) return undefined;
   return members.get(`${ownerName}#${member!.name}`) ?? globals.get(`${ownerName}.${member!.name}`);
 }
 
@@ -441,7 +442,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       const sourceText = readFileSync(fileName, "utf8");
       sources.set(fileName, sourceText);
       const queries = memoizeQueries(frontend, fileName);
-      const syntax = collectSyntaxFacts(fileName, sourceText);
+      const { syntax, singleStringLiteralCallStarts } = collectSyntaxFactsWithInternal(fileName, sourceText);
       const bindings = collectCorsaEffectBindings(frontend, fileName, sourceText);
       for (const binding of bindings.declarations) {
         const key = `${fileName}:${binding.start}:${binding.name}`;
@@ -710,7 +711,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           ?? (site.receiverPosition === undefined
             ? standardGlobalContract(site)
             : resolveDomContract(queries, fileName, site, domMethods, domGraph)
-              ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers));
+              ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts));
         if (contract) record(site, contract);
         else if (!recordClassCall(site)) recordUnclassified(site);
       }
@@ -721,7 +722,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
           else if (!recordClassCall(site)) recordUnclassified(site);
         } else if (site.kind === "property") {
           const contract = resolveDomContract(queries, fileName, site, domMethods, domGraph)
-            ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers);
+            ?? resolveEcmaScriptContract(queries, fileName, site, ecmaScriptMembers, globals, indexAccess.arrayLiteralReceivers, singleStringLiteralCallStarts);
           if (contract) record(site, contract);
           // A member the DOM library declares carries host semantics this check did not model, and an accessor
           // runs a body this path does not analyze; both are unknown, not proofs of effect freedom. A member the

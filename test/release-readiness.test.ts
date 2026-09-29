@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { uneffectVersion } from "../src/evidence/evidence.js";
 import { effectBaselineToolVersion } from "../src/effects/effect-baseline.js";
 
-describe("0.5.0 release metadata", () => {
+describe("release metadata", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
     name: string; version: string; main?: string; types?: string;
     exports: Record<string, unknown>; files: string[]; publishConfig: { access: string; provenance?: boolean };
@@ -17,7 +17,8 @@ describe("0.5.0 release metadata", () => {
 
   it("keeps package and evidence versions synchronized", () => {
     expect(manifest.name).toBe("@mizchi/uneffect");
-    expect(manifest.version).toBe("0.5.0");
+    const releaseState = JSON.parse(readFileSync(".release-please-manifest.json", "utf8")) as Record<string, string>;
+    expect(manifest.version).toBe(releaseState["."]);
     expect(uneffectVersion).toBe(manifest.version);
     expect(effectBaselineToolVersion).toBe(manifest.version);
   });
