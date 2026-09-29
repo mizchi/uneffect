@@ -355,9 +355,26 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
   const freshArrayLiteral = (literal: ts.ArrayLiteralExpression): boolean => literal.elements.every((element) =>
     ts.isSpreadElement(element) ? primitiveArray(checker.getTypeAtLocation(element.expression))
       : ts.isOmittedExpression(element) || primitiveOnly(checker.getTypeAtLocation(element)));
+  const freshObjectValue = (expression: ts.Expression): boolean => {
+    const value = unwrapInitializer(expression);
+    if (primitiveOnly(checker.getTypeAtLocation(value))) return true;
+    if (!ts.isCallExpression(value) || !ts.isPropertyAccessExpression(value.expression)) return false;
+    const receiver = unwrapInitializer(value.expression.expression);
+    if (!ts.isArrayLiteralExpression(receiver)) return false;
+    const method = checker.getSymbolAtLocation(value.expression.name);
+    return value.arguments.length === 0
+      && value.expression.name.text === "values"
+      && freshArrayLiteral(receiver)
+      && (method?.declarations ?? []).some((declaration) =>
+        ts.isMethodSignature(declaration) && ts.isInterfaceDeclaration(declaration.parent)
+        && declaration.parent.name.text === "Array"
+        && declaration.getSourceFile().isDeclarationFile
+        && /[/\\]lib\.es\d+\.iterable\.d\.ts$/u.test(declaration.getSourceFile().fileName));
+  };
   const freshObjectLiteral = (literal: ts.ObjectLiteralExpression): boolean => literal.properties.every((property) =>
-    ts.isPropertyAssignment(property) && primitiveOnly(checker.getTypeAtLocation(property.initializer)));
-  const candidates = new Map<ts.Symbol, { name: string; kind: "array" | "object"; escapes: number[]; mutations: number[]; unsafe: boolean }>();
+    ts.isPropertyAssignment(property) && freshObjectValue(property.initializer));
+  type Candidate = { name: string; kind: "array" | "object"; escapes: number[]; mutations: number[]; unsafe: boolean };
+  const candidates = new Map<ts.Symbol, Candidate>();
   const visit = (node: ts.Node): void => {
     if (node !== scope && ts.isFunctionLike(node)) return;
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
@@ -379,19 +396,43 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
     ts.forEachChild(node, visit);
   };
   if (scope.body) visit(scope.body);
+  const aliases = new Map<ts.Symbol, Candidate>();
+  const aliasSources = new Set<ts.Identifier>();
+  const collectAliases = (node: ts.Node): void => {
+    if (node !== scope && ts.isFunctionLike(node)) return;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+      && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
+      const source = unwrapInitializer(node.initializer);
+      if (ts.isIdentifier(source)) {
+        const sourceSymbol = checker.getSymbolAtLocation(source);
+        const candidate = sourceSymbol && (candidates.get(sourceSymbol) ?? aliases.get(sourceSymbol));
+        const aliasSymbol = checker.getSymbolAtLocation(node.name);
+        if (candidate && aliasSymbol) {
+          aliases.set(aliasSymbol, candidate);
+          aliasSources.add(source);
+        }
+      }
+    }
+    ts.forEachChild(node, collectAliases);
+  };
+  if (scope.body) collectAliases(scope.body);
   const classify = (node: ts.Node, nested = false, repeated = false): void => {
     const insideNested = nested || (node !== scope && ts.isFunctionLike(node));
     const insideRepeated = repeated || ts.isIterationStatement(node, false);
     if (ts.isIdentifier(node)) {
       const symbol = checker.getSymbolAtLocation(node);
-      const candidate = symbol && candidates.get(symbol);
+      const candidate = symbol && (candidates.get(symbol) ?? aliases.get(symbol));
       const declaration = symbol?.valueDeclaration;
-      if (candidate && !(declaration && ts.isVariableDeclaration(declaration) && node === declaration.name)) {
+      if (candidate && !aliasSources.has(node)
+        && !(declaration && ts.isVariableDeclaration(declaration) && node === declaration.name)) {
         const parent = node.parent;
         const access = (ts.isPropertyAccessExpression(parent) || ts.isElementAccessExpression(parent)) && parent.expression === node ? parent : undefined;
         const call = access && ts.isCallExpression(access.parent) && access.parent.expression === access ? access.parent : undefined;
         if (insideNested) candidate.unsafe = true;
-        else if (candidate.kind === "array" && call && access && ts.isPropertyAccessExpression(access) && localArrayMethods.has(access.name.text)
+        else if (access && (ts.isPropertyAccessExpression(access.parent) || ts.isElementAccessExpression(access.parent))) {
+          // A write through a child may affect a borrowed value, even when the root is fresh.
+          candidate.unsafe = true;
+        } else if (candidate.kind === "array" && call && access && ts.isPropertyAccessExpression(access) && localArrayMethods.has(access.name.text)
           && adapter.resolveCall(call)?.evidence === "trusted") {
           candidate.mutations.push(node.getStart());
           const stored = access.name.text === "push" || access.name.text === "unshift" ? call.arguments
@@ -409,7 +450,6 @@ function localBindings(scope: ts.FunctionLikeDeclaration, checker: ts.TypeChecke
             && access.parent.operand === access
             && (access.parent.operator === ts.SyntaxKind.PlusPlusToken || access.parent.operator === ts.SyntaxKind.MinusMinusToken)))) {
           candidate.mutations.push(node.getStart());
-          if (ts.isBinaryExpression(access.parent) && !primitiveOnly(checker.getTypeAtLocation(access.parent.right))) candidate.unsafe = true;
         } else {
           candidate.escapes.push(node.getStart());
           if (insideRepeated) candidate.unsafe = true;

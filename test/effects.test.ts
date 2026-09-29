@@ -590,6 +590,49 @@ describe("effect checker", () => {
     expect(analyzeEffects("object-build.ts", source)).toEqual([]);
   });
 
+  it("keeps writes to a fresh local object private through a local alias", () => {
+    const source = `
+      /* uneffect:effect none */
+      function build() {
+        const holder = { iterator: ["fallback"].values() }
+        const alias = holder
+        holder.iterator = ["next"].values()
+        return Array.from(alias.iterator)
+      }
+    `;
+    expect(analyzeEffects("object-local-alias.ts", source)).toEqual([]);
+  });
+
+  it("reports a write after a local object alias escapes", () => {
+    const source = `
+      let published: { count: number } | undefined
+      /* uneffect:effect none */
+      function build() {
+        const holder = { count: 0 }
+        const alias = holder
+        published = alias
+        holder.count++
+      }
+    `;
+    expect(analyzeEffects("object-alias-escape.ts", source)).toContainEqual(expect.objectContaining({
+      functionName: "build", kind: "missing", effect: "Mutate<typeof holder.count>",
+    }));
+  });
+
+  it("keeps mutation of a borrowed child observable after assigning it to a local object", () => {
+    const source = `
+      /* uneffect:effect none */
+      function build(input: { count: number }) {
+        const holder: { child: { count: number } | undefined } = { child: undefined }
+        holder.child = input
+        holder.child.count++
+      }
+    `;
+    expect(analyzeEffects("object-assigned-child.ts", source)).toContainEqual(expect.objectContaining({
+      functionName: "build", kind: "missing", effect: "Mutate<typeof holder.child.count>",
+    }));
+  });
+
   it("does not hide mutation through a local alias of an input object", () => {
     const source = `
       /* uneffect:effect none */
