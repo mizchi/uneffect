@@ -4,6 +4,56 @@ All notable changes to Uneffect are documented in this file.
 
 ## Unreleased
 
+## [0.6.0](https://github.com/mizchi/uneffect/compare/v0.5.1...v0.6.0) (2026-09-29)
+
+
+### Features
+
+* add conditional module initialization v2 ([bd44d53](https://github.com/mizchi/uneffect/commit/bd44d5386c09e02346de32eb5a090184f1250780))
+* add Corsa/Oxc CFG lint and decouple spec authoring from compiler ([a612862](https://github.com/mizchi/uneffect/commit/a612862d4aba94396aeb9ee8778531b12a8af0a8))
+* add inferred effect regression baselines ([35ac250](https://github.com/mizchi/uneffect/commit/35ac2507fb95a7261786511ceeddd71153fbb6af))
+* add native awaited-type and build-output migration gates ([7e42e0c](https://github.com/mizchi/uneffect/commit/7e42e0c3ef8b61a5d724bc80f53f6abe993ab5bd))
+* add native registry linting and fix dogfood regressions ([20eed6b](https://github.com/mizchi/uneffect/commit/20eed6bca586d65d24041729b8fc06427c8db508))
+* bind native workspace summaries to authenticated calls ([97c50e4](https://github.com/mizchi/uneffect/commit/97c50e4c92f282dcc6cbbe53c90575008cb90c14))
+* expose experimental module-order v2 in CLI ([eac0aff](https://github.com/mizchi/uneffect/commit/eac0aff4b9b2ec4caf84bd6c3ca95019383f3df2)), closes [#70](https://github.com/mizchi/uneffect/issues/70)
+* extend native effect propagation and bounded contract proofs ([f20c2ab](https://github.com/mizchi/uneffect/commit/f20c2ab93a15c4f67b69c7ff4c6e6e8a5d431807))
+* harden 0.3.0 API and dogfood gates ([82a063a](https://github.com/mizchi/uneffect/commit/82a063afab63578741c953bae626a742f6187514))
+* harden syntax and control-flow artifacts ([a013d3b](https://github.com/mizchi/uneffect/commit/a013d3b7f5f41c43e6bbfed387e275561423458f))
+* lower Promise try joins through CFG ([e2f79a9](https://github.com/mizchi/uneffect/commit/e2f79a9ea5b0ab8c9400138b6a42ad4ed5d5967e))
+* migrate specification and module analysis to Corsa/Oxc ([657100a](https://github.com/mizchi/uneffect/commit/657100adac7ea2e6a8bbc359cf3a26c8742fd9ca))
+* promote module initialization ordering to supported API ([09efc25](https://github.com/mizchi/uneffect/commit/09efc257cea1ef889239cc25353cccd3c15c5f03))
+* promote workflow and impact analysis to supported APIs ([c9be5f8](https://github.com/mizchi/uneffect/commit/c9be5f8a6c3b537a89e7211339ed04aaa97ee43b))
+* prototype CFG workflow barriers and dependency impact analysis ([4637620](https://github.com/mizchi/uneffect/commit/4637620b6c926e8a42d82f1606aa7470ed3d8086))
+* prune static Promise switch entries ([6f22a62](https://github.com/mizchi/uneffect/commit/6f22a6202ab1b2fba29bb0ff6637db520cc581ed))
+* refine contract reachability with native Corsa type facts ([7589ca0](https://github.com/mizchi/uneffect/commit/7589ca0375550d950071ea73333faafce198d8ee))
+* refine native arithmetic range narrowing ([c8aec45](https://github.com/mizchi/uneffect/commit/c8aec450b0a06dd33261be512f69d62670d301c9))
+* refine semantic control flow ([1976305](https://github.com/mizchi/uneffect/commit/19763051d0985a4271cb15fad9fc7dd08ea4859c))
+* stabilize Corsa and temporal contracts ([1589447](https://github.com/mizchi/uneffect/commit/1589447b4b5e36723e1f6735fa4db089883e5cc2))
+* validate fixed-point CFG topology ([e94bf31](https://github.com/mizchi/uneffect/commit/e94bf315c0a026326083c34fe13f004cd5fbee8c))
+* verify bounded contract bodies with Corsa and shared solver ([b77d95d](https://github.com/mizchi/uneffect/commit/b77d95d08065eebf9cc0c3181c9626aca88d13cb))
+* verify native workspace build outputs in reference order ([21ef476](https://github.com/mizchi/uneffect/commit/21ef4760c562da717f9f232913a35d24ba87b94c))
+
+
+### Bug Fixes
+
+* evaluate Promise switch case tests ([b03a8ef](https://github.com/mizchi/uneffect/commit/b03a8ef50bd64827591b41ebee9e0689a0f20e9c))
+* keep fresh local object aliases private in release 0.5.1 ([bc82420](https://github.com/mizchi/uneffect/commit/bc82420a08206e169480a71562cef01bdbd79a16))
+* keep local collection reads private and bound recursive mutations ([560b1b2](https://github.com/mizchi/uneffect/commit/560b1b269fb5521840e6303f1c93aa19ed3003e6))
+* keep parser metadata load analyzable ([38baa18](https://github.com/mizchi/uneffect/commit/38baa182906fc71835ba1f456f12290f31db71cc))
+* preserve Promise call evaluation order ([76353b3](https://github.com/mizchi/uneffect/commit/76353b31ed20b84321757f67d30c088f4d771729))
+* preserve Promise call target order ([97b51f8](https://github.com/mizchi/uneffect/commit/97b51f8cb36e550f5ab5a0339d1ff93ed64fb9c7))
+* preserve Promise constructor order ([2e49264](https://github.com/mizchi/uneffect/commit/2e492646f9114026418e790a9965f846ae081203))
+* preserve Promise initializer order ([9043161](https://github.com/mizchi/uneffect/commit/9043161440611f1f2383392f9c65365d4a3f5190))
+* preserve switch break ownership in CFG ([3c68eaa](https://github.com/mizchi/uneffect/commit/3c68eaae58e638d38622a937c7bbaa96f13e2574))
+* preserve syntax facts v1 while proving literal split ([0a61f72](https://github.com/mizchi/uneffect/commit/0a61f72f108248fc13cdd4d2b926671a69aa7bb0))
+* require actual resumption in conditional module proofs ([c8a2315](https://github.com/mizchi/uneffect/commit/c8a2315d48f9f9c229ff14971d88a5f280c050e0))
+* require runtime evidence for switch exhaustiveness ([b4f57fa](https://github.com/mizchi/uneffect/commit/b4f57fafa5499145e584bad44632106285e21e3e))
+* respect throw prefixes in Promise CFG ([39bf266](https://github.com/mizchi/uneffect/commit/39bf266381679de6a0f3b05ad186ee22a1503b47))
+* respect throw prefixes in Promise statements ([55b1d6a](https://github.com/mizchi/uneffect/commit/55b1d6a7209bd80478fd241f88deb4151293a58c))
+* retain Promise ownership on CFG back edges ([cd0ad02](https://github.com/mizchi/uneffect/commit/cd0ad020648e6a77d2ac1024e21ffa1bb0c3d3a2))
+* route throwing if conditions through CFG ([d441129](https://github.com/mizchi/uneffect/commit/d441129c5643b4f77af71eca757366e2340e105a))
+* surface async safety in project verification ([27dac82](https://github.com/mizchi/uneffect/commit/27dac82b011fc96d386a369bc2a1d9d35765dd67))
+
 ## [0.5.1](https://github.com/mizchi/uneffect/compare/v0.5.0...v0.5.1) (2026-09-29)
 
 ### Changed
