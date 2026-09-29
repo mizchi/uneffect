@@ -12,10 +12,10 @@ npx uneffect check src/*.ts
 ```
 
 The default `check`, `cfg-lint`, and `module-order` paths use the packaged TypeScript 7 native
-compiler through Corsa plus Oxc. The JavaScript `@typescript/typescript6` peer
-is needed for `--typescript-program` and proof commands that still use the
+compiler through Corsa plus Oxc. A bundled JavaScript TypeScript 6 compiler
+supports `--typescript-program` and proof commands that still use the
 Program API, including `spec temporal`. The `spec ir`,
-`lint`, `z3`, `quint`, and `compose` paths use Oxc and do not load that peer.
+`lint`, `z3`, `quint`, and `compose` paths use Oxc and do not load that compiler.
 See [compiler migration](./compiler-migration.md). Node.js 24 or newer is required.
 
 Default `check` now produces solver evidence for the

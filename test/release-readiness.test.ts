@@ -42,10 +42,10 @@ describe("0.5.0 release metadata", () => {
       "corsa-oxlint": ">=1.12.4 <2.0.0",
       "oxlint": ">=1.80.0 <2.0.0",
       "typescript": ">=7.0.0 <8.0.0",
-      "@typescript/typescript6": ">=6.0.2 <7.0.0",
     });
     expect(manifest.peerDependenciesMeta?.typescript).toEqual({ optional: true });
-    expect(manifest.peerDependenciesMeta?.["@typescript/typescript6"]).toEqual({ optional: true });
+    expect(manifest.peerDependencies?.["@typescript/typescript6"]).toBeUndefined();
+    expect(manifest.peerDependenciesMeta?.["@typescript/typescript6"]).toBeUndefined();
     expect(manifest.optionalDependencies?.["@corsa-bind/napi"]).toBe("1.13.1");
     expect(manifest.optionalDependencies?.["@typescript/typescript-darwin-arm64"]).toBe("7.0.2");
     expect(manifest.optionalDependencies?.["@typescript/native-preview"]).toBeUndefined();
@@ -200,7 +200,7 @@ describe("0.5.0 release metadata", () => {
     ]) expect(smoke).toContain(entrypoint);
     expect(smoke).toContain('"@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json"');
     expect(smoke).toContain('"@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json"');
-    expect(smoke).toContain('execFileSync(typescriptCompiler, ["-p", typecheckConfig]');
+    expect(smoke).toContain('execFileSync(process.execPath, [typescriptCompiler, "-p", typecheckConfig]');
     expect(smoke).toContain("unknownField");
     expect(smoke).toContain('"--omit=optional"');
     expect(smoke).toContain("No Corsa compiler was supplied");

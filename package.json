@@ -117,7 +117,7 @@
     "provenance": true
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node ci/bundle-typescript6.mjs",
     "test": "tsx ci/run-test-tiers.ts",
     "bench": "vitest bench --run",
     "check": "tsc -p tsconfig.json --noEmit && tsx ci/run-test-tiers.ts",
@@ -132,14 +132,10 @@
     "@oxlint/plugins": ">=1.80.0 <2.0.0",
     "corsa-oxlint": ">=1.12.4 <2.0.0",
     "oxlint": ">=1.80.0 <2.0.0",
-    "typescript": ">=7.0.0 <8.0.0",
-    "@typescript/typescript6": ">=6.0.2 <7.0.0"
+    "typescript": ">=7.0.0 <8.0.0"
   },
   "peerDependenciesMeta": {
     "typescript": {
-      "optional": true
-    },
-    "@typescript/typescript6": {
       "optional": true
     },
     "@informalsystems/quint": {

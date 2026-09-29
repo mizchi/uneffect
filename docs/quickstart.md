@@ -57,12 +57,11 @@ does not change the emitted JavaScript.
 ## 3. Check it
 
 This example contains a numeric loop contract, which currently uses the explicit
-Program path. Install its compatibility compiler before running it. Default
+Program path. Its compatibility compiler is included in the package. Default
 native check supports [Boolean/constant-return bodies](./corsa-contract-bodies.md)
 and reports other contract bodies as unsupported.
 
 ```sh
-npm install --save-dev @typescript/typescript6
 npx uneffect check --typescript-program src/uneffect-example.ts
 ```
 

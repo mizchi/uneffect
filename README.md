@@ -49,10 +49,9 @@ export function count(n: number): number {
 ```
 
 The numeric loop contract above currently uses the explicit Program path.
-Install its compatibility compiler and check the file:
+Check the file with the bundled compatibility compiler:
 
 ```sh
-npm install --save-dev @typescript/typescript6
 npx uneffect check --typescript-program src/example.ts
 npx uneffect check --typescript-program --infer --assurance no-unknown src/example.ts
 ```

@@ -77,17 +77,39 @@ try {
     "schemas/uneffect-temporal-model-v1.schema.json",
     "schemas/uneffect-corsa-api-frontend-v1.schema.json",
     "schemas/uneffect-module-order-v2.schema.json",
+    "dist/src/support/typescript-compiler/package.json",
+    "dist/src/support/typescript-compiler/LICENSE.txt",
+    "dist/src/support/typescript-compiler/lib/typescript.js",
+    "dist/src/support/typescript-compiler/lib/typescript.d.ts",
+    "dist/src/support/typescript-compiler/lib/lib.es2024.full.d.ts",
   ]) if (!packedPaths.has(path)) throw new Error(`packed artifact is missing ${path}`);
+
+  if (sourceManifest.peerDependencies?.["@typescript/typescript6"] || sourceManifest.peerDependenciesMeta?.["@typescript/typescript6"]) {
+    throw new Error("TypeScript 6 must not be a consumer peer dependency");
+  }
+  for (const name of ["typescript-compiler.js", "typescript-compiler.d.ts"]) {
+    const source = readFileSync(resolve("dist/src/support", name), "utf8");
+    if (source.includes('"@typescript/typescript6"')) throw new Error(`${name} still imports TypeScript 6`);
+  }
 
   const consumer = join(temporary, "consumer");
   const typescript6Package = dirname(createRequire(import.meta.url).resolve("@typescript/typescript6/package.json"));
+  const bundledCompilerImport = "./node_modules/@mizchi/uneffect/dist/src/support/typescript-compiler/lib/typescript.js";
   execFileSync("npm", [
     "install", "--ignore-scripts", "--no-package-lock", "--prefix", consumer,
-    archive, typescript6Package,
+    archive,
     `@types/node@${sourceManifest.devDependencies["@types/node"]}`,
     ...["corsa-oxlint", "@oxlint/plugins", "oxlint"].map((name) => `${name}@${sourceManifest.devDependencies[name]}`),
   ], { stdio: "inherit" });
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
+  for (const name of ["@typescript/typescript6", "@typescript/old"]) {
+    try {
+      createRequire(join(consumer, "package.json")).resolve(name);
+      throw new Error(`consumer unexpectedly resolved ${name}`);
+    } catch (error) {
+      if (error?.code !== "MODULE_NOT_FOUND") throw error;
+    }
+  }
   const typecheckConfig = join(consumer, "tsconfig.json");
   writeFileSync(typecheckConfig, JSON.stringify({
     compilerOptions: {
@@ -111,7 +133,7 @@ try {
       type ModuleInitializationV2Options,
     } from "@mizchi/uneffect/module-order";
     import { type ModuleOrderV2Options } from "@mizchi/uneffect/module-order";
-    import ts from "@typescript/typescript6";
+    import ts from ${JSON.stringify(bundledCompilerImport)};
     import { lintPrerequisites, initializationRule, type RuleCfg } from "@mizchi/uneffect/experimental/lint";
     import { lowerCorsaRuleCfg, type CorsaRuleOptions } from "@mizchi/uneffect/experimental/lint/corsa";
     import { parseSpec as parseNativeSpec, generateQuint as emitNativeQuint, type ParsedSpec, prepareCorsaContractDslLinks, type PrepareCorsaContractDslOptions, type PreparedContractDslLinks } from "@mizchi/uneffect/experimental/spec";
@@ -182,8 +204,8 @@ try {
     void moduleOrderV2Schema;
   `);
   writeFileSync(join(consumer, "query.ts"), "export const answer = 42 as const;\n");
-  const typescriptCompiler = join(consumer, "node_modules", ".bin", process.platform === "win32" ? "tsc6.cmd" : "tsc6");
-  execFileSync(typescriptCompiler, ["-p", typecheckConfig], { cwd: consumer, stdio: "inherit" });
+  const typescriptCompiler = join(typescript6Package, "bin", "tsc6");
+  execFileSync(process.execPath, [typescriptCompiler, "-p", typecheckConfig], { cwd: consumer, stdio: "inherit" });
   packageEvidence.verification.typecheck = "passed";
   writeEvidence();
 
@@ -201,7 +223,7 @@ try {
     import temporalSchema from "@mizchi/uneffect/schemas/uneffect-temporal-model-v1.schema.json" with { type: "json" };
     import corsaSchema from "@mizchi/uneffect/schemas/uneffect-corsa-api-frontend-v1.schema.json" with { type: "json" };
     import moduleOrderV2Schema from "@mizchi/uneffect/schemas/uneffect-module-order-v2.schema.json" with { type: "json" };
-    import ts from "@typescript/typescript6";
+    import ts from ${JSON.stringify(bundledCompilerImport)};
 
     const requiredRoot = ["analyzeEffects", "analyzeProgramEffects", "verifyUneffectProject", "generateTemporalModel", "parseTemporalModelResult"];
     for (const name of requiredRoot) if (typeof root[name] !== "function") throw new Error(\`missing public root API: \${name}\`);
@@ -275,10 +297,16 @@ try {
   execFileSync(process.execPath, [smoke], { cwd: consumer, stdio: "inherit" });
 
   // Exercise the published CLI entry, including lazy loading of supported v2.
+  const cliEntry = join(consumer, "node_modules", "@mizchi", "uneffect", sourceManifest.bin.uneffect);
+  const legacyCheck = spawnSync(process.execPath, [cliEntry, "check", "--typescript-program", join(consumer, "query.ts")], {
+    cwd: consumer, encoding: "utf8", timeout: 60_000,
+  });
+  if (legacyCheck.error || legacyCheck.status !== 0) {
+    throw new Error(`bundled TypeScript 6 CLI check failed without its peer: ${legacyCheck.error ?? legacyCheck.stderr}`);
+  }
   const moduleEntry = join(consumer, "module-conditional-tla.mts");
   const moduleSource = readFileSync(resolve("examples/dogfood/module-conditional-tla.ts"), "utf8");
   writeFileSync(moduleEntry, moduleSource);
-  const cliEntry = join(consumer, "node_modules", "@mizchi", "uneffect", sourceManifest.bin.uneffect);
   const moduleConfig = join(consumer, "module-tsconfig.json");
   writeFileSync(moduleConfig, JSON.stringify({ compilerOptions: { target: "ES2024", module: "NodeNext", types: ["node"], noEmit: true }, files: [moduleEntry] }));
   const inspectModuleOrder = (args, expectedStatus, schema, evidence) => {
