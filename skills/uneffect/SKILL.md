@@ -31,6 +31,10 @@ annotations on mechanically added wrappers.
   [references/patterns.md](references/patterns.md).
 - Before making a result release-blocking or describing a guarantee, read
   [references/assurance.md](references/assurance.md).
+- Before writing a CI gate or a verification script around the CLI, read
+  [references/ci-gate.md](references/ci-gate.md). Gate with
+  `check --assurance <profile> --json` and its exit code instead of
+  re-asserting report fields in a wrapper script.
 
 Read only the guides needed for the current task. The repository's `docs/`
 directory is authoritative for detailed and fast-changing semantics; use the

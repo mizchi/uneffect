@@ -31,8 +31,11 @@ The available assurance profiles become progressively stricter:
 - `declared`: additionally require declaration-checked Effect summaries.
 - `verified`: additionally require a present and empty assumption ledger.
 
-Do not infer `verified` from exit code 0. Read the JSON `outcome`,
+Without `--assurance`, exit code 0 means only that no error diagnostic was
+reported. With it, the exit code is the profile's decision; a passing
+`no-unknown` or `declared` result may still be `assumed`, so read
 `assurance.status`, `blockers`, `claims`, `exclusions`, and coverage together.
+For CI gates, see [ci-gate.md](ci-gate.md).
 
 ## Canonical comment syntax
 
