@@ -140,6 +140,22 @@ export interface CorsaSourceFacts {
    */
   readonly identifierReceivers: ReadonlyMap<string, number>;
   /**
+   * `${start}:${end}` of an `import()` whose specifier is one string literal and that carries no options, to that
+   * specifier and its offset, which is where the checker resolves the module it names.
+   */
+  readonly literalDynamicImports: ReadonlyMap<string, { readonly specifier: string; readonly position: number }>;
+  /**
+   * Member calls whose receiver is the namespace object of a literal `import()`: the awaited import written as
+   * the receiver, or a `const` binding initialized by one, matched by symbol. The namespace object is frozen and
+   * its properties are the module's exports, so the member is the export.
+   */
+  readonly importNamespaceReceivers: ReadonlySet<string>;
+  /**
+   * A `const` destructured from the namespace object of a literal `import()`, from the local binding's symbol id to
+   * the export's. The export is the namespace property the pattern key names, asked of the import's own type.
+   */
+  readonly destructuredImports: ReadonlyMap<string, string>;
+  /**
    * `${start}:${end}` of a member expression assigned an inline function, to that function's start offset. A
    * contract whose callback target is the assigned value composes with it, exactly as an argument callback does.
    */
@@ -907,6 +923,18 @@ export function analyzeCorsaSourceFacts(
   const freshArguments = new Map<string, readonly boolean[]>();
   const allocatedReceivers = new Map<string, AllocatedReceiver>();
   const identifierReceivers = new Map<string, number>();
+  const literalDynamicImports = new Map<string, { specifier: string; position: number }>();
+  const importNamespaceReceivers = new Set<string>();
+  const destructuredImports = new Map<string, string>();
+  const importPatternDeclarators: EstreeNode[] = [];
+  /** The awaited `import()` of one string literal with no options that this expression is, if it is one. */
+  const awaitedLiteralImport = (node: EstreeNode): EstreeNode | undefined => {
+    const awaited = unwrap(node);
+    if (awaited.type !== "AwaitExpression" || !isNode(awaited.argument)) return undefined;
+    const call = unwrap(awaited.argument);
+    return call.type === "ImportExpression" && call.options == null && isNode(call.source)
+      && call.source.type === "Literal" && typeof call.source.value === "string" ? call : undefined;
+  };
   const constDeclaratorCandidates: EstreeNode[] = [];
   const identifiersByName = new Map<string, EstreeNode[]>();
   const assignedInlineFunctions = new Map<string, number>();
@@ -1059,12 +1087,23 @@ export function analyzeCorsaSourceFacts(
           allocatedReceivers.set(`${node.start}:${node.end}`, { kind: "call-result", call: `${receiver.start}:${receiver.end}` });
         } else if (receiver.type === "Identifier" && callee.computed !== true && typeof receiver.start === "number") {
           identifierReceivers.set(`${node.start}:${node.end}`, receiver.start);
+        } else if (callee.computed !== true && awaitedLiteralImport(receiver)) {
+          importNamespaceReceivers.add(`${node.start}:${node.end}`);
         }
       }
     }
     for (const child of children(node)) parents.set(child, node);
+    if (node.type === "ImportExpression" && isNode(node.source) && node.options == null
+      && node.source.type === "Literal" && typeof node.source.value === "string" && typeof node.source.start === "number"
+      && typeof node.start === "number" && typeof node.end === "number") {
+      literalDynamicImports.set(`${node.start}:${node.end}`, { specifier: node.source.value, position: node.source.start });
+    }
     if (node.type === "VariableDeclarator" && isNode(node.id) && node.id.type === "Identifier" && isNode(node.init)) {
       constDeclaratorCandidates.push(node);
+    }
+    if (node.type === "VariableDeclarator" && isNode(node.id) && node.id.type === "ObjectPattern" && isNode(node.init)
+      && awaitedLiteralImport(node.init)) {
+      importPatternDeclarators.push(node);
     }
     if (node.type === "Identifier" && typeof node.name === "string") {
       const list = identifiersByName.get(node.name);
@@ -1160,6 +1199,57 @@ export function analyzeCorsaSourceFacts(
     }
     return { kind: "binding", initializer, calls };
   };
+  const symbolIdAt = (position: number): string | null => {
+    if (!frontend.getSymbolAtPosition) return null;
+    try { return frontend.getSymbolAtPosition(fileName, position)?.id ?? null; } catch { return null; }
+  };
+  // A `const` bound to an awaited literal import names the namespace object wherever its symbol is the receiver.
+  const namespaceBindings = new Set<string>();
+  for (const declarator of constDeclaratorCandidates) {
+    const declaration = parents.get(declarator);
+    const id = declarator.id as EstreeNode;
+    if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" || typeof id.start !== "number"
+      || !awaitedLiteralImport(declarator.init as EstreeNode)) continue;
+    const symbol = symbolIdAt(id.start);
+    if (symbol !== null) namespaceBindings.add(symbol);
+  }
+  for (const [span, position] of identifierReceivers) {
+    const symbol = namespaceBindings.size === 0 ? null : symbolIdAt(position);
+    if (symbol !== null && namespaceBindings.has(symbol)) importNamespaceReceivers.add(span);
+  }
+  for (const declarator of importPatternDeclarators) {
+    const declaration = parents.get(declarator);
+    const boundary = enclosingBoundary(declarator);
+    const namespaceType = typeOfExpression(declarator.init as EstreeNode);
+    if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" || !namespaceType) continue;
+    for (const property of (declarator.id as EstreeNode).properties as EstreeNode[] ?? []) {
+      // A default value, a rest element, and a computed key each make the binding something other than an export.
+      if (property.type !== "Property" || property.computed === true || !isNode(property.key) || property.key.type !== "Identifier"
+        || !isNode(property.value) || property.value.type !== "Identifier" || typeof property.value.start !== "number"
+        || typeof property.key.name !== "string" || typeof property.value.name !== "string") continue;
+      let exported: string | null = null;
+      try { exported = frontend.getPropertyOfType(namespaceType, property.key.name)?.id ?? null; } catch { exported = null; }
+      if (exported === null) continue;
+      let local: string | null = null;
+      if (property.shorthand !== true) local = symbolIdAt(property.value.start);
+      else {
+        // A shorthand position names the property's symbol, so the binding is read off its references instead,
+        // and only when exactly one other symbol answers to that name in the declaring boundary.
+        const candidates = new Set<string>();
+        for (const reference of identifiersByName.get(property.value.name) ?? []) {
+          if (reference === property.value || reference === property.key || typeof reference.start !== "number") continue;
+          const parent = parents.get(reference);
+          if (parent?.type === "MemberExpression" && parent.computed !== true && parent.property === reference) continue;
+          if (enclosingBoundary(reference) !== boundary || reference.start < (declarator.end as number)) continue;
+          const symbol = symbolIdAt(reference.start);
+          if (symbol === null) { candidates.add("\u0000unreadable"); break; }
+          if (symbol !== exported) candidates.add(symbol);
+        }
+        local = candidates.size === 1 && !candidates.has("\u0000unreadable") ? [...candidates][0]! : null;
+      }
+      if (local !== null && local !== exported) destructuredImports.set(local, exported);
+    }
+  }
   for (const declarator of constDeclaratorCandidates) {
     const binding = privateAllocationBinding(declarator);
     if (!binding) continue;
@@ -1333,7 +1423,7 @@ export function analyzeCorsaSourceFacts(
     });
   }
   return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
-    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, identifierReceivers, assignedInlineFunctions, diagnostics };
+    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, identifierReceivers, literalDynamicImports, importNamespaceReceivers, destructuredImports, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {

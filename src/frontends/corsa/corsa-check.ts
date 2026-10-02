@@ -614,6 +614,17 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       };
       const owningBoundary = (position: number): Boundary =>
         declaringScope(position) ?? enclosingFunction(syntax.functions, position) ?? moduleBoundary;
+      /** The one analyzed implementation file a module specifier resolves to, or `undefined` when there is not one. */
+      const analyzedImplementation = (position: number): { target: string | undefined; followable: boolean } => {
+        const symbol = queries.getSymbolAtPosition(fileName, position);
+        const declarations = symbol?.declarations ?? [];
+        const implementations = rootFiles.filter((file) => !/\.d\.[cm]?ts$/u.test(file)
+          && declarations.some((item) => item.endsWith(file) || item.toLowerCase().endsWith(file.toLowerCase())));
+        // A declaration file declares what another artifact runs, so following it proves nothing about the run.
+        const followable = declarations.some((item) => /\.[cm]?tsx?$/u.test(item) && !/\.d\.[cm]?ts$/u.test(item));
+        return { target: implementations.length === 1 ? implementations[0] : undefined, followable };
+      };
+      const dynamicImports: Array<{ start: number; specifier: string; target: string }> = [];
       for (const entry of syntax.coverage) for (const exclusion of entry.exclusions) {
         const spanKey = `${exclusion.span.start}:${exclusion.span.end}`;
         // A dynamic key on a checker-resolved non-DOM receiver is an ordinary read/write, not missing coverage.
@@ -622,6 +633,17 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if ((exclusion.reason === "computed-call-target" || exclusion.reason === "computed-construct-target") && indexAccess.admittedComputedCalls.has(spanKey)) {
           admittedComputedCalls.push({ start: exclusion.span.start });
           continue;
+        }
+        // `import("./x.js")` runs the module it names when the enclosing function runs. A literal specifier that
+        // resolves to one analyzed implementation is that module's initialization, charged to the function below;
+        // any other specifier stays a construct this path could not see.
+        if (exclusion.reason === "dynamic-import") {
+          const literal = indexAccess.literalDynamicImports.get(spanKey);
+          const resolved = literal === undefined ? undefined : analyzedImplementation(literal.position);
+          if (literal !== undefined && resolved?.target !== undefined) {
+            dynamicImports.push({ start: exclusion.span.start, specifier: literal.specifier, target: resolved.target });
+            continue;
+          }
         }
         // A literal-typed constant key on a DOM receiver is processed as the equivalent static-name site.
         if (indexAccess.constantKeyExclusions.has(spanKey)) continue;
@@ -793,16 +815,11 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
       // Importing a module runs it. An importer therefore has a boundary of its own even when it evaluates
       // nothing else, because the answer for it is either the dependency's own effects or an explicit absence.
       for (const dependency of indexAccess.dependencies) {
-        const symbol = queries.getSymbolAtPosition(fileName, dependency.position);
-        const declarations = symbol?.declarations ?? [];
-        const implementations = rootFiles.filter((file) => !/\.d\.[cm]?ts$/u.test(file)
-          && declarations.some((item) => item.endsWith(file) || item.toLowerCase().endsWith(file.toLowerCase())));
-        // A declaration file declares what another artifact runs, so following it proves nothing about the run.
-        const followable = declarations.some((item) => /\.[cm]?tsx?$/u.test(item) && !/\.d\.[cm]?ts$/u.test(item));
-        moduleEdges.push({
-          importer: ensure(moduleBoundary), fromFile: fileName, specifier: dependency.specifier,
-          target: implementations.length === 1 ? implementations[0] : undefined, followable,
-        });
+        const { target, followable } = analyzedImplementation(dependency.position);
+        moduleEdges.push({ importer: ensure(moduleBoundary), fromFile: fileName, specifier: dependency.specifier, target, followable });
+      }
+      for (const item of dynamicImports) {
+        moduleEdges.push({ importer: ensure(owningBoundary(item.start)), fromFile: fileName, specifier: item.specifier, target: item.target, followable: true });
       }
       const record = (site: SyntaxSite, contract: BuiltinContract | undefined): void => {
         if (!contract) return;
@@ -924,6 +941,7 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
        * TypeScript `namespace` is also a value module, but its members are writable properties of an object.
        */
       const throughModuleNamespace = (site: SyntaxSite): boolean => {
+        if (indexAccess.importNamespaceReceivers.has(`${site.start}:${site.end}`)) return true;
         const position = indexAccess.identifierReceivers.get(`${site.start}:${site.end}`);
         const binding = position === undefined ? null : queries.getSymbolAtPosition(fileName, position);
         if (!binding || typeof binding.flags !== "number" || (binding.flags & aliasSymbolFlag) === 0) return false;
@@ -937,9 +955,11 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         if (site.name === "<dynamic>") { ensure(owner).unclassified = true; return; }
         const symbol = queries.getSymbolAtPosition(fileName, site.calleePosition);
         const caller = ensure(owner);
-        const linkable = symbol !== null && site.kind === "call"
+        const resolved = symbol !== null && site.kind === "call"
           && (site.receiverPosition === undefined || throughModuleNamespace(site))
           ? (frontend.getAliasedSymbol(symbol) ?? symbol).id : undefined;
+        // A binding destructured from an imported namespace is that export.
+        const linkable = resolved === undefined ? undefined : indexAccess.destructuredImports.get(resolved) ?? resolved;
         // Only a member call can dispatch through a frozen table, and a namespace member already names its callee.
         const frozenTarget = site.kind === "call" && linkable === undefined ? bindings.calls.get(site.calleePosition) : undefined;
         // A call whose callee symbol resolves is deferred: whether it is unknown depends on whether that

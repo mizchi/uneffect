@@ -562,6 +562,27 @@ member 呼出すべてに合成 id を登録しているので、namespace membe
 (見ると解決できない合成 id が unresolved として残る)。選択ファイル外の本体は従来通り借りない。
 この repo の src/ にはローカル module の namespace import がほぼ無く、evidence の変化は 0、理由の変化が 4。
 
+**閉じた既知差: 関数の中の dynamic import。** `import()` は構文側で `dynamic-import` として除外され、
+それを含む関数は一律 unknown だった (偽の証明にはならない)。指定子が文字列リテラル 1 つで options を
+持たず、checker がそれを**解析対象の実装ファイル 1 つ**に解決するときだけ、除外せずに、その関数から
+読み込み先の `<module>` 境界へ静的 import と同じ辺を張る。読み込みは関数が走るときに起こるので、
+読み込む側の `<module>` には計上しない。module の評価は呼出から戻った後の job で起こりうるが、関数に
+計上するのは may-effect の上界として安全側である。package、`.d.ts`、非リテラルの指定子、選択外の
+ファイルは従来通り unknown。
+
+読み込んだ namespace の member は、namespace import と同じく export そのものとして呼出先にする。
+受け手が、リテラル指定子の `import()` を `await` した式そのもの (`(await import("./x.js")).f()`)
+か、それで初期化した `const` 束縛 (symbol で照合) のとき。namespace object は凍結されているので、
+束縛の別名を作られても中身は変わらない。**型からは判断しない**: `let ns: typeof import("./x") =
+{ f() {...} }` は構造的に同じ偽物を持てる。分割代入 (`const { f } = await import("./x.js")`) は、
+export を `import()` 式の型に pattern の key で問い合わせて得る (namespace の property 検索そのもので、
+名前による同一性の推測ではない)。ローカル束縛の symbol は、名前付き要素なら value の位置から取る。
+shorthand の位置は property の symbol を指すので、宣言した境界内の同名の参照から取り、export の symbol
+と異なる id が**ちょうど 1 種類**のときだけ採用する (shadowing で 2 種類以上なら諦める)。
+default 値・rest・computed key は束縛を export 以外のものにするので対象外。
+src/ には `await import(` が 19 箇所あるが、どの境界にも別の未解決要因があり evidence の変化は 0、
+理由の変化が 5。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

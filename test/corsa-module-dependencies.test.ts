@@ -112,3 +112,61 @@ describe("module dependencies on the native check", () => {
     });
   });
 });
+
+describe("a dynamic import inside a function", () => {
+  const summary = (result: Result, name: string) => result.summaries.find((item) => item.functionName === name);
+  const files = {
+    "noisy.ts": 'console.log("evaluated");\nexport function quiet() { return 1; }\n',
+    "silent.ts": "export function quiet() { return 1; }\n",
+    "main.ts": `export async function loadNoisy() { await import("./noisy.js"); }
+export async function loadSilent() { await import("./silent.js"); }
+export async function loadComputed(path: string) { await import(path); }
+export async function loadPackage() { await import("node:fs"); }
+`,
+  };
+
+  it("charges the function that runs it for what a literal specifier evaluates", async () => {
+    await project(files, (result, directory) => {
+      // The import runs the target module when the function runs, so its initialization is this boundary's.
+      expect(summary(result, "loadNoisy")?.effects.map(formatEffect)).toEqual(["Console"]);
+      expect(summary(result, "loadNoisy")?.evidence).not.toBe("unknown");
+      expect([summary(result, "loadSilent")?.effects, summary(result, "loadSilent")?.evidence]).toEqual([[], "inferred"]);
+      // A specifier the checker cannot resolve to one analyzed implementation is still outside the model.
+      expect(summary(result, "loadComputed")?.evidence).toBe("unknown");
+      expect(summary(result, "loadPackage")?.evidence).toBe("unknown");
+      // Nothing is evaluated until the function runs, so the importing module is not charged for it.
+      expect(modules(result, directory)["main.ts"]?.effects ?? []).toEqual([]);
+    });
+  });
+
+  it("follows a member of the imported namespace to the exported body", async () => {
+    await project({
+      "leaf.ts": 'export function report() { console.log("leaf"); }\nexport function quiet() { return 1; }\n',
+      "main.ts": `export async function viaBinding() { const leaf = await import("./leaf.js"); leaf.report(); }
+export async function viaInline() { (await import("./leaf.js")).report(); }
+export async function viaDestructure() { const { report } = await import("./leaf.js"); report(); }
+export async function viaQuiet() { const { quiet: renamed } = await import("./leaf.js"); return renamed(); }
+export async function reassigned(other: { report(): void }) {
+  let leaf: { report(): void } = await import("./leaf.js"); leaf = other; leaf.report();
+}
+export async function computed(path: string) { const leaf = await import(path); leaf.report(); }
+`,
+    }, (result) => {
+      // The namespace object an import resolves to is frozen and holds the module's own exports.
+      for (const name of ["viaBinding", "viaInline", "viaDestructure"]) {
+        expect([name, summary(result, name)?.effects.map(formatEffect), summary(result, name)?.evidence])
+          .toEqual([name, ["Console"], "trusted"]);
+      }
+      expect([summary(result, "viaQuiet")?.effects, summary(result, "viaQuiet")?.evidence]).toEqual([[], "inferred"]);
+      // A binding that is reassigned, or a namespace of a module the checker cannot name, is not that.
+      expect(summary(result, "reassigned")?.evidence).toBe("unknown");
+      expect(summary(result, "computed")?.evidence).toBe("unknown");
+    });
+  });
+
+  it("does not borrow what a module outside the selected files evaluates", async () => {
+    await project(files, (result) => {
+      expect(summary(result, "loadSilent")?.evidence).toBe("unknown");
+    }, ["main.ts"]);
+  });
+});
