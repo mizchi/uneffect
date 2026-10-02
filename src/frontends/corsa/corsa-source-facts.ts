@@ -135,6 +135,11 @@ export interface CorsaSourceFacts {
    */
   readonly allocatedReceivers: ReadonlyMap<string, AllocatedReceiver>;
   /**
+   * Per member call whose receiver is written as a bare identifier, that identifier's offset. A leftmost token is
+   * not enough: in `ns.table.report()` it is `ns`, but the receiver is `ns.table`.
+   */
+  readonly identifierReceivers: ReadonlyMap<string, number>;
+  /**
    * `${start}:${end}` of a member expression assigned an inline function, to that function's start offset. A
    * contract whose callback target is the assigned value composes with it, exactly as an argument callback does.
    */
@@ -174,6 +179,10 @@ const opaqueTypeFlags = anyTypeFlag | unknownTypeFlag | neverTypeFlag;
 const numericTypeFlags = numberTypeFlag | numberLiteralTypeFlag;
 /** Compiler `SymbolFlags.GetAccessor | SymbolFlags.SetAccessor`; reading or writing one runs its body. */
 export const accessorSymbolFlags = 32768 | 65536;
+/** Compiler `SymbolFlags.Alias`, as an import binding reports it. */
+export const aliasSymbolFlag = 2_097_152;
+/** Compiler `SymbolFlags.ValueModule`: a source file module, and also a TypeScript `namespace` declaration. */
+export const valueModuleSymbolFlag = 512;
 /**
  * Corsa `TypeFlags` for the types whose ToPrimitive conversion reaches no user method and cannot throw, as
  * observed from the compiler and pinned by `test/corsa-source-facts.test.ts`. `symbol` is deliberately absent:
@@ -897,6 +906,7 @@ export function analyzeCorsaSourceFacts(
   const callArgumentIdentifiers = new Map<string, readonly (number | null)[]>();
   const freshArguments = new Map<string, readonly boolean[]>();
   const allocatedReceivers = new Map<string, AllocatedReceiver>();
+  const identifierReceivers = new Map<string, number>();
   const constDeclaratorCandidates: EstreeNode[] = [];
   const identifiersByName = new Map<string, EstreeNode[]>();
   const assignedInlineFunctions = new Map<string, number>();
@@ -1047,6 +1057,8 @@ export function analyzeCorsaSourceFacts(
           allocatedReceivers.set(`${node.start}:${node.end}`, { kind: "literal" });
         } else if (receiver.type === "CallExpression" && typeof receiver.start === "number" && typeof receiver.end === "number") {
           allocatedReceivers.set(`${node.start}:${node.end}`, { kind: "call-result", call: `${receiver.start}:${receiver.end}` });
+        } else if (receiver.type === "Identifier" && callee.computed !== true && typeof receiver.start === "number") {
+          identifierReceivers.set(`${node.start}:${node.end}`, receiver.start);
         }
       }
     }
@@ -1321,7 +1333,7 @@ export function analyzeCorsaSourceFacts(
     });
   }
   return { admittedComputedProperties: admitted, admittedComputedCalls: admittedCalls, accessorComputedMembers: accessorMembers, constantKeyExclusions, constantKeySites, arrayLiteralReceivers, assignmentTargets, readWriteTargets, observableWrites, receiverTypes, throws, coercions,
-    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, assignedInlineFunctions, diagnostics };
+    dependencies: runtimeModuleDependencies(parsed.program as never, sourceText), inlineFunctionArguments, callArgumentIdentifiers, freshArguments, allocatedReceivers, identifierReceivers, assignedInlineFunctions, diagnostics };
 }
 
 function findDeclarator(root: EstreeNode, name: string): EstreeNode | undefined {

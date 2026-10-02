@@ -549,6 +549,19 @@ escape 解析、オブジェクト同一性 vs 宣言同一性、メンバチェ
   ある。src/ の regex リテラルで `g` / `y` を持つのは 2 件だけで、どちらも `.test` / `.exec` の receiver では
   ない。downstream に価値が出るまで保留する。
 
+**閉じた既知差: ES module の namespace import。** named import (`import { log }`) と default import は
+別名を解いた関数の symbol で本体に繋がっていたが、`import * as util` 経由の `util.log(x)` は受け手を持つ
+呼出なので `no reviewed contract for log` で unknown になっていた。外部 dogfood 対象で名前の挙がった
+残課題。受け手が**裸の識別子**で、その symbol が Alias であり、別名の先が **source file の module**
+(`ValueModule` を持ち、名前が引用符付きのパス) のときだけ、member の symbol を named import と同じく
+呼出先として扱う。module namespace object の member はその module の export そのもので、named import が
+読むのと同じ束縛を読む。TypeScript の `namespace` 宣言も `ValueModule` だが member は普通の object の
+書き換え可能な property なので除外し、`ns.table.report()` のように受け手自体が member のもの
+(左端のトークンは `ns` だが受け手は `ns.table`) も除外する。frozen table の照合は受け手が識別子の
+member 呼出すべてに合成 id を登録しているので、namespace member が呼出先を名乗ったときはそちらを見ない
+(見ると解決できない合成 id が unresolved として残る)。選択ファイル外の本体は従来通り借りない。
+この repo の src/ にはローカル module の namespace import がほぼ無く、evidence の変化は 0、理由の変化が 4。
+
 最初の縦断実装は、数値引数と `requires / ensures` を持つ直接呼出の関数を対象にする。
 **本体を証明 → producer summary を生成 → 呼出先を照合 → 引数を IR 上で対応付け →
 caller の事前条件を証明 → check 結果に返す**、までを通す。

@@ -139,6 +139,32 @@ describe("native direct-call effect propagation", () => {
     expect(result.summaries.find(item => item.functionName === "loud")?.evidence).toBe("trusted");
   });
 
+  it("follows a call through an ES module namespace import to the exported body", async () => {
+    const files = {
+      "leaf.ts": `export function report() { console.log("leaf"); }
+        export function quiet() { return 1; }
+        export const table = { report() { console.log("table"); } };
+        export namespace Legacy { export function report() { console.log("legacy"); } }`,
+      "main.ts": `import * as leaf from "./leaf.js"; import { Legacy } from "./leaf.js";
+        export function loud() { leaf.report(); }
+        export function silent() { return leaf.quiet(); }
+        export function nested() { leaf.table.report(); }
+        export function declaredNamespace() { Legacy.report(); }`,
+    };
+    const result = await check(files);
+    const evidence = (name: string) => result.summaries.find(item => item.functionName === name)?.evidence;
+    // A module namespace object exposes the module's own exports, so the member names the exported function.
+    expect([names(result, "loud"), evidence("loud")]).toEqual([["Console"], "trusted"]);
+    expect([names(result, "silent"), evidence("silent")]).toEqual([[], "inferred"]);
+    // A receiver that is itself a member, and a TypeScript namespace whose members are writable properties of
+    // an ordinary object, are not that.
+    expect(evidence("nested")).toBe("unknown");
+    expect(evidence("declaredNamespace")).toBe("unknown");
+    // A body outside the selected files is still not borrowed.
+    const selected = await check(files, ["main.ts"]);
+    expect(selected.summaries.find(item => item.functionName === "silent")?.evidence).toBe("unknown");
+  });
+
   it.each(["deferred();", "eval(code); leaf();"])("keeps async invocation and dynamic scope outside the direct-call model: %s", async invocation => {
     const result = await check({ "main.ts": `
       async function deferred() { console.log("deferred"); }

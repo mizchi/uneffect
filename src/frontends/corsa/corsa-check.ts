@@ -14,7 +14,7 @@ import type { DiagnosticNote } from "../../support/diagnostic-contracts.js";
 import { collectCorsaAnnotations } from "./corsa-annotations.js";
 import { collectCorsaEffectBindings } from "./corsa-effect-calls.js";
 import { propagateEffectNames } from "../../effects/effect-propagation.js";
-import { analyzeCorsaSourceFacts, isAccessorSymbol } from "./corsa-source-facts.js";
+import { aliasSymbolFlag, analyzeCorsaSourceFacts, isAccessorSymbol, valueModuleSymbolFlag } from "./corsa-source-facts.js";
 import { loadDomInterfaceGraph, type DomInterfaceGraph } from "./dom-inheritance.js";
 import { assumptionEntry, type AssumptionEntry, type AssumptionLedger } from "../../evidence/assumption-contracts.js";
 
@@ -917,15 +917,31 @@ export async function checkCorsaProject(options: CorsaCheckOptions): Promise<Cor
         ensure(owningBoundary(site.start)).classCalls.push(pending);
         return true;
       };
+      /**
+       * Whether a member call's receiver is an ES module namespace import, `import * as ns`. Its members are the
+       * module's own exports, read exactly as a named import reads them, so the member's symbol is the callee.
+       * The receiver has to be the bare identifier, and the import has to resolve to a source-file module: a
+       * TypeScript `namespace` is also a value module, but its members are writable properties of an object.
+       */
+      const throughModuleNamespace = (site: SyntaxSite): boolean => {
+        const position = indexAccess.identifierReceivers.get(`${site.start}:${site.end}`);
+        const binding = position === undefined ? null : queries.getSymbolAtPosition(fileName, position);
+        if (!binding || typeof binding.flags !== "number" || (binding.flags & aliasSymbolFlag) === 0) return false;
+        const module = frontend.getAliasedSymbol(binding);
+        return module !== null && typeof module.flags === "number" && (module.flags & valueModuleSymbolFlag) !== 0
+          && module.name.startsWith("\"");
+      };
       const recordUnclassified = (site: SyntaxSite): void => {
         const owner = owningBoundary(site.start);
         // A synthetic callee (`<dynamic>`) has no declaration position; it is unknown without symbol linking.
         if (site.name === "<dynamic>") { ensure(owner).unclassified = true; return; }
         const symbol = queries.getSymbolAtPosition(fileName, site.calleePosition);
         const caller = ensure(owner);
-        const linkable = symbol !== null && site.kind === "call" && site.receiverPosition === undefined
+        const linkable = symbol !== null && site.kind === "call"
+          && (site.receiverPosition === undefined || throughModuleNamespace(site))
           ? (frontend.getAliasedSymbol(symbol) ?? symbol).id : undefined;
-        const frozenTarget = site.kind === "call" ? bindings.calls.get(site.calleePosition) : undefined;
+        // Only a member call can dispatch through a frozen table, and a namespace member already names its callee.
+        const frozenTarget = site.kind === "call" && linkable === undefined ? bindings.calls.get(site.calleePosition) : undefined;
         // A call whose callee symbol resolves is deferred: whether it is unknown depends on whether that
         // symbol reaches an analyzed body, which is only known once every root file has been read.
         if (linkable !== undefined) {
