@@ -243,6 +243,11 @@ module-initialization contract を引き、通った依存は assumption ledger 
   呼び出し箇所が隠れる。
 - 残る非主張: `verbatimModuleSyntax` 下では `import {} from` と全要素 type-only の名前付きリストも
   実行時依存になる。共有している module-initialization 解析と同じ既知の under-approximation。
+- CommonJS の `import x = require("./x")` (と `export import`) も実行時依存に入れた。以前は数えておらず、
+  `.cts` で require した module の top-level 効果が読み込む側の `<module>` に計上されずに消えていた
+  (namespace import の member 結合を入れた後は、`x.f()` の本体まで繋がるので漏れが目立つ)。
+  `import type x = require(...)` は elide されるので数えない。値として使われない import-equals も既定の
+  emit では elide されるが、それは数える側 (計上しすぎ) に倒れるので健全。
 
 **閉じた既知差: 定義時に走る class 領域の帰属。** class body の static block / static field 初期化子 /
 decorator / computed key は、**宣言が評価されるとき**に走る。ところが instance field 初期化子が 1 つでも

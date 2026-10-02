@@ -102,6 +102,20 @@ describe("module dependencies on the native check", () => {
     });
   });
 
+  it("inherits what a CommonJS import-equals evaluates", async () => {
+    await project({
+      "noisy.cts": 'console.log("noisy");\nexport function quiet() { return 1; }\n',
+      "main.cts": 'import noisy = require("./noisy.cjs");\nexport function useIt() { return noisy.quiet(); }\n',
+      "shape.cts": "export interface Shape { size: number }\n",
+      "typed.cts": 'import type shape = require("./shape.cjs");\nexport function size(value: shape.Shape) { return value.size; }\n',
+    }, (result, directory) => {
+      // `require` runs the module it names, exactly as a static import does.
+      expect(modules(result, directory)["main.cts"]).toEqual({ effects: ["Console"], evidence: "trusted", reasons: [] });
+      // A type-only import-equals is elided and evaluates nothing.
+      expect(modules(result, directory)["typed.cts"]).toBeUndefined();
+    });
+  });
+
   it("leaves a type-only import out of what a module evaluates", async () => {
     await project({
       "shapes.ts": 'console.log("shapes");\nexport interface Shape { size: number }\n',

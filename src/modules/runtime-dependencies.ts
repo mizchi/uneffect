@@ -15,7 +15,7 @@ export interface RuntimeModuleDependency {
 }
 
 /**
- * The static imports and export-froms a module evaluates when it is imported. A type-only statement, and a
+ * The static imports, export-froms and import-equals `require`s a module evaluates when it is imported. A type-only statement, and a
  * named list whose every element is type-only, are elided under the default emit and do not evaluate their
  * target; an empty import clause (`import {} from`) is elided for the same reason, while a clause-less
  * `import "./x.js"` is not. Under `verbatimModuleSyntax` the elision rules differ and this list is an
@@ -32,6 +32,19 @@ export function runtimeModuleDependencies(program: { body: readonly Node[] }, te
       exportKind?: string;
       specifiers?: readonly { type: string; importKind?: string; exportKind?: string }[];
     };
+    // `import x = require("./x")` runs the module it names exactly as a static import does; a type-only one is
+    // elided. `export import x = require(...)` wraps the same declaration.
+    const equals = (node.type === "ExportNamedDeclaration" ? (node as { declaration?: unknown }).declaration : node) as {
+      type?: string; importKind?: string; moduleReference?: { type: string; expression?: { start: number; end: number; value: unknown } };
+    } | undefined | null;
+    if (equals?.type === "TSImportEqualsDeclaration") {
+      const reference = equals.moduleReference;
+      const literal = reference?.type === "TSExternalModuleReference" ? reference.expression : undefined;
+      if (equals.importKind !== "type" && literal && typeof literal.value === "string") {
+        dependencies.push({ specifier: literal.value, position: literal.start, span: { start: literal.start, end: literal.end }, sideEffectOnly: false });
+      }
+      continue;
+    }
     if (node.type !== "ImportDeclaration" && node.type !== "ExportNamedDeclaration" && node.type !== "ExportAllDeclaration") continue;
     if (!node.source) continue;
     const specifiers = node.specifiers ?? [];
