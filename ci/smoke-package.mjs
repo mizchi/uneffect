@@ -451,10 +451,11 @@ try {
   const shadowed = effectReport.effects.find(item => item.functionName === "shadowed");
   const opaque = effectReport.effects.find(item => item.functionName === "opaque");
   // The frozen table and the whole call chain resolve, so the composed set is a proof; a parameter the caller
-  // supplies is named rather than borrowed from the same-named declaration; and a body outside the analyzed
-  // files is what keeps the no-unknown profile failing.
+  // supplies is named rather than borrowed from the same-named declaration, and since that effect is read out of
+  // the analyzed body rather than supplied by a reviewed contract it is inferred, not trusted; and a body outside
+  // the analyzed files is what keeps the no-unknown profile failing.
   if (!caller?.effects.includes("Console") || caller.evidence !== "trusted"
-    || shadowed?.effects.join() !== "InvokeUserCode" || shadowed.evidence !== "trusted"
+    || shadowed?.effects.join() !== "InvokeUserCode" || shadowed.evidence !== "inferred"
     || opaque?.evidence !== "unknown") {
     throw new Error("packed native effects lost propagation, shadowing, or incomplete evidence");
   }
